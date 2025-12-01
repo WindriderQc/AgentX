@@ -1,0 +1,16 @@
+{
+  "name": "agentx",
+  "version": "1.0.0",
+  "description": "Local AgentX chat control board with Ollama configuration.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "node-fetch": "^2.7.0"
+  }
+}
