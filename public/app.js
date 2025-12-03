@@ -27,12 +27,21 @@
     saveDefaults: document.getElementById('saveDefaults'),
     feedback: document.getElementById('feedback'),
     quickActions: document.querySelectorAll('[data-quick]'),
+    streamToggle: document.getElementById('streamToggle'),
+    logWindow: document.getElementById('logWindow'),
+    threadId: document.getElementById('threadId'),
+    memoryLanguage: document.getElementById('memoryLanguage'),
+    memoryRole: document.getElementById('memoryRole'),
+    memoryStyle: document.getElementById('memoryStyle'),
+    saveProfile: document.getElementById('saveProfile'),
+    refreshProfile: document.getElementById('refreshProfile'),
   };
 
   const defaults = {
     host: 'localhost',
     port: '11434',
     model: '',
+    stream: false,
     system: 'You are AgentX, a concise and capable local assistant. Keep answers brief and actionable.',
     options: {
       temperature: 0.7,
@@ -54,7 +63,13 @@
     sending: false,
     stats: { messages: 0, replies: 0 },
     settings: loadSettings(),
+    threadId: buildThreadId(),
+    profile: { language: '', role: '', style: '' },
   };
+
+  function buildThreadId() {
+    return `t-${Date.now().toString(36)}`;
+  }
 
   function loadSettings() {
     try {
@@ -77,6 +92,7 @@
       host: elements.hostInput.value.trim() || defaults.host,
       port: elements.portInput.value.trim() || defaults.port,
       model: elements.modelSelect.value,
+      stream: elements.streamToggle.checked,
       system: elements.systemPrompt.value.trim() || defaults.system,
       options: readOptions(),
     };
@@ -101,21 +117,13 @@
     };
   }
 
-  function updateRangeDisplays() {
-    document.querySelectorAll('.value[data-for="temperature"]').forEach((el) => {
-      el.textContent = elements.temperature.value;
-    });
-    document.querySelectorAll('.value[data-for="topP"]').forEach((el) => {
-      el.textContent = elements.topP.value;
-    });
-  }
-
   function hydrateForm() {
     const cfg = state.settings;
     elements.hostInput.value = cfg.host;
     elements.portInput.value = cfg.port;
     elements.modelSelect.value = cfg.model;
     elements.systemPrompt.value = cfg.system;
+    elements.streamToggle.checked = cfg.stream;
     elements.temperature.value = cfg.options.temperature;
     elements.topP.value = cfg.options.top_p;
     elements.topK.value = cfg.options.top_k;
@@ -130,6 +138,21 @@
     updateRangeDisplays();
   }
 
+  function updateRangeDisplays() {
+    document.querySelectorAll('.value[data-for="temperature"]').forEach((el) => {
+      el.textContent = elements.temperature.value;
+    });
+    document.querySelectorAll('.value[data-for="topP"]').forEach((el) => {
+      el.textContent = elements.topP.value;
+    });
+  }
+
+  function formatTime(value) {
+    if (!value) return '';
+    const date = new Date(value);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+
   function setStatus(text, tone = 'muted') {
     elements.statusChip.textContent = text;
     const color = tone === 'success' ? '#7cf0ff' : tone === 'error' ? '#ff9ca0' : '#93a0b5';
@@ -141,44 +164,137 @@
     elements.feedback.style.color = tone === 'success' ? '#9ff6ff' : tone === 'error' ? '#ffb3b8' : 'var(--muted)';
   }
 
-  function renderMessage(role, content) {
+  function renderMessage(message) {
+    const { role, content, id, createdAt } = message;
     const bubble = document.createElement('div');
     bubble.className = `bubble ${role === 'user' ? 'user' : 'assistant'}`;
+
     const meta = document.createElement('div');
     meta.className = 'meta';
     meta.textContent = role === 'user' ? 'You' : 'AgentX';
+
+    const time = document.createElement('span');
+    time.className = 'time';
+    time.textContent = formatTime(createdAt);
+    meta.appendChild(document.createTextNode(' • '));
+    meta.appendChild(time);
+
     const body = document.createElement('p');
     body.textContent = content;
+
     bubble.appendChild(meta);
     bubble.appendChild(body);
+
+    if (role === 'assistant') {
+      bubble.appendChild(buildFeedbackRow(id));
+    }
+
     elements.chatWindow.appendChild(bubble);
     elements.chatWindow.scrollTop = elements.chatWindow.scrollHeight;
   }
 
-  function appendMessage(role, content, options = {}) {
+  function buildFeedbackRow(messageId) {
+    const row = document.createElement('div');
+    row.className = 'feedback-row';
+
+    const label = document.createElement('span');
+    label.className = 'muted';
+    label.textContent = 'Feedback';
+    row.appendChild(label);
+
+    const comment = document.createElement('input');
+    comment.type = 'text';
+    comment.placeholder = 'Why? (optional)';
+    comment.style.flex = '1';
+
+    const status = document.createElement('span');
+    status.className = 'muted';
+
+    const send = async (rating) => {
+      try {
+        await sendFeedback(messageId, rating, comment.value);
+        status.textContent = rating > 0 ? 'Thanks! Marked helpful.' : 'Noted. Feedback saved.';
+      } catch (err) {
+        status.textContent = err.message;
+      }
+    };
+
+    const up = document.createElement('button');
+    up.className = 'ghost';
+    up.textContent = '👍';
+    up.title = 'Good answer';
+    up.addEventListener('click', () => send(1));
+
+    const down = document.createElement('button');
+    down.className = 'ghost';
+    down.textContent = '👎';
+    down.title = 'Needs work';
+    down.addEventListener('click', () => send(-1));
+
+    row.appendChild(up);
+    row.appendChild(down);
+    row.appendChild(comment);
+    row.appendChild(status);
+
+    return row;
+  }
+
+  function appendMessage(message, options = {}) {
     const persist = options.persist !== false;
     const count = options.count !== false;
-    renderMessage(role, content);
+    renderMessage(message);
     if (persist) {
-      state.history.push({ role, content });
+      state.history.push(message);
     }
     if (count) {
-      if (role === 'user') {
+      if (message.role === 'user') {
         state.stats.messages += 1;
       }
-      if (role === 'assistant') {
+      if (message.role === 'assistant') {
         state.stats.replies += 1;
       }
     }
     elements.statMessages.textContent = state.stats.messages;
     elements.statReplies.textContent = state.stats.replies;
+    renderLogList(state.history);
+  }
+
+  function renderLogList(messages) {
+    if (!elements.logWindow) return;
+    elements.logWindow.innerHTML = '';
+    const recent = (messages || []).slice(-8).reverse();
+    recent.forEach((msg) => {
+      const item = document.createElement('div');
+      item.className = 'log-item';
+      const left = document.createElement('div');
+      left.innerHTML = `<strong>${msg.role === 'user' ? 'User' : 'AgentX'}</strong><div class="log-meta">${formatTime(
+        msg.createdAt,
+      )}</div>`;
+      const right = document.createElement('div');
+      right.className = 'log-meta';
+      right.textContent = `${msg.content.slice(0, 42)}${msg.content.length > 42 ? '…' : ''}`;
+      item.appendChild(left);
+      item.appendChild(right);
+      elements.logWindow.appendChild(item);
+    });
   }
 
   function clearChat() {
     state.history = [];
     state.stats = { messages: 0, replies: 0 };
     elements.chatWindow.innerHTML = '';
-    appendMessage('assistant', 'Chat cleared. Choose a model and say hi!', { persist: false, count: false });
+    state.threadId = buildThreadId();
+    elements.threadId.textContent = state.threadId;
+    appendMessage(
+      {
+        role: 'assistant',
+        id: 'a-welcome',
+        content: 'Chat cleared. Choose a model and say hi!',
+        createdAt: new Date().toISOString(),
+      },
+      { persist: false, count: false },
+    );
+    renderLogList([]);
   }
 
   function targetHost() {
@@ -229,17 +345,92 @@
     }
   }
 
+  function readProfileInputs() {
+    return {
+      language: elements.memoryLanguage.value.trim(),
+      role: elements.memoryRole.value.trim(),
+      style: elements.memoryStyle.value.trim(),
+    };
+  }
+
+  async function saveProfile() {
+    const payload = readProfileInputs();
+    try {
+      const res = await fetch('/api/profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok || data.status !== 'success') throw new Error(data.message || 'Profile update failed');
+      state.profile = data.data;
+      setFeedback('Profile saved to AgentX memory.', 'success');
+    } catch (err) {
+      setFeedback(err.message, 'error');
+    }
+  }
+
+  async function fetchProfile() {
+    try {
+      const res = await fetch('/api/profile');
+      const data = await res.json();
+      if (!res.ok || data.status !== 'success') throw new Error(data.message || 'Unable to load profile');
+      state.profile = data.data;
+      elements.memoryLanguage.value = state.profile.language || '';
+      elements.memoryRole.value = state.profile.role || '';
+      elements.memoryStyle.value = state.profile.style || '';
+    } catch (err) {
+      console.warn(err);
+      setFeedback(err.message, 'error');
+    }
+  }
+
+  async function loadLogs() {
+    try {
+      const res = await fetch(`/api/logs?threadId=${encodeURIComponent(state.threadId)}`);
+      const data = await res.json();
+      if (res.ok && data.status === 'success' && data.data?.messages) {
+        state.history = data.data.messages;
+        refreshMessages();
+        return;
+      }
+    } catch (err) {
+      console.warn('Log load skipped', err);
+    }
+    refreshMessages();
+  }
+
+  function refreshMessages() {
+    elements.chatWindow.innerHTML = '';
+    state.stats = { messages: 0, replies: 0 };
+    state.history.forEach((msg) => appendMessage(msg, { persist: false }));
+  }
+
+  async function sendFeedback(messageId, rating, comment) {
+    const payload = { threadId: state.threadId, messageId, rating, comment };
+    const res = await fetch('/api/feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok || data.status !== 'success') {
+      throw new Error(data.message || 'Feedback failed');
+    }
+  }
+
   async function sendMessage() {
     if (state.sending) return;
     const message = elements.messageInput.value.trim();
     const model = elements.modelSelect.value;
     if (!message) return;
     if (!model) {
-      setFeedback('Select an Ollama model first.', 'error');
+      setFeedback('Select a model first.', 'error');
       return;
     }
 
-    appendMessage('user', message);
+    const userMessage = { role: 'user', content: message, id: `u-${Date.now()}`, createdAt: new Date().toISOString() };
+    appendMessage(userMessage);
     elements.messageInput.value = '';
     state.sending = true;
     elements.sendBtn.textContent = 'Sending…';
@@ -250,10 +441,13 @@
         model,
         system: elements.systemPrompt.value.trim(),
         options: readOptions(),
-        messages: state.history,
+        stream: elements.streamToggle.checked,
+        threadId: state.threadId,
+        message,
+        profile: readProfileInputs(),
       };
 
-      const res = await fetch('/api/ollama/chat', {
+      const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -263,22 +457,28 @@
         throw new Error(data.message || 'Chat failed');
       }
 
-      const responseText =
-        data.data?.message?.content ||
-        data.data?.response ||
-        data.data?.output ||
-        'No response from Ollama.';
+      state.profile = data.data?.profile || state.profile;
+      const response = data.data?.message || {
+        role: 'assistant',
+        content: 'No response from AgentX backend.',
+        createdAt: new Date().toISOString(),
+        id: `a-${Date.now()}`,
+      };
 
-      appendMessage('assistant', responseText);
+      appendMessage(response);
       setFeedback('Response received.', 'success');
     } catch (err) {
       console.error(err);
-      appendMessage('assistant', `⚠️ ${err.message || 'Request failed.'}`, { persist: false });
+      appendMessage(
+        { role: 'assistant', content: `⚠️ ${err.message || 'Request failed.'}`, createdAt: new Date().toISOString() },
+        { persist: false },
+      );
       setFeedback(err.message, 'error');
-      setStatus('Check Ollama host/port.', 'error');
+      setStatus('Check host/model.', 'error');
     } finally {
       state.sending = false;
       elements.sendBtn.textContent = 'Send';
+      loadLogs();
     }
   }
 
@@ -288,6 +488,8 @@
     elements.refreshModels.addEventListener('click', () => fetchModels(false));
     elements.testConnection.addEventListener('click', () => fetchModels(true));
     elements.saveDefaults.addEventListener('click', persistSettings);
+    elements.saveProfile.addEventListener('click', saveProfile);
+    elements.refreshProfile.addEventListener('click', fetchProfile);
 
     elements.messageInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -305,6 +507,8 @@
       persistSettings();
     });
 
+    elements.streamToggle.addEventListener('change', persistSettings);
+
     elements.quickActions.forEach((btn) =>
       btn.addEventListener('click', () => {
         elements.messageInput.value = btn.dataset.quick;
@@ -314,12 +518,15 @@
   }
 
   function init() {
+    elements.threadId.textContent = state.threadId;
     hydrateForm();
     attachEvents();
     clearChat();
+    fetchProfile();
     fetchModels();
     setStatus('Ready');
     setFeedback('Set host/model, then start chatting.');
+    loadLogs();
   }
 
   init();
