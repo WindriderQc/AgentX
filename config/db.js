@@ -1,16 +1,20 @@
-const mongoose = require('mongoose');
+/**
+ * Database Connection Entry Point
+ * Routes to either MongoDB or SQLite based on DB_TYPE environment variable
+ */
 
-const connectDB = async () => {
-  try {
-    const conn = await mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/agentx', {
-      serverSelectionTimeoutMS: 2000 // Fail fast if no DB
-    });
-    console.log(`MongoDB Connected: ${conn.connection.host}`);
-  } catch (err) {
-    console.error(`Error: ${err.message}`);
-    // Don't kill the server if DB is missing, just log error for now to allow frontend verification
-    // process.exit(1);
-  }
-};
+const dbType = (process.env.DB_TYPE || 'mongodb').toLowerCase();
 
-module.exports = connectDB;
+if (dbType === 'sqlite') {
+  const sqlite = require('./db-sqlite');
+  // For SQLite, export an async init function
+  module.exports = async () => {
+    console.log('[DB] Initializing SQLite database...');
+    await sqlite.initDatabase();
+    console.log('[DB] SQLite ready');
+  };
+} else {
+  // For MongoDB, export the connectDB function directly
+  const mongoConnect = require('./db-mongodb');
+  module.exports = mongoConnect;
+}
