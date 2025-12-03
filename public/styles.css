@@ -287,6 +287,11 @@ body {
   color: var(--muted);
 }
 
+.bubble .time {
+  font-size: 11px;
+  color: var(--muted);
+}
+
 .bubble.user {
   margin-left: auto;
   background: linear-gradient(135deg, rgba(124, 240, 255, 0.2), rgba(238, 176, 255, 0.2));
