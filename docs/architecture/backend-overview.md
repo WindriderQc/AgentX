@@ -88,7 +88,7 @@ Database is automatically created at `./data/agentx.db` (configurable via DB_PAT
 
 ## API Documentation
 
-See `API_DOCS.md` for complete endpoint documentation with request/response examples.
+See `../api/reference.md` for complete endpoint documentation with request/response examples.
 
 ### Quick Examples
 
@@ -402,8 +402,8 @@ This implementation follows the contracts defined by Agent A:
 
 ## Questions or Issues?
 
-See `API_DOCS.md` for detailed endpoint documentation.
-Check `schema.sql` for database structure.
+See `../api/reference.md` for detailed endpoint documentation.
+Check `database.md` for database structure.
 Review `db.js` for data access patterns.
 
 Backend is complete and ready for frontend integration! 🚀

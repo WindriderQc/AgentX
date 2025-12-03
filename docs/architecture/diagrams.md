@@ -293,13 +293,11 @@ AgentX/
 ├── data/
 │   └── agentx.db         ← SQLite database (auto-created)
 │
-├── Documentation
-│   ├── API_DOCS.md              ← API reference
-│   ├── BACKEND_README.md        ← Architecture guide
-│   ├── IMPLEMENTATION_SUMMARY.md ← Overview
-│   ├── QUICKSTART.md            ← Quick start
-│   ├── DELIVERY_REPORT.md       ← Delivery report
-│   └── ARCHITECTURE_DIAGRAM.md  ← This file
+│   ├── Documentation (docs/)
+│   │   ├── api/reference.md         ← API reference
+│   │   ├── architecture/            ← Architecture guide & diagrams
+│   │   ├── reports/                 ← Implementation reports
+│   │   └── onboarding/              ← Quick start & guides
 │
 └── test-backend.sh        ← Automated tests
 ```
@@ -365,5 +363,5 @@ Current Implementation
 
 **This diagram shows the complete architecture of the AgentX backend implementation.**
 
-For detailed endpoint documentation, see `API_DOCS.md`.
-For implementation details, see `BACKEND_README.md`.
+For detailed endpoint documentation, see `../api/reference.md`.
+For implementation details, see `backend-overview.md`.
