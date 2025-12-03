@@ -39,9 +39,64 @@ body {
 .page {
   position: relative;
   z-index: 1;
+  max-width: 1400px;
+  margin: 0 auto;
+  display: flex;
+  min-height: 100vh;
+}
+
+.sidebar {
+  width: 260px;
+  background: rgba(13, 17, 23, 0.5);
+  border-right: 1px solid var(--panel-border);
+  display: flex;
+  flex-direction: column;
+  padding: 1rem;
+}
+
+.sidebar-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.history-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.history-item {
+  padding: 0.75rem;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-bottom: 0.5rem;
+  transition: background 0.2s;
+}
+
+.history-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.history-item .date {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.history-item .title {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.main-content {
+  flex: 1;
+  padding: 48px 24px 64px;
   max-width: 1200px;
   margin: 0 auto;
-  padding: 48px 24px 64px;
+  overflow-y: auto;
+  height: 100vh;
 }
 
 .hero {
@@ -196,6 +251,35 @@ body {
   font-size: 12px;
   color: var(--muted);
   margin-bottom: 6px;
+  display: flex;
+  justify-content: space-between;
+}
+
+.feedback-actions {
+  display: inline-flex;
+  gap: 0.5rem;
+  margin-left: 1rem;
+}
+
+.feedback-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 0;
+  opacity: 0.5;
+  transition: opacity 0.2s, color 0.2s;
+}
+
+.feedback-btn:hover {
+  opacity: 1;
+  color: var(--text);
+}
+
+.feedback-btn.active {
+  opacity: 1;
+  color: var(--accent);
 }
 
 .bubble .time {
@@ -212,6 +296,49 @@ body {
 .bubble.assistant {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--panel-border);
+}
+
+/* Modal */
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 100;
+}
+
+.modal.hidden {
+  display: none;
+}
+
+.modal-content {
+  background: var(--bg);
+  padding: 2rem;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 600px;
+  border: 1px solid var(--panel-border);
+  box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 1.5rem;
+  cursor: pointer;
 }
 
 .composer {
