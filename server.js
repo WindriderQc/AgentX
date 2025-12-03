@@ -145,6 +145,24 @@ async function proxyOllama(pathSegment, target, init) {
       }
     }
 
+    const remaining = buffer.trim();
+    if (remaining) {
+      try {
+        const parsed = JSON.parse(remaining);
+        lastChunk = parsed;
+        if (parsed.message?.content) {
+          aggregateText += parsed.message.content;
+        } else if (!aggregateText) {
+          aggregateText = remaining;
+        }
+      } catch (err) {
+        // ignore malformed remaining chunk unless no aggregate text present
+        if (!aggregateText) {
+          aggregateText = remaining;
+        }
+      }
+    }
+
     const payload = lastChunk?.message
       ? { ...lastChunk, message: { ...lastChunk.message, content: aggregateText || lastChunk.message.content } }
       : aggregateText || buffer.trim();
