@@ -6,6 +6,14 @@ const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...
 const app = express();
 const PORT = process.env.PORT || 3080;
 
+// In-memory stores to keep basic chat logs and user profile
+const sessions = new Map();
+let profile = {
+  language: 'English',
+  role: 'General assistant',
+  style: 'Concise and clear',
+};
+
 app.use(cors());
 app.use(express.json({ limit: '2mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
@@ -71,6 +79,19 @@ function sanitizeOptions(options = {}) {
   }
 
   return clean;
+}
+
+function getSession(threadId = 'default') {
+  if (!sessions.has(threadId)) {
+    sessions.set(threadId, {
+      id: threadId,
+      createdAt: new Date().toISOString(),
+      messages: [],
+      system: null,
+      feedback: [],
+    });
+  }
+  return sessions.get(threadId);
 }
 
 async function proxyOllama(pathSegment, target, init) {
@@ -153,6 +174,134 @@ app.post('/api/ollama/chat', async (req, res) => {
   } catch (err) {
     res.status(err.status || 500).json(buildErrorResponse(err));
   }
+});
+
+app.post('/api/chat', async (req, res) => {
+  const {
+    target = 'localhost:11434',
+    model,
+    message,
+    threadId = 'default',
+    system,
+    options = {},
+    stream = false,
+    profile: incomingProfile,
+  } = req.body || {};
+
+  if (!model) {
+    return res.status(400).json({ status: 'error', message: 'Model is required' });
+  }
+
+  if (!message || !message.trim()) {
+    return res.status(400).json({ status: 'error', message: 'Message content is required' });
+  }
+
+  if (incomingProfile && typeof incomingProfile === 'object') {
+    profile = { ...profile, ...incomingProfile };
+  }
+
+  const session = getSession(threadId);
+  if (system) {
+    session.system = system;
+  }
+
+  const messageId = Date.now();
+  const userMessage = { id: `u-${messageId}`, role: 'user', content: message, createdAt: new Date().toISOString() };
+  session.messages.push(userMessage);
+
+  const formattedMessages = [];
+  if (session.system) {
+    formattedMessages.push({ role: 'system', content: session.system });
+  }
+
+  session.messages.forEach((msg) => {
+    formattedMessages.push({ role: msg.role, content: msg.content });
+  });
+
+  const payload = {
+    model,
+    messages: formattedMessages,
+    stream,
+    options: sanitizeOptions(options),
+  };
+
+  try {
+    const result = await proxyOllama('/api/chat', target, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+
+    const responseText =
+      result?.message?.content || result?.response || result?.output || 'No response from Ollama.';
+
+    const assistantMessage = {
+      id: `a-${Date.now()}`,
+      role: 'assistant',
+      content: responseText,
+      createdAt: new Date().toISOString(),
+      usage: result?.eval_count || result?.completion_tokens,
+    };
+
+    session.messages.push(assistantMessage);
+
+    res.json({
+      status: 'success',
+      data: {
+        threadId: session.id,
+        message: assistantMessage,
+        history: session.messages,
+        profile,
+      },
+    });
+  } catch (err) {
+    // roll back the last user message if the call failed
+    session.messages = session.messages.filter((m) => m.id !== userMessage.id);
+    res.status(err.status || 500).json(buildErrorResponse(err));
+  }
+});
+
+app.get('/api/logs', (req, res) => {
+  const { threadId } = req.query;
+  if (threadId) {
+    const session = sessions.get(threadId);
+    if (!session) {
+      return res.status(404).json({ status: 'error', message: 'Session not found' });
+    }
+    return res.json({ status: 'success', data: session });
+  }
+  res.json({ status: 'success', data: Array.from(sessions.values()) });
+});
+
+app.get('/api/profile', (_req, res) => {
+  res.json({ status: 'success', data: profile });
+});
+
+app.put('/api/profile', (req, res) => {
+  const { language, role, style } = req.body || {};
+  profile = {
+    language: language || profile.language,
+    role: role || profile.role,
+    style: style || profile.style,
+  };
+  res.json({ status: 'success', data: profile });
+});
+
+app.post('/api/feedback', (req, res) => {
+  const { threadId = 'default', messageId, rating, comment } = req.body || {};
+  if (!messageId || typeof rating === 'undefined') {
+    return res.status(400).json({ status: 'error', message: 'messageId and rating are required' });
+  }
+
+  const session = getSession(threadId);
+  session.feedback.push({
+    id: `f-${Date.now()}`,
+    messageId,
+    rating,
+    comment: comment || null,
+    createdAt: new Date().toISOString(),
+  });
+
+  res.json({ status: 'success', data: { threadId, messageId, rating } });
 });
 
 app.get('/health', (_req, res) => {

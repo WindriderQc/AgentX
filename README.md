@@ -5,8 +5,9 @@ Into GraphysX world, AgentX is a node.js application intended to run locally, ex
 ## What’s here
 
 - Local Node.js server on port `3080` that proxies requests to your Ollama instance(s).
-- Rich chat interface inspired by the DataAPI AI control view: model picker, system prompt, sliders for temperature/top‑p/top‑k, context length, stop sequences, keep-alive, and more.
-- Quick actions, message counters, connection feedback, and saved defaults in `localStorage`.
+- Rich chat interface inspired by the DataAPI AI control view: model picker, system prompt, sliders for temperature/top‑p/top‑k, context length, stop sequences, keep-alive, streaming toggle, and more.
+- Quick actions, message counters, session log viewer, feedback controls, and saved defaults in `localStorage`.
+- Profile (memory) editor wired to `/api/profile` plus feedback posting through `/api/feedback` for each assistant reply.
 
 ## Getting started
 
@@ -24,3 +25,4 @@ Into GraphysX world, AgentX is a node.js application intended to run locally, ex
 
 - The server forwards `/api/ollama/models` and `/api/ollama/chat` to the target Ollama host; no data leaves your network.
 - Options are sanitized before calling Ollama, but invalid hosts or ports will surface as connection errors in the UI.
+- For RAG ingestion via n8n, see `docs/n8n-ingestion.md` for scheduled and ad-hoc workflows that call the V3 `/api/rag/ingest` contract.

@@ -20,7 +20,8 @@
           <span class="status-chip" id="statusChip">Idle</span>
         </div>
         <p class="lede">
-          Chat with your local Ollama models, tune parameters, and keep conversations grounded in your system prompt.
+          Rebuilt AI control surface wired to the AgentX chat, memory, and feedback APIs. Pick a model, tune parameters, and
+          manage the session profile that the assistant will remember.
         </p>
       </div>
       <div class="hero-stats">
@@ -55,7 +56,7 @@
         <div class="chat-window" id="chatWindow">
           <div class="bubble assistant">
             <div class="meta">AgentX</div>
-            <p>Hello! I’m online. Pick an Ollama model and let’s get started.</p>
+            <p>Hello! I’m online. Pick a model, then ask away.</p>
           </div>
         </div>
 
@@ -68,12 +69,23 @@
           </div>
           <textarea id="messageInput" rows="3" placeholder="Type to your agent..."></textarea>
         </div>
+
+        <div class="log-panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Session log</p>
+              <h3>Recent exchanges</h3>
+            </div>
+            <div class="pill inline">Thread <span id="threadId"></span></div>
+          </div>
+          <div class="log-window" id="logWindow"></div>
+        </div>
       </section>
 
       <aside class="panel config">
         <div class="panel-head">
           <div>
-            <p class="eyebrow">Ollama</p>
+            <p class="eyebrow">Models & memory</p>
             <h2>Configuration</h2>
           </div>
           <button class="ghost" id="refreshModels">Refresh models</button>
@@ -99,6 +111,15 @@
             <option value="">Load available models…</option>
           </select>
           <div class="hint">Models are pulled from the selected Ollama host.</div>
+        </div>
+
+        <div class="field inline-toggle">
+          <label>Streaming</label>
+          <label class="switch">
+            <input type="checkbox" id="streamToggle">
+            <span class="slider"></span>
+          </label>
+          <div class="hint">Request streamed responses when supported.</div>
         </div>
 
         <div class="field">
@@ -154,6 +175,30 @@
             <input type="text" id="keepAlive" placeholder="e.g. 30s or -1">
             <div class="hint">Keep the model warm between calls.</div>
           </div>
+        </div>
+
+        <div class="memory-card">
+          <div class="panel-head tight">
+            <div>
+              <p class="eyebrow">Memory</p>
+              <h3>User profile</h3>
+            </div>
+            <button class="ghost" id="refreshProfile">Reset</button>
+          </div>
+          <div class="field">
+            <label>Preferred language</label>
+            <input type="text" id="memoryLanguage" placeholder="English">
+          </div>
+          <div class="field">
+            <label>Role / context</label>
+            <input type="text" id="memoryRole" placeholder="e.g. Product manager focusing on UX">
+          </div>
+          <div class="field">
+            <label>Response style</label>
+            <textarea id="memoryStyle" rows="2" placeholder="Concise, decisive, include next steps."></textarea>
+          </div>
+          <div class="hint">Memory is persisted across conversations via the AgentX profile endpoint.</div>
+          <button class="primary full" id="saveProfile">Save profile</button>
         </div>
 
         <div class="action-row">
