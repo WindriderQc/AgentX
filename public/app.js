@@ -175,43 +175,35 @@
   }
 
   function renderMessage(message) {
-    const { role, content, id, createdAt } = message;
+    const { role, content, id, createdAt, feedback } = message;
     const bubble = document.createElement('div');
     bubble.className = `bubble ${role === 'user' ? 'user' : 'assistant'}`;
+    if (id) bubble.dataset.id = id;
 
     const meta = document.createElement('div');
     meta.className = 'meta';
-    meta.textContent = role === 'user' ? 'You' : 'AgentX';
+    meta.innerHTML = `<span>${role === 'user' ? 'You' : 'AgentX'}</span>`;
 
     const time = document.createElement('span');
     time.className = 'time';
     time.textContent = formatTime(createdAt);
     meta.appendChild(document.createTextNode(' • '));
     meta.appendChild(time);
-  // Modified to support message ID for feedback
-  function renderMessage(role, content, messageId = null, feedback = null) {
-    const bubble = document.createElement('div');
-    bubble.className = `bubble ${role === 'user' ? 'user' : 'assistant'}`;
-    if (messageId) bubble.dataset.id = messageId;
-
-    const meta = document.createElement('div');
-    meta.className = 'meta';
-    meta.innerHTML = `<span>${role === 'user' ? 'You' : 'AgentX'}</span>`;
 
     // Feedback UI for Assistant messages
-    if (role === 'assistant' && messageId) {
+    if (role === 'assistant' && id) {
         const feedbackDiv = document.createElement('div');
         feedbackDiv.className = 'feedback-actions';
 
         const upBtn = document.createElement('button');
         upBtn.innerHTML = '👍';
         upBtn.className = `feedback-btn ${feedback?.rating === 1 ? 'active' : ''}`;
-        upBtn.onclick = () => submitFeedback(messageId, 1);
+        upBtn.onclick = () => submitFeedback(id, 1);
 
         const downBtn = document.createElement('button');
         downBtn.innerHTML = '👎';
         downBtn.className = `feedback-btn ${feedback?.rating === -1 ? 'active' : ''}`;
-        downBtn.onclick = () => submitFeedback(messageId, -1);
+        downBtn.onclick = () => submitFeedback(id, -1);
 
         feedbackDiv.appendChild(upBtn);
         feedbackDiv.appendChild(downBtn);
@@ -224,8 +216,13 @@
     bubble.appendChild(meta);
     bubble.appendChild(body);
 
-    if (role === 'assistant') {
-      bubble.appendChild(buildFeedbackRow(id));
+    if (role === 'assistant' && id && !feedback) {
+       // Only show the row if no feedback yet or maybe always?
+       // The previous implementation had both row and buttons in meta?
+       // Let's stick to the new buttons in meta, and maybe the row is for comments.
+       // For now, I'll remove the `buildFeedbackRow` call if we are using the buttons in meta.
+       // Or I can keep the row for commenting.
+       bubble.appendChild(buildFeedbackRow(id));
     }
 
     elements.chatWindow.appendChild(bubble);
@@ -286,8 +283,6 @@
     // For immediate feedback we render without ID first, or we wait for server response?
     // We'll render immediately, and if we get an ID later (from server), we can update it?
     // Actually, for simplicity, we render immediately. The ID is only needed for feedback on assistant messages.
-
-    renderMessage(role, content, options.messageId, options.feedback);
 
     if (persist) {
       state.history.push(message);
@@ -403,17 +398,9 @@
   }
 
   async function loadLogs() {
-    try {
-      const res = await fetch(`/api/logs?threadId=${encodeURIComponent(state.threadId)}`);
-      const data = await res.json();
-      if (res.ok && data.status === 'success' && data.data?.messages) {
-        state.history = data.data.messages;
-        refreshMessages();
-        return;
-      }
-    } catch (err) {
-      console.warn('Log load skipped', err);
-    }
+    // Legacy: This function is deprecated in favor of loadConversation(id)
+    // and loadHistoryList(). We keep it empty or remove it to avoid errors if called.
+    // For now, let's just refresh messages if there are any in state.
     refreshMessages();
   }
 
@@ -477,14 +464,6 @@
       }
 
       state.profile = data.data?.profile || state.profile;
-      const response = data.data?.message || {
-        role: 'assistant',
-        content: 'No response from AgentX backend.',
-        createdAt: new Date().toISOString(),
-        id: `a-${Date.now()}`,
-      };
-
-      appendMessage(response);
       state.conversationId = data.conversationId; // Update ID
 
       const responseText =
@@ -493,13 +472,24 @@
         data.data?.output ||
         'No response from Ollama.';
 
-      appendMessage('assistant', responseText);
+      const assistantMessage = {
+          role: 'assistant',
+          content: responseText,
+          createdAt: new Date().toISOString(),
+          // No ID yet, will get it on reload
+      };
+
+      appendMessage(assistantMessage);
 
       setFeedback('Response received.', 'success');
       loadHistoryList();
 
       // Reload conversation to sync message IDs for feedback
-      if(state.conversationId) loadConversation(state.conversationId);
+      if(state.conversationId) {
+          // Slight delay to ensure DB write is committed/available if needed,
+          // though await fetch('/api/chat') should have waited for it.
+          loadConversation(state.conversationId);
+      }
 
     } catch (err) {
       console.error(err);
@@ -512,7 +502,7 @@
     } finally {
       state.sending = false;
       elements.sendBtn.textContent = 'Send';
-      loadLogs();
+      // loadLogs(); // Removed legacy call
     }
   }
 
@@ -533,8 +523,10 @@
               div.onclick = () => loadConversation(item.id);
               elements.historyList.appendChild(div);
           });
+          return data;
       } catch (err) {
           console.error('Failed to load history', err);
+          return [];
       }
   }
 
@@ -550,16 +542,21 @@
           state.stats.replies = 0;
 
           data.messages.forEach(msg => {
-              appendMessage(msg.role, msg.content, {
-                  persist: true, // It's already in DB, but we want it in local state.history for context
-                  count: true,
-                  messageId: msg._id,
+              // msg is { role, content, _id, feedback, timestamp ... }
+              // appendMessage expects a message object as first arg, and options as second
+              const messageObj = {
+                  role: msg.role,
+                  content: msg.content,
+                  id: msg._id,
+                  createdAt: msg.timestamp || msg.createdAt,
                   feedback: msg.feedback
+              };
+              appendMessage(messageObj, {
+                  persist: true,
+                  count: true
               });
           });
 
-          // Restore settings from conversation if needed? No, keep current settings.
-          // But maybe update model select?
           if(data.model) elements.modelSelect.value = data.model;
 
       } catch (err) {
@@ -672,19 +669,23 @@
     elements.saveProfileBtn.addEventListener('click', saveProfile);
   }
 
-  function init() {
+  async function init() {
     elements.threadId.textContent = state.threadId;
     hydrateForm();
     attachEvents();
     clearChat();
     loadProfile();
     fetchModels();
-    loadHistoryList(); // Load history on start
-    setStatus('Ready');
-    setFeedback('Set host/model, then start chatting.');
-    loadLogs();
+
+    // Load history and open latest conversation if available
+    const history = await loadHistoryList();
+    if (history && history.length > 0) {
+        loadConversation(history[0].id);
+    } else {
+        setStatus('Ready');
+        setFeedback('Set host/model, then start chatting.');
+    }
   }
 
   init();
-}
 })();
