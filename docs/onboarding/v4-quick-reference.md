@@ -23,7 +23,7 @@ Agent C (n8n) can now:
 ### Testing
 - `test-v4-analytics.sh` - Full API test suite
 - `V4_CONTRACT.md` - Complete API documentation
-- `V4_IMPLEMENTATION_SUMMARY.md` - What was built
+- `../reports/v4-implementation.md` - What was built
 
 ---
 
@@ -145,7 +145,7 @@ curl -X PATCH http://localhost:3080/api/dataset/prompts/<ID>/activate | jq
 ## 📖 Full Documentation
 
 - **API Reference**: `V4_CONTRACT.md` (513 lines)
-- **Implementation Details**: `V4_IMPLEMENTATION_SUMMARY.md` (300+ lines)
+- **Implementation Details**: `../reports/v4-implementation.md` (300+ lines)
 - **Original Spec**: `specs/V4_ANALYTICS_ARCHITECTURE.md` (Agent A)
 
 ---
