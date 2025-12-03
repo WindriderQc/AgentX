@@ -60,9 +60,8 @@ PromptConfigSchema.index({ name: 1, version: 1 }, { unique: true });
 PromptConfigSchema.index({ name: 1, status: 1 });
 
 // Update timestamp on save
-PromptConfigSchema.pre('save', function(next) {
+PromptConfigSchema.pre('save', function() {
   this.updatedAt = Date.now();
-  next();
 });
 
 /**

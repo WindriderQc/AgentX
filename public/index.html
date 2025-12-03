@@ -106,13 +106,12 @@
         <div class="field">
           <label>Target host</label>
           <div class="input-row">
-            <input type="text" id="hostInput" list="hostPresets" value="localhost">
-            <datalist id="hostPresets">
-              <option value="localhost">
-              <option value="127.0.0.1">
-              <option value="192.168.2.12">
-              <option value="192.168.2.99">
-            </datalist>
+            <select id="hostInput" style="flex: 1;">
+              <option value="localhost">localhost</option>
+              <option value="127.0.0.1">127.0.0.1</option>
+              <option value="192.168.2.12">192.168.2.12</option>
+              <option value="192.168.2.99">192.168.2.99</option>
+            </select>
             <input type="text" id="portInput" class="w-96" value="11434">
           </div>
         </div>
