@@ -25,6 +25,13 @@ app.use(express.static(path.join(__dirname, 'public')));
 const ragRoutes = require('./routes/rag');
 app.use('/api/rag', ragRoutes);
 
+// V4: Mount Analytics & Dataset routes
+const analyticsRoutes = require('./routes/analytics');
+app.use('/api/analytics', analyticsRoutes);
+
+const datasetRoutes = require('./routes/dataset');
+app.use('/api/dataset', datasetRoutes);
+
 // Mount API routes
 const apiRoutes = require('./routes/api');
 app.use('/api', apiRoutes);

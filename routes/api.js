@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Conversation = require('../models/Conversation');
 const UserProfile = require('../models/UserProfile');
+const PromptConfig = require('../models/PromptConfig'); // V4: Import prompt versioning
 const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
 
 // Helper to sanitize Ollama options
@@ -60,7 +61,7 @@ router.get('/ollama/models', async (req, res) => {
 const { getRagStore } = require('../src/services/ragStore');
 const ragStore = getRagStore();
 
-// CHAT: Enhanced with Memory & Logging + V3 RAG Support
+// CHAT: Enhanced with Memory & Logging + V3 RAG Support + V4 Prompt Versioning
 router.post('/chat', async (req, res) => {
   const { target = 'localhost:11434', model, messages = [], system, options = {}, conversationId, useRag, ragTopK, ragFilters } = req.body;
   const userId = 'default'; // Hardcoded for single user V1/V2
@@ -68,6 +69,12 @@ router.post('/chat', async (req, res) => {
   if (!model) return res.status(400).json({ status: 'error', message: 'Model is required' });
 
   try {
+    // V4: Fetch active prompt configuration
+    const activePrompt = await PromptConfig.getActive('default_chat');
+    if (!activePrompt) {
+      return res.status(500).json({ status: 'error', message: 'No active prompt configuration found' });
+    }
+
     // V3: RAG variables
     let ragUsed = false;
     let ragSources = [];
@@ -78,8 +85,8 @@ router.post('/chat', async (req, res) => {
         userProfile = await UserProfile.create({ userId });
     }
 
-    // 2. Inject Memory into System Prompt
-    let effectiveSystemPrompt = system || 'You are AgentX, an efficient local AI assistant.';
+    // 2. Inject Memory into System Prompt (V4: Use active prompt as base)
+    let effectiveSystemPrompt = system || activePrompt.systemPrompt;
     if (userProfile.about) {
         effectiveSystemPrompt += `\n\nUser Profile/Memory:\n${userProfile.about}`;
     }
@@ -211,6 +218,11 @@ router.post('/chat', async (req, res) => {
     // V3: Store RAG metadata
     conversation.ragUsed = ragUsed;
     conversation.ragSources = ragSources;
+
+    // V4: Store prompt version info
+    conversation.promptConfigId = activePrompt._id;
+    conversation.promptName = activePrompt.name;
+    conversation.promptVersion = activePrompt.version;
 
     await conversation.save();
 
