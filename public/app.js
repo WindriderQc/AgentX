@@ -33,10 +33,9 @@ document.addEventListener('DOMContentLoaded', () => {
     memoryLanguage: document.getElementById('memoryLanguage'),
     memoryRole: document.getElementById('memoryRole'),
     memoryStyle: document.getElementById('memoryStyle'),
-    saveProfile: document.getElementById('saveProfile'),
-    refreshProfile: document.getElementById('refreshProfile'),
     // New Elements
     historyList: document.getElementById('historyList'),
+    resetProfileBtn: document.getElementById('resetProfileBtn'),
     newChatBtn: document.getElementById('newChatBtn'),
     profileBtn: document.getElementById('profileBtn'),
     profileModal: document.getElementById('profileModal'),
@@ -675,8 +674,6 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.refreshModels.addEventListener('click', () => fetchModels(false));
     elements.testConnection.addEventListener('click', () => fetchModels(true));
     elements.saveDefaults.addEventListener('click', persistSettings);
-    elements.saveProfile.addEventListener('click', saveProfile);
-    elements.refreshProfile.addEventListener('click', loadProfile);
 
     elements.messageInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -722,6 +719,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     elements.closeProfileBtn.addEventListener('click', () => elements.profileModal.classList.add('hidden'));
     elements.saveProfileBtn.addEventListener('click', saveProfile);
+    elements.resetProfileBtn.addEventListener('click', () => {
+        loadProfile();
+    });
   }
 
   function init() {
