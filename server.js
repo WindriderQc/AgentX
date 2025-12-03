@@ -111,7 +111,55 @@ async function proxyOllama(pathSegment, target, init) {
     },
   });
 
-  const isJson = response.headers.get('content-type')?.includes('application/json');
+  const contentType = response.headers.get('content-type') || '';
+
+  if (contentType.includes('application/x-ndjson')) {
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let aggregateText = '';
+    let lastChunk = {};
+
+    if (reader) {
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+
+        lines.forEach((line) => {
+          if (!line.trim()) return;
+          try {
+            const parsed = JSON.parse(line);
+            lastChunk = parsed;
+            if (parsed.message?.content) {
+              aggregateText += parsed.message.content;
+            }
+          } catch (err) {
+            // ignore malformed chunk and continue
+          }
+        });
+      }
+    }
+
+    const payload = lastChunk?.message
+      ? { ...lastChunk, message: { ...lastChunk.message, content: aggregateText || lastChunk.message.content } }
+      : aggregateText || buffer.trim();
+
+    if (!response.ok) {
+      const error = new Error(`Ollama request failed (${response.status})`);
+      error.status = response.status;
+      error.body = payload;
+      throw error;
+    }
+
+    return payload;
+  }
+
+  const isJson = contentType.includes('application/json');
   const payload = isJson ? await response.json() : await response.text();
 
   if (!response.ok) {
@@ -239,7 +287,9 @@ app.post('/api/chat', async (req, res) => {
     });
 
     const responseText =
-      result?.message?.content || result?.response || result?.output || 'No response from Ollama.';
+      typeof result === 'string'
+        ? result
+        : result?.message?.content || result?.response || result?.output || 'No response from Ollama.';
 
     const assistantMessage = {
       id: `a-${Date.now()}`,
