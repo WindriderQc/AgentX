@@ -16,6 +16,16 @@ const { getRagStore } = require('../src/services/ragStore');
 // Initialize RAG store
 const ragStore = getRagStore();
 
+// Helper to resolve Ollama target
+function resolveTarget(target) {
+  const fallback = 'http://localhost:11434';
+  if (!target || typeof target !== 'string') return fallback;
+  const trimmed = target.trim();
+  if (!trimmed) return fallback;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed.replace(/\/+$/, '');
+  return `http://${trimmed.replace(/\/+$/, '')}`;
+}
+
 /**
  * POST /api/rag/ingest
  * 
@@ -27,7 +37,10 @@ const ragStore = getRagStore();
 router.post('/ingest', async (req, res) => {
   try {
     // Extract and validate required fields
-    const { source, path, title, text, hash, tags, metadata } = req.body;
+    const { source, path, title, text, hash, tags, metadata, target } = req.body;
+    
+    // Resolve Ollama host (use target if provided, otherwise fall back to default)
+    const ollamaHost = target ? resolveTarget(target) : null;
 
     // Validation per contract
     if (!source || typeof source !== 'string') {
@@ -102,8 +115,8 @@ router.post('/ingest', async (req, res) => {
       ...metadata // Allow additional metadata from n8n
     };
 
-    // Upsert document
-    const result = await ragStore.upsertDocumentWithChunks(docMetadata, text);
+    // Upsert document (pass ollamaHost for dynamic embedding service)
+    const result = await ragStore.upsertDocumentWithChunks(docMetadata, text, ollamaHost);
 
     // Return response matching contract exactly
     // DO NOT add extra fields - n8n parses this!
@@ -143,7 +156,10 @@ router.post('/ingest', async (req, res) => {
  */
 router.post('/search', async (req, res) => {
   try {
-    const { query, topK, minScore, filters } = req.body;
+    const { query, topK, minScore, filters, target } = req.body;
+    
+    // Resolve Ollama host
+    const ollamaHost = target ? resolveTarget(target) : null;
 
     // Validation
     if (!query || typeof query !== 'string' || query.trim().length === 0) {
@@ -188,7 +204,8 @@ router.post('/search', async (req, res) => {
     const results = await ragStore.searchSimilarChunks(query, {
       topK,
       minScore,
-      filters
+      filters,
+      ollamaHost
     });
 
     // Return response matching contract
