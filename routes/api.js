@@ -95,11 +95,15 @@ router.post('/chat', async (req, res) => {
         if (lastUserMsg && lastUserMsg.role === 'user') {
           const query = lastUserMsg.content;
           
+          // Resolve Ollama host for RAG embeddings
+          const ollamaHost = resolveTarget(target);
+          
           // Search for relevant chunks
           const searchResults = await ragStore.searchSimilarChunks(query, {
             topK: ragTopK || 5,
             minScore: 0.3, // Reasonable threshold
-            filters: ragFilters
+            filters: ragFilters,
+            ollamaHost
           });
 
           if (searchResults.length > 0) {

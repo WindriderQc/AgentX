@@ -392,44 +392,14 @@
     }
   }
 
+
+
   function readProfileInputs() {
     return {
       language: elements.memoryLanguage.value.trim(),
       role: elements.memoryRole.value.trim(),
       style: elements.memoryStyle.value.trim(),
     };
-  }
-
-  async function saveProfile() {
-    const payload = readProfileInputs();
-    try {
-      const res = await fetch('/api/profile', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (!res.ok || data.status !== 'success') throw new Error(data.message || 'Profile update failed');
-      state.profile = data.data;
-      setFeedback('Profile saved to AgentX memory.', 'success');
-    } catch (err) {
-      setFeedback(err.message, 'error');
-    }
-  }
-
-  async function fetchProfile() {
-    try {
-      const res = await fetch('/api/profile');
-      const data = await res.json();
-      if (!res.ok || data.status !== 'success') throw new Error(data.message || 'Unable to load profile');
-      state.profile = data.data;
-      elements.memoryLanguage.value = state.profile.language || '';
-      elements.memoryRole.value = state.profile.role || '';
-      elements.memoryStyle.value = state.profile.style || '';
-    } catch (err) {
-      console.warn(err);
-      setFeedback(err.message, 'error');
-    }
   }
 
   async function loadLogs() {
@@ -668,7 +638,7 @@
     elements.testConnection.addEventListener('click', () => fetchModels(true));
     elements.saveDefaults.addEventListener('click', persistSettings);
     elements.saveProfile.addEventListener('click', saveProfile);
-    elements.refreshProfile.addEventListener('click', fetchProfile);
+    elements.refreshProfile.addEventListener('click', loadProfile);
 
     elements.messageInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -687,6 +657,17 @@
     });
 
     elements.streamToggle.addEventListener('change', persistSettings);
+
+    // Auto-refresh models when host or port changes
+    elements.hostInput.addEventListener('change', () => {
+      persistSettings();
+      fetchModels(false);
+    });
+    
+    elements.portInput.addEventListener('change', () => {
+      persistSettings();
+      fetchModels(false);
+    });
 
     elements.quickActions.forEach((btn) =>
       btn.addEventListener('click', () => {
@@ -710,7 +691,7 @@
     hydrateForm();
     attachEvents();
     clearChat();
-    fetchProfile();
+    loadProfile();
     fetchModels();
     loadHistoryList(); // Load history on start
     setStatus('Ready');
@@ -719,4 +700,5 @@
   }
 
   init();
+}
 })();

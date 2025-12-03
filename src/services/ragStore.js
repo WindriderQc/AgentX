@@ -22,11 +22,12 @@ class RagStore {
 
   /**
    * Upsert a document with automatic chunking and embedding
-   * @param {Object} metadata - Document metadata (source, path, title, hash, tags)
+   * @param {Object} metadata - Document metadata {source, path, title, tags, author, createdAt}
    * @param {string} text - Full document text
+   * @param {string} ollamaHost - Optional Ollama host override
    * @returns {Promise<{documentId: string, chunkCount: number, status: string}>}
    */
-  async upsertDocumentWithChunks(metadata, text) {
+  async upsertDocumentWithChunks(metadata, text, ollamaHost = null) {
     // Validate inputs
     if (!metadata || typeof metadata !== 'object') {
       throw new Error('metadata must be an object');
@@ -62,7 +63,7 @@ class RagStore {
 
     // Generate embeddings for all chunks
     console.log(`[RagStore] Embedding ${chunks.length} chunks for document ${documentId}`);
-    const embeddings = await this.embeddings.embedTextBatch(chunks);
+    const embeddings = await this.embeddings.embedTextBatch(chunks, ollamaHost);
 
     // Remove old chunks if document exists
     if (existingDoc) {
@@ -123,9 +124,10 @@ class RagStore {
     const topK = Math.min(options.topK || 5, 20); // Max 20 as per contract
     const minScore = options.minScore !== undefined ? options.minScore : 0.0;
     const filters = options.filters || {};
+    const ollamaHost = options.ollamaHost || null;
 
     // Generate query embedding
-    const [queryEmbedding] = await this.embeddings.embedTextBatch([query]);
+    const [queryEmbedding] = await this.embeddings.embedTextBatch([query], ollamaHost);
 
     // Calculate similarities for all vectors
     let results = this.vectors.map(vec => {
