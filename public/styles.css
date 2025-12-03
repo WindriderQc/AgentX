@@ -215,6 +215,16 @@ body {
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.panel-head > div {
+  flex: 1;
+  min-width: 150px;
+}
+
+.panel-head button {
+  white-space: nowrap;
 }
 
 .panel-head.tight {
@@ -390,6 +400,13 @@ select {
   font-family: inherit;
 }
 
+/* Style select dropdown options */
+select option {
+  background: rgba(18, 23, 38, 0.95);
+  color: var(--text);
+  padding: 10px;
+}
+
 textarea {
   resize: vertical;
   min-height: 90px;
@@ -501,6 +518,17 @@ button:active {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
+}
+
+.inline-toggle > label:first-child {
+  flex-shrink: 0;
+  min-width: fit-content;
+}
+
+.inline-toggle .hint {
+  flex-basis: 100%;
+  margin-top: 4px;
 }
 
 .switch {

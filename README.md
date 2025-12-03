@@ -2,6 +2,32 @@
 
 Into GraphysX world, AgentX is a node.js application intended to run locally, exploiting various local instance of ollama in order to create an ecosystem of AI agents as a personal local assistant.
 
+## Documentation Map
+
+We have organized the documentation to help you get started quickly and then dive deep into the technical details.
+
+### 🚀 Getting Started (Onboarding)
+*   [**Onboarding Hub**](docs/onboarding/README.md): Entry point for all onboarding docs.
+*   [**Quick Start Guide**](docs/onboarding/quickstart.md): Installation, setup, and your first test. Start here!
+*   [**V4 Quick Reference**](docs/onboarding/v4-quick-reference.md): Specifics for V4 features.
+
+### 🏗️ Architecture & Technical Details
+*   [**Architecture Index**](docs/architecture/README.md): Overview of design resources.
+*   [**Backend Overview**](docs/architecture/backend-overview.md): High-level architecture and design decisions.
+*   [**Architecture Diagrams**](docs/architecture/diagrams.md): Visual representation of the system and data flows.
+*   [**Database Architecture**](docs/architecture/database.md): Schema and data model details.
+*   [**Specs**](specs/): Detailed architectural specifications (V3 RAG, V4 Analytics).
+
+### 🔌 API Reference
+*   [**API Docs Hub**](docs/api/README.md): API resources at a glance.
+*   [**API Reference**](docs/api/reference.md): Complete API documentation with examples.
+*   [**Contracts**](docs/api/contracts/): Snapshots of API contracts for specific versions.
+
+### 📜 History & Reports
+*   [**Reports Hub**](docs/reports/README.md): Implementation summaries and supporting workflows.
+*   [**Implementation Reports**](docs/reports/): Summaries of what was implemented in each version.
+*   [**Archive**](docs/archive/): Old plans, reports, and deprecated documentation.
+
 ## What’s here
 
 - Local Node.js server on port `3080` that proxies requests to your Ollama instance(s).
@@ -9,7 +35,7 @@ Into GraphysX world, AgentX is a node.js application intended to run locally, ex
 - Quick actions, message counters, session log viewer, feedback controls, and saved defaults in `localStorage`.
 - Profile (memory) editor wired to `/api/profile` plus feedback posting through `/api/feedback` for each assistant reply.
 
-## Getting started
+## Quick Install
 
 1. Install dependencies (Node.js 18+ recommended):
    ```bash
@@ -19,10 +45,6 @@ Into GraphysX world, AgentX is a node.js application intended to run locally, ex
    ```bash
    npm start
    ```
-3. Open `http://localhost:3080` in your browser. Point the host/port fields at a reachable Ollama service (defaults to `localhost:11434`) and select a model.
+3. Open `http://localhost:3080`.
 
-## Notes
-
-- The server forwards `/api/ollama/models` and `/api/ollama/chat` to the target Ollama host; no data leaves your network.
-- Options are sanitized before calling Ollama, but invalid hosts or ports will surface as connection errors in the UI.
-- For RAG ingestion via n8n, see `docs/n8n-ingestion.md` for scheduled and ad-hoc workflows that call the V3 `/api/rag/ingest` contract.
+See [Quick Start Guide](docs/onboarding/quickstart.md) for more details.

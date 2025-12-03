@@ -27,7 +27,7 @@ echo ""
 
 # Test user profile creation
 echo "2. Creating user profile..."
-PROFILE=$(curl -s -X POST "$BASE_URL/api/user/profile" \
+PROFILE=$(curl -s -X POST "$BASE_URL/api/profile" \
     -H "Content-Type: application/json" \
     -d "{
         \"userId\": \"$USER_ID\",

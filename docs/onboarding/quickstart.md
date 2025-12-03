@@ -102,20 +102,19 @@ SELECT * FROM messages LIMIT 5;
 
 ```
 AgentX/
-├── server.js                    # Main Express server
-├── db.js                        # Database access layer
-├── schema.sql                   # Database schema
-├── package.json                 # Dependencies
-├── API_DOCS.md                  # API documentation
-├── BACKEND_README.md            # Backend guide
-├── IMPLEMENTATION_SUMMARY.md    # Summary of changes
-├── test-backend.sh              # Test suite
-├── data/
-│   └── agentx.db               # SQLite database (auto-created)
-└── public/
-    ├── index.html              # Frontend
-    ├── app.js                  # Frontend JS
-    └── styles.css              # Frontend CSS
+├── server.js                  # Express server entry point
+├── routes/                    # API route modules (chat, analytics, datasets, RAG)
+├── models/                    # Persistence models
+├── config/                    # Database configuration and schema
+├── docs/                      # Onboarding, architecture, API docs, reports, archive
+├── specs/                     # Architecture specs for V3 RAG and V4 analytics
+├── src/                       # Service utilities
+├── public/                    # Frontend assets
+├── test-backend.sh            # Backend test suite
+├── test-v3-rag.sh             # RAG-specific validation
+├── test-v4-analytics.sh       # Analytics and metrics validation
+├── package.json               # Dependencies
+└── data/                      # SQLite database directory (created at runtime)
 ```
 
 ## Common Issues
@@ -144,9 +143,9 @@ npm install
 
 ## Next Steps
 
-1. **Read the API documentation**: `API_DOCS.md`
-2. **Review the implementation**: `IMPLEMENTATION_SUMMARY.md`
-3. **Start building frontend**: Use endpoints from `API_DOCS.md`
+1. **Read the API documentation**: `../api/reference.md`
+2. **Review the implementation**: `../reports/v4-implementation.md`
+3. **Start building frontend**: Use endpoints from `../api/reference.md`
 4. **Test with Postman**: Import endpoints as a collection
 
 ## Environment Variables
@@ -189,13 +188,13 @@ http://localhost:3080/api/*
 | `/api/conversations` | GET | List conversations |
 | `/api/conversations/:id` | GET | Get conversation details |
 
-See `API_DOCS.md` for complete documentation.
+See `../api/reference.md` for complete documentation.
 
 ## Support
 
-- 📖 **Full API Docs**: `API_DOCS.md`
-- 🏗️ **Architecture**: `BACKEND_README.md`
-- 📊 **Implementation**: `IMPLEMENTATION_SUMMARY.md`
+- 📖 **Full API Docs**: `../api/reference.md`
+- 🏗️ **Architecture**: `../architecture/backend-overview.md`
+- 📊 **Implementation**: `../reports/v4-implementation.md`
 - 🧪 **Testing**: `./test-backend.sh`
 
 **Happy coding! 🚀**

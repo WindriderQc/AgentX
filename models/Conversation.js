@@ -15,7 +15,7 @@ const ConversationSchema = new mongoose.Schema({
   model: String,
   systemPrompt: String,
   messages: [MessageSchema],
-  title: { type: String, default: 'New Conversation' }, // Auto-generated summary?
+  title: { type: String, default: 'New Conversation' },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
   
@@ -27,13 +27,25 @@ const ConversationSchema = new mongoose.Schema({
     source: String,      // Document source
     title: String,       // Document title
     documentId: String   // Reference to document
-  }]
+  }],
+  
+  // V4: Prompt versioning for analytics & improvement loops
+  promptConfigId: { type: mongoose.Schema.Types.ObjectId, ref: 'PromptConfig' },
+  promptName: { type: String },     // Snapshot: e.g. "default_chat"
+  promptVersion: { type: Number }   // Snapshot: e.g. 5
 });
 
+// Indexes for V4 analytics queries
+ConversationSchema.index({ createdAt: 1 });
+ConversationSchema.index({ model: 1, createdAt: 1 });
+ConversationSchema.index({ promptConfigId: 1 });
+ConversationSchema.index({ promptName: 1, promptVersion: 1 });
+ConversationSchema.index({ ragUsed: 1 });
+ConversationSchema.index({ 'messages.feedback.rating': 1 });
+
 // Update timestamp on save
-ConversationSchema.pre('save', function(next) {
+ConversationSchema.pre('save', function() {
   this.updatedAt = Date.now();
-  next();
 });
 
 module.exports = mongoose.model('Conversation', ConversationSchema);

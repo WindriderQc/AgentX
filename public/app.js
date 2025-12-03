@@ -1,4 +1,4 @@
-(() => {
+document.addEventListener('DOMContentLoaded', () => {
   const elements = {
     chatWindow: document.getElementById('chatWindow'),
     messageInput: document.getElementById('messageInput'),
@@ -33,10 +33,9 @@
     memoryLanguage: document.getElementById('memoryLanguage'),
     memoryRole: document.getElementById('memoryRole'),
     memoryStyle: document.getElementById('memoryStyle'),
-    saveProfile: document.getElementById('saveProfile'),
-    refreshProfile: document.getElementById('refreshProfile'),
     // New Elements
     historyList: document.getElementById('historyList'),
+    resetProfileBtn: document.getElementById('resetProfileBtn'),
     newChatBtn: document.getElementById('newChatBtn'),
     profileBtn: document.getElementById('profileBtn'),
     profileModal: document.getElementById('profileModal'),
@@ -45,6 +44,36 @@
     userAbout: document.getElementById('userAbout'),
     userInstructions: document.getElementById('userInstructions'),
   };
+
+  // Fetch server config on load
+  async function loadServerConfig() {
+    try {
+      const res = await fetch('/api/config');
+      if (res.ok) {
+        const config = await res.json();
+        if (config.ollama) {
+          // Add server's configured host to the dropdown if not already present
+          const hostSelect = document.getElementById('hostInput');
+          const existingOptions = Array.from(hostSelect.options).map(opt => opt.value);
+          if (config.ollama.host && !existingOptions.includes(config.ollama.host)) {
+            const option = document.createElement('option');
+            option.value = config.ollama.host;
+            option.textContent = config.ollama.host;
+            hostSelect.insertBefore(option, hostSelect.firstChild);
+          }
+          // Update defaults with server config
+          if (config.ollama.host) {
+            defaults.host = config.ollama.host;
+            defaults.port = config.ollama.port;
+          }
+          return config;
+        }
+      }
+    } catch (err) {
+      console.warn('Could not load server config:', err);
+    }
+    return null;
+  }
 
   const defaults = {
     host: 'localhost',
@@ -71,7 +100,7 @@
     history: [],
     sending: false,
     stats: { messages: 0, replies: 0 },
-    settings: loadSettings(),
+    settings: null, // Will be loaded after server config
     threadId: buildThreadId(),
     profile: { language: '', role: '', style: '' },
     conversationId: null, // Current conversation ID
@@ -86,6 +115,11 @@
       const raw = localStorage.getItem('agentx-settings');
       if (!raw) return { ...defaults };
       const parsed = JSON.parse(raw);
+      // If saved host is localhost but defaults have been updated with server config, use defaults
+      if (parsed.host === 'localhost' && defaults.host !== 'localhost') {
+        parsed.host = defaults.host;
+        parsed.port = defaults.port;
+      }
       return {
         ...defaults,
         ...parsed,
@@ -129,8 +163,9 @@
 
   function hydrateForm() {
     const cfg = state.settings;
-    elements.hostInput.value = cfg.host;
-    elements.portInput.value = cfg.port;
+    // Use saved settings if they exist, otherwise use defaults (which may include server config)
+    elements.hostInput.value = cfg.host || defaults.host;
+    elements.portInput.value = cfg.port || defaults.port;
     elements.modelSelect.value = cfg.model;
     elements.systemPrompt.value = cfg.system;
     elements.streamToggle.checked = cfg.stream;
@@ -175,21 +210,11 @@
   }
 
   function renderMessage(message) {
-    const { role, content, id, createdAt } = message;
-    const bubble = document.createElement('div');
-    bubble.className = `bubble ${role === 'user' ? 'user' : 'assistant'}`;
+    const role = message.role;
+    const content = message.content;
+    const messageId = message.id || message._id || null;
+    const createdAt = message.createdAt || new Date().toISOString();
 
-    const meta = document.createElement('div');
-    meta.className = 'meta';
-    meta.textContent = role === 'user' ? 'You' : 'AgentX';
-
-    const time = document.createElement('span');
-    time.className = 'time';
-    time.textContent = formatTime(createdAt);
-    meta.appendChild(document.createTextNode(' • '));
-    meta.appendChild(time);
-  // Modified to support message ID for feedback
-  function renderMessage(role, content, messageId = null, feedback = null) {
     const bubble = document.createElement('div');
     bubble.className = `bubble ${role === 'user' ? 'user' : 'assistant'}`;
     if (messageId) bubble.dataset.id = messageId;
@@ -198,25 +223,11 @@
     meta.className = 'meta';
     meta.innerHTML = `<span>${role === 'user' ? 'You' : 'AgentX'}</span>`;
 
-    // Feedback UI for Assistant messages
-    if (role === 'assistant' && messageId) {
-        const feedbackDiv = document.createElement('div');
-        feedbackDiv.className = 'feedback-actions';
-
-        const upBtn = document.createElement('button');
-        upBtn.innerHTML = '👍';
-        upBtn.className = `feedback-btn ${feedback?.rating === 1 ? 'active' : ''}`;
-        upBtn.onclick = () => submitFeedback(messageId, 1);
-
-        const downBtn = document.createElement('button');
-        downBtn.innerHTML = '👎';
-        downBtn.className = `feedback-btn ${feedback?.rating === -1 ? 'active' : ''}`;
-        downBtn.onclick = () => submitFeedback(messageId, -1);
-
-        feedbackDiv.appendChild(upBtn);
-        feedbackDiv.appendChild(downBtn);
-        meta.appendChild(feedbackDiv);
-    }
+    const time = document.createElement('span');
+    time.className = 'time';
+    time.textContent = formatTime(createdAt);
+    meta.appendChild(document.createTextNode(' • '));
+    meta.appendChild(time);
 
     const body = document.createElement('p');
     body.textContent = content;
@@ -225,7 +236,7 @@
     bubble.appendChild(body);
 
     if (role === 'assistant') {
-      bubble.appendChild(buildFeedbackRow(id));
+      bubble.appendChild(buildFeedbackRow(messageId));
     }
 
     elements.chatWindow.appendChild(bubble);
@@ -278,16 +289,26 @@
     return row;
   }
 
-  function appendMessage(message, options = {}) {
+  function appendMessage(messageOrRole, contentOrOptions = {}, maybeOptions = {}) {
+    const isStringPayload = typeof messageOrRole === 'string';
+    const options = isStringPayload ? maybeOptions : contentOrOptions || {};
     const persist = options.persist !== false;
     const count = options.count !== false;
-    renderMessage(message);
-    // Note: Render happens here for temporary display, but re-rendered properly on reload/load history
-    // For immediate feedback we render without ID first, or we wait for server response?
-    // We'll render immediately, and if we get an ID later (from server), we can update it?
-    // Actually, for simplicity, we render immediately. The ID is only needed for feedback on assistant messages.
 
-    renderMessage(role, content, options.messageId, options.feedback);
+    const message = isStringPayload
+      ? {
+          role: messageOrRole,
+          content: contentOrOptions || '',
+          createdAt: options.createdAt || new Date().toISOString(),
+          id: options.messageId || `m-${Date.now()}`,
+          feedback: options.feedback,
+        }
+      : {
+          ...messageOrRole,
+          createdAt: messageOrRole.createdAt || new Date().toISOString(),
+        };
+
+    renderMessage(message);
 
     if (persist) {
       state.history.push(message);
@@ -358,8 +379,11 @@
     if (showStatus) setStatus('Connecting…');
     try {
       const res = await fetch(`/api/ollama/models?target=${encodeURIComponent(targetHost())}`);
+      if (!res.ok) {
+        throw new Error(`Server returned ${res.status}`);
+      }
       const data = await res.json();
-      if (!res.ok || data.status !== 'success') {
+      if (data.status !== 'success') {
         throw new Error(data.message || 'Unable to load models');
       }
       elements.modelSelect.innerHTML = '';
@@ -386,11 +410,15 @@
       setStatus(`Connected to ${targetHost()}`, 'success');
       setFeedback('Models refreshed from Ollama.', 'success');
     } catch (err) {
-      console.error(err);
-      setStatus('Connection failed', 'error');
-      setFeedback(err.message, 'error');
+      console.warn('Failed to fetch models:', err.message);
+      setStatus('Model refresh failed', 'error');
+      setFeedback('Click "Refresh models" to retry connection', 'info');
+      // Add a default option so UI doesn't break
+      elements.modelSelect.innerHTML = '<option value="">Click "Refresh models"</option>';
     }
   }
+
+
 
   function readProfileInputs() {
     return {
@@ -400,49 +428,21 @@
     };
   }
 
-  async function saveProfile() {
-    const payload = readProfileInputs();
-    try {
-      const res = await fetch('/api/profile', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (!res.ok || data.status !== 'success') throw new Error(data.message || 'Profile update failed');
-      state.profile = data.data;
-      setFeedback('Profile saved to AgentX memory.', 'success');
-    } catch (err) {
-      setFeedback(err.message, 'error');
-    }
-  }
-
-  async function fetchProfile() {
-    try {
-      const res = await fetch('/api/profile');
-      const data = await res.json();
-      if (!res.ok || data.status !== 'success') throw new Error(data.message || 'Unable to load profile');
-      state.profile = data.data;
-      elements.memoryLanguage.value = state.profile.language || '';
-      elements.memoryRole.value = state.profile.role || '';
-      elements.memoryStyle.value = state.profile.style || '';
-    } catch (err) {
-      console.warn(err);
-      setFeedback(err.message, 'error');
-    }
-  }
-
   async function loadLogs() {
     try {
       const res = await fetch(`/api/logs?threadId=${encodeURIComponent(state.threadId)}`);
+      if (!res.ok) {
+        refreshMessages();
+        return;
+      }
       const data = await res.json();
-      if (res.ok && data.status === 'success' && data.data?.messages) {
+      if (data.status === 'success' && data.data?.messages) {
         state.history = data.data.messages;
         refreshMessages();
         return;
       }
     } catch (err) {
-      console.warn('Log load skipped', err);
+      // Silently skip if logs endpoint not available
     }
     refreshMessages();
   }
@@ -454,7 +454,7 @@
   }
 
   async function sendFeedback(messageId, rating, comment) {
-    const payload = { threadId: state.threadId, messageId, rating, comment };
+    const payload = { conversationId: state.conversationId, messageId, rating, comment };
     const res = await fetch('/api/feedback', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -523,26 +523,12 @@
         data.data?.output ||
         'No response from Ollama.';
 
-      // We need to know the message ID of the assistant response to attach feedback
-      // The current API response structure from our backend wrapper needs to provide this if possible.
-      // Or we reload the conversation messages?
-      // For now, let's just append. If we want feedback on *this* message immediately, we might need to fetch the message ID.
-      // But we can't get subdocument ID easily without reloading or returning it.
-      // Let's rely on reloading the chat if we want perfect ID sync, OR return the whole updated conversation.
-
-      // Since we just saved it, let's try to get the ID from the backend response if we modified it to return the new message ID.
-      // But we didn't.
-      // HACK: We will reload the conversation silently or just fetch the history list to update the sidebar.
-
-      appendMessage('assistant', responseText, {
-          // Ideally we'd have the ID here.
-          // Future improvement: Return the new message ID in the /chat response.
-      });
+      appendMessage('assistant', responseText);
 
       setFeedback('Response received.', 'success');
-      loadHistoryList(); // Update sidebar
+      loadHistoryList();
 
-      // Refetch full conversation to get IDs for feedback
+      // Reload conversation to sync message IDs for feedback
       if(state.conversationId) loadConversation(state.conversationId);
 
     } catch (err) {
@@ -593,14 +579,15 @@
           state.stats.messages = 0;
           state.stats.replies = 0;
 
-          data.messages.forEach(msg => {
-              appendMessage(msg.role, msg.content, {
-                  persist: true, // It's already in DB, but we want it in local state.history for context
-                  count: true,
-                  messageId: msg._id,
-                  feedback: msg.feedback
-              });
-          });
+            data.messages.forEach(msg => {
+                appendMessage(msg.role, msg.content, {
+                    persist: true, // It's already in DB, but we want it in local state.history for context
+                    count: true,
+                    messageId: msg._id,
+                    feedback: msg.feedback,
+                    createdAt: msg.createdAt,
+                });
+            });
 
           // Restore settings from conversation if needed? No, keep current settings.
           // But maybe update model select?
@@ -667,8 +654,6 @@
     elements.refreshModels.addEventListener('click', () => fetchModels(false));
     elements.testConnection.addEventListener('click', () => fetchModels(true));
     elements.saveDefaults.addEventListener('click', persistSettings);
-    elements.saveProfile.addEventListener('click', saveProfile);
-    elements.refreshProfile.addEventListener('click', fetchProfile);
 
     elements.messageInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -688,6 +673,17 @@
 
     elements.streamToggle.addEventListener('change', persistSettings);
 
+    // Auto-refresh models when host or port changes
+    elements.hostInput.addEventListener('change', () => {
+      persistSettings();
+      fetchModels(false);
+    });
+    
+    elements.portInput.addEventListener('change', () => {
+      persistSettings();
+      fetchModels(false);
+    });
+
     elements.quickActions.forEach((btn) =>
       btn.addEventListener('click', () => {
         elements.messageInput.value = btn.dataset.quick;
@@ -703,14 +699,19 @@
     });
     elements.closeProfileBtn.addEventListener('click', () => elements.profileModal.classList.add('hidden'));
     elements.saveProfileBtn.addEventListener('click', saveProfile);
+    elements.resetProfileBtn.addEventListener('click', () => {
+        loadProfile();
+    });
   }
 
   function init() {
+    // Load settings after defaults are potentially updated by server config
+    state.settings = loadSettings();
     elements.threadId.textContent = state.threadId;
     hydrateForm();
     attachEvents();
     clearChat();
-    fetchProfile();
+    loadProfile();
     fetchModels();
     loadHistoryList(); // Load history on start
     setStatus('Ready');
@@ -718,5 +719,11 @@
     loadLogs();
   }
 
-  init();
-})();
+  // Load server config first, then initialize
+  loadServerConfig().then(() => {
+    init();
+  }).catch(err => {
+    console.warn('Server config load failed, using defaults:', err);
+    init();
+  });
+});
