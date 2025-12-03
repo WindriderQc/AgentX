@@ -46,6 +46,36 @@ document.addEventListener('DOMContentLoaded', () => {
     userInstructions: document.getElementById('userInstructions'),
   };
 
+  // Fetch server config on load
+  async function loadServerConfig() {
+    try {
+      const res = await fetch('/api/config');
+      if (res.ok) {
+        const config = await res.json();
+        if (config.ollama) {
+          // Add server's configured host to the dropdown if not already present
+          const hostSelect = document.getElementById('hostInput');
+          const existingOptions = Array.from(hostSelect.options).map(opt => opt.value);
+          if (config.ollama.host && !existingOptions.includes(config.ollama.host)) {
+            const option = document.createElement('option');
+            option.value = config.ollama.host;
+            option.textContent = config.ollama.host;
+            hostSelect.insertBefore(option, hostSelect.firstChild);
+          }
+          // Update defaults with server config
+          if (config.ollama.host) {
+            defaults.host = config.ollama.host;
+            defaults.port = config.ollama.port;
+          }
+          return config;
+        }
+      }
+    } catch (err) {
+      console.warn('Could not load server config:', err);
+    }
+    return null;
+  }
+
   const defaults = {
     host: 'localhost',
     port: '11434',
@@ -71,7 +101,7 @@ document.addEventListener('DOMContentLoaded', () => {
     history: [],
     sending: false,
     stats: { messages: 0, replies: 0 },
-    settings: loadSettings(),
+    settings: null, // Will be loaded after server config
     threadId: buildThreadId(),
     profile: { language: '', role: '', style: '' },
     conversationId: null, // Current conversation ID
@@ -86,6 +116,11 @@ document.addEventListener('DOMContentLoaded', () => {
       const raw = localStorage.getItem('agentx-settings');
       if (!raw) return { ...defaults };
       const parsed = JSON.parse(raw);
+      // If saved host is localhost but defaults have been updated with server config, use defaults
+      if (parsed.host === 'localhost' && defaults.host !== 'localhost') {
+        parsed.host = defaults.host;
+        parsed.port = defaults.port;
+      }
       return {
         ...defaults,
         ...parsed,
@@ -129,8 +164,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function hydrateForm() {
     const cfg = state.settings;
-    elements.hostInput.value = cfg.host;
-    elements.portInput.value = cfg.port;
+    // Use saved settings if they exist, otherwise use defaults (which may include server config)
+    elements.hostInput.value = cfg.host || defaults.host;
+    elements.portInput.value = cfg.port || defaults.port;
     elements.modelSelect.value = cfg.model;
     elements.systemPrompt.value = cfg.system;
     elements.streamToggle.checked = cfg.stream;
@@ -364,8 +400,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (showStatus) setStatus('Connecting…');
     try {
       const res = await fetch(`/api/ollama/models?target=${encodeURIComponent(targetHost())}`);
+      if (!res.ok) {
+        throw new Error(`Server returned ${res.status}`);
+      }
       const data = await res.json();
-      if (!res.ok || data.status !== 'success') {
+      if (data.status !== 'success') {
         throw new Error(data.message || 'Unable to load models');
       }
       elements.modelSelect.innerHTML = '';
@@ -392,9 +431,11 @@ document.addEventListener('DOMContentLoaded', () => {
       setStatus(`Connected to ${targetHost()}`, 'success');
       setFeedback('Models refreshed from Ollama.', 'success');
     } catch (err) {
-      console.error(err);
-      setStatus('Connection failed', 'error');
-      setFeedback(err.message, 'error');
+      console.warn('Failed to fetch models:', err.message);
+      setStatus('Model refresh failed', 'error');
+      setFeedback('Click "Refresh models" to retry connection', 'info');
+      // Add a default option so UI doesn't break
+      elements.modelSelect.innerHTML = '<option value="">Click "Refresh models"</option>';
     }
   }
 
@@ -411,14 +452,18 @@ document.addEventListener('DOMContentLoaded', () => {
   async function loadLogs() {
     try {
       const res = await fetch(`/api/logs?threadId=${encodeURIComponent(state.threadId)}`);
+      if (!res.ok) {
+        refreshMessages();
+        return;
+      }
       const data = await res.json();
-      if (res.ok && data.status === 'success' && data.data?.messages) {
+      if (data.status === 'success' && data.data?.messages) {
         state.history = data.data.messages;
         refreshMessages();
         return;
       }
     } catch (err) {
-      console.warn('Log load skipped', err);
+      // Silently skip if logs endpoint not available
     }
     refreshMessages();
   }
@@ -680,6 +725,8 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function init() {
+    // Load settings after defaults are potentially updated by server config
+    state.settings = loadSettings();
     elements.threadId.textContent = state.threadId;
     hydrateForm();
     attachEvents();
@@ -692,5 +739,11 @@ document.addEventListener('DOMContentLoaded', () => {
     loadLogs();
   }
 
-  init();
+  // Load server config first, then initialize
+  loadServerConfig().then(() => {
+    init();
+  }).catch(err => {
+    console.warn('Server config load failed, using defaults:', err);
+    init();
+  });
 });

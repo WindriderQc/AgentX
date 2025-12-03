@@ -249,7 +249,7 @@ class RagStore {
 
     while (start < text.length) {
       // Find chunk end
-      let end = start + this.chunkSize;
+      let end = Math.min(start + this.chunkSize, text.length);
       
       // Try to break at sentence boundary if possible
       if (end < text.length) {
@@ -257,8 +257,6 @@ class RagStore {
         if (breakPoint > start && breakPoint > start + this.chunkSize * 0.5) {
           end = breakPoint + 1; // Include the period
         }
-      } else {
-        end = text.length;
       }
 
       const chunk = text.substring(start, end).trim();
@@ -266,8 +264,15 @@ class RagStore {
         chunks.push(chunk);
       }
 
-      // Move start forward with overlap
-      start = end - this.chunkOverlap;
+      // Move start forward with overlap, ensuring we always advance
+      const nextStart = end - this.chunkOverlap;
+      if (nextStart <= start) {
+        // Prevent infinite loop: if we're not advancing, force move forward
+        start = start + Math.max(1, this.chunkSize - this.chunkOverlap);
+      } else {
+        start = nextStart;
+      }
+      
       if (start >= text.length) break;
     }
 

@@ -41,6 +41,24 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok', port: PORT });
 });
 
+// Config endpoint - expose server configuration
+app.get('/api/config', (_req, res) => {
+  const ollamaHost = process.env.OLLAMA_HOST || 'http://localhost:11434';
+  // Parse host and port from OLLAMA_HOST
+  const match = ollamaHost.match(/^(?:https?:\/\/)?([^:]+)(?::(\d+))?/);
+  const host = match ? match[1] : 'localhost';
+  const port = match && match[2] ? match[2] : '11434';
+  
+  res.json({
+    ollama: {
+      host,
+      port,
+      fullUrl: ollamaHost
+    },
+    embeddingModel: process.env.EMBEDDING_MODEL || 'nomic-embed-text'
+  });
+});
+
 // Fallback to Frontend
 app.get('*', (_req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
