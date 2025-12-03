@@ -209,7 +209,7 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.feedback.style.color = tone === 'success' ? '#9ff6ff' : tone === 'error' ? '#ffb3b8' : 'var(--muted)';
   }
 
-  function renderMessage(message, feedback = null) {
+  function renderMessage(message) {
     const role = message.role;
     const content = message.content;
     const messageId = message.id || message._id || null;
@@ -228,26 +228,6 @@ document.addEventListener('DOMContentLoaded', () => {
     time.textContent = formatTime(createdAt);
     meta.appendChild(document.createTextNode(' • '));
     meta.appendChild(time);
-
-    // Feedback UI for Assistant messages
-    if (role === 'assistant' && messageId) {
-      const feedbackDiv = document.createElement('div');
-      feedbackDiv.className = 'feedback-actions';
-
-      const upBtn = document.createElement('button');
-      upBtn.innerHTML = '👍';
-      upBtn.className = `feedback-btn ${feedback?.rating === 1 ? 'active' : ''}`;
-      upBtn.onclick = () => submitFeedback(messageId, 1);
-
-      const downBtn = document.createElement('button');
-      downBtn.innerHTML = '👎';
-      downBtn.className = `feedback-btn ${feedback?.rating === -1 ? 'active' : ''}`;
-      downBtn.onclick = () => submitFeedback(messageId, -1);
-
-      feedbackDiv.appendChild(upBtn);
-      feedbackDiv.appendChild(downBtn);
-      meta.appendChild(feedbackDiv);
-    }
 
     const body = document.createElement('p');
     body.textContent = content;
@@ -328,7 +308,7 @@ document.addEventListener('DOMContentLoaded', () => {
           createdAt: messageOrRole.createdAt || new Date().toISOString(),
         };
 
-    renderMessage(message, options.feedback || message.feedback);
+    renderMessage(message);
 
     if (persist) {
       state.history.push(message);
