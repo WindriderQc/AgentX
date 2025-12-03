@@ -21,6 +21,10 @@ app.use(cors());
 app.use(express.json({ limit: '2mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+// V3: Mount RAG routes
+const ragRoutes = require('./routes/rag');
+app.use('/api/rag', ragRoutes);
+
 function resolveTarget(target) {
   const fallback = 'http://localhost:11434';
   if (!target || typeof target !== 'string') return fallback;
