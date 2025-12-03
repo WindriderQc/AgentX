@@ -44,9 +44,8 @@ ConversationSchema.index({ ragUsed: 1 });
 ConversationSchema.index({ 'messages.feedback.rating': 1 });
 
 // Update timestamp on save
-ConversationSchema.pre('save', function(next) {
+ConversationSchema.pre('save', function() {
   this.updatedAt = Date.now();
-  next();
 });
 
 module.exports = mongoose.model('Conversation', ConversationSchema);
