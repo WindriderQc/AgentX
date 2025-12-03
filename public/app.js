@@ -1,4 +1,4 @@
-(() => {
+document.addEventListener('DOMContentLoaded', () => {
   const elements = {
     chatWindow: document.getElementById('chatWindow'),
     messageInput: document.getElementById('messageInput'),
@@ -174,22 +174,12 @@
     elements.feedback.style.color = tone === 'success' ? '#9ff6ff' : tone === 'error' ? '#ffb3b8' : 'var(--muted)';
   }
 
-  function renderMessage(message) {
-    const { role, content, id, createdAt } = message;
-    const bubble = document.createElement('div');
-    bubble.className = `bubble ${role === 'user' ? 'user' : 'assistant'}`;
+  function renderMessage(message, feedback = null) {
+    const role = message.role;
+    const content = message.content;
+    const messageId = message.id || message._id || null;
+    const createdAt = message.createdAt || new Date().toISOString();
 
-    const meta = document.createElement('div');
-    meta.className = 'meta';
-    meta.textContent = role === 'user' ? 'You' : 'AgentX';
-
-    const time = document.createElement('span');
-    time.className = 'time';
-    time.textContent = formatTime(createdAt);
-    meta.appendChild(document.createTextNode(' • '));
-    meta.appendChild(time);
-  // Modified to support message ID for feedback
-  function renderMessage(role, content, messageId = null, feedback = null) {
     const bubble = document.createElement('div');
     bubble.className = `bubble ${role === 'user' ? 'user' : 'assistant'}`;
     if (messageId) bubble.dataset.id = messageId;
@@ -198,24 +188,30 @@
     meta.className = 'meta';
     meta.innerHTML = `<span>${role === 'user' ? 'You' : 'AgentX'}</span>`;
 
+    const time = document.createElement('span');
+    time.className = 'time';
+    time.textContent = formatTime(createdAt);
+    meta.appendChild(document.createTextNode(' • '));
+    meta.appendChild(time);
+
     // Feedback UI for Assistant messages
     if (role === 'assistant' && messageId) {
-        const feedbackDiv = document.createElement('div');
-        feedbackDiv.className = 'feedback-actions';
+      const feedbackDiv = document.createElement('div');
+      feedbackDiv.className = 'feedback-actions';
 
-        const upBtn = document.createElement('button');
-        upBtn.innerHTML = '👍';
-        upBtn.className = `feedback-btn ${feedback?.rating === 1 ? 'active' : ''}`;
-        upBtn.onclick = () => submitFeedback(messageId, 1);
+      const upBtn = document.createElement('button');
+      upBtn.innerHTML = '👍';
+      upBtn.className = `feedback-btn ${feedback?.rating === 1 ? 'active' : ''}`;
+      upBtn.onclick = () => submitFeedback(messageId, 1);
 
-        const downBtn = document.createElement('button');
-        downBtn.innerHTML = '👎';
-        downBtn.className = `feedback-btn ${feedback?.rating === -1 ? 'active' : ''}`;
-        downBtn.onclick = () => submitFeedback(messageId, -1);
+      const downBtn = document.createElement('button');
+      downBtn.innerHTML = '👎';
+      downBtn.className = `feedback-btn ${feedback?.rating === -1 ? 'active' : ''}`;
+      downBtn.onclick = () => submitFeedback(messageId, -1);
 
-        feedbackDiv.appendChild(upBtn);
-        feedbackDiv.appendChild(downBtn);
-        meta.appendChild(feedbackDiv);
+      feedbackDiv.appendChild(upBtn);
+      feedbackDiv.appendChild(downBtn);
+      meta.appendChild(feedbackDiv);
     }
 
     const body = document.createElement('p');
@@ -225,7 +221,7 @@
     bubble.appendChild(body);
 
     if (role === 'assistant') {
-      bubble.appendChild(buildFeedbackRow(id));
+      bubble.appendChild(buildFeedbackRow(messageId));
     }
 
     elements.chatWindow.appendChild(bubble);
@@ -278,16 +274,26 @@
     return row;
   }
 
-  function appendMessage(message, options = {}) {
+  function appendMessage(messageOrRole, contentOrOptions = {}, maybeOptions = {}) {
+    const isStringPayload = typeof messageOrRole === 'string';
+    const options = isStringPayload ? maybeOptions : contentOrOptions || {};
     const persist = options.persist !== false;
     const count = options.count !== false;
-    renderMessage(message);
-    // Note: Render happens here for temporary display, but re-rendered properly on reload/load history
-    // For immediate feedback we render without ID first, or we wait for server response?
-    // We'll render immediately, and if we get an ID later (from server), we can update it?
-    // Actually, for simplicity, we render immediately. The ID is only needed for feedback on assistant messages.
 
-    renderMessage(role, content, options.messageId, options.feedback);
+    const message = isStringPayload
+      ? {
+          role: messageOrRole,
+          content: contentOrOptions || '',
+          createdAt: options.createdAt || new Date().toISOString(),
+          id: options.messageId || `m-${Date.now()}`,
+          feedback: options.feedback,
+        }
+      : {
+          ...messageOrRole,
+          createdAt: messageOrRole.createdAt || new Date().toISOString(),
+        };
+
+    renderMessage(message, options.feedback || message.feedback);
 
     if (persist) {
       state.history.push(message);
@@ -549,14 +555,15 @@
           state.stats.messages = 0;
           state.stats.replies = 0;
 
-          data.messages.forEach(msg => {
-              appendMessage(msg.role, msg.content, {
-                  persist: true, // It's already in DB, but we want it in local state.history for context
-                  count: true,
-                  messageId: msg._id,
-                  feedback: msg.feedback
-              });
-          });
+            data.messages.forEach(msg => {
+                appendMessage(msg.role, msg.content, {
+                    persist: true, // It's already in DB, but we want it in local state.history for context
+                    count: true,
+                    messageId: msg._id,
+                    feedback: msg.feedback,
+                    createdAt: msg.createdAt,
+                });
+            });
 
           // Restore settings from conversation if needed? No, keep current settings.
           // But maybe update model select?
@@ -686,5 +693,4 @@
   }
 
   init();
-}
-})();
+});
