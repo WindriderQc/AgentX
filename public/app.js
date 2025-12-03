@@ -493,26 +493,12 @@
         data.data?.output ||
         'No response from Ollama.';
 
-      // We need to know the message ID of the assistant response to attach feedback
-      // The current API response structure from our backend wrapper needs to provide this if possible.
-      // Or we reload the conversation messages?
-      // For now, let's just append. If we want feedback on *this* message immediately, we might need to fetch the message ID.
-      // But we can't get subdocument ID easily without reloading or returning it.
-      // Let's rely on reloading the chat if we want perfect ID sync, OR return the whole updated conversation.
-
-      // Since we just saved it, let's try to get the ID from the backend response if we modified it to return the new message ID.
-      // But we didn't.
-      // HACK: We will reload the conversation silently or just fetch the history list to update the sidebar.
-
-      appendMessage('assistant', responseText, {
-          // Ideally we'd have the ID here.
-          // Future improvement: Return the new message ID in the /chat response.
-      });
+      appendMessage('assistant', responseText);
 
       setFeedback('Response received.', 'success');
-      loadHistoryList(); // Update sidebar
+      loadHistoryList();
 
-      // Refetch full conversation to get IDs for feedback
+      // Reload conversation to sync message IDs for feedback
       if(state.conversationId) loadConversation(state.conversationId);
 
     } catch (err) {
