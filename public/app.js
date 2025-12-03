@@ -27,6 +27,15 @@
     saveDefaults: document.getElementById('saveDefaults'),
     feedback: document.getElementById('feedback'),
     quickActions: document.querySelectorAll('[data-quick]'),
+    // New Elements
+    historyList: document.getElementById('historyList'),
+    newChatBtn: document.getElementById('newChatBtn'),
+    profileBtn: document.getElementById('profileBtn'),
+    profileModal: document.getElementById('profileModal'),
+    closeProfileBtn: document.getElementById('closeProfileBtn'),
+    saveProfileBtn: document.getElementById('saveProfileBtn'),
+    userAbout: document.getElementById('userAbout'),
+    userInstructions: document.getElementById('userInstructions'),
   };
 
   const defaults = {
@@ -54,6 +63,7 @@
     sending: false,
     stats: { messages: 0, replies: 0 },
     settings: loadSettings(),
+    conversationId: null, // Current conversation ID
   };
 
   function loadSettings() {
@@ -141,12 +151,36 @@
     elements.feedback.style.color = tone === 'success' ? '#9ff6ff' : tone === 'error' ? '#ffb3b8' : 'var(--muted)';
   }
 
-  function renderMessage(role, content) {
+  // Modified to support message ID for feedback
+  function renderMessage(role, content, messageId = null, feedback = null) {
     const bubble = document.createElement('div');
     bubble.className = `bubble ${role === 'user' ? 'user' : 'assistant'}`;
+    if (messageId) bubble.dataset.id = messageId;
+
     const meta = document.createElement('div');
     meta.className = 'meta';
-    meta.textContent = role === 'user' ? 'You' : 'AgentX';
+    meta.innerHTML = `<span>${role === 'user' ? 'You' : 'AgentX'}</span>`;
+
+    // Feedback UI for Assistant messages
+    if (role === 'assistant' && messageId) {
+        const feedbackDiv = document.createElement('div');
+        feedbackDiv.className = 'feedback-actions';
+
+        const upBtn = document.createElement('button');
+        upBtn.innerHTML = '👍';
+        upBtn.className = `feedback-btn ${feedback?.rating === 1 ? 'active' : ''}`;
+        upBtn.onclick = () => submitFeedback(messageId, 1);
+
+        const downBtn = document.createElement('button');
+        downBtn.innerHTML = '👎';
+        downBtn.className = `feedback-btn ${feedback?.rating === -1 ? 'active' : ''}`;
+        downBtn.onclick = () => submitFeedback(messageId, -1);
+
+        feedbackDiv.appendChild(upBtn);
+        feedbackDiv.appendChild(downBtn);
+        meta.appendChild(feedbackDiv);
+    }
+
     const body = document.createElement('p');
     body.textContent = content;
     bubble.appendChild(meta);
@@ -158,7 +192,13 @@
   function appendMessage(role, content, options = {}) {
     const persist = options.persist !== false;
     const count = options.count !== false;
-    renderMessage(role, content);
+    // Note: Render happens here for temporary display, but re-rendered properly on reload/load history
+    // For immediate feedback we render without ID first, or we wait for server response?
+    // We'll render immediately, and if we get an ID later (from server), we can update it?
+    // Actually, for simplicity, we render immediately. The ID is only needed for feedback on assistant messages.
+
+    renderMessage(role, content, options.messageId, options.feedback);
+
     if (persist) {
       state.history.push({ role, content });
     }
@@ -176,9 +216,11 @@
 
   function clearChat() {
     state.history = [];
+    state.conversationId = null;
     state.stats = { messages: 0, replies: 0 };
     elements.chatWindow.innerHTML = '';
     appendMessage('assistant', 'Chat cleared. Choose a model and say hi!', { persist: false, count: false });
+    loadHistoryList(); // Refresh list to show new conversation if any
   }
 
   function targetHost() {
@@ -251,9 +293,10 @@
         system: elements.systemPrompt.value.trim(),
         options: readOptions(),
         messages: state.history,
+        conversationId: state.conversationId
       };
 
-      const res = await fetch('/api/ollama/chat', {
+      const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -263,14 +306,36 @@
         throw new Error(data.message || 'Chat failed');
       }
 
+      state.conversationId = data.conversationId; // Update ID
+
       const responseText =
         data.data?.message?.content ||
         data.data?.response ||
         data.data?.output ||
         'No response from Ollama.';
 
-      appendMessage('assistant', responseText);
+      // We need to know the message ID of the assistant response to attach feedback
+      // The current API response structure from our backend wrapper needs to provide this if possible.
+      // Or we reload the conversation messages?
+      // For now, let's just append. If we want feedback on *this* message immediately, we might need to fetch the message ID.
+      // But we can't get subdocument ID easily without reloading or returning it.
+      // Let's rely on reloading the chat if we want perfect ID sync, OR return the whole updated conversation.
+
+      // Since we just saved it, let's try to get the ID from the backend response if we modified it to return the new message ID.
+      // But we didn't.
+      // HACK: We will reload the conversation silently or just fetch the history list to update the sidebar.
+
+      appendMessage('assistant', responseText, {
+          // Ideally we'd have the ID here.
+          // Future improvement: Return the new message ID in the /chat response.
+      });
+
       setFeedback('Response received.', 'success');
+      loadHistoryList(); // Update sidebar
+
+      // Refetch full conversation to get IDs for feedback
+      if(state.conversationId) loadConversation(state.conversationId);
+
     } catch (err) {
       console.error(err);
       appendMessage('assistant', `⚠️ ${err.message || 'Request failed.'}`, { persist: false });
@@ -280,6 +345,107 @@
       state.sending = false;
       elements.sendBtn.textContent = 'Send';
     }
+  }
+
+  // --- New Features ---
+
+  async function loadHistoryList() {
+      try {
+          const res = await fetch('/api/history');
+          const { data } = await res.json();
+          elements.historyList.innerHTML = '';
+          data.forEach(item => {
+              const div = document.createElement('div');
+              div.className = 'history-item';
+              div.innerHTML = `
+                <div class="title">${item.title}</div>
+                <div class="date">${new Date(item.date).toLocaleString()}</div>
+              `;
+              div.onclick = () => loadConversation(item.id);
+              elements.historyList.appendChild(div);
+          });
+      } catch (err) {
+          console.error('Failed to load history', err);
+      }
+  }
+
+  async function loadConversation(id) {
+      try {
+          const res = await fetch(`/api/history/${id}`);
+          const { data } = await res.json();
+          state.conversationId = data._id;
+          state.history = []; // We will rebuild history from DB
+          elements.chatWindow.innerHTML = '';
+
+          state.stats.messages = 0;
+          state.stats.replies = 0;
+
+          data.messages.forEach(msg => {
+              appendMessage(msg.role, msg.content, {
+                  persist: true, // It's already in DB, but we want it in local state.history for context
+                  count: true,
+                  messageId: msg._id,
+                  feedback: msg.feedback
+              });
+          });
+
+          // Restore settings from conversation if needed? No, keep current settings.
+          // But maybe update model select?
+          if(data.model) elements.modelSelect.value = data.model;
+
+      } catch (err) {
+          console.error('Failed to load conversation', err);
+      }
+  }
+
+  async function submitFeedback(messageId, rating) {
+      if(!state.conversationId) return;
+      try {
+          await fetch('/api/feedback', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                  conversationId: state.conversationId,
+                  messageId,
+                  rating
+              })
+          });
+          // Refresh to show active state
+          loadConversation(state.conversationId);
+      } catch (err) {
+          console.error('Feedback failed', err);
+      }
+  }
+
+  async function loadProfile() {
+      try {
+          const res = await fetch('/api/profile');
+          const { data } = await res.json();
+          elements.userAbout.value = data.about || '';
+          elements.userInstructions.value = data.preferences?.customInstructions || '';
+      } catch (err) {
+          console.error('Failed to load profile', err);
+      }
+  }
+
+  async function saveProfile() {
+      try {
+          await fetch('/api/profile', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                  about: elements.userAbout.value,
+                  preferences: {
+                      customInstructions: elements.userInstructions.value
+                  }
+              })
+          });
+          elements.profileModal.classList.add('hidden');
+          setFeedback('Profile saved.', 'success');
+      } catch (err) {
+          console.error('Failed to save profile', err);
+          setFeedback('Failed to save profile.', 'error');
+      }
   }
 
   function attachEvents() {
@@ -311,6 +477,15 @@
         elements.messageInput.focus();
       }),
     );
+
+    // New Events
+    elements.newChatBtn.addEventListener('click', clearChat);
+    elements.profileBtn.addEventListener('click', () => {
+        loadProfile();
+        elements.profileModal.classList.remove('hidden');
+    });
+    elements.closeProfileBtn.addEventListener('click', () => elements.profileModal.classList.add('hidden'));
+    elements.saveProfileBtn.addEventListener('click', saveProfile);
   }
 
   function init() {
@@ -318,6 +493,7 @@
     attachEvents();
     clearChat();
     fetchModels();
+    loadHistoryList(); // Load history on start
     setStatus('Ready');
     setFeedback('Set host/model, then start chatting.');
   }
