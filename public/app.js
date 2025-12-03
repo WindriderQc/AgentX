@@ -475,7 +475,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   async function sendFeedback(messageId, rating, comment) {
-    const payload = { threadId: state.threadId, messageId, rating, comment };
+    const payload = { conversationId: state.conversationId, messageId, rating, comment };
     const res = await fetch('/api/feedback', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
