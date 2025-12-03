@@ -1,4 +1,4 @@
-(() => {
+document.addEventListener('DOMContentLoaded', () => {
   const elements = {
     chatWindow: document.getElementById('chatWindow'),
     messageInput: document.getElementById('messageInput'),
@@ -174,11 +174,15 @@
     elements.feedback.style.color = tone === 'success' ? '#9ff6ff' : tone === 'error' ? '#ffb3b8' : 'var(--muted)';
   }
 
-  function renderMessage(message) {
-    const { role, content, id, createdAt, feedback } = message;
+  function renderMessage(message, feedback = null) {
+    const role = message.role;
+    const content = message.content;
+    const messageId = message.id || message._id || null;
+    const createdAt = message.createdAt || new Date().toISOString();
+
     const bubble = document.createElement('div');
     bubble.className = `bubble ${role === 'user' ? 'user' : 'assistant'}`;
-    if (id) bubble.dataset.id = id;
+    if (messageId) bubble.dataset.id = messageId;
 
     const meta = document.createElement('div');
     meta.className = 'meta';
@@ -191,23 +195,23 @@
     meta.appendChild(time);
 
     // Feedback UI for Assistant messages
-    if (role === 'assistant' && id) {
-        const feedbackDiv = document.createElement('div');
-        feedbackDiv.className = 'feedback-actions';
+    if (role === 'assistant' && messageId) {
+      const feedbackDiv = document.createElement('div');
+      feedbackDiv.className = 'feedback-actions';
 
-        const upBtn = document.createElement('button');
-        upBtn.innerHTML = '👍';
-        upBtn.className = `feedback-btn ${feedback?.rating === 1 ? 'active' : ''}`;
-        upBtn.onclick = () => submitFeedback(id, 1);
+      const upBtn = document.createElement('button');
+      upBtn.innerHTML = '👍';
+      upBtn.className = `feedback-btn ${feedback?.rating === 1 ? 'active' : ''}`;
+      upBtn.onclick = () => submitFeedback(messageId, 1);
 
-        const downBtn = document.createElement('button');
-        downBtn.innerHTML = '👎';
-        downBtn.className = `feedback-btn ${feedback?.rating === -1 ? 'active' : ''}`;
-        downBtn.onclick = () => submitFeedback(id, -1);
+      const downBtn = document.createElement('button');
+      downBtn.innerHTML = '👎';
+      downBtn.className = `feedback-btn ${feedback?.rating === -1 ? 'active' : ''}`;
+      downBtn.onclick = () => submitFeedback(messageId, -1);
 
-        feedbackDiv.appendChild(upBtn);
-        feedbackDiv.appendChild(downBtn);
-        meta.appendChild(feedbackDiv);
+      feedbackDiv.appendChild(upBtn);
+      feedbackDiv.appendChild(downBtn);
+      meta.appendChild(feedbackDiv);
     }
 
     const body = document.createElement('p');
@@ -216,13 +220,8 @@
     bubble.appendChild(meta);
     bubble.appendChild(body);
 
-    if (role === 'assistant' && id && !feedback) {
-       // Only show the row if no feedback yet or maybe always?
-       // The previous implementation had both row and buttons in meta?
-       // Let's stick to the new buttons in meta, and maybe the row is for comments.
-       // For now, I'll remove the `buildFeedbackRow` call if we are using the buttons in meta.
-       // Or I can keep the row for commenting.
-       bubble.appendChild(buildFeedbackRow(id));
+    if (role === 'assistant') {
+      bubble.appendChild(buildFeedbackRow(messageId));
     }
 
     elements.chatWindow.appendChild(bubble);
@@ -275,14 +274,26 @@
     return row;
   }
 
-  function appendMessage(message, options = {}) {
+  function appendMessage(messageOrRole, contentOrOptions = {}, maybeOptions = {}) {
+    const isStringPayload = typeof messageOrRole === 'string';
+    const options = isStringPayload ? maybeOptions : contentOrOptions || {};
     const persist = options.persist !== false;
     const count = options.count !== false;
-    renderMessage(message);
-    // Note: Render happens here for temporary display, but re-rendered properly on reload/load history
-    // For immediate feedback we render without ID first, or we wait for server response?
-    // We'll render immediately, and if we get an ID later (from server), we can update it?
-    // Actually, for simplicity, we render immediately. The ID is only needed for feedback on assistant messages.
+
+    const message = isStringPayload
+      ? {
+          role: messageOrRole,
+          content: contentOrOptions || '',
+          createdAt: options.createdAt || new Date().toISOString(),
+          id: options.messageId || `m-${Date.now()}`,
+          feedback: options.feedback,
+        }
+      : {
+          ...messageOrRole,
+          createdAt: messageOrRole.createdAt || new Date().toISOString(),
+        };
+
+    renderMessage(message, options.feedback || message.feedback);
 
     if (persist) {
       state.history.push(message);
@@ -541,21 +552,15 @@
           state.stats.messages = 0;
           state.stats.replies = 0;
 
-          data.messages.forEach(msg => {
-              // msg is { role, content, _id, feedback, timestamp ... }
-              // appendMessage expects a message object as first arg, and options as second
-              const messageObj = {
-                  role: msg.role,
-                  content: msg.content,
-                  id: msg._id,
-                  createdAt: msg.timestamp || msg.createdAt,
-                  feedback: msg.feedback
-              };
-              appendMessage(messageObj, {
-                  persist: true,
-                  count: true
-              });
-          });
+            data.messages.forEach(msg => {
+                appendMessage(msg.role, msg.content, {
+                    persist: true, // It's already in DB, but we want it in local state.history for context
+                    count: true,
+                    messageId: msg._id,
+                    feedback: msg.feedback,
+                    createdAt: msg.createdAt,
+                });
+            });
 
           if(data.model) elements.modelSelect.value = data.model;
 
@@ -688,4 +693,4 @@
   }
 
   init();
-})();
+});
