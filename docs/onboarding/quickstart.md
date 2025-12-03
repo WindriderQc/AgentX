@@ -144,9 +144,9 @@ npm install
 
 ## Next Steps
 
-1. **Read the API documentation**: `API_DOCS.md`
-2. **Review the implementation**: `IMPLEMENTATION_SUMMARY.md`
-3. **Start building frontend**: Use endpoints from `API_DOCS.md`
+1. **Read the API documentation**: `../api/reference.md`
+2. **Review the implementation**: `../reports/v4-implementation.md`
+3. **Start building frontend**: Use endpoints from `../api/reference.md`
 4. **Test with Postman**: Import endpoints as a collection
 
 ## Environment Variables
@@ -193,9 +193,9 @@ See `API_DOCS.md` for complete documentation.
 
 ## Support
 
-- 📖 **Full API Docs**: `API_DOCS.md`
-- 🏗️ **Architecture**: `BACKEND_README.md`
-- 📊 **Implementation**: `IMPLEMENTATION_SUMMARY.md`
+- 📖 **Full API Docs**: `../api/reference.md`
+- 🏗️ **Architecture**: `../architecture/backend-overview.md`
+- 📊 **Implementation**: `../reports/v4-implementation.md`
 - 🧪 **Testing**: `./test-backend.sh`
 
 **Happy coding! 🚀**
