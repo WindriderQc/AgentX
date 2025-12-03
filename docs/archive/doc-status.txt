@@ -1,0 +1,26 @@
+=== DOCUMENTATION CLEANUP NEEDED ===
+
+Issues:
+1. References to NON-EXISTENT files (schema.sql, db.js)
+2. FOUR redundant SUMMARY docs (50KB overlap!)
+3. THREE architecture docs (could be ONE)
+4. Outdated V1/V2-only content (needs V3 updates)
+
+Current: 13 docs, ~4700 lines
+Goal: 6 core docs, ~2000 lines (57% reduction)
+
+Recommended Actions:
+☐ Update README.md - add V3 features
+☐ Consolidate: DELIVERY + IMPLEMENTATION + V3_IMPLEMENTATION → single IMPLEMENTATION.md
+☐ Consolidate: 3 ARCHITECTURE docs → single ARCHITECTURE.md
+☐ Update API_DOCS.md - add V3 RAG endpoints
+☐ Archive: INTEGRATION_SUMMARY, BACKEND_README, INDEX
+☐ Fix: Remove references to schema.sql, db.js
+
+Core Docs to Keep:
+✓ README.md (update)
+✓ QUICKSTART.md (good)
+✓ API_DOCS.md (needs V3)
+✓ V3_CONTRACT_SNAPSHOT.md (perfect)
++ ARCHITECTURE.md (consolidate)
++ IMPLEMENTATION.md (consolidate)

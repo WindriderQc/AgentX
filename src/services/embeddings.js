@@ -18,11 +18,23 @@ class EmbeddingsService {
   }
 
   /**
+   * Set Ollama host dynamically
+   * @param {string} host - Ollama host URL (e.g., 'http://192.168.2.99:11434')
+   */
+  setOllamaHost(host) {
+    if (host && typeof host === 'string') {
+      this.ollamaHost = host.startsWith('http') ? host : `http://${host}`;
+    }
+  }
+
+  /**
    * Generate embeddings for multiple texts in batch
    * @param {string[]} texts - Array of text strings to embed
+   * @param {string} ollamaHost - Optional Ollama host override
    * @returns {Promise<number[][]>} Array of embedding vectors
    */
-  async embedTextBatch(texts) {
+  async embedTextBatch(texts, ollamaHost = null) {
+    const host = ollamaHost || this.ollamaHost;
     if (!Array.isArray(texts) || texts.length === 0) {
       throw new Error('texts must be a non-empty array');
     }
@@ -33,7 +45,7 @@ class EmbeddingsService {
     for (let i = 0; i < texts.length; i += this.batchSize) {
       const batch = texts.slice(i, i + this.batchSize);
       const batchResults = await Promise.all(
-        batch.map(text => this._embedSingle(text))
+        batch.map(text => this._embedSingle(text, host))
       );
       results.push(...batchResults);
     }
@@ -44,10 +56,12 @@ class EmbeddingsService {
   /**
    * Generate embedding for a single text
    * @param {string} text - Text to embed
+   * @param {string} host - Ollama host URL
    * @returns {Promise<number[]>} Embedding vector
    * @private
    */
-  async _embedSingle(text) {
+  async _embedSingle(text, host = null) {
+    const ollamaHost = host || this.ollamaHost;
     if (!text || typeof text !== 'string') {
       throw new Error('text must be a non-empty string');
     }
@@ -56,7 +70,7 @@ class EmbeddingsService {
     const truncatedText = text.length > 8000 ? text.substring(0, 8000) : text;
 
     try {
-      const response = await fetch(`${this.ollamaHost}/api/embeddings`, {
+      const response = await fetch(`${ollamaHost}/api/embeddings`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

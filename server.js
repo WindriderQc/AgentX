@@ -25,12 +25,12 @@ app.use(express.static(path.join(__dirname, 'public')));
 const ragRoutes = require('./routes/rag');
 app.use('/api/rag', ragRoutes);
 
-function resolveTarget(target) {
-  const fallback = 'http://localhost:11434';
-  if (!target || typeof target !== 'string') return fallback;
+// V4: Mount Analytics & Dataset routes
+const analyticsRoutes = require('./routes/analytics');
+app.use('/api/analytics', analyticsRoutes);
 
-  const trimmed = target.trim();
-  if (!trimmed) return fallback;
+const datasetRoutes = require('./routes/dataset');
+app.use('/api/dataset', datasetRoutes);
 
   if (/^https?:\/\//i.test(trimmed)) return trimmed.replace(/\/+$/, '');
   return `http://${trimmed.replace(/\/+$/, '')}`;
@@ -362,12 +362,31 @@ app.post('/api/feedback', (req, res) => {
 });
 
 // Routes
+// Mount API routes
 const apiRoutes = require('./routes/api');
 app.use('/api', apiRoutes);
 
 // Health Check
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', port: PORT });
+});
+
+// Config endpoint - expose server configuration
+app.get('/api/config', (_req, res) => {
+  const ollamaHost = process.env.OLLAMA_HOST || 'http://localhost:11434';
+  // Parse host and port from OLLAMA_HOST
+  const match = ollamaHost.match(/^(?:https?:\/\/)?([^:]+)(?::(\d+))?/);
+  const host = match ? match[1] : 'localhost';
+  const port = match && match[2] ? match[2] : '11434';
+  
+  res.json({
+    ollama: {
+      host,
+      port,
+      fullUrl: ollamaHost
+    },
+    embeddingModel: process.env.EMBEDDING_MODEL || 'nomic-embed-text'
+  });
 });
 
 // Fallback to Frontend

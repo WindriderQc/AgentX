@@ -88,7 +88,7 @@ Database is automatically created at `./data/agentx.db` (configurable via DB_PAT
 
 ## API Documentation
 
-See `API_DOCS.md` for complete endpoint documentation with request/response examples.
+See `../api/reference.md` for complete endpoint documentation with request/response examples.
 
 ### Quick Examples
 
@@ -207,14 +207,16 @@ Feedback and conversation data is structured for external consumption:
 
 ```
 AgentX/
-├── server.js           # Main Express server with all endpoints
-├── db.js              # Database access layer (SQLite operations)
-├── schema.sql         # Database schema definition
-├── package.json       # Dependencies
-├── API_DOCS.md        # Comprehensive API documentation
-├── data/              # Auto-created for SQLite database
-│   └── agentx.db
-└── public/            # Frontend files (existing)
+├── server.js              # Express server entry point
+├── routes/                # API route modules
+├── models/                # Data models
+├── config/                # Database configuration and schema
+├── docs/                  # Onboarding, architecture, API, reports, archive
+├── specs/                 # Architecture specs (V3 RAG, V4 analytics)
+├── public/                # Frontend files
+├── scripts & tests        # test-backend.sh, test-v3-rag.sh, test-v4-analytics.sh
+├── package.json           # Dependencies
+└── data/                  # Auto-created SQLite database directory
 ```
 
 ---
@@ -312,7 +314,7 @@ const model = detectModelNeeded(message) || userModel;
 
 ### Manual Testing
 
-Use the curl examples in `API_DOCS.md` or tools like Postman.
+Use the curl examples in `../api/reference.md` or tools like Postman.
 
 ### Health Check
 
@@ -402,8 +404,8 @@ This implementation follows the contracts defined by Agent A:
 
 ## Questions or Issues?
 
-See `API_DOCS.md` for detailed endpoint documentation.
-Check `schema.sql` for database structure.
+See `../api/reference.md` for detailed endpoint documentation.
+Check `database.md` for database structure.
 Review `db.js` for data access patterns.
 
 Backend is complete and ready for frontend integration! 🚀
