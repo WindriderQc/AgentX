@@ -70,9 +70,22 @@ router.post('/chat', async (req, res) => {
 
   try {
     // V4: Fetch active prompt configuration
-    const activePrompt = await PromptConfig.getActive('default_chat');
-    if (!activePrompt) {
-      return res.status(500).json({ status: 'error', message: 'No active prompt configuration found' });
+    let activePrompt;
+    try {
+      activePrompt = await PromptConfig.getActive('default_chat');
+      if (!activePrompt) {
+        // Fallback: use default prompt
+        activePrompt = { 
+          systemPrompt: system || 'You are AgentX, a helpful AI assistant.',
+          version: 'default'
+        };
+      }
+    } catch (err) {
+      // Fallback: use default prompt when DB error
+      activePrompt = { 
+        systemPrompt: system || 'You are AgentX, a helpful AI assistant.',
+        version: 'default'
+      };
     }
 
     // V3: RAG variables
@@ -80,9 +93,16 @@ router.post('/chat', async (req, res) => {
     let ragSources = [];
 
     // 1. Fetch User Profile
-    let userProfile = await UserProfile.findOne({ userId });
-    if (!userProfile) {
+    let userProfile;
+    try {
+      userProfile = await UserProfile.findOne({ userId });
+      if (!userProfile) {
         userProfile = await UserProfile.create({ userId });
+      }
+    } catch (err) {
+      // Fallback: empty profile when DB error
+      console.log('[Chat] UserProfile fetch failed:', err.message);
+      userProfile = { about: '', preferences: {} };
     }
 
     // 2. Inject Memory into System Prompt (V4: Use active prompt as base)
@@ -174,57 +194,46 @@ router.post('/chat', async (req, res) => {
 
     // 5. Save to DB
     let conversation;
-    if (conversationId) {
-        conversation = await Conversation.findById(conversationId);
+    try {
+      if (conversationId) {
+          conversation = await Conversation.findById(conversationId);
+      }
+
+      // If no ID or not found, create new
+      if (!conversation) {
+          conversation = new Conversation({
+              userId,
+              model,
+              systemPrompt: effectiveSystemPrompt,
+              messages: []
+          });
+      }
+
+      const lastUserMsg = messages[messages.length - 1];
+      if (lastUserMsg && lastUserMsg.role === 'user') {
+           conversation.messages.push({ role: 'user', content: lastUserMsg.content });
+      }
+
+      conversation.messages.push({ role: 'assistant', content: assistantMessageContent });
+
+      // Generate title if new
+      if (conversation.messages.length <= 2) {
+          conversation.title = (lastUserMsg?.content || 'New Conversation').substring(0, 50);
+      }
+
+      // V3: Store RAG metadata
+      conversation.ragUsed = ragUsed;
+      conversation.ragSources = ragSources;
+
+      // V4: Store prompt version info
+      conversation.promptConfigId = activePrompt._id;
+      conversation.promptName = activePrompt.name;
+      conversation.promptVersion = activePrompt.version;
+
+      await conversation.save();
+    } catch (err) {
+      console.error('[Chat] Failed to save conversation:', err.message);
     }
-
-    // If no ID or not found, create new
-    if (!conversation) {
-        conversation = new Conversation({
-            userId,
-            model,
-            systemPrompt: effectiveSystemPrompt,
-            messages: []
-        });
-    }
-
-    // Append new messages (User's last message + Assistant's response)
-    // We assume the frontend sends the whole history, but we only want to append the *new* stuff or
-    // maybe just rebuild the conversation?
-    // Best practice for "Log everything":
-    // The Frontend sends the full context for the LLM.
-    // BUT for our DB, we want to store the structured conversation.
-    // If the frontend sends the *last* user message separately, it's easier.
-    // However, the current `app.js` sends `messages: state.history`.
-    // `state.history` contains everything.
-
-    // Let's assume for this endpoint, we want to log the *latest* exchange.
-    // We should probably change the API contract slightly:
-    // Frontend sends: { message: "latest user input", history: [prev...], ... }
-    // OR we just take the last message from the array if it is role 'user'.
-
-    const lastUserMsg = messages[messages.length - 1];
-    if (lastUserMsg && lastUserMsg.role === 'user') {
-         conversation.messages.push({ role: 'user', content: lastUserMsg.content });
-    }
-
-    conversation.messages.push({ role: 'assistant', content: assistantMessageContent });
-
-    // Generate title if new
-    if (conversation.messages.length <= 2) {
-        conversation.title = (lastUserMsg?.content || 'New Conversation').substring(0, 50);
-    }
-
-    // V3: Store RAG metadata
-    conversation.ragUsed = ragUsed;
-    conversation.ragSources = ragSources;
-
-    // V4: Store prompt version info
-    conversation.promptConfigId = activePrompt._id;
-    conversation.promptName = activePrompt.name;
-    conversation.promptVersion = activePrompt.version;
-
-    await conversation.save();
 
     // 6. Return response (V3: includes RAG fields)
     res.json({
@@ -247,7 +256,7 @@ router.get('/history', async (req, res) => {
         const conversations = await Conversation.find({ userId: 'default' })
             .sort({ updatedAt: -1 })
             .limit(50)
-            .select('title updatedAt model messages'); // Select fields to return
+            .select('title updatedAt model messages');
 
         // Transform for frontend preview
         const previews = conversations.map(c => ({
@@ -294,6 +303,13 @@ router.post('/feedback', async (req, res) => {
     } catch (err) {
         res.status(500).json({ status: 'error', message: err.message });
     }
+});
+
+// LOGS - fallback endpoint for session logs
+router.get('/logs', async (req, res) => {
+    // With SQLite, we don't persist chat logs server-side
+    // Return empty to let client use local state
+    res.json({ status: 'success', data: { messages: [] } });
 });
 
 // PROFILE

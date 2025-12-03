@@ -106,13 +106,12 @@
         <div class="field">
           <label>Target host</label>
           <div class="input-row">
-            <input type="text" id="hostInput" list="hostPresets" value="localhost">
-            <datalist id="hostPresets">
-              <option value="localhost">
-              <option value="127.0.0.1">
-              <option value="192.168.2.12">
-              <option value="192.168.2.99">
-            </datalist>
+            <select id="hostInput" style="flex: 1;">
+              <option value="localhost">localhost</option>
+              <option value="127.0.0.1">127.0.0.1</option>
+              <option value="192.168.2.12">192.168.2.12</option>
+              <option value="192.168.2.99">192.168.2.99</option>
+            </select>
             <input type="text" id="portInput" class="w-96" value="11434">
           </div>
         </div>
@@ -138,6 +137,8 @@
           <label>System prompt</label>
           <textarea id="systemPrompt" rows="3">You are AgentX, a concise and capable local assistant. Keep answers brief and actionable.</textarea>
         </div>
+
+        <hr style="border: none; border-top: 1px solid var(--panel-border); margin: 20px 0;">
 
         <div class="options-grid">
           <div class="field">
@@ -189,30 +190,6 @@
           </div>
         </div>
 
-        <div class="memory-card">
-          <div class="panel-head tight">
-            <div>
-              <p class="eyebrow">Memory</p>
-              <h3>User profile</h3>
-            </div>
-            <button class="ghost" id="refreshProfile">Reset</button>
-          </div>
-          <div class="field">
-            <label>Preferred language</label>
-            <input type="text" id="memoryLanguage" placeholder="English">
-          </div>
-          <div class="field">
-            <label>Role / context</label>
-            <input type="text" id="memoryRole" placeholder="e.g. Product manager focusing on UX">
-          </div>
-          <div class="field">
-            <label>Response style</label>
-            <textarea id="memoryStyle" rows="2" placeholder="Concise, decisive, include next steps."></textarea>
-          </div>
-          <div class="hint">Memory is persisted across conversations via the AgentX profile endpoint.</div>
-          <button class="primary full" id="saveProfile">Save profile</button>
-        </div>
-
         <div class="action-row">
           <button class="ghost" id="saveDefaults">Save defaults</button>
           <button class="primary" id="testConnection">Test connection</button>
@@ -234,15 +211,29 @@
       <div class="modal-body">
         <div class="field">
           <label>About You (Memory)</label>
-          <div class="hint">Facts the agent should remember about you (e.g., job, interests).</div>
+          <div class="hint">Facts the agent should remember about you (e.g., job, interests, background).</div>
           <textarea id="userAbout" rows="5" placeholder="I am a software engineer interested in AI..."></textarea>
+        </div>
+        <div class="field">
+          <label>Preferred Language</label>
+          <input type="text" id="memoryLanguage" placeholder="English">
+        </div>
+        <div class="field">
+          <label>Role / Context</label>
+          <input type="text" id="memoryRole" placeholder="e.g. Product manager focusing on UX">
+        </div>
+        <div class="field">
+          <label>Response Style</label>
+          <textarea id="memoryStyle" rows="2" placeholder="Concise, decisive, include next steps."></textarea>
         </div>
         <div class="field">
           <label>Custom Instructions</label>
           <div class="hint">How the agent should behave (e.g., always be concise).</div>
           <textarea id="userInstructions" rows="3" placeholder="Be brief and professional."></textarea>
         </div>
+        <div class="hint">All profile data is saved to your AgentX database and persisted across conversations.</div>
         <div class="action-row">
+          <button class="ghost" id="resetProfileBtn">Reset</button>
           <button class="primary" id="saveProfileBtn">Save Profile</button>
         </div>
       </div>

@@ -33,10 +33,9 @@ document.addEventListener('DOMContentLoaded', () => {
     memoryLanguage: document.getElementById('memoryLanguage'),
     memoryRole: document.getElementById('memoryRole'),
     memoryStyle: document.getElementById('memoryStyle'),
-    saveProfile: document.getElementById('saveProfile'),
-    refreshProfile: document.getElementById('refreshProfile'),
     // New Elements
     historyList: document.getElementById('historyList'),
+    resetProfileBtn: document.getElementById('resetProfileBtn'),
     newChatBtn: document.getElementById('newChatBtn'),
     profileBtn: document.getElementById('profileBtn'),
     profileModal: document.getElementById('profileModal'),
@@ -45,6 +44,36 @@ document.addEventListener('DOMContentLoaded', () => {
     userAbout: document.getElementById('userAbout'),
     userInstructions: document.getElementById('userInstructions'),
   };
+
+  // Fetch server config on load
+  async function loadServerConfig() {
+    try {
+      const res = await fetch('/api/config');
+      if (res.ok) {
+        const config = await res.json();
+        if (config.ollama) {
+          // Add server's configured host to the dropdown if not already present
+          const hostSelect = document.getElementById('hostInput');
+          const existingOptions = Array.from(hostSelect.options).map(opt => opt.value);
+          if (config.ollama.host && !existingOptions.includes(config.ollama.host)) {
+            const option = document.createElement('option');
+            option.value = config.ollama.host;
+            option.textContent = config.ollama.host;
+            hostSelect.insertBefore(option, hostSelect.firstChild);
+          }
+          // Update defaults with server config
+          if (config.ollama.host) {
+            defaults.host = config.ollama.host;
+            defaults.port = config.ollama.port;
+          }
+          return config;
+        }
+      }
+    } catch (err) {
+      console.warn('Could not load server config:', err);
+    }
+    return null;
+  }
 
   const defaults = {
     host: 'localhost',
@@ -71,7 +100,7 @@ document.addEventListener('DOMContentLoaded', () => {
     history: [],
     sending: false,
     stats: { messages: 0, replies: 0 },
-    settings: loadSettings(),
+    settings: null, // Will be loaded after server config
     threadId: buildThreadId(),
     profile: { language: '', role: '', style: '' },
     conversationId: null, // Current conversation ID
@@ -86,6 +115,11 @@ document.addEventListener('DOMContentLoaded', () => {
       const raw = localStorage.getItem('agentx-settings');
       if (!raw) return { ...defaults };
       const parsed = JSON.parse(raw);
+      // If saved host is localhost but defaults have been updated with server config, use defaults
+      if (parsed.host === 'localhost' && defaults.host !== 'localhost') {
+        parsed.host = defaults.host;
+        parsed.port = defaults.port;
+      }
       return {
         ...defaults,
         ...parsed,
@@ -129,8 +163,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function hydrateForm() {
     const cfg = state.settings;
-    elements.hostInput.value = cfg.host;
-    elements.portInput.value = cfg.port;
+    // Use saved settings if they exist, otherwise use defaults (which may include server config)
+    elements.hostInput.value = cfg.host || defaults.host;
+    elements.portInput.value = cfg.port || defaults.port;
     elements.modelSelect.value = cfg.model;
     elements.systemPrompt.value = cfg.system;
     elements.streamToggle.checked = cfg.stream;
@@ -174,7 +209,7 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.feedback.style.color = tone === 'success' ? '#9ff6ff' : tone === 'error' ? '#ffb3b8' : 'var(--muted)';
   }
 
-  function renderMessage(message, feedback = null) {
+  function renderMessage(message) {
     const role = message.role;
     const content = message.content;
     const messageId = message.id || message._id || null;
@@ -193,26 +228,6 @@ document.addEventListener('DOMContentLoaded', () => {
     time.textContent = formatTime(createdAt);
     meta.appendChild(document.createTextNode(' • '));
     meta.appendChild(time);
-
-    // Feedback UI for Assistant messages
-    if (role === 'assistant' && messageId) {
-      const feedbackDiv = document.createElement('div');
-      feedbackDiv.className = 'feedback-actions';
-
-      const upBtn = document.createElement('button');
-      upBtn.innerHTML = '👍';
-      upBtn.className = `feedback-btn ${feedback?.rating === 1 ? 'active' : ''}`;
-      upBtn.onclick = () => submitFeedback(messageId, 1);
-
-      const downBtn = document.createElement('button');
-      downBtn.innerHTML = '👎';
-      downBtn.className = `feedback-btn ${feedback?.rating === -1 ? 'active' : ''}`;
-      downBtn.onclick = () => submitFeedback(messageId, -1);
-
-      feedbackDiv.appendChild(upBtn);
-      feedbackDiv.appendChild(downBtn);
-      meta.appendChild(feedbackDiv);
-    }
 
     const body = document.createElement('p');
     body.textContent = content;
@@ -293,7 +308,7 @@ document.addEventListener('DOMContentLoaded', () => {
           createdAt: messageOrRole.createdAt || new Date().toISOString(),
         };
 
-    renderMessage(message, options.feedback || message.feedback);
+    renderMessage(message);
 
     if (persist) {
       state.history.push(message);
@@ -364,8 +379,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (showStatus) setStatus('Connecting…');
     try {
       const res = await fetch(`/api/ollama/models?target=${encodeURIComponent(targetHost())}`);
+      if (!res.ok) {
+        throw new Error(`Server returned ${res.status}`);
+      }
       const data = await res.json();
-      if (!res.ok || data.status !== 'success') {
+      if (data.status !== 'success') {
         throw new Error(data.message || 'Unable to load models');
       }
       elements.modelSelect.innerHTML = '';
@@ -392,9 +410,11 @@ document.addEventListener('DOMContentLoaded', () => {
       setStatus(`Connected to ${targetHost()}`, 'success');
       setFeedback('Models refreshed from Ollama.', 'success');
     } catch (err) {
-      console.error(err);
-      setStatus('Connection failed', 'error');
-      setFeedback(err.message, 'error');
+      console.warn('Failed to fetch models:', err.message);
+      setStatus('Model refresh failed', 'error');
+      setFeedback('Click "Refresh models" to retry connection', 'info');
+      // Add a default option so UI doesn't break
+      elements.modelSelect.innerHTML = '<option value="">Click "Refresh models"</option>';
     }
   }
 
@@ -412,6 +432,21 @@ document.addEventListener('DOMContentLoaded', () => {
     // Legacy: This function is deprecated in favor of loadConversation(id)
     // and loadHistoryList(). We keep it empty or remove it to avoid errors if called.
     // For now, let's just refresh messages if there are any in state.
+    try {
+      const res = await fetch(`/api/logs?threadId=${encodeURIComponent(state.threadId)}`);
+      if (!res.ok) {
+        refreshMessages();
+        return;
+      }
+      const data = await res.json();
+      if (data.status === 'success' && data.data?.messages) {
+        state.history = data.data.messages;
+        refreshMessages();
+        return;
+      }
+    } catch (err) {
+      // Silently skip if logs endpoint not available
+    }
     refreshMessages();
   }
 
@@ -422,7 +457,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   async function sendFeedback(messageId, rating, comment) {
-    const payload = { threadId: state.threadId, messageId, rating, comment };
+    const payload = { conversationId: state.conversationId, messageId, rating, comment };
     const res = await fetch('/api/feedback', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -625,8 +660,6 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.refreshModels.addEventListener('click', () => fetchModels(false));
     elements.testConnection.addEventListener('click', () => fetchModels(true));
     elements.saveDefaults.addEventListener('click', persistSettings);
-    elements.saveProfile.addEventListener('click', saveProfile);
-    elements.refreshProfile.addEventListener('click', loadProfile);
 
     elements.messageInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -672,9 +705,14 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     elements.closeProfileBtn.addEventListener('click', () => elements.profileModal.classList.add('hidden'));
     elements.saveProfileBtn.addEventListener('click', saveProfile);
+    elements.resetProfileBtn.addEventListener('click', () => {
+        loadProfile();
+    });
   }
 
-  async function init() {
+  function init() {
+    // Load settings after defaults are potentially updated by server config
+    state.settings = loadSettings();
     elements.threadId.textContent = state.threadId;
     hydrateForm();
     attachEvents();
@@ -692,5 +730,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  init();
+  // Load server config first, then initialize
+  loadServerConfig().then(() => {
+    init();
+  }).catch(err => {
+    console.warn('Server config load failed, using defaults:', err);
+    init();
+  });
 });
