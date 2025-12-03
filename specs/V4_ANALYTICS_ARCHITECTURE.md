@@ -1,0 +1,252 @@
+# V4 Analytics & Improvement Architecture
+
+This document defines the "Improvement Loops" architecture for AgentX V4. It serves as the implementation contract for Agent B (Backend) and Agent C (n8n Workflows).
+
+## 1. System Prompt Versioning Model
+
+To enable prompt evolution, we must move away from hardcoded system prompts and track which version was used for each conversation.
+
+### New Collection: `PromptConfig`
+A new Mongoose model `models/PromptConfig.js`.
+
+```javascript
+const PromptConfigSchema = new mongoose.Schema({
+  name: { type: String, required: true }, // e.g., "default_chat"
+  version: { type: Number, required: true }, // Incremental integer (1, 2, 3...)
+  systemPrompt: { type: String, required: true },
+  description: String, // Reason for this version (e.g. "Added fix for coding style")
+  status: {
+    type: String,
+    enum: ['active', 'deprecated', 'proposed'],
+    default: 'proposed'
+  },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now },
+  author: { type: String, default: 'system' } // 'system', 'human', or 'n8n'
+});
+
+// Composite index to ensure version uniqueness per prompt name
+PromptConfigSchema.index({ name: 1, version: 1 }, { unique: true });
+
+// Ensure only one active prompt per name (application logic validation required)
+```
+
+### Updates to `Conversation` Model
+Update `models/Conversation.js` to link to the prompt used.
+
+```javascript
+// Add these fields to ConversationSchema
+{
+  promptConfigId: { type: mongoose.Schema.Types.ObjectId, ref: 'PromptConfig' },
+  promptName: String,     // Snapshot: e.g. "default_chat"
+  promptVersion: Number,  // Snapshot: e.g. 5
+  // ... existing fields
+}
+```
+
+### Logic Changes
+- **Boot**: On server start, ensure at least one `PromptConfig` exists (v1) if none are found, with `status: 'active'`.
+- **Chat**: When a new conversation starts:
+  1. Look up the `PromptConfig` where `name="default_chat"` and `status='active'`.
+  2. Use that `systemPrompt`.
+  3. Store `promptConfigId`, `promptName`, and `promptVersion` in the Conversation.
+
+## 2. Analytics Endpoints
+
+Agent B will implement these endpoints in `routes/analytics.js` (or similar).
+
+### A. Usage Metrics
+**GET** `/api/analytics/usage`
+
+**Query Params:**
+- `from`: ISO Date (optional, default: 7 days ago)
+- `to`: ISO Date (optional, default: now)
+
+**Response:**
+```json
+{
+  "status": "success",
+  "data": {
+    "totalConversations": 120,
+    "totalMessages": 850,
+    "activeDays": 7,
+    "byModel": {
+      "llama3": 80,
+      "mistral": 40
+    },
+    "byPromptVersion": {
+      "default_chat_v1": 50,
+      "default_chat_v2": 70
+    },
+    "dailyStats": [
+      { "date": "2023-10-01", "conversations": 15, "messages": 100 }
+    ]
+  }
+}
+```
+
+### B. Feedback Metrics
+**GET** `/api/analytics/feedback`
+
+**Query Params:**
+- `from`: ISO Date
+- `to`: ISO Date
+- `groupBy`: "model" | "promptVersion" (default: "promptVersion")
+
+**Response:**
+```json
+{
+  "status": "success",
+  "data": {
+    "summary": {
+      "totalFeedback": 50,
+      "positive": 40,
+      "negative": 10,
+      "positiveRate": 0.8
+    },
+    "breakdown": [
+      {
+        "group": "default_chat_v1",
+        "positive": 10,
+        "negative": 5,
+        "positiveRate": 0.66
+      },
+      {
+        "group": "default_chat_v2",
+        "positive": 30,
+        "negative": 5,
+        "positiveRate": 0.85
+      }
+    ]
+  }
+}
+```
+
+### C. RAG Performance Metrics (V4-Lite)
+**GET** `/api/analytics/rag-stats`
+
+**Query Params:**
+- `from`, `to`
+
+**Response:**
+```json
+{
+  "status": "success",
+  "data": {
+    "ragUsage": {
+      "totalConversations": 100,
+      "withRag": 40,
+      "withoutRag": 60,
+      "ragRate": 0.4
+    },
+    "qualityComparison": {
+      "ragPositiveRate": 0.85,  // Feedback on conversations where ragUsed=true
+      "noRagPositiveRate": 0.70 // Feedback on conversations where ragUsed=false
+    }
+  }
+}
+```
+
+## 3. Dataset Export Contracts
+
+Endpoints for Agent C (n8n) to pull training data.
+
+### Export Conversations
+**GET** `/api/dataset/conversations`
+
+**Query Params:**
+- `limit`: Number (default 50)
+- `cursor`: String (for pagination, optional)
+- `minFeedback`: Number (1 for positive only, -1 for negative only, 0 or omit for all)
+- `promptVersion`: Number (optional)
+- `model`: String (optional, e.g. "llama3")
+
+**Response:**
+```json
+{
+  "status": "success",
+  "data": [
+    {
+      "id": "conv_123",
+      "model": "llama3",
+      "promptVersion": 2,
+      "ragUsed": true,
+      "input": "User query here...",
+      "output": "Assistant response...",
+      "feedback": 1, // 1 or -1
+      "feedbackComment": "Good answer",
+      "metadata": {
+        "ragSources": ["doc1", "doc2"]
+      }
+    }
+  ],
+  "nextCursor": "conv_123"
+}
+```
+
+### Manage Prompts (for n8n)
+**POST** `/api/dataset/prompts`
+Create a new prompt candidate.
+
+**Body:**
+```json
+{
+  "name": "default_chat",
+  "version": 3,
+  "systemPrompt": "You are... (new prompt)",
+  "description": "Auto-generated by n8n based on feedback analysis",
+  "status": "proposed"
+}
+```
+
+## 4. Prompt-Evolution Loop (Workflow)
+
+Agent C will build an n8n workflow implementing this loop:
+
+1.  **Monitor**:
+    *   Schedule: Weekly (or on-demand).
+    *   Action: Call `GET /api/analytics/feedback` and check `positiveRate` for the current active `promptVersion`.
+
+2.  **Evaluate**:
+    *   Condition: If `positiveRate` < 80% (or dropping):
+    *   Action: Call `GET /api/dataset/conversations?minFeedback=-1` to get failing examples.
+
+3.  **Analyze**:
+    *   Action: Send the failing examples to an LLM (via n8n AI node) with a prompt:
+        *   "Analyze these user-assistant turns where the user gave negative feedback. Identify common failures (e.g. hallucination, verbosity, tone). Suggest a modified system prompt to address these."
+
+4.  **Propose**:
+    *   Action: Parse the LLM's suggested prompt.
+    *   Action: Call `POST /api/dataset/prompts` to save `v(N+1)` with `status: 'proposed'` and `description="Fixes verbosity identified in vN"`.
+
+5.  **Notify**:
+    *   Action: Send a message (Slack/Email/Log) to the admin: "New Prompt V3 proposed based on 15 negative feedback items. Review and activate?"
+
+6.  **Activate (Human Step or Auto)**:
+    *   API to set `status: 'active'` (which atomically deactivates the old one).
+
+## 5. Summary of Tasks
+
+### Tasks for Agent B (Backend Implementation)
+1.  **Schema Implementation**:
+    *   Create `models/PromptConfig.js` with `status` enum ('active', 'deprecated', 'proposed').
+    *   Update `models/Conversation.js` to add `promptConfigId`, `promptName`, `promptVersion`.
+    *   Update `server.js` (boot logic) to ensure a default active prompt exists.
+    *   Update `routes/api.js` (chat) to fetch and use the active prompt.
+2.  **Analytics API**:
+    *   Create `routes/analytics.js`.
+    *   Implement `GET /usage`, `GET /feedback`, `GET /rag-stats` with aggregations defined in Section 2.
+3.  **Dataset API**:
+    *   Create `routes/dataset.js`.
+    *   Implement `GET /conversations` with filters (`model`, `minFeedback`, etc.).
+    *   Implement `POST /prompts` to allow creating proposals.
+
+### Tasks for Agent C (n8n Workflow)
+1.  **Monitoring Workflow**:
+    *   Create a workflow that polls `GET /api/analytics/feedback` weekly.
+2.  **Evaluation Workflow**:
+    *   If metrics degrade, fetch bad examples via `GET /api/dataset/conversations?minFeedback=-1`.
+    *   Use an LLM node to analyze failures and generate a new system prompt.
+    *   Post the new prompt to `POST /api/dataset/prompts` as "proposed".
+3.  **Notification**:
+    *   Alert the human operator when a new proposal is created.
