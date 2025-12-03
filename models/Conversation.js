@@ -17,7 +17,17 @@ const ConversationSchema = new mongoose.Schema({
   messages: [MessageSchema],
   title: { type: String, default: 'New Conversation' }, // Auto-generated summary?
   createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now }
+  updatedAt: { type: Date, default: Date.now },
+  
+  // V3: RAG support
+  ragUsed: { type: Boolean, default: false },
+  ragSources: [{
+    text: String,        // Truncated chunk preview (first 200 chars)
+    score: Number,       // Similarity score
+    source: String,      // Document source
+    title: String,       // Document title
+    documentId: String   // Reference to document
+  }]
 });
 
 // Update timestamp on save

@@ -56,14 +56,22 @@ router.get('/ollama/models', async (req, res) => {
     }
 });
 
-// CHAT: Enhanced with Memory & Logging
+// V3: Import RAG Store
+const { getRagStore } = require('../src/services/ragStore');
+const ragStore = getRagStore();
+
+// CHAT: Enhanced with Memory & Logging + V3 RAG Support
 router.post('/chat', async (req, res) => {
-  const { target = 'localhost:11434', model, messages = [], system, options = {}, conversationId } = req.body;
+  const { target = 'localhost:11434', model, messages = [], system, options = {}, conversationId, useRag, ragTopK, ragFilters } = req.body;
   const userId = 'default'; // Hardcoded for single user V1/V2
 
   if (!model) return res.status(400).json({ status: 'error', message: 'Model is required' });
 
   try {
+    // V3: RAG variables
+    let ragUsed = false;
+    let ragSources = [];
+
     // 1. Fetch User Profile
     let userProfile = await UserProfile.findOne({ userId });
     if (!userProfile) {
@@ -77,6 +85,55 @@ router.post('/chat', async (req, res) => {
     }
     if (userProfile.preferences?.customInstructions) {
         effectiveSystemPrompt += `\n\nCustom Instructions:\n${userProfile.preferences.customInstructions}`;
+    }
+
+    // V3: RAG Context Injection
+    if (useRag === true && messages.length > 0) {
+      try {
+        // Extract query from last user message
+        const lastUserMsg = messages[messages.length - 1];
+        if (lastUserMsg && lastUserMsg.role === 'user') {
+          const query = lastUserMsg.content;
+          
+          // Search for relevant chunks
+          const searchResults = await ragStore.searchSimilarChunks(query, {
+            topK: ragTopK || 5,
+            minScore: 0.3, // Reasonable threshold
+            filters: ragFilters
+          });
+
+          if (searchResults.length > 0) {
+            ragUsed = true;
+            
+            // Build context section
+            let contextSection = '\n\n=== Retrieved Context ===\n';
+            searchResults.forEach((result, idx) => {
+              contextSection += `\n[Source ${idx + 1}: ${result.metadata.title}]\n`;
+              contextSection += `${result.text}\n`;
+              
+              // Store for response
+              ragSources.push({
+                text: result.text.substring(0, 200), // Truncate for response
+                score: result.score,
+                source: result.metadata.source,
+                title: result.metadata.title,
+                documentId: result.metadata.documentId
+              });
+            });
+            contextSection += '\n=== End Context ===\n';
+            
+            // Prepend context to system prompt
+            effectiveSystemPrompt = contextSection + '\n' + effectiveSystemPrompt;
+            
+            console.log(`[Chat RAG] Injected ${searchResults.length} chunks for query: "${query}"`);
+          }
+        }
+      } catch (ragError) {
+        console.error('[Chat RAG] Error during RAG retrieval:', ragError);
+        // Continue without RAG rather than failing the whole request
+        ragUsed = false;
+        ragSources = [];
+      }
     }
 
     // 3. Prepare Payload for Ollama
@@ -147,13 +204,19 @@ router.post('/chat', async (req, res) => {
         conversation.title = (lastUserMsg?.content || 'New Conversation').substring(0, 50);
     }
 
+    // V3: Store RAG metadata
+    conversation.ragUsed = ragUsed;
+    conversation.ragSources = ragSources;
+
     await conversation.save();
 
-    // 6. Return response
+    // 6. Return response (V3: includes RAG fields)
     res.json({
         status: 'success',
         data: data,
-        conversationId: conversation._id
+        conversationId: conversation._id,
+        ragUsed,        // V3 addition
+        ragSources      // V3 addition
     });
 
   } catch (err) {
