@@ -69,15 +69,19 @@ router.post('/chat', async (req, res) => {
   if (!model) return res.status(400).json({ status: 'error', message: 'Model is required' });
 
   try {
-    // V4: Fetch active prompt configuration (with timeout fallback for SQLite)
+    // V4: Fetch active prompt configuration
     let activePrompt;
     try {
-      activePrompt = await Promise.race([
-        PromptConfig.getActive('default_chat'),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('DB timeout')), 1000))
-      ]);
+      activePrompt = await PromptConfig.getActive('default_chat');
+      if (!activePrompt) {
+        // Fallback: use default prompt
+        activePrompt = { 
+          systemPrompt: system || 'You are AgentX, a helpful AI assistant.',
+          version: 'default'
+        };
+      }
     } catch (err) {
-      // Fallback: use default prompt when MongoDB not available
+      // Fallback: use default prompt when DB error
       activePrompt = { 
         systemPrompt: system || 'You are AgentX, a helpful AI assistant.',
         version: 'default'
@@ -88,18 +92,16 @@ router.post('/chat', async (req, res) => {
     let ragUsed = false;
     let ragSources = [];
 
-    // 1. Fetch User Profile (with timeout fallback for SQLite)
+    // 1. Fetch User Profile
     let userProfile;
     try {
-      userProfile = await Promise.race([
-        UserProfile.findOne({ userId }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('DB timeout')), 1000))
-      ]);
+      userProfile = await UserProfile.findOne({ userId });
       if (!userProfile) {
-        userProfile = { about: '', preferences: {} };
+        userProfile = await UserProfile.create({ userId });
       }
     } catch (err) {
-      // Fallback: empty profile when MongoDB not available
+      // Fallback: empty profile when DB error
+      console.log('[Chat] UserProfile fetch failed:', err.message);
       userProfile = { about: '', preferences: {} };
     }
 
@@ -190,14 +192,11 @@ router.post('/chat', async (req, res) => {
     const data = await response.json();
     const assistantMessageContent = data.message?.content || data.response || '';
 
-    // 5. Save to DB (with timeout fallback for SQLite)
+    // 5. Save to DB
     let conversation;
     try {
       if (conversationId) {
-          conversation = await Promise.race([
-            Conversation.findById(conversationId),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('DB timeout')), 1000))
-          ]);
+          conversation = await Conversation.findById(conversationId);
       }
 
       // If no ID or not found, create new
@@ -231,13 +230,9 @@ router.post('/chat', async (req, res) => {
       conversation.promptName = activePrompt.name;
       conversation.promptVersion = activePrompt.version;
 
-      await Promise.race([
-        conversation.save(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('DB timeout')), 1000))
-      ]);
+      await conversation.save();
     } catch (err) {
-      // Silently skip conversation save when MongoDB not available
-      console.log('[Chat] Conversation save skipped (MongoDB not available)');
+      console.error('[Chat] Failed to save conversation:', err.message);
     }
 
     // 6. Return response (V3: includes RAG fields)
@@ -258,13 +253,10 @@ router.post('/chat', async (req, res) => {
 // HISTORY: Get list
 router.get('/history', async (req, res) => {
     try {
-        const conversations = await Promise.race([
-            Conversation.find({ userId: 'default' })
-                .sort({ updatedAt: -1 })
-                .limit(50)
-                .select('title updatedAt model messages'),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('DB timeout')), 1000))
-        ]);
+        const conversations = await Conversation.find({ userId: 'default' })
+            .sort({ updatedAt: -1 })
+            .limit(50)
+            .select('title updatedAt model messages');
 
         // Transform for frontend preview
         const previews = conversations.map(c => ({
@@ -277,11 +269,7 @@ router.get('/history', async (req, res) => {
 
         res.json({ status: 'success', data: previews });
     } catch (err) {
-        if (err.message.includes('buffering timed out') || err.message.includes('DB timeout')) {
-            res.json({ status: 'success', data: [] });
-        } else {
-            res.status(500).json({ status: 'error', message: err.message });
-        }
+        res.status(500).json({ status: 'error', message: err.message });
     }
 });
 
@@ -327,39 +315,25 @@ router.get('/logs', async (req, res) => {
 // PROFILE
 router.get('/profile', async (req, res) => {
     try {
-        const profile = await Promise.race([
-            UserProfile.findOne({ userId: 'default' }),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('DB timeout')), 1000))
-        ]);
-        res.json({ status: 'success', data: profile || { userId: 'default', about: '', preferences: {} } });
+        let profile = await UserProfile.findOne({ userId: 'default' });
+        if (!profile) profile = await UserProfile.create({ userId: 'default' });
+        res.json({ status: 'success', data: profile });
     } catch (err) {
-        // Return empty profile when MongoDB not available
-        if (err.message.includes('buffering timed out') || err.message.includes('DB timeout')) {
-            res.json({ status: 'success', data: { userId: 'default', about: '', preferences: {} } });
-        } else {
-            res.status(500).json({ status: 'error', message: err.message });
-        }
+        res.status(500).json({ status: 'error', message: err.message });
     }
 });
 
 router.post('/profile', async (req, res) => {
     const { about, preferences } = req.body;
     try {
-        const profile = await Promise.race([
-            UserProfile.findOneAndUpdate(
-                { userId: 'default' },
-                { $set: { about, preferences, updatedAt: Date.now() } },
-                { new: true, upsert: true }
-            ),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('DB timeout')), 1000))
-        ]);
+        const profile = await UserProfile.findOneAndUpdate(
+            { userId: 'default' },
+            { $set: { about, preferences, updatedAt: Date.now() } },
+            { new: true, upsert: true }
+        );
         res.json({ status: 'success', data: profile });
     } catch (err) {
-        if (err.message.includes('buffering timed out') || err.message.includes('DB timeout')) {
-            res.json({ status: 'success', data: { userId: 'default', about, preferences } });
-        } else {
-            res.status(500).json({ status: 'error', message: err.message });
-        }
+        res.status(500).json({ status: 'error', message: err.message });
     }
 });
 
