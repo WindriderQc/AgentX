@@ -1,7 +1,8 @@
+require('dotenv').config();
 const path = require('path');
 const express = require('express');
 const cors = require('cors');
-const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
+const connectDB = require('./config/db');
 
 const app = express();
 const PORT = process.env.PORT || 3080;
@@ -13,10 +14,16 @@ let profile = {
   role: 'General assistant',
   style: 'Concise and clear',
 };
+// Connect to Database
+connectDB();
 
 app.use(cors());
 app.use(express.json({ limit: '2mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
+
+// V3: Mount RAG routes
+const ragRoutes = require('./routes/rag');
+app.use('/api/rag', ragRoutes);
 
 function resolveTarget(target) {
   const fallback = 'http://localhost:11434';
@@ -304,10 +311,16 @@ app.post('/api/feedback', (req, res) => {
   res.json({ status: 'success', data: { threadId, messageId, rating } });
 });
 
+// Routes
+const apiRoutes = require('./routes/api');
+app.use('/api', apiRoutes);
+
+// Health Check
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', port: PORT });
 });
 
+// Fallback to Frontend
 app.get('*', (_req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });

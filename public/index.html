@@ -12,12 +12,24 @@
 <body>
   <div class="bg-grid"></div>
   <div class="page">
+    <aside class="sidebar">
+      <div class="sidebar-head">
+        <h2>History</h2>
+        <button id="newChatBtn" class="icon-btn" title="New Chat">+</button>
+      </div>
+      <div id="historyList" class="history-list">
+        <!-- History items will be injected here -->
+      </div>
+    </aside>
+
+    <div class="main-content">
     <header class="hero">
-      <div>
+      <div class="hero-content">
         <div class="eyebrow">GraphysX • Local agents</div>
         <div class="title-row">
           <h1>AgentX Control</h1>
           <span class="status-chip" id="statusChip">Idle</span>
+          <button id="profileBtn" class="ghost small">User Profile</button>
         </div>
         <p class="lede">
           Rebuilt AI control surface wired to the AgentX chat, memory, and feedback APIs. Pick a model, tune parameters, and
@@ -209,6 +221,32 @@
         <div class="note" id="feedback">Waiting for configuration.</div>
       </aside>
     </main>
+    </div> <!-- End main-content -->
+  </div>
+
+  <!-- Profile Modal -->
+  <div id="profileModal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>User Profile & Memory</h2>
+        <button id="closeProfileBtn" class="close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label>About You (Memory)</label>
+          <div class="hint">Facts the agent should remember about you (e.g., job, interests).</div>
+          <textarea id="userAbout" rows="5" placeholder="I am a software engineer interested in AI..."></textarea>
+        </div>
+        <div class="field">
+          <label>Custom Instructions</label>
+          <div class="hint">How the agent should behave (e.g., always be concise).</div>
+          <textarea id="userInstructions" rows="3" placeholder="Be brief and professional."></textarea>
+        </div>
+        <div class="action-row">
+          <button class="primary" id="saveProfileBtn">Save Profile</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="app.js"></script>
