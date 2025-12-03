@@ -710,7 +710,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  function init() {
+  async function init() {
     // Load settings after defaults are potentially updated by server config
     state.settings = loadSettings();
     elements.threadId.textContent = state.threadId;
