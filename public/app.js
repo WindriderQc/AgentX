@@ -429,6 +429,9 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   async function loadLogs() {
+    // Legacy: This function is deprecated in favor of loadConversation(id)
+    // and loadHistoryList(). We keep it empty or remove it to avoid errors if called.
+    // For now, let's just refresh messages if there are any in state.
     try {
       const res = await fetch(`/api/logs?threadId=${encodeURIComponent(state.threadId)}`);
       if (!res.ok) {
@@ -507,14 +510,6 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       state.profile = data.data?.profile || state.profile;
-      const response = data.data?.message || {
-        role: 'assistant',
-        content: 'No response from AgentX backend.',
-        createdAt: new Date().toISOString(),
-        id: `a-${Date.now()}`,
-      };
-
-      appendMessage(response);
       state.conversationId = data.conversationId; // Update ID
 
       const responseText =
@@ -523,13 +518,24 @@ document.addEventListener('DOMContentLoaded', () => {
         data.data?.output ||
         'No response from Ollama.';
 
-      appendMessage('assistant', responseText);
+      const assistantMessage = {
+          role: 'assistant',
+          content: responseText,
+          createdAt: new Date().toISOString(),
+          // No ID yet, will get it on reload
+      };
+
+      appendMessage(assistantMessage);
 
       setFeedback('Response received.', 'success');
       loadHistoryList();
 
       // Reload conversation to sync message IDs for feedback
-      if(state.conversationId) loadConversation(state.conversationId);
+      if(state.conversationId) {
+          // Slight delay to ensure DB write is committed/available if needed,
+          // though await fetch('/api/chat') should have waited for it.
+          loadConversation(state.conversationId);
+      }
 
     } catch (err) {
       console.error(err);
@@ -542,7 +548,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } finally {
       state.sending = false;
       elements.sendBtn.textContent = 'Send';
-      loadLogs();
+      // loadLogs(); // Removed legacy call
     }
   }
 
@@ -563,8 +569,10 @@ document.addEventListener('DOMContentLoaded', () => {
               div.onclick = () => loadConversation(item.id);
               elements.historyList.appendChild(div);
           });
+          return data;
       } catch (err) {
           console.error('Failed to load history', err);
+          return [];
       }
   }
 
@@ -589,8 +597,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             });
 
-          // Restore settings from conversation if needed? No, keep current settings.
-          // But maybe update model select?
           if(data.model) elements.modelSelect.value = data.model;
 
       } catch (err) {
@@ -713,10 +719,15 @@ document.addEventListener('DOMContentLoaded', () => {
     clearChat();
     loadProfile();
     fetchModels();
-    loadHistoryList(); // Load history on start
-    setStatus('Ready');
-    setFeedback('Set host/model, then start chatting.');
-    loadLogs();
+
+    // Load history and open latest conversation if available
+    const history = await loadHistoryList();
+    if (history && history.length > 0) {
+        loadConversation(history[0].id);
+    } else {
+        setStatus('Ready');
+        setFeedback('Set host/model, then start chatting.');
+    }
   }
 
   // Load server config first, then initialize
