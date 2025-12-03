@@ -13,9 +13,8 @@ const UserProfileSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now }
 });
 
-UserProfileSchema.pre('save', function(next) {
+UserProfileSchema.pre('save', function() {
   this.updatedAt = Date.now();
-  next();
 });
 
 module.exports = mongoose.model('UserProfile', UserProfileSchema);
