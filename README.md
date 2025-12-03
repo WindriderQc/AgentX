@@ -25,3 +25,4 @@ Into GraphysX world, AgentX is a node.js application intended to run locally, ex
 
 - The server forwards `/api/ollama/models` and `/api/ollama/chat` to the target Ollama host; no data leaves your network.
 - Options are sanitized before calling Ollama, but invalid hosts or ports will surface as connection errors in the UI.
+- For RAG ingestion via n8n, see `docs/n8n-ingestion.md` for scheduled and ad-hoc workflows that call the V3 `/api/rag/ingest` contract.
