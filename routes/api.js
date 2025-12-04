@@ -6,9 +6,41 @@ const PromptConfig = require('../models/PromptConfig'); // V4: Import prompt ver
 const { sanitizeOptions, resolveTarget } = require('../src/utils');
 const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
 
+// Helper to sanitize Ollama options
+function sanitizeOptions(options = {}) {
+  const numericKeys = [
+    'temperature', 'top_k', 'top_p', 'num_ctx', 'repeat_penalty',
+    'presence_penalty', 'frequency_penalty', 'seed', 'num_predict',
+    'typical_p', 'tfs_z', 'mirostat', 'mirostat_eta', 'mirostat_tau'
+  ];
+  const clean = {};
+  numericKeys.forEach((key) => {
+    if (options[key] === 0 || options[key]) {
+      const parsed = Number(options[key]);
+      if (!Number.isNaN(parsed)) clean[key] = parsed;
+    }
+  });
+  if (Array.isArray(options.stop)) clean.stop = options.stop;
+  else if (typeof options.stop === 'string' && options.stop.trim()) {
+    clean.stop = options.stop.split(',').map((val) => val.trim()).filter(Boolean);
+  }
+  if (options.keep_alive) clean.keep_alive = options.keep_alive;
+  return clean;
+}
+
+// Resolve Ollama Target
+function resolveTarget(target) {
+    const fallback = process.env.OLLAMA_HOST || 'http://localhost:11434';
+    if (!target || typeof target !== 'string') return fallback;
+    const trimmed = target.trim();
+    if (!trimmed) return fallback;
+    if (/^https?:\/\//i.test(trimmed)) return trimmed.replace(/\/+$/, '');
+    return `http://${trimmed.replace(/\/+$/, '')}`;
+}
+
 // PROXY: Models List
 router.get('/ollama/models', async (req, res) => {
-    const target = req.query.target || 'localhost:11434';
+    const target = req.query.target || process.env.OLLAMA_HOST || 'localhost:11434';
     try {
         const url = `${resolveTarget(target)}/api/tags`;
         const response = await fetch(url);
@@ -32,7 +64,7 @@ const ragStore = getRagStore();
 
 // CHAT: Enhanced with Memory & Logging + V3 RAG Support + V4 Prompt Versioning
 router.post('/chat', async (req, res) => {
-  const { target = 'localhost:11434', model, messages = [], message, system, options = {}, conversationId, useRag, ragTopK, ragFilters } = req.body;
+  const { target = process.env.OLLAMA_HOST || 'localhost:11434', model, messages = [], system, options = {}, conversationId, useRag, ragTopK, ragFilters } = req.body;
   const userId = 'default'; // Hardcoded for single user V1/V2
 
   if (!model) return res.status(400).json({ status: 'error', message: 'Model is required' });
