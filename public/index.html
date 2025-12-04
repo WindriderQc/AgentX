@@ -95,12 +95,11 @@
       </section>
 
       <aside class="panel config">
-        <div class="panel-head">
+        <div class="panel-head tight">
           <div>
             <p class="eyebrow">Models & memory</p>
             <h2>Configuration</h2>
           </div>
-          <button class="ghost" id="refreshModels">Refresh models</button>
         </div>
 
         <div class="field">
@@ -118,9 +117,12 @@
 
         <div class="field">
           <label>Model</label>
-          <select id="modelSelect">
-            <option value="">Load available models…</option>
-          </select>
+          <div class="input-row">
+            <select id="modelSelect" style="flex: 1;">
+              <option value="">Load available models…</option>
+            </select>
+            <button class="icon-btn" id="refreshModels" title="Refresh models from Ollama">↻</button>
+          </div>
           <div class="hint">Models are pulled from the selected Ollama host.</div>
         </div>
 
@@ -191,8 +193,7 @@
         </div>
 
         <div class="action-row">
-          <button class="ghost" id="saveDefaults">Save defaults</button>
-          <button class="primary" id="testConnection">Test connection</button>
+          <button class="primary full" id="saveDefaults">Save defaults</button>
         </div>
 
         <div class="note" id="feedback">Waiting for configuration.</div>

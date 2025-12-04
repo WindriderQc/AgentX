@@ -23,7 +23,6 @@ document.addEventListener('DOMContentLoaded', () => {
     statMessages: document.getElementById('statMessages'),
     statReplies: document.getElementById('statReplies'),
     refreshModels: document.getElementById('refreshModels'),
-    testConnection: document.getElementById('testConnection'),
     saveDefaults: document.getElementById('saveDefaults'),
     feedback: document.getElementById('feedback'),
     quickActions: document.querySelectorAll('[data-quick]'),
@@ -657,8 +656,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function attachEvents() {
     elements.sendBtn.addEventListener('click', sendMessage);
     elements.clearBtn.addEventListener('click', clearChat);
-    elements.refreshModels.addEventListener('click', () => fetchModels(false));
-    elements.testConnection.addEventListener('click', () => fetchModels(true));
+    elements.refreshModels.addEventListener('click', () => fetchModels(true));
     elements.saveDefaults.addEventListener('click', persistSettings);
 
     elements.messageInput.addEventListener('keydown', (e) => {
