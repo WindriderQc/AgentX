@@ -18,7 +18,7 @@ const ragStore = getRagStore();
 
 // Helper to resolve Ollama target
 function resolveTarget(target) {
-  const fallback = 'http://localhost:11434';
+  const fallback = process.env.OLLAMA_HOST || 'http://localhost:11434';
   if (!target || typeof target !== 'string') return fallback;
   const trimmed = target.trim();
   if (!trimmed) return fallback;

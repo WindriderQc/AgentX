@@ -88,6 +88,16 @@ function sanitizeOptions(options = {}) {
   return clean;
 }
 
+// Resolve Ollama Target
+function resolveTarget(target) {
+    const fallback = process.env.OLLAMA_HOST || 'http://localhost:11434';
+    if (!target || typeof target !== 'string') return fallback;
+    const trimmed = target.trim();
+    if (!trimmed) return fallback;
+    if (/^https?:\/\//i.test(trimmed)) return trimmed.replace(/\/+$/, '');
+    return `http://${trimmed.replace(/\/+$/, '')}`;
+}
+
 function getSession(threadId = 'default') {
   if (!sessions.has(threadId)) {
     sessions.set(threadId, {
@@ -173,7 +183,7 @@ async function proxyOllama(pathSegment, target, init) {
 }
 
 app.get('/api/ollama/models', async (req, res) => {
-  const target = req.query.target || 'localhost:11434';
+  const target = req.query.target || process.env.OLLAMA_HOST || 'localhost:11434';
   try {
     const result = await proxyOllama('/api/tags', target, { method: 'GET' });
     const models = Array.isArray(result?.models)
@@ -190,7 +200,7 @@ app.get('/api/ollama/models', async (req, res) => {
 });
 
 app.post('/api/ollama/chat', async (req, res) => {
-  const { target = 'localhost:11434', model, messages = [], system, options = {} } = req.body || {};
+  const { target = process.env.OLLAMA_HOST || 'localhost:11434', model, messages = [], system, options = {} } = req.body || {};
 
   if (!model) {
     return res.status(400).json({ status: 'error', message: 'Model is required' });
@@ -233,7 +243,7 @@ app.post('/api/ollama/chat', async (req, res) => {
 
 app.post('/api/chat', async (req, res) => {
   const {
-    target = 'localhost:11434',
+    target = process.env.OLLAMA_HOST || 'localhost:11434',
     model,
     message,
     threadId = 'default',

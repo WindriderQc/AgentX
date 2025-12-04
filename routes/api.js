@@ -29,7 +29,7 @@ function sanitizeOptions(options = {}) {
 
 // Resolve Ollama Target
 function resolveTarget(target) {
-    const fallback = 'http://localhost:11434';
+    const fallback = process.env.OLLAMA_HOST || 'http://localhost:11434';
     if (!target || typeof target !== 'string') return fallback;
     const trimmed = target.trim();
     if (!trimmed) return fallback;
@@ -39,7 +39,7 @@ function resolveTarget(target) {
 
 // PROXY: Models List
 router.get('/ollama/models', async (req, res) => {
-    const target = req.query.target || 'localhost:11434';
+    const target = req.query.target || process.env.OLLAMA_HOST || 'localhost:11434';
     try {
         const url = `${resolveTarget(target)}/api/tags`;
         const response = await fetch(url);
@@ -63,7 +63,7 @@ const ragStore = getRagStore();
 
 // CHAT: Enhanced with Memory & Logging + V3 RAG Support + V4 Prompt Versioning
 router.post('/chat', async (req, res) => {
-  const { target = 'localhost:11434', model, messages = [], system, options = {}, conversationId, useRag, ragTopK, ragFilters } = req.body;
+  const { target = process.env.OLLAMA_HOST || 'localhost:11434', model, messages = [], system, options = {}, conversationId, useRag, ragTopK, ragFilters } = req.body;
   const userId = 'default'; // Hardcoded for single user V1/V2
 
   if (!model) return res.status(400).json({ status: 'error', message: 'Model is required' });
