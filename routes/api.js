@@ -175,6 +175,7 @@ router.post('/chat', async (req, res) => {
 
     // 5. Save to DB
     let conversation;
+    let assistantMessageId = null;
     try {
       if (conversationId) {
           conversation = await Conversation.findById(conversationId);
@@ -195,9 +196,11 @@ router.post('/chat', async (req, res) => {
            conversation.messages.push({ role: 'user', content: message.trim() });
       }
 
-      // Add the assistant's response
+      // Add the assistant's response and capture its ID
       if (assistantMessageContent && assistantMessageContent.trim()) {
-          conversation.messages.push({ role: 'assistant', content: assistantMessageContent.trim() });
+          const assistantMsg = conversation.messages.create({ role: 'assistant', content: assistantMessageContent.trim() });
+          conversation.messages.push(assistantMsg);
+          assistantMessageId = assistantMsg._id;
       }
 
       // Generate title if new (use the current message)
@@ -225,7 +228,7 @@ router.post('/chat', async (req, res) => {
         data: {
             response: assistantMessageContent,
             conversationId: conversation?._id || null,
-            messageId: null // Not tracking individual message IDs
+            messageId: assistantMessageId
         },
         ragUsed,        // V3 addition
         ragSources      // V3 addition
@@ -275,11 +278,19 @@ router.get('/history/:id', async (req, res) => {
 router.post('/feedback', async (req, res) => {
     const { conversationId, messageId, rating, comment } = req.body;
     try {
-        const conversation = await Conversation.findById(conversationId);
+        let conversation;
+        
+        // If conversationId provided, use it directly
+        if (conversationId) {
+            conversation = await Conversation.findById(conversationId);
+        } else if (messageId) {
+            // Otherwise, find conversation containing this messageId
+            conversation = await Conversation.findOne({ 'messages._id': messageId });
+        }
+        
         if (!conversation) return res.status(404).json({ status: 'error', message: 'Conversation not found' });
 
-        // Find the message. Since we might not have stable IDs for subdocuments if we just push,
-        // we can use the `_id` of the subdocument if Mongoose adds it (it does by default).
+        // Find the message by ID
         const msg = conversation.messages.id(messageId);
         if (!msg) return res.status(404).json({ status: 'error', message: 'Message not found' });
 
