@@ -32,6 +32,10 @@ document.addEventListener('DOMContentLoaded', () => {
     memoryLanguage: document.getElementById('memoryLanguage'),
     memoryRole: document.getElementById('memoryRole'),
     memoryStyle: document.getElementById('memoryStyle'),
+    logPanel: document.querySelector('.log-panel'),
+    toggleLogBtn: document.getElementById('toggleLogBtn'),
+    toggleHistoryBtn: document.getElementById('toggleHistoryBtn'),
+    page: document.querySelector('.page'),
     // New Elements
     historyList: document.getElementById('historyList'),
     resetProfileBtn: document.getElementById('resetProfileBtn'),
@@ -651,6 +655,18 @@ document.addEventListener('DOMContentLoaded', () => {
       }
   }
 
+  function toggleHistoryPanel() {
+    if (!elements.page || !elements.toggleHistoryBtn) return;
+    const isHidden = elements.page.classList.toggle('history-hidden');
+    elements.toggleHistoryBtn.textContent = isHidden ? 'Show history' : 'Hide history';
+  }
+
+  function toggleLogPanel() {
+    if (!elements.logPanel || !elements.toggleLogBtn) return;
+    const isCollapsed = elements.logPanel.classList.toggle('collapsed');
+    elements.toggleLogBtn.textContent = isCollapsed ? 'Show session log' : 'Hide session log';
+  }
+
   function attachEvents() {
     elements.sendBtn.addEventListener('click', sendMessage);
     elements.clearBtn.addEventListener('click', clearChat);
@@ -715,6 +731,14 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.resetProfileBtn.addEventListener('click', () => {
         loadProfile();
     });
+
+    if (elements.toggleHistoryBtn) {
+      elements.toggleHistoryBtn.addEventListener('click', toggleHistoryPanel);
+    }
+
+    if (elements.toggleLogBtn) {
+      elements.toggleLogBtn.addEventListener('click', toggleLogPanel);
+    }
   }
 
   async function init() {
@@ -726,6 +750,17 @@ document.addEventListener('DOMContentLoaded', () => {
     clearChat();
     loadProfile();
     fetchModels();
+
+    // Set initial UI toggle states
+    if (elements.toggleLogBtn) {
+      const isCollapsed = elements.logPanel?.classList.contains('collapsed');
+      elements.toggleLogBtn.textContent = isCollapsed ? 'Show session log' : 'Hide session log';
+    }
+
+    if (elements.toggleHistoryBtn) {
+      const isHidden = elements.page?.classList.contains('history-hidden');
+      elements.toggleHistoryBtn.textContent = isHidden ? 'Show history' : 'Hide history';
+    }
 
     // Load history and open latest conversation if available
     const history = await loadHistoryList();
