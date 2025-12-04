@@ -90,7 +90,7 @@ if true; then
         # Test conversation retrieval
         echo ""
         echo "5. Testing conversation retrieval..."
-        CONV=$(curl -s "$BASE_URL/api/conversations/$CONVERSATION_ID")
+        CONV=$(curl -s "$BASE_URL/api/history/$CONVERSATION_ID")
         if echo "$CONV" | grep -q "success"; then
             echo -e "${GREEN}✓ Conversation retrieved${NC}"
             MSG_COUNT=$(echo $CONV | jq '.data.messages | length')
@@ -102,13 +102,25 @@ if true; then
         # Test conversations list
         echo ""
         echo "6. Testing conversations list..."
-        CONVS=$(curl -s "$BASE_URL/api/conversations?userId=$USER_ID")
+        CONVS=$(curl -s "$BASE_URL/api/history?userId=$USER_ID")
         if echo "$CONVS" | grep -q "success"; then
             echo -e "${GREEN}✓ Conversations list retrieved${NC}"
             CONV_COUNT=$(echo $CONVS | jq '.data | length')
             echo "   Total conversations: $CONV_COUNT"
         else
             echo -e "${RED}✗ Conversations list failed${NC}"
+        fi
+
+        # Test logs (new DB-backed view)
+        echo ""
+        echo "6b. Testing logs endpoint..."
+        LOGS=$(curl -s "$BASE_URL/api/logs")
+        if echo "$LOGS" | grep -q "success"; then
+             echo -e "${GREEN}✓ Logs retrieved${NC}"
+             LOG_MSG_COUNT=$(echo $LOGS | jq '.data.messages | length')
+             echo "   Messages in log: $LOG_MSG_COUNT"
+        else
+             echo -e "${RED}✗ Logs endpoint failed${NC}"
         fi
         
     else
@@ -122,7 +134,7 @@ fi
 
 echo ""
 echo "7. Testing profile retrieval..."
-PROFILE_GET=$(curl -s "$BASE_URL/api/user/profile?userId=$USER_ID")
+PROFILE_GET=$(curl -s "$BASE_URL/api/profile?userId=$USER_ID")
 if echo "$PROFILE_GET" | grep -q "success"; then
     echo -e "${GREEN}✓ Profile retrieved${NC}"
     echo "   About: $(echo $PROFILE_GET | jq -r '.data.about' | cut -c1-50)..."
