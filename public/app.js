@@ -503,7 +503,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       state.profile = data.data?.profile || state.profile;
-      state.conversationId = data.conversationId; // Update ID
+      state.conversationId = data.data?.conversationId || state.conversationId; // Update ID
 
       const responseText =
         data.data?.message?.content ||
@@ -515,7 +515,7 @@ document.addEventListener('DOMContentLoaded', () => {
           role: 'assistant',
           content: responseText,
           createdAt: new Date().toISOString(),
-          // No ID yet, will get it on reload
+          id: data.data?.messageId || null,
       };
 
       appendMessage(assistantMessage);
