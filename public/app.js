@@ -23,7 +23,6 @@ document.addEventListener('DOMContentLoaded', () => {
     statMessages: document.getElementById('statMessages'),
     statReplies: document.getElementById('statReplies'),
     refreshModels: document.getElementById('refreshModels'),
-    testConnection: document.getElementById('testConnection'),
     saveDefaults: document.getElementById('saveDefaults'),
     feedback: document.getElementById('feedback'),
     quickActions: document.querySelectorAll('[data-quick]'),
@@ -411,10 +410,21 @@ document.addEventListener('DOMContentLoaded', () => {
       setFeedback('Models refreshed from Ollama.', 'success');
     } catch (err) {
       console.warn('Failed to fetch models:', err.message);
-      setStatus('Model refresh failed', 'error');
-      setFeedback('Click "Refresh models" to retry connection', 'info');
+      setStatus('Connection failed', 'error');
+      
+      // Parse error message for better user feedback
+      let userMessage = 'Unable to connect to Ollama.';
+      if (err.message.includes('EHOSTUNREACH') || err.message.includes('ECONNREFUSED')) {
+        userMessage = `Cannot reach ${targetHost()}. Check if Ollama is running and the host/port are correct.`;
+      } else if (err.message.includes('ETIMEDOUT')) {
+        userMessage = `Connection to ${targetHost()} timed out. Check network and firewall settings.`;
+      } else if (err.message.includes('500')) {
+        userMessage = err.message;
+      }
+      
+      setFeedback(userMessage, 'error');
       // Add a default option so UI doesn't break
-      elements.modelSelect.innerHTML = '<option value="">Click "Refresh models"</option>';
+      elements.modelSelect.innerHTML = '<option value="">⚠️ Connection failed</option>';
     }
   }
 
@@ -657,8 +667,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function attachEvents() {
     elements.sendBtn.addEventListener('click', sendMessage);
     elements.clearBtn.addEventListener('click', clearChat);
-    elements.refreshModels.addEventListener('click', () => fetchModels(false));
-    elements.testConnection.addEventListener('click', () => fetchModels(true));
+    elements.refreshModels.addEventListener('click', () => fetchModels(true));
     elements.saveDefaults.addEventListener('click', persistSettings);
 
     elements.messageInput.addEventListener('keydown', (e) => {
@@ -710,7 +719,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  function init() {
+  async function init() {
     // Load settings after defaults are potentially updated by server config
     state.settings = loadSettings();
     elements.threadId.textContent = state.threadId;
