@@ -175,6 +175,7 @@ router.post('/chat', async (req, res) => {
 
     // 5. Save to DB
     let conversation;
+    let assistantMessageId = null;
     try {
       if (conversationId) {
           conversation = await Conversation.findById(conversationId);
@@ -195,9 +196,11 @@ router.post('/chat', async (req, res) => {
            conversation.messages.push({ role: 'user', content: message.trim() });
       }
 
-      // Add the assistant's response
+      // Add the assistant's response and capture its ID
       if (assistantMessageContent && assistantMessageContent.trim()) {
-          conversation.messages.push({ role: 'assistant', content: assistantMessageContent.trim() });
+          const assistantMsg = conversation.messages.create({ role: 'assistant', content: assistantMessageContent.trim() });
+          conversation.messages.push(assistantMsg);
+          assistantMessageId = assistantMsg._id;
       }
 
       // Generate title if new (use the current message)
@@ -222,8 +225,11 @@ router.post('/chat', async (req, res) => {
     // 6. Return response (V3: includes RAG fields)
     res.json({
         status: 'success',
-        data: data,
-        conversationId: conversation._id,
+        data: {
+            response: assistantMessageContent,
+            conversationId: conversation?._id || null,
+            messageId: assistantMessageId
+        },
         ragUsed,        // V3 addition
         ragSources      // V3 addition
     });
@@ -272,11 +278,19 @@ router.get('/history/:id', async (req, res) => {
 router.post('/feedback', async (req, res) => {
     const { conversationId, messageId, rating, comment } = req.body;
     try {
-        const conversation = await Conversation.findById(conversationId);
+        let conversation;
+        
+        // If conversationId provided, use it directly
+        if (conversationId) {
+            conversation = await Conversation.findById(conversationId);
+        } else if (messageId) {
+            // Otherwise, find conversation containing this messageId
+            conversation = await Conversation.findOne({ 'messages._id': messageId });
+        }
+        
         if (!conversation) return res.status(404).json({ status: 'error', message: 'Conversation not found' });
 
-        // Find the message. Since we might not have stable IDs for subdocuments if we just push,
-        // we can use the `_id` of the subdocument if Mongoose adds it (it does by default).
+        // Find the message by ID
         const msg = conversation.messages.id(messageId);
         if (!msg) return res.status(404).json({ status: 'error', message: 'Message not found' });
 
@@ -315,6 +329,48 @@ router.post('/profile', async (req, res) => {
             { $set: { about, preferences, updatedAt: Date.now() } },
             { new: true, upsert: true }
         );
+        res.json({ status: 'success', data: profile });
+    } catch (err) {
+        res.status(500).json({ status: 'error', message: err.message });
+    }
+});
+
+// Route aliases for backwards compatibility with test scripts
+router.get('/conversations', async (req, res) => {
+    try {
+        const conversations = await Conversation.find({ userId: 'default' })
+            .sort({ updatedAt: -1 })
+            .limit(50)
+            .select('title updatedAt model messages');
+
+        const previews = conversations.map(c => ({
+            id: c._id,
+            title: c.title,
+            date: c.updatedAt,
+            model: c.model,
+            messageCount: c.messages.length
+        }));
+
+        res.json({ status: 'success', data: previews });
+    } catch (err) {
+        res.status(500).json({ status: 'error', message: err.message });
+    }
+});
+
+router.get('/conversations/:id', async (req, res) => {
+    try {
+        const conversation = await Conversation.findById(req.params.id);
+        if (!conversation) return res.status(404).json({ status: 'error', message: 'Not found' });
+        res.json({ status: 'success', data: conversation });
+    } catch (err) {
+        res.status(500).json({ status: 'error', message: err.message });
+    }
+});
+
+router.get('/user/profile', async (req, res) => {
+    try {
+        let profile = await UserProfile.findOne({ userId: 'default' });
+        if (!profile) profile = await UserProfile.create({ userId: 'default' });
         res.json({ status: 'success', data: profile });
     } catch (err) {
         res.status(500).json({ status: 'error', message: err.message });
