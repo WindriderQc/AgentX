@@ -3,6 +3,7 @@ const router = express.Router();
 const Conversation = require('../models/Conversation');
 const UserProfile = require('../models/UserProfile');
 const PromptConfig = require('../models/PromptConfig'); // V4: Import prompt versioning
+const { sanitizeOptions, resolveTarget } = require('../src/utils');
 const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
 
 // Helper to sanitize Ollama options
@@ -67,6 +68,7 @@ router.post('/chat', async (req, res) => {
   const userId = 'default'; // Hardcoded for single user V1/V2
 
   if (!model) return res.status(400).json({ status: 'error', message: 'Model is required' });
+  if (!message) return res.status(400).json({ status: 'error', message: 'Message is required' });
 
   try {
     // V4: Fetch active prompt configuration
@@ -115,12 +117,10 @@ router.post('/chat', async (req, res) => {
     }
 
     // V3: RAG Context Injection
-    if (useRag === true && messages.length > 0) {
+    if (useRag === true && message) {
       try {
-        // Extract query from last user message
-        const lastUserMsg = messages[messages.length - 1];
-        if (lastUserMsg && lastUserMsg.role === 'user') {
-          const query = lastUserMsg.content;
+        // Use the current message as the query
+        const query = message;
           
           // Resolve Ollama host for RAG embeddings
           const ollamaHost = resolveTarget(target);
@@ -158,7 +158,6 @@ router.post('/chat', async (req, res) => {
             
             console.log(`[Chat RAG] Injected ${searchResults.length} chunks for query: "${query}"`);
           }
-        }
       } catch (ragError) {
         console.error('[Chat RAG] Error during RAG retrieval:', ragError);
         // Continue without RAG rather than failing the whole request
@@ -223,16 +222,19 @@ router.post('/chat', async (req, res) => {
           });
       }
 
-      const lastUserMsg = messages[messages.length - 1];
-      if (lastUserMsg && lastUserMsg.role === 'user') {
-           conversation.messages.push({ role: 'user', content: lastUserMsg.content });
+      // Add the user's message (from request body, not from history)
+      if (message && message.trim()) {
+           conversation.messages.push({ role: 'user', content: message.trim() });
       }
 
-      conversation.messages.push({ role: 'assistant', content: assistantMessageContent });
+      // Add the assistant's response
+      if (assistantMessageContent && assistantMessageContent.trim()) {
+          conversation.messages.push({ role: 'assistant', content: assistantMessageContent.trim() });
+      }
 
-      // Generate title if new
+      // Generate title if new (use the current message)
       if (conversation.messages.length <= 2) {
-          conversation.title = (lastUserMsg?.content || 'New Conversation').substring(0, 50);
+          conversation.title = (message || 'New Conversation').substring(0, 50);
       }
 
       // V3: Store RAG metadata

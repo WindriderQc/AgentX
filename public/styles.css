@@ -218,9 +218,14 @@ body {
   flex-wrap: wrap;
 }
 
-.panel-head > div {
+.panel-head > div:first-child {
   flex: 1;
   min-width: 150px;
+}
+
+.panel-head > div.pill {
+  flex: 0 0 auto;
+  min-width: auto;
 }
 
 .panel-head button {
@@ -237,7 +242,42 @@ body {
 
 .controls {
   display: flex;
+  align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
+}
+
+.controls .pill {
+  font-size: 11px;
+  padding: 4px 8px;
+  background: rgba(124, 240, 255, 0.08);
+  border: 1px solid rgba(124, 240, 255, 0.15);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.controls .pill .label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  opacity: 0.6;
+}
+
+.controls .pill strong {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.controls .pill .separator {
+  font-size: 12px;
+  opacity: 0.4;
+  margin: 0 2px;
+}
+
+.controls button {
+  margin-left: 4px;
 }
 
 .chat-window {
@@ -262,7 +302,8 @@ body {
   color: var(--muted);
   margin-bottom: 6px;
   display: flex;
-  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
 }
 
 .feedback-actions {
@@ -364,6 +405,59 @@ body {
   background: rgba(255, 255, 255, 0.02);
 }
 
+.composer-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 12px;
+  gap: 8px;
+}
+
+.composer-actions button {
+  padding: 10px 20px;
+}
+
+.composer-actions button.small {
+  padding: 6px 12px;
+  font-size: 12px;
+  opacity: 0.6;
+  transition: opacity 0.2s ease;
+}
+
+.composer-actions button.small:hover {
+  opacity: 1;
+}
+
+.panel-head .pill {
+  font-size: 10px;
+  padding: 3px 8px;
+  background: rgba(12, 15, 26, 0.6);
+  border: 1px solid rgba(124, 240, 255, 0.2);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 12px;
+  backdrop-filter: blur(8px);
+  width: auto;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.panel-head .pill .label {
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  font-weight: 600;
+  opacity: 0.5;
+}
+
+.panel-head .pill strong {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  text-shadow: 0 0 8px rgba(124, 240, 255, 0.3);
+}
+
 .feedback-row {
   display: flex;
   align-items: center;
@@ -463,6 +557,7 @@ label {
 
 .note {
   margin-top: 12px;
+  margin-bottom: 16px;
   font-size: 13px;
   color: var(--muted);
 }
@@ -554,6 +649,60 @@ button:active {
 .inline-toggle .hint {
   flex-basis: 100%;
   margin-top: 4px;
+}
+
+.collapsible-section {
+  margin: 16px 0;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  cursor: pointer;
+  user-select: none;
+  border-top: 1px solid var(--panel-border);
+  transition: all 0.2s ease;
+}
+
+.section-header:hover {
+  color: var(--accent);
+}
+
+.section-header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+}
+
+.section-header:hover h3 {
+  color: var(--accent);
+}
+
+.toggle-icon {
+  font-size: 12px;
+  color: var(--muted);
+  transition: transform 0.3s ease;
+}
+
+.section-header.expanded .toggle-icon {
+  transform: rotate(-180deg);
+}
+
+.section-content {
+  max-height: 2000px;
+  overflow: hidden;
+  transition: max-height 0.3s ease, opacity 0.3s ease;
+  opacity: 1;
+}
+
+.section-content.hidden {
+  max-height: 0;
+  opacity: 0;
 }
 
 .switch {

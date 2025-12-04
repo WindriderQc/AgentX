@@ -7,13 +7,6 @@ const connectDB = require('./config/db');
 const app = express();
 const PORT = process.env.PORT || 3080;
 
-// In-memory stores to keep basic chat logs and user profile
-const sessions = new Map();
-let profile = {
-  language: 'English',
-  role: 'General assistant',
-  style: 'Concise and clear',
-};
 // Connect to Database
 connectDB();
 
@@ -32,7 +25,7 @@ app.use('/api/analytics', analyticsRoutes);
 const datasetRoutes = require('./routes/dataset');
 app.use('/api/dataset', datasetRoutes);
 
-// Mount main API routes
+// Mount API routes
 const apiRoutes = require('./routes/api');
 app.use('/api', apiRoutes);
 
