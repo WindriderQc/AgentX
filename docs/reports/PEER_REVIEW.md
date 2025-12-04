@@ -10,16 +10,16 @@ However, the codebase currently suffers from **critical runtime errors** and sig
 
 - **Runtime Crashes in `server.js`:** The file references `sessions` and `profile` variables in inline route handlers (e.g., `getSession`, `/api/chat`) without ever declaring them. This will cause `ReferenceError` crashes if these endpoints are hit.
 - **Split-Brain Logic:** The application mounts modular routes (e.g., `app.use('/api', apiRoutes)`) but also defines conflicting inline routes for the same paths (e.g., `app.post('/api/chat', ...)`). This creates ambiguity and maintenance nightmares.
-- **Broken Database Abstraction:** While `config/db.js` supports SQLite, the core logic in `routes/api.js` bypasses this abstraction and hardcodes Mongoose models. Setting `DB_TYPE=sqlite` will result in a runtime failure as the routes attempt to use Mongoose methods on uninitialized connections.
+- **[RESOLVED] Broken Database Abstraction:** Previous versions supported SQLite configuration but failed to implement it in the core logic. This has been resolved by removing SQLite support entirely and committing to MongoDB/Mongoose.
 
 ## 2. Architecture
 
 ### Pros
 - **Modular Design Intent:** The structure with `routes/`, `models/`, and `services/` is correct and follows standard Express patterns.
 - **V3/V4 Specifications:** The architectural vision for RAG and Analytics is well-documented.
+- **Simplified Database Layer:** The decision to standardize on MongoDB removes complexity and dead code related to the incomplete SQLite implementation.
 
 ### Cons
-- **Leaky Abstractions:** The database layer is not truly abstracted. The codebase is effectively tied to MongoDB despite configuration options suggesting otherwise.
 - **State Management Confusion:** Session state is attempted in-memory in `server.js` (broken) and persisted in MongoDB in `routes/api.js`.
 
 ## 3. Backend
@@ -30,7 +30,6 @@ However, the codebase currently suffers from **critical runtime errors** and sig
 
 ### Gaps and Required Corrections
 - **Remove Duplicate Routes:** The inline routes in `server.js` must be removed. The file should strictly be an entry point that mounts routers.
-- **Unify Database Access:** Refactor `routes/api.js` to use a repository pattern or commit fully to MongoDB.
 - **Fix Error Handling:** `server.js` defines `buildErrorResponse` but it is not consistently used.
 - **Authentication:** User identity is hardcoded to `default`, blocking multi-user usage.
 
@@ -54,11 +53,10 @@ However, the codebase currently suffers from **critical runtime errors** and sig
 ## 6. Documentation
 
 - **Comprehensive Specs:** The architecture documentation is a highlight (`specs/`).
-- **Inconsistent Implementation:** The code often drifts from the implied simplicity of the docs (e.g., the SQLite support).
+- **Inconsistent Implementation:** The code often drifts from the implied simplicity of the docs.
 
 ## Recommendations
 
 1.  **Immediate Fix:** Delete all inline route handlers from `server.js` (`/api/chat`, `/api/ollama/*`, `/api/profile`, etc.) and rely solely on the imported `routes/api.js`. This resolves the `ReferenceError` and the split-brain issue.
-2.  **Stabilize Database:** Acknowledge Mongoose dependency and remove/fix the misleading SQLite configuration, or implement a proper Repository pattern.
-3.  **Refactor Frontend:** Break `app.js` into smaller ES modules.
-4.  **Implement Auth:** Replace the hardcoded 'default' user with a simple authentication mechanism.
+2.  **Refactor Frontend:** Break `app.js` into smaller ES modules.
+3.  **Implement Auth:** Replace the hardcoded 'default' user with a simple authentication mechanism.
