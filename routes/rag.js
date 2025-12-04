@@ -12,19 +12,10 @@
 const express = require('express');
 const router = express.Router();
 const { getRagStore } = require('../src/services/ragStore');
+const { resolveTarget } = require('../src/utils');
 
 // Initialize RAG store
 const ragStore = getRagStore();
-
-// Helper to resolve Ollama target
-function resolveTarget(target) {
-  const fallback = 'http://localhost:11434';
-  if (!target || typeof target !== 'string') return fallback;
-  const trimmed = target.trim();
-  if (!trimmed) return fallback;
-  if (/^https?:\/\//i.test(trimmed)) return trimmed.replace(/\/+$/, '');
-  return `http://${trimmed.replace(/\/+$/, '')}`;
-}
 
 /**
  * POST /api/rag/ingest
