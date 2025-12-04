@@ -171,15 +171,28 @@ router.post('/chat', async (req, res) => {
 
     if (!response.ok) throw new Error(`Ollama request failed: ${response.statusText}`);
     const data = await response.json();
-    const assistantMessageContent = data.message?.content || data.response || '';
+    
+    // Handle different response formats
+    // Some models (like qwen3) use 'thinking' field for reasoning and 'content' for final answer
+    // If content is empty but thinking exists, use thinking as the response
+    let assistantMessageContent = data.message?.content || data.response || '';
+    
+    if ((!assistantMessageContent || assistantMessageContent.trim() === '') && data.message?.thinking) {
+      console.log('[Chat] Using thinking field as response (model may still be reasoning)', { 
+        model,
+        thinkingLength: data.message.thinking.length 
+      });
+      assistantMessageContent = data.message.thinking;
+    }
 
-    // Log potential issue
+    // Log if still empty
     if (!assistantMessageContent || assistantMessageContent.trim() === '') {
       console.error('[Chat] WARNING: Empty response from Ollama', { 
         model, 
-        ollamaResponse: JSON.stringify(data).substring(0, 200),
+        ollamaResponse: JSON.stringify(data).substring(0, 300),
         hasMessage: !!data.message,
-        hasResponse: !!data.response 
+        hasResponse: !!data.response,
+        hasThinking: !!data.message?.thinking
       });
     }
 
