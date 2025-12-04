@@ -26,6 +26,7 @@ document.addEventListener('DOMContentLoaded', () => {
     feedback: document.getElementById('feedback'),
     quickActions: document.querySelectorAll('[data-quick]'),
     streamToggle: document.getElementById('streamToggle'),
+    ragToggle: document.getElementById('ragToggle'),
     logWindow: document.getElementById('logWindow'),
     threadId: document.getElementById('threadId'),
     memoryLanguage: document.getElementById('memoryLanguage'),
@@ -135,6 +136,7 @@ document.addEventListener('DOMContentLoaded', () => {
       port: elements.portInput.value.trim() || defaults.port,
       model: elements.modelSelect.value,
       stream: elements.streamToggle.checked,
+      useRag: elements.ragToggle.checked,
       system: elements.systemPrompt.value.trim() || defaults.system,
       options: readOptions(),
     };
@@ -167,6 +169,7 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.modelSelect.value = cfg.model;
     elements.systemPrompt.value = cfg.system;
     elements.streamToggle.checked = cfg.stream;
+    elements.ragToggle.checked = cfg.useRag || false;
     elements.temperature.value = cfg.options.temperature;
     elements.topP.value = cfg.options.top_p;
     elements.topK.value = cfg.options.top_k;
@@ -437,28 +440,6 @@ document.addEventListener('DOMContentLoaded', () => {
     };
   }
 
-  async function loadLogs() {
-    // Legacy: This function is deprecated in favor of loadConversation(id)
-    // and loadHistoryList(). We keep it empty or remove it to avoid errors if called.
-    // For now, let's just refresh messages if there are any in state.
-    try {
-      const res = await fetch(`/api/logs?threadId=${encodeURIComponent(state.threadId)}`);
-      if (!res.ok) {
-        refreshMessages();
-        return;
-      }
-      const data = await res.json();
-      if (data.status === 'success' && data.data?.messages) {
-        state.history = data.data.messages;
-        refreshMessages();
-        return;
-      }
-    } catch (err) {
-      // Silently skip if logs endpoint not available
-    }
-    refreshMessages();
-  }
-
   function refreshMessages() {
     elements.chatWindow.innerHTML = '';
     state.stats = { messages: 0, replies: 0 };
@@ -501,6 +482,7 @@ document.addEventListener('DOMContentLoaded', () => {
         system: elements.systemPrompt.value.trim(),
         options: readOptions(),
         stream: elements.streamToggle.checked,
+        useRag: elements.ragToggle.checked,
         threadId: state.threadId,
         message,
         profile: readProfileInputs(),
@@ -556,7 +538,6 @@ document.addEventListener('DOMContentLoaded', () => {
     } finally {
       state.sending = false;
       elements.sendBtn.textContent = 'Send';
-      // loadLogs(); // Removed legacy call
     }
   }
 
@@ -701,6 +682,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     elements.streamToggle.addEventListener('change', persistSettings);
+    elements.ragToggle.addEventListener('change', persistSettings);
 
     // Auto-refresh models when host or port changes
     elements.hostInput.addEventListener('change', () => {
