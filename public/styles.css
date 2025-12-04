@@ -65,6 +65,12 @@ body {
   margin-bottom: 1rem;
 }
 
+.sidebar-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
 .history-list {
   flex: 1;
   overflow-y: auto;
