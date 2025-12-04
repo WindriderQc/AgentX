@@ -17,6 +17,16 @@ const { resolveTarget } = require('../src/utils');
 // Initialize RAG store
 const ragStore = getRagStore();
 
+// Helper to resolve Ollama target
+function resolveTarget(target) {
+  const fallback = process.env.OLLAMA_HOST || 'http://localhost:11434';
+  if (!target || typeof target !== 'string') return fallback;
+  const trimmed = target.trim();
+  if (!trimmed) return fallback;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed.replace(/\/+$/, '');
+  return `http://${trimmed.replace(/\/+$/, '')}`;
+}
+
 /**
  * POST /api/rag/ingest
  * 
