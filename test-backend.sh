@@ -31,15 +31,16 @@ PROFILE=$(curl -s -X POST "$BASE_URL/api/profile" \
     -H "Content-Type: application/json" \
     -d "{
         \"userId\": \"$USER_ID\",
-        \"name\": \"Test User\",
-        \"role\": \"Developer\",
-        \"response_style\": \"detailed\",
-        \"code_preference\": \"code-heavy\"
+        \"about\": \"Test User - Developer interested in tech and innovation\",
+        \"preferences\": {
+            \"response_style\": \"detailed\",
+            \"code_preference\": \"code-heavy\"
+        }
     }")
 
 if echo "$PROFILE" | grep -q "success"; then
     echo -e "${GREEN}✓ User profile created${NC}"
-    echo "Profile: $(echo $PROFILE | jq -r '.data.name')"
+    echo "Profile: $(echo $PROFILE | jq -r '.data.about' | cut -c1-50)"
 else
     echo -e "${RED}✗ User profile creation failed${NC}"
     exit 1
@@ -49,9 +50,7 @@ echo ""
 # Test chat endpoint (requires Ollama)
 echo "3. Testing chat endpoint..."
 echo "   (Note: This requires Ollama to be running with llama2 model)"
-read -p "   Do you have Ollama running? (y/n) " -n 1 -r
-echo ""
-if [[ $REPLY =~ ^[Yy]$ ]]; then
+if true; then
     CHAT=$(curl -s -X POST "$BASE_URL/api/chat" \
         -H "Content-Type: application/json" \
         -d "{
@@ -126,8 +125,8 @@ echo "7. Testing profile retrieval..."
 PROFILE_GET=$(curl -s "$BASE_URL/api/user/profile?userId=$USER_ID")
 if echo "$PROFILE_GET" | grep -q "success"; then
     echo -e "${GREEN}✓ Profile retrieved${NC}"
-    echo "   Name: $(echo $PROFILE_GET | jq -r '.data.name')"
-    echo "   Style: $(echo $PROFILE_GET | jq -r '.data.response_style')"
+    echo "   About: $(echo $PROFILE_GET | jq -r '.data.about' | cut -c1-50)..."
+    echo "   Style: $(echo $PROFILE_GET | jq -r '.data.preferences.response_style')"
 else
     echo -e "${RED}✗ Profile retrieval failed${NC}"
 fi
@@ -139,11 +138,11 @@ echo ""
 echo "📊 Summary:"
 echo "   - Health check: working"
 echo "   - User profiles: working"
-echo "   - Chat endpoint: $([ $REPLY = 'y' ] && echo 'tested' || echo 'skipped')"
-echo "   - Feedback: $([ $REPLY = 'y' ] && echo 'tested' || echo 'skipped')"
-echo "   - Conversations: $([ $REPLY = 'y' ] && echo 'tested' || echo 'skipped')"
+echo "   - Chat endpoint: tested"
+echo "   - Feedback: tested"
+echo "   - Conversations: tested"
 echo ""
 echo "🔗 Next steps:"
-echo "   1. Check API_DOCS.md for complete endpoint documentation"
+echo "   1. Check docs/api/reference.md for complete endpoint documentation"
 echo "   2. Test with your frontend"
-echo "   3. Review data in ./data/agentx.db"
+echo "   3. Review data in MongoDB Atlas"
