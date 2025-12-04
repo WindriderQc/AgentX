@@ -3,7 +3,7 @@
  * Logs all HTTP requests with timing and status information
  */
 
-const logger = require('../config/logger');
+const logger = require('../../config/logger');
 
 /**
  * Morgan-like request logger using Winston

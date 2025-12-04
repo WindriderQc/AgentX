@@ -8,36 +8,14 @@ const { requestLogger, errorLogger } = require('./src/middleware/logging');
 
 const app = express();
 const PORT = process.env.PORT || 3080;
-const OLLAMA_HOST = process.env.OLLAMA_HOST || 'http://localhost:11434';
+const OLLAMA_HOST = process.env.OLLAMA_HOST || 'http://192.168.2.99:11434';
 
 // System Health State
 const systemHealth = {
-  mongodb: { status: 'unknown', lastCheck: null, error: null },
-  ollama: { status: 'unknown', lastCheck: null, error: null },
+  mongodb: { status: 'checking', lastCheck: null, error: null },
+  ollama: { status: 'checking', lastCheck: null, error: null },
   startup: new Date().toISOString()
 };
-
-// Connect to Database
-connectDB()
-  .then(() => {
-    systemHealth.mongodb = { status: 'connected', lastCheck: new Date().toISOString(), error: null };
-    logger.info('MongoDB connected successfully');
-  })
-  .catch((err) => {
-    systemHealth.mongodb = { status: 'error', lastCheck: new Date().toISOString(), error: err.message };
-    logger.warn('Starting without database connection - some features will be limited', { error: err.message });
-  });
-
-// Check Ollama availability at startup
-checkOllamaHealth()
-  .then(() => {
-    systemHealth.ollama = { status: 'connected', lastCheck: new Date().toISOString(), error: null };
-    logger.info('Ollama connected successfully', { host: OLLAMA_HOST });
-  })
-  .catch((err) => {
-    systemHealth.ollama = { status: 'error', lastCheck: new Date().toISOString(), error: err.message };
-    logger.warn('Ollama not available - chat features will not work until Ollama is running', { error: err.message });
-  });
 
 app.use(cors());
 app.use(express.json({ limit: '2mb' }));
@@ -184,35 +162,83 @@ async function checkOllamaHealth() {
   }
 }
 
-app.listen(PORT, () => {
+// Startup initialization - perform health checks before starting server
+async function startServer() {
   console.log(`\n╔════════════════════════════════════════════════════════╗`);
   console.log(`║           AgentX v1.0.0 - Production Ready            ║`);
   console.log(`╚════════════════════════════════════════════════════════╝\n`);
-  console.log(`🚀 Server:    http://localhost:${PORT}`);
-  console.log(`💚 Health:    http://localhost:${PORT}/health/detailed`);
-  console.log(`📚 Docs:      Check /docs folder for complete guides`);
-  console.log(`📋 Logs:      logs/combined.log & logs/error.log\n`);
-  
-  console.log(`📊 System Status:`);
-  console.log(`   MongoDB:   ${systemHealth.mongodb.status === 'connected' ? '✓' : '✗'} ${systemHealth.mongodb.status}`);
-  console.log(`   Ollama:    ${systemHealth.ollama.status === 'connected' ? '✓' : '✗'} ${systemHealth.ollama.status} (${OLLAMA_HOST})`);
-  
-  if (systemHealth.mongodb.status !== 'connected' || systemHealth.ollama.status !== 'connected') {
-    console.log(`\n⚠️  WARNING: Running in degraded mode`);
-    if (systemHealth.mongodb.status !== 'connected') {
-      console.log(`   - MongoDB: ${systemHealth.mongodb.error}`);
-    }
-    if (systemHealth.ollama.status !== 'connected') {
-      console.log(`   - Ollama: ${systemHealth.ollama.error}`);
-    }
-  } else {
-    console.log(`\n✅ All systems operational\n`);
+  console.log(`🔍 Checking system dependencies...\n`);
+
+  // Check MongoDB
+  try {
+    await connectDB();
+    systemHealth.mongodb = { status: 'connected', lastCheck: new Date().toISOString(), error: null };
+    console.log(`   ✓ MongoDB:  Connected`);
+    logger.info('MongoDB connected successfully');
+  } catch (err) {
+    systemHealth.mongodb = { status: 'error', lastCheck: new Date().toISOString(), error: err.message };
+    console.log(`   ✗ MongoDB:  ${err.message}`);
+    logger.warn('Starting without database connection - some features will be limited', { error: err.message });
   }
-  
-  logger.info('AgentX server started', {
-    port: PORT,
-    environment: process.env.NODE_ENV || 'development',
-    mongodb: systemHealth.mongodb.status,
-    ollama: systemHealth.ollama.status
+
+  // Check Ollama
+  try {
+    const ollamaResult = await checkOllamaHealth();
+    if (ollamaResult.healthy) {
+      systemHealth.ollama = { status: 'connected', lastCheck: new Date().toISOString(), error: null };
+      console.log(`   ✓ Ollama:   Connected (${OLLAMA_HOST})`);
+      logger.info('Ollama connected successfully', { host: OLLAMA_HOST });
+    } else {
+      throw new Error(ollamaResult.message);
+    }
+  } catch (err) {
+    systemHealth.ollama = { status: 'error', lastCheck: new Date().toISOString(), error: err.message };
+    console.log(`   ✗ Ollama:   ${err.message} (${OLLAMA_HOST})`);
+    logger.warn('Ollama not available - chat features will not work until Ollama is running', { 
+      error: err.message,
+      host: OLLAMA_HOST 
+    });
+  }
+
+  // Start Express server
+  app.listen(PORT, () => {
+    console.log(`\n${'─'.repeat(58)}`);
+    console.log(`🚀 Server:    http://192.168.2.33:${PORT}`);
+    console.log(`💚 Health:    http://192.168.2.33:${PORT}/health/detailed`);
+    console.log(`📚 Docs:      /docs folder`);
+    console.log(`📋 Logs:      logs/combined.log & logs/error.log`);
+    console.log(`${'─'.repeat(58)}\n`);
+    
+    const isHealthy = systemHealth.mongodb.status === 'connected' && 
+                     systemHealth.ollama.status === 'connected';
+    
+    if (isHealthy) {
+      console.log(`✅ All systems operational - Ready for production\n`);
+    } else {
+      console.log(`⚠️  WARNING: Running in degraded mode\n`);
+      if (systemHealth.mongodb.status !== 'connected') {
+        console.log(`   MongoDB Issue: ${systemHealth.mongodb.error}`);
+      }
+      if (systemHealth.ollama.status !== 'connected') {
+        console.log(`   Ollama Issue: ${systemHealth.ollama.error}`);
+      }
+      console.log(`\n   Fix these issues for full functionality.\n`);
+    }
+    
+    logger.info('AgentX server started', {
+      port: PORT,
+      host: '192.168.2.33',
+      environment: process.env.NODE_ENV || 'development',
+      mongodb: systemHealth.mongodb.status,
+      ollama: systemHealth.ollama.status,
+      healthy: isHealthy
+    });
   });
+}
+
+// Start the server
+startServer().catch(err => {
+  logger.error('Failed to start server', { error: err.message, stack: err.stack });
+  console.error(`\n❌ Fatal Error: ${err.message}\n`);
+  process.exit(1);
 });
