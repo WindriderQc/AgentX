@@ -303,11 +303,19 @@ router.post('/feedback', async (req, res) => {
     }
 });
 
-// LOGS - fallback endpoint for session logs
+// LOGS - Get latest conversation messages
 router.get('/logs', async (req, res) => {
-    // With SQLite, we don't persist chat logs server-side
-    // Return empty to let client use local state
-    res.json({ status: 'success', data: { messages: [] } });
+    try {
+        const conversation = await Conversation.findOne({ userId: 'default' })
+            .sort({ updatedAt: -1 });
+
+        if (!conversation) {
+            return res.json({ status: 'success', data: { messages: [] } });
+        }
+        res.json({ status: 'success', data: { messages: conversation.messages } });
+    } catch (err) {
+        res.status(500).json({ status: 'error', message: err.message });
+    }
 });
 
 // PROFILE

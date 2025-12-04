@@ -575,33 +575,70 @@ curl http://localhost:3080/api/feedback/conversation/550e8400-e29b-41d4-a716-446
 
 ## Database Schema
 
-The backend uses SQLite with the following main tables:
+The backend uses MongoDB (Mongoose) with the following main models:
 
-- **user_profiles** - User memory/preferences
-- **conversations** - Chat sessions/threads
-- **messages** - Individual messages in conversations
-- **llm_metadata** - LLM call metadata (tokens, latency, etc.)
-- **feedback** - User ratings and comments
-
-See `schema.sql` for full details.
+- **UserProfile** - User memory/preferences
+- **Conversation** - Chat sessions/threads (contains embedded `messages` and RAG metadata)
+- **PromptConfig** - System prompt versioning
 
 ---
 
-## Future Extensibility
+## V3: RAG (Retrieval-Augmented Generation)
 
-The API is designed to support future enhancements:
+### POST /api/chat (Extended)
 
-### RAG Integration (Future)
-The `/api/chat` endpoint can be extended to:
-- Accept `context` or `documents` in the request
-- Inject retrieved context into the system prompt
-- Log which documents were used in `llm_metadata`
+The chat endpoint supports RAG via optional parameters:
+```json
+{
+  "useRag": true,
+  "ragTopK": 5,
+  "ragFilters": { "source": "manual" }
+}
+```
 
-### Workflow Automation (Future)
-Feedback and conversation data can be consumed by n8n or other automation tools:
-- Export feedback for prompt improvement
-- Trigger workflows based on conversation patterns
-- Auto-update user profiles from conversation analysis
+### POST /api/rag/documents (or /api/rag/ingest)
+
+Ingest a document into the vector store.
+
+**Request:**
+```json
+{
+  "source": "my-docs",
+  "path": "file.txt",
+  "title": "My Document",
+  "text": "Full content of the document...",
+  "metadata": { "custom": "value" }
+}
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "documentId": "uuid...",
+  "chunkCount": 5
+}
+```
+
+---
+
+## V4: Analytics & Improvement
+
+### GET /api/analytics/usage
+
+Returns conversation and message counts.
+
+**Query Parameters:**
+- `from`, `to` (ISO dates)
+- `groupBy` ('model', 'promptVersion', 'day')
+
+### GET /api/analytics/feedback
+
+Returns feedback metrics.
+
+**Query Parameters:**
+- `from`, `to` (ISO dates)
+- `groupBy` ('model', 'promptVersion')
 
 ### Multi-Model Support
 The current design supports multiple Ollama targets and models. Future enhancements could:

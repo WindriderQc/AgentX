@@ -127,6 +127,15 @@
           <div class="hint">Request streamed responses when supported.</div>
         </div>
 
+        <div class="field inline-toggle">
+          <label>Enable RAG</label>
+          <label class="switch">
+            <input type="checkbox" id="ragToggle">
+            <span class="slider"></span>
+          </label>
+          <div class="hint">Retrieve context from vector store.</div>
+        </div>
+
         <div class="field">
           <label>System prompt</label>
           <textarea id="systemPrompt" rows="3">You are AgentX, a concise and capable local assistant. Keep answers brief and actionable.</textarea>
