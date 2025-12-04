@@ -17,6 +17,8 @@ module.exports = {
     restart_delay: 4000,
     autorestart: true,
     max_restarts: 10,
-    min_uptime: '10s'
+    min_uptime: '10s',
+    instances: 'max',  // Use all CPU cores
+    exec_mode: 'cluster'
   }]
 };
