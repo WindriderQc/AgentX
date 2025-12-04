@@ -32,7 +32,7 @@ const ragStore = getRagStore();
 
 // CHAT: Enhanced with Memory & Logging + V3 RAG Support + V4 Prompt Versioning
 router.post('/chat', async (req, res) => {
-  const { target = process.env.OLLAMA_HOST || 'localhost:11434', model, messages = [], system, options = {}, conversationId, useRag, ragTopK, ragFilters } = req.body;
+  const { target = process.env.OLLAMA_HOST || 'localhost:11434', model, message, messages = [], system, options = {}, conversationId, useRag, ragTopK, ragFilters } = req.body;
   const userId = 'default'; // Hardcoded for single user V1/V2
 
   if (!model) return res.status(400).json({ status: 'error', message: 'Model is required' });
