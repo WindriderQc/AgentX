@@ -32,9 +32,9 @@ app.use('/api/analytics', analyticsRoutes);
 const datasetRoutes = require('./routes/dataset');
 app.use('/api/dataset', datasetRoutes);
 
-  if (/^https?:\/\//i.test(trimmed)) return trimmed.replace(/\/+$/, '');
-  return `http://${trimmed.replace(/\/+$/, '')}`;
-}
+// Mount main API routes
+const apiRoutes = require('./routes/api');
+app.use('/api', apiRoutes);
 
 function buildErrorResponse(err) {
   return {
@@ -360,11 +360,6 @@ app.post('/api/feedback', (req, res) => {
 
   res.json({ status: 'success', data: { threadId, messageId, rating } });
 });
-
-// Routes
-// Mount API routes
-const apiRoutes = require('./routes/api');
-app.use('/api', apiRoutes);
 
 // Health Check
 app.get('/health', (_req, res) => {

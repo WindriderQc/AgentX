@@ -180,13 +180,27 @@ router.post('/chat', async (req, res) => {
         options: sanitizeOptions(options),
     };
 
-    // 4. Call Ollama
+    // 4. Call Ollama with timeout
     const url = `${resolveTarget(target)}/api/chat`;
-    const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(ollamaPayload),
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 120000); // 2 minute timeout
+    
+    let response;
+    try {
+        response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(ollamaPayload),
+            signal: controller.signal
+        });
+    } catch (fetchError) {
+        clearTimeout(timeout);
+        if (fetchError.name === 'AbortError') {
+            throw new Error('Ollama request timed out after 2 minutes. The model may be too large or the server is overloaded.');
+        }
+        throw new Error(`Failed to connect to Ollama at ${url}: ${fetchError.message}`);
+    }
+    clearTimeout(timeout);
 
     if (!response.ok) throw new Error(`Ollama request failed: ${response.statusText}`);
     const data = await response.json();

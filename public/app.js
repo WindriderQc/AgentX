@@ -410,10 +410,21 @@ document.addEventListener('DOMContentLoaded', () => {
       setFeedback('Models refreshed from Ollama.', 'success');
     } catch (err) {
       console.warn('Failed to fetch models:', err.message);
-      setStatus('Model refresh failed', 'error');
-      setFeedback('Click "Refresh models" to retry connection', 'info');
+      setStatus('Connection failed', 'error');
+      
+      // Parse error message for better user feedback
+      let userMessage = 'Unable to connect to Ollama.';
+      if (err.message.includes('EHOSTUNREACH') || err.message.includes('ECONNREFUSED')) {
+        userMessage = `Cannot reach ${targetHost()}. Check if Ollama is running and the host/port are correct.`;
+      } else if (err.message.includes('ETIMEDOUT')) {
+        userMessage = `Connection to ${targetHost()} timed out. Check network and firewall settings.`;
+      } else if (err.message.includes('500')) {
+        userMessage = err.message;
+      }
+      
+      setFeedback(userMessage, 'error');
       // Add a default option so UI doesn't break
-      elements.modelSelect.innerHTML = '<option value="">Click "Refresh models"</option>';
+      elements.modelSelect.innerHTML = '<option value="">⚠️ Connection failed</option>';
     }
   }
 
