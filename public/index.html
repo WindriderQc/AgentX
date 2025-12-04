@@ -36,20 +36,6 @@
           manage the session profile that the assistant will remember.
         </p>
       </div>
-      <div class="hero-stats">
-        <div class="pill">
-          <span class="label">Port</span>
-          <strong>3080</strong>
-        </div>
-        <div class="pill">
-          <span class="label">Messages</span>
-          <strong id="statMessages">0</strong>
-        </div>
-        <div class="pill">
-          <span class="label">Replies</span>
-          <strong id="statReplies">0</strong>
-        </div>
-      </div>
     </header>
 
     <main class="layout">
@@ -59,9 +45,9 @@
             <p class="eyebrow">Conversation</p>
             <h2>AI Dialogue</h2>
           </div>
-          <div class="controls">
-            <button class="ghost" id="clearBtn">Clear chat</button>
-            <button class="primary" id="sendBtn">Send</button>
+          <div class="pill inline">
+            <span class="label">Messages</span>
+            <strong id="statMessages">0</strong>
           </div>
         </div>
 
@@ -80,6 +66,10 @@
             <button class="chip" data-quick="Brainstorm next steps for my project.">Brainstorm</button>
           </div>
           <textarea id="messageInput" rows="3" placeholder="Type to your agent..."></textarea>
+          <div class="composer-actions">
+            <button class="ghost small" id="clearBtn">Clear chat</button>
+            <button class="primary" id="sendBtn">Send</button>
+          </div>
         </div>
 
         <div class="log-panel">
@@ -126,6 +116,8 @@
           <div class="hint">Models are pulled from the selected Ollama host.</div>
         </div>
 
+        <div class="note" id="feedback">Waiting for configuration.</div>
+
         <div class="field inline-toggle">
           <label>Streaming</label>
           <label class="switch">
@@ -140,7 +132,12 @@
           <textarea id="systemPrompt" rows="3">You are AgentX, a concise and capable local assistant. Keep answers brief and actionable.</textarea>
         </div>
 
-        <hr style="border: none; border-top: 1px solid var(--panel-border); margin: 20px 0;">
+        <div class="collapsible-section">
+          <div class="section-header" id="tuningHeader">
+            <h3>Model Tuning Parameters</h3>
+            <span class="toggle-icon">▼</span>
+          </div>
+          <div class="section-content hidden" id="tuningContent">
 
         <div class="options-grid">
           <div class="field">
@@ -196,7 +193,8 @@
           <button class="primary full" id="saveDefaults">Save defaults</button>
         </div>
 
-        <div class="note" id="feedback">Waiting for configuration.</div>
+          </div>
+        </div>
       </aside>
     </main>
     </div> <!-- End main-content -->

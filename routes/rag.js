@@ -12,6 +12,7 @@
 const express = require('express');
 const router = express.Router();
 const { getRagStore } = require('../src/services/ragStore');
+const { resolveTarget } = require('../src/utils');
 
 // Initialize RAG store
 const ragStore = getRagStore();
