@@ -236,7 +236,9 @@ document.addEventListener('DOMContentLoaded', () => {
     bubble.appendChild(meta);
     bubble.appendChild(body);
 
-    if (role === 'assistant') {
+    // Only render feedback controls when we have a message ID
+    // (IDs are assigned after the conversation is saved/reloaded)
+    if (role === 'assistant' && messageId) {
       bubble.appendChild(buildFeedbackRow(messageId));
     }
 
