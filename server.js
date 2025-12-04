@@ -165,7 +165,7 @@ async function checkOllamaHealth() {
 // Startup initialization - perform health checks before starting server
 async function startServer() {
   console.log(`\n╔════════════════════════════════════════════════════════╗`);
-  console.log(`║           AgentX v1.0.0 - Production Ready            ║`);
+  console.log(`║           AgentX v1.0.0 - Production Ready             ║`);
   console.log(`╚════════════════════════════════════════════════════════╝\n`);
   console.log(`🔍 Checking system dependencies...\n`);
 
