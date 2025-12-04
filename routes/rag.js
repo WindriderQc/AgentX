@@ -18,14 +18,14 @@ const { resolveTarget } = require('../src/utils');
 const ragStore = getRagStore();
 
 /**
- * POST /api/rag/ingest
+ * POST /api/rag/ingest (and /api/rag/documents)
  * 
  * Ingest a document into the RAG system.
  * Called by n8n workflows to add documents for semantic search.
  * 
  * Contract: V3_CONTRACT_SNAPSHOT.md § 2.1
  */
-router.post('/ingest', async (req, res) => {
+router.post(['/ingest', '/documents'], async (req, res) => {
   try {
     // Extract and validate required fields
     const { source, path, title, text, hash, tags, metadata, target } = req.body;
