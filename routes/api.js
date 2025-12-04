@@ -222,8 +222,11 @@ router.post('/chat', async (req, res) => {
     // 6. Return response (V3: includes RAG fields)
     res.json({
         status: 'success',
-        data: data,
-        conversationId: conversation._id,
+        data: {
+            response: assistantMessageContent,
+            conversationId: conversation?._id || null,
+            messageId: null // Not tracking individual message IDs
+        },
         ragUsed,        // V3 addition
         ragSources      // V3 addition
     });
@@ -315,6 +318,48 @@ router.post('/profile', async (req, res) => {
             { $set: { about, preferences, updatedAt: Date.now() } },
             { new: true, upsert: true }
         );
+        res.json({ status: 'success', data: profile });
+    } catch (err) {
+        res.status(500).json({ status: 'error', message: err.message });
+    }
+});
+
+// Route aliases for backwards compatibility with test scripts
+router.get('/conversations', async (req, res) => {
+    try {
+        const conversations = await Conversation.find({ userId: 'default' })
+            .sort({ updatedAt: -1 })
+            .limit(50)
+            .select('title updatedAt model messages');
+
+        const previews = conversations.map(c => ({
+            id: c._id,
+            title: c.title,
+            date: c.updatedAt,
+            model: c.model,
+            messageCount: c.messages.length
+        }));
+
+        res.json({ status: 'success', data: previews });
+    } catch (err) {
+        res.status(500).json({ status: 'error', message: err.message });
+    }
+});
+
+router.get('/conversations/:id', async (req, res) => {
+    try {
+        const conversation = await Conversation.findById(req.params.id);
+        if (!conversation) return res.status(404).json({ status: 'error', message: 'Not found' });
+        res.json({ status: 'success', data: conversation });
+    } catch (err) {
+        res.status(500).json({ status: 'error', message: err.message });
+    }
+});
+
+router.get('/user/profile', async (req, res) => {
+    try {
+        let profile = await UserProfile.findOne({ userId: 'default' });
+        if (!profile) profile = await UserProfile.create({ userId: 'default' });
         res.json({ status: 'success', data: profile });
     } catch (err) {
         res.status(500).json({ status: 'error', message: err.message });
