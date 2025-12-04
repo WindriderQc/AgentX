@@ -236,7 +236,9 @@ document.addEventListener('DOMContentLoaded', () => {
     bubble.appendChild(meta);
     bubble.appendChild(body);
 
-    if (role === 'assistant') {
+    // Only render feedback controls when we have a message ID
+    // (IDs are assigned after the conversation is saved/reloaded)
+    if (role === 'assistant' && messageId) {
       bubble.appendChild(buildFeedbackRow(messageId));
     }
 
@@ -501,7 +503,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       state.profile = data.data?.profile || state.profile;
-      state.conversationId = data.conversationId; // Update ID
+      state.conversationId = data.data?.conversationId || state.conversationId; // Update ID
 
       const responseText =
         data.data?.message?.content ||
@@ -513,7 +515,7 @@ document.addEventListener('DOMContentLoaded', () => {
           role: 'assistant',
           content: responseText,
           createdAt: new Date().toISOString(),
-          // No ID yet, will get it on reload
+          id: data.data?.messageId || null,
       };
 
       appendMessage(assistantMessage);
