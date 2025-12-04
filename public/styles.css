@@ -45,6 +45,10 @@ body {
   min-height: 100vh;
 }
 
+.page.history-hidden .sidebar {
+  display: none;
+}
+
 .sidebar {
   width: 260px;
   background: rgba(13, 17, 23, 0.5);
@@ -59,6 +63,12 @@ body {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 1rem;
+}
+
+.sidebar-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
 .history-list {
@@ -166,7 +176,7 @@ body {
 
 .layout {
   display: grid;
-  grid-template-columns: 3fr 2fr;
+  grid-template-columns: 1fr;
   gap: 20px;
 }
 
@@ -176,6 +186,10 @@ body {
   border-radius: 14px;
   padding: 12px 14px;
   background: rgba(255, 255, 255, 0.02);
+}
+
+.log-panel.collapsed {
+  display: none;
 }
 
 .log-window {
