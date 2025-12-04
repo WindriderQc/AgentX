@@ -173,6 +173,16 @@ router.post('/chat', async (req, res) => {
     const data = await response.json();
     const assistantMessageContent = data.message?.content || data.response || '';
 
+    // Log potential issue
+    if (!assistantMessageContent || assistantMessageContent.trim() === '') {
+      console.error('[Chat] WARNING: Empty response from Ollama', { 
+        model, 
+        ollamaResponse: JSON.stringify(data).substring(0, 200),
+        hasMessage: !!data.message,
+        hasResponse: !!data.response 
+      });
+    }
+
     // 5. Save to DB
     let conversation;
     let assistantMessageId = null;
@@ -223,19 +233,30 @@ router.post('/chat', async (req, res) => {
     }
 
     // 6. Return response (V3: includes RAG fields)
-    res.json({
+    const responsePayload = {
         status: 'success',
         data: {
-            response: assistantMessageContent,
+            response: assistantMessageContent || '',
             conversationId: conversation?._id || null,
             messageId: assistantMessageId
         },
         ragUsed,        // V3 addition
         ragSources      // V3 addition
-    });
+    };
+
+    // Log if response is empty to help debugging
+    if (!assistantMessageContent || assistantMessageContent.trim() === '') {
+      console.error('[Chat] Returning empty response to client', {
+        conversationId: conversation?._id,
+        model,
+        messageLength: message?.length
+      });
+    }
+
+    res.json(responsePayload);
 
   } catch (err) {
-    console.error(err);
+    console.error('[Chat] Error:', err.message, err.stack);
     res.status(500).json({ status: 'error', message: err.message });
   }
 });
