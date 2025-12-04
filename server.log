@@ -2,10 +2,7 @@
 > agentx@1.0.0 start
 > node server.js
 
-[dotenv@17.2.3] injecting env (5) from .env -- tip: ✅ audit secrets and track compliance: https://dotenvx.com/ops
-[DB] Initializing SQLite database...
+[dotenv@17.2.3] injecting env (0) from .env -- tip: ✅ audit secrets and track compliance: https://dotenvx.com/ops
 [Embeddings] Initialized with model: nomic-embed-text
 [RagStore] Initialized in-memory vector store
 AgentX control running on http://localhost:3080
-Database initialized at /app/config/data/agentx.db
-[DB] SQLite ready
