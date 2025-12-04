@@ -7,7 +7,8 @@
 
 const InMemoryVectorStore = require('./InMemoryVectorStore');
 const QdrantVectorStore = require('./QdrantVectorStore');
-const logger = require('../../../config/logger');
+const path = require('path');
+const logger = require(path.join(__dirname, '../../../config/logger'));
 
 /**
  * Create a vector store instance

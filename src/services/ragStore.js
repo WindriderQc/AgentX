@@ -8,9 +8,10 @@
  */
 
 const crypto = require('crypto');
+const path = require('path');
 const { getEmbeddingsService } = require('./embeddings');
 const { createVectorStore } = require('./vectorStore/factory');
-const logger = require('../../config/logger');
+const logger = require(path.join(__dirname, '../../config/logger'));
 
 class RagStore {
   constructor(config = {}) {
