@@ -21,7 +21,6 @@ document.addEventListener('DOMContentLoaded', () => {
     keepAlive: document.getElementById('keepAlive'),
     statusChip: document.getElementById('statusChip'),
     statMessages: document.getElementById('statMessages'),
-    statReplies: document.getElementById('statReplies'),
     refreshModels: document.getElementById('refreshModels'),
     saveDefaults: document.getElementById('saveDefaults'),
     feedback: document.getElementById('feedback'),
@@ -320,8 +319,8 @@ document.addEventListener('DOMContentLoaded', () => {
         state.stats.replies += 1;
       }
     }
-    elements.statMessages.textContent = state.stats.messages;
-    elements.statReplies.textContent = state.stats.replies;
+    // Show only AI assistant message count
+    elements.statMessages.textContent = state.stats.replies;
     renderLogList(state.history);
   }
 
@@ -542,9 +541,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // Reload conversation to sync message IDs for feedback
       if(state.conversationId) {
-          // Slight delay to ensure DB write is committed/available if needed,
-          // though await fetch('/api/chat') should have waited for it.
-          loadConversation(state.conversationId);
+          // Preserve model selection - user may have changed it from what's saved in DB
+          loadConversation(state.conversationId, true);
       }
 
     } catch (err) {
@@ -586,7 +584,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
   }
 
-  async function loadConversation(id) {
+  async function loadConversation(id, preserveModelSelection = false) {
       try {
           const res = await fetch(`/api/history/${id}`);
           const { data } = await res.json();
@@ -607,7 +605,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             });
 
-          if(data.model) elements.modelSelect.value = data.model;
+          // Only set model if we're not preserving the current selection and it exists in dropdown
+          if(!preserveModelSelection && data.model) {
+              const modelExists = Array.from(elements.modelSelect.options).some(opt => opt.value === data.model);
+              if(modelExists) {
+                  elements.modelSelect.value = data.model;
+              }
+          }
 
       } catch (err) {
           console.error('Failed to load conversation', err);
@@ -669,6 +673,16 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.clearBtn.addEventListener('click', clearChat);
     elements.refreshModels.addEventListener('click', () => fetchModels(true));
     elements.saveDefaults.addEventListener('click', persistSettings);
+
+    // Toggle tuning parameters section
+    const tuningHeader = document.getElementById('tuningHeader');
+    const tuningContent = document.getElementById('tuningContent');
+    if (tuningHeader && tuningContent) {
+      tuningHeader.addEventListener('click', () => {
+        tuningContent.classList.toggle('hidden');
+        tuningHeader.classList.toggle('expanded');
+      });
+    }
 
     elements.messageInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
