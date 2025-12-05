@@ -2,13 +2,17 @@ require('dotenv').config();
 const path = require('path');
 const express = require('express');
 const cors = require('cors');
+const session = require('express-session');
+const MongoDBStore = require('connect-mongodb-session')(session);
 const connectDB = require('./config/db');
 const logger = require('./config/logger');
 const { requestLogger, errorLogger } = require('./src/middleware/logging');
+const { attachUser } = require('./src/middleware/auth');
 
 const app = express();
 const PORT = process.env.PORT || 3080;
 const OLLAMA_HOST = process.env.OLLAMA_HOST || 'http://192.168.2.99:11434';
+const IN_PROD = process.env.NODE_ENV === 'production';
 
 // System Health State
 const systemHealth = {
@@ -17,12 +21,51 @@ const systemHealth = {
   startup: new Date().toISOString()
 };
 
-app.use(cors());
+app.use(cors({
+  origin: IN_PROD ? ['http://192.168.2.33:3080', 'http://192.168.2.12'] : true,
+  credentials: true
+}));
 app.use(express.json({ limit: '2mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Session configuration
+const store = new MongoDBStore({
+  uri: process.env.MONGODB_URI,
+  collection: 'sessions',
+  databaseName: 'agentx',
+  connectionOptions: {
+    useNewUrlParser: true,
+    useUnifiedTopology: true
+  }
+});
+
+store.on('error', (error) => {
+  logger.error('Session store error:', error);
+});
+
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'agentx-secret-change-in-production',
+  name: 'agentx.sid',
+  resave: false,
+  saveUninitialized: false,
+  store: store,
+  cookie: {
+    maxAge: 1000 * 60 * 60 * 24, // 24 hours
+    httpOnly: true,
+    secure: IN_PROD,
+    sameSite: IN_PROD ? 'none' : 'lax'
+  }
+}));
+
+// Attach user to all requests (from session)
+app.use(attachUser);
+
 // Request logging middleware
 app.use(requestLogger);
+
+// Auth routes (must come before protected routes)
+const authRoutes = require('./routes/auth');
+app.use('/api/auth', authRoutes);
 
 // V3: Mount RAG routes
 const ragRoutes = require('./routes/rag');

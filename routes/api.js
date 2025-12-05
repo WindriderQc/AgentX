@@ -144,10 +144,14 @@ router.post('/chat', async (req, res) => {
         model,
         messages: formattedMessages,
         stream: false,
-        options: sanitizeOptions(options),
+        options: {
+            ...sanitizeOptions(options),
+            // Disable thinking for non-streaming to get complete responses
+            num_predict: options?.num_predict || -1, // -1 means no limit
+        },
     };
 
-    // 4. Call Ollama with timeout
+    // 4. Call Ollama with timeout (use streaming for models with thinking)
     const url = `${resolveTarget(target)}/api/chat`;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 120000); // 2 minute timeout
@@ -170,18 +174,40 @@ router.post('/chat', async (req, res) => {
     clearTimeout(timeout);
 
     if (!response.ok) throw new Error(`Ollama request failed: ${response.statusText}`);
+    
+    // For non-streaming responses, just parse JSON
     const data = await response.json();
     
-    // Handle different response formats
-    // Some models (like qwen3) use 'thinking' field for reasoning and 'content' for final answer
-    // If content is empty but thinking exists, use thinking as the response
-    let assistantMessageContent = data.message?.content || data.response || '';
+    // Check if response indicates streaming is needed (done: false means incomplete)
+    if (data.done === false) {
+      console.warn('[Chat] Received incomplete response (done: false), this model may require streaming', { model });
+    }
     
-    if ((!assistantMessageContent || assistantMessageContent.trim() === '') && data.message?.thinking) {
-      console.log('[Chat] Using thinking field as response (model may still be reasoning)', { 
-        model,
-        thinkingLength: data.message.thinking.length 
-      });
+    // Handle different response formats
+    let assistantMessageContent = '';
+    const hasContent = data.message?.content && data.message.content.trim() !== '';
+    const hasThinking = data.message?.thinking && data.message.thinking.trim() !== '';
+    const hasResponse = data.response && data.response.trim() !== '';
+    
+    // Debug logging to understand the response structure
+    console.log('[Chat] Ollama response structure:', { 
+      model,
+      hasContent,
+      contentLength: data.message?.content?.length || 0,
+      hasThinking,
+      thinkingLength: data.message?.thinking?.length || 0,
+      hasResponse,
+      done: data.done
+    });
+
+    // Priority: Use content if available, otherwise response, otherwise thinking
+    if (hasContent) {
+      assistantMessageContent = data.message.content;
+    } else if (hasResponse) {
+      assistantMessageContent = data.response;
+    } else if (hasThinking) {
+      // Fallback to thinking if no content (model might be in thinking-only mode)
+      console.warn('[Chat] Using thinking as response (no content field)', { model });
       assistantMessageContent = data.message.thinking;
     }
 
@@ -189,10 +215,7 @@ router.post('/chat', async (req, res) => {
     if (!assistantMessageContent || assistantMessageContent.trim() === '') {
       console.error('[Chat] WARNING: Empty response from Ollama', { 
         model, 
-        ollamaResponse: JSON.stringify(data).substring(0, 300),
-        hasMessage: !!data.message,
-        hasResponse: !!data.response,
-        hasThinking: !!data.message?.thinking
+        fullResponse: JSON.stringify(data)
       });
     }
 
@@ -221,7 +244,13 @@ router.post('/chat', async (req, res) => {
 
       // Add the assistant's response and capture its ID
       if (assistantMessageContent && assistantMessageContent.trim()) {
-          const assistantMsg = conversation.messages.create({ role: 'assistant', content: assistantMessageContent.trim() });
+          const contentToSave = assistantMessageContent.trim();
+          console.log('[Chat] Saving assistant message:', { 
+            model,
+            contentLength: contentToSave.length,
+            preview: contentToSave.substring(0, 100) + '...'
+          });
+          const assistantMsg = conversation.messages.create({ role: 'assistant', content: contentToSave });
           conversation.messages.push(assistantMsg);
           assistantMessageId = assistantMsg._id;
       }
