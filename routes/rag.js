@@ -121,7 +121,11 @@ router.post(['/ingest', '/documents'], async (req, res) => {
       chunkCount: result.chunkCount
     });
 
-    console.log(`[RAG Ingest] ${result.status}: ${result.documentId} (${result.chunkCount} chunks)`);
+    logger.info('RAG document ingested', {
+      status: result.status,
+      documentId: result.documentId,
+      chunkCount: result.chunkCount
+    });
 
   } catch (error) {
     console.error('[RAG Ingest] Error:', error);
@@ -210,7 +214,10 @@ router.post('/search', async (req, res) => {
       results
     });
 
-    console.log(`[RAG Search] Query "${query}" -> ${results.length} results`);
+    logger.info('RAG search completed', {
+      query: query.substring(0, 50),
+      resultCount: results.length
+    });
 
   } catch (error) {
     console.error('[RAG Search] Error:', error);

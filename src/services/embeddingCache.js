@@ -8,6 +8,7 @@
  */
 
 const crypto = require('crypto');
+const logger = require('../../config/logger');
 
 class EmbeddingCache {
   constructor(config = {}) {
@@ -127,7 +128,7 @@ class EmbeddingCache {
     }
 
     if (removed > 0) {
-      console.log(`[EmbeddingCache] Cleaned up ${removed} expired entries`);
+      logger.debug('EmbeddingCache cleanup', { removedEntries: removed });
     }
   }
 
