@@ -13,12 +13,20 @@ async function checkAuth() {
       }
     }
     
-    // Not authenticated - allow access but hide user menu
-    // AgentX can work without auth for now
+    // Not authenticated - show login button
+    showLoginButton();
     return false;
   } catch (error) {
     console.log('Auth check failed:', error);
+    showLoginButton();
     return false;
+  }
+}
+
+function showLoginButton() {
+  const loginBtn = document.getElementById('loginBtn');
+  if (loginBtn) {
+    loginBtn.style.display = 'block';
   }
 }
 
@@ -102,6 +110,7 @@ document.addEventListener('DOMContentLoaded', () => {
     userMenu: document.getElementById('userMenu'),
     userName: document.getElementById('userName'),
     logoutBtn: document.getElementById('logoutBtn'),
+    loginBtn: document.getElementById('loginBtn'),
   };
 
   // Fetch server config on load
@@ -746,6 +755,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // Auth events
     if (elements.logoutBtn) {
       elements.logoutBtn.addEventListener('click', logout);
+    }
+    if (elements.loginBtn) {
+      elements.loginBtn.addEventListener('click', () => {
+        window.location.href = '/login.html';
+      });
     }
 
     // Toggle tuning parameters section
