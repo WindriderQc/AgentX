@@ -48,6 +48,7 @@ router.post('/register', async (req, res) => {
     
     // Create session
     req.session.userId = user._id.toString();
+    await req.session.save(); // Explicitly save session
     
     logger.info(`New user registered: ${email}`);
     
@@ -110,6 +111,7 @@ router.post('/login', async (req, res) => {
     
     // Create session
     req.session.userId = user._id.toString();
+    await req.session.save(); // Explicitly save session
     
     logger.info(`User logged in: ${email}`);
     
