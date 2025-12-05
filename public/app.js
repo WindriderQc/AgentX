@@ -1,3 +1,30 @@
+// CSRF Token Management
+let csrfToken = null;
+
+async function fetchCsrfToken() {
+  try {
+    const response = await fetch('/api/csrf-token', {
+      credentials: 'include'
+    });
+    if (response.ok) {
+      const data = await response.json();
+      csrfToken = data.token;
+      console.log('CSRF token fetched');
+    }
+  } catch (error) {
+    console.error('Failed to fetch CSRF token:', error);
+  }
+}
+
+// Helper to add CSRF token to fetch requests
+function addCsrfToken(options = {}) {
+  const headers = options.headers || {};
+  if (csrfToken && options.method && options.method !== 'GET') {
+    headers['x-csrf-token'] = csrfToken;
+  }
+  return { ...options, headers };
+}
+
 // Authentication check
 async function checkAuth() {
   try {
@@ -9,6 +36,8 @@ async function checkAuth() {
       const data = await response.json();
       if (data.status === 'success') {
         displayUserInfo(data.user);
+        // Fetch CSRF token after successful auth
+        await fetchCsrfToken();
         return true;
       }
     }
@@ -42,12 +71,13 @@ function displayUserInfo(user) {
 
 async function logout() {
   try {
-    await fetch('/api/auth/logout', {
+    await fetch('/api/auth/logout', addCsrfToken({
       method: 'POST',
       credentials: 'include'
-    });
+    }));
     
     localStorage.removeItem('user');
+    csrfToken = null; // Clear CSRF token
     window.location.href = '/login.html';
   } catch (error) {
     console.error('Logout failed:', error);
@@ -519,11 +549,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function sendFeedback(messageId, rating, comment) {
     const payload = { conversationId: state.conversationId, messageId, rating, comment };
-    const res = await fetch('/api/feedback', {
+    const res = await fetch('/api/feedback', addCsrfToken({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
-    });
+      credentials: 'include'
+    }));
     const data = await res.json();
     if (!res.ok || data.status !== 'success') {
       throw new Error(data.message || 'Feedback failed');
@@ -561,11 +592,12 @@ document.addEventListener('DOMContentLoaded', () => {
         conversationId: state.conversationId
       };
 
-      const res = await fetch('/api/chat', {
+      const res = await fetch('/api/chat', addCsrfToken({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
-      });
+        credentials: 'include'
+      }));
       const data = await res.json();
       if (!res.ok || data.status !== 'success') {
         throw new Error(data.message || 'Chat failed');
@@ -673,15 +705,16 @@ document.addEventListener('DOMContentLoaded', () => {
   async function submitFeedback(messageId, rating) {
       if(!state.conversationId) return;
       try {
-          await fetch('/api/feedback', {
+          await fetch('/api/feedback', addCsrfToken({
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                   conversationId: state.conversationId,
                   messageId,
                   rating
-              })
-          });
+              }),
+              credentials: 'include'
+          }));
           // Refresh to show active state
           loadConversation(state.conversationId);
       } catch (err) {
@@ -702,7 +735,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function saveProfile() {
       try {
-          await fetch('/api/profile', {
+          await fetch('/api/profile', addCsrfToken({
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -710,8 +743,9 @@ document.addEventListener('DOMContentLoaded', () => {
                   preferences: {
                       customInstructions: elements.userInstructions.value
                   }
-              })
-          });
+              }),
+              credentials: 'include'
+          }));
           elements.profileModal.classList.add('hidden');
           setFeedback('Profile saved.', 'success');
       } catch (err) {
