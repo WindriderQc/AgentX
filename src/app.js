@@ -47,7 +47,7 @@ app.use(helmet({
 
 // Middleware Setup
 app.use(cors({
-  origin: IN_PROD ? ['http://192.168.2.33:3080', 'http://192.168.2.12'] : true,
+  origin: IN_PROD ? (process.env.CORS_ORIGINS || '*').split(',') : true,
   credentials: true
 }));
 app.use(express.json({ limit: '2mb' }));
@@ -69,7 +69,7 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // Session configuration
 const store = new MongoDBStore({
-  uri: process.env.MONGODB_URI,
+  uri: process.env.MONGO_URI || process.env.MONGODB_URI || 'mongodb://localhost:27017/agentx',
   collection: 'sessions',
   databaseName: 'agentx'
   // Removed deprecated connectionOptions (useNewUrlParser, useUnifiedTopology)
