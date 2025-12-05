@@ -1,107 +1,47 @@
 require('dotenv').config();
 const path = require('path');
-const express = require('express');
-const cors = require('cors');
-const session = require('express-session');
-const MongoDBStore = require('connect-mongodb-session')(session);
 const connectDB = require('./config/db');
 const logger = require('./config/logger');
-const { requestLogger, errorLogger } = require('./src/middleware/logging');
-const { attachUser } = require('./src/middleware/auth');
+const { app, systemHealth } = require('./src/app');
 
-const app = express();
 const PORT = process.env.PORT || 3080;
 const OLLAMA_HOST = process.env.OLLAMA_HOST || 'http://192.168.2.99:11434';
-const IN_PROD = process.env.NODE_ENV === 'production';
 
-// System Health State
-const systemHealth = {
-  mongodb: { status: 'checking', lastCheck: null, error: null },
-  ollama: { status: 'checking', lastCheck: null, error: null },
-  startup: new Date().toISOString()
-};
-
-app.use(cors({
-  origin: IN_PROD ? ['http://192.168.2.33:3080', 'http://192.168.2.12'] : true,
-  credentials: true
-}));
-app.use(express.json({ limit: '2mb' }));
-app.use(express.static(path.join(__dirname, 'public')));
-
-// Session configuration
-const store = new MongoDBStore({
-  uri: process.env.MONGODB_URI,
-  collection: 'sessions',
-  databaseName: 'agentx',
-  connectionOptions: {
-    useNewUrlParser: true,
-    useUnifiedTopology: true
+// Health Check Functions
+async function checkMongoHealth() {
+  try {
+    const mongoose = require('mongoose');
+    if (mongoose.connection.readyState === 1) {
+      await mongoose.connection.db.admin().ping();
+      return { healthy: true, message: 'Connected' };
+    }
+    return { healthy: false, message: 'Not connected' };
+  } catch (err) {
+    return { healthy: false, message: err.message };
   }
-});
-
-store.on('error', (error) => {
-  logger.error('Session store error:', error);
-});
-
-app.use(session({
-  secret: process.env.SESSION_SECRET || 'agentx-secret-change-in-production',
-  name: 'agentx.sid',
-  resave: false,
-  saveUninitialized: false,
-  store: store,
-  cookie: {
-    maxAge: 1000 * 60 * 60 * 24, // 24 hours
-    httpOnly: true,
-    secure: IN_PROD,
-    sameSite: IN_PROD ? 'none' : 'lax'
-  }
-}));
-
-// Attach user to all requests (from session)
-app.use(attachUser);
-
-// Request logging middleware
-app.use(requestLogger);
-
-// Auth routes (must come before protected routes)
-const authRoutes = require('./routes/auth');
-app.use('/api/auth', authRoutes);
-
-// V3: Mount RAG routes
-const ragRoutes = require('./routes/rag');
-app.use('/api/rag', ragRoutes);
-
-// V4: Mount Analytics & Dataset routes
-const analyticsRoutes = require('./routes/analytics');
-app.use('/api/analytics', analyticsRoutes);
-
-const datasetRoutes = require('./routes/dataset');
-app.use('/api/dataset', datasetRoutes);
-
-// Mount API routes
-const apiRoutes = require('./routes/api');
-app.use('/api', apiRoutes);
-
-function buildErrorResponse(err) {
-  return {
-    status: 'error',
-    message: err.message || 'Unknown error',
-    details: err.body || undefined,
-  };
 }
 
-// Health Check - Basic
-app.get('/health', (_req, res) => {
-  const isHealthy = systemHealth.mongodb.status === 'connected' && 
-                   systemHealth.ollama.status === 'connected';
-  
-  res.status(isHealthy ? 200 : 503).json({ 
-    status: isHealthy ? 'ok' : 'degraded',
-    port: PORT 
-  });
-});
+async function checkOllamaHealth() {
+  try {
+    const fetch = require('node-fetch');
+    const response = await fetch(`${OLLAMA_HOST}/api/tags`, {
+      method: 'GET',
+      timeout: 2000
+    });
 
-// Health Check - Detailed
+    if (response.ok) {
+      return { healthy: true, message: 'Connected' };
+    }
+    return { healthy: false, message: `HTTP ${response.status}` };
+  } catch (err) {
+    return { healthy: false, message: err.message };
+  }
+}
+
+// Health Check - Detailed (re-added here or we need to inject it into app.js)
+// Since app.js defines routes, we can add this route there if we export the check functions,
+// or we can add it here before listening.
+// Adding it to app here works because 'app' is an express instance.
 app.get('/health/detailed', async (_req, res) => {
   // Refresh checks
   const mongoStatus = await checkMongoHealth();
@@ -138,72 +78,6 @@ app.get('/health/detailed', async (_req, res) => {
   res.status(statusCode).json(health);
 });
 
-// Config endpoint - expose server configuration
-app.get('/api/config', (_req, res) => {
-  const ollamaHost = process.env.OLLAMA_HOST || 'http://localhost:11434';
-  // Parse host and port from OLLAMA_HOST
-  const match = ollamaHost.match(/^(?:https?:\/\/)?([^:]+)(?::(\d+))?/);
-  const host = match ? match[1] : 'localhost';
-  const port = match && match[2] ? match[2] : '11434';
-  
-  res.json({
-    ollama: {
-      host,
-      port,
-      fullUrl: ollamaHost
-    },
-    embeddingModel: process.env.EMBEDDING_MODEL || 'nomic-embed-text'
-  });
-});
-
-// Error logging middleware (must be after routes)
-app.use(errorLogger);
-
-// Global error handler
-app.use((err, req, res, next) => {
-  const statusCode = err.statusCode || 500;
-  res.status(statusCode).json({
-    status: 'error',
-    message: err.message || 'Internal server error',
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
-  });
-});
-
-// Fallback to Frontend
-app.get('*', (_req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-// Health Check Functions
-async function checkMongoHealth() {
-  try {
-    const mongoose = require('mongoose');
-    if (mongoose.connection.readyState === 1) {
-      await mongoose.connection.db.admin().ping();
-      return { healthy: true, message: 'Connected' };
-    }
-    return { healthy: false, message: 'Not connected' };
-  } catch (err) {
-    return { healthy: false, message: err.message };
-  }
-}
-
-async function checkOllamaHealth() {
-  try {
-    const fetch = require('node-fetch');
-    const response = await fetch(`${OLLAMA_HOST}/api/tags`, {
-      method: 'GET',
-      timeout: 2000
-    });
-    
-    if (response.ok) {
-      return { healthy: true, message: 'Connected' };
-    }
-    return { healthy: false, message: `HTTP ${response.status}` };
-  } catch (err) {
-    return { healthy: false, message: err.message };
-  }
-}
 
 // Startup initialization - perform health checks before starting server
 async function startServer() {
