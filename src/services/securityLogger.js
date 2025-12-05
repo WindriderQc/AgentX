@@ -5,7 +5,7 @@
  * Integrates with existing Winston logger with security-specific formatting.
  */
 
-const logger = require('../config/logger');
+const logger = require('../../config/logger');
 
 /**
  * Security event types
