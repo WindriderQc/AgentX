@@ -158,20 +158,23 @@ node scripts/migrate-vector-store.js --from memory --to qdrant
 ### Updated `.env.example`
 ```bash
 # Database Configuration
-DB_TYPE=mongodb
 MONGO_URI=mongodb://localhost:27017/agentx
 
 # Server Configuration
 PORT=3080
+SERVER_HOST=localhost
+
+# CORS Configuration
+CORS_ORIGINS=*
 
 # Ollama Configuration
 OLLAMA_HOST=http://localhost:11434
 EMBEDDING_MODEL=nomic-embed-text
 
-# Vector Store Configuration (NEW)
+# Vector Store Configuration
 VECTOR_STORE_TYPE=memory  # Options: memory, qdrant
-QDRANT_HOST=http://localhost:6333
-QDRANT_COLLECTION=agentx_documents
+QDRANT_URL=http://localhost:6333
+QDRANT_COLLECTION=agentx_embeddings
 ```
 
 ---
