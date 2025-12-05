@@ -74,11 +74,14 @@ cp .env.example .env
 
 ```bash
 # Database Configuration
-DB_TYPE=mongodb
 MONGO_URI=mongodb://localhost:27017/agentx
 
 # Server Configuration
 PORT=3080
+SERVER_HOST=localhost
+
+# CORS Configuration
+CORS_ORIGINS=*
 
 # Ollama Configuration
 OLLAMA_HOST=http://localhost:11434
@@ -89,9 +92,10 @@ EMBEDDING_MODEL=nomic-embed-text
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DB_TYPE` | `mongodb` | Database type (only mongodb supported in v1.0) |
 | `MONGO_URI` | `mongodb://localhost:27017/agentx` | MongoDB connection string |
 | `PORT` | `3080` | HTTP server port |
+| `SERVER_HOST` | `localhost` | Server hostname for logs/display |
+| `CORS_ORIGINS` | `*` | Comma-separated allowed origins |
 | `OLLAMA_HOST` | `http://localhost:11434` | Ollama API endpoint |
 | `EMBEDDING_MODEL` | `nomic-embed-text` | Model for RAG embeddings |
 
