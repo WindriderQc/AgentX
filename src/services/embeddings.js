@@ -125,7 +125,7 @@ class EmbeddingsService {
 
       return data.embedding;
     } catch (error) {
-      console.error('[Embeddings] Error generating embedding:', error.message);
+      logger.error('Error generating embedding', { error: error.message, stack: error.stack });
       throw new Error(`Failed to generate embedding: ${error.message}`);
     }
   }
@@ -147,7 +147,7 @@ class EmbeddingsService {
       const embedding = await this._embedSingle('test');
       return Array.isArray(embedding) && embedding.length === this.dimension;
     } catch (error) {
-      console.error('[Embeddings] Connection test failed:', error.message);
+      logger.error('Embeddings connection test failed', { error: error.message });
       return false;
     }
   }

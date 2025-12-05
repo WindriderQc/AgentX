@@ -5,6 +5,8 @@
  * Best practices and performance patterns
  */
 
+const logger = require('../../config/logger');
+
 /**
  * Optimize a Mongoose query with common best practices
  * @param {Query} query - Mongoose query object
@@ -206,13 +208,13 @@ function monitorQuery(queryName, queryFn) {
       const duration = Date.now() - startTime;
       
       if (duration > 1000) {
-        console.warn(`Slow query detected: ${queryName} took ${duration}ms`);
+        logger.warn('Slow query detected', { queryName, duration });
       }
       
       return result;
     } catch (err) {
       const duration = Date.now() - startTime;
-      console.error(`Query failed: ${queryName} after ${duration}ms`, err.message);
+      logger.error('Query failed', { queryName, duration, error: err.message });
       throw err;
     }
   };

@@ -8,6 +8,7 @@ const express = require('express');
 const router = express.Router();
 const Conversation = require('../models/Conversation');
 const PromptConfig = require('../models/PromptConfig');
+const logger = require('../config/logger');
 const { requireAuth } = require('../src/middleware/auth');
 
 /**
@@ -110,7 +111,7 @@ router.get('/conversations', requireAuth, async (req, res) => {
       nextCursor
     });
   } catch (err) {
-    console.error('[Dataset Conversations] Error:', err);
+    logger.error('Dataset conversations error', { error: err.message, stack: err.stack });
     res.status(500).json({ status: 'error', message: err.message });
   }
 });
@@ -172,7 +173,7 @@ router.post('/prompts', requireAuth, async (req, res) => {
       data: promptConfig
     });
   } catch (err) {
-    console.error('[Dataset Prompts] Error:', err);
+    logger.error('Dataset prompts error', { error: err.message, stack: err.stack });
     res.status(500).json({ status: 'error', message: err.message });
   }
 });
@@ -202,7 +203,7 @@ router.get('/prompts', requireAuth, async (req, res) => {
       data: prompts
     });
   } catch (err) {
-    console.error('[Dataset Prompts List] Error:', err);
+    logger.error('Dataset prompts list error', { error: err.message, stack: err.stack });
     res.status(500).json({ status: 'error', message: err.message });
   }
 });
@@ -223,7 +224,7 @@ router.patch('/prompts/:id/activate', async (req, res) => {
       data: activatedPrompt
     });
   } catch (err) {
-    console.error('[Dataset Prompts Activate] Error:', err);
+    logger.error('Dataset prompts activate error', { error: err.message, stack: err.stack });
     res.status(500).json({ status: 'error', message: err.message });
   }
 });

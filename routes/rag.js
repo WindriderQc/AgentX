@@ -13,6 +13,7 @@ const express = require('express');
 const router = express.Router();
 const { getRagStore } = require('../src/services/ragStore');
 const { resolveTarget } = require('../src/utils');
+const logger = require('../config/logger');
 
 // Initialize RAG store with environment config
 const ragStore = getRagStore({
@@ -128,7 +129,7 @@ router.post(['/ingest', '/documents'], async (req, res) => {
     });
 
   } catch (error) {
-    console.error('[RAG Ingest] Error:', error);
+    logger.error('RAG ingest error', { error: error.message, stack: error.stack });
     
     // Check if it's a service availability error
     if (error.message.includes('Ollama') || error.message.includes('embedding')) {
@@ -220,7 +221,7 @@ router.post('/search', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('[RAG Search] Error:', error);
+    logger.error('RAG search error', { error: error.message, stack: error.stack });
     
     // Check if it's a service availability error
     if (error.message.includes('Ollama') || error.message.includes('embedding')) {
@@ -260,7 +261,7 @@ router.get('/documents', (req, res) => {
       documents
     });
   } catch (error) {
-    console.error('[RAG Documents] Error:', error);
+    logger.error('RAG documents error', { error: error.message, stack: error.stack });
     res.status(500).json({
       error: 'Internal server error',
       message: error.message
@@ -291,7 +292,7 @@ router.delete('/documents/:documentId', (req, res) => {
       documentId
     });
   } catch (error) {
-    console.error('[RAG Delete] Error:', error);
+    logger.error('RAG delete error', { error: error.message, stack: error.stack });
     res.status(500).json({
       error: 'Internal server error',
       message: error.message
