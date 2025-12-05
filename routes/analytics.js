@@ -8,6 +8,7 @@ const express = require('express');
 const router = express.Router();
 const Conversation = require('../models/Conversation');
 const { requireAuth } = require('../src/middleware/auth');
+const logger = require('../config/logger');
 
 /**
  * GET /api/analytics/usage
@@ -110,7 +111,7 @@ router.get('/usage', requireAuth, async (req, res) => {
       }
     });
   } catch (err) {
-    console.error('[Analytics Usage] Error:', err);
+    logger.error('Analytics usage error', { error: err.message, stack: err.stack });
     res.status(500).json({ status: 'error', message: err.message });
   }
 });
@@ -217,7 +218,7 @@ router.get('/feedback', requireAuth, async (req, res) => {
       }
     });
   } catch (err) {
-    console.error('[Analytics Feedback] Error:', err);
+    logger.error('Analytics feedback error', { error: err.message, stack: err.stack });
     res.status(500).json({ status: 'error', message: err.message });
   }
 });
@@ -303,7 +304,7 @@ router.get('/rag-stats', requireAuth, async (req, res) => {
       }
     });
   } catch (err) {
-    console.error('[Analytics RAG Stats] Error:', err);
+    logger.error('Analytics RAG stats error', { error: err.message, stack: err.stack });
     res.status(500).json({ status: 'error', message: err.message });
   }
 });

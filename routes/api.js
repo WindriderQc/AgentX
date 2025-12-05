@@ -5,6 +5,7 @@ const UserProfile = require('../models/UserProfile');
 const PromptConfig = require('../models/PromptConfig'); // V4: Import prompt versioning
 const { sanitizeOptions, resolveTarget } = require('../src/utils');
 const { optionalAuth, apiKeyAuth } = require('../src/middleware/auth');
+const logger = require('../config/logger');
 const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
 
 // PROXY: Models List
@@ -137,7 +138,7 @@ router.post('/chat', optionalAuth, async (req, res) => {
             });
           }
       } catch (ragError) {
-        console.error('[Chat RAG] Error during RAG retrieval:', ragError);
+        logger.error('RAG retrieval error', { error: ragError.message, stack: ragError.stack });
         // Continue without RAG rather than failing the whole request
         ragUsed = false;
         ragSources = [];
@@ -190,7 +191,7 @@ router.post('/chat', optionalAuth, async (req, res) => {
     
     // Check if response indicates streaming is needed (done: false means incomplete)
     if (data.done === false) {
-      console.warn('[Chat] Received incomplete response (done: false), this model may require streaming', { model });
+      logger.warn('Incomplete response received', { model, message: 'Model may require streaming' });
     }
     
     // Handle different response formats
@@ -217,13 +218,13 @@ router.post('/chat', optionalAuth, async (req, res) => {
       assistantMessageContent = data.response;
     } else if (hasThinking) {
       // Fallback to thinking if no content (model might be in thinking-only mode)
-      console.warn('[Chat] Using thinking as response (no content field)', { model });
+      logger.warn('Using thinking as response', { model, reason: 'No content field' });
       assistantMessageContent = data.message.thinking;
     }
 
     // Log if still empty
     if (!assistantMessageContent || assistantMessageContent.trim() === '') {
-      console.error('[Chat] WARNING: Empty response from Ollama', { 
+      logger.error('Empty response from Ollama', { 
         model, 
         fullResponse: JSON.stringify(data)
       });
@@ -281,7 +282,7 @@ router.post('/chat', optionalAuth, async (req, res) => {
 
       await conversation.save();
     } catch (err) {
-      console.error('[Chat] Failed to save conversation:', err.message);
+      logger.error('Failed to save conversation', { error: err.message, stack: err.stack });
     }
 
     // 6. Return response (V3: includes RAG fields)
@@ -298,7 +299,7 @@ router.post('/chat', optionalAuth, async (req, res) => {
 
     // Log if response is empty to help debugging
     if (!assistantMessageContent || assistantMessageContent.trim() === '') {
-      console.error('[Chat] Returning empty response to client', {
+      logger.error('Returning empty response to client', {
         conversationId: conversation?._id,
         model,
         messageLength: message?.length
@@ -308,7 +309,7 @@ router.post('/chat', optionalAuth, async (req, res) => {
     res.json(responsePayload);
 
   } catch (err) {
-    console.error('[Chat] Error:', err.message, err.stack);
+    logger.error('Chat error', { error: err.message, stack: err.stack });
     res.status(500).json({ status: 'error', message: err.message });
   }
 });
