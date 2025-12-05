@@ -8,6 +8,7 @@ const express = require('express');
 const router = express.Router();
 const Conversation = require('../models/Conversation');
 const PromptConfig = require('../models/PromptConfig');
+const { requireAuth } = require('../src/middleware/auth');
 
 /**
  * GET /api/dataset/conversations
@@ -20,7 +21,7 @@ const PromptConfig = require('../models/PromptConfig');
  *   - model (string, filter by model)
  * Response: { data: [...conversations], nextCursor: <id> | null }
  */
-router.get('/conversations', async (req, res) => {
+router.get('/conversations', requireAuth, async (req, res) => {
   try {
     const {
       limit = 50,
@@ -126,7 +127,7 @@ router.get('/conversations', async (req, res) => {
  *   - author (optional, default: 'n8n')
  * Response: { data: <created PromptConfig> }
  */
-router.post('/prompts', async (req, res) => {
+router.post('/prompts', requireAuth, async (req, res) => {
   try {
     const {
       name,
@@ -184,7 +185,7 @@ router.post('/prompts', async (req, res) => {
  *   - status (string, filter by status: 'active', 'deprecated', 'proposed')
  * Response: { data: [...prompts] }
  */
-router.get('/prompts', async (req, res) => {
+router.get('/prompts', requireAuth, async (req, res) => {
   try {
     const { name, status } = req.query;
 
