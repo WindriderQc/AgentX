@@ -333,7 +333,48 @@ router.get('/profile', (req, res) => {
 });
 ```
 
-## Frontend Integration
+## Frontend UI
+
+### Login Page
+
+A clean, modern login/registration page is available at `/login.html`:
+
+**Features:**
+- 🎨 Beautiful gradient design
+- 🔄 Toggle between login and register
+- ⚡ Real-time validation
+- 📱 Fully responsive
+- ✨ Loading states and error messages
+- 🔐 Auto-redirect after successful auth
+
+**Usage:**
+```
+http://localhost:3080/login.html
+```
+
+**Design:**
+- Modern glassmorphism aesthetic
+- Gradient purple/blue theme
+- Smooth animations
+- Mobile-friendly responsive layout
+
+### Main App Integration
+
+The main AgentX app (`/index.html`) includes:
+- **User menu** - Shows logged-in user name
+- **Logout button** - Quick logout access
+- **Optional auth** - App works with or without login
+- **Auto-detection** - Checks session on page load
+
+**User Menu Display:**
+When logged in, top-right shows:
+```
+┌─────────────────────┐
+│ 👤 Admin User  [Logout] │
+└─────────────────────┘
+```
+
+### Frontend Integration
 
 ### Login Form
 

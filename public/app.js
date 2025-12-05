@@ -1,4 +1,55 @@
+// Authentication check
+async function checkAuth() {
+  try {
+    const response = await fetch('/api/auth/me', {
+      credentials: 'include'
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      if (data.status === 'success') {
+        displayUserInfo(data.user);
+        return true;
+      }
+    }
+    
+    // Not authenticated - allow access but hide user menu
+    // AgentX can work without auth for now
+    return false;
+  } catch (error) {
+    console.log('Auth check failed:', error);
+    return false;
+  }
+}
+
+function displayUserInfo(user) {
+  const userMenu = document.getElementById('userMenu');
+  const userName = document.getElementById('userName');
+  
+  if (userMenu && userName) {
+    userName.textContent = user.name || user.email;
+    userMenu.style.display = 'flex';
+  }
+}
+
+async function logout() {
+  try {
+    await fetch('/api/auth/logout', {
+      method: 'POST',
+      credentials: 'include'
+    });
+    
+    localStorage.removeItem('user');
+    window.location.href = '/login.html';
+  } catch (error) {
+    console.error('Logout failed:', error);
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+  // Check authentication first
+  checkAuth();
+
   const elements = {
     chatWindow: document.getElementById('chatWindow'),
     messageInput: document.getElementById('messageInput'),
@@ -47,6 +98,10 @@ document.addEventListener('DOMContentLoaded', () => {
     saveProfileBtn: document.getElementById('saveProfileBtn'),
     userAbout: document.getElementById('userAbout'),
     userInstructions: document.getElementById('userInstructions'),
+    // Auth elements
+    userMenu: document.getElementById('userMenu'),
+    userName: document.getElementById('userName'),
+    logoutBtn: document.getElementById('logoutBtn'),
   };
 
   // Fetch server config on load
@@ -687,6 +742,11 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.clearBtn.addEventListener('click', clearChat);
     elements.refreshModels.addEventListener('click', () => fetchModels(true));
     elements.saveDefaults.addEventListener('click', persistSettings);
+    
+    // Auth events
+    if (elements.logoutBtn) {
+      elements.logoutBtn.addEventListener('click', logout);
+    }
 
     // Toggle tuning parameters section
     const tuningHeader = document.getElementById('tuningHeader');
