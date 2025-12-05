@@ -464,20 +464,35 @@ The system is ready to serve as a powerful local AI assistant with knowledge aug
 
 ## 10. Week 2 Additional Tasks
 
-### Monitoring & Logging - ⏳ PENDING
-- [ ] Security event logging (failed logins, admin actions)
-- [ ] Rate limit monitoring dashboard
-- [ ] Session metrics tracking
-- [ ] User activity analytics
-- [ ] Error tracking and alerting
-- [ ] Performance metrics collection
+### Monitoring & Logging - ✅ COMPLETED
+- [x] Security event logging (failed logins, admin actions, rate limiting)
+- [x] Security logger service with event types and severity levels
+- [x] Integrated into auth routes (login, register, logout)
+- [x] Rate limit monitoring (events logged on exceeded)
+- [x] Metrics API endpoints (cache, database, connection, system)
+- [x] Performance metrics collection (uptime, memory, cache stats)
 
-### Qdrant Deployment - ⏳ PENDING
-- [ ] Deploy Qdrant instance (Docker/native)
+**Deliverables:**
+- `src/services/securityLogger.js` - Comprehensive security event logging
+- `routes/metrics.js` - Metrics dashboard API (5 endpoints)
+- Security events: LOGIN_SUCCESS, LOGIN_FAILED, LOGOUT, REGISTER, RATE_LIMIT_EXCEEDED, etc.
+
+### Qdrant Deployment Documentation - ✅ COMPLETED
+- [x] Comprehensive deployment guide created
+- [x] Docker, native, and Kubernetes deployment methods
+- [x] Migration instructions from in-memory to Qdrant
+- [x] Collection schema and performance tuning
+- [x] Backup/restore procedures with automated scripts
+- [x] Monitoring and troubleshooting sections
+
+**Deliverable:** `docs/QDRANT_DEPLOYMENT.md` (400+ lines)
+
+### Qdrant Production Deployment - ⏳ PENDING
+- [ ] Deploy Qdrant instance (Docker recommended)
 - [ ] Configure QdrantVectorStore in production
-- [ ] Migrate existing embeddings from in-memory store
+- [ ] Run migration script: `node scripts/migrate-vector-store.js`
 - [ ] Test persistent vector storage
-- [ ] Update documentation with Qdrant setup
+- [ ] Validate search performance
 
 ### Additional Security - ⏳ PENDING
 - [ ] Helmet.js for security headers
@@ -496,15 +511,20 @@ The system is ready to serve as a powerful local AI assistant with knowledge aug
 - ✅ Week 2 Security: Authentication, rate limiting, route protection, testing
 - ✅ Week 2 Performance: Embedding caching, MongoDB indexing, connection pooling
 
+**Completed Recent:**
+- ✅ Security Event Logging (audit trail for auth events)
+- ✅ Metrics Dashboard API (cache, database, system stats)
+- ✅ Qdrant Deployment Documentation (comprehensive guide)
+
 **Pending Tasks:**
 - ⏳ Query Optimization (deferred pending usage data)
-- ⏳ Monitoring & Logging (security events, rate limit dashboard)
-- ⏳ Qdrant Deployment (persistent vector storage)
+- ⏳ Qdrant Migration (deploy and migrate from in-memory)
 - ⏳ Additional Security (Helmet.js, CSRF protection)
+- ⏳ Frontend Metrics Dashboard (visualization of API metrics)
 
 **Next Priorities:**
-1. **Monitoring Dashboard** - Security event logging, rate limit metrics
-2. **Qdrant Deployment** - Migrate from in-memory to persistent vector DB
+1. **Qdrant Deployment** - Deploy instance and migrate vectors
+2. **Frontend Dashboard** - Visualize metrics and cache statistics
 3. **Query Optimization** - Based on production usage patterns
 4. **Additional Security** - Helmet.js headers, CSRF protection
 
