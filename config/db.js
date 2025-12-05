@@ -1,6 +1,6 @@
 /**
- * Database Connection Entry Point
- * Exclusively uses MongoDB via Mongoose
+ * Database Connection
+ * MongoDB via Mongoose
  */
 
 const mongoConnect = require('./db-mongodb');
