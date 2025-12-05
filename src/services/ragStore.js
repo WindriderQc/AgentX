@@ -34,6 +34,12 @@ class RagStore {
    * @returns {Promise<{documentId: string, chunkCount: number, status: string}>}
    */
   async upsertDocumentWithChunks(metadata, text, ollamaHost = null) {
+    // If first argument is string, swap them (support old signature: text, metadata)
+    if (typeof metadata === 'string' && typeof text === 'object') {
+        const temp = metadata;
+        metadata = text;
+        text = temp;
+    }
     // Validate inputs
     if (!metadata || typeof metadata !== 'object') {
       throw new Error('metadata must be an object');
@@ -49,13 +55,13 @@ class RagStore {
     const documentId = this._generateDocumentId(metadata.source, metadata.path);
     
     // Check for existing document with same hash
-    const existingDoc = this.documents.get(documentId);
+    const existingDoc = await this.vectorStore.getDocument(documentId);
     const contentHash = metadata.hash || this._hashText(text);
     
     if (existingDoc && existingDoc.hash === contentHash) {
       return {
         documentId,
-        chunkCount: existingDoc.chunkCount,
+        chunkCount: existingDoc.chunkCount || 0,
         status: 'unchanged'
       };
     }
@@ -80,6 +86,7 @@ class RagStore {
 
     // Upsert to vector store
     const result = await this.vectorStore.upsertDocument(documentId, {
+      ...metadata, // Preserve other metadata fields
       source: metadata.source,
       path: metadata.path,
       title: metadata.title,
