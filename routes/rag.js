@@ -14,8 +14,12 @@ const router = express.Router();
 const { getRagStore } = require('../src/services/ragStore');
 const { resolveTarget } = require('../src/utils');
 
-// Initialize RAG store
-const ragStore = getRagStore();
+// Initialize RAG store with environment config
+const ragStore = getRagStore({
+  vectorStoreType: process.env.VECTOR_STORE_TYPE || 'memory',
+  url: process.env.QDRANT_URL,
+  collection: process.env.QDRANT_COLLECTION
+});
 
 /**
  * POST /api/rag/ingest (and /api/rag/documents)

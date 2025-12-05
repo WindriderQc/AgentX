@@ -27,9 +27,13 @@ router.get('/ollama/models', async (req, res) => {
     }
 });
 
-// V3: Import RAG Store
+// V3: Import RAG Store with environment config
 const { getRagStore } = require('../src/services/ragStore');
-const ragStore = getRagStore();
+const ragStore = getRagStore({
+  vectorStoreType: process.env.VECTOR_STORE_TYPE || 'memory',
+  url: process.env.QDRANT_URL,
+  collection: process.env.QDRANT_COLLECTION
+});
 
 // CHAT: Enhanced with Memory & Logging + V3 RAG Support + V4 Prompt Versioning
 // Allow both session auth and API key for automation
