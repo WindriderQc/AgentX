@@ -544,6 +544,118 @@ Existing users without `email` or `password` fields can continue using the syste
 - Use API key authentication
 - Be manually migrated to add email/password
 
+## Admin User Management
+
+### Default Admin Credentials
+
+The first admin user created during setup:
+- **Email**: `admin@agentx.local`
+- **Password**: Set during registration (default was `SecurePass123`, updated to `zigzag`)
+- **isAdmin**: `true`
+
+### Viewing Admin User
+
+```bash
+node -e "
+require('dotenv').config();
+const mongoose = require('mongoose');
+const UserProfile = require('./models/UserProfile');
+
+(async () => {
+  await mongoose.connect(process.env.MONGODB_URI);
+  const admin = await UserProfile.findOne({ email: 'admin@agentx.local' });
+  if (admin) {
+    console.log('Admin user found:');
+    console.log('  Email:', admin.email);
+    console.log('  Name:', admin.name);
+    console.log('  isAdmin:', admin.isAdmin);
+    console.log('  Created:', admin.createdAt);
+    console.log('  Password hash:', admin.password ? 'Set (hashed with bcrypt)' : 'Not set');
+  } else {
+    console.log('No admin user found');
+  }
+  await mongoose.disconnect();
+})();
+"
+```
+
+### Changing Admin Password
+
+**Method 1: Via Database Script**
+```bash
+node -e "
+require('dotenv').config();
+const mongoose = require('mongoose');
+const UserProfile = require('./models/UserProfile');
+
+(async () => {
+  await mongoose.connect(process.env.MONGODB_URI);
+  const admin = await UserProfile.findOne({ email: 'admin@agentx.local' });
+  admin.password = 'NewSecurePassword123';  // Will be auto-hashed by pre-save hook
+  await admin.save();
+  console.log('Password updated');
+  await mongoose.disconnect();
+})();
+"
+```
+
+**Method 2: Via API (create password change endpoint)**
+```javascript
+// Example endpoint (to be implemented)
+POST /api/auth/change-password
+{
+  "currentPassword": "old-password",
+  "newPassword": "new-password"
+}
+```
+
+### Password Security
+
+- **Storage**: Passwords are NEVER stored in plain text
+- **Hashing**: Uses bcrypt with 10 salt rounds
+- **Auto-hashing**: Pre-save hook automatically hashes passwords:
+  ```javascript
+  UserProfileSchema.pre('save', async function() {
+    if (this.isModified('password') && this.password) {
+      const salt = await bcrypt.genSalt(10);
+      this.password = await bcrypt.hash(this.password, salt);
+    }
+  });
+  ```
+- **Comparison**: Login uses `comparePassword()` method:
+  ```javascript
+  const isValid = await user.comparePassword(candidatePassword);
+  ```
+
+### Setting Admin Flag
+
+After creating a user, set admin privileges:
+
+```javascript
+// MongoDB Shell
+db.userprofiles.updateOne(
+  { email: "admin@agentx.local" },
+  { $set: { isAdmin: true } }
+)
+
+// Or via Node.js script
+node -e "
+require('dotenv').config();
+const mongoose = require('mongoose');
+const UserProfile = require('./models/UserProfile');
+
+(async () => {
+  await mongoose.connect(process.env.MONGODB_URI);
+  await UserProfile.updateOne(
+    { email: 'admin@agentx.local' },
+    { \$set: { isAdmin: true } }
+  );
+  console.log('Admin flag set');
+  await mongoose.disconnect();
+})();
+"
+```
+
 ## Production Checklist
 
 - [ ] Set strong `SESSION_SECRET` (min 32 chars)
@@ -552,6 +664,8 @@ Existing users without `email` or `password` fields can continue using the syste
 - [ ] Use HTTPS in production
 - [ ] Configure CORS properly
 - [ ] Create admin user
+- [ ] Set admin flag on first user
+- [ ] Change default admin password
 - [ ] Test session persistence
 - [ ] Test API key auth
 - [ ] Monitor logs for auth errors
