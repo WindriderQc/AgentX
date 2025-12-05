@@ -7,6 +7,24 @@ const { app, systemHealth } = require('./src/app');
 const PORT = process.env.PORT || 3080;
 const OLLAMA_HOST = process.env.OLLAMA_HOST || 'http://192.168.2.99:11434';
 
+// Global error handlers
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error('Unhandled Promise Rejection', {
+    reason: reason?.message || reason,
+    stack: reason?.stack,
+    promise: promise
+  });
+});
+
+process.on('uncaughtException', (error) => {
+  logger.error('Uncaught Exception', {
+    message: error.message,
+    stack: error.stack
+  });
+  // Give time for logs to flush, then exit
+  setTimeout(() => process.exit(1), 1000);
+});
+
 // Health Check Functions
 async function checkMongoHealth() {
   try {
