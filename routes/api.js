@@ -78,7 +78,7 @@ router.post('/chat', optionalAuth, async (req, res) => {
       }
     } catch (err) {
       // Fallback: empty profile when DB error
-      console.log('[Chat] UserProfile fetch failed:', err.message);
+      logger.warn('UserProfile fetch failed', { userId, error: err.message });
       userProfile = { about: '', preferences: {} };
     }
 
@@ -131,7 +131,10 @@ router.post('/chat', optionalAuth, async (req, res) => {
             // Prepend context to system prompt
             effectiveSystemPrompt = contextSection + '\n' + effectiveSystemPrompt;
             
-            console.log(`[Chat RAG] Injected ${searchResults.length} chunks for query: "${query}"`);
+            logger.info('RAG context injected', {
+              chunkCount: searchResults.length,
+              query: query.substring(0, 50)
+            });
           }
       } catch (ragError) {
         console.error('[Chat RAG] Error during RAG retrieval:', ragError);
@@ -197,7 +200,7 @@ router.post('/chat', optionalAuth, async (req, res) => {
     const hasResponse = data.response && data.response.trim() !== '';
     
     // Debug logging to understand the response structure
-    console.log('[Chat] Ollama response structure:', { 
+    logger.debug('Ollama response structure', { 
       model,
       hasContent,
       contentLength: data.message?.content?.length || 0,
@@ -252,7 +255,7 @@ router.post('/chat', optionalAuth, async (req, res) => {
       // Add the assistant's response and capture its ID
       if (assistantMessageContent && assistantMessageContent.trim()) {
           const contentToSave = assistantMessageContent.trim();
-          console.log('[Chat] Saving assistant message:', { 
+          logger.debug('Saving assistant message', { 
             model,
             contentLength: contentToSave.length,
             preview: contentToSave.substring(0, 100) + '...'

@@ -14,6 +14,7 @@
 
 const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
 const { getCache } = require('./embeddingCache');
+const logger = require('../../config/logger');
 
 class EmbeddingsService {
   constructor(config = {}) {
@@ -205,7 +206,7 @@ let embeddingsServiceInstance = null;
 function getEmbeddingsService(config = {}) {
   if (!embeddingsServiceInstance) {
     embeddingsServiceInstance = new EmbeddingsService(config);
-    console.log(`[Embeddings] Initialized with model: ${embeddingsServiceInstance.model}`);
+    logger.info('EmbeddingsService initialized', { model: embeddingsServiceInstance.model });
   }
   return embeddingsServiceInstance;
 }
