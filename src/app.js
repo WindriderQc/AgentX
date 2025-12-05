@@ -71,11 +71,9 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 const store = new MongoDBStore({
   uri: process.env.MONGODB_URI,
   collection: 'sessions',
-  databaseName: 'agentx',
-  connectionOptions: {
-    useNewUrlParser: true,
-    useUnifiedTopology: true
-  }
+  databaseName: 'agentx'
+  // Removed deprecated connectionOptions (useNewUrlParser, useUnifiedTopology)
+  // These have no effect since MongoDB Driver 4.0.0+
 });
 
 store.on('error', (error) => {
