@@ -5,7 +5,7 @@ const logger = require('./config/logger');
 const { app, systemHealth } = require('./src/app');
 
 const PORT = process.env.PORT || 3080;
-const OLLAMA_HOST = process.env.OLLAMA_HOST || 'http://192.168.2.99:11434';
+const OLLAMA_HOST = process.env.OLLAMA_HOST || 'http://localhost:11434';
 
 // Global error handlers
 process.on('unhandledRejection', (reason, promise) => {
