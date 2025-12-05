@@ -1,13 +1,28 @@
 const express = require('express');
 const router = express.Router();
+const rateLimit = require('express-rate-limit');
 const UserProfile = require('../models/UserProfile');
 const logger = require('../config/logger');
+
+// Rate limiting for auth endpoints - prevent brute force attacks
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // Limit each IP to 5 requests per windowMs
+  message: { 
+    status: 'error', 
+    message: 'Too many attempts. Please try again in 15 minutes.' 
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  // Skip rate limiting for successful logins
+  skipSuccessfulRequests: false
+});
 
 /**
  * POST /api/auth/register
  * Register a new user
  */
-router.post('/register', async (req, res) => {
+router.post('/register', authLimiter, async (req, res) => {
   try {
     const { email, password, name } = req.body;
     
@@ -75,7 +90,7 @@ router.post('/register', async (req, res) => {
  * POST /api/auth/login
  * Authenticate user and create session
  */
-router.post('/login', async (req, res) => {
+router.post('/login', authLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
     

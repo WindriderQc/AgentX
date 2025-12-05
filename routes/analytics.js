@@ -7,6 +7,7 @@
 const express = require('express');
 const router = express.Router();
 const Conversation = require('../models/Conversation');
+const { requireAuth } = require('../src/middleware/auth');
 
 /**
  * GET /api/analytics/usage
@@ -17,7 +18,7 @@ const Conversation = require('../models/Conversation');
  *   - groupBy (optional: 'model' | 'promptVersion' | 'day')
  * Response: { totalConversations, totalMessages, breakdown: [...] }
  */
-router.get('/usage', async (req, res) => {
+router.get('/usage', requireAuth, async (req, res) => {
   try {
     const { from, to, groupBy } = req.query;
 
@@ -123,7 +124,7 @@ router.get('/usage', async (req, res) => {
  *   - groupBy (optional: 'promptVersion' | 'model')
  * Response: { totalFeedback, positive, negative, positiveRate, breakdown: [...] }
  */
-router.get('/feedback', async (req, res) => {
+router.get('/feedback', requireAuth, async (req, res) => {
   try {
     const { from, to, groupBy } = req.query;
 
@@ -229,7 +230,7 @@ router.get('/feedback', async (req, res) => {
  *   - to (ISO date, default: now)
  * Response: { ragUsageRate, ragPositiveRate, noRagPositiveRate, ... }
  */
-router.get('/rag-stats', async (req, res) => {
+router.get('/rag-stats', requireAuth, async (req, res) => {
   try {
     const { from, to } = req.query;
 

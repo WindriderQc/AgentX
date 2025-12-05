@@ -4,6 +4,7 @@ const Conversation = require('../models/Conversation');
 const UserProfile = require('../models/UserProfile');
 const PromptConfig = require('../models/PromptConfig'); // V4: Import prompt versioning
 const { sanitizeOptions, resolveTarget } = require('../src/utils');
+const { optionalAuth, apiKeyAuth } = require('../src/middleware/auth');
 const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
 
 // PROXY: Models List
@@ -31,9 +32,11 @@ const { getRagStore } = require('../src/services/ragStore');
 const ragStore = getRagStore();
 
 // CHAT: Enhanced with Memory & Logging + V3 RAG Support + V4 Prompt Versioning
-router.post('/chat', async (req, res) => {
+// Allow both session auth and API key for automation
+router.post('/chat', optionalAuth, async (req, res) => {
   const { target = process.env.OLLAMA_HOST || 'localhost:11434', model, message, messages = [], system, options = {}, conversationId, useRag, ragTopK, ragFilters } = req.body;
-  const userId = 'default'; // Hardcoded for single user V1/V2
+  // Use authenticated user ID if available, otherwise default
+  const userId = res.locals.user?._id?.toString() || res.locals.user?.userId || 'default';
 
   if (!model) return res.status(400).json({ status: 'error', message: 'Model is required' });
   if (!message) return res.status(400).json({ status: 'error', message: 'Message is required' });
@@ -407,9 +410,10 @@ router.post('/profile', async (req, res) => {
 });
 
 // Route aliases for backwards compatibility with test scripts
-router.get('/conversations', async (req, res) => {
+router.get('/conversations', optionalAuth, async (req, res) => {
     try {
-        const conversations = await Conversation.find({ userId: 'default' })
+        const userId = res.locals.user?._id?.toString() || res.locals.user?.userId || 'default';
+        const conversations = await Conversation.find({ userId })
             .sort({ updatedAt: -1 })
             .limit(50)
             .select('title updatedAt model messages');
@@ -428,20 +432,26 @@ router.get('/conversations', async (req, res) => {
     }
 });
 
-router.get('/conversations/:id', async (req, res) => {
+router.get('/conversations/:id', optionalAuth, async (req, res) => {
     try {
+        const userId = res.locals.user?._id?.toString() || res.locals.user?.userId || 'default';
         const conversation = await Conversation.findById(req.params.id);
         if (!conversation) return res.status(404).json({ status: 'error', message: 'Not found' });
+        // Verify user owns this conversation
+        if (conversation.userId !== userId && userId !== 'default') {
+            return res.status(403).json({ status: 'error', message: 'Access denied' });
+        }
         res.json({ status: 'success', data: conversation });
     } catch (err) {
         res.status(500).json({ status: 'error', message: err.message });
     }
 });
 
-router.get('/user/profile', async (req, res) => {
+router.get('/user/profile', optionalAuth, async (req, res) => {
     try {
-        let profile = await UserProfile.findOne({ userId: 'default' });
-        if (!profile) profile = await UserProfile.create({ userId: 'default' });
+        const userId = res.locals.user?.userId || 'default';
+        let profile = await UserProfile.findOne({ userId });
+        if (!profile) profile = await UserProfile.create({ userId });
         res.json({ status: 'success', data: profile });
     } catch (err) {
         res.status(500).json({ status: 'error', message: err.message });
