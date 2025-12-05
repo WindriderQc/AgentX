@@ -11,8 +11,8 @@
  * Docker: docker run -p 6333:6333 qdrant/qdrant
  * 
  * Configuration:
- * - QDRANT_HOST: http://localhost:6333
- * - QDRANT_COLLECTION: agentx_documents
+ * - QDRANT_URL: http://localhost:6333
+ * - QDRANT_COLLECTION: agentx_embeddings
  */
 
 const VectorStoreAdapter = require('./VectorStoreAdapter');
@@ -20,8 +20,8 @@ const VectorStoreAdapter = require('./VectorStoreAdapter');
 class QdrantVectorStore extends VectorStoreAdapter {
   constructor(config = {}) {
     super(config);
-    this.host = config.host || process.env.QDRANT_HOST || 'http://localhost:6333';
-    this.collection = config.collection || process.env.QDRANT_COLLECTION || 'agentx_documents';
+    this.host = config.host || config.url || process.env.QDRANT_URL || process.env.QDRANT_HOST || 'http://localhost:6333';
+    this.collection = config.collection || process.env.QDRANT_COLLECTION || 'agentx_embeddings';
     this.fetch = require('node-fetch');
     this.initialized = false;
   }
@@ -64,6 +64,29 @@ class QdrantVectorStore extends VectorStoreAdapter {
   }
 
   /**
+   * Generate a UUID v5 from documentId and chunkIndex
+   * Qdrant requires either UUID or integer
+   */
+  _generatePointId(documentId, chunkIndex) {
+    const crypto = require('crypto');
+    const hash = crypto.createHash('md5');
+    hash.update(`${documentId}_${chunkIndex}`);
+    const hashBuffer = hash.digest();
+    
+    // Convert to UUID format (RFC 4122)
+    hashBuffer[6] = (hashBuffer[6] & 0x0f) | 0x50; // Version 5
+    hashBuffer[8] = (hashBuffer[8] & 0x3f) | 0x80; // Variant 10
+    
+    return [
+      hashBuffer.toString('hex', 0, 4),
+      hashBuffer.toString('hex', 4, 6),
+      hashBuffer.toString('hex', 6, 8),
+      hashBuffer.toString('hex', 8, 10),
+      hashBuffer.toString('hex', 10, 16)
+    ].join('-');
+  }
+
+  /**
    * Upsert a document with chunks
    */
   async upsertDocument(documentId, metadata, chunks) {
@@ -72,9 +95,9 @@ class QdrantVectorStore extends VectorStoreAdapter {
     // Delete existing document chunks first
     await this.deleteDocument(documentId);
 
-    // Prepare points for Qdrant
+    // Prepare points for Qdrant (use numeric IDs)
     const points = chunks.map(chunk => ({
-      id: `${documentId}_${chunk.chunkIndex}`,
+      id: this._generatePointId(documentId, chunk.chunkIndex),
       vector: chunk.embedding,
       payload: {
         documentId,
