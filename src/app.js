@@ -1,6 +1,9 @@
 const express = require('express');
 const path = require('path');
 const cors = require('cors');
+const helmet = require('helmet');
+const mongoSanitize = require('express-mongo-sanitize');
+const { doubleCsrf } = require('csrf-csrf');
 const session = require('express-session');
 const MongoDBStore = require('connect-mongodb-session')(session);
 const logger = require('../config/logger');
@@ -18,12 +21,50 @@ const systemHealth = {
   startup: new Date().toISOString()
 };
 
+// Security Middleware
+// Helmet: Set security HTTP headers
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"], // Required for inline scripts
+      styleSrc: ["'self'", "'unsafe-inline'"],  // Required for inline styles
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'"],
+      frameSrc: ["'none'"]
+    }
+  },
+  crossOriginEmbedderPolicy: false, // Allow embedding if needed
+  hsts: {
+    maxAge: 31536000, // 1 year
+    includeSubDomains: true,
+    preload: true
+  }
+}));
+
 // Middleware Setup
 app.use(cors({
   origin: IN_PROD ? ['http://192.168.2.33:3080', 'http://192.168.2.12'] : true,
   credentials: true
 }));
 app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true, limit: '2mb' }));
+
+// Sanitize MongoDB queries (prevent NoSQL injection)
+app.use(mongoSanitize({
+  replaceWith: '_',
+  onSanitize: ({ req, key }) => {
+    logger.warn('Sanitized malicious input', { 
+      ip: req.ip, 
+      key,
+      path: req.path 
+    });
+  }
+}));
+
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // Session configuration
@@ -55,15 +96,43 @@ app.use(session({
   }
 }));
 
+// CSRF Protection (Double Submit Cookie pattern)
+const {
+  generateToken,
+  doubleCsrfProtection,
+} = doubleCsrf({
+  getSecret: () => process.env.CSRF_SECRET || process.env.SESSION_SECRET || 'csrf-secret-change-in-production',
+  cookieName: 'x-csrf-token',
+  cookieOptions: {
+    httpOnly: true,
+    sameSite: IN_PROD ? 'none' : 'lax',
+    secure: IN_PROD,
+    maxAge: 1000 * 60 * 60 * 24 // 24 hours
+  },
+  size: 64,
+  ignoredMethods: ['GET', 'HEAD', 'OPTIONS'],
+  getTokenFromRequest: (req) => req.headers['x-csrf-token']
+});
+
 // Attach user to all requests (from session)
 app.use(attachUser);
 
 // Request logging middleware
 app.use(requestLogger);
 
+// CSRF token generation endpoint (for frontend to fetch)
+app.get('/api/csrf-token', (req, res) => {
+  const token = generateToken(req, res);
+  res.json({ token });
+});
+
 // Auth routes (must come before protected routes)
+// Apply CSRF protection to auth routes (except login/register which use rate limiting)
 const authRoutes = require('../routes/auth');
 app.use('/api/auth', authRoutes);
+
+// Apply CSRF protection to all POST/PUT/DELETE requests (except auth)
+app.use(doubleCsrfProtection);
 
 // V3: Mount RAG routes
 const ragRoutes = require('../routes/rag');
