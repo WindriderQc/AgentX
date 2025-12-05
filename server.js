@@ -138,9 +138,10 @@ async function startServer() {
 
   // Start Express server
   app.listen(PORT, () => {
+    const serverHost = process.env.SERVER_HOST || 'localhost';
     console.log(`\n${'─'.repeat(58)}`);
-    console.log(`🚀 Server:    http://192.168.2.33:${PORT}`);
-    console.log(`💚 Health:    http://192.168.2.33:${PORT}/health/detailed`);
+    console.log(`🚀 Server:    http://${serverHost}:${PORT}`);
+    console.log(`💚 Health:    http://${serverHost}:${PORT}/health/detailed`);
     console.log(`📚 Docs:      /docs folder`);
     console.log(`📋 Logs:      logs/combined.log & logs/error.log`);
     console.log(`${'─'.repeat(58)}\n`);
@@ -163,7 +164,7 @@ async function startServer() {
     
     logger.info('AgentX server started', {
       port: PORT,
-      host: '192.168.2.33',
+      host: process.env.SERVER_HOST || 'localhost',
       environment: process.env.NODE_ENV || 'development',
       mongodb: systemHealth.mongodb.status,
       ollama: systemHealth.ollama.status,

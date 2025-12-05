@@ -3,7 +3,9 @@ const logger = require('./logger');
 
 const connectDB = async () => {
   try {
-    const conn = await mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/agentx', {
+    // Use MONGO_URI with MONGODB_URI fallback for consistency
+    const mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI || 'mongodb://localhost:27017/agentx';
+    const conn = await mongoose.connect(mongoUri, {
       serverSelectionTimeoutMS: 2000, // Fail fast if no DB
       // Connection pooling optimization (Week 2 Performance)
       maxPoolSize: 50,        // Maximum connections in pool (default: 100)
