@@ -1,6 +1,6 @@
 {
   "name": "agentx",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Local AI assistant with RAG, conversation memory, prompt versioning, and n8n integration support.",
   "main": "server.js",
   "scripts": {
