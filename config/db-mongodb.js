@@ -4,9 +4,19 @@ const logger = require('./logger');
 const connectDB = async () => {
   try {
     const conn = await mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/agentx', {
-      serverSelectionTimeoutMS: 2000 // Fail fast if no DB
+      serverSelectionTimeoutMS: 2000, // Fail fast if no DB
+      // Connection pooling optimization (Week 2 Performance)
+      maxPoolSize: 50,        // Maximum connections in pool (default: 100)
+      minPoolSize: 10,        // Minimum connections to maintain (default: 0)
+      maxIdleTimeMS: 30000,   // Close idle connections after 30s
+      socketTimeoutMS: 45000, // Close sockets after 45s inactivity
+      family: 4               // Use IPv4, skip IPv6 resolution
     });
-    logger.info('MongoDB connected', { host: conn.connection.host, db: conn.connection.name });
+    logger.info('MongoDB connected', { 
+      host: conn.connection.host, 
+      db: conn.connection.name,
+      poolSize: `${conn.connection.client.options.minPoolSize}-${conn.connection.client.options.maxPoolSize}`
+    });
     
     // V4: Initialize default PromptConfig if none exist
     await ensureDefaultPromptConfig();
