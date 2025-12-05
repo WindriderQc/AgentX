@@ -76,6 +76,10 @@ app.use('/api/analytics', analyticsRoutes);
 const datasetRoutes = require('../routes/dataset');
 app.use('/api/dataset', datasetRoutes);
 
+// Metrics routes (performance monitoring)
+const metricsRoutes = require('../routes/metrics');
+app.use('/api/metrics', metricsRoutes);
+
 // Mount API routes
 const apiRoutes = require('../routes/api');
 app.use('/api', apiRoutes);

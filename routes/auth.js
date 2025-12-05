@@ -3,6 +3,7 @@ const router = express.Router();
 const rateLimit = require('express-rate-limit');
 const UserProfile = require('../models/UserProfile');
 const logger = require('../config/logger');
+const securityLogger = require('../src/services/securityLogger');
 
 // Rate limiting for auth endpoints - prevent brute force attacks
 const authLimiter = rateLimit({
@@ -15,7 +16,14 @@ const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   // Skip rate limiting for successful logins
-  skipSuccessfulRequests: false
+  skipSuccessfulRequests: false,
+  handler: (req, res) => {
+    securityLogger.logRateLimitExceeded(req, 5, 15 * 60 * 1000);
+    res.status(429).json({
+      status: 'error',
+      message: 'Too many attempts. Please try again in 15 minutes.'
+    });
+  }
 });
 
 /**
@@ -66,6 +74,7 @@ router.post('/register', authLimiter, async (req, res) => {
     await req.session.save(); // Explicitly save session
     
     logger.info(`New user registered: ${email}`);
+    securityLogger.logRegistration(req, user);
     
     res.status(201).json({
       status: 'success',
@@ -105,6 +114,7 @@ router.post('/login', authLimiter, async (req, res) => {
     // Find user
     const user = await UserProfile.findOne({ email });
     if (!user || !user.password) {
+      securityLogger.logLoginFailed(req, email, 'User not found');
       return res.status(401).json({ 
         status: 'error', 
         message: 'Invalid email or password' 
@@ -114,6 +124,7 @@ router.post('/login', authLimiter, async (req, res) => {
     // Verify password
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
+      securityLogger.logLoginFailed(req, email, 'Invalid password');
       return res.status(401).json({ 
         status: 'error', 
         message: 'Invalid email or password' 
@@ -129,6 +140,7 @@ router.post('/login', authLimiter, async (req, res) => {
     await req.session.save(); // Explicitly save session
     
     logger.info(`User logged in: ${email}`);
+    securityLogger.logLoginSuccess(req, user);
     
     res.json({
       status: 'success',
@@ -154,8 +166,18 @@ router.post('/login', authLimiter, async (req, res) => {
  * POST /api/auth/logout
  * Destroy session
  */
-router.post('/logout', (req, res) => {
+router.post('/logout', async (req, res) => {
   const userId = req.session?.userId;
+  
+  // Get user info before destroying session for logging
+  let user = null;
+  if (userId) {
+    try {
+      user = await UserProfile.findById(userId);
+    } catch (err) {
+      logger.error('Error fetching user for logout:', err);
+    }
+  }
   
   req.session.destroy((err) => {
     if (err) {
@@ -168,6 +190,10 @@ router.post('/logout', (req, res) => {
     
     res.clearCookie('agentx.sid');
     logger.info(`User logged out: ${userId}`);
+    
+    if (user) {
+      securityLogger.logLogout(req, user);
+    }
     
     res.json({
       status: 'success',
