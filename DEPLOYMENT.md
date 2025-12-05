@@ -29,6 +29,8 @@ This guide covers multiple deployment strategies for AgentX in production enviro
    ```bash
    node --version  # Should be v18.0.0 or higher
    ```
+   
+   **Note:** Node.js v21.7.3 (TrueNasBot) is supported but may show warnings for Jest v30 packages during `npm install`. These are dev dependencies and don't affect production runtime.
 
 2. **MongoDB**
    - Local: MongoDB 5.0+ running on `localhost:27017`
