@@ -67,27 +67,29 @@ describe('InMemoryVectorStore', () => {
 
     test('should return most similar documents', async () => {
       const queryVector = [0.95, 0.05, 0];
-      const results = await vectorStore.searchSimilar(queryVector, 2);
+      const results = await vectorStore.searchSimilar(queryVector, { topK: 2 });
 
       expect(results).toHaveLength(2);
-      expect(results[0].documentId).toBe('doc1'); // Most similar
+      expect(results[0].metadata.documentId).toBe('doc1'); // Most similar
       expect(results[0].score).toBeGreaterThan(results[1].score);
     });
 
     test('should filter by metadata', async () => {
       const queryVector = [0.95, 0.05, 0];
-      const results = await vectorStore.searchSimilar(queryVector, 5, {
-        category: 'vehicles'
+      const results = await vectorStore.searchSimilar(queryVector, {
+        topK: 5,
+        filters: { category: 'vehicles' }
       });
 
       expect(results).toHaveLength(1);
-      expect(results[0].documentId).toBe('doc3');
+      expect(results[0].metadata.documentId).toBe('doc3');
     });
 
     test('should return empty array when no documents match', async () => {
       const queryVector = [0, 0, 1];
-      const results = await vectorStore.searchSimilar(queryVector, 5, {
-        category: 'nonexistent'
+      const results = await vectorStore.searchSimilar(queryVector, {
+        topK: 5,
+        filters: { category: 'nonexistent' }
       });
 
       expect(results).toHaveLength(0);

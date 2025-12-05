@@ -79,14 +79,18 @@ class InMemoryVectorStore extends VectorStoreAdapter {
     });
 
     // Apply filters
-    if (filters.source) {
-      results = results.filter(r => r.metadata.source === filters.source);
-    }
-    if (filters.tags && filters.tags.length > 0) {
-      results = results.filter(r => 
-        r.metadata.tags && r.metadata.tags.some(tag => filters.tags.includes(tag))
-      );
-    }
+    Object.keys(filters).forEach(key => {
+      if (key === 'tags') {
+        if (filters.tags && filters.tags.length > 0) {
+          results = results.filter(r =>
+            r.metadata.tags && r.metadata.tags.some(tag => filters.tags.includes(tag))
+          );
+        }
+      } else {
+        // Generic metadata filter
+        results = results.filter(r => r.metadata[key] === filters[key]);
+      }
+    });
 
     // Filter by min score and sort
     results = results
@@ -107,19 +111,22 @@ class InMemoryVectorStore extends VectorStoreAdapter {
   /**
    * List all documents with optional filters
    */
-  async listDocuments(filters = {}) {
+  async listDocuments(filters = {}, limit = 100, offset = 0) {
     let docs = Array.from(this.documents.values());
 
-    if (filters.source) {
-      docs = docs.filter(d => d.source === filters.source);
-    }
-    if (filters.tags && filters.tags.length > 0) {
-      docs = docs.filter(d => 
-        d.tags && d.tags.some(tag => filters.tags.includes(tag))
-      );
-    }
+    Object.keys(filters).forEach(key => {
+      if (key === 'tags') {
+        if (filters.tags && filters.tags.length > 0) {
+          docs = docs.filter(d =>
+            d.tags && d.tags.some(tag => filters.tags.includes(tag))
+          );
+        }
+      } else {
+        docs = docs.filter(d => d[key] === filters[key]);
+      }
+    });
 
-    return docs;
+    return docs.slice(offset, offset + limit);
   }
 
   /**
@@ -141,7 +148,8 @@ class InMemoryVectorStore extends VectorStoreAdapter {
   async getStats() {
     return {
       documentCount: this.documents.size,
-      chunkCount: this.vectors.length
+      chunkCount: this.vectors.length,
+      vectorDimension: this.vectors.length > 0 ? this.vectors[0].embedding.length : 0
     };
   }
 
@@ -149,7 +157,7 @@ class InMemoryVectorStore extends VectorStoreAdapter {
    * Health check
    */
   async healthCheck() {
-    return true; // In-memory store is always healthy if initialized
+    return { healthy: true, type: 'memory' };
   }
 
   /**
