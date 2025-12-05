@@ -99,8 +99,9 @@ app.get('/health/detailed', async (_req, res) => {
 
 // Startup initialization - perform health checks before starting server
 async function startServer() {
+  const packageJson = require('./package.json');
   console.log(`\n╔════════════════════════════════════════════════════════╗`);
-  console.log(`║           AgentX v1.0.0 - Production Ready             ║`);
+  console.log(`║           AgentX v${packageJson.version} - Production Ready             ║`);
   console.log(`╚════════════════════════════════════════════════════════╝\n`);
   console.log(`🔍 Checking system dependencies...\n`);
 

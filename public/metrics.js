@@ -343,7 +343,11 @@ function showLoading() {
 
 function showError(message) {
   const container = document.getElementById('errorContainer');
-  container.innerHTML = `<div class="error-message">⚠️ ${message}</div>`;
+  const errorDiv = document.createElement('div');
+  errorDiv.className = 'error-message';
+  errorDiv.textContent = `⚠️ ${message}`;
+  container.innerHTML = '';
+  container.appendChild(errorDiv);
 }
 
 function hideError() {
