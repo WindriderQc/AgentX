@@ -73,7 +73,7 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // Session configuration
 const store = new MongoDBStore({
-  uri: process.env.MONGO_URI || process.env.MONGODB_URI || 'mongodb://localhost:27017/agentx',
+  uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/agentx',
   collection: 'sessions',
   databaseName: 'agentx'
   // Removed deprecated connectionOptions (useNewUrlParser, useUnifiedTopology)
