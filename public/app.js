@@ -177,7 +177,7 @@ document.addEventListener('DOMContentLoaded', () => {
     host: 'localhost',
     port: '11434',
     model: '',
-    stream: false,
+    stream: true,  // Enable streaming by default for better UX and thinking model support
     system: 'You are AgentX, a concise and capable local assistant. Keep answers brief and actionable.',
     options: {
       temperature: 0.7,
