@@ -42,12 +42,14 @@ async function checkAuth() {
       }
     }
     
-    // Not authenticated - show login button
+    // Not authenticated - show login button but still fetch CSRF
     showLoginButton();
+    await fetchCsrfToken();
     return false;
   } catch (error) {
     console.log('Auth check failed:', error);
     showLoginButton();
+    await fetchCsrfToken();
     return false;
   }
 }
