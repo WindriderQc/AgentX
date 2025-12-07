@@ -94,7 +94,11 @@ PromptConfigSchema.statics.activate = async function(promptConfigId) {
   prompt.status = 'active';
   await prompt.save();
   
-  console.log(`[PromptConfig] Activated ${prompt.name} v${prompt.version}`);
+  const logger = require('../config/logger');
+  logger.info('PromptConfig activated', { 
+    name: prompt.name, 
+    version: prompt.version 
+  });
   return prompt;
 };
 

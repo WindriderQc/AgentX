@@ -5,6 +5,8 @@ const UserProfile = require('../models/UserProfile');
 const PromptConfig = require('../models/PromptConfig'); // V4: Import prompt versioning
 const { sanitizeOptions, resolveTarget } = require('../src/utils');
 const { optionalAuth, apiKeyAuth } = require('../src/middleware/auth');
+const { getUserId, getOrCreateProfile } = require('../src/helpers/userHelpers');
+const { extractResponse, buildOllamaPayload } = require('../src/helpers/ollamaResponseHandler');
 const logger = require('../config/logger');
 const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
 
@@ -40,8 +42,7 @@ const ragStore = getRagStore({
 // Allow both session auth and API key for automation
 router.post('/chat', optionalAuth, async (req, res) => {
   const { target = process.env.OLLAMA_HOST || 'localhost:11434', model, message, messages = [], system, options = {}, conversationId, useRag, ragTopK, ragFilters } = req.body;
-  // Use authenticated user ID if available, otherwise default
-  const userId = res.locals.user?._id?.toString() || res.locals.user?.userId || 'default';
+  const userId = getUserId(res);
 
   if (!model) return res.status(400).json({ status: 'error', message: 'Model is required' });
   if (!message) return res.status(400).json({ status: 'error', message: 'Message is required' });
@@ -79,17 +80,7 @@ router.post('/chat', optionalAuth, async (req, res) => {
     let ragSources = [];
 
     // 1. Fetch User Profile
-    let userProfile;
-    try {
-      userProfile = await UserProfile.findOne({ userId });
-      if (!userProfile) {
-        userProfile = await UserProfile.create({ userId });
-      }
-    } catch (err) {
-      // Fallback: empty profile when DB error
-      logger.warn('UserProfile fetch failed', { userId, error: err.message });
-      userProfile = { about: '', preferences: {} };
-    }
+    const userProfile = await getOrCreateProfile(userId);
 
     // 2. Inject Memory into System Prompt (V4: Use active prompt as base)
     let effectiveSystemPrompt = system || activePrompt.systemPrompt;
@@ -159,9 +150,10 @@ router.post('/chat', optionalAuth, async (req, res) => {
         ...messages.map(m => ({ role: m.role, content: m.content }))
     ];
 
-    const ollamaPayload = {
+    const ollamaPayload = buildOllamaPayload({
         model,
         messages: formattedMessages,
+<<<<<<< HEAD
         stream: false,
         options: {
             ...sanitizeOptions(options),
@@ -169,6 +161,11 @@ router.post('/chat', optionalAuth, async (req, res) => {
             num_predict: options?.num_predict || 4096, // High limit to avoid truncation
         },
     };
+=======
+        options: sanitizeOptions(options),
+        streamEnabled: false
+    });
+>>>>>>> 5d81f19 (Global clean)
 
     // 4. Call Ollama with timeout (use streaming for models with thinking)
     const url = `${resolveTarget(target)}/api/chat`;
@@ -177,26 +174,30 @@ router.post('/chat', optionalAuth, async (req, res) => {
     
     let response;
     try {
-        response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(ollamaPayload),
-            signal: controller.signal
-        });
-    } catch (fetchError) {
-        clearTimeout(timeout);
-        if (fetchError.name === 'AbortError') {
-            throw new Error('Ollama request timed out after 2 minutes. The model may be too large or the server is overloaded.');
+        try {
+            response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(ollamaPayload),
+                signal: controller.signal
+            });
+        } catch (fetchError) {
+            if (fetchError.name === 'AbortError') {
+                throw new Error('Ollama request timed out after 2 minutes. The model may be too large or the server is overloaded.');
+            }
+            throw new Error(`Failed to connect to Ollama at ${url}: ${fetchError.message}`);
         }
-        throw new Error(`Failed to connect to Ollama at ${url}: ${fetchError.message}`);
-    }
-    clearTimeout(timeout);
 
-    if (!response.ok) throw new Error(`Ollama request failed: ${response.statusText}`);
+        if (!response.ok) throw new Error(`Ollama request failed: ${response.statusText}`);
+    } finally {
+        clearTimeout(timeout);
+    }
     
-    // For non-streaming responses, just parse JSON
+    // For non-streaming responses, parse JSON and extract content
     const data = await response.json();
+    const { content: assistantMessageContent, thinking, warning } = extractResponse(data, model);
     
+<<<<<<< HEAD
     // Check if response indicates streaming is needed (done: false means incomplete)
     if (data.done === false) {
       logger.warn('Incomplete response received', { model, message: 'Model may require streaming' });
@@ -265,6 +266,11 @@ router.post('/chat', optionalAuth, async (req, res) => {
         model, 
         fullResponse: JSON.stringify(data)
       });
+=======
+    // Log warnings if any
+    if (warning) {
+      logger.warn('Response extraction warning', { model, warning });
+>>>>>>> 5d81f19 (Global clean)
     }
 
     // 5. Save to DB
@@ -296,9 +302,18 @@ router.post('/chat', optionalAuth, async (req, res) => {
           logger.debug('Saving assistant message', { 
             model,
             contentLength: contentToSave.length,
+            hasThinking: !!thinking,
             preview: contentToSave.substring(0, 100) + '...'
           });
-          const assistantMsg = conversation.messages.create({ role: 'assistant', content: contentToSave });
+          const assistantMsg = conversation.messages.create({ 
+            role: 'assistant', 
+            content: contentToSave 
+          });
+          // Store thinking process as metadata if available
+          if (thinking) {
+            assistantMsg.metadata = assistantMsg.metadata || {};
+            assistantMsg.metadata.thinking = thinking;
+          }
           conversation.messages.push(assistantMsg);
           assistantMessageId = assistantMsg._id;
       }
@@ -436,8 +451,7 @@ router.get('/logs', async (req, res) => {
 // PROFILE
 router.get('/profile', async (req, res) => {
     try {
-        let profile = await UserProfile.findOne({ userId: 'default' });
-        if (!profile) profile = await UserProfile.create({ userId: 'default' });
+        const profile = await getOrCreateProfile('default');
         res.json({ status: 'success', data: profile });
     } catch (err) {
         res.status(500).json({ status: 'error', message: err.message });
@@ -461,7 +475,7 @@ router.post('/profile', async (req, res) => {
 // Route aliases for backwards compatibility with test scripts
 router.get('/conversations', optionalAuth, async (req, res) => {
     try {
-        const userId = res.locals.user?._id?.toString() || res.locals.user?.userId || 'default';
+        const userId = getUserId(res);
         const conversations = await Conversation.find({ userId })
             .sort({ updatedAt: -1 })
             .limit(50)
@@ -483,7 +497,7 @@ router.get('/conversations', optionalAuth, async (req, res) => {
 
 router.get('/conversations/:id', optionalAuth, async (req, res) => {
     try {
-        const userId = res.locals.user?._id?.toString() || res.locals.user?.userId || 'default';
+        const userId = getUserId(res);
         const conversation = await Conversation.findById(req.params.id);
         if (!conversation) return res.status(404).json({ status: 'error', message: 'Not found' });
         // Verify user owns this conversation
@@ -498,9 +512,8 @@ router.get('/conversations/:id', optionalAuth, async (req, res) => {
 
 router.get('/user/profile', optionalAuth, async (req, res) => {
     try {
-        const userId = res.locals.user?.userId || 'default';
-        let profile = await UserProfile.findOne({ userId });
-        if (!profile) profile = await UserProfile.create({ userId });
+        const userId = getUserId(res);
+        const profile = await getOrCreateProfile(userId);
         res.json({ status: 'success', data: profile });
     } catch (err) {
         res.status(500).json({ status: 'error', message: err.message });

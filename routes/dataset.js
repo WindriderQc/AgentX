@@ -6,6 +6,7 @@
 
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const Conversation = require('../models/Conversation');
 const PromptConfig = require('../models/PromptConfig');
 const { apiKeyAuth } = require('../src/middleware/auth');
@@ -33,14 +34,21 @@ router.get('/conversations', requireAuth, async (req, res) => {
       model
     } = req.query;
 
-    // Parse and validate limit
-    const parsedLimit = Math.min(parseInt(limit, 10) || 50, 500);
+    // Parse and validate limit (clamp to positive integers, max 500)
+    const parsedLimit = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 500);
 
     // Build filter
     const filter = {};
     
+    // Validate cursor as ObjectId before using in query
     if (cursor) {
-      filter._id = { $gt: cursor };
+      if (!mongoose.Types.ObjectId.isValid(cursor)) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Invalid cursor format. Must be a valid ObjectId.'
+        });
+      }
+      filter._id = { $gt: new mongoose.Types.ObjectId(cursor) };
     }
     
     if (minFeedback !== undefined) {
@@ -52,8 +60,12 @@ router.get('/conversations', requireAuth, async (req, res) => {
       }
     }
     
+    // Only apply promptVersion filter if it parses to a valid integer
     if (promptVersion !== undefined) {
-      filter.promptVersion = parseInt(promptVersion, 10);
+      const parsedVersion = parseInt(promptVersion, 10);
+      if (!isNaN(parsedVersion)) {
+        filter.promptVersion = parsedVersion;
+      }
     }
     
     if (model) {

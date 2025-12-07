@@ -46,8 +46,12 @@ app.use(helmet({
 }));
 
 // Middleware Setup
+const allowedOrigins = process.env.CORS_ORIGINS 
+  ? process.env.CORS_ORIGINS.split(',').map(o => o.trim())
+  : IN_PROD ? ['http://localhost:3080'] : true;
+
 app.use(cors({
-  origin: IN_PROD ? (process.env.CORS_ORIGINS || '*').split(',') : true,
+  origin: allowedOrigins,
   credentials: true
 }));
 app.use(express.json({ limit: '2mb' }));

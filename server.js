@@ -1,10 +1,11 @@
 require('dotenv').config();
 const path = require('path');
-const connectDB = require('./config/db');
+const connectDB = require('./config/db-mongodb');
 const logger = require('./config/logger');
 const { app, systemHealth } = require('./src/app');
 
 const PORT = process.env.PORT || 3080;
+const HOST = process.env.HOST || 'localhost';
 const OLLAMA_HOST = process.env.OLLAMA_HOST || 'http://localhost:11434';
 
 // Global error handlers
@@ -138,10 +139,9 @@ async function startServer() {
 
   // Start Express server
   app.listen(PORT, () => {
-    const serverHost = process.env.SERVER_HOST || 'localhost';
     console.log(`\n${'─'.repeat(58)}`);
-    console.log(`🚀 Server:    http://${serverHost}:${PORT}`);
-    console.log(`💚 Health:    http://${serverHost}:${PORT}/health/detailed`);
+    console.log(`🚀 Server:    http://${HOST}:${PORT}`);
+    console.log(`💚 Health:    http://${HOST}:${PORT}/health/detailed`);
     console.log(`📚 Docs:      /docs folder`);
     console.log(`📋 Logs:      logs/combined.log & logs/error.log`);
     console.log(`${'─'.repeat(58)}\n`);
