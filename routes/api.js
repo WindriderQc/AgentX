@@ -46,6 +46,14 @@ router.post('/chat', optionalAuth, async (req, res) => {
   if (!model) return res.status(400).json({ status: 'error', message: 'Model is required' });
   if (!message) return res.status(400).json({ status: 'error', message: 'Message is required' });
 
+  // Detect models with thinking/reasoning capabilities
+  const thinkingModels = [
+    'qwen', 'deepseek-r1', 'deepthink', 'o1', 'o3', 'reasoning'
+  ];
+  const isThinkingModel = thinkingModels.some(pattern => 
+    model.toLowerCase().includes(pattern)
+  );
+
   try {
     // V4: Fetch active prompt configuration
     let activePrompt;
@@ -157,8 +165,8 @@ router.post('/chat', optionalAuth, async (req, res) => {
         stream: false,
         options: {
             ...sanitizeOptions(options),
-            // Disable thinking for non-streaming to get complete responses
-            num_predict: options?.num_predict || -1, // -1 means no limit
+            // Ensure we get complete responses (no truncation)
+            num_predict: options?.num_predict || 4096, // High limit to avoid truncation
         },
     };
 
@@ -213,7 +221,36 @@ router.post('/chat', optionalAuth, async (req, res) => {
 
     // Priority: Use content if available, otherwise response, otherwise thinking
     if (hasContent) {
-      assistantMessageContent = data.message.content;
+      let content = data.message.content;
+      
+      // For models with thinking (Qwen, DeepSeek-R1), extract response after thinking
+      // Pattern: thinking ends with multiple newlines or specific markers, then response starts
+      if (hasThinking || content.includes('Okay,') || content.includes('Let me think')) {
+        // Try to find where thinking ends and response begins
+        // Look for patterns like double newlines, numbered sections, or response markers
+        const thinkingEndMarkers = [
+          /\n{3,}/,  // 3+ newlines
+          /\n\n---\n/,  // Separator
+          /\n\n\*\*Response:\*\*/i,  // "Response:" header
+          /\n\n\*\*Answer:\*\*/i,   // "Answer:" header
+        ];
+        
+        for (const marker of thinkingEndMarkers) {
+          const parts = content.split(marker);
+          if (parts.length > 1 && parts[parts.length - 1].trim().length > 50) {
+            // Found a marker and there's substantial content after it
+            content = parts[parts.length - 1].trim();
+            logger.info('Extracted response from thinking content', {
+              model,
+              originalLength: data.message.content.length,
+              extractedLength: content.length
+            });
+            break;
+          }
+        }
+      }
+      
+      assistantMessageContent = content;
     } else if (hasResponse) {
       assistantMessageContent = data.response;
     } else if (hasThinking) {
@@ -294,7 +331,11 @@ router.post('/chat', optionalAuth, async (req, res) => {
             messageId: assistantMessageId
         },
         ragUsed,        // V3 addition
-        ragSources      // V3 addition
+        ragSources,     // V3 addition
+        // Warning for thinking models without streaming
+        ...(isThinkingModel && {
+          warning: 'This model has thinking capabilities. Enable streaming for better response quality and to see the reasoning process.'
+        })
     };
 
     // Log if response is empty to help debugging

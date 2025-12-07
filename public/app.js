@@ -621,7 +621,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
       appendMessage(assistantMessage);
 
-      setFeedback('Response received.', 'success');
+      // Show warning for thinking models if present
+      if (data.warning) {
+        setFeedback(`⚠️ ${data.warning}`, 'warning');
+        setTimeout(() => setFeedback('Response received.', 'success'), 3000);
+      } else {
+        setFeedback('Response received.', 'success');
+      }
       loadHistoryList();
 
       // Reload conversation to sync message IDs for feedback
