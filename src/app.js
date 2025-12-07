@@ -100,7 +100,7 @@ const {
   size: 64,
   ignoredMethods: ['GET', 'HEAD', 'OPTIONS'],
   getTokenFromRequest: (req) => req.headers['x-csrf-token'],
-  getSessionIdentifier: (req) => req.session?.id || req.sessionID || 'anonymous'
+  getSessionIdentifier: (req) => 'agentx-session' // Static identifier since we use cookie-based CSRF
 });
 
 // Attach user to all requests (from session)
@@ -112,6 +112,10 @@ app.use(requestLogger);
 // CSRF token generation endpoint (for frontend to fetch)
 app.get('/api/csrf-token', (req, res) => {
   const token = generateCsrfToken(req, res);
+  logger.info('CSRF token generated', { 
+    token: token.substring(0, 20) + '...', 
+    cookies: Object.keys(req.cookies || {})
+  });
   res.json({ token });
 });
 
@@ -121,6 +125,18 @@ const authRoutes = require('../routes/auth');
 app.use('/api/auth', authRoutes);
 
 // Apply CSRF protection to all POST/PUT/DELETE requests (except auth)
+app.use((req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS') {
+    logger.info('CSRF validation for request', {
+      method: req.method,
+      url: req.url,
+      headerToken: req.headers['x-csrf-token']?.substring(0, 20) + '...',
+      cookieToken: req.cookies?.['x-csrf-token']?.substring(0, 20) + '...',
+      hasCookies: Object.keys(req.cookies || {}).length
+    });
+  }
+  next();
+});
 app.use(doubleCsrfProtection);
 
 // V3: Mount RAG routes
