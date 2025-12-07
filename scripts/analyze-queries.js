@@ -9,7 +9,7 @@ require('dotenv').config();
 const { MongoClient } = require('mongodb');
 const logger = require('../config/logger');
 
-const mongoUri = process.env.MONGODB_URI || process.env.MONGO_URI;
+const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/agentx';
 
 async function analyzeQueries() {
   console.log('╔════════════════════════════════════════════════════════╗');

@@ -153,19 +153,9 @@ router.post('/chat', optionalAuth, async (req, res) => {
     const ollamaPayload = buildOllamaPayload({
         model,
         messages: formattedMessages,
-<<<<<<< HEAD
-        stream: false,
-        options: {
-            ...sanitizeOptions(options),
-            // Ensure we get complete responses (no truncation)
-            num_predict: options?.num_predict || 4096, // High limit to avoid truncation
-        },
-    };
-=======
         options: sanitizeOptions(options),
         streamEnabled: false
     });
->>>>>>> 5d81f19 (Global clean)
 
     // 4. Call Ollama with timeout (use streaming for models with thinking)
     const url = `${resolveTarget(target)}/api/chat`;
@@ -197,80 +187,9 @@ router.post('/chat', optionalAuth, async (req, res) => {
     const data = await response.json();
     const { content: assistantMessageContent, thinking, warning } = extractResponse(data, model);
     
-<<<<<<< HEAD
-    // Check if response indicates streaming is needed (done: false means incomplete)
-    if (data.done === false) {
-      logger.warn('Incomplete response received', { model, message: 'Model may require streaming' });
-    }
-    
-    // Handle different response formats
-    let assistantMessageContent = '';
-    const hasContent = data.message?.content && data.message.content.trim() !== '';
-    const hasThinking = data.message?.thinking && data.message.thinking.trim() !== '';
-    const hasResponse = data.response && data.response.trim() !== '';
-    
-    // Debug logging to understand the response structure
-    logger.debug('Ollama response structure', { 
-      model,
-      hasContent,
-      contentLength: data.message?.content?.length || 0,
-      hasThinking,
-      thinkingLength: data.message?.thinking?.length || 0,
-      hasResponse,
-      done: data.done
-    });
-
-    // Priority: Use content if available, otherwise response, otherwise thinking
-    if (hasContent) {
-      let content = data.message.content;
-      
-      // For models with thinking (Qwen, DeepSeek-R1), extract response after thinking
-      // Pattern: thinking ends with multiple newlines or specific markers, then response starts
-      if (hasThinking || content.includes('Okay,') || content.includes('Let me think')) {
-        // Try to find where thinking ends and response begins
-        // Look for patterns like double newlines, numbered sections, or response markers
-        const thinkingEndMarkers = [
-          /\n{3,}/,  // 3+ newlines
-          /\n\n---\n/,  // Separator
-          /\n\n\*\*Response:\*\*/i,  // "Response:" header
-          /\n\n\*\*Answer:\*\*/i,   // "Answer:" header
-        ];
-        
-        for (const marker of thinkingEndMarkers) {
-          const parts = content.split(marker);
-          if (parts.length > 1 && parts[parts.length - 1].trim().length > 50) {
-            // Found a marker and there's substantial content after it
-            content = parts[parts.length - 1].trim();
-            logger.info('Extracted response from thinking content', {
-              model,
-              originalLength: data.message.content.length,
-              extractedLength: content.length
-            });
-            break;
-          }
-        }
-      }
-      
-      assistantMessageContent = content;
-    } else if (hasResponse) {
-      assistantMessageContent = data.response;
-    } else if (hasThinking) {
-      // Fallback to thinking if no content (model might be in thinking-only mode)
-      logger.warn('Using thinking as response', { model, reason: 'No content field' });
-      assistantMessageContent = data.message.thinking;
-    }
-
-    // Log if still empty
-    if (!assistantMessageContent || assistantMessageContent.trim() === '') {
-      logger.error('Empty response from Ollama', { 
-        model, 
-        fullResponse: JSON.stringify(data)
-      });
-=======
     // Log warnings if any
     if (warning) {
       logger.warn('Response extraction warning', { model, warning });
->>>>>>> 5d81f19 (Global clean)
     }
 
     // 5. Save to DB
