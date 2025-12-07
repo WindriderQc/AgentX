@@ -2,6 +2,7 @@ const express = require('express');
 const path = require('path');
 const cors = require('cors');
 const helmet = require('helmet');
+const cookieParser = require('cookie-parser');
 const mongoSanitize = require('express-mongo-sanitize');
 const { doubleCsrf } = require('csrf-csrf');
 const session = require('express-session');
@@ -38,6 +39,7 @@ app.use(cors({
   origin: allowedOrigins,
   credentials: true
 }));
+app.use(cookieParser());
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
@@ -84,7 +86,7 @@ app.use(session({
 
 // CSRF Protection (Double Submit Cookie pattern)
 const {
-  generateToken,
+  generateCsrfToken,
   doubleCsrfProtection,
 } = doubleCsrf({
   getSecret: () => process.env.CSRF_SECRET || process.env.SESSION_SECRET || 'csrf-secret-change-in-production',
@@ -97,7 +99,8 @@ const {
   },
   size: 64,
   ignoredMethods: ['GET', 'HEAD', 'OPTIONS'],
-  getTokenFromRequest: (req) => req.headers['x-csrf-token']
+  getTokenFromRequest: (req) => req.headers['x-csrf-token'],
+  getSessionIdentifier: (req) => req.session?.id || req.sessionID || 'anonymous'
 });
 
 // Attach user to all requests (from session)
@@ -108,7 +111,7 @@ app.use(requestLogger);
 
 // CSRF token generation endpoint (for frontend to fetch)
 app.get('/api/csrf-token', (req, res) => {
-  const token = generateToken(req, res);
+  const token = generateCsrfToken(req, res);
   res.json({ token });
 });
 
