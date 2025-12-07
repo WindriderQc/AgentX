@@ -21,29 +21,13 @@ const systemHealth = {
   startup: new Date().toISOString()
 };
 
-// Security Middleware
-// Helmet: Set security HTTP headers
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'"], // Required for inline scripts
-      styleSrc: ["'self'", "'unsafe-inline'"],  // Required for inline styles
-      imgSrc: ["'self'", "data:", "https:"],
-      connectSrc: ["'self'"],
-      fontSrc: ["'self'"],
-      objectSrc: ["'none'"],
-      mediaSrc: ["'self'"],
-      frameSrc: ["'none'"]
-    }
-  },
-  crossOriginEmbedderPolicy: false, // Allow embedding if needed
-  hsts: {
-    maxAge: 31536000, // 1 year
-    includeSubDomains: true,
-    preload: true
-  }
-}));
+// Basic security headers only (removed helmet for local network compatibility)
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  next();
+});
 
 // Middleware Setup
 const allowedOrigins = process.env.CORS_ORIGINS 
