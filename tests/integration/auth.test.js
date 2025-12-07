@@ -176,3 +176,9 @@ describe('Auth Routes Integration', () => {
     });
   });
 });
+
+// Clean up after all tests in this file
+afterAll(async () => {
+  // Close server and connections
+  await new Promise(resolve => setTimeout(resolve, 100));
+});

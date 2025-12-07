@@ -12,5 +12,8 @@ module.exports = {
     '**/tests/**/*.test.js'
   ],
   verbose: true,
-  testTimeout: 10000
+  testTimeout: 10000,
+  globalTeardown: './tests/teardown.js',
+  forceExit: true,
+  detectOpenHandles: false
 };
