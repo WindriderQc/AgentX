@@ -385,6 +385,18 @@ body {
   border: 1px solid var(--panel-border);
 }
 
+.bubble.system {
+  background: transparent;
+  border: none;
+  text-align: center;
+  opacity: 0.6;
+  font-style: italic;
+}
+
+.bubble.system .meta {
+  display: none;
+}
+
 /* Modal */
 .modal {
   position: fixed;
