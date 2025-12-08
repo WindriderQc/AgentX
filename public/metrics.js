@@ -55,10 +55,13 @@ async function loadMetrics() {
       fetchMetric('/api/metrics/system')
     ]);
     
+    console.log('Metrics received:', { cache, database, connection, system });
+    
     renderDashboard({ cache, database, connection, system });
     updateTimestamp();
     
   } catch (error) {
+    console.error('Metrics error:', error);
     showError(`Failed to load metrics: ${error.message}`);
   } finally {
     isRefreshing = false;
@@ -80,34 +83,55 @@ async function fetchMetric(endpoint) {
     throw new Error(`HTTP ${response.status}`);
   }
   
-  return response.json();
+  const data = await response.json();
+  console.log(`${endpoint} response:`, data);
+  
+  // Check if API returned an error
+  if (data.status === 'error') {
+    throw new Error(data.message || 'API error');
+  }
+  
+  return data;
 }
 
 function renderDashboard(metrics) {
+  console.log('Rendering dashboard with metrics:', metrics);
+  
   const dashboard = document.getElementById('dashboard');
   dashboard.style.display = 'block';
   document.getElementById('loading').style.display = 'none';
   
-  dashboard.innerHTML = `
-    <!-- Cache Metrics -->
-    <div class="metrics-grid">
-      ${renderCacheCard(metrics.cache)}
-      ${renderDatabaseCard(metrics.database)}
-      ${renderConnectionCard(metrics.connection)}
-      ${renderSystemCard(metrics.system)}
-    </div>
-    
-    <!-- Detailed Stats -->
-    <div class="chart-section">
-      <h2 class="chart-title">📊 Detailed Statistics</h2>
-      ${renderDetailedStats(metrics)}
-    </div>
-  `;
+  try {
+    dashboard.innerHTML = `
+      <!-- Cache Metrics -->
+      <div class="metrics-grid">
+        ${renderCacheCard(metrics.cache)}
+        ${renderDatabaseCard(metrics.database)}
+        ${renderConnectionCard(metrics.connection)}
+        ${renderSystemCard(metrics.system)}
+      </div>
+      
+      <!-- Detailed Stats -->
+      <div class="chart-section">
+        <h2 class="chart-title">📊 Detailed Statistics</h2>
+        ${renderDetailedStats(metrics)}
+      </div>
+    `;
+  } catch (error) {
+    console.error('Render error:', error, 'Metrics:', metrics);
+    throw error;
+  }
 }
 
-function renderCacheCard(cache) {
-  const hitRate = cache.hits + cache.misses > 0
-    ? ((cache.hits / (cache.hits + cache.misses)) * 100).toFixed(1)
+function renderCacheCard(response) {
+  const cache = response.data?.cache || response.cache || response;
+  const hits = cache?.hits || 0;
+  const misses = cache?.misses || 0;
+  const size = cache?.size || 0;
+  const maxSize = cache?.maxSize || 1;
+  
+  const hitRate = hits + misses > 0
+    ? ((hits / (hits + misses)) * 100).toFixed(1)
     : 0;
     
   const status = hitRate >= 70 ? 'healthy' : hitRate >= 50 ? 'warning' : 'error';
@@ -125,31 +149,34 @@ function renderCacheCard(cache) {
       <div class="metric-detail">
         <div class="detail-row">
           <span class="detail-label">Hits</span>
-          <span class="detail-value">${cache.hits.toLocaleString()}</span>
+          <span class="detail-value">${hits.toLocaleString()}</span>
         </div>
         <div class="detail-row">
           <span class="detail-label">Misses</span>
-          <span class="detail-value">${cache.misses.toLocaleString()}</span>
+          <span class="detail-value">${misses.toLocaleString()}</span>
         </div>
         <div class="detail-row">
           <span class="detail-label">Size</span>
-          <span class="detail-value">${cache.size}/${cache.maxSize}</span>
+          <span class="detail-value">${size}/${maxSize}</span>
         </div>
         <div class="detail-row">
           <span class="detail-label">Memory</span>
-          <span class="detail-value">${formatBytes(cache.memorySizeBytes)}</span>
+          <span class="detail-value">${formatBytes(cache?.memorySizeBytes || 0)}</span>
         </div>
       </div>
       
       <div class="progress-bar">
-        <div class="progress-fill" style="width: ${(cache.size / cache.maxSize) * 100}%"></div>
+        <div class="progress-fill" style="width: ${(size / maxSize) * 100}%"></div>
       </div>
     </div>
   `;
 }
 
-function renderDatabaseCard(db) {
-  const { conversations, promptConfigs, userProfiles } = db.collections;
+function renderDatabaseCard(response) {
+  const db = response?.data || response || {}; // Handle both wrapped and unwrapped responses
+  const conversations = db.collections?.conversations || 0;
+  const promptConfigs = db.collections?.promptConfigs || 0;
+  const userProfiles = db.collections?.userProfiles || 0;
   const total = conversations + promptConfigs + userProfiles;
   
   return `
@@ -184,8 +211,15 @@ function renderDatabaseCard(db) {
   `;
 }
 
-function renderConnectionCard(conn) {
-  const usagePercent = (conn.activeConnections / conn.maxPoolSize) * 100;
+function renderConnectionCard(response) {
+  const conn = response?.data || response || {};
+  const activeConnections = conn.activeConnections || 0;
+  const maxPoolSize = conn.maxPoolSize || 1;
+  const availableConnections = conn.availableConnections || 0;
+  const waitingConnections = conn.waitingConnections || 0;
+  const minPoolSize = conn.minPoolSize || 0;
+  
+  const usagePercent = (activeConnections / maxPoolSize) * 100;
   const status = usagePercent < 70 ? 'healthy' : usagePercent < 90 ? 'warning' : 'error';
   
   return `
@@ -194,22 +228,22 @@ function renderConnectionCard(conn) {
         <span class="metric-icon">🔌</span>
         <span class="metric-title">Connections</span>
       </div>
-      <div class="metric-value">${conn.activeConnections}</div>
-      <div class="metric-label">Active / ${conn.maxPoolSize} Max</div>
+      <div class="metric-value">${activeConnections}</div>
+      <div class="metric-label">Active / ${maxPoolSize} Max</div>
       <span class="status ${status}">${usagePercent.toFixed(0)}% Used</span>
       
       <div class="metric-detail">
         <div class="detail-row">
           <span class="detail-label">Available</span>
-          <span class="detail-value">${conn.availableConnections}</span>
+          <span class="detail-value">${availableConnections}</span>
         </div>
         <div class="detail-row">
           <span class="detail-label">Waiting</span>
-          <span class="detail-value">${conn.waitingConnections}</span>
+          <span class="detail-value">${waitingConnections}</span>
         </div>
         <div class="detail-row">
           <span class="detail-label">Pool Size</span>
-          <span class="detail-value">${conn.minPoolSize}-${conn.maxPoolSize}</span>
+          <span class="detail-value">${minPoolSize}-${maxPoolSize}</span>
         </div>
       </div>
       
@@ -220,8 +254,16 @@ function renderConnectionCard(conn) {
   `;
 }
 
-function renderSystemCard(sys) {
-  const memUsagePercent = (sys.memory.usedMB / sys.memory.totalMB) * 100;
+function renderSystemCard(response) {
+  const sys = response?.data || response || {};
+  
+  const usedMB = sys.memory?.usedMB || 0;
+  const totalMB = sys.memory?.totalMB || 1;
+  const nodeVersion = sys.nodeVersion || 'Unknown';
+  const platform = sys.platform || 'Unknown';
+  const uptimeSeconds = sys.uptimeSeconds || 0;
+  
+  const memUsagePercent = (usedMB / totalMB) * 100;
   const status = memUsagePercent < 70 ? 'healthy' : memUsagePercent < 85 ? 'warning' : 'error';
   
   return `
@@ -230,22 +272,22 @@ function renderSystemCard(sys) {
         <span class="metric-icon">💻</span>
         <span class="metric-title">System</span>
       </div>
-      <div class="metric-value">${sys.memory.usedMB}MB</div>
-      <div class="metric-label">Memory Used / ${sys.memory.totalMB}MB Total</div>
+      <div class="metric-value">${usedMB}MB</div>
+      <div class="metric-label">Memory Used / ${totalMB}MB Total</div>
       <span class="status ${status}">${memUsagePercent.toFixed(0)}% Used</span>
       
       <div class="metric-detail">
         <div class="detail-row">
           <span class="detail-label">Node Version</span>
-          <span class="detail-value">${sys.nodeVersion}</span>
+          <span class="detail-value">${nodeVersion}</span>
         </div>
         <div class="detail-row">
           <span class="detail-label">Uptime</span>
-          <span class="detail-value">${formatUptime(sys.uptimeSeconds)}</span>
+          <span class="detail-value">${formatUptime(uptimeSeconds)}</span>
         </div>
         <div class="detail-row">
           <span class="detail-label">Platform</span>
-          <span class="detail-value">${sys.platform}</span>
+          <span class="detail-value">${platform}</span>
         </div>
       </div>
       
@@ -257,21 +299,37 @@ function renderSystemCard(sys) {
 }
 
 function renderDetailedStats(metrics) {
+  // Unwrap all metrics
+  const cache = metrics.cache?.data?.cache || metrics.cache?.cache || metrics.cache || {};
+  const database = metrics.database?.data || metrics.database || {};
+  const system = metrics.system?.data || metrics.system || {};
+  
+  const cacheHits = cache.hits || 0;
+  const cacheMisses = cache.misses || 0;
+  const cacheAvgSize = cache.avgEntrySizeBytes || 0;
+  const cacheEvictions = cache.evictions || 0;
+  
+  const dbName = database.dbName || 'Unknown';
+  const dbHost = database.host || 'Unknown';
+  const dbCollections = database.collections || {};
+  
+  const heapUsed = system.memory?.heapUsedBytes || 0;
+  
   return `
     <div class="metrics-grid">
       <div>
         <h3 style="margin-bottom: 15px; color: #2d3748;">🎯 Cache Statistics</h3>
         <div class="detail-row">
           <span class="detail-label">Total Requests</span>
-          <span class="detail-value">${(metrics.cache.hits + metrics.cache.misses).toLocaleString()}</span>
+          <span class="detail-value">${(cacheHits + cacheMisses).toLocaleString()}</span>
         </div>
         <div class="detail-row">
           <span class="detail-label">Average Size</span>
-          <span class="detail-value">${formatBytes(metrics.cache.avgEntrySizeBytes)}</span>
+          <span class="detail-value">${formatBytes(cacheAvgSize)}</span>
         </div>
         <div class="detail-row">
           <span class="detail-label">Evictions</span>
-          <span class="detail-value">${metrics.cache.evictions || 0}</span>
+          <span class="detail-value">${cacheEvictions}</span>
         </div>
       </div>
       
@@ -279,15 +337,15 @@ function renderDetailedStats(metrics) {
         <h3 style="margin-bottom: 15px; color: #2d3748;">🗄️ Database Info</h3>
         <div class="detail-row">
           <span class="detail-label">Database Name</span>
-          <span class="detail-value">${metrics.database.dbName}</span>
+          <span class="detail-value">${dbName}</span>
         </div>
         <div class="detail-row">
           <span class="detail-label">Host</span>
-          <span class="detail-value">${metrics.database.host}</span>
+          <span class="detail-value">${dbHost}</span>
         </div>
         <div class="detail-row">
           <span class="detail-label">Collections</span>
-          <span class="detail-value">${Object.keys(metrics.database.collections).length}</span>
+          <span class="detail-value">${Object.keys(dbCollections).length}</span>
         </div>
       </div>
       
@@ -295,15 +353,15 @@ function renderDetailedStats(metrics) {
         <h3 style="margin-bottom: 15px; color: #2d3748;">💻 System Resources</h3>
         <div class="detail-row">
           <span class="detail-label">Heap Used</span>
-          <span class="detail-value">${formatBytes(metrics.system.memory.heapUsedBytes)}</span>
+          <span class="detail-value">${formatBytes(heapUsed)}</span>
         </div>
         <div class="detail-row">
           <span class="detail-label">Heap Total</span>
-          <span class="detail-value">${formatBytes(metrics.system.memory.heapTotalBytes)}</span>
+          <span class="detail-value">${formatBytes(system.memory?.heapTotalBytes || 0)}</span>
         </div>
         <div class="detail-row">
           <span class="detail-label">RSS</span>
-          <span class="detail-value">${formatBytes(metrics.system.memory.rssBytes)}</span>
+          <span class="detail-value">${formatBytes(system.memory?.rssBytes || 0)}</span>
         </div>
       </div>
     </div>

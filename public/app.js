@@ -1,30 +1,3 @@
-// CSRF Token Management
-let csrfToken = null;
-
-async function fetchCsrfToken() {
-  try {
-    const response = await fetch('/api/csrf-token', {
-      credentials: 'include'
-    });
-    if (response.ok) {
-      const data = await response.json();
-      csrfToken = data.token;
-      console.log('CSRF token fetched');
-    }
-  } catch (error) {
-    console.error('Failed to fetch CSRF token:', error);
-  }
-}
-
-// Helper to add CSRF token to fetch requests
-function addCsrfToken(options = {}) {
-  const headers = options.headers || {};
-  if (csrfToken && options.method && options.method !== 'GET') {
-    headers['x-csrf-token'] = csrfToken;
-  }
-  return { ...options, headers };
-}
-
 // Authentication check
 async function checkAuth() {
   try {
@@ -36,20 +9,16 @@ async function checkAuth() {
       const data = await response.json();
       if (data.status === 'success') {
         displayUserInfo(data.user);
-        // Fetch CSRF token after successful auth
-        await fetchCsrfToken();
         return true;
       }
     }
     
-    // Not authenticated - show login button but still fetch CSRF
+    // Not authenticated - show login button
     showLoginButton();
-    await fetchCsrfToken();
     return false;
   } catch (error) {
     console.log('Auth check failed:', error);
     showLoginButton();
-    await fetchCsrfToken();
     return false;
   }
 }
@@ -73,13 +42,12 @@ function displayUserInfo(user) {
 
 async function logout() {
   try {
-    await fetch('/api/auth/logout', addCsrfToken({
+    await fetch('/api/auth/logout', {
       method: 'POST',
       credentials: 'include'
-    }));
+    });
     
     localStorage.removeItem('user');
-    csrfToken = null; // Clear CSRF token
     window.location.href = '/login.html';
   } catch (error) {
     console.error('Logout failed:', error);
@@ -316,9 +284,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const content = message.content;
     const messageId = message.id || message._id || null;
     const createdAt = message.createdAt || new Date().toISOString();
+    
+    // Check if this is a system message (welcome, etc.)
+    const isSystemMessage = messageId && messageId.startsWith('a-');
 
     const bubble = document.createElement('div');
-    bubble.className = `bubble ${role === 'user' ? 'user' : 'assistant'}`;
+    bubble.className = `bubble ${role === 'user' ? 'user' : isSystemMessage ? 'system' : 'assistant'}`;
     if (messageId) bubble.dataset.id = messageId;
 
     const meta = document.createElement('div');
@@ -337,9 +308,8 @@ document.addEventListener('DOMContentLoaded', () => {
     bubble.appendChild(meta);
     bubble.appendChild(body);
 
-    // Only render feedback controls when we have a message ID
-    // (IDs are assigned after the conversation is saved/reloaded)
-    if (role === 'assistant' && messageId) {
+    // Only render feedback controls for actual AI responses (exclude system messages like welcome)
+    if (role === 'assistant' && messageId && !messageId.startsWith('a-')) {
       bubble.appendChild(buildFeedbackRow(messageId));
     }
 
@@ -551,12 +521,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function sendFeedback(messageId, rating, comment) {
     const payload = { conversationId: state.conversationId, messageId, rating, comment };
-    const res = await fetch('/api/feedback', addCsrfToken({
+    const res = await fetch('/api/feedback', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
       credentials: 'include'
-    }));
+    });
     const data = await res.json();
     if (!res.ok || data.status !== 'success') {
       throw new Error(data.message || 'Feedback failed');
@@ -594,12 +564,12 @@ document.addEventListener('DOMContentLoaded', () => {
         conversationId: state.conversationId
       };
 
-      const res = await fetch('/api/chat', addCsrfToken({
+      const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
         credentials: 'include'
-      }));
+      });
       const data = await res.json();
       if (!res.ok || data.status !== 'success') {
         throw new Error(data.message || 'Chat failed');
@@ -713,8 +683,8 @@ document.addEventListener('DOMContentLoaded', () => {
   async function submitFeedback(messageId, rating) {
       if(!state.conversationId) return;
       try {
-          await fetch('/api/feedback', addCsrfToken({
-              method: 'POST',
+          await fetch('/api/feedback', {
+            method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                   conversationId: state.conversationId,
@@ -722,7 +692,7 @@ document.addEventListener('DOMContentLoaded', () => {
                   rating
               }),
               credentials: 'include'
-          }));
+          });
           // Refresh to show active state
           loadConversation(state.conversationId);
       } catch (err) {
@@ -743,7 +713,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function saveProfile() {
       try {
-          await fetch('/api/profile', addCsrfToken({
+          await fetch('/api/profile', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -753,7 +723,7 @@ document.addEventListener('DOMContentLoaded', () => {
                   }
               }),
               credentials: 'include'
-          }));
+          });
           elements.profileModal.classList.add('hidden');
           setFeedback('Profile saved.', 'success');
       } catch (err) {
