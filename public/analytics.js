@@ -42,11 +42,30 @@ function periodRange(days) {
 }
 
 async function fetchJSON(url) {
-  const res = await fetch(url);
+  const res = await fetch(url, { credentials: 'include' });
+  if (res.status === 401) {
+    // Redirect to login if unauthorized
+    window.location.href = '/login.html?redirect=' + encodeURIComponent(window.location.pathname);
+    throw new Error('Unauthorized');
+  }
   if (!res.ok) {
     throw new Error(`Request failed: ${res.status}`);
   }
   return res.json();
+}
+
+async function checkAuth() {
+  try {
+    const res = await fetch('/api/auth/me', { credentials: 'include' });
+    if (!res.ok) {
+      window.location.href = '/login.html?redirect=' + encodeURIComponent(window.location.pathname);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    window.location.href = '/login.html?redirect=' + encodeURIComponent(window.location.pathname);
+    return false;
+  }
 }
 
 function buildRangeQuery(days) {
@@ -266,7 +285,11 @@ async function refresh() {
   }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+  // Check authentication first
+  const isAuthenticated = await checkAuth();
+  if (!isAuthenticated) return; // Will redirect to login
+  
   elements.refreshBtn.addEventListener('click', refresh);
   elements.periodSelect.addEventListener('change', refresh);
   elements.usageGroupSelect.addEventListener('change', refresh);

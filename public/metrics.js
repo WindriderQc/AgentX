@@ -6,8 +6,25 @@
 let autoRefreshInterval = null;
 let isRefreshing = false;
 
+async function checkAuth() {
+  try {
+    const res = await fetch('/api/auth/me', { credentials: 'include' });
+    if (!res.ok) {
+      window.location.href = '/login.html?redirect=' + encodeURIComponent(window.location.pathname);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    window.location.href = '/login.html?redirect=' + encodeURIComponent(window.location.pathname);
+    return false;
+  }
+}
+
 // Initialize dashboard
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+  const isAuthenticated = await checkAuth();
+  if (!isAuthenticated) return; // Will redirect to login
+  
   loadMetrics();
   setupEventListeners();
 });
@@ -57,7 +74,7 @@ async function fetchMetric(endpoint) {
   
   if (!response.ok) {
     if (response.status === 401) {
-      window.location.href = '/index.html';
+      window.location.href = '/login.html?redirect=' + encodeURIComponent(window.location.pathname);
       throw new Error('Authentication required');
     }
     throw new Error(`HTTP ${response.status}`);
