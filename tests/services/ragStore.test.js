@@ -40,8 +40,7 @@ describe('RAG Store', () => {
 
       expect(result.documentId).toBeDefined();
       expect(result.chunkCount).toBeGreaterThan(0);
-      // expect(embeddingsService.generateEmbeddings).toHaveBeenCalled(); // This mock was replaced by embedTextBatch?
-      // Actually embedTextBatch is called now.
+      expect(embeddingsService.embedTextBatch).toHaveBeenCalled();
     });
 
     test('should handle small documents', async () => {
