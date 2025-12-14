@@ -81,6 +81,8 @@
           </div>
           <textarea id="messageInput" rows="3" placeholder="Type to your agent..."></textarea>
           <div class="composer-actions">
+            <button class="icon-btn" id="micBtn" title="Voice Input">🎤</button>
+            <div style="flex: 1;"></div>
             <button class="ghost small" id="clearBtn">Clear chat</button>
             <button class="primary" id="sendBtn">Send</button>
           </div>
@@ -148,6 +150,15 @@
             <span class="slider"></span>
           </label>
           <div class="hint">Retrieve context from vector store.</div>
+        </div>
+
+        <div class="field inline-toggle">
+          <label>TTS Output</label>
+          <label class="switch">
+            <input type="checkbox" id="ttsToggle">
+            <span class="slider"></span>
+          </label>
+          <div class="hint">Read responses aloud (Browser TTS).</div>
         </div>
 
         <div class="field">
