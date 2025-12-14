@@ -96,6 +96,9 @@ document.addEventListener('DOMContentLoaded', () => {
     toggleHistoryBtn: document.getElementById('toggleHistoryBtn'),
     closeHistoryBtn: document.getElementById('closeHistoryBtn'),
     page: document.querySelector('.page'),
+    // Voice Elements
+    micBtn: document.getElementById('micBtn'),
+    ttsToggle: document.getElementById('ttsToggle'),
     // New Elements
     historyList: document.getElementById('historyList'),
     resetProfileBtn: document.getElementById('resetProfileBtn'),
@@ -148,6 +151,7 @@ document.addEventListener('DOMContentLoaded', () => {
     port: '11434',
     model: '',
     stream: true,  // Enable streaming by default for better UX and thinking model support
+    tts: false,    // Disable TTS by default
     system: 'You are AgentX, a concise and capable local assistant. Keep answers brief and actionable.',
     options: {
       temperature: 0.7,
@@ -205,6 +209,7 @@ document.addEventListener('DOMContentLoaded', () => {
       port: elements.portInput.value.trim() || defaults.port,
       model: elements.modelSelect.value,
       stream: elements.streamToggle.checked,
+      tts: elements.ttsToggle.checked,
       useRag: elements.ragToggle.checked,
       system: elements.systemPrompt.value.trim() || defaults.system,
       options: readOptions(),
@@ -238,6 +243,7 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.modelSelect.value = cfg.model;
     elements.systemPrompt.value = cfg.system;
     elements.streamToggle.checked = cfg.stream;
+    elements.ttsToggle.checked = cfg.tts || false;
     elements.ragToggle.checked = cfg.useRag || false;
     elements.temperature.value = cfg.options.temperature;
     elements.topP.value = cfg.options.top_p;
@@ -592,6 +598,7 @@ document.addEventListener('DOMContentLoaded', () => {
       };
 
       appendMessage(assistantMessage);
+      speakText(responseText);
 
       // Show warning for thinking models if present
       if (data.warning) {
@@ -758,7 +765,85 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.toggleLogBtn.textContent = isCollapsed ? 'Show session log' : 'Hide session log';
   }
 
+  // --- Voice Functions ---
+
+  let recognition = null;
+  let isRecording = false;
+
+  function startVoiceInput() {
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+      setFeedback('Speech recognition not supported in this browser.', 'error');
+      return;
+    }
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    recognition = new SpeechRecognition();
+    recognition.lang = 'en-US';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+      isRecording = true;
+      elements.micBtn.classList.add('recording');
+      setStatus('Listening...', 'success');
+    };
+
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      elements.messageInput.value = transcript;
+      // Optional: Automatically send? For now let user review.
+      // sendMessage();
+    };
+
+    recognition.onerror = (event) => {
+      console.error('Speech recognition error', event.error);
+      setFeedback(`Voice error: ${event.error}`, 'error');
+      stopVoiceInput();
+    };
+
+    recognition.onend = () => {
+      stopVoiceInput();
+    };
+
+    recognition.start();
+  }
+
+  function stopVoiceInput() {
+    if (recognition) {
+      recognition.stop();
+      recognition = null;
+    }
+    isRecording = false;
+    elements.micBtn.classList.remove('recording');
+    setStatus('Idle');
+  }
+
+  function toggleVoiceInput() {
+    if (isRecording) {
+      stopVoiceInput();
+    } else {
+      startVoiceInput();
+    }
+  }
+
+  function speakText(text) {
+    if (!state.settings.tts) return;
+
+    // Simple browser TTS
+    const utterance = new SpeechSynthesisUtterance(text);
+    // Try to find a good English voice
+    const voices = window.speechSynthesis.getVoices();
+    const preferred = voices.find(v => v.name.includes('Google US English')) ||
+                      voices.find(v => v.lang === 'en-US') ||
+                      voices[0];
+    if (preferred) utterance.voice = preferred;
+
+    window.speechSynthesis.speak(utterance);
+  }
+
   function attachEvents() {
+    elements.micBtn.addEventListener('click', toggleVoiceInput);
+    elements.ttsToggle.addEventListener('change', persistSettings);
     elements.sendBtn.addEventListener('click', sendMessage);
     elements.clearBtn.addEventListener('click', clearChat);
     elements.refreshModels.addEventListener('click', () => fetchModels(true));
