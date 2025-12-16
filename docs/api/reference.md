@@ -640,6 +640,40 @@ Returns feedback metrics.
 - `from`, `to` (ISO dates)
 - `groupBy` ('model', 'promptVersion')
 
+### GET /api/analytics/stats
+
+Returns aggregated usage and performance statistics.
+
+**Query Parameters:**
+- `from`, `to` (ISO dates)
+- `groupBy` ('model', 'day', default: 'model')
+
+**Response:**
+```json
+{
+  "status": "success",
+  "data": {
+    "from": "...",
+    "to": "...",
+    "totals": {
+      "promptTokens": 1000,
+      "completionTokens": 500,
+      "totalTokens": 1500,
+      "durationSec": 10.5,
+      "messages": 5,
+      "avgDurationSec": 2.1
+    },
+    "breakdown": [
+      {
+        "messageCount": 5,
+        "usage": { "totalTokens": 1500, ... },
+        "performance": { "avgTokensPerSecond": 45.5, ... }
+      }
+    ]
+  }
+}
+```
+
 ### Multi-Model Support
 The current design supports multiple Ollama targets and models. Future enhancements could:
 - Add support for remote LLM APIs (OpenAI, Anthropic, etc.)
