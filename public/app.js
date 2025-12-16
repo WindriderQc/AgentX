@@ -785,6 +785,7 @@ document.addEventListener('DOMContentLoaded', () => {
     recognition.onstart = () => {
       isRecording = true;
       elements.micBtn.classList.add('recording');
+      elements.micBtn.setAttribute('aria-pressed', 'true');
       setStatus('Listening...', 'success');
     };
 
@@ -798,23 +799,33 @@ document.addEventListener('DOMContentLoaded', () => {
     recognition.onerror = (event) => {
       console.error('Speech recognition error', event.error);
       setFeedback(`Voice error: ${event.error}`, 'error');
-      stopVoiceInput();
+      cleanupVoiceInput();
     };
 
     recognition.onend = () => {
-      stopVoiceInput();
+      cleanupVoiceInput();
     };
 
+    // Cancel any ongoing speech when starting input
+    window.speechSynthesis.cancel();
     recognition.start();
   }
 
   function stopVoiceInput() {
+    // User requested stop
     if (recognition) {
+      // recognition.stop() will trigger onend, which calls cleanupVoiceInput
       recognition.stop();
-      recognition = null;
+    } else {
+      cleanupVoiceInput();
     }
+  }
+
+  function cleanupVoiceInput() {
+    recognition = null;
     isRecording = false;
     elements.micBtn.classList.remove('recording');
+    elements.micBtn.setAttribute('aria-pressed', 'false');
     setStatus('Idle');
   }
 
@@ -831,14 +842,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Simple browser TTS
     const utterance = new SpeechSynthesisUtterance(text);
-    // Try to find a good English voice
-    const voices = window.speechSynthesis.getVoices();
-    const preferred = voices.find(v => v.name.includes('Google US English')) ||
-                      voices.find(v => v.lang === 'en-US') ||
-                      voices[0];
-    if (preferred) utterance.voice = preferred;
 
-    window.speechSynthesis.speak(utterance);
+    const setVoice = () => {
+      const voices = window.speechSynthesis.getVoices();
+      const preferred = voices.find(v => v.name.includes('Google US English')) ||
+                        voices.find(v => v.lang === 'en-US') ||
+                        voices[0];
+      if (preferred) utterance.voice = preferred;
+      window.speechSynthesis.speak(utterance);
+    };
+
+    if (window.speechSynthesis.getVoices().length === 0) {
+      window.speechSynthesis.addEventListener('voiceschanged', setVoice, { once: true });
+    } else {
+      setVoice();
+    }
   }
 
   function attachEvents() {
