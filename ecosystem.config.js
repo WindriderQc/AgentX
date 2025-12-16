@@ -25,25 +25,24 @@ module.exports = {
       min_uptime: '10s'
     },
     {
-      name: 'dataapi',
-      cwd: '/home/yb/codes/DataAPI',
-      script: './data_serv.js',
-      instances: 'max',
-      exec_mode: 'fork',
-      exec_mode: 'cluster',
-      watch: false,
-      env: {
-        NODE_ENV: 'development'
-      },
-      env_production: {
-        NODE_ENV: 'production'
-      },
-      merge_logs: true,
-      max_memory_restart: '500M',
-      restart_delay: 4000,
-      autorestart: true,
-      max_restarts: 10,
-      min_uptime: '10s'
+        name: 'dataapi',
+        cwd: '/home/yb/codes/DataAPI',
+        script: './data_serv.js',
+        instances: process.env.NODE_ENV === 'production' ? 'max' : 1,
+        exec_mode: 'cluster',
+        watch: false,
+        env: {
+            NODE_ENV: 'development'
+        },
+        env_production: {
+            NODE_ENV: 'production'
+        },
+        merge_logs: true,
+        max_memory_restart: '500M',
+        restart_delay: 4000,
+        autorestart: true,
+        max_restarts: 10,
+        min_uptime: '10s'
     }
   ]
 };
