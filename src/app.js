@@ -9,10 +9,12 @@ const MongoDBStore = require('connect-mongodb-session')(session);
 const logger = require('../config/logger');
 const { requestLogger, errorLogger } = require('./middleware/logging');
 const { attachUser } = require('./middleware/auth');
+const { createProxyMiddleware } = require('http-proxy-middleware');
 
 // Initialize app
 const app = express();
 const IN_PROD = process.env.NODE_ENV === 'production';
+const IN_TEST = process.env.NODE_ENV === 'test';
 
 // System Health State (exported for updates)
 const systemHealth = {
@@ -57,31 +59,40 @@ app.use(mongoSanitize({
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // Session configuration
-const store = new MongoDBStore({
-  uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/agentx',
-  collection: 'sessions',
-  databaseName: 'agentx'
-  // Removed deprecated connectionOptions (useNewUrlParser, useUnifiedTopology)
-  // These have no effect since MongoDB Driver 4.0.0+
-});
+// In tests we avoid creating a Mongo-backed session store to prevent open handles.
+let store;
+if (!IN_TEST) {
+  store = new MongoDBStore({
+    uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/agentx',
+    collection: 'sessions',
+    databaseName: 'agentx'
+    // Removed deprecated connectionOptions (useNewUrlParser, useUnifiedTopology)
+    // These have no effect since MongoDB Driver 4.0.0+
+  });
 
-store.on('error', (error) => {
-  logger.error('Session store error:', error);
-});
+  store.on('error', (error) => {
+    logger.error('Session store error:', error);
+  });
+}
 
-app.use(session({
+const sessionOptions = {
   secret: process.env.SESSION_SECRET || 'agentx-secret-change-in-production',
   name: 'agentx.sid',
   resave: false,
   saveUninitialized: false,
-  store: store,
   cookie: {
     maxAge: 1000 * 60 * 60 * 24, // 24 hours
     httpOnly: true,
     secure: IN_PROD,
     sameSite: IN_PROD ? 'none' : 'lax'
   }
-}));
+};
+
+if (store) {
+  sessionOptions.store = store;
+}
+
+app.use(session(sessionOptions));
 
 // Attach user to all requests (from session)
 app.use(attachUser);
@@ -107,6 +118,20 @@ app.use('/api/dataset', datasetRoutes);
 // Metrics routes (performance monitoring)
 const metricsRoutes = require('../routes/metrics');
 app.use('/api/metrics', metricsRoutes);
+
+// Proxy /api/v1 to DataAPI (localhost:3003)
+// This allows the frontend to access DataAPI endpoints directly via AgentX
+// We inject the API key so the browser session (AgentX) is sufficient for the user,
+// and AgentX authenticates to DataAPI as a trusted client.
+app.use('/api/v1', (req, res, next) => {
+  if (process.env.DATAAPI_API_KEY) {
+    req.headers['x-api-key'] = process.env.DATAAPI_API_KEY;
+  }
+  next();
+}, createProxyMiddleware({
+  target: process.env.DATAAPI_BASE_URL ? `${process.env.DATAAPI_BASE_URL}/api/v1` : 'http://localhost:3003/api/v1',
+  changeOrigin: true
+}));
 
 // Mount API routes
 const apiRoutes = require('../routes/api');

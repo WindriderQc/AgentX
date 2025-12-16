@@ -51,6 +51,21 @@ AgentX is a Node.js application that transforms your local Ollama instance into 
    PORT=3080
    \`\`\`
 
+### DataAPI tool server (optional, recommended)
+
+AgentX can use a companion headless tool server (DataAPI) for file scanning/search/exports. AgentX remains the only UI; browsers never talk to DataAPI directly.
+
+Once configured, open `http://localhost:3080/dataapi.html` to use the Data Tools page (AgentX calls DataAPI via server-side proxy routes under `/api/dataapi/*`).
+
+Add to AgentX `.env`:
+
+```bash
+DATAAPI_BASE_URL=http://127.0.0.1:3003
+DATAAPI_API_KEY=change-me-long-random
+```
+
+DataAPI must be configured with the matching `DATAAPI_API_KEY` and will require an `x-api-key` header on all tool endpoints under `/api/v1/*`.
+
 3. **Start the server:**
    \`\`\`bash
    npm start
@@ -186,6 +201,31 @@ Run endpoint validation tests:
 - [ ] Models load successfully: \`curl http://localhost:3080/api/ollama/models\`
 
 ---
+
+## 🛠️ Ops Quick Reference (PM2 ecosystem)
+
+Standard workflow (apply changes + persist for reboot):
+
+```bash
+cd /home/yb/codes/AgentX
+pm2 reload ecosystem.config.js --update-env
+pm2 save
+pm2 status
+```
+
+Logs:
+
+```bash
+pm2 logs agentx --lines 200
+pm2 logs dataapi --lines 200
+```
+
+Boot startup status (systemd):
+
+```bash
+systemctl is-enabled pm2-yb
+systemctl show -p ActiveState,SubState,Result pm2-yb
+```
 
 ## 🔮 Roadmap
 
