@@ -20,7 +20,11 @@ class EmbeddingCache {
     this.evictionCount = 0;
 
     // Start periodic cleanup
+    // Use unref() so this interval never keeps Node/Jest alive.
     this.cleanupInterval = setInterval(() => this._cleanup(), 60 * 60 * 1000); // Every hour
+    if (this.cleanupInterval && typeof this.cleanupInterval.unref === 'function') {
+      this.cleanupInterval.unref();
+    }
   }
 
   /**

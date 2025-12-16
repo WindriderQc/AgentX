@@ -50,12 +50,15 @@ body {
 }
 
 .sidebar {
-  width: 260px;
-  background: rgba(13, 17, 23, 0.5);
+  width: 280px;
+  background: rgba(13, 17, 23, 0.95);
+  backdrop-filter: blur(10px);
   border-right: 1px solid var(--panel-border);
   display: flex;
   flex-direction: column;
-  padding: 1rem;
+  padding: 1.25rem;
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.4);
+  z-index: 10;
 }
 
 .sidebar-head {
@@ -105,8 +108,14 @@ body {
   padding: 48px 24px 64px;
   max-width: 1200px;
   margin: 0 auto;
-  overflow-y: auto;
+  /* Default to document flow (natural scrolling) */
+  min-height: 100vh;
+}
+
+/* App-like layout for chat interface (fixed viewport, internal scroll) */
+.main-content.app-layout {
   height: 100vh;
+  overflow-y: auto;
 }
 
 .hero {
@@ -985,4 +994,29 @@ button:active {
     width: 100%;
     justify-content: flex-end;
   }
+}
+
+/* Global Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.2);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.4);
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.2) transparent;
 }

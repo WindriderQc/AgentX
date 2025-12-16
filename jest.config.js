@@ -14,6 +14,6 @@ module.exports = {
   verbose: true,
   testTimeout: 10000,
   globalTeardown: './tests/teardown.js',
-  forceExit: true,
+  forceExit: false,
   detectOpenHandles: false
 };

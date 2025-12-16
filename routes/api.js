@@ -9,6 +9,183 @@ const { getUserId, getOrCreateProfile } = require('../src/helpers/userHelpers');
 const { extractResponse, buildOllamaPayload } = require('../src/helpers/ollamaResponseHandler');
 const logger = require('../config/logger');
 const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
+const { dataapi, DataApiError } = require('../src/services/dataapiClient');
+
+// DataAPI tool proxy (server-side) - keeps DATAAPI_API_KEY off the browser.
+router.get('/dataapi/info', optionalAuth, (req, res) => {
+    const baseUrl = process.env.DATAAPI_BASE_URL || null;
+    res.json({ status: 'success', data: { baseUrl } });
+});
+
+router.get('/dataapi/files/search', optionalAuth, async (req, res) => {
+    try {
+        const { q, limit, skip } = req.query;
+        const result = await dataapi.files.search({
+            q: q || '',
+            limit: limit !== undefined ? Number(limit) : undefined,
+            skip: skip !== undefined ? Number(skip) : undefined
+        });
+        return res.json({ status: 'success', data: result });
+    } catch (err) {
+        if (err instanceof DataApiError) {
+            return res.status(err.status || 502).json({ status: 'error', message: err.message, details: err.body || null });
+        }
+        return res.status(500).json({ status: 'error', message: err.message });
+    }
+});
+
+router.get('/dataapi/files/duplicates', optionalAuth, async (_req, res) => {
+    try {
+        const result = await dataapi.files.duplicates();
+        return res.json({ status: 'success', data: result });
+    } catch (err) {
+        if (err instanceof DataApiError) {
+            return res.status(err.status || 502).json({ status: 'error', message: err.message, details: err.body || null });
+        }
+        return res.status(500).json({ status: 'error', message: err.message });
+    }
+});
+
+router.get('/dataapi/files/stats', optionalAuth, async (_req, res) => {
+    try {
+        const result = await dataapi.files.stats();
+        return res.json({ status: 'success', data: result });
+    } catch (err) {
+        if (err instanceof DataApiError) {
+            return res.status(err.status || 502).json({ status: 'error', message: err.message, details: err.body || null });
+        }
+        return res.status(500).json({ status: 'error', message: err.message });
+    }
+});
+
+router.get('/dataapi/files/tree', optionalAuth, async (req, res) => {
+    try {
+        const { root } = req.query;
+        const result = await dataapi.files.tree({ root: root || '/' });
+        return res.json({ status: 'success', data: result });
+    } catch (err) {
+        if (err instanceof DataApiError) {
+            return res.status(err.status || 502).json({ status: 'error', message: err.message, details: err.body || null });
+        }
+        return res.status(500).json({ status: 'error', message: err.message });
+    }
+});
+
+router.get('/dataapi/files/cleanup-recommendations', optionalAuth, async (_req, res) => {
+    try {
+        const result = await dataapi.files.cleanupRecommendations();
+        return res.json({ status: 'success', data: result });
+    } catch (err) {
+        if (err instanceof DataApiError) {
+            return res.status(err.status || 502).json({ status: 'error', message: err.message, details: err.body || null });
+        }
+        return res.status(500).json({ status: 'error', message: err.message });
+    }
+});
+
+router.get('/dataapi/files/exports', optionalAuth, async (_req, res) => {
+    try {
+        const result = await dataapi.files.exportsList();
+        return res.json({ status: 'success', data: result });
+    } catch (err) {
+        if (err instanceof DataApiError) {
+            return res.status(err.status || 502).json({ status: 'error', message: err.message, details: err.body || null });
+        }
+        return res.status(500).json({ status: 'error', message: err.message });
+    }
+});
+
+router.get('/dataapi/files/export-optimized', optionalAuth, async (req, res) => {
+    try {
+        const { type } = req.query;
+        const result = await dataapi.files.exportOptimized({ type: type || 'summary' });
+        return res.json({ status: 'success', data: result });
+    } catch (err) {
+        if (err instanceof DataApiError) {
+            return res.status(err.status || 502).json({ status: 'error', message: err.message, details: err.body || null });
+        }
+        return res.status(500).json({ status: 'error', message: err.message });
+    }
+});
+
+router.post('/dataapi/storage/scan', optionalAuth, async (req, res) => {
+    try {
+        const { roots, extensions, batch_size } = req.body || {};
+        const result = await dataapi.storage.scanStart({ roots, extensions, batch_size });
+        return res.json({ status: 'success', data: result });
+    } catch (err) {
+        if (err instanceof DataApiError) {
+            return res.status(err.status || 502).json({ status: 'error', message: err.message, details: err.body || null });
+        }
+        return res.status(500).json({ status: 'error', message: err.message });
+    }
+});
+
+router.get('/dataapi/storage/scans', optionalAuth, async (req, res) => {
+    try {
+        const { limit, skip } = req.query;
+        const result = await dataapi.storage.scansList({
+            limit: limit !== undefined ? Number(limit) : undefined,
+            skip: skip !== undefined ? Number(skip) : undefined
+        });
+        return res.json({ status: 'success', data: result });
+    } catch (err) {
+        if (err instanceof DataApiError) {
+            return res.status(err.status || 502).json({ status: 'error', message: err.message, details: err.body || null });
+        }
+        return res.status(500).json({ status: 'error', message: err.message });
+    }
+});
+
+router.get('/dataapi/storage/status/:scan_id', optionalAuth, async (req, res) => {
+    try {
+        const { scan_id } = req.params;
+        const result = await dataapi.storage.scanStatus({ scan_id });
+        return res.json({ status: 'success', data: result });
+    } catch (err) {
+        if (err instanceof DataApiError) {
+            return res.status(err.status || 502).json({ status: 'error', message: err.message, details: err.body || null });
+        }
+        return res.status(500).json({ status: 'error', message: err.message });
+    }
+});
+
+router.post('/dataapi/storage/stop/:scan_id', optionalAuth, async (req, res) => {
+    try {
+        const { scan_id } = req.params;
+        const result = await dataapi.storage.scanStop({ scan_id });
+        return res.json({ status: 'success', data: result });
+    } catch (err) {
+        if (err instanceof DataApiError) {
+            return res.status(err.status || 502).json({ status: 'error', message: err.message, details: err.body || null });
+        }
+        return res.status(500).json({ status: 'error', message: err.message });
+    }
+});
+
+router.get('/dataapi/live/iss', optionalAuth, async (_req, res) => {
+    try {
+        const result = await dataapi.live.iss();
+        return res.json({ status: 'success', data: result });
+    } catch (err) {
+        if (err instanceof DataApiError) {
+            return res.status(err.status || 502).json({ status: 'error', message: err.message, details: err.body || null });
+        }
+        return res.status(500).json({ status: 'error', message: err.message });
+    }
+});
+
+router.get('/dataapi/live/quakes', optionalAuth, async (_req, res) => {
+    try {
+        const result = await dataapi.live.quakes();
+        return res.json({ status: 'success', data: result });
+    } catch (err) {
+        if (err instanceof DataApiError) {
+            return res.status(err.status || 502).json({ status: 'error', message: err.message, details: err.body || null });
+        }
+        return res.status(500).json({ status: 'error', message: err.message });
+    }
+});
 
 // PROXY: Models List
 router.get('/ollama/models', async (req, res) => {
@@ -47,6 +224,131 @@ router.post('/chat', optionalAuth, async (req, res) => {
   if (!model) return res.status(400).json({ status: 'error', message: 'Model is required' });
   if (!message) return res.status(400).json({ status: 'error', message: 'Message is required' });
 
+    // Minimal, explicit tool bridge (no surprise routing):
+    // Users can run DataAPI tooling from AgentX chat using slash commands.
+    // Examples:
+    //   /dataapi files search invoice 2024
+    //   /dataapi files duplicates
+    //   /dataapi storage scan {"roots":["/mnt/smb/Media"],"extensions":["mp4"],"batch_size":1000}
+    //   /dataapi storage status <scan_id>
+    async function tryHandleToolCommand(rawMessage) {
+        const m = String(rawMessage || '').trim();
+        if (!m.startsWith('/dataapi')) return null;
+
+        const parts = m.split(/\s+/);
+        // parts[0] == /dataapi
+        const domain = parts[1];
+        const action = parts[2];
+        const rest = parts.slice(3).join(' ').trim();
+
+        if (!domain || !action) {
+            return {
+                ok: false,
+                responseText: 'Usage: /dataapi <files|storage|live> <action> [args]'
+            };
+        }
+
+        try {
+            // FILES
+            if (domain === 'files' && action === 'search') {
+                if (!rest) return { ok: false, responseText: 'Usage: /dataapi files search <query>' };
+                const result = await dataapi.files.search({ q: rest, limit: 50, skip: 0 });
+                const hits = result?.data?.results || [];
+                const preview = hits.slice(0, 10).map(f => `- ${f.path} (${f.sizeFormatted || f.size || 'n/a'})`).join('\n');
+                return {
+                    ok: true,
+                    responseText: `DataAPI files.search("${rest}")\n\nTop results:\n${preview || '(no matches)'}\n\nTotal: ${result?.data?.pagination?.total ?? 'n/a'}`,
+                    tool: { name: 'dataapi.files.search', args: { q: rest } },
+                    toolResult: result
+                };
+            }
+
+            if (domain === 'files' && action === 'duplicates') {
+                const result = await dataapi.files.duplicates();
+                const groups = result?.data?.duplicates || [];
+                const summary = result?.data?.summary;
+                const preview = groups.slice(0, 5).map(g => `- ${g.filename} (${g.sizeFormatted}) x${g.count} wasted ${g.wastedSpaceFormatted}`).join('\n');
+                return {
+                    ok: true,
+                    responseText: `DataAPI files.duplicates\n\n${preview || '(no duplicates found in top set)'}\n\nWasted: ${summary?.totalWastedSpaceFormatted || 'n/a'} in ${summary?.totalDuplicateGroups ?? 'n/a'} groups`,
+                    tool: { name: 'dataapi.files.duplicates', args: {} },
+                    toolResult: result
+                };
+            }
+
+            if (domain === 'files' && action === 'export') {
+                // /dataapi files export <type> [json|csv]
+                const [type = 'summary', format = 'json'] = rest.split(/\s+/).filter(Boolean);
+                const result = await dataapi.files.export({ type, format });
+                return {
+                    ok: true,
+                    responseText: `DataAPI files.export(type=${type}, format=${format})\n\n${JSON.stringify(result?.data || result, null, 2)}`,
+                    tool: { name: 'dataapi.files.export', args: { type, format } },
+                    toolResult: result
+                };
+            }
+
+            // STORAGE
+            if (domain === 'storage' && action === 'scan') {
+                if (!rest) return { ok: false, responseText: 'Usage: /dataapi storage scan <jsonBody>' };
+                let payload;
+                try {
+                    payload = JSON.parse(rest);
+                } catch (e) {
+                    return { ok: false, responseText: `Invalid JSON: ${e.message}` };
+                }
+                const result = await dataapi.storage.scanStart(payload);
+                return {
+                    ok: true,
+                    responseText: `DataAPI storage.scanStart\n\nScan started. scan_id=${result?.data?.scan_id || '(unknown)'}`,
+                    tool: { name: 'dataapi.storage.scanStart', args: payload },
+                    toolResult: result
+                };
+            }
+
+            if (domain === 'storage' && action === 'status') {
+                if (!rest) return { ok: false, responseText: 'Usage: /dataapi storage status <scan_id>' };
+                const result = await dataapi.storage.scanStatus({ scan_id: rest });
+                return {
+                    ok: true,
+                    responseText: `DataAPI storage.scanStatus(${rest})\n\n${JSON.stringify(result?.data || result, null, 2)}`,
+                    tool: { name: 'dataapi.storage.scanStatus', args: { scan_id: rest } },
+                    toolResult: result
+                };
+            }
+
+            // LIVE
+            if (domain === 'live' && action === 'iss') {
+                const result = await dataapi.live.iss();
+                const rows = Array.isArray(result?.data) ? result.data : [];
+                return {
+                    ok: true,
+                    responseText: `DataAPI live.iss\n\nRecords: ${rows.length}`,
+                    tool: { name: 'dataapi.live.iss', args: {} },
+                    toolResult: result
+                };
+            }
+
+            if (domain === 'live' && action === 'quakes') {
+                const result = await dataapi.live.quakes();
+                const rows = Array.isArray(result?.data) ? result.data : [];
+                return {
+                    ok: true,
+                    responseText: `DataAPI live.quakes\n\nRecords: ${rows.length}`,
+                    tool: { name: 'dataapi.live.quakes', args: {} },
+                    toolResult: result
+                };
+            }
+
+            return { ok: false, responseText: `Unknown command: /dataapi ${domain} ${action}` };
+        } catch (err) {
+            if (err instanceof DataApiError) {
+                return { ok: false, responseText: `DataAPI error: ${err.message}${err.status ? ` (HTTP ${err.status})` : ''}` };
+            }
+            return { ok: false, responseText: `Tool error: ${err.message}` };
+        }
+    }
+
   // Detect models with thinking/reasoning capabilities
   const thinkingModels = [
     'qwen', 'deepseek-r1', 'deepthink', 'o1', 'o3', 'reasoning'
@@ -56,6 +358,88 @@ router.post('/chat', optionalAuth, async (req, res) => {
   );
 
   try {
+        const toolCommand = await tryHandleToolCommand(message);
+        if (toolCommand) {
+            // Tool command responses are treated like an assistant reply and stored in history.
+            const assistantMessageContent = toolCommand.responseText;
+
+            // V4: Fetch active prompt configuration (still used for storing prompt metadata)
+            let activePrompt;
+            try {
+                activePrompt = await PromptConfig.getActive('default_chat');
+                if (!activePrompt) {
+                    activePrompt = { systemPrompt: system || 'You are AgentX, a helpful AI assistant.', version: 'default' };
+                }
+            } catch (_err) {
+                activePrompt = { systemPrompt: system || 'You are AgentX, a helpful AI assistant.', version: 'default' };
+            }
+
+            // 1. Fetch User Profile
+            const userProfile = await getOrCreateProfile(userId);
+
+            // 2. Inject Memory into System Prompt
+            let effectiveSystemPrompt = system || activePrompt.systemPrompt;
+            if (userProfile.about) {
+                effectiveSystemPrompt += `\n\nUser Profile/Memory:\n${userProfile.about}`;
+            }
+            if (userProfile.preferences?.customInstructions) {
+                effectiveSystemPrompt += `\n\nCustom Instructions:\n${userProfile.preferences.customInstructions}`;
+            }
+
+            // Save to DB (same behavior as normal chat, but without Ollama call)
+            let conversation;
+            let assistantMessageId = null;
+            try {
+                if (conversationId) {
+                    conversation = await Conversation.findById(conversationId);
+                }
+                if (!conversation) {
+                    conversation = new Conversation({
+                        userId,
+                        model,
+                        systemPrompt: effectiveSystemPrompt,
+                        messages: []
+                    });
+                }
+
+                conversation.messages.push({ role: 'user', content: message.trim() });
+
+                const assistantMsg = conversation.messages.create({ role: 'assistant', content: assistantMessageContent.trim() });
+                assistantMsg.metadata = assistantMsg.metadata || {};
+                assistantMsg.metadata.tool = toolCommand.tool || null;
+                assistantMsg.metadata.toolResult = toolCommand.toolResult || null;
+                conversation.messages.push(assistantMsg);
+                assistantMessageId = assistantMsg._id;
+
+                if (conversation.messages.length <= 2) {
+                    conversation.title = (message || 'New Conversation').substring(0, 50);
+                }
+
+                // mark as no-rag
+                conversation.ragUsed = false;
+                conversation.ragSources = [];
+
+                conversation.promptConfigId = activePrompt._id;
+                conversation.promptName = activePrompt.name;
+                conversation.promptVersion = activePrompt.version;
+
+                await conversation.save();
+            } catch (err) {
+                logger.error('Failed to save tool conversation', { error: err.message, stack: err.stack });
+            }
+
+            return res.json({
+                status: 'success',
+                data: {
+                    response: assistantMessageContent,
+                    conversationId: conversation ? conversation._id : null,
+                    assistantMessageId,
+                    tool: toolCommand.tool || null,
+                    toolOk: toolCommand.ok === true
+                }
+            });
+        }
+
     // V4: Fetch active prompt configuration
     let activePrompt;
     try {
