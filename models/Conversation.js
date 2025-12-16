@@ -7,6 +7,22 @@ const MessageSchema = new mongoose.Schema({
   feedback: {
     rating: { type: Number, enum: [1, -1, 0], default: 0 }, // 1: thumbs up, -1: thumbs down
     comment: String
+  },
+  // V4: Detailed Stats for Analytics & UI
+  stats: {
+    usage: {
+      promptTokens: { type: Number },
+      completionTokens: { type: Number },
+      totalTokens: { type: Number }
+    },
+    performance: {
+      totalDuration: { type: Number }, // nanoseconds
+      loadDuration: { type: Number },  // nanoseconds
+      evalDuration: { type: Number },  // nanoseconds
+      tokensPerSecond: { type: Number }
+    },
+    parameters: mongoose.Schema.Types.Mixed, // Snapshot of options used (temp, top_k, etc)
+    meta: mongoose.Schema.Types.Mixed      // Additional metadata (model name, etc)
   }
 });
 

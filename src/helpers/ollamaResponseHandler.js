@@ -25,14 +25,42 @@ function isThinkingModel(model) {
  * 
  * @param {Object} data - Ollama API response
  * @param {string} model - Model name for context
- * @returns {Object} { content: string, thinking: string|null, warning: string|null }
+ * @returns {Object} { content: string, thinking: string|null, warning: string|null, stats: Object|null }
  */
 function extractResponse(data, model) {
   const result = {
     content: '',
     thinking: null,
-    warning: null
+    warning: null,
+    stats: null
   };
+
+  // V4: Extract detailed usage stats if available
+  if (data.done && (data.eval_count || data.prompt_eval_count)) {
+    const totalDuration = data.total_duration || 0;
+    const loadDuration = data.load_duration || 0;
+    const evalDuration = data.eval_duration || 0;
+    const evalCount = data.eval_count || 0;
+
+    // Calculate tokens per second (avoid division by zero)
+    // eval_duration is in nanoseconds. 1e9 ns = 1s.
+    const durationSeconds = evalDuration / 1e9;
+    const tokensPerSecond = durationSeconds > 0 ? (evalCount / durationSeconds) : 0;
+
+    result.stats = {
+      usage: {
+        promptTokens: data.prompt_eval_count || 0,
+        completionTokens: evalCount,
+        totalTokens: (data.prompt_eval_count || 0) + evalCount
+      },
+      performance: {
+        totalDuration,
+        loadDuration,
+        evalDuration,
+        tokensPerSecond: Number(tokensPerSecond.toFixed(2))
+      }
+    };
+  }
 
   // Check various response fields
   const hasMessageContent = data.message?.content && data.message.content.trim() !== '';
