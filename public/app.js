@@ -86,6 +86,7 @@ document.addEventListener('DOMContentLoaded', () => {
     quickActions: document.querySelectorAll('[data-quick]'),
     streamToggle: document.getElementById('streamToggle'),
     ragToggle: document.getElementById('ragToggle'),
+    statsToggle: document.getElementById('statsToggle'), // V4: New toggle
     logWindow: document.getElementById('logWindow'),
     threadId: document.getElementById('threadId'),
     memoryLanguage: document.getElementById('memoryLanguage'),
@@ -176,6 +177,7 @@ document.addEventListener('DOMContentLoaded', () => {
     threadId: buildThreadId(),
     profile: { language: '', role: '', style: '' },
     conversationId: null, // Current conversation ID
+    showStats: true, // V4: Toggle message stats
   };
 
   function buildThreadId() {
@@ -211,11 +213,15 @@ document.addEventListener('DOMContentLoaded', () => {
       stream: elements.streamToggle.checked,
       tts: elements.ttsToggle.checked,
       useRag: elements.ragToggle.checked,
+      showStats: elements.statsToggle.checked, // V4: Save stats preference
       system: elements.systemPrompt.value.trim() || defaults.system,
       options: readOptions(),
     };
     localStorage.setItem('agentx-settings', JSON.stringify(payload));
     state.settings = payload;
+    state.showStats = payload.showStats; // Update state immediately
+    // Re-render chat to toggle stats visibility without refresh
+    refreshMessages();
     setFeedback('Defaults saved locally.', 'success');
   }
 
@@ -237,6 +243,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function hydrateForm() {
     const cfg = state.settings;
+    state.showStats = cfg.showStats !== undefined ? cfg.showStats : true; // Default true
+
     // Use saved settings if they exist, otherwise use defaults (which may include server config)
     elements.hostInput.value = cfg.host || defaults.host;
     elements.portInput.value = cfg.port || defaults.port;
@@ -245,6 +253,7 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.streamToggle.checked = cfg.stream;
     elements.ttsToggle.checked = cfg.tts || false;
     elements.ragToggle.checked = cfg.useRag || false;
+    elements.statsToggle.checked = state.showStats; // V4
     elements.temperature.value = cfg.options.temperature;
     elements.topP.value = cfg.options.top_p;
     elements.topK.value = cfg.options.top_k;
@@ -313,6 +322,35 @@ document.addEventListener('DOMContentLoaded', () => {
 
     bubble.appendChild(meta);
     bubble.appendChild(body);
+
+    // V4: Stats Footer
+    if (state.showStats && message.stats && role === 'assistant') {
+      const statsDiv = document.createElement('div');
+      statsDiv.className = 'message-stats';
+      statsDiv.style.fontSize = '0.75rem';
+      statsDiv.style.color = 'var(--muted)';
+      statsDiv.style.marginTop = '0.5rem';
+      statsDiv.style.paddingTop = '0.5rem';
+      statsDiv.style.borderTop = '1px solid rgba(255,255,255,0.05)';
+
+      const { usage, performance } = message.stats;
+      const parts = [];
+
+      if (usage) {
+        parts.push(`${usage.totalTokens} tokens`);
+      }
+      if (performance) {
+        // Convert ns to s
+        const duration = (performance.totalDuration / 1e9).toFixed(2);
+        const tps = performance.tokensPerSecond ? `(${performance.tokensPerSecond} t/s)` : '';
+        parts.push(`${duration}s ${tps}`);
+      }
+
+      if (parts.length > 0) {
+        statsDiv.textContent = parts.join(' • ');
+        bubble.appendChild(statsDiv);
+      }
+    }
 
     // Only render feedback controls for actual AI responses (exclude system messages like welcome)
     if (role === 'assistant' && messageId && !messageId.startsWith('a-')) {
@@ -595,6 +633,7 @@ document.addEventListener('DOMContentLoaded', () => {
           content: responseText,
           createdAt: new Date().toISOString(),
           id: data.data?.messageId || null,
+          stats: data.data?.stats || null // V4: Inject stats from response
       };
 
       appendMessage(assistantMessage);
@@ -665,12 +704,20 @@ document.addEventListener('DOMContentLoaded', () => {
           state.stats.replies = 0;
 
             data.messages.forEach(msg => {
-                appendMessage(msg.role, msg.content, {
-                    persist: true, // It's already in DB, but we want it in local state.history for context
-                    count: true,
-                    messageId: msg._id,
-                    feedback: msg.feedback,
+                // Manually construct message object to include stats
+                const messageObj = {
+                    role: msg.role,
+                    content: msg.content,
                     createdAt: msg.createdAt,
+                    id: msg._id,
+                    feedback: msg.feedback,
+                    stats: msg.stats // V4: Pass stats to rendering
+                };
+
+                // Use the object form of appendMessage
+                appendMessage(messageObj, {
+                    persist: true,
+                    count: true
                 });
             });
 
@@ -887,6 +934,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     elements.streamToggle.addEventListener('change', persistSettings);
     elements.ragToggle.addEventListener('change', persistSettings);
+    if (elements.statsToggle) elements.statsToggle.addEventListener('change', persistSettings);
 
     // Auto-refresh models when host or port changes
     elements.hostInput.addEventListener('change', () => {
