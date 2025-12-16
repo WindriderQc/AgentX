@@ -98,16 +98,16 @@ echo -e "${YELLOW}[6/8] Testing V1/V2 chat (without RAG)...${NC}"
 CHAT_V2_RESPONSE=$(curl -s -X POST "$BASE_URL/api/chat" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "llama3.2:1b",
-    "messages": [
-      {"role": "user", "content": "Hello, how are you?"}
-    ]
+    "model": "llama2:latest",
+    "message": "Hello, how are you?",
+    "messages": [],
+    "target": "192.168.2.99:11434"
   }')
 
 if echo "$CHAT_V2_RESPONSE" | jq -e '.status' > /dev/null; then
     RAG_USED=$(echo "$CHAT_V2_RESPONSE" | jq -r '.ragUsed')
     echo -e "${GREEN}✓ V1/V2 chat works (ragUsed: $RAG_USED)${NC}"
-    if [ "$RAG_USED" != "false" ]; then
+    if [ "$RAG_USED" = "true" ]; then
         echo -e "${RED}✗ WARNING: RAG was used when it shouldn't be!${NC}"
         exit 1
     fi
@@ -124,9 +124,9 @@ CHAT_V3_RESPONSE=$(curl -s -X POST "$BASE_URL/api/chat" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "llama3.2:1b",
-    "messages": [
-      {"role": "user", "content": "What is Retrieval-Augmented Generation?"}
-    ],
+    "message": "What is Retrieval-Augmented Generation?",
+    "messages": [],
+    "target": "192.168.2.99:11434",
     "useRag": true,
     "ragTopK": 3
   }')

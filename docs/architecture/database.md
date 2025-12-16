@@ -1,83 +1,63 @@
-# AgentX Dual Database Architecture
+# AgentX Database Architecture
 
 ## Overview
 
-AgentX supports **two database backends**, selectable via environment variable:
-
-1. **MongoDB** (default) - Full-featured, production-ready, scalable
-2. **SQLite** - Lightweight, zero-configuration, portable
+AgentX uses **MongoDB** as its database backend with Mongoose ODM.
 
 ## Configuration
 
 ### Environment Variable
 
-Set `DB_TYPE` in your `.env` file:
+Set `MONGO_URI` in your `.env` file:
 
 ```bash
-# Use MongoDB (default)
-DB_TYPE=mongodb
+MONGO_URI=mongodb://localhost:27017/agentx
+```
+
+## MongoDB Setup
+
+### Installation
+
+```bash
+# Ubuntu/Debian
+sudo apt install mongodb
+
+# macOS
+brew install mongodb-community
+
+# Or use MongoDB Atlas (cloud)
+# https://www.mongodb.com/cloud/atlas
+```
+
+### Starting MongoDB
+
+```bash
+# Linux
+sudo systemctl start mongodb
+
+# macOS
+brew services start mongodb-community
+```
+
+### Configuration
+
+```bash
+# Local MongoDB
 MONGO_URI=mongodb://localhost:27017/agentx
 
-# OR use SQLite
-DB_TYPE=sqlite
-SQLITE_PATH=./agentx.db
+# MongoDB Atlas (cloud)
+MONGO_URI=mongodb+srv://user:pass@cluster.mongodb.net/agentx?retryWrites=true&w=majority
 ```
 
-## Database Comparison
+### Features
 
-### MongoDB (Agent A's Implementation)
-
-**Pros:**
 - Production-ready and scalable
 - Rich querying capabilities
-- Better for multi-user deployments
+- Multi-user deployments
 - Cloud-ready (MongoDB Atlas)
 - Flexible schema evolution
-
-**Cons:**
-- Requires MongoDB server installation
-- Higher memory footprint
-- More complex setup
-
-**Usage:**
-```bash
-# Install MongoDB
-sudo apt install mongodb  # Ubuntu/Debian
-brew install mongodb-community  # macOS
-
-# Start MongoDB
-sudo systemctl start mongodb  # Linux
-brew services start mongodb-community  # macOS
-
-# Configure AgentX
-echo "DB_TYPE=mongodb" > .env
-echo "MONGO_URI=mongodb://localhost:27017/agentx" >> .env
-
-npm start
-```
-
-### SQLite (Agent B's Implementation)
-
-**Pros:**
-- Zero configuration required
-- No separate server needed
-- Single file database
-- Perfect for local/development use
-- Portable and lightweight
-
-**Cons:**
-- Limited concurrency
-- Not ideal for multi-user production
-- Simpler query capabilities
-
-**Usage:**
-```bash
-# No installation needed! Just configure:
-echo "DB_TYPE=sqlite" > .env
-echo "SQLITE_PATH=./agentx.db" >> .env
-
-npm start
-```
+- Connection pooling (10-50 connections)
+- Automatic reconnection
 
 ## Data Models
 
@@ -102,12 +82,9 @@ Both implementations provide identical API surfaces:
 - Message ratings (thumbs up/down)
 - Comments and improvement notes
 
-## API Compatibility
-
-All endpoints work identically regardless of database backend:
+## API Endpoints
 
 ```bash
-# These work with both MongoDB and SQLite:
 POST   /api/chat
 GET    /api/conversations
 GET    /api/conversations/:id
@@ -119,46 +96,30 @@ GET    /api/feedback/message/:messageId
 GET    /api/feedback/conversation/:conversationId
 ```
 
-## Switching Databases
+## Database Backup
 
-**Important:** Switching databases will create a fresh database. Data is NOT automatically migrated between MongoDB and SQLite.
-
-### From MongoDB to SQLite:
+### Using mongodump
 ```bash
-# 1. Backup your MongoDB data
+# Backup all data
 mongodump --db agentx --out ./backup
 
-# 2. Switch to SQLite
-sed -i 's/DB_TYPE=mongodb/DB_TYPE=sqlite/' .env
-
-# 3. Restart server (creates new SQLite database)
-npm start
+# Restore from backup
+mongorestore --db agentx ./backup/agentx
 ```
 
-### From SQLite to MongoDB:
-```bash
-# 1. Backup your SQLite database
-cp agentx.db agentx.db.backup
-
-# 2. Switch to MongoDB
-sed -i 's/DB_TYPE=sqlite/DB_TYPE=mongodb/' .env
-
-# 3. Restart server (connects to MongoDB)
-npm start
-```
+### MongoDB Atlas Backups
+MongoDB Atlas provides automatic continuous backups with point-in-time recovery.
 
 ## Development vs Production
 
-### Development (Recommended: SQLite)
+### Development (Local MongoDB)
 ```bash
-DB_TYPE=sqlite
-SQLITE_PATH=./agentx.dev.db
+MONGO_URI=mongodb://localhost:27017/agentx
 ```
 
-### Production (Recommended: MongoDB)
+### Production (MongoDB Atlas or Remote)
 ```bash
-DB_TYPE=mongodb
-MONGO_URI=mongodb://username:password@production-host:27017/agentx?authSource=admin
+MONGO_URI=mongodb+srv://username:password@cluster.mongodb.net/agentx?retryWrites=true&w=majority
 ```
 
 ## Architecture
@@ -166,40 +127,41 @@ MONGO_URI=mongodb://username:password@production-host:27017/agentx?authSource=ad
 ```
 server.js
     ↓
-config/db.js (Router)
+config/db.js
     ↓
-    ├─→ config/db-mongodb.js (Mongoose models)
-    └─→ config/db-sqlite.js (SQLite async wrapper)
+config/db-mongodb.js (Mongoose connection)
+    ↓
+Models (Mongoose schemas)
+    ├─→ models/Conversation.js
+    ├─→ models/UserProfile.js
+    └─→ models/PromptConfig.js
 ```
 
 ## Implementation Details
 
-### MongoDB Implementation (Agent A)
-- Uses Mongoose ODM
-- Models in `models/Conversation.js` and `models/UserProfile.js`
-- Async/await with Mongoose queries
+- **ORM**: Mongoose (MongoDB object modeling)
+- **Connection Pooling**: 10-50 connections
+- **Models**: Conversation, UserProfile, PromptConfig, Feedback
+- **Async/await**: All database operations use async/await
+- **Indexes**: Optimized for common queries (userId, timestamps)
 
-### SQLite Implementation (Agent B)
-- Uses sqlite3 with promisified wrapper
-- Schema in `schema.sql`
-- Manual JOIN queries for relationships
-- Full transaction support
+## Performance Optimizations
+
+- Connection pooling (maxPoolSize: 50, minPoolSize: 10)
+- Lean queries for read-only operations
+- Selective field projection
+- Index-backed queries
+- Query monitoring and slow query detection
 
 ## Testing
 
 ```bash
-# Test with MongoDB
-DB_TYPE=mongodb npm test
-
-# Test with SQLite
-DB_TYPE=sqlite npm test
+npm test
 ```
 
-## Migration Script (Future Enhancement)
+## Monitoring
 
-A data migration tool between MongoDB ↔ SQLite is planned for v3.0.
-
-## Contributors
-
-- **Agent A**: MongoDB/Mongoose implementation
-- **Agent B**: SQLite implementation and dual-database architecture
+- Query performance tracking in `src/utils/queryOptimizer.js`
+- Slow query detection (>1s)
+- Connection health checks
+- Error logging with Winston

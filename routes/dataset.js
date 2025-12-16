@@ -6,8 +6,12 @@
 
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const Conversation = require('../models/Conversation');
 const PromptConfig = require('../models/PromptConfig');
+const { apiKeyAuth } = require('../src/middleware/auth');
+const logger = require('../config/logger');
+const { requireAuth } = require('../src/middleware/auth');
 
 /**
  * GET /api/dataset/conversations
@@ -20,7 +24,7 @@ const PromptConfig = require('../models/PromptConfig');
  *   - model (string, filter by model)
  * Response: { data: [...conversations], nextCursor: <id> | null }
  */
-router.get('/conversations', async (req, res) => {
+router.get('/conversations', requireAuth, async (req, res) => {
   try {
     const {
       limit = 50,
@@ -30,14 +34,21 @@ router.get('/conversations', async (req, res) => {
       model
     } = req.query;
 
-    // Parse and validate limit
-    const parsedLimit = Math.min(parseInt(limit, 10) || 50, 500);
+    // Parse and validate limit (clamp to positive integers, max 500)
+    const parsedLimit = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 500);
 
     // Build filter
     const filter = {};
     
+    // Validate cursor as ObjectId before using in query
     if (cursor) {
-      filter._id = { $gt: cursor };
+      if (!mongoose.Types.ObjectId.isValid(cursor)) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Invalid cursor format. Must be a valid ObjectId.'
+        });
+      }
+      filter._id = { $gt: new mongoose.Types.ObjectId(cursor) };
     }
     
     if (minFeedback !== undefined) {
@@ -49,8 +60,12 @@ router.get('/conversations', async (req, res) => {
       }
     }
     
+    // Only apply promptVersion filter if it parses to a valid integer
     if (promptVersion !== undefined) {
-      filter.promptVersion = parseInt(promptVersion, 10);
+      const parsedVersion = parseInt(promptVersion, 10);
+      if (!isNaN(parsedVersion)) {
+        filter.promptVersion = parsedVersion;
+      }
     }
     
     if (model) {
@@ -109,7 +124,7 @@ router.get('/conversations', async (req, res) => {
       nextCursor
     });
   } catch (err) {
-    console.error('[Dataset Conversations] Error:', err);
+    logger.error('Dataset conversations error', { error: err.message, stack: err.stack });
     res.status(500).json({ status: 'error', message: err.message });
   }
 });
@@ -126,7 +141,7 @@ router.get('/conversations', async (req, res) => {
  *   - author (optional, default: 'n8n')
  * Response: { data: <created PromptConfig> }
  */
-router.post('/prompts', async (req, res) => {
+router.post('/prompts', requireAuth, async (req, res) => {
   try {
     const {
       name,
@@ -171,7 +186,7 @@ router.post('/prompts', async (req, res) => {
       data: promptConfig
     });
   } catch (err) {
-    console.error('[Dataset Prompts] Error:', err);
+    logger.error('Dataset prompts error', { error: err.message, stack: err.stack });
     res.status(500).json({ status: 'error', message: err.message });
   }
 });
@@ -184,7 +199,7 @@ router.post('/prompts', async (req, res) => {
  *   - status (string, filter by status: 'active', 'deprecated', 'proposed')
  * Response: { data: [...prompts] }
  */
-router.get('/prompts', async (req, res) => {
+router.get('/prompts', requireAuth, async (req, res) => {
   try {
     const { name, status } = req.query;
 
@@ -201,7 +216,7 @@ router.get('/prompts', async (req, res) => {
       data: prompts
     });
   } catch (err) {
-    console.error('[Dataset Prompts List] Error:', err);
+    logger.error('Dataset prompts list error', { error: err.message, stack: err.stack });
     res.status(500).json({ status: 'error', message: err.message });
   }
 });
@@ -210,8 +225,9 @@ router.get('/prompts', async (req, res) => {
  * PATCH /api/dataset/prompts/:id/activate
  * Activate a prompt configuration (sets status='active', deprecates others)
  * Response: { data: <activated PromptConfig> }
+ * Auth: Required - prevents unauthorized prompt version changes
  */
-router.patch('/prompts/:id/activate', async (req, res) => {
+router.patch('/prompts/:id/activate', apiKeyAuth, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -222,7 +238,7 @@ router.patch('/prompts/:id/activate', async (req, res) => {
       data: activatedPrompt
     });
   } catch (err) {
-    console.error('[Dataset Prompts Activate] Error:', err);
+    logger.error('Dataset prompts activate error', { error: err.message, stack: err.stack });
     res.status(500).json({ status: 'error', message: err.message });
   }
 });

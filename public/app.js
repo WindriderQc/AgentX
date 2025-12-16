@@ -1,4 +1,63 @@
-(() => {
+// Authentication check
+async function checkAuth() {
+  try {
+    const response = await fetch('/api/auth/me', {
+      credentials: 'include'
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      if (data.status === 'success') {
+        displayUserInfo(data.user);
+        return true;
+      }
+    }
+    
+    // Not authenticated - show login button
+    showLoginButton();
+    return false;
+  } catch (error) {
+    console.log('Auth check failed:', error);
+    showLoginButton();
+    return false;
+  }
+}
+
+function showLoginButton() {
+  const loginBtn = document.getElementById('loginBtn');
+  if (loginBtn) {
+    loginBtn.style.display = 'block';
+  }
+}
+
+function displayUserInfo(user) {
+  const userMenu = document.getElementById('userMenu');
+  const userName = document.getElementById('userName');
+  
+  if (userMenu && userName) {
+    userName.textContent = user.name || user.email;
+    userMenu.style.display = 'flex';
+  }
+}
+
+async function logout() {
+  try {
+    await fetch('/api/auth/logout', {
+      method: 'POST',
+      credentials: 'include'
+    });
+    
+    localStorage.removeItem('user');
+    window.location.href = '/login.html';
+  } catch (error) {
+    console.error('Logout failed:', error);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  // Check authentication first
+  checkAuth();
+
   const elements = {
     chatWindow: document.getElementById('chatWindow'),
     messageInput: document.getElementById('messageInput'),
@@ -21,22 +80,29 @@
     keepAlive: document.getElementById('keepAlive'),
     statusChip: document.getElementById('statusChip'),
     statMessages: document.getElementById('statMessages'),
-    statReplies: document.getElementById('statReplies'),
     refreshModels: document.getElementById('refreshModels'),
-    testConnection: document.getElementById('testConnection'),
     saveDefaults: document.getElementById('saveDefaults'),
     feedback: document.getElementById('feedback'),
     quickActions: document.querySelectorAll('[data-quick]'),
     streamToggle: document.getElementById('streamToggle'),
+    ragToggle: document.getElementById('ragToggle'),
+    statsToggle: document.getElementById('statsToggle'), // V4: New toggle
     logWindow: document.getElementById('logWindow'),
     threadId: document.getElementById('threadId'),
     memoryLanguage: document.getElementById('memoryLanguage'),
     memoryRole: document.getElementById('memoryRole'),
     memoryStyle: document.getElementById('memoryStyle'),
-    saveProfile: document.getElementById('saveProfile'),
-    refreshProfile: document.getElementById('refreshProfile'),
+    logPanel: document.querySelector('.log-panel'),
+    toggleLogBtn: document.getElementById('toggleLogBtn'),
+    toggleHistoryBtn: document.getElementById('toggleHistoryBtn'),
+    closeHistoryBtn: document.getElementById('closeHistoryBtn'),
+    page: document.querySelector('.page'),
+    // Voice Elements
+    micBtn: document.getElementById('micBtn'),
+    ttsToggle: document.getElementById('ttsToggle'),
     // New Elements
     historyList: document.getElementById('historyList'),
+    resetProfileBtn: document.getElementById('resetProfileBtn'),
     newChatBtn: document.getElementById('newChatBtn'),
     profileBtn: document.getElementById('profileBtn'),
     profileModal: document.getElementById('profileModal'),
@@ -44,13 +110,49 @@
     saveProfileBtn: document.getElementById('saveProfileBtn'),
     userAbout: document.getElementById('userAbout'),
     userInstructions: document.getElementById('userInstructions'),
+    // Auth elements
+    userMenu: document.getElementById('userMenu'),
+    userName: document.getElementById('userName'),
+    logoutBtn: document.getElementById('logoutBtn'),
+    loginBtn: document.getElementById('loginBtn'),
   };
+
+  // Fetch server config on load
+  async function loadServerConfig() {
+    try {
+      const res = await fetch('/api/config');
+      if (res.ok) {
+        const config = await res.json();
+        if (config.ollama) {
+          // Add server's configured host to the dropdown if not already present
+          const hostSelect = document.getElementById('hostInput');
+          const existingOptions = Array.from(hostSelect.options).map(opt => opt.value);
+          if (config.ollama.host && !existingOptions.includes(config.ollama.host)) {
+            const option = document.createElement('option');
+            option.value = config.ollama.host;
+            option.textContent = config.ollama.host;
+            hostSelect.insertBefore(option, hostSelect.firstChild);
+          }
+          // Update defaults with server config
+          if (config.ollama.host) {
+            defaults.host = config.ollama.host;
+            defaults.port = config.ollama.port;
+          }
+          return config;
+        }
+      }
+    } catch (err) {
+      console.warn('Could not load server config:', err);
+    }
+    return null;
+  }
 
   const defaults = {
     host: 'localhost',
     port: '11434',
     model: '',
-    stream: false,
+    stream: true,  // Enable streaming by default for better UX and thinking model support
+    tts: false,    // Disable TTS by default
     system: 'You are AgentX, a concise and capable local assistant. Keep answers brief and actionable.',
     options: {
       temperature: 0.7,
@@ -71,10 +173,11 @@
     history: [],
     sending: false,
     stats: { messages: 0, replies: 0 },
-    settings: loadSettings(),
+    settings: null, // Will be loaded after server config
     threadId: buildThreadId(),
     profile: { language: '', role: '', style: '' },
     conversationId: null, // Current conversation ID
+    showStats: true, // V4: Toggle message stats
   };
 
   function buildThreadId() {
@@ -86,6 +189,11 @@
       const raw = localStorage.getItem('agentx-settings');
       if (!raw) return { ...defaults };
       const parsed = JSON.parse(raw);
+      // If saved host is localhost but defaults have been updated with server config, use defaults
+      if (parsed.host === 'localhost' && defaults.host !== 'localhost') {
+        parsed.host = defaults.host;
+        parsed.port = defaults.port;
+      }
       return {
         ...defaults,
         ...parsed,
@@ -103,11 +211,17 @@
       port: elements.portInput.value.trim() || defaults.port,
       model: elements.modelSelect.value,
       stream: elements.streamToggle.checked,
+      tts: elements.ttsToggle.checked,
+      useRag: elements.ragToggle.checked,
+      showStats: elements.statsToggle.checked, // V4: Save stats preference
       system: elements.systemPrompt.value.trim() || defaults.system,
       options: readOptions(),
     };
     localStorage.setItem('agentx-settings', JSON.stringify(payload));
     state.settings = payload;
+    state.showStats = payload.showStats; // Update state immediately
+    // Re-render chat to toggle stats visibility without refresh
+    refreshMessages();
     setFeedback('Defaults saved locally.', 'success');
   }
 
@@ -129,11 +243,17 @@
 
   function hydrateForm() {
     const cfg = state.settings;
-    elements.hostInput.value = cfg.host;
-    elements.portInput.value = cfg.port;
+    state.showStats = cfg.showStats !== undefined ? cfg.showStats : true; // Default true
+
+    // Use saved settings if they exist, otherwise use defaults (which may include server config)
+    elements.hostInput.value = cfg.host || defaults.host;
+    elements.portInput.value = cfg.port || defaults.port;
     elements.modelSelect.value = cfg.model;
     elements.systemPrompt.value = cfg.system;
     elements.streamToggle.checked = cfg.stream;
+    elements.ttsToggle.checked = cfg.tts || false;
+    elements.ragToggle.checked = cfg.useRag || false;
+    elements.statsToggle.checked = state.showStats; // V4
     elements.temperature.value = cfg.options.temperature;
     elements.topP.value = cfg.options.top_p;
     elements.topK.value = cfg.options.top_k;
@@ -175,48 +295,27 @@
   }
 
   function renderMessage(message) {
-    const { role, content, id, createdAt } = message;
-    const bubble = document.createElement('div');
-    bubble.className = `bubble ${role === 'user' ? 'user' : 'assistant'}`;
+    const role = message.role;
+    const content = message.content;
+    const messageId = message.id || message._id || null;
+    const createdAt = message.createdAt || new Date().toISOString();
+    
+    // Check if this is a system message (welcome, etc.)
+    const isSystemMessage = messageId && messageId.startsWith('a-');
 
-    const meta = document.createElement('div');
-    meta.className = 'meta';
-    meta.textContent = role === 'user' ? 'You' : 'AgentX';
-
-    const time = document.createElement('span');
-    time.className = 'time';
-    time.textContent = formatTime(createdAt);
-    meta.appendChild(document.createTextNode(' • '));
-    meta.appendChild(time);
-  // Modified to support message ID for feedback
-  function renderMessage(role, content, messageId = null, feedback = null) {
     const bubble = document.createElement('div');
-    bubble.className = `bubble ${role === 'user' ? 'user' : 'assistant'}`;
+    bubble.className = `bubble ${role === 'user' ? 'user' : isSystemMessage ? 'system' : 'assistant'}`;
     if (messageId) bubble.dataset.id = messageId;
 
     const meta = document.createElement('div');
     meta.className = 'meta';
     meta.innerHTML = `<span>${role === 'user' ? 'You' : 'AgentX'}</span>`;
 
-    // Feedback UI for Assistant messages
-    if (role === 'assistant' && messageId) {
-        const feedbackDiv = document.createElement('div');
-        feedbackDiv.className = 'feedback-actions';
-
-        const upBtn = document.createElement('button');
-        upBtn.innerHTML = '👍';
-        upBtn.className = `feedback-btn ${feedback?.rating === 1 ? 'active' : ''}`;
-        upBtn.onclick = () => submitFeedback(messageId, 1);
-
-        const downBtn = document.createElement('button');
-        downBtn.innerHTML = '👎';
-        downBtn.className = `feedback-btn ${feedback?.rating === -1 ? 'active' : ''}`;
-        downBtn.onclick = () => submitFeedback(messageId, -1);
-
-        feedbackDiv.appendChild(upBtn);
-        feedbackDiv.appendChild(downBtn);
-        meta.appendChild(feedbackDiv);
-    }
+    const time = document.createElement('span');
+    time.className = 'time';
+    time.textContent = formatTime(createdAt);
+    meta.appendChild(document.createTextNode(' • '));
+    meta.appendChild(time);
 
     const body = document.createElement('p');
     body.textContent = content;
@@ -224,8 +323,38 @@
     bubble.appendChild(meta);
     bubble.appendChild(body);
 
-    if (role === 'assistant') {
-      bubble.appendChild(buildFeedbackRow(id));
+    // V4: Stats Footer
+    if (state.showStats && message.stats && role === 'assistant') {
+      const statsDiv = document.createElement('div');
+      statsDiv.className = 'message-stats';
+      statsDiv.style.fontSize = '0.75rem';
+      statsDiv.style.color = 'var(--muted)';
+      statsDiv.style.marginTop = '0.5rem';
+      statsDiv.style.paddingTop = '0.5rem';
+      statsDiv.style.borderTop = '1px solid rgba(255,255,255,0.05)';
+
+      const { usage, performance } = message.stats;
+      const parts = [];
+
+      if (usage) {
+        parts.push(`${usage.totalTokens} tokens`);
+      }
+      if (performance) {
+        // Convert ns to s
+        const duration = (performance.totalDuration / 1e9).toFixed(2);
+        const tps = performance.tokensPerSecond ? `(${performance.tokensPerSecond} t/s)` : '';
+        parts.push(`${duration}s ${tps}`);
+      }
+
+      if (parts.length > 0) {
+        statsDiv.textContent = parts.join(' • ');
+        bubble.appendChild(statsDiv);
+      }
+    }
+
+    // Only render feedback controls for actual AI responses (exclude system messages like welcome)
+    if (role === 'assistant' && messageId && !messageId.startsWith('a-')) {
+      bubble.appendChild(buildFeedbackRow(messageId));
     }
 
     elements.chatWindow.appendChild(bubble);
@@ -278,16 +407,26 @@
     return row;
   }
 
-  function appendMessage(message, options = {}) {
+  function appendMessage(messageOrRole, contentOrOptions = {}, maybeOptions = {}) {
+    const isStringPayload = typeof messageOrRole === 'string';
+    const options = isStringPayload ? maybeOptions : contentOrOptions || {};
     const persist = options.persist !== false;
     const count = options.count !== false;
-    renderMessage(message);
-    // Note: Render happens here for temporary display, but re-rendered properly on reload/load history
-    // For immediate feedback we render without ID first, or we wait for server response?
-    // We'll render immediately, and if we get an ID later (from server), we can update it?
-    // Actually, for simplicity, we render immediately. The ID is only needed for feedback on assistant messages.
 
-    renderMessage(role, content, options.messageId, options.feedback);
+    const message = isStringPayload
+      ? {
+          role: messageOrRole,
+          content: contentOrOptions || '',
+          createdAt: options.createdAt || new Date().toISOString(),
+          id: options.messageId || `m-${Date.now()}`,
+          feedback: options.feedback,
+        }
+      : {
+          ...messageOrRole,
+          createdAt: messageOrRole.createdAt || new Date().toISOString(),
+        };
+
+    renderMessage(message);
 
     if (persist) {
       state.history.push(message);
@@ -300,8 +439,8 @@
         state.stats.replies += 1;
       }
     }
-    elements.statMessages.textContent = state.stats.messages;
-    elements.statReplies.textContent = state.stats.replies;
+    // Show only AI assistant message count
+    elements.statMessages.textContent = state.stats.replies;
     renderLogList(state.history);
   }
 
@@ -358,8 +497,11 @@
     if (showStatus) setStatus('Connecting…');
     try {
       const res = await fetch(`/api/ollama/models?target=${encodeURIComponent(targetHost())}`);
+      if (!res.ok) {
+        throw new Error(`Server returned ${res.status}`);
+      }
       const data = await res.json();
-      if (!res.ok || data.status !== 'success') {
+      if (data.status !== 'success') {
         throw new Error(data.message || 'Unable to load models');
       }
       elements.modelSelect.innerHTML = '';
@@ -386,9 +528,22 @@
       setStatus(`Connected to ${targetHost()}`, 'success');
       setFeedback('Models refreshed from Ollama.', 'success');
     } catch (err) {
-      console.error(err);
+      console.warn('Failed to fetch models:', err.message);
       setStatus('Connection failed', 'error');
-      setFeedback(err.message, 'error');
+      
+      // Parse error message for better user feedback
+      let userMessage = 'Unable to connect to Ollama.';
+      if (err.message.includes('EHOSTUNREACH') || err.message.includes('ECONNREFUSED')) {
+        userMessage = `Cannot reach ${targetHost()}. Check if Ollama is running and the host/port are correct.`;
+      } else if (err.message.includes('ETIMEDOUT')) {
+        userMessage = `Connection to ${targetHost()} timed out. Check network and firewall settings.`;
+      } else if (err.message.includes('500')) {
+        userMessage = err.message;
+      }
+      
+      setFeedback(userMessage, 'error');
+      // Add a default option so UI doesn't break
+      elements.modelSelect.innerHTML = '<option value="">⚠️ Connection failed</option>';
     }
   }
 
@@ -402,21 +557,6 @@
     };
   }
 
-  async function loadLogs() {
-    try {
-      const res = await fetch(`/api/logs?threadId=${encodeURIComponent(state.threadId)}`);
-      const data = await res.json();
-      if (res.ok && data.status === 'success' && data.data?.messages) {
-        state.history = data.data.messages;
-        refreshMessages();
-        return;
-      }
-    } catch (err) {
-      console.warn('Log load skipped', err);
-    }
-    refreshMessages();
-  }
-
   function refreshMessages() {
     elements.chatWindow.innerHTML = '';
     state.stats = { messages: 0, replies: 0 };
@@ -424,11 +564,12 @@
   }
 
   async function sendFeedback(messageId, rating, comment) {
-    const payload = { threadId: state.threadId, messageId, rating, comment };
+    const payload = { conversationId: state.conversationId, messageId, rating, comment };
     const res = await fetch('/api/feedback', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
+      credentials: 'include'
     });
     const data = await res.json();
     if (!res.ok || data.status !== 'success') {
@@ -459,6 +600,7 @@
         system: elements.systemPrompt.value.trim(),
         options: readOptions(),
         stream: elements.streamToggle.checked,
+        useRag: elements.ragToggle.checked,
         threadId: state.threadId,
         message,
         profile: readProfileInputs(),
@@ -470,6 +612,7 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
+        credentials: 'include'
       });
       const data = await res.json();
       if (!res.ok || data.status !== 'success') {
@@ -477,15 +620,7 @@
       }
 
       state.profile = data.data?.profile || state.profile;
-      const response = data.data?.message || {
-        role: 'assistant',
-        content: 'No response from AgentX backend.',
-        createdAt: new Date().toISOString(),
-        id: `a-${Date.now()}`,
-      };
-
-      appendMessage(response);
-      state.conversationId = data.conversationId; // Update ID
+      state.conversationId = data.data?.conversationId || state.conversationId; // Update ID
 
       const responseText =
         data.data?.message?.content ||
@@ -493,13 +628,31 @@
         data.data?.output ||
         'No response from Ollama.';
 
-      appendMessage('assistant', responseText);
+      const assistantMessage = {
+          role: 'assistant',
+          content: responseText,
+          createdAt: new Date().toISOString(),
+          id: data.data?.messageId || null,
+          stats: data.data?.stats || null // V4: Inject stats from response
+      };
 
-      setFeedback('Response received.', 'success');
+      appendMessage(assistantMessage);
+      speakText(responseText);
+
+      // Show warning for thinking models if present
+      if (data.warning) {
+        setFeedback(`⚠️ ${data.warning}`, 'warning');
+        setTimeout(() => setFeedback('Response received.', 'success'), 3000);
+      } else {
+        setFeedback('Response received.', 'success');
+      }
       loadHistoryList();
 
       // Reload conversation to sync message IDs for feedback
-      if(state.conversationId) loadConversation(state.conversationId);
+      if(state.conversationId) {
+          // Preserve model selection - user may have changed it from what's saved in DB
+          loadConversation(state.conversationId, true);
+      }
 
     } catch (err) {
       console.error(err);
@@ -512,7 +665,6 @@
     } finally {
       state.sending = false;
       elements.sendBtn.textContent = 'Send';
-      loadLogs();
     }
   }
 
@@ -533,12 +685,14 @@
               div.onclick = () => loadConversation(item.id);
               elements.historyList.appendChild(div);
           });
+          return data;
       } catch (err) {
           console.error('Failed to load history', err);
+          return [];
       }
   }
 
-  async function loadConversation(id) {
+  async function loadConversation(id, preserveModelSelection = false) {
       try {
           const res = await fetch(`/api/history/${id}`);
           const { data } = await res.json();
@@ -549,18 +703,31 @@
           state.stats.messages = 0;
           state.stats.replies = 0;
 
-          data.messages.forEach(msg => {
-              appendMessage(msg.role, msg.content, {
-                  persist: true, // It's already in DB, but we want it in local state.history for context
-                  count: true,
-                  messageId: msg._id,
-                  feedback: msg.feedback
-              });
-          });
+            data.messages.forEach(msg => {
+                // Manually construct message object to include stats
+                const messageObj = {
+                    role: msg.role,
+                    content: msg.content,
+                    createdAt: msg.createdAt,
+                    id: msg._id,
+                    feedback: msg.feedback,
+                    stats: msg.stats // V4: Pass stats to rendering
+                };
 
-          // Restore settings from conversation if needed? No, keep current settings.
-          // But maybe update model select?
-          if(data.model) elements.modelSelect.value = data.model;
+                // Use the object form of appendMessage
+                appendMessage(messageObj, {
+                    persist: true,
+                    count: true
+                });
+            });
+
+          // Only set model if we're not preserving the current selection and it exists in dropdown
+          if(!preserveModelSelection && data.model) {
+              const modelExists = Array.from(elements.modelSelect.options).some(opt => opt.value === data.model);
+              if(modelExists) {
+                  elements.modelSelect.value = data.model;
+              }
+          }
 
       } catch (err) {
           console.error('Failed to load conversation', err);
@@ -571,13 +738,14 @@
       if(!state.conversationId) return;
       try {
           await fetch('/api/feedback', {
-              method: 'POST',
+            method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                   conversationId: state.conversationId,
                   messageId,
                   rating
-              })
+              }),
+              credentials: 'include'
           });
           // Refresh to show active state
           loadConversation(state.conversationId);
@@ -607,7 +775,8 @@
                   preferences: {
                       customInstructions: elements.userInstructions.value
                   }
-              })
+              }),
+              credentials: 'include'
           });
           elements.profileModal.classList.add('hidden');
           setFeedback('Profile saved.', 'success');
@@ -617,14 +786,153 @@
       }
   }
 
+  function setHistoryToggleLabels() {
+    if (!elements.page) return;
+    const isHidden = elements.page.classList.contains('history-hidden');
+    if (elements.toggleHistoryBtn) {
+      elements.toggleHistoryBtn.textContent = isHidden ? 'Show history' : 'Hide history';
+      elements.toggleHistoryBtn.setAttribute('aria-pressed', String(!isHidden));
+    }
+    if (elements.closeHistoryBtn) {
+      const label = isHidden ? 'Show history' : 'Hide history';
+      elements.closeHistoryBtn.title = label;
+      elements.closeHistoryBtn.setAttribute('aria-label', label);
+    }
+  }
+
+  function toggleHistoryPanel() {
+    if (!elements.page) return;
+    elements.page.classList.toggle('history-hidden');
+    setHistoryToggleLabels();
+  }
+
+  function toggleLogPanel() {
+    if (!elements.logPanel || !elements.toggleLogBtn) return;
+    const isCollapsed = elements.logPanel.classList.toggle('collapsed');
+    elements.toggleLogBtn.textContent = isCollapsed ? 'Show session log' : 'Hide session log';
+  }
+
+  // --- Voice Functions ---
+
+  let recognition = null;
+  let isRecording = false;
+
+  function startVoiceInput() {
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+      setFeedback('Speech recognition not supported in this browser.', 'error');
+      return;
+    }
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    recognition = new SpeechRecognition();
+    recognition.lang = 'en-US';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+      isRecording = true;
+      elements.micBtn.classList.add('recording');
+      elements.micBtn.setAttribute('aria-pressed', 'true');
+      setStatus('Listening...', 'success');
+    };
+
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      elements.messageInput.value = transcript;
+      // Optional: Automatically send? For now let user review.
+      // sendMessage();
+    };
+
+    recognition.onerror = (event) => {
+      console.error('Speech recognition error', event.error);
+      setFeedback(`Voice error: ${event.error}`, 'error');
+      cleanupVoiceInput();
+    };
+
+    recognition.onend = () => {
+      cleanupVoiceInput();
+    };
+
+    // Cancel any ongoing speech when starting input
+    window.speechSynthesis.cancel();
+    recognition.start();
+  }
+
+  function stopVoiceInput() {
+    // User requested stop
+    if (recognition) {
+      // recognition.stop() will trigger onend, which calls cleanupVoiceInput
+      recognition.stop();
+    } else {
+      cleanupVoiceInput();
+    }
+  }
+
+  function cleanupVoiceInput() {
+    recognition = null;
+    isRecording = false;
+    elements.micBtn.classList.remove('recording');
+    elements.micBtn.setAttribute('aria-pressed', 'false');
+    setStatus('Idle');
+  }
+
+  function toggleVoiceInput() {
+    if (isRecording) {
+      stopVoiceInput();
+    } else {
+      startVoiceInput();
+    }
+  }
+
+  function speakText(text) {
+    if (!state.settings.tts) return;
+
+    // Simple browser TTS
+    const utterance = new SpeechSynthesisUtterance(text);
+
+    const setVoice = () => {
+      const voices = window.speechSynthesis.getVoices();
+      const preferred = voices.find(v => v.name.includes('Google US English')) ||
+                        voices.find(v => v.lang === 'en-US') ||
+                        voices[0];
+      if (preferred) utterance.voice = preferred;
+      window.speechSynthesis.speak(utterance);
+    };
+
+    if (window.speechSynthesis.getVoices().length === 0) {
+      window.speechSynthesis.addEventListener('voiceschanged', setVoice, { once: true });
+    } else {
+      setVoice();
+    }
+  }
+
   function attachEvents() {
+    elements.micBtn.addEventListener('click', toggleVoiceInput);
+    elements.ttsToggle.addEventListener('change', persistSettings);
     elements.sendBtn.addEventListener('click', sendMessage);
     elements.clearBtn.addEventListener('click', clearChat);
-    elements.refreshModels.addEventListener('click', () => fetchModels(false));
-    elements.testConnection.addEventListener('click', () => fetchModels(true));
+    elements.refreshModels.addEventListener('click', () => fetchModels(true));
     elements.saveDefaults.addEventListener('click', persistSettings);
-    elements.saveProfile.addEventListener('click', saveProfile);
-    elements.refreshProfile.addEventListener('click', loadProfile);
+    
+    // Auth events
+    if (elements.logoutBtn) {
+      elements.logoutBtn.addEventListener('click', logout);
+    }
+    if (elements.loginBtn) {
+      elements.loginBtn.addEventListener('click', () => {
+        window.location.href = '/login.html';
+      });
+    }
+
+    // Toggle tuning parameters section
+    const tuningHeader = document.getElementById('tuningHeader');
+    const tuningContent = document.getElementById('tuningContent');
+    if (tuningHeader && tuningContent) {
+      tuningHeader.addEventListener('click', () => {
+        tuningContent.classList.toggle('hidden');
+        tuningHeader.classList.toggle('expanded');
+      });
+    }
 
     elements.messageInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -643,6 +951,8 @@
     });
 
     elements.streamToggle.addEventListener('change', persistSettings);
+    elements.ragToggle.addEventListener('change', persistSettings);
+    if (elements.statsToggle) elements.statsToggle.addEventListener('change', persistSettings);
 
     // Auto-refresh models when host or port changes
     elements.hostInput.addEventListener('change', () => {
@@ -670,21 +980,56 @@
     });
     elements.closeProfileBtn.addEventListener('click', () => elements.profileModal.classList.add('hidden'));
     elements.saveProfileBtn.addEventListener('click', saveProfile);
+    elements.resetProfileBtn.addEventListener('click', () => {
+        loadProfile();
+    });
+
+    if (elements.toggleHistoryBtn) {
+      elements.toggleHistoryBtn.addEventListener('click', toggleHistoryPanel);
+    }
+
+    if (elements.closeHistoryBtn) {
+      elements.closeHistoryBtn.addEventListener('click', toggleHistoryPanel);
+    }
+
+    if (elements.toggleLogBtn) {
+      elements.toggleLogBtn.addEventListener('click', toggleLogPanel);
+    }
   }
 
-  function init() {
+  async function init() {
+    // Load settings after defaults are potentially updated by server config
+    state.settings = loadSettings();
     elements.threadId.textContent = state.threadId;
     hydrateForm();
     attachEvents();
     clearChat();
     loadProfile();
     fetchModels();
-    loadHistoryList(); // Load history on start
-    setStatus('Ready');
-    setFeedback('Set host/model, then start chatting.');
-    loadLogs();
+
+    // Set initial UI toggle states
+    if (elements.toggleLogBtn) {
+      const isCollapsed = elements.logPanel?.classList.contains('collapsed');
+      elements.toggleLogBtn.textContent = isCollapsed ? 'Show session log' : 'Hide session log';
+    }
+
+    setHistoryToggleLabels();
+
+    // Load history and open latest conversation if available
+    const history = await loadHistoryList();
+    if (history && history.length > 0) {
+        loadConversation(history[0].id);
+    } else {
+        setStatus('Ready');
+        setFeedback('Set host/model, then start chatting.');
+    }
   }
 
-  init();
-}
-})();
+  // Load server config first, then initialize
+  loadServerConfig().then(() => {
+    init();
+  }).catch(err => {
+    console.warn('Server config load failed, using defaults:', err);
+    init();
+  });
+});
