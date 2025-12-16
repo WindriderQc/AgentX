@@ -27,19 +27,20 @@ echo ""
 
 # Test user profile creation
 echo "2. Creating user profile..."
-PROFILE=$(curl -s -X POST "$BASE_URL/api/user/profile" \
+PROFILE=$(curl -s -X POST "$BASE_URL/api/profile" \
     -H "Content-Type: application/json" \
     -d "{
         \"userId\": \"$USER_ID\",
-        \"name\": \"Test User\",
-        \"role\": \"Developer\",
-        \"response_style\": \"detailed\",
-        \"code_preference\": \"code-heavy\"
+        \"about\": \"Test User - Developer interested in tech and innovation\",
+        \"preferences\": {
+            \"response_style\": \"detailed\",
+            \"code_preference\": \"code-heavy\"
+        }
     }")
 
 if echo "$PROFILE" | grep -q "success"; then
     echo -e "${GREEN}✓ User profile created${NC}"
-    echo "Profile: $(echo $PROFILE | jq -r '.data.name')"
+    echo "Profile: $(echo $PROFILE | jq -r '.data.about' | cut -c1-50)"
 else
     echo -e "${RED}✗ User profile creation failed${NC}"
     exit 1
@@ -49,9 +50,7 @@ echo ""
 # Test chat endpoint (requires Ollama)
 echo "3. Testing chat endpoint..."
 echo "   (Note: This requires Ollama to be running with llama2 model)"
-read -p "   Do you have Ollama running? (y/n) " -n 1 -r
-echo ""
-if [[ $REPLY =~ ^[Yy]$ ]]; then
+if true; then
     CHAT=$(curl -s -X POST "$BASE_URL/api/chat" \
         -H "Content-Type: application/json" \
         -d "{
@@ -91,7 +90,7 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
         # Test conversation retrieval
         echo ""
         echo "5. Testing conversation retrieval..."
-        CONV=$(curl -s "$BASE_URL/api/conversations/$CONVERSATION_ID")
+        CONV=$(curl -s "$BASE_URL/api/history/$CONVERSATION_ID")
         if echo "$CONV" | grep -q "success"; then
             echo -e "${GREEN}✓ Conversation retrieved${NC}"
             MSG_COUNT=$(echo $CONV | jq '.data.messages | length')
@@ -103,13 +102,25 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
         # Test conversations list
         echo ""
         echo "6. Testing conversations list..."
-        CONVS=$(curl -s "$BASE_URL/api/conversations?userId=$USER_ID")
+        CONVS=$(curl -s "$BASE_URL/api/history?userId=$USER_ID")
         if echo "$CONVS" | grep -q "success"; then
             echo -e "${GREEN}✓ Conversations list retrieved${NC}"
             CONV_COUNT=$(echo $CONVS | jq '.data | length')
             echo "   Total conversations: $CONV_COUNT"
         else
             echo -e "${RED}✗ Conversations list failed${NC}"
+        fi
+
+        # Test logs (new DB-backed view)
+        echo ""
+        echo "6b. Testing logs endpoint..."
+        LOGS=$(curl -s "$BASE_URL/api/logs")
+        if echo "$LOGS" | grep -q "success"; then
+             echo -e "${GREEN}✓ Logs retrieved${NC}"
+             LOG_MSG_COUNT=$(echo $LOGS | jq '.data.messages | length')
+             echo "   Messages in log: $LOG_MSG_COUNT"
+        else
+             echo -e "${RED}✗ Logs endpoint failed${NC}"
         fi
         
     else
@@ -123,11 +134,11 @@ fi
 
 echo ""
 echo "7. Testing profile retrieval..."
-PROFILE_GET=$(curl -s "$BASE_URL/api/user/profile?userId=$USER_ID")
+PROFILE_GET=$(curl -s "$BASE_URL/api/profile?userId=$USER_ID")
 if echo "$PROFILE_GET" | grep -q "success"; then
     echo -e "${GREEN}✓ Profile retrieved${NC}"
-    echo "   Name: $(echo $PROFILE_GET | jq -r '.data.name')"
-    echo "   Style: $(echo $PROFILE_GET | jq -r '.data.response_style')"
+    echo "   About: $(echo $PROFILE_GET | jq -r '.data.about' | cut -c1-50)..."
+    echo "   Style: $(echo $PROFILE_GET | jq -r '.data.preferences.response_style')"
 else
     echo -e "${RED}✗ Profile retrieval failed${NC}"
 fi
@@ -139,11 +150,11 @@ echo ""
 echo "📊 Summary:"
 echo "   - Health check: working"
 echo "   - User profiles: working"
-echo "   - Chat endpoint: $([ $REPLY = 'y' ] && echo 'tested' || echo 'skipped')"
-echo "   - Feedback: $([ $REPLY = 'y' ] && echo 'tested' || echo 'skipped')"
-echo "   - Conversations: $([ $REPLY = 'y' ] && echo 'tested' || echo 'skipped')"
+echo "   - Chat endpoint: tested"
+echo "   - Feedback: tested"
+echo "   - Conversations: tested"
 echo ""
 echo "🔗 Next steps:"
-echo "   1. Check API_DOCS.md for complete endpoint documentation"
+echo "   1. Check docs/api/reference.md for complete endpoint documentation"
 echo "   2. Test with your frontend"
-echo "   3. Review data in ./data/agentx.db"
+echo "   3. Review data in MongoDB Atlas"

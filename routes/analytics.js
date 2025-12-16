@@ -7,6 +7,8 @@
 const express = require('express');
 const router = express.Router();
 const Conversation = require('../models/Conversation');
+const { requireAuth } = require('../src/middleware/auth');
+const logger = require('../config/logger');
 
 /**
  * GET /api/analytics/usage
@@ -17,7 +19,7 @@ const Conversation = require('../models/Conversation');
  *   - groupBy (optional: 'model' | 'promptVersion' | 'day')
  * Response: { totalConversations, totalMessages, breakdown: [...] }
  */
-router.get('/usage', async (req, res) => {
+router.get('/usage', requireAuth, async (req, res) => {
   try {
     const { from, to, groupBy } = req.query;
 
@@ -109,7 +111,7 @@ router.get('/usage', async (req, res) => {
       }
     });
   } catch (err) {
-    console.error('[Analytics Usage] Error:', err);
+    logger.error('Analytics usage error', { error: err.message, stack: err.stack });
     res.status(500).json({ status: 'error', message: err.message });
   }
 });
@@ -123,7 +125,7 @@ router.get('/usage', async (req, res) => {
  *   - groupBy (optional: 'promptVersion' | 'model')
  * Response: { totalFeedback, positive, negative, positiveRate, breakdown: [...] }
  */
-router.get('/feedback', async (req, res) => {
+router.get('/feedback', requireAuth, async (req, res) => {
   try {
     const { from, to, groupBy } = req.query;
 
@@ -216,7 +218,7 @@ router.get('/feedback', async (req, res) => {
       }
     });
   } catch (err) {
-    console.error('[Analytics Feedback] Error:', err);
+    logger.error('Analytics feedback error', { error: err.message, stack: err.stack });
     res.status(500).json({ status: 'error', message: err.message });
   }
 });
@@ -229,7 +231,7 @@ router.get('/feedback', async (req, res) => {
  *   - to (ISO date, default: now)
  * Response: { ragUsageRate, ragPositiveRate, noRagPositiveRate, ... }
  */
-router.get('/rag-stats', async (req, res) => {
+router.get('/rag-stats', requireAuth, async (req, res) => {
   try {
     const { from, to } = req.query;
 
@@ -302,7 +304,7 @@ router.get('/rag-stats', async (req, res) => {
       }
     });
   } catch (err) {
-    console.error('[Analytics RAG Stats] Error:', err);
+    logger.error('Analytics RAG stats error', { error: err.message, stack: err.stack });
     res.status(500).json({ status: 'error', message: err.message });
   }
 });

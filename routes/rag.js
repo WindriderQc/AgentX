@@ -12,29 +12,25 @@
 const express = require('express');
 const router = express.Router();
 const { getRagStore } = require('../src/services/ragStore');
+const { resolveTarget } = require('../src/utils');
+const logger = require('../config/logger');
 
-// Initialize RAG store
-const ragStore = getRagStore();
-
-// Helper to resolve Ollama target
-function resolveTarget(target) {
-  const fallback = 'http://localhost:11434';
-  if (!target || typeof target !== 'string') return fallback;
-  const trimmed = target.trim();
-  if (!trimmed) return fallback;
-  if (/^https?:\/\//i.test(trimmed)) return trimmed.replace(/\/+$/, '');
-  return `http://${trimmed.replace(/\/+$/, '')}`;
-}
+// Initialize RAG store with environment config
+const ragStore = getRagStore({
+  vectorStoreType: process.env.VECTOR_STORE_TYPE || 'memory',
+  url: process.env.QDRANT_URL,
+  collection: process.env.QDRANT_COLLECTION
+});
 
 /**
- * POST /api/rag/ingest
+ * POST /api/rag/ingest (and /api/rag/documents)
  * 
  * Ingest a document into the RAG system.
  * Called by n8n workflows to add documents for semantic search.
  * 
  * Contract: V3_CONTRACT_SNAPSHOT.md § 2.1
  */
-router.post('/ingest', async (req, res) => {
+router.post(['/ingest', '/documents'], async (req, res) => {
   try {
     // Extract and validate required fields
     const { source, path, title, text, hash, tags, metadata, target } = req.body;
@@ -126,10 +122,14 @@ router.post('/ingest', async (req, res) => {
       chunkCount: result.chunkCount
     });
 
-    console.log(`[RAG Ingest] ${result.status}: ${result.documentId} (${result.chunkCount} chunks)`);
+    logger.info('RAG document ingested', {
+      status: result.status,
+      documentId: result.documentId,
+      chunkCount: result.chunkCount
+    });
 
   } catch (error) {
-    console.error('[RAG Ingest] Error:', error);
+    logger.error('RAG ingest error', { error: error.message, stack: error.stack });
     
     // Check if it's a service availability error
     if (error.message.includes('Ollama') || error.message.includes('embedding')) {
@@ -215,10 +215,13 @@ router.post('/search', async (req, res) => {
       results
     });
 
-    console.log(`[RAG Search] Query "${query}" -> ${results.length} results`);
+    logger.info('RAG search completed', {
+      query: query.substring(0, 50),
+      resultCount: results.length
+    });
 
   } catch (error) {
-    console.error('[RAG Search] Error:', error);
+    logger.error('RAG search error', { error: error.message, stack: error.stack });
     
     // Check if it's a service availability error
     if (error.message.includes('Ollama') || error.message.includes('embedding')) {
@@ -258,7 +261,7 @@ router.get('/documents', (req, res) => {
       documents
     });
   } catch (error) {
-    console.error('[RAG Documents] Error:', error);
+    logger.error('RAG documents error', { error: error.message, stack: error.stack });
     res.status(500).json({
       error: 'Internal server error',
       message: error.message
@@ -289,7 +292,7 @@ router.delete('/documents/:documentId', (req, res) => {
       documentId
     });
   } catch (error) {
-    console.error('[RAG Delete] Error:', error);
+    logger.error('RAG delete error', { error: error.message, stack: error.stack });
     res.status(500).json({
       error: 'Internal server error',
       message: error.message

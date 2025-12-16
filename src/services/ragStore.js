@@ -1,23 +1,29 @@
 /**
  * RAG Store for AgentX V3
  * 
- * Vector store abstraction for document ingestion and semantic search.
- * Current implementation: In-memory vector store with cosine similarity
- * Can be swapped for: Qdrant, Chroma, Pinecone, etc.
+ * High-level document management layer with chunking and embedding generation.
+ * Uses pluggable vector store backends (in-memory, Qdrant, etc.)
  * 
  * Contract: V3_CONTRACT_SNAPSHOT.md § 1
  */
 
 const crypto = require('crypto');
+const path = require('path');
 const { getEmbeddingsService } = require('./embeddings');
+const { createVectorStore } = require('./vectorStore/factory');
+const logger = require(path.join(__dirname, '../../config/logger'));
 
 class RagStore {
   constructor(config = {}) {
     this.embeddings = getEmbeddingsService(config);
-    this.documents = new Map(); // documentId -> metadata
-    this.vectors = []; // Array of {documentId, chunkIndex, embedding, text, metadata}
+    this.vectorStore = createVectorStore(config.vectorStoreType, config);
     this.chunkSize = config.chunkSize || 800; // Characters per chunk
     this.chunkOverlap = config.chunkOverlap || 100; // Overlap between chunks
+    logger.info('RagStore initialized', { 
+      vectorStore: config.vectorStoreType || 'memory',
+      chunkSize: this.chunkSize,
+      chunkOverlap: this.chunkOverlap
+    });
   }
 
   /**
@@ -28,6 +34,12 @@ class RagStore {
    * @returns {Promise<{documentId: string, chunkCount: number, status: string}>}
    */
   async upsertDocumentWithChunks(metadata, text, ollamaHost = null) {
+    // If first argument is string, swap them (support old signature: text, metadata)
+    if (typeof metadata === 'string' && typeof text === 'object') {
+        const temp = metadata;
+        metadata = text;
+        text = temp;
+    }
     // Validate inputs
     if (!metadata || typeof metadata !== 'object') {
       throw new Error('metadata must be an object');
@@ -43,13 +55,13 @@ class RagStore {
     const documentId = this._generateDocumentId(metadata.source, metadata.path);
     
     // Check for existing document with same hash
-    const existingDoc = this.documents.get(documentId);
+    const existingDoc = await this.vectorStore.getDocument(documentId);
     const contentHash = metadata.hash || this._hashText(text);
     
     if (existingDoc && existingDoc.hash === contentHash) {
       return {
         documentId,
-        chunkCount: existingDoc.chunkCount,
+        chunkCount: existingDoc.chunkCount || 0,
         status: 'unchanged'
       };
     }
@@ -62,46 +74,33 @@ class RagStore {
     }
 
     // Generate embeddings for all chunks
-    console.log(`[RagStore] Embedding ${chunks.length} chunks for document ${documentId}`);
+    logger.info('Embedding chunks', { documentId, chunkCount: chunks.length });
     const embeddings = await this.embeddings.embedTextBatch(chunks, ollamaHost);
 
-    // Remove old chunks if document exists
-    if (existingDoc) {
-      this._removeDocumentChunks(documentId);
-    }
+    // Prepare chunks with embeddings for vector store
+    const chunksWithEmbeddings = chunks.map((text, i) => ({
+      text,
+      embedding: embeddings[i],
+      chunkIndex: i
+    }));
 
-    // Store document metadata
-    this.documents.set(documentId, {
-      documentId,
+    // Upsert to vector store
+    const result = await this.vectorStore.upsertDocument(documentId, {
+      ...metadata, // Preserve other metadata fields
       source: metadata.source,
       path: metadata.path,
       title: metadata.title,
       hash: contentHash,
       tags: metadata.tags || [],
-      chunkCount: chunks.length,
-      createdAt: existingDoc ? existingDoc.createdAt : new Date(),
-      updatedAt: new Date(),
+      createdAt: existingDoc ? existingDoc.createdAt : new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }, chunksWithEmbeddings);
+
+    logger.info('Document upserted to vector store', { 
+      documentId, 
+      chunkCount: result.chunkCount,
+      status: result.status
     });
-
-    // Store vectors
-    for (let i = 0; i < chunks.length; i++) {
-      this.vectors.push({
-        documentId,
-        chunkIndex: i,
-        embedding: embeddings[i],
-        text: chunks[i],
-        metadata: {
-          documentId,
-          source: metadata.source,
-          path: metadata.path,
-          title: metadata.title,
-          chunkIndex: i,
-          tags: metadata.tags || [],
-        }
-      });
-    }
-
-    console.log(`[RagStore] Stored ${chunks.length} chunks for document ${documentId}`);
 
     return {
       documentId,
@@ -129,34 +128,17 @@ class RagStore {
     // Generate query embedding
     const [queryEmbedding] = await this.embeddings.embedTextBatch([query], ollamaHost);
 
-    // Calculate similarities for all vectors
-    let results = this.vectors.map(vec => {
-      const score = this._cosineSimilarity(queryEmbedding, vec.embedding);
-      return {
-        text: vec.text,
-        score,
-        metadata: vec.metadata
-      };
+    // Search using vector store
+    const results = await this.vectorStore.searchSimilar(queryEmbedding, {
+      topK,
+      minScore,
+      filters
     });
 
-    // Apply filters
-    if (filters.source) {
-      results = results.filter(r => r.metadata.source === filters.source);
-    }
-    if (filters.tags && filters.tags.length > 0) {
-      results = results.filter(r => 
-        r.metadata.tags && r.metadata.tags.some(tag => filters.tags.includes(tag))
-      );
-    }
-
-    // Filter by min score
-    results = results.filter(r => r.score >= minScore);
-
-    // Sort by score descending and take top K
-    results.sort((a, b) => b.score - a.score);
-    results = results.slice(0, topK);
-
-    console.log(`[RagStore] Query "${query}" returned ${results.length} results`);
+    logger.info('RAG search completed', { 
+      query: query.substring(0, 50) + '...', 
+      resultCount: results.length 
+    });
 
     return results;
   }
@@ -164,60 +146,57 @@ class RagStore {
   /**
    * Get document metadata by ID
    * @param {string} documentId - Document ID
-   * @returns {Object|null} Document metadata or null
+   * @returns {Promise<Object|null>} Document metadata or null
    */
-  getDocument(documentId) {
-    return this.documents.get(documentId) || null;
+  async getDocument(documentId) {
+    return await this.vectorStore.getDocument(documentId);
   }
 
   /**
    * List all documents
    * @param {Object} filters - Optional filters (source, tags)
-   * @returns {Array} Array of document metadata
+   * @returns {Promise<Array>} Array of document metadata
    */
-  listDocuments(filters = {}) {
-    let docs = Array.from(this.documents.values());
-
-    if (filters.source) {
-      docs = docs.filter(d => d.source === filters.source);
-    }
-    if (filters.tags && filters.tags.length > 0) {
-      docs = docs.filter(d => 
-        d.tags && d.tags.some(tag => filters.tags.includes(tag))
-      );
-    }
-
-    return docs;
+  async listDocuments(filters = {}) {
+    return await this.vectorStore.listDocuments(filters);
   }
 
   /**
    * Delete a document and its chunks
    * @param {string} documentId - Document ID
-   * @returns {boolean} True if deleted, false if not found
+   * @returns {Promise<boolean>} True if deleted, false if not found
    */
-  deleteDocument(documentId) {
-    const doc = this.documents.get(documentId);
-    if (!doc) return false;
-
-    this.documents.delete(documentId);
-    this._removeDocumentChunks(documentId);
+  async deleteDocument(documentId) {
+    const deleted = await this.vectorStore.deleteDocument(documentId);
     
-    console.log(`[RagStore] Deleted document ${documentId}`);
-    return true;
+    if (deleted) {
+      logger.info('Document deleted', { documentId });
+    }
+    
+    return deleted;
   }
 
   /**
    * Get store statistics
-   * @returns {Object} Statistics
+   * @returns {Promise<Object>} Statistics
    */
-  getStats() {
+  async getStats() {
+    const stats = await this.vectorStore.getStats();
+    
     return {
-      documentCount: this.documents.size,
-      chunkCount: this.vectors.length,
-      avgChunksPerDoc: this.documents.size > 0 
-        ? (this.vectors.length / this.documents.size).toFixed(2)
+      ...stats,
+      avgChunksPerDoc: stats.documentCount > 0 
+        ? (stats.chunkCount / stats.documentCount).toFixed(2)
         : 0
     };
+  }
+
+  /**
+   * Check vector store health
+   * @returns {Promise<boolean>}
+   */
+  async healthCheck() {
+    return await this.vectorStore.healthCheck();
   }
 
   // ========== PRIVATE METHODS ==========
@@ -249,7 +228,7 @@ class RagStore {
 
     while (start < text.length) {
       // Find chunk end
-      let end = start + this.chunkSize;
+      let end = Math.min(start + this.chunkSize, text.length);
       
       // Try to break at sentence boundary if possible
       if (end < text.length) {
@@ -257,8 +236,6 @@ class RagStore {
         if (breakPoint > start && breakPoint > start + this.chunkSize * 0.5) {
           end = breakPoint + 1; // Include the period
         }
-      } else {
-        end = text.length;
       }
 
       const chunk = text.substring(start, end).trim();
@@ -266,46 +243,21 @@ class RagStore {
         chunks.push(chunk);
       }
 
-      // Move start forward with overlap
-      start = end - this.chunkOverlap;
+      // Move start forward with overlap, ensuring we always advance
+      const nextStart = end - this.chunkOverlap;
+      if (nextStart <= start) {
+        // Prevent infinite loop: if we're not advancing, force move forward
+        start = start + Math.max(1, this.chunkSize - this.chunkOverlap);
+      } else {
+        start = nextStart;
+      }
+      
       if (start >= text.length) break;
     }
 
     return chunks;
   }
 
-  /**
-   * Remove all chunks for a document
-   * @private
-   */
-  _removeDocumentChunks(documentId) {
-    this.vectors = this.vectors.filter(v => v.documentId !== documentId);
-  }
-
-  /**
-   * Calculate cosine similarity between two vectors
-   * @private
-   */
-  _cosineSimilarity(vec1, vec2) {
-    if (vec1.length !== vec2.length) {
-      throw new Error('Vectors must have same length');
-    }
-
-    let dotProduct = 0;
-    let norm1 = 0;
-    let norm2 = 0;
-
-    for (let i = 0; i < vec1.length; i++) {
-      dotProduct += vec1[i] * vec2[i];
-      norm1 += vec1[i] * vec1[i];
-      norm2 += vec2[i] * vec2[i];
-    }
-
-    const denominator = Math.sqrt(norm1) * Math.sqrt(norm2);
-    if (denominator === 0) return 0;
-
-    return dotProduct / denominator;
-  }
 }
 
 // Singleton instance
@@ -319,7 +271,7 @@ let ragStoreInstance = null;
 function getRagStore(config = {}) {
   if (!ragStoreInstance) {
     ragStoreInstance = new RagStore(config);
-    console.log('[RagStore] Initialized in-memory vector store');
+    logger.info('RagStore singleton initialized');
   }
   return ragStoreInstance;
 }

@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AgentX • Analytics</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <div class="bg-grid"></div>
+  <div class="page analytics-page">
+    <header class="hero analytics-hero">
+      <div class="hero-content">
+        <div class="hero-top">
+          <div>
+            <div class="eyebrow">GraphysX • Observability</div>
+            <h1>Analytics Dashboard</h1>
+            <p class="lede">
+              Metrics are calculated on-demand from the <code>conversations</code> collection—no separate analytics store.
+              Usage, feedback, and RAG adoption all derive from the live messages and metadata you are already capturing.
+            </p>
+          </div>
+          <div class="hero-actions">
+            <a class="ghost small" href="/">Chat</a>
+            <a class="ghost small" href="/analytics.html" class="active">Analytics</a>
+            <a class="ghost small" href="/metrics.html">📊 Metrics</a>
+            <a class="ghost small" href="/dataapi.html">🧰 Data Tools</a>
+            <button id="refreshBtn" class="primary">Refresh data</button>
+          </div>
+        </div>
+        <div class="data-contracts">
+          <div class="contract-card">
+            <div class="pill inline"><span class="label">Endpoint</span><strong>/api/analytics/usage</strong></div>
+            <p>Aggregates conversations and message counts grouped by <strong>model</strong>, <strong>promptVersion</strong>, or <strong>day</strong>.</p>
+            <p class="hint">Source: <code>conversations</code> documents (messages array length and metadata).</p>
+          </div>
+          <div class="contract-card">
+            <div class="pill inline"><span class="label">Endpoint</span><strong>/api/analytics/feedback</strong></div>
+            <p>Thumbs up/down counts sourced from <code>conversations.messages[].feedback.rating</code>, grouped by model or prompt version.</p>
+          </div>
+          <div class="contract-card">
+            <div class="pill inline"><span class="label">Endpoint</span><strong>/api/analytics/rag-stats</strong></div>
+            <p>RAG adoption percentage plus feedback delta between RAG and non-RAG threads where <code>ragUsed: true</code>.</p>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="layout analytics-layout">
+      <section class="panel analytics-grid">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Overview</p>
+            <h2>At-a-glance totals</h2>
+          </div>
+          <div class="controls">
+            <label class="pill inline">Last
+              <select id="periodSelect">
+                <option value="7">7 days</option>
+                <option value="14">14 days</option>
+                <option value="30">30 days</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <div class="stat-grid">
+          <div class="stat-card">
+            <p class="label">Conversations</p>
+            <h3 id="totalConversations">–</h3>
+            <p class="hint">Count within selected period.</p>
+          </div>
+          <div class="stat-card">
+            <p class="label">Messages</p>
+            <h3 id="totalMessages">–</h3>
+            <p class="hint">Sum of all messages.</p>
+          </div>
+          <div class="stat-card">
+            <p class="label">Feedback (positive)</p>
+            <h3><span id="positiveFeedback">–</span> <small id="positiveRate"></small></h3>
+            <p class="hint">Thumbs up vs down.</p>
+          </div>
+          <div class="stat-card">
+            <p class="label">RAG adoption</p>
+            <h3 id="ragUsage">–</h3>
+            <p class="hint">% of conversations using RAG.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Usage</p>
+            <h2>Volume trends</h2>
+          </div>
+          <div class="controls">
+            <label>Group by</label>
+            <select id="usageGroupSelect">
+              <option value="day">Day</option>
+              <option value="model">Model</option>
+              <option value="promptVersion">Prompt version</option>
+            </select>
+          </div>
+        </div>
+        <canvas id="usageChart" height="120"></canvas>
+        <div class="chart-empty" id="usageEmpty">No usage data for this period.</div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Feedback</p>
+            <h2>Sentiment split</h2>
+          </div>
+          <div class="controls">
+            <label>Group by</label>
+            <select id="feedbackGroupSelect">
+              <option value="model">Model</option>
+              <option value="promptVersion">Prompt version</option>
+            </select>
+          </div>
+        </div>
+        <canvas id="feedbackChart" height="120"></canvas>
+        <div class="chart-empty" id="feedbackEmpty">No feedback captured in this window.</div>
+      </section>
+
+      <section class="panel rag-panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Retrieval usage</p>
+            <h2>RAG adoption & satisfaction</h2>
+          </div>
+        </div>
+        <div class="rag-grid">
+          <div class="rag-figure">
+            <canvas id="ragDonut" width="180" height="180"></canvas>
+            <div class="donut-center" id="ragDonutLabel">–</div>
+            <p class="hint">Share of conversations with <code>ragUsed: true</code>.</p>
+          </div>
+          <div class="rag-metrics">
+            <div class="stat-card compact">
+              <p class="label">RAG conversations</p>
+              <h3 id="ragConversations">–</h3>
+              <p class="hint">Positive rate: <span id="ragPositiveRate">–</span></p>
+            </div>
+            <div class="stat-card compact">
+              <p class="label">Non-RAG conversations</p>
+              <h3 id="noRagConversations">–</h3>
+              <p class="hint">Positive rate: <span id="noRagPositiveRate">–</span></p>
+            </div>
+            <div class="stat-card compact">
+              <p class="label">Delta</p>
+              <h3 id="ragDelta">–</h3>
+              <p class="hint">RAG vs non-RAG positive rate.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="analytics.js"></script>
+</body>
+</html>

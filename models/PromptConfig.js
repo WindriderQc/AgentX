@@ -60,9 +60,8 @@ PromptConfigSchema.index({ name: 1, version: 1 }, { unique: true });
 PromptConfigSchema.index({ name: 1, status: 1 });
 
 // Update timestamp on save
-PromptConfigSchema.pre('save', function(next) {
+PromptConfigSchema.pre('save', function() {
   this.updatedAt = Date.now();
-  next();
 });
 
 /**
@@ -95,7 +94,11 @@ PromptConfigSchema.statics.activate = async function(promptConfigId) {
   prompt.status = 'active';
   await prompt.save();
   
-  console.log(`[PromptConfig] Activated ${prompt.name} v${prompt.version}`);
+  const logger = require('../config/logger');
+  logger.info('PromptConfig activated', { 
+    name: prompt.name, 
+    version: prompt.version 
+  });
   return prompt;
 };
 

@@ -60,10 +60,9 @@ echo "=== 1. Create Test Conversation ==="
 CHAT_DATA=$(cat <<EOF
 {
     "target": "$OLLAMA_HOST",
-    "model": "llama3.2:latest",
-    "messages": [
-        {"role": "user", "content": "What is 2+2?"}
-    ],
+    "model": "llama3.2:1b",
+    "message": "What is 2+2?",
+    "messages": [],
     "options": {
         "temperature": 0.7
     }
@@ -106,22 +105,63 @@ test_endpoint "List all prompts" "GET" "/api/dataset/prompts" ""
 test_endpoint "List active prompts" "GET" "/api/dataset/prompts?status=active" ""
 
 # 6c. Create new prompt (proposed)
+# Use timestamp to create unique version number
+TEST_VERSION=$(date +%s | tail -c 4)
 NEW_PROMPT_DATA=$(cat <<EOF
 {
     "name": "default_chat",
-    "version": 2,
-    "systemPrompt": "You are AgentX v2, an efficient and concise AI assistant. Answer directly and accurately.",
-    "description": "V2 test prompt - more direct",
+    "version": $TEST_VERSION,
+    "systemPrompt": "You are AgentX v$TEST_VERSION, an efficient and concise AI assistant. Answer directly and accurately.",
+    "description": "Test prompt v$TEST_VERSION - more direct",
     "status": "proposed",
     "author": "test-script"
 }
 EOF
 )
 
-test_endpoint "Create new prompt v2" "POST" "/api/dataset/prompts" "$NEW_PROMPT_DATA"
+PROMPT_RESPONSE=$(curl -s -X POST "$BASE_URL/api/dataset/prompts" \
+  -H "Content-Type: application/json" \
+  -d "$NEW_PROMPT_DATA")
+
+echo "  Response: $(echo "$PROMPT_RESPONSE" | jq -c '{status: .status, id: .data._id, version: .data.version, message: .message}')"
+
+# Extract the new prompt ID for activation test
+NEW_PROMPT_ID=$(echo "$PROMPT_RESPONSE" | jq -r '.data._id')
+
+if [ "$NEW_PROMPT_ID" != "null" ] && [ -n "$NEW_PROMPT_ID" ]; then
+    echo -e "  ${GREEN}✓ Prompt created with ID: $NEW_PROMPT_ID${NC}"
+else
+    ERROR_MSG=$(echo "$PROMPT_RESPONSE" | jq -r '.message')
+    echo -e "  ${RED}✗ Failed to create prompt: $ERROR_MSG${NC}"
+fi
 
 # 6d. List proposed prompts
 test_endpoint "List proposed prompts" "GET" "/api/dataset/prompts?status=proposed" ""
+
+# 6e. Activate the new prompt
+if [ "$NEW_PROMPT_ID" != "null" ] && [ -n "$NEW_PROMPT_ID" ]; then
+    echo ""
+    echo "Testing: Activate prompt (v2)"
+    echo "  Method: PATCH"
+    echo "  Endpoint: /api/dataset/prompts/$NEW_PROMPT_ID/activate"
+    
+    ACTIVATE_RESPONSE=$(curl -s -X PATCH "$BASE_URL/api/dataset/prompts/$NEW_PROMPT_ID/activate" \
+      -H "Content-Type: application/json")
+    
+    if echo "$ACTIVATE_RESPONSE" | jq -e '.status == "success"' > /dev/null 2>&1; then
+        echo -e "  ${GREEN}✓ Passed${NC}"
+        echo "  Response: $(echo "$ACTIVATE_RESPONSE" | jq -c '{status: .status, message: .message}')"
+    else
+        echo -e "  ${RED}✗ Failed${NC}"
+        echo "  Response: $(echo "$ACTIVATE_RESPONSE" | jq -c .)"
+    fi
+    
+    # Verify it's now active
+    echo ""
+    test_endpoint "Verify prompt is active" "GET" "/api/dataset/prompts?status=active&name=default_chat" ""
+else
+    echo -e "  ${YELLOW}⊘ Skipping activation test (no prompt ID)${NC}"
+fi
 
 # 7. Advanced: Date Range Query
 echo "=== 7. Advanced - Date Range Filtering ==="

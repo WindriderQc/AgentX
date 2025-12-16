@@ -11,44 +11,42 @@
 </head>
 <body>
   <div class="bg-grid"></div>
-  <div class="page">
+  <div class="page history-hidden">
     <aside class="sidebar">
       <div class="sidebar-head">
         <h2>History</h2>
-        <button id="newChatBtn" class="icon-btn" title="New Chat">+</button>
+        <div class="sidebar-actions">
+          <button id="newChatBtn" class="icon-btn" title="New Chat">+</button>
+          <button id="closeHistoryBtn" class="icon-btn" title="Hide history">×</button>
+        </div>
       </div>
       <div id="historyList" class="history-list">
         <!-- History items will be injected here -->
       </div>
     </aside>
 
-    <div class="main-content">
+    <div class="main-content app-layout">
     <header class="hero">
       <div class="hero-content">
         <div class="eyebrow">GraphysX • Local agents</div>
         <div class="title-row">
           <h1>AgentX Control</h1>
           <span class="status-chip" id="statusChip">Idle</span>
+          <button id="toggleHistoryBtn" class="ghost small">Hide history</button>
           <button id="profileBtn" class="ghost small">User Profile</button>
+          <a class="ghost small" href="/analytics.html">Analytics</a>
+          <a class="ghost small" href="/metrics.html">📊 Metrics</a>
+          <a class="ghost small" href="/dataapi.html">🧰 Data Tools</a>
+          <button id="loginBtn" class="ghost small" style="display: none;">Login</button>
+          <div id="userMenu" class="user-menu" style="display: none;">
+            <span id="userName" class="user-name"></span>
+            <button id="logoutBtn" class="ghost small">Logout</button>
+          </div>
         </div>
         <p class="lede">
           Rebuilt AI control surface wired to the AgentX chat, memory, and feedback APIs. Pick a model, tune parameters, and
           manage the session profile that the assistant will remember.
         </p>
-      </div>
-      <div class="hero-stats">
-        <div class="pill">
-          <span class="label">Port</span>
-          <strong>3080</strong>
-        </div>
-        <div class="pill">
-          <span class="label">Messages</span>
-          <strong id="statMessages">0</strong>
-        </div>
-        <div class="pill">
-          <span class="label">Replies</span>
-          <strong id="statReplies">0</strong>
-        </div>
       </div>
     </header>
 
@@ -60,8 +58,11 @@
             <h2>AI Dialogue</h2>
           </div>
           <div class="controls">
-            <button class="ghost" id="clearBtn">Clear chat</button>
-            <button class="primary" id="sendBtn">Send</button>
+            <div class="pill inline">
+              <span class="label">Messages</span>
+              <strong id="statMessages">0</strong>
+            </div>
+            <button class="ghost small" id="toggleLogBtn">Show session log</button>
           </div>
         </div>
 
@@ -80,9 +81,15 @@
             <button class="chip" data-quick="Brainstorm next steps for my project.">Brainstorm</button>
           </div>
           <textarea id="messageInput" rows="3" placeholder="Type to your agent..."></textarea>
+          <div class="composer-actions">
+            <button class="icon-btn" id="micBtn" title="Voice Input" aria-label="Voice Input" aria-pressed="false">🎤</button>
+            <div class="flex-spacer"></div>
+            <button class="ghost small" id="clearBtn">Clear chat</button>
+            <button class="primary" id="sendBtn">Send</button>
+          </div>
         </div>
 
-        <div class="log-panel">
+        <div class="log-panel collapsed">
           <div class="panel-head">
             <div>
               <p class="eyebrow">Session log</p>
@@ -95,49 +102,86 @@
       </section>
 
       <aside class="panel config">
-        <div class="panel-head">
+        <div class="panel-head tight">
           <div>
             <p class="eyebrow">Models & memory</p>
             <h2>Configuration</h2>
           </div>
-          <button class="ghost" id="refreshModels">Refresh models</button>
         </div>
 
         <div class="field">
           <label>Target host</label>
           <div class="input-row">
-            <input type="text" id="hostInput" list="hostPresets" value="localhost">
-            <datalist id="hostPresets">
-              <option value="localhost">
-              <option value="127.0.0.1">
-              <option value="192.168.2.12">
-              <option value="192.168.2.99">
-            </datalist>
+            <select id="hostInput" style="flex: 1;">
+              <option value="localhost">localhost</option>
+              <option value="127.0.0.1">127.0.0.1</option>
+              <option value="192.168.2.12">192.168.2.12</option>
+              <option value="192.168.2.99">192.168.2.99</option>
+            </select>
             <input type="text" id="portInput" class="w-96" value="11434">
           </div>
         </div>
 
         <div class="field">
           <label>Model</label>
-          <select id="modelSelect">
-            <option value="">Load available models…</option>
-          </select>
+          <div class="input-row">
+            <select id="modelSelect" style="flex: 1;">
+              <option value="">Load available models…</option>
+            </select>
+            <button class="icon-btn" id="refreshModels" title="Refresh models from Ollama">↻</button>
+          </div>
           <div class="hint">Models are pulled from the selected Ollama host.</div>
         </div>
+
+        <div class="note" id="feedback">Waiting for configuration.</div>
 
         <div class="field inline-toggle">
           <label>Streaming</label>
           <label class="switch">
-            <input type="checkbox" id="streamToggle">
+            <input type="checkbox" id="streamToggle" checked>
             <span class="slider"></span>
           </label>
-          <div class="hint">Request streamed responses when supported.</div>
+          <div class="hint">Stream responses in real-time (recommended for thinking models).</div>
+        </div>
+
+        <div class="field inline-toggle">
+          <label>Enable RAG</label>
+          <label class="switch">
+            <input type="checkbox" id="ragToggle">
+            <span class="slider"></span>
+          </label>
+          <div class="hint">Retrieve context from vector store.</div>
+        </div>
+
+        <div class="field inline-toggle">
+          <label>TTS Output</label>
+          <label class="switch">
+            <input type="checkbox" id="ttsToggle">
+            <span class="slider"></span>
+          </label>
+          <div class="hint">Read responses aloud (Browser TTS).</div>
+        </div>
+
+        <div class="field inline-toggle">
+          <label>Show Message Stats</label>
+          <label class="switch">
+            <input type="checkbox" id="statsToggle" checked>
+            <span class="slider"></span>
+          </label>
+          <div class="hint">Display token usage and timing for each message.</div>
         </div>
 
         <div class="field">
           <label>System prompt</label>
           <textarea id="systemPrompt" rows="3">You are AgentX, a concise and capable local assistant. Keep answers brief and actionable.</textarea>
         </div>
+
+        <div class="collapsible-section">
+          <div class="section-header" id="tuningHeader">
+            <h3>Model Tuning Parameters</h3>
+            <span class="toggle-icon">▼</span>
+          </div>
+          <div class="section-content hidden" id="tuningContent">
 
         <div class="options-grid">
           <div class="field">
@@ -189,36 +233,12 @@
           </div>
         </div>
 
-        <div class="memory-card">
-          <div class="panel-head tight">
-            <div>
-              <p class="eyebrow">Memory</p>
-              <h3>User profile</h3>
-            </div>
-            <button class="ghost" id="refreshProfile">Reset</button>
-          </div>
-          <div class="field">
-            <label>Preferred language</label>
-            <input type="text" id="memoryLanguage" placeholder="English">
-          </div>
-          <div class="field">
-            <label>Role / context</label>
-            <input type="text" id="memoryRole" placeholder="e.g. Product manager focusing on UX">
-          </div>
-          <div class="field">
-            <label>Response style</label>
-            <textarea id="memoryStyle" rows="2" placeholder="Concise, decisive, include next steps."></textarea>
-          </div>
-          <div class="hint">Memory is persisted across conversations via the AgentX profile endpoint.</div>
-          <button class="primary full" id="saveProfile">Save profile</button>
-        </div>
-
         <div class="action-row">
-          <button class="ghost" id="saveDefaults">Save defaults</button>
-          <button class="primary" id="testConnection">Test connection</button>
+          <button class="primary full" id="saveDefaults">Save defaults</button>
         </div>
 
-        <div class="note" id="feedback">Waiting for configuration.</div>
+          </div>
+        </div>
       </aside>
     </main>
     </div> <!-- End main-content -->
@@ -234,15 +254,29 @@
       <div class="modal-body">
         <div class="field">
           <label>About You (Memory)</label>
-          <div class="hint">Facts the agent should remember about you (e.g., job, interests).</div>
+          <div class="hint">Facts the agent should remember about you (e.g., job, interests, background).</div>
           <textarea id="userAbout" rows="5" placeholder="I am a software engineer interested in AI..."></textarea>
+        </div>
+        <div class="field">
+          <label>Preferred Language</label>
+          <input type="text" id="memoryLanguage" placeholder="English">
+        </div>
+        <div class="field">
+          <label>Role / Context</label>
+          <input type="text" id="memoryRole" placeholder="e.g. Product manager focusing on UX">
+        </div>
+        <div class="field">
+          <label>Response Style</label>
+          <textarea id="memoryStyle" rows="2" placeholder="Concise, decisive, include next steps."></textarea>
         </div>
         <div class="field">
           <label>Custom Instructions</label>
           <div class="hint">How the agent should behave (e.g., always be concise).</div>
           <textarea id="userInstructions" rows="3" placeholder="Be brief and professional."></textarea>
         </div>
+        <div class="hint">All profile data is saved to your AgentX database and persisted across conversations.</div>
         <div class="action-row">
+          <button class="ghost" id="resetProfileBtn">Reset</button>
           <button class="primary" id="saveProfileBtn">Save Profile</button>
         </div>
       </div>
