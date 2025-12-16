@@ -569,7 +569,7 @@ router.post('/chat', optionalAuth, async (req, res) => {
     
     // For non-streaming responses, parse JSON and extract content
     const data = await response.json();
-    const { content: assistantMessageContent, thinking, warning } = extractResponse(data, model);
+    const { content: assistantMessageContent, thinking, warning, stats } = extractResponse(data, model);
     
     // Log warnings if any
     if (warning) {
@@ -608,15 +608,26 @@ router.post('/chat', optionalAuth, async (req, res) => {
             hasThinking: !!thinking,
             preview: contentToSave.substring(0, 100) + '...'
           });
+
           const assistantMsg = conversation.messages.create({ 
             role: 'assistant', 
             content: contentToSave 
           });
+
           // Store thinking process as metadata if available
           if (thinking) {
             assistantMsg.metadata = assistantMsg.metadata || {};
             assistantMsg.metadata.thinking = thinking;
           }
+
+          // V4: Store detailed stats if available
+          if (stats) {
+            assistantMsg.stats = stats;
+            // Also store parameter snapshot
+            assistantMsg.stats.parameters = options;
+            assistantMsg.stats.meta = { model };
+          }
+
           conversation.messages.push(assistantMsg);
           assistantMessageId = assistantMsg._id;
       }
@@ -646,7 +657,8 @@ router.post('/chat', optionalAuth, async (req, res) => {
         data: {
             response: assistantMessageContent || '',
             conversationId: conversation?._id || null,
-            messageId: assistantMessageId
+            messageId: assistantMessageId,
+            stats: stats || null // V4: Return stats to frontend
         },
         ragUsed,        // V3 addition
         ragSources,     // V3 addition
