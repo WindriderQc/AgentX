@@ -36,7 +36,7 @@ AgentX is a Node.js application that transforms your local Ollama instance into 
 - **🧠 Conversation Memory**: MongoDB-backed persistence with session management and feedback tracking
 - **👤 User Profiles**: Personal memory injection into system prompts for context-aware responses
 - **📚 RAG (Retrieval-Augmented Generation)**: Semantic search over your documents for knowledge-grounded answers
-- **📊 Analytics & Metrics**: Track model performance, feedback rates, and usage patterns
+- **📊 Analytics & Metrics**: Track model performance, feedback rates, usage patterns, and cost estimation
 - **🔄 Prompt Versioning**: A/B testing and continuous improvement of system prompts
 - **🔌 n8n Integration**: Automated document ingestion and prompt optimization workflows
 
