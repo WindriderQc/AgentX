@@ -646,7 +646,7 @@ Returns aggregated usage and performance statistics.
 
 **Query Parameters:**
 - `from`, `to` (ISO dates)
-- `groupBy` ('model', 'day', default: 'model')
+- `groupBy` (optional: 'model' | 'day', default: 'model')
 
 **Response:**
 ```json
@@ -665,6 +665,7 @@ Returns aggregated usage and performance statistics.
     },
     "breakdown": [
       {
+        "key": "llama2",
         "messageCount": 5,
         "usage": { "totalTokens": 1500, ... },
         "performance": { "avgTokensPerSecond": 45.5, ... }

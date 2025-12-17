@@ -16,6 +16,10 @@ const app = express();
 const IN_PROD = process.env.NODE_ENV === 'production';
 const IN_TEST = process.env.NODE_ENV === 'test';
 
+if (IN_TEST) {
+  app.set('trust proxy', 1);
+}
+
 // System Health State (exported for updates)
 const systemHealth = {
   mongodb: { status: 'checking', lastCheck: null, error: null },
