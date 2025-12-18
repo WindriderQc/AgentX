@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AgentX • Data Tools</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="bg-grid"></div>
+  <div class="page data-page">
+    <header class="hero">
+      <div class="hero-content">
+        <div class="hero-top">
+          <div>
+            <div class="eyebrow">GraphysX • Integrations</div>
+            <h1>Data Tools</h1>
+            <p class="lede">
+              Manage DataAPI integration, run file scans, and view live data feeds.
+              These tools can also be triggered via chat using <code>/dataapi</code> commands.
+            </p>
+          </div>
+          <div class="hero-actions">
+            <nav class="agentx-nav"></nav>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="layout">
+      <!-- File Operations -->
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">FileSystem</p>
+            <h2>File Search & Stats</h2>
+          </div>
+          <div class="controls">
+            <button id="loadStatsBtn" class="ghost small">Stats</button>
+            <button id="loadDuplicatesBtn" class="ghost small">Duplicates</button>
+          </div>
+        </div>
+
+        <div class="field">
+             <div class="input-row">
+                 <input type="text" id="searchQuery" placeholder="Search files (e.g. 'invoice 2024')">
+                 <button id="searchBtn" class="primary">Search</button>
+             </div>
+        </div>
+
+        <div class="status-bar" id="filesStatus">Ready.</div>
+        <div class="log-window" id="filesResults" style="height: 200px; background: rgba(0,0,0,0.2);"></div>
+      </section>
+
+      <!-- Storage Scanner -->
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Indexing</p>
+            <h2>Storage Scanner</h2>
+          </div>
+          <div class="controls">
+             <button id="refreshScansBtn" class="ghost small">Refresh List</button>
+             <button id="stopScanBtn" class="ghost small" disabled>Stop Active</button>
+          </div>
+        </div>
+
+        <div class="options-grid">
+            <div class="field">
+                <label>Roots (comma sep)</label>
+                <input type="text" id="scanRoots" value="/mnt/data">
+            </div>
+            <div class="field">
+                <label>Extensions</label>
+                <input type="text" id="scanExt" value="mp4,mkv,avi,mov">
+            </div>
+            <div class="field">
+                <label>Batch Size</label>
+                <input type="number" id="scanBatch" value="1000">
+            </div>
+        </div>
+        <div class="action-row">
+             <button id="startScanBtn" class="primary full">Start Scan</button>
+        </div>
+
+        <div class="status-bar" id="scanStatus">Ready. <span id="activeScanId"></span></div>
+        <div id="scansList" style="margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px;"></div>
+      </section>
+
+      <!-- Live Feeds -->
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Real-time</p>
+            <h2>Live Feeds & Exports</h2>
+          </div>
+          <div class="controls">
+              <button id="refreshLiveBtn" class="ghost small">Refresh Feeds</button>
+              <button id="refreshExportsBtn" class="ghost small">Refresh Exports</button>
+          </div>
+        </div>
+
+        <div class="status-bar" id="liveStatus">Ready.</div>
+        <div class="log-window" id="liveResults" style="height: 150px; margin-bottom: 20px;"></div>
+
+        <div class="panel-head tight">
+            <h3>Available Exports</h3>
+        </div>
+        <div class="status-bar" id="exportsStatus">Ready.</div>
+        <div class="log-window" id="exportsList" style="height: 100px;"></div>
+      </section>
+    </main>
+  </div>
+
+  <style>
+      .data-page { flex-direction: column; }
+      .status-bar {
+          font-family: monospace;
+          font-size: 12px;
+          color: var(--accent);
+          padding: 8px 0;
+          border-bottom: 1px solid var(--panel-border);
+          margin-bottom: 8px;
+      }
+      .layout { grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); }
+  </style>
+
+  <script type="module">
+    import { injectNav } from '/js/components/nav.js';
+    injectNav('dataapi');
+  </script>
+  <script src="/js/dataapi.js"></script>
+</body>
+</html>

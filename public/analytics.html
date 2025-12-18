@@ -20,31 +20,14 @@
             <div class="eyebrow">GraphysX • Observability</div>
             <h1>Analytics Dashboard</h1>
             <p class="lede">
-              Metrics are calculated on-demand from the <code>conversations</code> collection—no separate analytics store.
+              Metrics are calculated on-demand from the <code>conversations</code> collection.
               Usage, feedback, and RAG adoption all derive from the live messages and metadata you are already capturing.
             </p>
           </div>
           <div class="hero-actions">
-            <a class="ghost small" href="/">Chat</a>
-            <a class="ghost small" href="/analytics.html" class="active">Analytics</a>
-            <a class="ghost small" href="/metrics.html">📊 Metrics</a>
-            <a class="ghost small" href="/dataapi.html">🧰 Data Tools</a>
+            <!-- Navigation injected here -->
+            <nav class="agentx-nav"></nav>
             <button id="refreshBtn" class="primary">Refresh data</button>
-          </div>
-        </div>
-        <div class="data-contracts">
-          <div class="contract-card">
-            <div class="pill inline"><span class="label">Endpoint</span><strong>/api/analytics/usage</strong></div>
-            <p>Aggregates conversations and message counts grouped by <strong>model</strong>, <strong>promptVersion</strong>, or <strong>day</strong>.</p>
-            <p class="hint">Source: <code>conversations</code> documents (messages array length and metadata).</p>
-          </div>
-          <div class="contract-card">
-            <div class="pill inline"><span class="label">Endpoint</span><strong>/api/analytics/feedback</strong></div>
-            <p>Thumbs up/down counts sourced from <code>conversations.messages[].feedback.rating</code>, grouped by model or prompt version.</p>
-          </div>
-          <div class="contract-card">
-            <div class="pill inline"><span class="label">Endpoint</span><strong>/api/analytics/rag-stats</strong></div>
-            <p>RAG adoption percentage plus feedback delta between RAG and non-RAG threads where <code>ragUsed: true</code>.</p>
           </div>
         </div>
       </div>
@@ -163,6 +146,10 @@
     </main>
   </div>
 
-  <script src="analytics.js"></script>
+  <script type="module">
+    import { injectNav } from '/js/components/nav.js';
+    injectNav('analytics');
+  </script>
+  <script src="/js/analytics.js"></script>
 </body>
 </html>

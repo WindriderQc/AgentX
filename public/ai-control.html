@@ -1,400 +1,163 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AgentX • AI Control Board</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  
-  <!-- Bootstrap 5 -->
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-  
-  <!-- Custom CSS -->
-  <link rel="stylesheet" href="styles.css" />
-  <link rel="stylesheet" href="css/sbqc.css" />
-  
-  <!-- FontAwesome -->
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AgentX • AI Control</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-
-  <style>
-      body { background-color: #0f172a; color: #e2e8f0; }
-      .card { background-color: rgba(30, 41, 59, 0.7); border: 1px solid rgba(148, 163, 184, 0.1); color: #e2e8f0; }
-      .modal-content { background-color: #1e293b; color: #e2e8f0; }
-      
-      .chat-container {
-          display: flex;
-          flex-direction: column;
-          height: calc(100vh - 250px);
-          max-height: 700px;
-      }
-      
-      .chat-messages {
-          flex: 1;
-          overflow-y: auto;
-          padding: 1.25rem;
-          background: rgba(15, 23, 42, 0.5);
-          border: 1px solid rgba(148, 163, 184, 0.1);
-          border-radius: 0.5rem 0.5rem 0 0;
-          scroll-behavior: smooth;
-      }
-      
-      .message {
-          margin-bottom: 1rem;
-          animation: slideIn 0.3s ease;
-      }
-      
-      @keyframes slideIn {
-          from {
-              opacity: 0;
-              transform: translateY(10px);
-          }
-          to {
-              opacity: 1;
-              transform: translateY(0);
-          }
-      }
-      
-      .message.user {
-          text-align: right;
-      }
-      
-      .message.ai {
-          text-align: left;
-      }
-      
-      .message-bubble {
-          display: inline-block;
-          max-width: 70%;
-          padding: 0.75rem 1rem;
-          border-radius: 1rem;
-          word-wrap: break-word;
-          white-space: pre-wrap;
-      }
-      
-      .message.user .message-bubble {
-          background: #3b82f6;
-          color: white;
-          border-bottom-right-radius: 0.25rem;
-      }
-      
-      .message.ai .message-bubble {
-          background: #334155;
-          color: #e2e8f0;
-          border: 1px solid rgba(148, 163, 184, 0.1);
-          border-bottom-left-radius: 0.25rem;
-      }
-      
-      .message-meta {
-          font-size: 0.75rem;
-          color: #94a3b8;
-          margin-top: 0.25rem;
-      }
-      
-      .chat-input-container {
-          background: rgba(30, 41, 59, 0.7);
-          border: 1px solid rgba(148, 163, 184, 0.1);
-          border-top: none;
-          border-radius: 0 0 0.5rem 0.5rem;
-          padding: 1rem;
-      }
-      
-      .quick-actions {
-          display: flex;
-          gap: 0.5rem;
-          flex-wrap: wrap;
-          margin-bottom: 0.75rem;
-      }
-      
-      .quick-action-btn {
-          padding: 0.5rem 1rem;
-          font-size: 0.875rem;
-          border-radius: 1.25rem;
-      }
-      
-      .typing-indicator {
-          display: none;
-          padding: 0.75rem 1rem;
-          background: #334155;
-          border: 1px solid rgba(148, 163, 184, 0.1);
-          border-radius: 1rem;
-          max-width: 70px;
-      }
-      
-      .typing-indicator.active {
-          display: inline-block;
-      }
-      
-      .typing-indicator span {
-          height: 8px;
-          width: 8px;
-          background: #94a3b8;
-          border-radius: 50%;
-          display: inline-block;
-          margin: 0 2px;
-          animation: typing 1.4s infinite;
-      }
-      
-      .typing-indicator span:nth-child(2) {
-          animation-delay: 0.2s;
-      }
-      
-      .typing-indicator span:nth-child(3) {
-          animation-delay: 0.4s;
-      }
-      
-      @keyframes typing {
-          0%, 60%, 100% {
-              transform: translateY(0);
-              opacity: 0.7;
-          }
-          30% {
-              transform: translateY(-10px);
-              opacity: 1;
-          }
-      }
-      
-      .status-indicator {
-          display: inline-block;
-          width: 10px;
-          height: 10px;
-          border-radius: 50%;
-          margin-right: 0.5rem;
-      }
-      
-      .status-indicator.connected {
-          background: #10b981;
-          box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
-      }
-      
-      .status-indicator.disconnected {
-          background: #ef4444;
-      }
-      
-      /* Nav adjustments */
-      .agentx-nav a { color: #94a3b8; text-decoration: none; margin-right: 1rem; font-family: 'Space Grotesk', sans-serif; }
-      .agentx-nav a.active { color: #f8fafc; font-weight: 600; }
-      .agentx-nav a:hover { color: #e2e8f0; }
-  </style>
 </head>
 <body>
   <div class="bg-grid"></div>
-  
-  <div class="container-fluid p-4">
-      <header class="mb-4">
-        <div class="d-flex justify-content-between align-items-center">
+  <div class="page control-page">
+    <header class="hero">
+      <div class="hero-content">
+        <div class="hero-top">
           <div>
-            <div class="text-uppercase text-muted small fw-bold">AgentX • AI Orchestration</div>
-            <h1 class="display-6 fw-bold">
-                <i class="fas fa-robot me-2"></i>
-                AI Control Board
-            </h1>
+            <div class="eyebrow">AgentX • Orchestration</div>
+            <h1>AI Control Board</h1>
+            <p class="lede">Advanced control surface for AI operations.</p>
           </div>
-          <div>
-              <span class="status-indicator connected" id="statusIndicator"></span>
-              <span class="text-muted" id="statusText">Initializing...</span>
+          <div class="hero-actions">
+              <div style="display: flex; flex-direction: column; align-items: flex-end;">
+                <nav class="agentx-nav"></nav>
+                <div style="margin-top: 10px; font-size: 12px;">
+                    <span class="status-indicator" id="statusIndicator" style="width: 8px; height: 8px; border-radius: 50%; background: #ef4444; display: inline-block;"></span>
+                    <span id="statusText" style="color: var(--muted); margin-left: 6px;">Initializing...</span>
+                </div>
+              </div>
           </div>
         </div>
-        <nav class="agentx-nav mt-3">
-            <a href="/">Chat</a>
-            <a href="/analytics.html">Analytics</a>
-            <a href="/metrics.html">Metrics</a>
-            <a href="/dataapi.html">Data Tools</a>
-            <a href="/dashboard.html">Dashboard</a>
-            <a href="/ai-control.html" class="active">AI Control</a>
-        </nav>
-      </header>
-
-      <div class="row">
-          <!-- Chat Interface -->
-          <div class="col-lg-8 mb-4">
-              <div class="card">
-                  <div class="card-header bg-transparent border-secondary">
-                      <h5 class="mb-0">
-                          <i class="fas fa-comments me-2"></i>
-                          AI Assistant Chat
-                      </h5>
-                  </div>
-                  <div class="card-body p-0">
-                      <div class="chat-container">
-                          <div class="chat-messages" id="chatMessages">
-                              <div class="message ai">
-                                  <div class="message-bubble">
-                                      <strong>AI Agent</strong><br>
-                                      Hello! I'm your AgentX AI assistant. How can I help you today?
-                                  </div>
-                                  <div class="message-meta">Just now</div>
-                              </div>
-                          </div>
-                          
-                          <div class="chat-input-container">
-                              <div class="quick-actions">
-                                  <button class="btn btn-sm btn-outline-primary quick-action-btn" onclick="sendQuickMessage('Check system status')">
-                                      <i class="fas fa-heartbeat me-1"></i> System Status
-                                  </button>
-                                  <button class="btn btn-sm btn-outline-success quick-action-btn" onclick="sendQuickMessage('Show RAG collections')">
-                                      <i class="fas fa-database me-1"></i> RAG Status
-                                  </button>
-                                  <button class="btn btn-sm btn-outline-info quick-action-btn" onclick="sendQuickMessage('List Ollama models')">
-                                      <i class="fas fa-list me-1"></i> Models
-                                  </button>
-                                  <button class="btn btn-sm btn-outline-warning quick-action-btn" onclick="sendQuickMessage('What can you help me with?')">
-                                      <i class="fas fa-question-circle me-1"></i> Help
-                                  </button>
-                              </div>
-                              
-                              <div class="input-group">
-                                  <input type="text" 
-                                         class="form-control bg-dark text-light border-secondary" 
-                                         id="chatInput" 
-                                         placeholder="Type your message..."
-                                         onkeypress="handleKeyPress(event)">
-                                  <button class="btn btn-primary" onclick="sendMessage()" id="sendBtn">
-                                      <i class="fas fa-paper-plane me-1"></i>
-                                      Send
-                                  </button>
-                              </div>
-                          </div>
-                      </div>
-                  </div>
-              </div>
-          </div>
-
-          <!-- Control Panel -->
-          <div class="col-lg-4 mb-4">
-              <div class="card mb-3">
-                  <div class="card-header bg-transparent border-secondary">
-                      <h6 class="mb-0">
-                          <i class="fas fa-cog me-2"></i>
-                          Configuration
-                      </h6>
-                  </div>
-                  <div class="card-body">
-                      <div class="mb-3">
-                          <label class="form-label">AI Source</label>
-                          <select class="form-select form-select-sm bg-dark text-light border-secondary mb-2" id="webhookSelector" onchange="handleWebhookChange()">
-                              <option value="ollama">Direct Ollama</option>
-                              <option value="n8n-default">n8n Default Agent</option>
-                              <option value="custom">Custom n8n Webhook...</option>
-                          </select>
-
-                          <div id="customWebhookDiv" style="display: none;">
-                              <input type="text"
-                                     class="form-control form-control-sm bg-dark text-light border-secondary"
-                                     id="customWebhookId"
-                                     placeholder="Enter n8n Webhook ID">
-                              <small class="text-muted">Enter the UUID from n8n Webhook node</small>
-                          </div>
-
-                          <div id="ollamaModelDiv">
-                              <label class="form-label mt-2">Ollama Model</label>
-                              <select class="form-select form-select-sm bg-dark text-light border-secondary" id="ollamaModelSelector">
-                                  <option value="" disabled selected>Loading models...</option>
-                              </select>
-                              <div class="d-flex justify-content-end mt-1">
-                                  <a href="#" class="text-muted" onclick="loadOllamaModels(true); return false;">
-                                      <small><i class="fas fa-sync"></i> Refresh</small>
-                                  </a>
-                              </div>
-                          </div>
-                      </div>
-
-                      <hr class="border-secondary">
-
-                      <div class="d-grid gap-2">
-                          <button class="btn btn-outline-danger btn-sm" onclick="clearChat()">
-                              <i class="fas fa-trash me-1"></i>
-                              Clear Chat
-                          </button>
-                          <button class="btn btn-outline-info btn-sm" onclick="showGuide()">
-                              <i class="fas fa-book me-1"></i>
-                              n8n Integration Guide
-                          </button>
-                      </div>
-                  </div>
-              </div>
-
-              <!-- Stats Card -->
-              <div class="card">
-                  <div class="card-header bg-transparent border-secondary">
-                      <h6 class="mb-0">
-                          <i class="fas fa-chart-line me-2"></i>
-                          Session Stats
-                      </h6>
-                  </div>
-                  <div class="card-body">
-                      <div class="d-flex justify-content-between mb-2">
-                          <span>Messages Sent:</span>
-                          <strong id="messageCount">0</strong>
-                      </div>
-                      <div class="d-flex justify-content-between mb-2">
-                          <span>AI Responses:</span>
-                          <strong id="responseCount">1</strong>
-                      </div>
-                      <div class="d-flex justify-content-between">
-                          <span>Session Time:</span>
-                          <strong id="sessionTime">Just now</strong>
-                      </div>
-                  </div>
-              </div>
-          </div>
       </div>
+    </header>
+
+    <main class="layout control-layout">
+        <!-- Chat Column -->
+        <section class="panel chat-panel">
+            <div class="panel-head">
+                <h2><i class="fas fa-comments me-2"></i> AI Assistant Chat</h2>
+            </div>
+
+            <div class="chat-container">
+                <div class="chat-window" id="chatMessages" style="height: 500px;">
+                    <div class="bubble assistant">
+                        <div class="meta">AgentX</div>
+                        <p>Hello! I'm your AgentX AI assistant. How can I help you today?</p>
+                    </div>
+                </div>
+
+                <div class="composer">
+                    <div class="quick-actions">
+                        <button class="chip" onclick="sendQuickMessage('Check system status')">System Status</button>
+                        <button class="chip" onclick="sendQuickMessage('Show RAG collections')">RAG Status</button>
+                        <button class="chip" onclick="sendQuickMessage('List Ollama models')">Models</button>
+                        <button class="chip" onclick="sendQuickMessage('What can you help me with?')">Help</button>
+                    </div>
+                    <textarea id="chatInput" rows="2" placeholder="Type your message..." onkeypress="handleKeyPress(event)"></textarea>
+                    <div class="composer-actions">
+                        <div class="flex-spacer"></div>
+                        <button class="primary" onclick="sendMessage()" id="sendBtn">Send</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Sidebar Column -->
+        <aside class="sidebar-column">
+            <!-- Configuration -->
+            <div class="panel config-panel">
+                <div class="panel-head">
+                    <h2><i class="fas fa-cog me-2"></i> Configuration</h2>
+                </div>
+
+                <div class="field">
+                    <label>AI Source</label>
+                    <select id="webhookSelector" onchange="handleWebhookChange()">
+                        <option value="ollama">Direct Ollama</option>
+                        <option value="n8n-default">n8n Default Agent</option>
+                        <option value="custom">Custom n8n Webhook...</option>
+                    </select>
+                </div>
+
+                <div id="customWebhookDiv" class="field" style="display: none;">
+                    <input type="text" id="customWebhookId" placeholder="Enter n8n Webhook ID">
+                    <div class="hint">Enter the UUID from n8n Webhook node</div>
+                </div>
+
+                <div id="ollamaModelDiv" class="field">
+                    <label>Ollama Model</label>
+                    <div class="input-row">
+                        <select id="ollamaModelSelector">
+                            <option value="" disabled selected>Loading models...</option>
+                        </select>
+                        <button class="icon-btn" onclick="loadOllamaModels(true)">↻</button>
+                    </div>
+                </div>
+
+                <div class="action-row">
+                    <button class="ghost full" onclick="clearChat()">Clear Chat</button>
+                </div>
+            </div>
+
+            <!-- Stats -->
+            <div class="panel stats-panel">
+                 <div class="panel-head">
+                    <h2>Session Stats</h2>
+                </div>
+                <div class="stat-row">
+                    <span>Messages Sent</span>
+                    <strong id="messageCount">0</strong>
+                </div>
+                <div class="stat-row">
+                    <span>AI Responses</span>
+                    <strong id="responseCount">1</strong>
+                </div>
+                <div class="stat-row">
+                    <span>Session Time</span>
+                    <strong id="sessionTime">Just now</strong>
+                </div>
+            </div>
+        </aside>
+    </main>
   </div>
 
-  <!-- n8n Integration Guide Modal -->
-  <div class="modal fade" id="guideModal" tabindex="-1">
-      <div class="modal-dialog modal-lg">
-          <div class="modal-content">
-              <div class="modal-header border-secondary">
-                  <h5 class="modal-title"><i class="fas fa-robot me-2"></i>n8n Integration Guide</h5>
-                  <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-              </div>
-              <div class="modal-body">
-                  <h6>Connecting AgentX to n8n</h6>
-                  <p>AgentX now handles all n8n integrations. You can trigger n8n workflows from this interface or configure n8n to call AgentX endpoints.</p>
+  <style>
+      .control-layout {
+          display: grid;
+          grid-template-columns: 1fr 320px;
+          gap: 20px;
+      }
+      .sidebar-column {
+          display: flex;
+          flex-direction: column;
+          gap: 20px;
+      }
+      .stat-row {
+          display: flex;
+          justify-content: space-between;
+          padding: 8px 0;
+          border-bottom: 1px solid var(--panel-border);
+          color: var(--muted);
+          font-size: 14px;
+      }
+      .stat-row strong { color: var(--text); }
 
-                  <hr class="border-secondary">
+      @media (max-width: 900px) {
+          .control-layout { grid-template-columns: 1fr; }
+      }
+  </style>
 
-                  <h6>1. n8n Workflow Setup</h6>
-                  <p>Create a workflow with a <strong>Webhook</strong> trigger:</p>
-                  <ul>
-                      <li><strong>HTTP Method:</strong> POST</li>
-                      <li><strong>Path:</strong> Copy the UUID generated by n8n</li>
-                      <li><strong>Authentication:</strong> None (handled by AgentX)</li>
-                  </ul>
+  <script type="module">
+    import { injectNav } from '/js/components/nav.js';
+    injectNav('ai-control');
+  </script>
 
-                  <h6>2. Input Format</h6>
-                  <p>AgentX sends this JSON payload to n8n webhooks:</p>
-                  <pre class="bg-dark p-2 border border-secondary rounded"><code>{
-  "chatInput": "User's message here",
-  "timestamp": "2025-12-17T10:30:00.000Z",
-  "source": "agentx"
-}</code></pre>
-
-                  <h6>3. AgentX n8n Endpoints</h6>
-                  <p>n8n can call these AgentX endpoints (requires x-api-key header):</p>
-                  <ul>
-                      <li><code>POST /api/n8n/rag/ingest</code> - Trigger RAG ingestion</li>
-                      <li><code>POST /api/n8n/chat/complete</code> - Notify chat completion</li>
-                      <li><code>POST /api/n8n/analytics</code> - Send analytics events</li>
-                      <li><code>POST /api/n8n/trigger/:webhookId</code> - Manual webhook trigger</li>
-                  </ul>
-
-                  <div class="alert alert-info bg-dark border-secondary">
-                      <strong>Tip:</strong> Select "Custom n8n Webhook" in the dropdown and paste your webhook UUID to test immediately.
-                  </div>
-              </div>
-              <div class="modal-footer border-secondary">
-                  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-              </div>
-          </div>
-      </div>
-  </div>
-
-  <!-- Scripts -->
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <!-- Re-using logic from original ai-control but adapted to vanilla JS modules/style -->
   <script>
+      // Simplified inline script to match original functionality but using new styles
       let messageCount = 0;
       let responseCount = 1;
       const sessionStart = new Date();
@@ -420,33 +183,34 @@
               const statusText = document.getElementById('statusText');
               
               if (health.status === 'ok') {
-                  indicator.className = 'status-indicator connected';
+                  indicator.style.background = '#10b981';
+                  indicator.style.boxShadow = '0 0 8px rgba(16, 185, 129, 0.5)';
                   statusText.textContent = 'System Healthy';
               } else {
-                  indicator.className = 'status-indicator disconnected';
+                  indicator.style.background = '#ef4444';
                   statusText.textContent = 'System Degraded';
               }
           } catch (e) {
-              document.getElementById('statusIndicator').className = 'status-indicator disconnected';
+              document.getElementById('statusIndicator').style.background = '#ef4444';
               document.getElementById('statusText').textContent = 'Connection Error';
           }
           
-          // Load Ollama models on startup
           loadOllamaModels();
       }
 
-      function handleKeyPress(event) {
-          if (event.key === 'Enter') {
+      window.handleKeyPress = function(event) {
+          if (event.key === 'Enter' && !event.shiftKey) {
+              event.preventDefault();
               sendMessage();
           }
       }
 
-      function sendQuickMessage(message) {
+      window.sendQuickMessage = function(message) {
           document.getElementById('chatInput').value = message;
           sendMessage();
       }
 
-      function handleWebhookChange() {
+      window.handleWebhookChange = function() {
           const selector = document.getElementById('webhookSelector');
           const customDiv = document.getElementById('customWebhookDiv');
           const ollamaDiv = document.getElementById('ollamaModelDiv');
@@ -455,7 +219,7 @@
           ollamaDiv.style.display = selector.value === 'ollama' ? 'block' : 'none';
       }
 
-      async function loadOllamaModels(forceRefresh = false) {
+      window.loadOllamaModels = async function(forceRefresh = false) {
           const select = document.getElementById('ollamaModelSelector');
 
           if (!forceRefresh && ollamaModelCache.length > 0) {
@@ -497,21 +261,18 @@
           });
       }
 
-      async function sendMessage() {
+      window.sendMessage = async function() {
           const input = document.getElementById('chatInput');
           const message = input.value.trim();
           
           if (!message) return;
           
-          // Add user message to chat
           addMessage(message, 'user');
           input.value = '';
           
-          // Update stats
           messageCount++;
           document.getElementById('messageCount').textContent = messageCount;
           
-          // Show typing indicator
           const typingIndicator = addTypingIndicator();
           
           try {
@@ -519,150 +280,78 @@
               let response;
 
               if (selector.value === 'ollama') {
-                  // Direct Ollama chat
                   const model = document.getElementById('ollamaModelSelector').value;
-                  if (!model) {
-                      throw new Error('Select an Ollama model before chatting');
-                  }
-                  response = await fetch('/api/ollama/chat', {
+                  if (!model) throw new Error('Select an Ollama model before chatting');
+                  
+                  response = await fetch('/api/chat', { // Use standard chat endpoint
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ prompt: message, model })
+                      body: JSON.stringify({ message: message, model })
                   });
               } else {
-                  // n8n webhook
-                  let webhookId = selector.value === 'custom' 
-                      ? document.getElementById('customWebhookId').value.trim()
-                      : 'default-webhook-id'; // Configure in .env
-                      
-                  if (!webhookId) {
-                      throw new Error('No webhook ID configured');
-                  }
-                  
-                  response = await fetch(`/api/n8n/trigger/${webhookId}`, {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                          chatInput: message,
-                          timestamp: new Date().toISOString(),
-                          source: 'agentx'
-                      })
-                  });
+                 // Simplified fallback for n8n
+                 throw new Error("n8n direct mode not fully ported in this view yet.");
               }
               
               const result = await response.json();
-              
-              // Remove typing indicator
               typingIndicator.remove();
               
               if (response.ok) {
-                  let aiResponse = extractAIResponse(result);
-                  
-                  if (!aiResponse) {
-                      aiResponse = 'No response extracted. Raw: ' + JSON.stringify(result, null, 2);
-                  }
-                  
-                  addMessage(aiResponse, 'ai');
+                  const aiResponse = result.data?.response || result.data?.message || 'No response content';
+                  addMessage(aiResponse, 'assistant');
                   responseCount++;
                   document.getElementById('responseCount').textContent = responseCount;
               } else {
-                  addMessage(`❌ Error: ${result.message || 'Failed to get response'}`, 'ai');
+                  addMessage(`❌ Error: ${result.message || 'Failed to get response'}`, 'assistant');
               }
           } catch (error) {
               typingIndicator.remove();
-              addMessage(`❌ Network error: ${error.message}`, 'ai');
+              addMessage(`❌ Network error: ${error.message}`, 'assistant');
           }
       }
 
-      function extractAIResponse(result) {
-          // Direct string
-          if (typeof result === 'string') return result;
-          
-          // Direct output field
-          if (result.output) return result.output;
-          
-          // Nested in data
-          if (result.data) {
-              if (typeof result.data === 'string') return result.data;
-              if (result.data.output) return result.data.output;
-              if (result.data.message) return result.data.message;
-              if (result.data.response) return result.data.response;
-          }
-          
-          return null;
-      }
-
-      function addMessage(text, type) {
+      function addMessage(text, role) {
           const messagesContainer = document.getElementById('chatMessages');
-          const messageDiv = document.createElement('div');
-          messageDiv.className = `message ${type}`;
+          const bubble = document.createElement('div');
+          bubble.className = `bubble ${role}`;
           
-          const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          let content = text;
+          if (role === 'assistant') {
+              bubble.innerHTML = `<div class="meta">AgentX</div><p>${escapeHtml(content)}</p>`;
+          } else {
+              bubble.innerHTML = `<div class="meta">You</div><p>${escapeHtml(content)}</p>`;
+          }
           
-          let displayText = typeof text === 'object' ? JSON.stringify(text, null, 2) : String(text);
-          displayText = displayText.replace(/\\n/g, '\n').replace(/\\"/g, '"').trim();
-          
-          messageDiv.innerHTML = `
-              <div class="message-bubble">
-                  ${type === 'ai' ? '<strong>AI Agent</strong><br>' : ''}
-                  <div style="white-space: pre-wrap; line-height: 1.5;">${escapeHtml(displayText)}</div>
-              </div>
-              <div class="message-meta">${time}</div>
-          `;
-          
-          messagesContainer.appendChild(messageDiv);
+          messagesContainer.appendChild(bubble);
           messagesContainer.scrollTop = messagesContainer.scrollHeight;
-          
-          return messageDiv;
       }
 
       function addTypingIndicator() {
           const messagesContainer = document.getElementById('chatMessages');
-          const indicatorDiv = document.createElement('div');
-          indicatorDiv.className = 'message ai';
-          indicatorDiv.innerHTML = `
-              <div class="typing-indicator active">
-                  <span></span>
-                  <span></span>
-                  <span></span>
-              </div>
-          `;
-          messagesContainer.appendChild(indicatorDiv);
+          const bubble = document.createElement('div');
+          bubble.className = 'bubble assistant';
+          bubble.innerHTML = `<div class="meta">AgentX</div><p>Thinking...</p>`;
+          messagesContainer.appendChild(bubble);
           messagesContainer.scrollTop = messagesContainer.scrollHeight;
-          return indicatorDiv;
+          return bubble;
       }
 
       function escapeHtml(text) {
           const div = document.createElement('div');
           div.textContent = text;
-          return div.innerHTML;
+          return div.innerHTML.replace(/\n/g, '<br>');
       }
 
-      function showGuide() {
-          const modal = new bootstrap.Modal(document.getElementById('guideModal'));
-          modal.show();
+      window.clearChat = function() {
+          document.getElementById('chatMessages').innerHTML = `
+              <div class="bubble assistant">
+                  <div class="meta">AgentX</div>
+                  <p>Chat cleared. How can I help you?</p>
+              </div>
+          `;
+          messageCount = 0;
+          responseCount = 1;
       }
-
-      function clearChat() {
-          if (confirm('Clear all chat messages?')) {
-              document.getElementById('chatMessages').innerHTML = `
-                  <div class="message ai">
-                      <div class="message-bubble">
-                          <strong>AI Agent</strong><br>
-                          Chat cleared. How can I help you?
-                      </div>
-                      <div class="message-meta">Just now</div>
-                  </div>
-              `;
-              messageCount = 0;
-              responseCount = 1;
-              document.getElementById('messageCount').textContent = messageCount;
-              document.getElementById('responseCount').textContent = responseCount;
-          }
-      }
-
-      // Focus input on load
-      document.getElementById('chatInput').focus();
   </script>
 </body>
 </html>
