@@ -11,9 +11,10 @@
   <!-- Bootstrap 5 -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
   
-  <!-- Custom CSS -->
+  <!-- Custom CSS - TEMPORARILY DISABLED FOR DEBUG
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="css/sbqc.css" />
+  -->
   
   <!-- FontAwesome -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -106,6 +107,96 @@
           border: 1px solid rgba(148, 163, 184, 0.1);
           background: rgba(15, 23, 42, 0.5);
       }
+      
+      /* Header & Navigation */
+      .header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 2rem;
+          padding-bottom: 1rem;
+          border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+      }
+      
+      .brand h1 {
+          font-size: 2rem;
+          font-weight: 700;
+          margin: 0.5rem 0 0.25rem 0;
+          color: #e2e8f0;
+      }
+      
+      .brand .subtitle {
+          color: #94a3b8;
+          margin: 0;
+      }
+      
+      .status {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          font-size: 0.875rem;
+          color: #94a3b8;
+      }
+      
+      .status-indicator {
+          width: 10px;
+          height: 10px;
+          border-radius: 50%;
+          background: #ef4444;
+      }
+      
+      .status-indicator.checking {
+          background: #f59e0b;
+          animation: pulse 2s infinite;
+      }
+      
+      .status-indicator.connected {
+          background: #10b981;
+      }
+      
+      .status-indicator.disconnected {
+          background: #ef4444;
+      }
+      
+      @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.5; }
+      }
+      
+      .nav {
+          display: flex;
+          gap: 1rem;
+          align-items: center;
+      }
+      
+      .nav a {
+          color: #94a3b8;
+          text-decoration: none;
+          padding: 0.5rem 1rem;
+          border-radius: 0.375rem;
+          transition: all 0.2s;
+          font-weight: 500;
+          cursor: pointer;
+      }
+      
+      .nav a:hover {
+          color: #e2e8f0;
+          background: rgba(59, 130, 246, 0.1);
+      }
+      
+      .nav a.active {
+          color: #3b82f6;
+          background: rgba(59, 130, 246, 0.1);
+      }
+
+      /* Ensure all interactive elements have pointer cursor */
+      button, .btn, select, input[type="text"], textarea {
+          cursor: pointer;
+      }
+
+      textarea {
+          cursor: text;
+      }
   </style>
 </head>
 
@@ -172,19 +263,21 @@
                       <div class="mb-3">
                           <label class="form-label">Select Workflow</label>
                           <select class="form-select bg-dark text-light border-secondary" id="workflowSelector">
-                              <option value="rag-ingest">RAG Ingestion</option>
-                              <option value="chat-complete">Chat Completion</option>
-                              <option value="analytics">Analytics Event</option>
+                              <option value="agentmail">AgentMail (Gmail AI Agent)</option>
+                              <option value="rag-ingest">RAG Ingestion (Local)</option>
+                              <option value="chat-complete">Chat Completion (Local)</option>
+                              <option value="analytics">Analytics Event (Local)</option>
                               <option value="custom">Custom Webhook...</option>
                           </select>
                       </div>
 
                       <div id="customWebhookDiv" style="display: none;" class="mb-3">
-                          <label class="form-label">Custom Webhook ID</label>
+                          <label class="form-label">Custom Webhook URL</label>
                           <input type="text" 
                                  class="form-control bg-dark text-light border-secondary" 
                                  id="customWebhookId" 
-                                 placeholder="Enter webhook UUID from n8n">
+                                 placeholder="https://n8n.specialblend.icu/webhook/...">
+                          <small class="text-muted">Full webhook URL or just the UUID</small>
                       </div>
 
                       <div class="mb-3">
@@ -227,6 +320,10 @@
                   </div>
                   <div class="card-body">
                       <div class="d-grid gap-2">
+                          <button class="btn btn-outline-primary btn-sm" onclick="testAgentMail()">
+                              <i class="fas fa-envelope me-2"></i>
+                              Test AgentMail
+                          </button>
                           <button class="btn btn-outline-success btn-sm" onclick="quickTrigger('health-check')">
                               <i class="fas fa-heartbeat me-2"></i>
                               Test n8n Health
@@ -273,10 +370,18 @@
                   <div class="card-header bg-transparent border-secondary">
                       <h6 class="mb-0">
                           <i class="fas fa-network-wired me-2"></i>
-                          Registered Webhooks
+                          Configured Webhooks
                       </h6>
                   </div>
                   <div class="card-body">
+                      <div class="webhook-card">
+                          <strong>AgentMail (External)</strong>
+                          <span class="status-badge status-healthy ms-2">Ready</span>
+                          <br>
+                          <span class="webhook-id">n8n.specialblend.icu/.../c1deca83</span>
+                          <small class="d-block text-muted mt-1">Gmail AI Agent</small>
+                      </div>
+
                       <div class="webhook-card">
                           <strong>RAG Ingestion</strong>
                           <span class="status-badge status-healthy ms-2">Active</span>
@@ -392,48 +497,49 @@
       let eventCounter = 1;
       const sessionStart = new Date();
 
-      // Check system status on load
-      checkSystemHealth();
-      setInterval(checkSystemHealth, 30000); // Check every 30 seconds
-
-      // Update session time
-      setInterval(() => {
-          const elapsed = Math.floor((new Date() - sessionStart) / 1000);
-          const minutes = Math.floor(elapsed / 60);
-          // Could display uptime if needed
-      }, 1000);
-
-      // Show/hide custom webhook input
-      document.getElementById('workflowSelector').addEventListener('change', function() {
-          const customDiv = document.getElementById('customWebhookDiv');
-          customDiv.style.display = this.value === 'custom' ? 'block' : 'none';
-      });
-
       async function checkSystemHealth() {
+          console.log('checkSystemHealth called');
           try {
               const res = await fetch('/api/n8n/health');
               const health = await res.json();
+              console.log('Health response:', health);
               
               const indicator = document.getElementById('statusIndicator');
               const statusText = document.getElementById('statusText');
               const n8nStatus = document.getElementById('n8nStatus');
+              
+              console.log('DOM elements:', { indicator, statusText, n8nStatus });
+              
+              if (!indicator || !statusText || !n8nStatus) {
+                  console.error('DOM elements not found!');
+                  return;
+              }
               
               if (health.status === 'success' || health.status === 'ok') {
                   indicator.className = 'status-indicator connected';
                   statusText.textContent = 'n8n Healthy';
                   n8nStatus.textContent = '●';
                   n8nStatus.style.color = '#10b981';
+                  console.log('Status updated to healthy');
               } else {
                   indicator.className = 'status-indicator disconnected';
                   statusText.textContent = 'n8n Error';
                   n8nStatus.textContent = '●';
                   n8nStatus.style.color = '#ef4444';
+                  console.log('Status updated to error');
               }
           } catch (e) {
-              document.getElementById('statusIndicator').className = 'status-indicator disconnected';
-              document.getElementById('statusText').textContent = 'Connection Error';
-              document.getElementById('n8nStatus').textContent = '●';
-              document.getElementById('n8nStatus').style.color = '#ef4444';
+              console.error('Health check error:', e);
+              const indicator = document.getElementById('statusIndicator');
+              const statusText = document.getElementById('statusText');
+              const n8nStatus = document.getElementById('n8nStatus');
+              
+              if (indicator) indicator.className = 'status-indicator disconnected';
+              if (statusText) statusText.textContent = 'Connection Error';
+              if (n8nStatus) {
+                  n8nStatus.textContent = '●';
+                  n8nStatus.style.color = '#ef4444';
+              }
               logEvent('Health check failed: ' + e.message, 'error');
           }
       }
@@ -454,14 +560,28 @@
           const resultDiv = document.getElementById('triggerResult');
           
           let endpoint;
-          if (selector.value === 'custom') {
-              const webhookId = document.getElementById('customWebhookId').value.trim();
-              if (!webhookId) {
-                  logEvent('✗ No webhook ID provided', 'error');
+          let isExternal = false;
+          
+          // Handle different workflow types
+          if (selector.value === 'agentmail') {
+              // Direct external n8n webhook
+              endpoint = 'https://n8n.specialblend.icu/webhook/c1deca83-ecb4-48ad-b485-59195cee9a61';
+              isExternal = true;
+          } else if (selector.value === 'custom') {
+              const webhookInput = document.getElementById('customWebhookId').value.trim();
+              if (!webhookInput) {
+                  logEvent('✗ No webhook URL provided', 'error');
                   return;
               }
-              endpoint = `/api/n8n/trigger/${webhookId}`;
+              // Check if it's a full URL or just UUID
+              if (webhookInput.startsWith('http')) {
+                  endpoint = webhookInput;
+                  isExternal = true;
+              } else {
+                  endpoint = `/api/n8n/trigger/${webhookInput}`;
+              }
           } else {
+              // Local AgentX endpoints
               endpoint = `/api/n8n/${selector.value}`;
           }
 
@@ -474,7 +594,7 @@
           }
 
           resultDiv.style.display = 'none';
-          logEvent(`Triggering ${selector.value}...`, 'info');
+          logEvent(`Triggering ${selector.value}${isExternal ? ' (external)' : ''}...`, 'info');
 
           try {
               const res = await fetch(endpoint, {
@@ -548,6 +668,38 @@
           }
       }
 
+      async function testAgentMail() {
+          logEvent('Testing AgentMail webhook...', 'info');
+          
+          const testPayload = {
+              event: "test_from_operations_center",
+              timestamp: new Date().toISOString(),
+              source: "agentx-n8n-control",
+              data: {
+                  message: "Test trigger from n8n Operations Center",
+                  test: true
+              }
+          };
+
+          try {
+              const res = await fetch('https://n8n.specialblend.icu/webhook/c1deca83-ecb4-48ad-b485-59195cee9a61', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(testPayload)
+              });
+
+              if (res.ok) {
+                  const result = await res.json();
+                  logEvent('✓ AgentMail webhook triggered successfully', 'success');
+                  console.log('AgentMail response:', result);
+              } else {
+                  logEvent(`✗ AgentMail returned ${res.status}`, 'error');
+              }
+          } catch (e) {
+              logEvent(`✗ AgentMail error: ${e.message}`, 'error');
+          }
+      }
+
       function refreshMetrics() {
           checkSystemHealth();
           logEvent('Metrics refreshed', 'info');
@@ -608,6 +760,26 @@
           } catch (e) {
               // Keep as-is if invalid
           }
+      });
+
+      // Initialize when DOM is ready
+      document.addEventListener('DOMContentLoaded', function() {
+          // Check system status on load
+          checkSystemHealth();
+          setInterval(checkSystemHealth, 30000); // Check every 30 seconds
+
+          // Update session time
+          setInterval(() => {
+              const elapsed = Math.floor((new Date() - sessionStart) / 1000);
+              const minutes = Math.floor(elapsed / 60);
+              // Could display uptime if needed
+          }, 1000);
+
+          // Show/hide custom webhook input
+          document.getElementById('workflowSelector').addEventListener('change', function() {
+              const customDiv = document.getElementById('customWebhookDiv');
+              customDiv.style.display = this.value === 'custom' ? 'block' : 'none';
+          });
       });
   </script>
 </body>
