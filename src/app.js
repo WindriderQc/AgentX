@@ -119,6 +119,10 @@ app.use('/api/dataset', datasetRoutes);
 const metricsRoutes = require('../routes/metrics');
 app.use('/api/metrics', metricsRoutes);
 
+// n8n integration routes (API key authentication)
+const n8nRoutes = require('../routes/n8n');
+app.use('/api/n8n', n8nRoutes);
+
 // Proxy /api/v1 to DataAPI (localhost:3003)
 // This allows the frontend to access DataAPI endpoints directly via AgentX
 // We inject the API key so the browser session (AgentX) is sufficient for the user,
