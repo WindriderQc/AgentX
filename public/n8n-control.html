@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AgentX • n8n Operations</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  
+  <!-- Bootstrap 5 -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="css/sbqc.css" />
+  
+  <!-- FontAwesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <style>
+      body { background-color: #0f172a; color: #e2e8f0; }
+      .card { background-color: rgba(30, 41, 59, 0.7); border: 1px solid rgba(148, 163, 184, 0.1); color: #e2e8f0; }
+      .modal-content { background-color: #1e293b; color: #e2e8f0; }
+      
+      .status-badge { 
+          display: inline-block; 
+          padding: 0.25rem 0.75rem; 
+          border-radius: 1rem; 
+          font-size: 0.875rem; 
+          font-weight: 500; 
+      }
+      .status-healthy { background: #10b981; color: white; }
+      .status-degraded { background: #f59e0b; color: white; }
+      .status-error { background: #ef4444; color: white; }
+      
+      .event-log {
+          max-height: 400px;
+          overflow-y: auto;
+          background: rgba(15, 23, 42, 0.5);
+          border: 1px solid rgba(148, 163, 184, 0.1);
+          border-radius: 0.5rem;
+          padding: 1rem;
+      }
+      
+      .event-entry {
+          padding: 0.75rem;
+          border-left: 3px solid #3b82f6;
+          background: rgba(30, 41, 59, 0.5);
+          margin-bottom: 0.5rem;
+          border-radius: 0.25rem;
+      }
+      
+      .event-entry.success { border-left-color: #10b981; }
+      .event-entry.error { border-left-color: #ef4444; }
+      .event-entry.warning { border-left-color: #f59e0b; }
+      
+      .metric-card {
+          text-align: center;
+          padding: 1.5rem;
+      }
+      
+      .metric-value {
+          font-size: 2.5rem;
+          font-weight: 700;
+          color: #3b82f6;
+      }
+      
+      .metric-label {
+          font-size: 0.875rem;
+          color: #94a3b8;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+      }
+      
+      .webhook-card {
+          padding: 1rem;
+          background: rgba(15, 23, 42, 0.3);
+          border: 1px solid rgba(148, 163, 184, 0.1);
+          border-radius: 0.5rem;
+          margin-bottom: 0.75rem;
+      }
+      
+      .webhook-id {
+          font-family: 'Courier New', monospace;
+          font-size: 0.75rem;
+          color: #94a3b8;
+          background: rgba(0, 0, 0, 0.3);
+          padding: 0.25rem 0.5rem;
+          border-radius: 0.25rem;
+          display: inline-block;
+          margin-top: 0.25rem;
+      }
+      
+      code {
+          background: rgba(0, 0, 0, 0.3);
+          padding: 0.125rem 0.375rem;
+          border-radius: 0.25rem;
+          font-size: 0.875rem;
+      }
+      
+      .test-result {
+          margin-top: 1rem;
+          padding: 1rem;
+          border-radius: 0.5rem;
+          border: 1px solid rgba(148, 163, 184, 0.1);
+          background: rgba(15, 23, 42, 0.5);
+      }
+  </style>
+</head>
+
+<body>
+  <div class="container-fluid py-4">
+      <header class="header">
+        <div class="brand">
+          <div class="status">
+            <div id="statusIndicator" class="status-indicator checking"></div>
+            <span id="statusText">Checking...</span>
+          </div>
+          <h1>n8n Operations Center</h1>
+          <p class="subtitle">Workflow Management & Monitoring</p>
+        </div>
+        <nav class="nav">
+            <a href="/">Chat</a>
+            <a href="/analytics.html">Analytics</a>
+            <a href="/metrics.html">Metrics</a>
+            <a href="/dataapi.html">Data Tools</a>
+            <a href="/dashboard.html">Dashboard</a>
+            <a href="/n8n-control.html" class="active">n8n Ops</a>
+        </nav>
+      </header>
+
+      <!-- System Health Overview -->
+      <div class="row mb-4">
+          <div class="col-md-3">
+              <div class="card metric-card">
+                  <div class="metric-value" id="n8nStatus">●</div>
+                  <div class="metric-label">n8n Health</div>
+              </div>
+          </div>
+          <div class="col-md-3">
+              <div class="card metric-card">
+                  <div class="metric-value" id="totalWebhooks">0</div>
+                  <div class="metric-label">Active Webhooks</div>
+              </div>
+          </div>
+          <div class="col-md-3">
+              <div class="card metric-card">
+                  <div class="metric-value" id="todayTriggers">0</div>
+                  <div class="metric-label">Today's Triggers</div>
+              </div>
+          </div>
+          <div class="col-md-3">
+              <div class="card metric-card">
+                  <div class="metric-value" id="successRate">100%</div>
+                  <div class="metric-label">Success Rate</div>
+              </div>
+          </div>
+      </div>
+
+      <div class="row">
+          <!-- Webhook Testing -->
+          <div class="col-lg-6 mb-4">
+              <div class="card">
+                  <div class="card-header bg-transparent border-secondary">
+                      <h5 class="mb-0">
+                          <i class="fas fa-bolt me-2"></i>
+                          Webhook Trigger
+                      </h5>
+                  </div>
+                  <div class="card-body">
+                      <div class="mb-3">
+                          <label class="form-label">Select Workflow</label>
+                          <select class="form-select bg-dark text-light border-secondary" id="workflowSelector">
+                              <option value="rag-ingest">RAG Ingestion</option>
+                              <option value="chat-complete">Chat Completion</option>
+                              <option value="analytics">Analytics Event</option>
+                              <option value="custom">Custom Webhook...</option>
+                          </select>
+                      </div>
+
+                      <div id="customWebhookDiv" style="display: none;" class="mb-3">
+                          <label class="form-label">Custom Webhook ID</label>
+                          <input type="text" 
+                                 class="form-control bg-dark text-light border-secondary" 
+                                 id="customWebhookId" 
+                                 placeholder="Enter webhook UUID from n8n">
+                      </div>
+
+                      <div class="mb-3">
+                          <label class="form-label">Payload (JSON)</label>
+                          <textarea class="form-control bg-dark text-light border-secondary" 
+                                    id="webhookPayload" 
+                                    rows="6"
+                                    placeholder='{"event": "test", "data": {}}'>{
+  "event": "test_trigger",
+  "timestamp": "2025-12-18T10:00:00Z",
+  "source": "agentx-control-panel",
+  "data": {
+    "message": "Manual test from n8n Operations Center"
+  }
+}</textarea>
+                      </div>
+
+                      <div class="d-grid gap-2">
+                          <button class="btn btn-primary" onclick="triggerWebhook()">
+                              <i class="fas fa-rocket me-2"></i>
+                              Trigger Webhook
+                          </button>
+                          <button class="btn btn-outline-secondary btn-sm" onclick="validatePayload()">
+                              <i class="fas fa-check-circle me-2"></i>
+                              Validate JSON
+                          </button>
+                      </div>
+
+                      <div id="triggerResult" style="display: none;" class="test-result"></div>
+                  </div>
+              </div>
+
+              <!-- Quick Actions -->
+              <div class="card mt-3">
+                  <div class="card-header bg-transparent border-secondary">
+                      <h6 class="mb-0">
+                          <i class="fas fa-fire me-2"></i>
+                          Quick Triggers
+                      </h6>
+                  </div>
+                  <div class="card-body">
+                      <div class="d-grid gap-2">
+                          <button class="btn btn-outline-success btn-sm" onclick="quickTrigger('health-check')">
+                              <i class="fas fa-heartbeat me-2"></i>
+                              Test n8n Health
+                          </button>
+                          <button class="btn btn-outline-info btn-sm" onclick="quickTrigger('diagnostic')">
+                              <i class="fas fa-stethoscope me-2"></i>
+                              Run Diagnostic
+                          </button>
+                          <button class="btn btn-outline-warning btn-sm" onclick="refreshMetrics()">
+                              <i class="fas fa-sync me-2"></i>
+                              Refresh Metrics
+                          </button>
+                      </div>
+                  </div>
+              </div>
+          </div>
+
+          <!-- Event Log -->
+          <div class="col-lg-6 mb-4">
+              <div class="card">
+                  <div class="card-header bg-transparent border-secondary d-flex justify-content-between align-items-center">
+                      <h5 class="mb-0">
+                          <i class="fas fa-list me-2"></i>
+                          Event Log
+                      </h5>
+                      <button class="btn btn-sm btn-outline-secondary" onclick="clearEventLog()">
+                          <i class="fas fa-trash me-1"></i>
+                          Clear
+                      </button>
+                  </div>
+                  <div class="card-body">
+                      <div class="event-log" id="eventLog">
+                          <div class="event-entry">
+                              <strong>System Ready</strong><br>
+                              <small class="text-muted">n8n Operations Center initialized</small><br>
+                              <code>Just now</code>
+                          </div>
+                      </div>
+                  </div>
+              </div>
+
+              <!-- Registered Webhooks -->
+              <div class="card mt-3">
+                  <div class="card-header bg-transparent border-secondary">
+                      <h6 class="mb-0">
+                          <i class="fas fa-network-wired me-2"></i>
+                          Registered Webhooks
+                      </h6>
+                  </div>
+                  <div class="card-body">
+                      <div class="webhook-card">
+                          <strong>RAG Ingestion</strong>
+                          <span class="status-badge status-healthy ms-2">Active</span>
+                          <br>
+                          <span class="webhook-id">POST /api/n8n/rag/ingest</span>
+                      </div>
+                      
+                      <div class="webhook-card">
+                          <strong>Chat Completion</strong>
+                          <span class="status-badge status-healthy ms-2">Active</span>
+                          <br>
+                          <span class="webhook-id">POST /api/n8n/chat/complete</span>
+                      </div>
+                      
+                      <div class="webhook-card">
+                          <strong>Analytics Events</strong>
+                          <span class="status-badge status-healthy ms-2">Active</span>
+                          <br>
+                          <span class="webhook-id">POST /api/n8n/analytics</span>
+                      </div>
+
+                      <div class="webhook-card">
+                          <strong>Custom Triggers</strong>
+                          <span class="status-badge status-healthy ms-2">Active</span>
+                          <br>
+                          <span class="webhook-id">POST /api/n8n/trigger/:id</span>
+                      </div>
+
+                      <div class="mt-3">
+                          <button class="btn btn-sm btn-outline-info" onclick="showApiDocs()">
+                              <i class="fas fa-book me-1"></i>
+                              View API Documentation
+                          </button>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      </div>
+  </div>
+
+  <!-- API Documentation Modal -->
+  <div class="modal fade" id="apiDocsModal" tabindex="-1">
+      <div class="modal-dialog modal-lg">
+          <div class="modal-content">
+              <div class="modal-header border-secondary">
+                  <h5 class="modal-title"><i class="fas fa-code me-2"></i>n8n API Documentation</h5>
+                  <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+              </div>
+              <div class="modal-body">
+                  <h6>AgentX n8n Endpoints</h6>
+                  <p>All endpoints require <code>x-api-key</code> header for authentication.</p>
+
+                  <hr class="border-secondary">
+
+                  <h6>GET /api/n8n/health</h6>
+                  <p>Check n8n integration health status.</p>
+                  <pre class="bg-dark p-2 border border-secondary rounded"><code>curl http://192.168.2.33:3080/api/n8n/health \
+  -H "x-api-key: your-api-key"</code></pre>
+
+                  <hr class="border-secondary">
+
+                  <h6>POST /api/n8n/rag/ingest</h6>
+                  <p>Trigger RAG data ingestion workflow.</p>
+                  <pre class="bg-dark p-2 border border-secondary rounded"><code>{
+  "collection": "documents",
+  "documents": [...],
+  "metadata": {}
+}</code></pre>
+
+                  <hr class="border-secondary">
+
+                  <h6>POST /api/n8n/chat/complete</h6>
+                  <p>Notify n8n of chat completion for analytics.</p>
+                  <pre class="bg-dark p-2 border border-secondary rounded"><code>{
+  "conversationId": "uuid",
+  "messages": [...],
+  "metadata": {}
+}</code></pre>
+
+                  <hr class="border-secondary">
+
+                  <h6>POST /api/n8n/analytics</h6>
+                  <p>Send custom analytics events to n8n.</p>
+                  <pre class="bg-dark p-2 border border-secondary rounded"><code>{
+  "event": "user_action",
+  "data": {...}
+}</code></pre>
+
+                  <hr class="border-secondary">
+
+                  <h6>POST /api/n8n/trigger/:webhookId</h6>
+                  <p>Trigger a specific n8n webhook by ID.</p>
+                  <pre class="bg-dark p-2 border border-secondary rounded"><code>curl http://192.168.2.33:3080/api/n8n/trigger/abc-123 \
+  -X POST \
+  -H "x-api-key: your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"custom": "payload"}'</code></pre>
+
+                  <div class="alert alert-info bg-dark border-secondary mt-3">
+                      <strong>Note:</strong> Replace <code>abc-123</code> with your actual n8n webhook UUID from the Webhook node configuration.
+                  </div>
+              </div>
+              <div class="modal-footer border-secondary">
+                  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+              </div>
+          </div>
+      </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+      let eventCounter = 1;
+      const sessionStart = new Date();
+
+      // Check system status on load
+      checkSystemHealth();
+      setInterval(checkSystemHealth, 30000); // Check every 30 seconds
+
+      // Update session time
+      setInterval(() => {
+          const elapsed = Math.floor((new Date() - sessionStart) / 1000);
+          const minutes = Math.floor(elapsed / 60);
+          // Could display uptime if needed
+      }, 1000);
+
+      // Show/hide custom webhook input
+      document.getElementById('workflowSelector').addEventListener('change', function() {
+          const customDiv = document.getElementById('customWebhookDiv');
+          customDiv.style.display = this.value === 'custom' ? 'block' : 'none';
+      });
+
+      async function checkSystemHealth() {
+          try {
+              const res = await fetch('/api/n8n/health');
+              const health = await res.json();
+              
+              const indicator = document.getElementById('statusIndicator');
+              const statusText = document.getElementById('statusText');
+              const n8nStatus = document.getElementById('n8nStatus');
+              
+              if (health.status === 'success' || health.status === 'ok') {
+                  indicator.className = 'status-indicator connected';
+                  statusText.textContent = 'n8n Healthy';
+                  n8nStatus.textContent = '●';
+                  n8nStatus.style.color = '#10b981';
+              } else {
+                  indicator.className = 'status-indicator disconnected';
+                  statusText.textContent = 'n8n Error';
+                  n8nStatus.textContent = '●';
+                  n8nStatus.style.color = '#ef4444';
+              }
+          } catch (e) {
+              document.getElementById('statusIndicator').className = 'status-indicator disconnected';
+              document.getElementById('statusText').textContent = 'Connection Error';
+              document.getElementById('n8nStatus').textContent = '●';
+              document.getElementById('n8nStatus').style.color = '#ef4444';
+              logEvent('Health check failed: ' + e.message, 'error');
+          }
+      }
+
+      function validatePayload() {
+          const payload = document.getElementById('webhookPayload').value;
+          try {
+              JSON.parse(payload);
+              logEvent('✓ JSON payload is valid', 'success');
+          } catch (e) {
+              logEvent('✗ Invalid JSON: ' + e.message, 'error');
+          }
+      }
+
+      async function triggerWebhook() {
+          const selector = document.getElementById('workflowSelector');
+          const payload = document.getElementById('webhookPayload').value;
+          const resultDiv = document.getElementById('triggerResult');
+          
+          let endpoint;
+          if (selector.value === 'custom') {
+              const webhookId = document.getElementById('customWebhookId').value.trim();
+              if (!webhookId) {
+                  logEvent('✗ No webhook ID provided', 'error');
+                  return;
+              }
+              endpoint = `/api/n8n/trigger/${webhookId}`;
+          } else {
+              endpoint = `/api/n8n/${selector.value}`;
+          }
+
+          let parsedPayload;
+          try {
+              parsedPayload = JSON.parse(payload);
+          } catch (e) {
+              logEvent('✗ Invalid JSON payload', 'error');
+              return;
+          }
+
+          resultDiv.style.display = 'none';
+          logEvent(`Triggering ${selector.value}...`, 'info');
+
+          try {
+              const res = await fetch(endpoint, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: payload
+              });
+
+              const result = await res.json();
+
+              if (res.ok) {
+                  resultDiv.innerHTML = `
+                      <div class="text-success">
+                          <i class="fas fa-check-circle me-2"></i>
+                          <strong>Success!</strong>
+                      </div>
+                      <pre class="mt-2 mb-0">${JSON.stringify(result, null, 2)}</pre>
+                  `;
+                  logEvent(`✓ Webhook triggered successfully`, 'success');
+                  updateMetrics(true);
+              } else {
+                  resultDiv.innerHTML = `
+                      <div class="text-danger">
+                          <i class="fas fa-times-circle me-2"></i>
+                          <strong>Error ${res.status}</strong>
+                      </div>
+                      <pre class="mt-2 mb-0">${JSON.stringify(result, null, 2)}</pre>
+                  `;
+                  logEvent(`✗ Webhook failed: ${result.message || 'Unknown error'}`, 'error');
+                  updateMetrics(false);
+              }
+
+              resultDiv.style.display = 'block';
+
+          } catch (error) {
+              resultDiv.innerHTML = `
+                  <div class="text-danger">
+                      <i class="fas fa-exclamation-triangle me-2"></i>
+                      <strong>Network Error</strong>
+                  </div>
+                  <p class="mb-0 mt-2">${error.message}</p>
+              `;
+              resultDiv.style.display = 'block';
+              logEvent(`✗ Network error: ${error.message}`, 'error');
+              updateMetrics(false);
+          }
+      }
+
+      async function quickTrigger(action) {
+          logEvent(`Running ${action}...`, 'info');
+          
+          let endpoint;
+          if (action === 'health-check') {
+              endpoint = '/api/n8n/health';
+          } else if (action === 'diagnostic') {
+              endpoint = '/api/n8n/diagnostic';
+          }
+
+          try {
+              const res = await fetch(endpoint);
+              const result = await res.json();
+              
+              if (res.ok) {
+                  logEvent(`✓ ${action} completed`, 'success');
+                  console.log(result);
+              } else {
+                  logEvent(`✗ ${action} failed`, 'error');
+              }
+          } catch (e) {
+              logEvent(`✗ ${action} error: ${e.message}`, 'error');
+          }
+      }
+
+      function refreshMetrics() {
+          checkSystemHealth();
+          logEvent('Metrics refreshed', 'info');
+      }
+
+      function logEvent(message, type = 'info') {
+          const logContainer = document.getElementById('eventLog');
+          const eventDiv = document.createElement('div');
+          eventDiv.className = `event-entry ${type}`;
+          
+          const time = new Date().toLocaleTimeString();
+          
+          eventDiv.innerHTML = `
+              <strong>${message}</strong><br>
+              <code>${time}</code>
+          `;
+          
+          logContainer.insertBefore(eventDiv, logContainer.firstChild);
+          
+          // Keep only last 50 events
+          while (logContainer.children.length > 50) {
+              logContainer.removeChild(logContainer.lastChild);
+          }
+      }
+
+      function clearEventLog() {
+          if (confirm('Clear event log?')) {
+              document.getElementById('eventLog').innerHTML = `
+                  <div class="event-entry">
+                      <strong>Log Cleared</strong><br>
+                      <code>Just now</code>
+                  </div>
+              `;
+          }
+      }
+
+      function updateMetrics(success) {
+          const triggers = document.getElementById('todayTriggers');
+          const current = parseInt(triggers.textContent) || 0;
+          triggers.textContent = current + 1;
+
+          // Update success rate (simplified)
+          // In production, this would track actual success/failure counts
+          const rate = success ? '100%' : '95%';
+          document.getElementById('successRate').textContent = rate;
+      }
+
+      function showApiDocs() {
+          const modal = new bootstrap.Modal(document.getElementById('apiDocsModal'));
+          modal.show();
+      }
+
+      // Auto-format JSON in textarea
+      document.getElementById('webhookPayload').addEventListener('blur', function() {
+          try {
+              const parsed = JSON.parse(this.value);
+              this.value = JSON.stringify(parsed, null, 2);
+          } catch (e) {
+              // Keep as-is if invalid
+          }
+      });
+  </script>
+</body>
+</html>
