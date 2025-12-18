@@ -1,24 +1,9 @@
 // Dashboard UI and Charting Logic
 // Note: Expects jQuery, DataTables, Chart.js, and utility modules to be loaded first
 
-let worldMap;
+import { API } from './utils/index.js';
 
-// Helper function to get IP lookup (from api-utils.js module)
-async function getUserLocation() {
-    try {
-        const response = await fetch('/api/v1/geolocation');
-        if (!response.ok) {
-            throw new Error(`Network response was not ok: ${response.statusText}`);
-        }
-        const data = await response.json();
-        console.log('User\'s Location Data is ', data);
-        console.log('User\'s Country', data.country);
-        return data;
-    } catch (error) {
-        console.error('Failed to fetch user location:', error);
-        throw error;
-    }
-}
+let worldMap;
 
 // Helper function to initialize SSE feed
 function initializeFeed(onNewEvent) {
@@ -36,13 +21,13 @@ function initializeFeed(onNewEvent) {
     };
 
     const colorMap = {
-        info: 'info',
-        warning: 'warning',
-        error: 'danger',
-        success: 'success',
-        user: 'primary',
-        device: 'success',
-        userLog: 'primary'
+        info: 'text-info',
+        warning: 'text-warning',
+        error: 'text-danger',
+        success: 'text-success',
+        user: 'text-primary',
+        device: 'text-success',
+        userLog: 'text-primary'
     };
 
     const timeAgo = (ts) => {
@@ -103,24 +88,18 @@ function initializeFeed(onNewEvent) {
     connect(privateUrl, true);
 }
 
-/**
- * Creates a table row element for a new feed item.
- * @param {object} item - The feed item data (message, icon, color, timeAgo).
- * @returns {HTMLTableRowElement} The created <tr> element.
- */
 const createFeedItemRow = (item) => {
     const row = document.createElement('tr');
     row.innerHTML = `
-        <td style="width: 40px;"><i class="fa ${item.icon} text-${item.color} fa-lg"></i></td>
+        <td style="width: 30px;"><i class="fa ${item.icon} ${item.color}"></i></td>
         <td>${item.message}</td>
-        <td style="width: 100px;"><i>${item.timeAgo}</i></td>
+        <td style="width: 90px; text-align: right; opacity: 0.6;"><i>${item.timeAgo}</i></td>
     `;
     return row;
 };
 
 // Expose setup function for dynamic loading
 window.setupDashboardInteractions = function() {
-    let source = 'userLogs'; // Default source
     let selectedCollection = null;
     const summaryCards = document.querySelectorAll('.summary-card');
 
@@ -153,7 +132,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 
     // Initialize the real-time feed
     initializeFeed((newItem) => {
-        const feedTableBody = document.querySelector('.feed-scroll-container tbody');
+        const feedTableBody = document.querySelector('.feed-table tbody');
         if (!feedTableBody) return;
 
         const newRow = createFeedItemRow(newItem);
@@ -164,70 +143,18 @@ document.addEventListener('DOMContentLoaded', async function() {
         if (noItemsRow) {
             noItemsRow.remove();
         }
+
+        // Keep feed length manageable
+        if (feedTableBody.children.length > 50) {
+            feedTableBody.removeChild(feedTableBody.lastChild);
+        }
     });
-
-    // Draggable scroll for summary cards
-    const scrollContainer = document.getElementById('card-scroll-container');
-    let isDown = false;
-    let startY;
-    let scrollTop;
-
-    if (scrollContainer) {
-        scrollContainer.addEventListener('mousedown', (e) => {
-            isDown = true;
-            scrollContainer.classList.add('grabbing');
-            startY = e.pageY - scrollContainer.offsetTop;
-            scrollTop = scrollContainer.scrollTop;
-        });
-
-        scrollContainer.addEventListener('mouseleave', () => {
-            isDown = false;
-            scrollContainer.classList.remove('grabbing');
-        });
-
-        scrollContainer.addEventListener('mouseup', () => {
-            isDown = false;
-            scrollContainer.classList.remove('grabbing');
-        });
-
-        scrollContainer.addEventListener('mousemove', (e) => {
-            if (!isDown) return;
-            e.preventDefault();
-            const y = e.pageY - scrollContainer.offsetTop;
-            const walk = (y - startY) * 2;
-            scrollContainer.scrollTop = scrollTop - walk;
-        });
-    }
     
     // If cards are already present (static HTML), setup interactions
     if (document.querySelectorAll('.summary-card').length > 0) {
         window.setupDashboardInteractions();
     }
 });
-
-function generateCustomLegend() {
-    const legendContainer = document.getElementById('worldMapLegend');
-    if (!legendContainer) return;
-
-    const legendData = [
-        { color: 'rgba(0, 200, 100, 0.5)', label: '< 40 Hits' },
-        { color: 'rgba(0, 100, 200, 0.7)', label: '>= 40 Hits' },
-        { color: 'rgba(200, 200, 200, 0.25)', label: 'No Data' }
-    ];
-
-    let legendHTML = '<h5>Legend</h5><ul class="list-unstyled">';
-    legendData.forEach(item => {
-        legendHTML += `
-            <li>
-                <span class="legend-color-box" style="background-color:${item.color};"></span>
-                ${item.label}
-            </li>`;
-    });
-    legendHTML += '</ul>';
-
-    legendContainer.innerHTML = legendHTML;
-}
-
 
 function setWorlGraph(data) {
     const countryNameCorrections = {
@@ -236,9 +163,6 @@ function setWorlGraph(data) {
         "South Korea": "Korea, Republic of",
     };
 
-    // data can be either:
-    // - an array of raw log objects where each entry has CountryName
-    // - an aggregated array from the server: [{ _id: 'CountryName', count: N }, ...]
     let countryCounts = {};
     if (Array.isArray(data) && data.length > 0 && data[0] && Object.prototype.hasOwnProperty.call(data[0], '_id')) {
         // aggregated response
@@ -264,13 +188,7 @@ function setWorlGraph(data) {
         .then(response => response.json())
         .then(world => {
             const countries = ChartGeo.topojson.feature(world, world.objects.countries).features;
-            const validCountryNames = new Set(countries.map(country => country.properties.name));
-            Object.keys(countryCounts).forEach(countryName => {
-                if (!validCountryNames.has(countryName)) {
-                    // This console.warn is being removed as per code review feedback.
-                    // console.warn(`Country name not found in ChartGeo countries list: ${countryName}`);
-                }
-            });
+
             const chartData = {
                 labels: countries.map(d => d.properties.name),
                 datasets: [{
@@ -282,11 +200,11 @@ function setWorlGraph(data) {
                     backgroundColor: (context) => {
                         const dataItem = context.dataset.data[context.dataIndex];
                         if (!dataItem || !dataItem.value) {
-                            return 'rgba(200, 200, 200, 0.25)'; // Default grey for missing values
+                            return 'rgba(255, 255, 255, 0.05)'; // Default grey for missing values
                         }
                         const value = dataItem.value;
-                        if (value < 40) return `rgba(0, 200, 100, ${(value * 5) / 200 + 0.15})`;
-                        return `rgba(0, 100, 200, ${(value * 3) / 100 + 0.1})`;
+                        if (value < 40) return `rgba(124, 240, 255, ${(value * 5) / 200 + 0.15})`;
+                        return `rgba(56, 189, 248, ${(value * 3) / 100 + 0.3})`;
                     },
                 }]
             };
@@ -297,16 +215,14 @@ function setWorlGraph(data) {
                 options: {
                     showOutline: false,
                     showGraticule: false,
-                     scales: {
+                    scales: {
                         projection: {
                             axis: 'x',
                             projection: 'equalEarth',
                         },
                         color: {
                             axis: 'x',
-                            quantize: 5, // Example: 5 color steps
-                            interpolate: 'YlGnBu', // Example: Yellow-Green-Blue color scheme
-                            //display: false
+                            display: false
                         }
                     },
                     plugins: {
@@ -320,8 +236,11 @@ function setWorlGraph(data) {
             if (worldMap) {
                 worldMap.destroy();
             }
-            worldMap = new Chart(document.getElementById('worldMap'), config);
-            generateCustomLegend(); // Call the function to generate our custom legend
+
+            const canvas = document.getElementById('worldMap');
+            if (canvas) {
+                worldMap = new Chart(canvas, config);
+            }
         });
 }
 
@@ -330,21 +249,24 @@ function updateMapDataFeed(countryCounts) {
     if (!dataFeedContainer) return;
 
     let tableHTML = `
-        <table class="table table-sm table-striped">
+        <table style="width:100%; font-size:12px; border-collapse: collapse;">
             <thead>
-                <tr>
-                    <th>Country</th>
-                    <th>Value</th>
+                <tr style="border-bottom: 1px solid var(--panel-border);">
+                    <th style="text-align:left; padding:6px;">Country</th>
+                    <th style="text-align:right; padding:6px;">Value</th>
                 </tr>
             </thead>
             <tbody>
     `;
 
-    for (const [country, value] of Object.entries(countryCounts)) {
+    // Sort by count desc
+    const sorted = Object.entries(countryCounts).sort((a,b) => b[1] - a[1]);
+
+    for (const [country, value] of sorted) {
         tableHTML += `
-            <tr>
-                <td>${country}</td>
-                <td>${value}</td>
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                <td style="padding:6px;">${country}</td>
+                <td style="text-align:right; padding:6px;">${value}</td>
             </tr>
         `;
     }
@@ -357,67 +279,32 @@ function updateMapDataFeed(countryCounts) {
     dataFeedContainer.innerHTML = tableHTML;
 }
 
-const loadingElement = document.querySelector('.loading');
-
 function listAllLogs(source) {
-    if (loadingElement) loadingElement.style.display = '';
-    const url = `api/v1/v2/logs?source=${source}`;
-    fetch(url)
-        .then(response => response.json())
-        .then(result => {
-            // Debugging: log meta and how many logs were returned
-            try {
-                console.log('[dashboard] get logs meta:', result.meta || {});
-                const returned = (result.logs || []).length;
-                console.log('[dashboard] logs returned:', returned);
-                const sampleCountries = (result.logs || []).slice(0, 50).map(l => l && (l.CountryName || l.countryName || l.country)).filter(Boolean).slice(0,20);
-                console.log('[dashboard] sample CountryName values:', sampleCountries);
-            } catch (e) {
-                console.warn('[dashboard] debug logging failed', e.message);
-            }
+    // We try to fetch from DataAPI proxy
+    const url = `/api/v1/v2/logs?source=${source}`;
 
+    fetch(url)
+        .then(response => {
+             if (!response.ok) throw new Error("DataAPI not available");
+             return response.json();
+        })
+        .then(result => {
             // Use the server-side aggregation endpoint to get authoritative counts for the world map
-            fetch(`api/v1/v2/logs/countries?source=${source}`)
+            fetch(`/api/v1/v2/logs/countries?source=${source}`)
                 .then(r => r.json())
                 .then(countryResp => {
                     if (countryResp && countryResp.status === 'success' && Array.isArray(countryResp.data)) {
-                        // countryResp.data is an array of {_id: 'CountryName', count: N}
                         setWorlGraph(countryResp.data);
                     } else {
-                        // Fallback to the (paginated) logs if aggregation failed
                         setWorlGraph(result.logs || []);
                     }
                 })
                 .catch(err => {
-                    console.warn('[dashboard] failed to fetch aggregated country counts, falling back to paginated logs', err && err.message);
                     setWorlGraph(result.logs || []);
                 });
-
-            if (loadingElement) loadingElement.style.display = 'none';
         })
         .catch(error => {
-            console.error('Error fetching logs:', error);
-            if (loadingElement) loadingElement.style.display = 'none';
+            console.warn('Error fetching logs:', error);
+            // Non-critical: just don't show map data
         });
-}
-
-// loadDataTable function removed - use the dedicated databases viewer page instead
-
-// Sidebar toggle functionality
-var mySidebar = document.getElementById("mySidebar");
-var overlayBg = document.getElementById("myOverlay");
-
-window.w3_open = function() {
-    if (mySidebar.style.display === 'block') {
-        mySidebar.style.display = 'none';
-        overlayBg.style.display = "none";
-    } else {
-        mySidebar.style.display = 'block';
-        overlayBg.style.display = "block";
-    }
-}
-
-window.w3_close = function() {
-    mySidebar.style.display = "none";
-    overlayBg.style.display = "none";
 }

@@ -18,7 +18,7 @@ const logger = require('../../config/logger');
  * @returns {boolean} - True if request is from LAN
  */
 function fromLan(req) {
-  const allowed = ['192.168.', '10.', '172.16.', '127.0.0.1', '::1'];
+  const allowed = ['192.168.', '10.', '172.16.', '127.0.0.1', '::1', 'localhost'];
   const ip = req.ip || req.connection?.remoteAddress || req.socket?.remoteAddress || '';
   
   // Extract IPv4 from IPv6-mapped address (e.g., ::ffff:192.168.1.1)
@@ -28,7 +28,7 @@ function fromLan(req) {
 }
 
 /**
- * Middleware to authenticate n8n requests via API key header
+ * Middleware to authenticate n8n requests via API key header OR browser session OR LAN access
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
  * @param {Function} next - Express next middleware function
@@ -40,7 +40,18 @@ function n8nAuth(req, res, next) {
   // Check if LAN-only mode is enabled
   const lanOnly = process.env.N8N_LAN_ONLY === 'true';
   
-  if (lanOnly && !fromLan(req)) {
+  // If from LAN, allow access without authentication (trusted network)
+  if (fromLan(req)) {
+    req.isN8N = false;
+    req.authSource = 'lan';
+    if (process.env.NODE_ENV !== 'test') {
+      logger.info(`n8n endpoint accessed from LAN: ${req.method} ${req.originalUrl} from ${req.ip}`);
+    }
+    return next();
+  }
+
+  // If not from LAN and LAN-only mode is enabled, reject
+  if (lanOnly) {
     logger.warn(`n8n auth rejected: Request from non-LAN IP ${req.ip}`);
     return res.status(403).json({ 
       status: 'error',
@@ -48,7 +59,15 @@ function n8nAuth(req, res, next) {
     });
   }
 
-  // Validate API key
+  // Check for valid browser session (for external frontend requests)
+  if (req.session && req.session.userId) {
+    req.isN8N = false;
+    req.authSource = 'session';
+    logger.info(`n8n endpoint accessed by authenticated user: ${req.method} ${req.originalUrl}`);
+    return next();
+  }
+
+  // Check for API key (for server-to-server n8n webhooks from external sources)
   if (!expected) {
     logger.error('n8n auth error: N8N_API_KEY environment variable not set');
     return res.status(500).json({ 
@@ -58,10 +77,10 @@ function n8nAuth(req, res, next) {
   }
 
   if (!key || key !== expected) {
-    logger.warn(`n8n auth failed: Invalid or missing API key from ${req.ip}`);
+    logger.warn(`n8n auth failed: No LAN, no session, invalid/missing API key from ${req.ip}`);
     return res.status(401).json({ 
       status: 'error',
-      message: 'Unauthorized: Invalid or missing API key' 
+      message: 'Unauthorized: Please login, access from LAN, or provide valid API key'
     });
   }
 
