@@ -9,87 +9,6 @@
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-  <style>
-    .tabs-nav {
-      display: flex;
-      gap: 4px;
-      margin-bottom: 24px;
-      border-bottom: 1px solid var(--panel-border);
-      padding-bottom: 0;
-    }
-    .tab-btn {
-      background: transparent;
-      color: var(--muted);
-      border: none;
-      border-bottom: 2px solid transparent;
-      padding: 12px 20px;
-      font-size: 14px;
-      font-weight: 500;
-      cursor: pointer;
-      border-radius: 6px 6px 0 0;
-      transition: all 0.2s;
-    }
-    .tab-btn:hover {
-      color: var(--text);
-      background: rgba(255, 255, 255, 0.02);
-    }
-    .tab-btn.active {
-      color: var(--accent);
-      border-bottom-color: var(--accent);
-      background: rgba(124, 240, 255, 0.05);
-    }
-    .tab-content {
-      display: none;
-    }
-    .tab-content.active {
-      display: block;
-      animation: fadeIn 0.3s ease;
-    }
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(5px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    /* System Metrics Specific Styles */
-    .metric-progress {
-      height: 4px;
-      background: rgba(255,255,255,0.1);
-      border-radius: 2px;
-      margin-top: 12px;
-      overflow: hidden;
-    }
-    .metric-fill {
-      height: 100%;
-      background: var(--accent);
-      transition: width 0.3s ease;
-    }
-    .status-dot {
-      display: inline-block;
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      margin-right: 6px;
-    }
-    .status-dot.healthy { background: #00ff80; box-shadow: 0 0 8px rgba(0,255,128,0.4); }
-    .status-dot.warning { background: #ffc800; box-shadow: 0 0 8px rgba(255,200,0,0.4); }
-    .status-dot.error { background: #ff3232; box-shadow: 0 0 8px rgba(255,50,50,0.4); }
-
-    .detail-list {
-        margin-top: 16px;
-        font-size: 13px;
-        display: grid;
-        gap: 8px;
-    }
-    .detail-item {
-        display: flex;
-        justify-content: space-between;
-        color: var(--muted);
-    }
-    .detail-item span:last-child {
-        color: var(--text);
-        font-weight: 500;
-    }
-  </style>
 </head>
 <body>
   <div class="bg-grid"></div>
@@ -269,7 +188,7 @@
                     <p class="label">Database</p>
                     <h3><span class="status-dot healthy"></span><span id="dbTotalDocs">0</span></h3>
                     <p class="hint">Total Documents</p>
-                    <div class="detail-list" style="margin-top: 24px;">
+                    <div class="detail-list section-margin-top">
                         <div class="detail-item"><span>Conversations</span><span id="dbConversations">0</span></div>
                         <div class="detail-item"><span>Prompts</span><span id="dbPrompts">0</span></div>
                         <div class="detail-item"><span>Users</span><span id="dbUsers">0</span></div>
@@ -306,16 +225,16 @@
         </section>
 
         <!-- Detailed System Info -->
-        <section class="panel" style="margin-top: 20px;">
+        <section class="panel section-margin-top">
              <div class="panel-head">
                 <div>
                   <p class="eyebrow">Details</p>
                   <h2>Extended Diagnostics</h2>
                 </div>
             </div>
-            <div class="layout" style="grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));">
+            <div class="layout details-panel-layout">
                 <div class="stat-card compact">
-                    <h3 style="font-size: 16px; margin-bottom: 12px;">Cache Stats</h3>
+                    <h3 class="stat-card-title">Cache Stats</h3>
                     <div class="detail-list">
                         <div class="detail-item"><span>Total Req</span><span id="detailCacheTotal">0</span></div>
                         <div class="detail-item"><span>Avg Entry</span><span id="detailCacheAvg">0 B</span></div>
@@ -323,7 +242,7 @@
                     </div>
                 </div>
                 <div class="stat-card compact">
-                    <h3 style="font-size: 16px; margin-bottom: 12px;">DB Info</h3>
+                    <h3 class="stat-card-title">DB Info</h3>
                     <div class="detail-list">
                         <div class="detail-item"><span>Name</span><span id="detailDbName">?</span></div>
                         <div class="detail-item"><span>Host</span><span id="detailDbHost">?</span></div>
@@ -331,7 +250,7 @@
                     </div>
                 </div>
                 <div class="stat-card compact">
-                    <h3 style="font-size: 16px; margin-bottom: 12px;">Memory Heap</h3>
+                    <h3 class="stat-card-title">Memory Heap</h3>
                     <div class="detail-list">
                         <div class="detail-item"><span>Used</span><span id="detailHeapUsed">0</span></div>
                         <div class="detail-item"><span>Total</span><span id="detailHeapTotal">0</span></div>

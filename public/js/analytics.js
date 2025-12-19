@@ -87,7 +87,7 @@ function formatPercent(value) {
 }
 
 function formatBytes(bytes) {
-  if (bytes === 0 || bytes === undefined) return '0 B';
+  if (!bytes || bytes === 0) return '0 B';
   const k = 1024;
   const sizes = ['B', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
@@ -357,7 +357,7 @@ async function refreshProduct() {
 
 async function refreshSystem() {
   try {
-     const [cache, database, connection, system] = await Promise.all([
+    const [cache, database, connection, system] = await Promise.all([
       fetchJSON('/api/metrics/cache'),
       fetchJSON('/api/metrics/database'),
       fetchJSON('/api/metrics/connection'),
@@ -427,36 +427,33 @@ function renderSystemMetrics(metrics) {
     elements.detailDbCollections.textContent = Object.keys(db.collections).length;
 
     // --- Connections ---
-    const activeConn = conn.activeConnections || 0;
+    const hasActiveConnMetric = typeof conn.activeConnections === 'number';
+    const activeConn = hasActiveConnMetric ? conn.activeConnections : 0;
     const maxConn = conn.poolSize || 100;
-    const connUsage = (activeConn / maxConn) * 100;
+    const connUsage = maxConn > 0 ? (activeConn / maxConn) * 100 : 0;
 
-    elements.connActive.textContent = activeConn;
+    // Only show numeric count if valid
+    elements.connActive.textContent = hasActiveConnMetric ? activeConn : 'N/A';
     elements.connMax.textContent = maxConn;
     elements.connBar.style.width = `${connUsage}%`;
-    setStatus(elements.connStatus, connUsage, 70, 90, true); // Reverse: lower usage is better/healthy until 70%
+    setStatus(elements.connStatus, connUsage, 70, 90, true);
 
-    elements.connAvail.textContent = conn.availableConnections;
-    elements.connWaiting.textContent = conn.waitingConnections;
+    elements.connAvail.textContent = typeof conn.availableConnections === 'number' ? conn.availableConnections : 'N/A';
+    elements.connWaiting.textContent = typeof conn.waitingConnections === 'number' ? conn.waitingConnections : 'N/A';
     elements.connPool.textContent = `${conn.minPoolSize}-${conn.poolSize}`;
 
     // --- System ---
     const usedMemMB = Math.round(sys.memory.rss / 1024 / 1024);
-    const totalMemMB = Math.round(sys.memory.heapTotal / 1024 / 1024); // Approximation for visualization relative to heap
-    // Better to use absolute check for system health, but let's just show usage
 
     elements.sysMem.textContent = formatBytes(sys.memory.rss);
-    elements.sysTotalMem.textContent = formatBytes(sys.memory.heapTotal); // Just displaying heap total for context
+    elements.sysTotalMem.textContent = formatBytes(sys.memory.heapTotal);
     const memUsagePercent = (sys.memory.heapUsed / sys.memory.heapTotal) * 100;
     elements.sysBar.style.width = `${memUsagePercent}%`;
     setStatus(elements.sysStatus, memUsagePercent, 70, 85, true);
 
-    elements.sysNode.textContent = process?.version || 'v18+'; // Frontend doesn't know process, but API might send it. API sends nodeVersion?
-    // Checking API response in metrics.js... it doesn't send nodeVersion explicitly in the 'system' block I wrote earlier?
-    // Actually, looking at routes/metrics.js: it sends `uptime` and `memory`. It does NOT send nodeVersion.
-    // I should probably fix that in the backend if I want it, but for now I'll use what I have.
+    elements.sysNode.textContent = sys.nodeVersion || 'v18+';
     elements.sysUptime.textContent = sys.uptime.formatted;
-    elements.sysPlatform.textContent = 'Linux'; // Placeholder or add to API
+    elements.sysPlatform.textContent = sys.platform || 'Unknown';
 
     elements.detailHeapUsed.textContent = sys.memory.formatted.heapUsed;
     elements.detailHeapTotal.textContent = sys.memory.formatted.heapTotal;
@@ -494,6 +491,7 @@ function handleTabSwitch(tabName) {
         refreshProduct();
     } else {
         refreshSystem();
+        // Clear old interval if exists (defensive), then set new one
         if (systemInterval) clearInterval(systemInterval);
         systemInterval = setInterval(refreshSystem, 5000); // 5s poll for system stats
     }

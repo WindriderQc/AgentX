@@ -1000,6 +1000,101 @@ button:active {
   }
 }
 
+/* Tabs */
+.tabs-nav {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--panel-border);
+  padding-bottom: 0;
+}
+.tab-btn {
+  background: transparent;
+  color: var(--muted);
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 12px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: 6px 6px 0 0;
+  transition: all 0.2s;
+}
+.tab-btn:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.02);
+}
+.tab-btn.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  background: rgba(124, 240, 255, 0.05);
+}
+.tab-content {
+  display: none;
+}
+.tab-content.active {
+  display: block;
+  animation: fadeIn 0.3s ease;
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* System Metrics */
+.metric-progress {
+  height: 4px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 2px;
+  margin-top: 12px;
+  overflow: hidden;
+}
+.metric-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+}
+.status-dot.healthy { background: #00ff80; box-shadow: 0 0 8px rgba(0,255,128,0.4); }
+.status-dot.warning { background: #ffc800; box-shadow: 0 0 8px rgba(255,200,0,0.4); }
+.status-dot.error { background: #ff3232; box-shadow: 0 0 8px rgba(255,50,50,0.4); }
+
+.detail-list {
+    margin-top: 16px;
+    font-size: 13px;
+    display: grid;
+    gap: 8px;
+}
+.detail-item {
+    display: flex;
+    justify-content: space-between;
+    color: var(--muted);
+}
+.detail-item span:last-child {
+    color: var(--text);
+    font-weight: 500;
+}
+
+.details-panel-layout {
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+}
+
+.stat-card-title {
+    font-size: 16px;
+    margin-bottom: 12px;
+    margin-top: 0;
+}
+
+.section-margin-top {
+    margin-top: 20px;
+}
+
 /* Global Scrollbar Styling */
 ::-webkit-scrollbar {
   width: 8px;

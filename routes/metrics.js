@@ -120,6 +120,10 @@ router.get('/database', requireAuth, async (req, res) => {
 router.get('/connection', requireAuth, (req, res) => {
   try {
     const connection = mongoose.connection;
+    // Attempt to access pool stats if available in the driver
+    // Note: This accesses internal driver structures which might vary by version
+    const topology = connection.client?.topology;
+    const pool = topology?.s?.pool || topology?.s?.sessionPool;
     
     res.json({
       status: 'success',
@@ -132,6 +136,10 @@ router.get('/connection', requireAuth, (req, res) => {
         // Connection pool info
         poolSize: connection.client?.options?.maxPoolSize,
         minPoolSize: connection.client?.options?.minPoolSize,
+        // Detailed pool stats if available (defensive)
+        activeConnections: pool?.size,
+        availableConnections: pool?.available,
+        waitingConnections: pool?.pending,
         timestamp: new Date().toISOString()
       }
     });
@@ -168,6 +176,8 @@ router.get('/system', requireAuth, async (req, res) => {
     res.json({
       status: 'success',
       data: {
+        nodeVersion: process.version,
+        platform: process.platform,
         uptime: {
           seconds: uptime,
           formatted: formatUptime(uptime)
