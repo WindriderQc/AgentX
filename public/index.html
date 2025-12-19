@@ -32,6 +32,7 @@
         <div class="title-row">
           <h1>AgentX Control</h1>
           <span class="status-chip" id="statusChip">Idle</span>
+<<<<<<< Updated upstream
           <button id="toggleHistoryBtn" class="ghost small">Hide history</button>
           <button id="profileBtn" class="ghost small">User Profile</button>
           <a class="ghost small" href="/analytics.html">Analytics</a>
@@ -43,7 +44,22 @@
             <span id="userName" class="user-name"></span>
             <button id="logoutBtn" class="ghost small">Logout</button>
           </div>
+=======
+          <!-- Navigation will be injected here -->
+          <nav class="agentx-nav"></nav>
+>>>>>>> Stashed changes
         </div>
+
+        <div style="display: flex; gap: 10px; margin-top: 10px; align-items: center;">
+             <button id="toggleHistoryBtn" class="ghost small">Show history</button>
+             <button id="profileBtn" class="ghost small">User Profile</button>
+             <button id="loginBtn" class="ghost small" style="display: none;">Login</button>
+             <div id="userMenu" class="user-menu" style="display: none;">
+                <span id="userName" class="user-name"></span>
+                <button id="logoutBtn" class="ghost small">Logout</button>
+             </div>
+        </div>
+
         <p class="lede">
           Rebuilt AI control surface wired to the AgentX chat, memory, and feedback APIs. Pick a model, tune parameters, and
           manage the session profile that the assistant will remember.
@@ -284,6 +300,10 @@
     </div>
   </div>
 
-  <script src="app.js"></script>
+  <script type="module">
+    import { injectNav } from '/js/components/nav.js';
+    injectNav('chat');
+  </script>
+  <script src="/js/chat.js"></script>
 </body>
 </html>

@@ -49,7 +49,7 @@ function n8nAuth(req, res, next) {
     }
     return next();
   }
-  
+
   // If not from LAN and LAN-only mode is enabled, reject
   if (lanOnly) {
     logger.warn(`n8n auth rejected: Request from non-LAN IP ${req.ip}`);
@@ -80,7 +80,7 @@ function n8nAuth(req, res, next) {
     logger.warn(`n8n auth failed: No LAN, no session, invalid/missing API key from ${req.ip}`);
     return res.status(401).json({ 
       status: 'error',
-      message: 'Unauthorized: Please login, access from LAN, or provide valid API key' 
+      message: 'Unauthorized: Please login, access from LAN, or provide valid API key'
     });
   }
 

@@ -7,14 +7,14 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  
+
   <!-- Bootstrap 5 -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-  
+
   <!-- Custom CSS -->
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="css/sbqc.css" />
-  
+
   <!-- FontAwesome -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
@@ -22,14 +22,14 @@
       body { background-color: #0f172a; color: #e2e8f0; }
       .card { background-color: rgba(30, 41, 59, 0.7); border: 1px solid rgba(148, 163, 184, 0.1); color: #e2e8f0; }
       .modal-content { background-color: #1e293b; color: #e2e8f0; }
-      
+
       .chat-container {
           display: flex;
           flex-direction: column;
           height: calc(100vh - 250px);
           max-height: 700px;
       }
-      
+
       .chat-messages {
           flex: 1;
           overflow-y: auto;
@@ -39,12 +39,12 @@
           border-radius: 0.5rem 0.5rem 0 0;
           scroll-behavior: smooth;
       }
-      
+
       .message {
           margin-bottom: 1rem;
           animation: slideIn 0.3s ease;
       }
-      
+
       @keyframes slideIn {
           from {
               opacity: 0;
@@ -55,15 +55,15 @@
               transform: translateY(0);
           }
       }
-      
+
       .message.user {
           text-align: right;
       }
-      
+
       .message.ai {
           text-align: left;
       }
-      
+
       .message-bubble {
           display: inline-block;
           max-width: 70%;
@@ -72,26 +72,26 @@
           word-wrap: break-word;
           white-space: pre-wrap;
       }
-      
+
       .message.user .message-bubble {
           background: #3b82f6;
           color: white;
           border-bottom-right-radius: 0.25rem;
       }
-      
+
       .message.ai .message-bubble {
           background: #334155;
           color: #e2e8f0;
           border: 1px solid rgba(148, 163, 184, 0.1);
           border-bottom-left-radius: 0.25rem;
       }
-      
+
       .message-meta {
           font-size: 0.75rem;
           color: #94a3b8;
           margin-top: 0.25rem;
       }
-      
+
       .chat-input-container {
           background: rgba(30, 41, 59, 0.7);
           border: 1px solid rgba(148, 163, 184, 0.1);
@@ -99,20 +99,20 @@
           border-radius: 0 0 0.5rem 0.5rem;
           padding: 1rem;
       }
-      
+
       .quick-actions {
           display: flex;
           gap: 0.5rem;
           flex-wrap: wrap;
           margin-bottom: 0.75rem;
       }
-      
+
       .quick-action-btn {
           padding: 0.5rem 1rem;
           font-size: 0.875rem;
           border-radius: 1.25rem;
       }
-      
+
       .typing-indicator {
           display: none;
           padding: 0.75rem 1rem;
@@ -121,11 +121,11 @@
           border-radius: 1rem;
           max-width: 70px;
       }
-      
+
       .typing-indicator.active {
           display: inline-block;
       }
-      
+
       .typing-indicator span {
           height: 8px;
           width: 8px;
@@ -135,15 +135,15 @@
           margin: 0 2px;
           animation: typing 1.4s infinite;
       }
-      
+
       .typing-indicator span:nth-child(2) {
           animation-delay: 0.2s;
       }
-      
+
       .typing-indicator span:nth-child(3) {
           animation-delay: 0.4s;
       }
-      
+
       @keyframes typing {
           0%, 60%, 100% {
               transform: translateY(0);
@@ -154,7 +154,7 @@
               opacity: 1;
           }
       }
-      
+
       .status-indicator {
           display: inline-block;
           width: 10px;
@@ -162,16 +162,16 @@
           border-radius: 50%;
           margin-right: 0.5rem;
       }
-      
+
       .status-indicator.connected {
           background: #10b981;
           box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
       }
-      
+
       .status-indicator.disconnected {
           background: #ef4444;
       }
-      
+
       /* Nav adjustments */
       .agentx-nav a { color: #94a3b8; text-decoration: none; margin-right: 1rem; font-family: 'Space Grotesk', sans-serif; }
       .agentx-nav a.active { color: #f8fafc; font-weight: 600; }
@@ -180,7 +180,7 @@
 </head>
 <body>
   <div class="bg-grid"></div>
-  
+
   <div class="container-fluid p-4">
       <header class="mb-4">
         <div class="d-flex justify-content-between align-items-center">
@@ -227,7 +227,7 @@
                                   <div class="message-meta">Just now</div>
                               </div>
                           </div>
-                          
+
                           <div class="chat-input-container">
                               <div class="quick-actions">
                                   <button class="btn btn-sm btn-outline-primary quick-action-btn" onclick="sendQuickMessage('Check system status')">
@@ -243,11 +243,11 @@
                                       <i class="fas fa-question-circle me-1"></i> Help
                                   </button>
                               </div>
-                              
+
                               <div class="input-group">
-                                  <input type="text" 
-                                         class="form-control bg-dark text-light border-secondary" 
-                                         id="chatInput" 
+                                  <input type="text"
+                                         class="form-control bg-dark text-light border-secondary"
+                                         id="chatInput"
                                          placeholder="Type your message..."
                                          onkeypress="handleKeyPress(event)">
                                   <button class="btn btn-primary" onclick="sendMessage()" id="sendBtn">
@@ -408,7 +408,7 @@
           const elapsed = Math.floor((new Date() - sessionStart) / 1000);
           const minutes = Math.floor(elapsed / 60);
           const seconds = elapsed % 60;
-          document.getElementById('sessionTime').textContent = 
+          document.getElementById('sessionTime').textContent =
               minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
       }, 1000);
 
@@ -418,7 +418,7 @@
               const health = await res.json();
               const indicator = document.getElementById('statusIndicator');
               const statusText = document.getElementById('statusText');
-              
+
               if (health.status === 'ok') {
                   indicator.className = 'status-indicator connected';
                   statusText.textContent = 'System Healthy';
@@ -430,7 +430,7 @@
               document.getElementById('statusIndicator').className = 'status-indicator disconnected';
               document.getElementById('statusText').textContent = 'Connection Error';
           }
-          
+
           // Load Ollama models on startup
           loadOllamaModels();
       }
@@ -500,20 +500,20 @@
       async function sendMessage() {
           const input = document.getElementById('chatInput');
           const message = input.value.trim();
-          
+
           if (!message) return;
-          
+
           // Add user message to chat
           addMessage(message, 'user');
           input.value = '';
-          
+
           // Update stats
           messageCount++;
           document.getElementById('messageCount').textContent = messageCount;
-          
+
           // Show typing indicator
           const typingIndicator = addTypingIndicator();
-          
+
           try {
               const selector = document.getElementById('webhookSelector');
               let response;
@@ -531,14 +531,14 @@
                   });
               } else {
                   // n8n webhook
-                  let webhookId = selector.value === 'custom' 
+                  let webhookId = selector.value === 'custom'
                       ? document.getElementById('customWebhookId').value.trim()
                       : 'default-webhook-id'; // Configure in .env
-                      
+
                   if (!webhookId) {
                       throw new Error('No webhook ID configured');
                   }
-                  
+
                   response = await fetch(`/api/n8n/trigger/${webhookId}`, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
@@ -549,19 +549,19 @@
                       })
                   });
               }
-              
+
               const result = await response.json();
-              
+
               // Remove typing indicator
               typingIndicator.remove();
-              
+
               if (response.ok) {
                   let aiResponse = extractAIResponse(result);
-                  
+
                   if (!aiResponse) {
                       aiResponse = 'No response extracted. Raw: ' + JSON.stringify(result, null, 2);
                   }
-                  
+
                   addMessage(aiResponse, 'ai');
                   responseCount++;
                   document.getElementById('responseCount').textContent = responseCount;
@@ -577,10 +577,10 @@
       function extractAIResponse(result) {
           // Direct string
           if (typeof result === 'string') return result;
-          
+
           // Direct output field
           if (result.output) return result.output;
-          
+
           // Nested in data
           if (result.data) {
               if (typeof result.data === 'string') return result.data;
@@ -588,7 +588,7 @@
               if (result.data.message) return result.data.message;
               if (result.data.response) return result.data.response;
           }
-          
+
           return null;
       }
 
@@ -596,12 +596,12 @@
           const messagesContainer = document.getElementById('chatMessages');
           const messageDiv = document.createElement('div');
           messageDiv.className = `message ${type}`;
-          
+
           const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-          
+
           let displayText = typeof text === 'object' ? JSON.stringify(text, null, 2) : String(text);
           displayText = displayText.replace(/\\n/g, '\n').replace(/\\"/g, '"').trim();
-          
+
           messageDiv.innerHTML = `
               <div class="message-bubble">
                   ${type === 'ai' ? '<strong>AI Agent</strong><br>' : ''}
@@ -609,10 +609,10 @@
               </div>
               <div class="message-meta">${time}</div>
           `;
-          
+
           messagesContainer.appendChild(messageDiv);
           messagesContainer.scrollTop = messagesContainer.scrollHeight;
-          
+
           return messageDiv;
       }
 
