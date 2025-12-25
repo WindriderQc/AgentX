@@ -2,7 +2,8 @@
 # V4 Analytics & Dataset API Test Script
 # Tests all V4 endpoints per specs/V4_ANALYTICS_ARCHITECTURE.md
 
-BASE_URL="${1:-http://localhost:3080}"
+PORT="${PORT:-3080}"
+BASE_URL="${1:-http://localhost:$PORT}"
 OLLAMA_HOST="${2:-192.168.2.99:11434}"
 
 echo "==================================="

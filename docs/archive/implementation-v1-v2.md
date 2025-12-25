@@ -17,10 +17,9 @@ Agent B has successfully implemented **V1 (Chat + Logs)** and **V2 (User Memory 
    - `llm_metadata` - LLM performance data
    - `feedback` - User ratings and comments
 
-2. **`db.js`** - Database access layer (469 lines)
+2. **`config/db.js`** - Database access layer
    - Async/await architecture
-   - 18 database operation functions
-   - Promisified SQLite3 wrapper
+   - Mongoose schemas
    - Clean separation of concerns
 
 3. **`API_DOCS.md`** - Comprehensive API documentation
@@ -49,7 +48,7 @@ Agent B has successfully implemented **V1 (Chat + Logs)** and **V2 (User Memory 
    - Comprehensive error handling
 
 7. **`package.json`** - Updated dependencies
-   - Added `sqlite3` for database
+   - Added `mongoose` for database
 
 ---
 
@@ -445,7 +444,7 @@ const model = detectIntent(message) || userPreference;
   "cors": "^2.8.5",          // Cross-origin requests
   "express": "^4.19.2",      // Web framework
   "node-fetch": "^2.7.0",    // Ollama API calls
-  "sqlite3": "^5.1.7"        // Database
+  "mongoose": "^9.0.1"       // Database
 }
 ```
 
