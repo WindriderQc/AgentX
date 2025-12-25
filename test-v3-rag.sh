@@ -4,7 +4,8 @@
 
 set -e  # Exit on error
 
-BASE_URL="http://localhost:3080"
+PORT="${PORT:-3080}"
+BASE_URL="${BASE_URL:-http://localhost:$PORT}"
 GREEN='\033[0;32m'
 RED='\033[0;31m'
 YELLOW='\033[1;33m'

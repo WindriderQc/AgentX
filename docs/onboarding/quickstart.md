@@ -77,25 +77,18 @@ curl http://localhost:11434/api/tags
 
 ## Viewing the Database
 
-The SQLite database is created at `./data/agentx.db`
-
-To inspect it:
+The project uses MongoDB. You can inspect it using MongoDB Compass or the CLI.
 
 ```bash
-# Install sqlite3 if needed
-sudo apt install sqlite3  # Ubuntu/Debian
-brew install sqlite3      # macOS
+# Connect to MongoDB
+mongosh "mongodb://localhost:27017/agentx"
 
-# Open database
-sqlite3 ./data/agentx.db
-
-# View tables
-.tables
+# View collections
+show collections
 
 # Query data
-SELECT * FROM user_profiles;
-SELECT * FROM conversations;
-SELECT * FROM messages LIMIT 5;
+db.userprofiles.find()
+db.conversations.find()
 ```
 
 ## Project Structure
@@ -104,24 +97,23 @@ SELECT * FROM messages LIMIT 5;
 AgentX/
 ├── server.js                  # Express server entry point
 ├── routes/                    # API route modules (chat, analytics, datasets, RAG)
-├── models/                    # Persistence models
-├── config/                    # Database configuration and schema
+├── models/                    # Persistence models (Mongoose)
+├── config/                    # Database configuration and logger
 ├── docs/                      # Onboarding, architecture, API docs, reports, archive
 ├── specs/                     # Architecture specs for V3 RAG and V4 analytics
-├── src/                       # Service utilities
+├── src/                       # Service utilities and middleware
 ├── public/                    # Frontend assets
 ├── test-backend.sh            # Backend test suite
 ├── test-v3-rag.sh             # RAG-specific validation
 ├── test-v4-analytics.sh       # Analytics and metrics validation
-├── package.json               # Dependencies
-└── data/                      # SQLite database directory (created at runtime)
+└── package.json               # Dependencies
 ```
 
 ## Common Issues
 
-### "Database not initialized"
+### "MongoDB connection failed"
 
-Wait a moment after starting the server. Database initialization is async.
+Ensure MongoDB is running locally or `MONGODB_URI` is set correctly in `.env`.
 
 ### "Ollama connection failed"
 
@@ -156,19 +148,19 @@ Optional configuration:
 # Server port (default: 3080)
 PORT=3080
 
-# Database path (default: ./data/agentx.db)
-DB_PATH=/custom/path/agentx.db
+# MongoDB Connection (default: mongodb://localhost:27017/agentx)
+MONGODB_URI=mongodb://localhost:27017/agentx
 
 # Start with custom settings
-PORT=8080 DB_PATH=/tmp/test.db npm start
+PORT=8080 MONGODB_URI=mongodb://localhost:27017/test_db npm start
 ```
 
 ## Development Workflow
 
-1. **Make changes** to `server.js` or `db.js`
+1. **Make changes** to `server.js` or `models/`
 2. **Restart server**: `npm start`
 3. **Test changes**: `./test-backend.sh`
-4. **Check database**: `sqlite3 ./data/agentx.db`
+4. **Check database**: Use MongoDB Compass or `mongosh`
 
 ## API Base URL
 
