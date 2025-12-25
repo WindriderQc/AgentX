@@ -2,7 +2,8 @@
 # AgentX Backend Test Script
 # Tests all V1 and V2 endpoints
 
-BASE_URL="http://localhost:3080"
+PORT="${PORT:-3080}"
+BASE_URL="${BASE_URL:-http://localhost:$PORT}"
 USER_ID="test_user_$(date +%s)"
 
 echo "🧪 AgentX Backend Test Suite"
