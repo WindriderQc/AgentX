@@ -61,11 +61,18 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 // Session configuration
 // In tests we avoid creating a Mongo-backed session store to prevent open handles.
 let store;
-if (!IN_TEST) {
+// Check for E2E testing flag or standard test env
+const IS_E2E = process.env.NODE_ENV === 'test_e2e';
+
+if (!IN_TEST || IS_E2E) {
+  // Allow overriding the URI for E2E tests with memory server
+  const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/agentx';
+
   store = new MongoDBStore({
-    uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/agentx',
+    uri: mongoUri,
     collection: 'sessions',
-    databaseName: 'agentx'
+    // databaseName is often part of URI in memory server, but we can specify it if needed
+    // For memory server, the URI includes the DB name usually.
   });
 
   store.on('error', (error) => {
@@ -158,12 +165,15 @@ app.use('/api', apiRoutes);
 
 // Health Check - Basic
 app.get('/health', (_req, res) => {
-  const isHealthy = systemHealth.mongodb.status === 'connected' &&
-                   systemHealth.ollama.status === 'connected';
+  const isHealthy = systemHealth.mongodb.status === 'connected';
 
   res.status(isHealthy ? 200 : 503).json({
     status: isHealthy ? 'ok' : 'degraded',
-    port: process.env.PORT || 3080
+    port: process.env.PORT || 3080,
+    details: {
+        mongodb: systemHealth.mongodb.status,
+        ollama: systemHealth.ollama.status
+    }
   });
 });
 
