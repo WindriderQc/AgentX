@@ -138,6 +138,10 @@ app.use('/api/history', historyRoutes);
 const dataapiRoutes = require('../routes/dataapi');
 app.use('/api/dataapi', dataapiRoutes);
 
+// Voice routes (STT, TTS, voice chat)
+const voiceRoutes = require('../routes/voice');
+app.use('/api/voice', voiceRoutes);
+
 // Dashboard routes
 const dashboardRoutes = require('../routes/dashboard');
 app.use('/api/dashboard', dashboardRoutes);
