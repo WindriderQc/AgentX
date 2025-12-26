@@ -1,6 +1,4 @@
-
-
-???#!/usr/bin/env node
+#!/usr/bin/env node
 /**
  * Seed script for SBQC Ops Agent persona
  * 
