@@ -18,40 +18,44 @@ const HOSTS = {
 // Model → Host mapping
 const MODEL_ROUTING = {
     // UGFrank (99) - Fast models for quick responses
-    'qwen2.5:7b': 'primary',
+    'qwen2.5:7b-instruct-q4_0': 'primary',
+    'qwen2.5:7b': 'primary',  // Alias
     'qwen2.5:3b': 'primary',
-    'llama3.2:3b': 'primary',
+    'qwen3:4b': 'primary',
+    'qwen3:8b': 'primary',
     'llama3.2:1b': 'primary',
-    'phi3:mini': 'primary',
-    'whisper': 'primary',  // Local whisper
+    'llama2:latest': 'primary',
+    'whisper': 'primary',
     
     // UGBrutal (12) - Heavy specialists
-    'llama3.3:70b': 'secondary',
-    'llama3.3:70b-instruct-q4_K_M': 'secondary',
+    'deepseek-r1:8b': 'secondary',
     'deepseek-r1:32b': 'secondary',
     'deepseek-r1:14b': 'secondary',
-    'gemma3:12b': 'secondary',
-    'gemma3:27b': 'secondary',
-    'qwen2.5-coder:32b': 'secondary',
-    'codellama:34b': 'secondary',
-    'mistral-large:123b': 'secondary',
+    'gemma3:12b-it-qat': 'secondary',
+    'gemma3:12b': 'secondary',  // Alias
+    'gemma3:4b-it-qat': 'secondary',
+    'qwen2.5-coder:14b': 'secondary',
+    'qwen2.5-coder:7b': 'secondary',
+    'qwen3:14b': 'secondary',
+    'llama3.1:8b': 'secondary',
+    'olmo2:13b': 'secondary',
     
-    // Embeddings always on secondary (more VRAM)
-    'nomic-embed-text': 'secondary',
-    'mxbai-embed-large': 'secondary'
+    // Embeddings 
+    'nomic-embed-text': 'primary',
+    'nomic-embed-text:latest': 'primary'
 };
 
-// Task type → Model recommendation
+// Task type → Model recommendation (use ACTUAL installed models)
 const TASK_MODELS = {
-    quick_chat: { model: 'qwen2.5:7b', host: 'primary' },
-    general_chat: { model: 'qwen2.5:7b', host: 'primary' },
-    code_generation: { model: 'deepseek-r1:32b', host: 'secondary' },
-    code_review: { model: 'deepseek-r1:32b', host: 'secondary' },
-    deep_reasoning: { model: 'llama3.3:70b', host: 'secondary' },
-    analysis: { model: 'llama3.3:70b', host: 'secondary' },
-    summarization: { model: 'gemma3:12b', host: 'secondary' },
-    translation: { model: 'qwen2.5:7b', host: 'primary' },
-    embeddings: { model: 'nomic-embed-text', host: 'secondary' }
+    quick_chat: { model: 'qwen2.5:7b-instruct-q4_0', host: 'primary' },
+    general_chat: { model: 'qwen2.5:7b-instruct-q4_0', host: 'primary' },
+    code_generation: { model: 'qwen2.5-coder:14b', host: 'secondary' },
+    code_review: { model: 'qwen2.5-coder:14b', host: 'secondary' },
+    deep_reasoning: { model: 'deepseek-r1:8b', host: 'secondary' },
+    analysis: { model: 'gemma3:12b-it-qat', host: 'secondary' },
+    summarization: { model: 'gemma3:12b-it-qat', host: 'secondary' },
+    translation: { model: 'qwen2.5:7b-instruct-q4_0', host: 'primary' },
+    embeddings: { model: 'nomic-embed-text:latest', host: 'primary' }
 };
 
 // Classification prompt for front-door routing
