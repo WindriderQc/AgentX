@@ -202,7 +202,7 @@ You are an n8n workflow automation expert building workflows for the SBQC Stack.
 
 ## Environment
 - n8n URL: https://n8n.specialblend.icu (http://192.168.2.199:5678)
-- SMB Mounts: /mnt/smb/Media, /mnt/smb/Datalake
+- SMB Mounts: /mnt/media, /mnt/datalake
 
 ## Connected Systems
 

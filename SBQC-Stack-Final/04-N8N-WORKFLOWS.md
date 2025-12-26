@@ -199,7 +199,7 @@ $input.first().json.event
          ▼
 ┌─────────────────────────────────────┐
 │  Execute Command                    │
-│  find /mnt/smb/Media -type f        │
+│  find /mnt/media -type f        │
 │  -name "*.mp4" -o -name "*.mkv"     │
 │  -o -name "*.jpg" -o -name "*.png"  │
 └────────────────┬────────────────────┘
@@ -239,7 +239,7 @@ Method: POST
 URL: http://192.168.2.33:3003/api/v1/storage/scan
 Body:
 {
-  "roots": ["/mnt/smb/Media", "/mnt/smb/Datalake"],
+  "roots": ["/mnt/media", "/mnt/datalake"],
   "extensions": ["mp4", "mkv", "avi", "jpg", "png", "pdf"],
   "metadata": {
     "initiator": "n8n-daily-scan",
@@ -250,7 +250,7 @@ Body:
 
 **Execute Command (find):**
 ```bash
-find /mnt/smb/Media -type f \( -name "*.mp4" -o -name "*.mkv" -o -name "*.jpg" \) -printf "%p|%s|%T@\n"
+find /mnt/media -type f \( -name "*.mp4" -o -name "*.mkv" -o -name "*.jpg" \) -printf "%p|%s|%T@\n"
 ```
 
 Output format: `path|size|modified_timestamp`
@@ -500,11 +500,11 @@ On the n8n host (192.168.2.199), configure SMB mounts:
 
 ```bash
 # /etc/fstab entries
-//nas.local/Media /mnt/smb/Media cifs credentials=/etc/samba/creds,uid=1000,gid=1000 0 0
-//nas.local/Datalake /mnt/smb/Datalake cifs credentials=/etc/samba/creds,uid=1000,gid=1000 0 0
+//nas.local/Media /mnt/media cifs credentials=/etc/samba/creds,uid=1000,gid=1000 0 0
+//nas.local/Datalake /mnt/datalake cifs credentials=/etc/samba/creds,uid=1000,gid=1000 0 0
 
 # Create mount points
-sudo mkdir -p /mnt/smb/Media /mnt/smb/Datalake
+sudo mkdir -p /mnt/media /mnt/datalake
 
 # Create credentials file
 sudo nano /etc/samba/creds
