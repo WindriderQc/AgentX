@@ -1,0 +1,178 @@
+
+> agentx@1.3.0 start
+> node server.js
+
+[dotenv@17.2.3] injecting env (0) from .env -- tip: 🗂️ backup and recover secrets: https://dotenvx.com/ops
+2025-12-26 08:47:14 [[32minfo[39m]: [32mEmbeddingsService initialized[39m {
+  "model": "nomic-embed-text"
+}
+2025-12-26 08:47:14 [[32minfo[39m]: [32mCreating vector store[39m {
+  "type": "memory"
+}
+2025-12-26 08:47:14 [[32minfo[39m]: [32mRagStore initialized[39m {
+  "vectorStore": "memory",
+  "chunkSize": 800,
+  "chunkOverlap": 100
+}
+2025-12-26 08:47:14 [[32minfo[39m]: [32mRagStore singleton initialized[39m
+
+╔════════════════════════════════════════════════════════╗
+║           AgentX v1.3.0 - Production Ready             ║
+╚════════════════════════════════════════════════════════╝
+
+🔍 Checking system dependencies...
+
+2025-12-26 08:47:16 [[31merror[39m]: [31mMongoDB connection failed[39m {
+  "error": "connect ECONNREFUSED 127.0.0.1:27017"
+}
+   ✓ MongoDB:  Connected
+2025-12-26 08:47:16 [[32minfo[39m]: [32mMongoDB connected successfully[39m
+   ✗ Ollama:   request to http://localhost:11434/api/tags failed, reason:  (http://localhost:11434)
+2025-12-26 08:47:16 [[33mwarn[39m]: [33mOllama not available - chat features will not work until Ollama is running[39m {
+  "error": "request to http://localhost:11434/api/tags failed, reason: ",
+  "host": "http://localhost:11434"
+}
+
+──────────────────────────────────────────────────────────
+🚀 Server:    http://localhost:3080
+💚 Health:    http://localhost:3080/health/detailed
+📚 Docs:      /docs folder
+📋 Logs:      logs/combined.log & logs/error.log
+──────────────────────────────────────────────────────────
+
+⚠️  WARNING: Running in degraded mode
+
+   Ollama Issue: request to http://localhost:11434/api/tags failed, reason:
+
+   Fix these issues for full functionality.
+
+2025-12-26 08:47:16 [[32minfo[39m]: [32mAgentX server started[39m {
+  "port": 3080,
+  "host": "localhost",
+  "environment": "development",
+  "mongodb": "connected",
+  "ollama": "error",
+  "healthy": false
+}
+2025-12-26 08:47:44 [[31merror[39m]: [31mSession store error: Error connecting to db: connect ECONNREFUSED ::1:27017, connect ECONNREFUSED 127.0.0.1:27017[39m {
+  "stack": "Error: Error connecting to db: connect ECONNREFUSED ::1:27017, connect ECONNREFUSED 127.0.0.1:27017\n    at /app/node_modules/connect-mongodb-session/index.js:110:17"
+}
+2025-12-26 08:47:44 [[31merror[39m]: [31mUnhandled Promise Rejection[39m {
+  "reason": "Error connecting to db: connect ECONNREFUSED ::1:27017, connect ECONNREFUSED 127.0.0.1:27017",
+  "stack": "Error: Error connecting to db: connect ECONNREFUSED ::1:27017, connect ECONNREFUSED 127.0.0.1:27017\n    at /app/node_modules/connect-mongodb-session/index.js:110:17",
+  "promise": {}
+}
+2025-12-26 08:49:43 [[35mhttp[39m]: [35mIncoming request[39m {
+  "method": "GET",
+  "url": "/health",
+  "ip": "::1",
+  "userAgent": "curl/8.5.0"
+}
+2025-12-26 08:49:43 [[35mhttp[39m]: [35mRequest completed[39m {
+  "method": "GET",
+  "url": "/health",
+  "statusCode": 200,
+  "duration": "4ms",
+  "contentLength": 0
+}
+2025-12-26 08:55:29 [[35mhttp[39m]: [35mIncoming request[39m {
+  "method": "POST",
+  "url": "/api/chat",
+  "ip": "::1",
+  "userAgent": "curl/8.5.0"
+}
+2025-12-26 08:55:39 [[33mwarn[39m]: [33mFailed to fetch active prompt, falling back to default[39m {
+  "error": "Operation `promptconfigs.findOne()` buffering timed out after 10000ms"
+}
+2025-12-26 08:55:49 [[31merror[39m]: [31mFailed to get or create profile[39m {
+  "userId": "api-client",
+  "error": "Operation `userprofiles.findOne()` buffering timed out after 10000ms"
+}
+2025-12-26 08:57:49 [[31merror[39m]: [31mChat error[39m {
+  "error": "Ollama request timed out (2m limit).",
+  "stack": "Error: Ollama request timed out (2m limit).\n    at handleChatRequest (/app/src/services/chatService.js:197:19)\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at async /app/routes/api.js:50:20"
+}
+2025-12-26 08:57:49 [[33mwarn[39m]: [33mRequest completed[39m {
+  "method": "POST",
+  "url": "/chat",
+  "statusCode": 500,
+  "duration": "140042ms",
+  "contentLength": 0
+}
+2025-12-26 08:57:49 [[35mhttp[39m]: [35mIncoming request[39m {
+  "method": "GET",
+  "url": "/api/user/profile?userId=testuser",
+  "ip": "::1",
+  "userAgent": "curl/8.5.0"
+}
+2025-12-26 08:57:49 [[35mhttp[39m]: [35mIncoming request[39m {
+  "method": "POST",
+  "url": "/api/user/profile",
+  "ip": "::1",
+  "userAgent": "curl/8.5.0"
+}
+2025-12-26 08:57:49 [[35mhttp[39m]: [35mIncoming request[39m {
+  "method": "POST",
+  "url": "/api/rag/ingest",
+  "ip": "::1",
+  "userAgent": "curl/8.5.0"
+}
+2025-12-26 08:57:49 [[32minfo[39m]: [32mEmbedding chunks[39m {
+  "documentId": "0a41369b0a2c254a65058bcc5a7c5a34",
+  "chunkCount": 1
+}
+2025-12-26 08:57:49 [[31merror[39m]: [31mError generating embedding[39m {
+  "error": "request to http://localhost:11434/api/embeddings failed, reason: ",
+  "stack": "FetchError: request to http://localhost:11434/api/embeddings failed, reason: \n    at ClientRequest.<anonymous> (/app/node_modules/node-fetch/lib/index.js:1501:11)\n    at ClientRequest.emit (node:events:519:28)\n    at emitErrorEvent (node:_http_client:107:11)\n    at Socket.socketErrorListener (node:_http_client:574:5)\n    at Socket.emit (node:events:519:28)\n    at emitErrorNT (node:internal/streams/destroy:170:8)\n    at emitErrorCloseNT (node:internal/streams/destroy:129:3)\n    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)"
+}
+2025-12-26 08:57:49 [[31merror[39m]: [31mRAG ingest error[39m {
+  "error": "Failed to generate embedding: request to http://localhost:11434/api/embeddings failed, reason: ",
+  "stack": "Error: Failed to generate embedding: request to http://localhost:11434/api/embeddings failed, reason: \n    at EmbeddingsService._generateEmbedding (/app/src/services/embeddings.js:129:13)\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at async /app/src/services/embeddings.js:87:16\n    at async EmbeddingCache.getOrCompute (/app/src/services/embeddingCache.js:104:23)\n    at async EmbeddingsService._embedSingle (/app/src/services/embeddings.js:86:14)\n    at async Promise.all (index 0)\n    at async EmbeddingsService.embedTextBatch (/app/src/services/embeddings.js:59:28)\n    at async RagStore.upsertDocumentWithChunks (/app/src/services/ragStore.js:78:24)\n    at async /app/routes/rag.js:115:20"
+}
+2025-12-26 08:57:49 [[33mwarn[39m]: [33mRequest completed[39m {
+  "method": "POST",
+  "url": "/ingest",
+  "statusCode": 503,
+  "duration": "33ms",
+  "contentLength": 0
+}
+2025-12-26 08:57:49 [[35mhttp[39m]: [35mIncoming request[39m {
+  "method": "GET",
+  "url": "/api/analytics/usage",
+  "ip": "::1",
+  "userAgent": "curl/8.5.0"
+}
+2025-12-26 08:57:49 [[33mwarn[39m]: [33mUnauthorized access attempt: GET /api/analytics/usage[39m
+2025-12-26 08:57:49 [[33mwarn[39m]: [33mRequest completed[39m {
+  "method": "GET",
+  "url": "/usage",
+  "statusCode": 401,
+  "duration": "2ms",
+  "contentLength": 0
+}
+2025-12-26 08:57:49 [[35mhttp[39m]: [35mIncoming request[39m {
+  "method": "GET",
+  "url": "/api/n8n/diagnostic",
+  "ip": "::1",
+  "userAgent": "curl/8.5.0"
+}
+2025-12-26 08:57:49 [[32minfo[39m]: [32mn8n endpoint accessed from LAN: GET /api/n8n/diagnostic from ::1[39m
+2025-12-26 08:57:49 [[35mhttp[39m]: [35mRequest completed[39m {
+  "method": "GET",
+  "url": "/diagnostic",
+  "statusCode": 200,
+  "duration": "7ms",
+  "contentLength": 0
+}
+2025-12-26 09:28:11 [[35mhttp[39m]: [35mIncoming request[39m {
+  "method": "GET",
+  "url": "/api/dashboard/health",
+  "ip": "::1",
+  "userAgent": "curl/8.5.0"
+}
+2025-12-26 09:30:20 [[35mhttp[39m]: [35mIncoming request[39m {
+  "method": "GET",
+  "url": "/api/dashboard/health",
+  "ip": "::1",
+  "userAgent": "curl/8.5.0"
+}
