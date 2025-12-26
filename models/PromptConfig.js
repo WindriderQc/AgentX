@@ -4,8 +4,8 @@ const PromptConfigSchema = new mongoose.Schema({
   name: {
     type: String,
     required: true,
-    unique: true,
-    trim: true
+    trim: true,
+    index: true
   },
   systemPrompt: {
     type: String,
@@ -35,10 +35,11 @@ const PromptConfigSchema = new mongoose.Schema({
 
 PromptConfigSchema.pre('save', function(next) {
   this.updatedAt = Date.now();
-  if (typeof next === 'function') {
-    next();
-  }
+  next();
 });
+
+// Create compound index for name + version to allow versioning
+PromptConfigSchema.index({ name: 1, version: 1 }, { unique: true });
 
 // Static method to get active prompt by name
 PromptConfigSchema.statics.getActive = async function(name = 'default_chat') {
