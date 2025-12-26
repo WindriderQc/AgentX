@@ -9,10 +9,12 @@ const MongoDBStore = require('connect-mongodb-session')(session);
 const logger = require('../config/logger');
 const { requestLogger, errorLogger } = require('./middleware/logging');
 const { attachUser } = require('./middleware/auth');
+const { createProxyMiddleware } = require('http-proxy-middleware');
 
 // Initialize app
 const app = express();
 const IN_PROD = process.env.NODE_ENV === 'production';
+const IN_TEST = process.env.NODE_ENV === 'test';
 
 // System Health State (exported for updates)
 const systemHealth = {
@@ -57,31 +59,38 @@ app.use(mongoSanitize({
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // Session configuration
-const store = new MongoDBStore({
-  uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/agentx',
-  collection: 'sessions',
-  databaseName: 'agentx'
-  // Removed deprecated connectionOptions (useNewUrlParser, useUnifiedTopology)
-  // These have no effect since MongoDB Driver 4.0.0+
-});
+// In tests we avoid creating a Mongo-backed session store to prevent open handles.
+let store;
+if (!IN_TEST) {
+  store = new MongoDBStore({
+    uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/agentx',
+    collection: 'sessions',
+    databaseName: 'agentx'
+  });
 
-store.on('error', (error) => {
-  logger.error('Session store error:', error);
-});
+  store.on('error', (error) => {
+    logger.error('Session store error:', error);
+  });
+}
 
-app.use(session({
+const sessionOptions = {
   secret: process.env.SESSION_SECRET || 'agentx-secret-change-in-production',
   name: 'agentx.sid',
   resave: false,
   saveUninitialized: false,
-  store: store,
   cookie: {
     maxAge: 1000 * 60 * 60 * 24, // 24 hours
     httpOnly: true,
     secure: IN_PROD,
     sameSite: IN_PROD ? 'none' : 'lax'
   }
-}));
+};
+
+if (store) {
+  sessionOptions.store = store;
+}
+
+app.use(session(sessionOptions));
 
 // Attach user to all requests (from session)
 app.use(attachUser);
@@ -108,7 +117,42 @@ app.use('/api/dataset', datasetRoutes);
 const metricsRoutes = require('../routes/metrics');
 app.use('/api/metrics', metricsRoutes);
 
-// Mount API routes
+// n8n integration routes (API key authentication)
+const n8nRoutes = require('../routes/n8n');
+app.use('/api/n8n', n8nRoutes);
+
+// New Modular Routes
+const profileRoutes = require('../routes/profile');
+app.use('/api/profile', profileRoutes);
+
+const historyRoutes = require('../routes/history');
+app.use('/api/history', historyRoutes);
+
+const dataapiRoutes = require('../routes/dataapi');
+app.use('/api/dataapi', dataapiRoutes);
+
+// Legacy/Compatibility routes
+// Map /conversations -> history
+app.use('/api/conversations', historyRoutes);
+
+// Map /user/profile -> profile
+// But express router mounting strips prefix. We need to be careful.
+// The historyRoutes already has /:id for GET /api/history/:id
+// The legacy route is /api/conversations/:id -> historyRoutes handles this fine.
+
+// Proxy /api/v1 to DataAPI (localhost:3003)
+app.use('/api/v1', (req, res, next) => {
+  if (process.env.DATAAPI_API_KEY) {
+    req.headers['x-api-key'] = process.env.DATAAPI_API_KEY;
+  }
+  next();
+}, createProxyMiddleware({
+  target: process.env.DATAAPI_BASE_URL ? `${process.env.DATAAPI_BASE_URL}/api/v1` : 'http://localhost:3003/api/v1',
+  changeOrigin: true
+}));
+
+// Mount Main API routes (Chat, Feedback, Ollama)
+// This is still 'api.js' but stripped of other concerns
 const apiRoutes = require('../routes/api');
 app.use('/api', apiRoutes);
 
@@ -123,16 +167,9 @@ app.get('/health', (_req, res) => {
   });
 });
 
-// Health Check - Detailed (Dependencies injected or imported in server.js, but logic here needs helpers)
-// To keep app.js clean, we will export the app and let server.js handle the detailed health check route
-// OR we move the health check logic to a separate controller/service.
-// For now, to match server.js functionality, we'll keep the route here but it needs access to health check functions.
-// We will export systemHealth so server.js can update it.
-
 // Config endpoint - expose server configuration
 app.get('/api/config', (_req, res) => {
   const ollamaHost = process.env.OLLAMA_HOST || 'http://localhost:11434';
-  // Parse host and port from OLLAMA_HOST
   const match = ollamaHost.match(/^(?:https?:\/\/)?([^:]+)(?::(\d+))?/);
   const host = match ? match[1] : 'localhost';
   const port = match && match[2] ? match[2] : '11434';

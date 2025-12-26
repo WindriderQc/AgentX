@@ -1,14 +1,14 @@
 const express = require('express');
 const router = express.Router();
 const Conversation = require('../models/Conversation');
-const UserProfile = require('../models/UserProfile');
 const PromptConfig = require('../models/PromptConfig'); // V4: Import prompt versioning
 const { sanitizeOptions, resolveTarget } = require('../src/utils');
-const { optionalAuth, apiKeyAuth } = require('../src/middleware/auth');
+const { optionalAuth } = require('../src/middleware/auth');
 const { getUserId, getOrCreateProfile } = require('../src/helpers/userHelpers');
 const { extractResponse, buildOllamaPayload } = require('../src/helpers/ollamaResponseHandler');
 const logger = require('../config/logger');
 const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
+const { tryHandleToolCommand } = require('../src/services/toolService');
 
 // PROXY: Models List
 router.get('/ollama/models', async (req, res) => {
@@ -56,6 +56,88 @@ router.post('/chat', optionalAuth, async (req, res) => {
   );
 
   try {
+        const toolCommand = await tryHandleToolCommand(message);
+        if (toolCommand) {
+            // Tool command responses are treated like an assistant reply and stored in history.
+            const assistantMessageContent = toolCommand.responseText;
+
+            // V4: Fetch active prompt configuration (still used for storing prompt metadata)
+            let activePrompt;
+            try {
+                activePrompt = await PromptConfig.getActive('default_chat');
+                if (!activePrompt) {
+                    activePrompt = { systemPrompt: system || 'You are AgentX, a helpful AI assistant.', version: 'default' };
+                }
+            } catch (_err) {
+                activePrompt = { systemPrompt: system || 'You are AgentX, a helpful AI assistant.', version: 'default' };
+            }
+
+            // 1. Fetch User Profile
+            const userProfile = await getOrCreateProfile(userId);
+
+            // 2. Inject Memory into System Prompt
+            let effectiveSystemPrompt = system || activePrompt.systemPrompt;
+            if (userProfile.about) {
+                effectiveSystemPrompt += `\n\nUser Profile/Memory:\n${userProfile.about}`;
+            }
+            if (userProfile.preferences?.customInstructions) {
+                effectiveSystemPrompt += `\n\nCustom Instructions:\n${userProfile.preferences.customInstructions}`;
+            }
+
+            // Save to DB (same behavior as normal chat, but without Ollama call)
+            let conversation;
+            let assistantMessageId = null;
+            try {
+                if (conversationId) {
+                    conversation = await Conversation.findById(conversationId);
+                }
+                if (!conversation) {
+                    conversation = new Conversation({
+                        userId,
+                        model,
+                        systemPrompt: effectiveSystemPrompt,
+                        messages: []
+                    });
+                }
+
+                conversation.messages.push({ role: 'user', content: message.trim() });
+
+                const assistantMsg = conversation.messages.create({ role: 'assistant', content: assistantMessageContent.trim() });
+                assistantMsg.metadata = assistantMsg.metadata || {};
+                assistantMsg.metadata.tool = toolCommand.tool || null;
+                assistantMsg.metadata.toolResult = toolCommand.toolResult || null;
+                conversation.messages.push(assistantMsg);
+                assistantMessageId = assistantMsg._id;
+
+                if (conversation.messages.length <= 2) {
+                    conversation.title = (message || 'New Conversation').substring(0, 50);
+                }
+
+                // mark as no-rag
+                conversation.ragUsed = false;
+                conversation.ragSources = [];
+
+                conversation.promptConfigId = activePrompt._id;
+                conversation.promptName = activePrompt.name;
+                conversation.promptVersion = activePrompt.version;
+
+                await conversation.save();
+            } catch (err) {
+                logger.error('Failed to save tool conversation', { error: err.message, stack: err.stack });
+            }
+
+            return res.json({
+                status: 'success',
+                data: {
+                    response: assistantMessageContent,
+                    conversationId: conversation ? conversation._id : null,
+                    assistantMessageId,
+                    tool: toolCommand.tool || null,
+                    toolOk: toolCommand.ok === true
+                }
+            });
+        }
+
     // V4: Fetch active prompt configuration
     let activePrompt;
     try {
@@ -185,7 +267,7 @@ router.post('/chat', optionalAuth, async (req, res) => {
     
     // For non-streaming responses, parse JSON and extract content
     const data = await response.json();
-    const { content: assistantMessageContent, thinking, warning } = extractResponse(data, model);
+    const { content: assistantMessageContent, thinking, warning, stats } = extractResponse(data, model);
     
     // Log warnings if any
     if (warning) {
@@ -224,15 +306,26 @@ router.post('/chat', optionalAuth, async (req, res) => {
             hasThinking: !!thinking,
             preview: contentToSave.substring(0, 100) + '...'
           });
+
           const assistantMsg = conversation.messages.create({ 
             role: 'assistant', 
             content: contentToSave 
           });
+
           // Store thinking process as metadata if available
           if (thinking) {
             assistantMsg.metadata = assistantMsg.metadata || {};
             assistantMsg.metadata.thinking = thinking;
           }
+
+          // V4: Store detailed stats if available
+          if (stats) {
+            assistantMsg.stats = stats;
+            // Also store parameter snapshot
+            assistantMsg.stats.parameters = options;
+            assistantMsg.stats.meta = { model };
+          }
+
           conversation.messages.push(assistantMsg);
           assistantMessageId = assistantMsg._id;
       }
@@ -262,7 +355,8 @@ router.post('/chat', optionalAuth, async (req, res) => {
         data: {
             response: assistantMessageContent || '',
             conversationId: conversation?._id || null,
-            messageId: assistantMessageId
+            messageId: assistantMessageId,
+            stats: stats || null // V4: Return stats to frontend
         },
         ragUsed,        // V3 addition
         ragSources,     // V3 addition
@@ -289,40 +383,6 @@ router.post('/chat', optionalAuth, async (req, res) => {
   }
 });
 
-// HISTORY: Get list
-router.get('/history', async (req, res) => {
-    try {
-        const conversations = await Conversation.find({ userId: 'default' })
-            .sort({ updatedAt: -1 })
-            .limit(50)
-            .select('title updatedAt model messages');
-
-        // Transform for frontend preview
-        const previews = conversations.map(c => ({
-            id: c._id,
-            title: c.title,
-            date: c.updatedAt,
-            model: c.model,
-            preview: c.messages[c.messages.length - 1]?.content.substring(0, 60) + '...'
-        }));
-
-        res.json({ status: 'success', data: previews });
-    } catch (err) {
-        res.status(500).json({ status: 'error', message: err.message });
-    }
-});
-
-// HISTORY: Get single
-router.get('/history/:id', async (req, res) => {
-    try {
-        const conversation = await Conversation.findById(req.params.id);
-        if(!conversation) return res.status(404).json({status: 'error', message: 'Not found'});
-        res.json({ status: 'success', data: conversation });
-    } catch (err) {
-        res.status(500).json({ status: 'error', message: err.message });
-    }
-});
-
 // FEEDBACK
 router.post('/feedback', async (req, res) => {
     const { conversationId, messageId, rating, comment } = req.body;
@@ -347,93 +407,6 @@ router.post('/feedback', async (req, res) => {
         await conversation.save();
 
         res.json({ status: 'success', message: 'Feedback saved' });
-    } catch (err) {
-        res.status(500).json({ status: 'error', message: err.message });
-    }
-});
-
-// LOGS - Get latest conversation messages
-router.get('/logs', async (req, res) => {
-    try {
-        const conversation = await Conversation.findOne({ userId: 'default' })
-            .sort({ updatedAt: -1 });
-
-        if (!conversation) {
-            return res.json({ status: 'success', data: { messages: [] } });
-        }
-        res.json({ status: 'success', data: { messages: conversation.messages } });
-    } catch (err) {
-        res.status(500).json({ status: 'error', message: err.message });
-    }
-});
-
-// PROFILE
-router.get('/profile', async (req, res) => {
-    try {
-        const profile = await getOrCreateProfile('default');
-        res.json({ status: 'success', data: profile });
-    } catch (err) {
-        res.status(500).json({ status: 'error', message: err.message });
-    }
-});
-
-router.post('/profile', async (req, res) => {
-    const { about, preferences } = req.body;
-    try {
-        const profile = await UserProfile.findOneAndUpdate(
-            { userId: 'default' },
-            { $set: { about, preferences, updatedAt: Date.now() } },
-            { new: true, upsert: true }
-        );
-        res.json({ status: 'success', data: profile });
-    } catch (err) {
-        res.status(500).json({ status: 'error', message: err.message });
-    }
-});
-
-// Route aliases for backwards compatibility with test scripts
-router.get('/conversations', optionalAuth, async (req, res) => {
-    try {
-        const userId = getUserId(res);
-        const conversations = await Conversation.find({ userId })
-            .sort({ updatedAt: -1 })
-            .limit(50)
-            .select('title updatedAt model messages');
-
-        const previews = conversations.map(c => ({
-            id: c._id,
-            title: c.title,
-            date: c.updatedAt,
-            model: c.model,
-            messageCount: c.messages.length
-        }));
-
-        res.json({ status: 'success', data: previews });
-    } catch (err) {
-        res.status(500).json({ status: 'error', message: err.message });
-    }
-});
-
-router.get('/conversations/:id', optionalAuth, async (req, res) => {
-    try {
-        const userId = getUserId(res);
-        const conversation = await Conversation.findById(req.params.id);
-        if (!conversation) return res.status(404).json({ status: 'error', message: 'Not found' });
-        // Verify user owns this conversation
-        if (conversation.userId !== userId && userId !== 'default') {
-            return res.status(403).json({ status: 'error', message: 'Access denied' });
-        }
-        res.json({ status: 'success', data: conversation });
-    } catch (err) {
-        res.status(500).json({ status: 'error', message: err.message });
-    }
-});
-
-router.get('/user/profile', optionalAuth, async (req, res) => {
-    try {
-        const userId = getUserId(res);
-        const profile = await getOrCreateProfile(userId);
-        res.json({ status: 'success', data: profile });
     } catch (err) {
         res.status(500).json({ status: 'error', message: err.message });
     }

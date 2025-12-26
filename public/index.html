@@ -11,7 +11,7 @@
 </head>
 <body>
   <div class="bg-grid"></div>
-  <div class="page">
+  <div class="page history-hidden">
     <aside class="sidebar">
       <div class="sidebar-head">
         <h2>History</h2>
@@ -25,23 +25,27 @@
       </div>
     </aside>
 
-    <div class="main-content">
+    <div class="main-content app-layout">
     <header class="hero">
       <div class="hero-content">
         <div class="eyebrow">GraphysX • Local agents</div>
         <div class="title-row">
           <h1>AgentX Control</h1>
           <span class="status-chip" id="statusChip">Idle</span>
-          <button id="toggleHistoryBtn" class="ghost small">Hide history</button>
-          <button id="profileBtn" class="ghost small">User Profile</button>
-          <a class="ghost small" href="/analytics.html">Analytics</a>
-          <a class="ghost small" href="/metrics.html">📊 Metrics</a>
-          <button id="loginBtn" class="ghost small" style="display: none;">Login</button>
-          <div id="userMenu" class="user-menu" style="display: none;">
-            <span id="userName" class="user-name"></span>
-            <button id="logoutBtn" class="ghost small">Logout</button>
-          </div>
+          <!-- Navigation will be injected here -->
+          <nav class="agentx-nav"></nav>
         </div>
+
+        <div style="display: flex; gap: 10px; margin-top: 10px; align-items: center;">
+             <button id="toggleHistoryBtn" class="ghost small">Show history</button>
+             <button id="profileBtn" class="ghost small">User Profile</button>
+             <button id="loginBtn" class="ghost small" style="display: none;">Login</button>
+             <div id="userMenu" class="user-menu" style="display: none;">
+                <span id="userName" class="user-name"></span>
+                <button id="logoutBtn" class="ghost small">Logout</button>
+             </div>
+        </div>
+
         <p class="lede">
           Rebuilt AI control surface wired to the AgentX chat, memory, and feedback APIs. Pick a model, tune parameters, and
           manage the session profile that the assistant will remember.
@@ -81,6 +85,8 @@
           </div>
           <textarea id="messageInput" rows="3" placeholder="Type to your agent..."></textarea>
           <div class="composer-actions">
+            <button class="icon-btn" id="micBtn" title="Voice Input" aria-label="Voice Input" aria-pressed="false">🎤</button>
+            <div class="flex-spacer"></div>
             <button class="ghost small" id="clearBtn">Clear chat</button>
             <button class="primary" id="sendBtn">Send</button>
           </div>
@@ -148,6 +154,24 @@
             <span class="slider"></span>
           </label>
           <div class="hint">Retrieve context from vector store.</div>
+        </div>
+
+        <div class="field inline-toggle">
+          <label>TTS Output</label>
+          <label class="switch">
+            <input type="checkbox" id="ttsToggle">
+            <span class="slider"></span>
+          </label>
+          <div class="hint">Read responses aloud (Browser TTS).</div>
+        </div>
+
+        <div class="field inline-toggle">
+          <label>Show Message Stats</label>
+          <label class="switch">
+            <input type="checkbox" id="statsToggle" checked>
+            <span class="slider"></span>
+          </label>
+          <div class="hint">Display token usage and timing for each message.</div>
         </div>
 
         <div class="field">
@@ -262,6 +286,10 @@
     </div>
   </div>
 
-  <script src="app.js"></script>
+  <script type="module">
+    import { injectNav } from '/js/components/nav.js';
+    injectNav('chat');
+  </script>
+  <script src="/js/chat.js"></script>
 </body>
 </html>

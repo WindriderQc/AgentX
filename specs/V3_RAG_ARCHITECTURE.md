@@ -21,7 +21,7 @@ The architecture decouples **Ingestion** (getting data in) from **Retrieval** (g
 
 2.  **Storage (Agent B):**
     *   **Process**: Receive payload -> Chunk text -> Compute Embeddings -> Upsert to Vector Store.
-    *   **Store**: A Vector Database (e.g., Qdrant, Chroma, or SQLite w/ vector ext).
+    *   **Store**: A Vector Database (e.g., Qdrant, Chroma).
 
 3.  **Retrieval & Chat (Agent B):**
     *   **User Request**: `POST /api/chat` with `useRag: true`.
@@ -242,7 +242,7 @@ interface ChunkResult {
 
 ### Agent B (Backend & Retrieval)
 
-*   [ ] **Install Dependencies**: Add necessary packages for the chosen vector store (e.g., `chromadb`, `sqlite-vec`) and an embedding library (e.g., `xenova/transformers` or use Ollama's embedding API).
+*   [ ] **Install Dependencies**: Add necessary packages for the chosen vector store (e.g., `chromadb`) and an embedding library (e.g., `xenova/transformers` or use Ollama's embedding API).
 *   [ ] **Implement `RagStore`**: Create the service layer implementing the interface defined above.
 *   [ ] **Implement `/api/rag/ingest`**:
     *   Validate input payload against V3 Contract.

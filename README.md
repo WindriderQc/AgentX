@@ -2,6 +2,29 @@
 
 **Production-ready local AI assistant with RAG, conversation memory, and continuous improvement capabilities.**
 
+## Documentation Map
+
+We have organized the documentation to help you get started quickly and then dive deep into the technical details.
+
+### 🚀 Getting Started (Onboarding)
+*   [**Quick Start Guide**](docs/onboarding/quickstart.md): Installation, setup, and your first test. Start here!
+*   [**V4 Quick Reference**](docs/onboarding/v4-quick-reference.md): Specifics for V4 features.
+
+### 🏗️ Architecture & Technical Details
+*   [**Backend Overview**](docs/architecture/backend-overview.md): High-level architecture and design decisions.
+*   [**Architecture Diagrams**](docs/architecture/diagrams.md): Visual representation of the system and data flows.
+*   [**Database Architecture**](docs/architecture/database.md): Schema and data model details.
+*   [**Specs**](specs/): Detailed architectural specifications (V3 RAG, V4 Analytics).
+
+### 🔌 API Reference
+*   [**API Reference**](docs/api/reference.md): Complete API documentation with examples.
+*   [**Contracts**](docs/api/contracts/): Snapshots of API contracts for specific versions.
+
+### 📜 History & Reports
+*   [**Implementation Reports**](docs/reports/): Summaries of what was implemented in each version.
+*   [**Archive**](docs/archive/): Old plans, reports, and deprecated documentation.
+
+## What’s here
 AgentX is a Node.js application that transforms your local Ollama instance into a powerful AI assistant with advanced features including knowledge augmentation (RAG), persistent conversation memory, user profiles, analytics, and automated improvement loops via n8n integration.
 
 ---
@@ -13,7 +36,7 @@ AgentX is a Node.js application that transforms your local Ollama instance into 
 - **🧠 Conversation Memory**: MongoDB-backed persistence with session management and feedback tracking
 - **👤 User Profiles**: Personal memory injection into system prompts for context-aware responses
 - **📚 RAG (Retrieval-Augmented Generation)**: Semantic search over your documents for knowledge-grounded answers
-- **📊 Analytics & Metrics**: Track model performance, feedback rates, and usage patterns
+- **📊 Analytics & Metrics**: Track model performance, feedback rates, usage patterns, and cost estimation
 - **🔄 Prompt Versioning**: A/B testing and continuous improvement of system prompts
 - **🔌 n8n Integration**: Automated document ingestion and prompt optimization workflows
 
@@ -50,6 +73,21 @@ AgentX is a Node.js application that transforms your local Ollama instance into 
    EMBEDDING_MODEL=nomic-embed-text
    PORT=3080
    \`\`\`
+
+### DataAPI tool server (optional, recommended)
+
+AgentX can use a companion headless tool server (DataAPI) for file scanning/search/exports. AgentX remains the only UI; browsers never talk to DataAPI directly.
+
+Once configured, open `http://localhost:3080/dataapi.html` to use the Data Tools page (AgentX calls DataAPI via server-side proxy routes under `/api/dataapi/*`).
+
+Add to AgentX `.env`:
+
+```bash
+DATAAPI_BASE_URL=http://127.0.0.1:3003
+DATAAPI_API_KEY=change-me-long-random
+```
+
+DataAPI must be configured with the matching `DATAAPI_API_KEY` and will require an `x-api-key` header on all tool endpoints under `/api/v1/*`.
 
 3. **Start the server:**
    \`\`\`bash
@@ -186,6 +224,31 @@ Run endpoint validation tests:
 - [ ] Models load successfully: \`curl http://localhost:3080/api/ollama/models\`
 
 ---
+
+## 🛠️ Ops Quick Reference (PM2 ecosystem)
+
+Standard workflow (apply changes + persist for reboot):
+
+```bash
+cd /home/yb/codes/AgentX
+pm2 reload ecosystem.config.js --update-env
+pm2 save
+pm2 status
+```
+
+Logs:
+
+```bash
+pm2 logs agentx --lines 200
+pm2 logs dataapi --lines 200
+```
+
+Boot startup status (systemd):
+
+```bash
+systemctl is-enabled pm2-yb
+systemctl show -p ActiveState,SubState,Result pm2-yb
+```
 
 ## 🔮 Roadmap
 
