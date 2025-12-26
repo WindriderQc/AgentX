@@ -52,6 +52,38 @@ const AVAILABLE_TOOLS = {
         headers: { 'x-api-key': DATAAPI_API_KEY },
         description: 'Get pending file deletions from Janitor'
     },
+    'dataapi.file_search': {
+        method: 'GET',
+        url: `${DATAAPI_BASE_URL}/api/v1/files/search`,
+        headers: { 'x-api-key': DATAAPI_API_KEY },
+        description: 'Search files by name, path, or extension',
+        paramBuilder: (params) => {
+            const searchParams = new URLSearchParams();
+            if (params.query) searchParams.set('q', params.query);
+            if (params.extension) searchParams.set('extension', params.extension);
+            if (params.limit) searchParams.set('limit', params.limit);
+            return searchParams.toString();
+        }
+    },
+    'dataapi.janitor_flag': {
+        method: 'POST',
+        url: `${DATAAPI_BASE_URL}/api/v1/janitor/flag`,
+        headers: { 'x-api-key': DATAAPI_API_KEY, 'Content-Type': 'application/json' },
+        description: 'Flag a file for deletion (requires fileId, reason)'
+    },
+    'dataapi.janitor_unflag': {
+        method: 'POST',
+        url: `${DATAAPI_BASE_URL}/api/v1/janitor/unflag`,
+        headers: { 'x-api-key': DATAAPI_API_KEY, 'Content-Type': 'application/json' },
+        description: 'Remove deletion flag from a file (requires fileId)'
+    },
+    'dataapi.rag_file_metadata': {
+        method: 'GET',
+        url: `${DATAAPI_BASE_URL}/api/v1/rag/file-metadata`,
+        headers: { 'x-api-key': DATAAPI_API_KEY },
+        description: 'Get file metadata formatted for RAG embedding',
+        paramBuilder: (params) => params.fileId ? `?fileId=${params.fileId}` : ''
+    },
     // AgentX tools
     'agentx.n8n_health': {
         method: 'GET',
@@ -88,11 +120,20 @@ async function executeTool(toolName, params = {}) {
             }
         };
 
+        // Build URL with query params for GET requests if paramBuilder exists
+        let url = tool.url;
+        if (tool.method === 'GET' && tool.paramBuilder && Object.keys(params).length > 0) {
+            const queryString = tool.paramBuilder(params);
+            if (queryString) {
+                url = `${tool.url}${queryString.startsWith('?') ? queryString : '?' + queryString}`;
+            }
+        }
+
         if (tool.method === 'POST' || tool.method === 'PUT') {
             options.body = JSON.stringify(params);
         }
 
-        const response = await fetch(tool.url, options);
+        const response = await fetch(url, options);
         const data = await response.json();
 
         return {
