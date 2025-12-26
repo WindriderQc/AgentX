@@ -1,0 +1,172 @@
+/*  SBQC Exclusive Styles  */
+
+.topZ {
+    position: relative;
+    z-index: 2; /* Highest z-index */
+}
+
+.background-container {
+    background-image: url('/img/aiBackground1.png');
+    background-size: cover;
+    background-position: center;
+    height: 640px;
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    z-index: 0;
+    padding: 0;
+    margin: 0;
+}
+
+.background-container .col {
+    max-width: 800px;
+    margin: auto;
+    background: rgba(255, 255, 255, 0.75); 
+    padding: 20px;
+    border-radius: 10px;
+}
+
+.semi-translucent-navbar {
+    background-color: rgba(255, 255, 255, 0.65); /* White with opacity */
+}
+
+/* Provides spacing for the fixed-top navbar */
+#page-top {
+    padding-top: 84px; 
+}
+
+.navbar-expanded-spacing {
+    padding-top: 210px; 
+}
+
+.nav-link-text {
+    padding-left: 4px;
+    padding-right: 16px;
+}
+
+.loading {
+    text-align: center;
+    padding: 20px;
+}
+
+/* Custom dashboard card colors */
+.green {
+    background-color: #4CAF50 !important;
+    color: white !important;
+}
+
+.indigo {
+    background-color: #3F51B5 !important;
+    color: white !important;
+}
+
+.grey {
+    background-color: #9E9E9E !important;
+    color: white !important;
+}
+
+/* Style for the selected summary card */
+.summary-card.selected {
+    border: 3px solid #0d6efd; /* More prominent blue border */
+    transform: translateY(-2px);
+    transition: transform 0.2s ease-in-out, border 0.2s ease-in-out;
+}
+
+#card-scroll-container {
+    height: 660px; /* Aligns with the world map canvas height */
+    overflow-y: auto;
+    cursor: grab;
+    padding-right: 15px; /* Add some padding to avoid content hiding behind the scrollbar */
+    box-shadow: inset -7px 0 9px -7px rgba(0,0,0,0.2); /* Subtle inner shadow on the right */
+}
+
+/* Custom Scrollbar for Webkit browsers (Chrome, Safari) */
+#card-scroll-container::-webkit-scrollbar {
+    width: 8px; /* Width of the scrollbar */
+}
+
+#card-scroll-container::-webkit-scrollbar-track {
+    background: #f1f1f1; /* Color of the tracking area */
+    border-radius: 10px;
+}
+
+#card-scroll-container::-webkit-scrollbar-thumb {
+    background: #888; /* Color of the scroll thumb */
+    border-radius: 10px;
+}
+
+#card-scroll-container::-webkit-scrollbar-thumb:hover {
+    background: #555; /* Color of the scroll thumb on hover */
+}
+
+#card-scroll-container.grabbing {
+    cursor: grabbing;
+}
+
+/* Custom Legend for World Map */
+.custom-legend-container {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    background-color: rgba(255, 255, 255, 0.85);
+    padding: 10px 15px;
+    border-radius: 8px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    z-index: 10;
+}
+
+.custom-legend-container h5 {
+    margin-top: 0;
+    margin-bottom: 8px;
+    font-size: 0.9rem;
+    font-weight: bold;
+    color: #333;
+}
+
+.custom-legend-container ul {
+    padding-left: 0;
+    margin-bottom: 0;
+}
+
+.custom-legend-container li {
+    display: flex;
+    align-items: center;
+    margin-bottom: 5px;
+    font-size: 0.85rem;
+    color: #555;
+}
+
+.custom-legend-container li:last-child {
+    margin-bottom: 0;
+}
+
+.legend-color-box {
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    margin-right: 10px;
+    border: 1px solid rgba(0,0,0,0.1);
+    border-radius: 4px;
+}
+
+/* MQTT status indicator */
+.mqtt-status { font-weight: 600; padding: 2px 6px; border-radius: 4px; }
+.mqtt-status.connected { background: #198754; color: white; }
+.mqtt-status.disconnected { background: #6c757d; color: white; }
+.mqtt-status.connecting { background: #ffc107; color: black; }
+.mqtt-status.error { background: #dc3545; color: white; }
+
+/* Feed Container Styles */
+.feed-scroll-container {
+    max-height: 250px;
+    overflow-y: auto;
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+}
+
+/* Hide scrollbar for Webkit browsers (Chrome, Safari) */
+.feed-scroll-container::-webkit-scrollbar {
+    display: none;
+}

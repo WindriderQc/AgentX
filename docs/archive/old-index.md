@@ -74,7 +74,7 @@
 
 | File/Directory | Purpose |
 |----------------|---------|
-| `data/agentx.db` | SQLite database (auto-created) |
+| `data/` | Database data directory |
 
 ---
 
@@ -94,12 +94,12 @@ Read in this order:
 
 Read in this order:
 1. **BACKEND_README.md** - Understand the architecture
-2. **schema.sql** - Study the data model
-3. **db.js** - Review database operations
+2. **models/** - Study the data models
+3. **config/db.js** - Review database operations
 4. **server.js** - Review endpoint implementations
 5. **ARCHITECTURE_DIAGRAM.md** - See the big picture
 
-**Quick Reference**: Comments in `db.js` and `server.js`
+**Quick Reference**: Comments in `config/db.js` and `server.js`
 
 ### 👔 I'm a Project Manager
 
@@ -135,10 +135,10 @@ Topics covered:
 
 ### Database Schema
 
-**Where**: `schema.sql`
+**Where**: `models/`
 
 Topics covered:
-- Table structures
+- Schema definitions
 - Relationships
 - Indexes
 - Constraints
@@ -214,7 +214,7 @@ AgentX/
 │
 ├── 🗄️ DATA
 │   └── data/
-│       └── agentx.db               (SQLite database - auto-created)
+│       └── (MongoDB data)
 │
 ├── 🎨 FRONTEND (unchanged)
 │   └── public/
@@ -272,7 +272,7 @@ AgentX/
 **Steps**:
 1. Check: `API_DOCS.md` (expected behavior)
 2. Check: `ARCHITECTURE_DIAGRAM.md` (data flow)
-3. Check: Database: `sqlite3 data/agentx.db`
+3. Check: Database: MongoDB Compass or CLI
 4. Check: Server logs: `console.log` output
 5. Test: `./test-backend.sh`
 
@@ -282,7 +282,7 @@ AgentX/
 
 **Steps**:
 1. Read: `BACKEND_README.md` (production section)
-2. Set: Environment variables (PORT, DB_PATH)
+2. Set: Environment variables (PORT, MONGODB_URI)
 3. Configure: CORS for production
 4. Add: Authentication middleware
 5. Add: Rate limiting

@@ -22,12 +22,19 @@ const logger = require('../config/logger');
 router.get('/usage', requireAuth, async (req, res) => {
   try {
     const { from, to, groupBy } = req.query;
+    // In requireAuth middleware, user is attached to res.locals.user
+    // userId in Conversation model refers to the 'userId' string field (e.g. 'testuser')
+    // NOT the Mongo _id.
+    const userId = res.locals.user.userId;
 
     // Parse date range (default: last 7 days)
     const toDate = to ? new Date(to) : new Date();
     const fromDate = from ? new Date(from) : new Date(toDate.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-    const dateFilter = { createdAt: { $gte: fromDate, $lte: toDate } };
+    const dateFilter = {
+      createdAt: { $gte: fromDate, $lte: toDate },
+      userId: userId // Ensure user isolation
+    };
 
     // Total counts
     const totalConversations = await Conversation.countDocuments(dateFilter);
@@ -128,12 +135,16 @@ router.get('/usage', requireAuth, async (req, res) => {
 router.get('/feedback', requireAuth, async (req, res) => {
   try {
     const { from, to, groupBy } = req.query;
+    const userId = res.locals.user.userId;
 
     // Parse date range
     const toDate = to ? new Date(to) : new Date();
     const fromDate = from ? new Date(from) : new Date(toDate.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-    const dateFilter = { createdAt: { $gte: fromDate, $lte: toDate } };
+    const dateFilter = {
+      createdAt: { $gte: fromDate, $lte: toDate },
+      userId: userId // Ensure user isolation
+    };
 
     // Total feedback counts
     const feedbackAgg = await Conversation.aggregate([
@@ -234,12 +245,16 @@ router.get('/feedback', requireAuth, async (req, res) => {
 router.get('/rag-stats', requireAuth, async (req, res) => {
   try {
     const { from, to } = req.query;
+    const userId = res.locals.user.userId;
 
     // Parse date range
     const toDate = to ? new Date(to) : new Date();
     const fromDate = from ? new Date(from) : new Date(toDate.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-    const dateFilter = { createdAt: { $gte: fromDate, $lte: toDate } };
+    const dateFilter = {
+      createdAt: { $gte: fromDate, $lte: toDate },
+      userId: userId // Ensure user isolation
+    };
 
     // RAG usage counts
     const totalConversations = await Conversation.countDocuments(dateFilter);
@@ -305,6 +320,109 @@ router.get('/rag-stats', requireAuth, async (req, res) => {
     });
   } catch (err) {
     logger.error('Analytics RAG stats error', { error: err.message, stack: err.stack });
+    res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
+/**
+ * GET /api/analytics/stats
+ * Returns aggregated usage and performance statistics
+ * Query params:
+ *   - from (ISO date, default: 7 days ago)
+ *   - to (ISO date, default: now)
+ *   - groupBy (optional: 'model', default: 'model')
+ * Response: { totalTokens, avgDuration, breakdown: [...] }
+ */
+router.get('/stats', requireAuth, async (req, res) => {
+  try {
+    const { from, to, groupBy = 'model' } = req.query;
+    const userId = res.locals.user.userId;
+
+    // Parse date range
+    const toDate = to ? new Date(to) : new Date();
+    const fromDate = from ? new Date(from) : new Date(toDate.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+    const dateFilter = {
+      createdAt: { $gte: fromDate, $lte: toDate },
+      userId: userId // Ensure user isolation
+    };
+
+    // Grouping key selection
+    let groupKey = '$model'; // Default to model
+    if (groupBy === 'day') {
+      groupKey = { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } };
+    }
+
+    const statsAgg = await Conversation.aggregate([
+      { $match: dateFilter },
+      { $unwind: '$messages' },
+      // Only assistant messages have generation stats
+      { $match: {
+          'messages.role': 'assistant',
+          'messages.stats': { $exists: true }
+        }
+      },
+      { $group: {
+          _id: groupKey,
+          messageCount: { $sum: 1 },
+          totalPromptTokens: { $sum: '$messages.stats.usage.promptTokens' },
+          totalCompletionTokens: { $sum: '$messages.stats.usage.completionTokens' },
+          totalTokens: { $sum: '$messages.stats.usage.totalTokens' },
+          totalDuration: { $sum: '$messages.stats.performance.totalDuration' }, // nanoseconds
+          avgTokensPerSecond: { $avg: '$messages.stats.performance.tokensPerSecond' }
+        }
+      },
+      { $project: {
+          _id: 0,
+          key: '$_id',
+          messageCount: 1,
+          usage: {
+            promptTokens: '$totalPromptTokens',
+            completionTokens: '$totalCompletionTokens',
+            totalTokens: '$totalTokens'
+          },
+          performance: {
+            totalDurationSec: { $divide: ['$totalDuration', 1e9] }, // Convert ns to seconds
+            avgDurationSec: {
+              $cond: [
+                { $gt: ['$messageCount', 0] },
+                { $divide: [{ $divide: ['$totalDuration', 1e9] }, '$messageCount'] },
+                0
+              ]
+            },
+            avgTokensPerSecond: '$avgTokensPerSecond'
+          },
+          // Cost estimation placeholder (can be expanded with a real price map)
+          estimatedCost: { $literal: 0 }
+        }
+      },
+      { $sort: { 'usage.totalTokens': -1 } }
+    ]);
+
+    // Calculate global totals
+    const totals = statsAgg.reduce((acc, curr) => {
+      acc.promptTokens += curr.usage.promptTokens;
+      acc.completionTokens += curr.usage.completionTokens;
+      acc.totalTokens += curr.usage.totalTokens;
+      acc.durationSec += curr.performance.totalDurationSec;
+      acc.messages += curr.messageCount;
+      return acc;
+    }, { promptTokens: 0, completionTokens: 0, totalTokens: 0, durationSec: 0, messages: 0 });
+
+    res.json({
+      status: 'success',
+      data: {
+        from: fromDate.toISOString(),
+        to: toDate.toISOString(),
+        totals: {
+            ...totals,
+            avgDurationSec: totals.messages > 0 ? totals.durationSec / totals.messages : 0
+        },
+        breakdown: statsAgg
+      }
+    });
+  } catch (err) {
+    logger.error('Analytics stats error', { error: err.message, stack: err.stack });
     res.status(500).json({ status: 'error', message: err.message });
   }
 });

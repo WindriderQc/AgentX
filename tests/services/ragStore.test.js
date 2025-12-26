@@ -23,8 +23,10 @@ let embeddingsService;
 
 describe('RAG Store', () => {
   beforeAll(() => {
-    embeddingsService = getEmbeddingsService();
+    // Ensure we're asserting against the exact embeddings service instance
+    // used by the RagStore singleton.
     ragStore = getRagStore();
+    embeddingsService = ragStore.embeddings;
   });
 
   beforeEach(() => {

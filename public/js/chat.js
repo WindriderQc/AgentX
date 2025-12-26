@@ -86,6 +86,7 @@ document.addEventListener('DOMContentLoaded', () => {
     quickActions: document.querySelectorAll('[data-quick]'),
     streamToggle: document.getElementById('streamToggle'),
     ragToggle: document.getElementById('ragToggle'),
+    statsToggle: document.getElementById('statsToggle'), // V4: New toggle
     logWindow: document.getElementById('logWindow'),
     threadId: document.getElementById('threadId'),
     memoryLanguage: document.getElementById('memoryLanguage'),
@@ -96,6 +97,9 @@ document.addEventListener('DOMContentLoaded', () => {
     toggleHistoryBtn: document.getElementById('toggleHistoryBtn'),
     closeHistoryBtn: document.getElementById('closeHistoryBtn'),
     page: document.querySelector('.page'),
+    // Voice Elements
+    micBtn: document.getElementById('micBtn'),
+    ttsToggle: document.getElementById('ttsToggle'),
     // New Elements
     historyList: document.getElementById('historyList'),
     resetProfileBtn: document.getElementById('resetProfileBtn'),
@@ -148,6 +152,7 @@ document.addEventListener('DOMContentLoaded', () => {
     port: '11434',
     model: '',
     stream: true,  // Enable streaming by default for better UX and thinking model support
+    tts: false,    // Disable TTS by default
     system: 'You are AgentX, a concise and capable local assistant. Keep answers brief and actionable.',
     options: {
       temperature: 0.7,
@@ -172,6 +177,7 @@ document.addEventListener('DOMContentLoaded', () => {
     threadId: buildThreadId(),
     profile: { language: '', role: '', style: '' },
     conversationId: null, // Current conversation ID
+    showStats: true, // V4: Toggle message stats
   };
 
   function buildThreadId() {
@@ -205,12 +211,17 @@ document.addEventListener('DOMContentLoaded', () => {
       port: elements.portInput.value.trim() || defaults.port,
       model: elements.modelSelect.value,
       stream: elements.streamToggle.checked,
+      tts: elements.ttsToggle.checked,
       useRag: elements.ragToggle.checked,
+      showStats: elements.statsToggle.checked, // V4: Save stats preference
       system: elements.systemPrompt.value.trim() || defaults.system,
       options: readOptions(),
     };
     localStorage.setItem('agentx-settings', JSON.stringify(payload));
     state.settings = payload;
+    state.showStats = payload.showStats; // Update state immediately
+    // Re-render chat to toggle stats visibility without refresh
+    refreshMessages();
     setFeedback('Defaults saved locally.', 'success');
   }
 
@@ -232,13 +243,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function hydrateForm() {
     const cfg = state.settings;
+    state.showStats = cfg.showStats !== undefined ? cfg.showStats : true; // Default true
+
     // Use saved settings if they exist, otherwise use defaults (which may include server config)
     elements.hostInput.value = cfg.host || defaults.host;
     elements.portInput.value = cfg.port || defaults.port;
     elements.modelSelect.value = cfg.model;
     elements.systemPrompt.value = cfg.system;
     elements.streamToggle.checked = cfg.stream;
+    elements.ttsToggle.checked = cfg.tts || false;
     elements.ragToggle.checked = cfg.useRag || false;
+    elements.statsToggle.checked = state.showStats; // V4
     elements.temperature.value = cfg.options.temperature;
     elements.topP.value = cfg.options.top_p;
     elements.topK.value = cfg.options.top_k;
@@ -307,6 +322,35 @@ document.addEventListener('DOMContentLoaded', () => {
 
     bubble.appendChild(meta);
     bubble.appendChild(body);
+
+    // V4: Stats Footer
+    if (state.showStats && message.stats && role === 'assistant') {
+      const statsDiv = document.createElement('div');
+      statsDiv.className = 'message-stats';
+      statsDiv.style.fontSize = '0.75rem';
+      statsDiv.style.color = 'var(--muted)';
+      statsDiv.style.marginTop = '0.5rem';
+      statsDiv.style.paddingTop = '0.5rem';
+      statsDiv.style.borderTop = '1px solid rgba(255,255,255,0.05)';
+
+      const { usage, performance } = message.stats;
+      const parts = [];
+
+      if (usage) {
+        parts.push(`${usage.totalTokens} tokens`);
+      }
+      if (performance) {
+        // Convert ns to s
+        const duration = (performance.totalDuration / 1e9).toFixed(2);
+        const tps = performance.tokensPerSecond ? `(${performance.tokensPerSecond} t/s)` : '';
+        parts.push(`${duration}s ${tps}`);
+      }
+
+      if (parts.length > 0) {
+        statsDiv.textContent = parts.join(' • ');
+        bubble.appendChild(statsDiv);
+      }
+    }
 
     // Only render feedback controls for actual AI responses (exclude system messages like welcome)
     if (role === 'assistant' && messageId && !messageId.startsWith('a-')) {
@@ -589,9 +633,11 @@ document.addEventListener('DOMContentLoaded', () => {
           content: responseText,
           createdAt: new Date().toISOString(),
           id: data.data?.messageId || null,
+          stats: data.data?.stats || null // V4: Inject stats from response
       };
 
       appendMessage(assistantMessage);
+      speakText(responseText);
 
       // Show warning for thinking models if present
       if (data.warning) {
@@ -658,12 +704,20 @@ document.addEventListener('DOMContentLoaded', () => {
           state.stats.replies = 0;
 
             data.messages.forEach(msg => {
-                appendMessage(msg.role, msg.content, {
-                    persist: true, // It's already in DB, but we want it in local state.history for context
-                    count: true,
-                    messageId: msg._id,
-                    feedback: msg.feedback,
+                // Manually construct message object to include stats
+                const messageObj = {
+                    role: msg.role,
+                    content: msg.content,
                     createdAt: msg.createdAt,
+                    id: msg._id,
+                    feedback: msg.feedback,
+                    stats: msg.stats // V4: Pass stats to rendering
+                };
+
+                // Use the object form of appendMessage
+                appendMessage(messageObj, {
+                    persist: true,
+                    count: true
                 });
             });
 
@@ -758,7 +812,103 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.toggleLogBtn.textContent = isCollapsed ? 'Show session log' : 'Hide session log';
   }
 
+  // --- Voice Functions ---
+
+  let recognition = null;
+  let isRecording = false;
+
+  function startVoiceInput() {
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+      setFeedback('Speech recognition not supported in this browser.', 'error');
+      return;
+    }
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    recognition = new SpeechRecognition();
+    recognition.lang = 'en-US';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+      isRecording = true;
+      elements.micBtn.classList.add('recording');
+      elements.micBtn.setAttribute('aria-pressed', 'true');
+      setStatus('Listening...', 'success');
+    };
+
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      elements.messageInput.value = transcript;
+      // Optional: Automatically send? For now let user review.
+      // sendMessage();
+    };
+
+    recognition.onerror = (event) => {
+      console.error('Speech recognition error', event.error);
+      setFeedback(`Voice error: ${event.error}`, 'error');
+      cleanupVoiceInput();
+    };
+
+    recognition.onend = () => {
+      cleanupVoiceInput();
+    };
+
+    // Cancel any ongoing speech when starting input
+    window.speechSynthesis.cancel();
+    recognition.start();
+  }
+
+  function stopVoiceInput() {
+    // User requested stop
+    if (recognition) {
+      // recognition.stop() will trigger onend, which calls cleanupVoiceInput
+      recognition.stop();
+    } else {
+      cleanupVoiceInput();
+    }
+  }
+
+  function cleanupVoiceInput() {
+    recognition = null;
+    isRecording = false;
+    elements.micBtn.classList.remove('recording');
+    elements.micBtn.setAttribute('aria-pressed', 'false');
+    setStatus('Idle');
+  }
+
+  function toggleVoiceInput() {
+    if (isRecording) {
+      stopVoiceInput();
+    } else {
+      startVoiceInput();
+    }
+  }
+
+  function speakText(text) {
+    if (!state.settings.tts) return;
+
+    // Simple browser TTS
+    const utterance = new SpeechSynthesisUtterance(text);
+
+    const setVoice = () => {
+      const voices = window.speechSynthesis.getVoices();
+      const preferred = voices.find(v => v.name.includes('Google US English')) ||
+                        voices.find(v => v.lang === 'en-US') ||
+                        voices[0];
+      if (preferred) utterance.voice = preferred;
+      window.speechSynthesis.speak(utterance);
+    };
+
+    if (window.speechSynthesis.getVoices().length === 0) {
+      window.speechSynthesis.addEventListener('voiceschanged', setVoice, { once: true });
+    } else {
+      setVoice();
+    }
+  }
+
   function attachEvents() {
+    elements.micBtn.addEventListener('click', toggleVoiceInput);
+    elements.ttsToggle.addEventListener('change', persistSettings);
     elements.sendBtn.addEventListener('click', sendMessage);
     elements.clearBtn.addEventListener('click', clearChat);
     elements.refreshModels.addEventListener('click', () => fetchModels(true));
@@ -802,6 +952,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     elements.streamToggle.addEventListener('change', persistSettings);
     elements.ragToggle.addEventListener('change', persistSettings);
+    if (elements.statsToggle) elements.statsToggle.addEventListener('change', persistSettings);
 
     // Auto-refresh models when host or port changes
     elements.hostInput.addEventListener('change', () => {

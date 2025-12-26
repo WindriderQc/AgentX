@@ -359,31 +359,9 @@ npm install -g pm2
 
 ### Step 2: Create PM2 Configuration
 
-```javascript
-// File: ecosystem.config.js
-module.exports = {
-  apps: [{
-    name: 'agentx',
-    script: './server.js',
-    instances: 1,
-    exec_mode: 'fork',
-    watch: false,
-    env: {
-      NODE_ENV: 'production',
-      PORT: 3080
-    },
-    error_file: './logs/err.log',
-    out_file: './logs/out.log',
-    log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-    merge_logs: true,
-    max_memory_restart: '500M',
-    restart_delay: 4000,
-    autorestart: true,
-    max_restarts: 10,
-    min_uptime: '10s'
-  }]
-};
-```
+This repo uses an `ecosystem.config.js` file as the standard PM2 entrypoint. Keep runtime configuration (ports, secrets, API keys) in `.env` files, not inside the ecosystem file.
+
+If you are running AgentX + DataAPI together (“one process list” mode), the same `ecosystem.config.js` should define both apps.
 
 ### Step 3: Deploy
 
@@ -391,15 +369,37 @@ module.exports = {
 # Create logs directory
 mkdir -p logs
 
-# Start application
+# Start (or apply changes from) the ecosystem file
 pm2 start ecosystem.config.js
 
 # Save PM2 configuration
 pm2 save
 
-# Setup auto-start on system boot
-pm2 startup
-# Follow the instructions printed by the command
+# Setup auto-start on system boot (recommended standard)
+sudo pm2 startup systemd -u yb --hp /home/yb
+
+# If you previously had a separate DataAPI systemd unit, disable it to avoid conflicts
+sudo systemctl disable --now pm2-dataapi.service || true
+
+# Re-save after any changes
+pm2 save
+```
+
+#### Standard workflow (recommended)
+
+When you change `ecosystem.config.js` or any `.env` values:
+
+```bash
+cd /home/yb/codes/AgentX
+pm2 reload ecosystem.config.js --update-env
+pm2 save
+```
+
+Verify boot setup:
+
+```bash
+systemctl is-enabled pm2-yb
+systemctl show -p ActiveState,SubState,Result pm2-yb
 ```
 
 ### PM2 Commands
@@ -431,6 +431,46 @@ pm2 monit
 
 # View detailed info
 pm2 show agentx
+```
+
+### Managing DataAPI (tool server)
+
+In this architecture, DataAPI is a headless tool server (no UI). AgentX is the only UI and calls DataAPI server-to-server using `x-api-key`.
+
+#### Simple mode (recommended): one PM2 process list
+
+If you prefer simplicity, run both AgentX and DataAPI under the same Linux user and the same PM2 home. In this repo, that means adding a `dataapi` app entry to `ecosystem.config.js` that points at your DataAPI checkout (e.g. `/home/yb/codes/DataAPI`).
+
+You should then see both services in a single `pm2 status` output.
+
+Helper scripts:
+
+```bash
+# Show both PM2 lists (AgentX + DataAPI)
+./scripts/pm2-status-all.sh
+
+# Manage the deployed DataAPI PM2 daemon
+./scripts/pm2-dataapi.sh status
+./scripts/pm2-dataapi.sh logs DataAPI --lines 200
+./scripts/pm2-dataapi.sh restart DataAPI --update-env
+```
+
+Direct equivalents (one-PM2-list mode):
+
+```bash
+pm2 status
+pm2 logs dataapi --lines 200
+pm2 restart dataapi --update-env
+```
+
+#### More secure mode: separate Linux user
+
+If you run DataAPI under a separate Linux user (e.g. `dataapi`), it will have its own PM2 home and therefore its own process list. In that case, the direct equivalents are:
+
+```bash
+sudo -u dataapi pm2 status
+sudo -u dataapi pm2 logs DataAPI --lines 200
+sudo -u dataapi pm2 restart DataAPI --update-env
 ```
 
 ### PM2 Clustering
