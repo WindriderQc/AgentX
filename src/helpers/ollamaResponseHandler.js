@@ -11,6 +11,7 @@ const logger = require('../../config/logger');
  * @returns {boolean}
  */
 function isThinkingModel(model) {
+  if (!model) return false;
   const thinkingModels = [
     'qwen', 'deepseek-r1', 'deepthink', 'o1', 'o3', 'reasoning'
   ];
