@@ -93,8 +93,8 @@ router.post('/chat', optionalAuth, async (req, res) => {
   } = req.body;
   const userId = getUserId(res);
 
-  // Model is optional if autoRoute is enabled
-  if (!model && !autoRoute) return res.status(400).json({ status: 'error', message: 'Model is required (or enable autoRoute)' });
+  // Model is optional if autoRoute or taskType is enabled
+  if (!model && !autoRoute && !taskType) return res.status(400).json({ status: 'error', message: 'Model is required (or enable autoRoute/taskType)' });
   if (!message) return res.status(400).json({ status: 'error', message: 'Message is required' });
 
   try {
