@@ -5,6 +5,7 @@ const { extractResponse, buildOllamaPayload } = require('../helpers/ollamaRespon
 const { sanitizeOptions, resolveTarget } = require('../utils');
 const { tryHandleToolCommand } = require('./toolService');
 const { executeTool, parseToolCalls } = require('./toolExecutor');
+const { routeRequest, getTargetForModel } = require('./modelRouter');
 const logger = require('../../config/logger');
 const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
 
@@ -68,8 +69,36 @@ const handleChatRequest = async ({
     ragTopK,
     ragFilters,
     target,
-    ragStore
+    ragStore,
+    autoRoute = false,  // Enable smart model routing
+    taskType = null     // Override task classification
 }) => {
+    // 0. Smart Model Routing (if enabled)
+    let effectiveModel = model;
+    let effectiveTarget = target;
+    let routingInfo = null;
+
+    if (autoRoute || taskType) {
+        routingInfo = await routeRequest(message, {
+            autoRoute,
+            taskType,
+            preferredModel: model && model !== 'auto' ? model : null
+        });
+        
+        if (routingInfo.routed) {
+            effectiveModel = routingInfo.model;
+            effectiveTarget = routingInfo.target;
+            logger.info('Request routed', {
+                taskType: routingInfo.taskType,
+                model: routingInfo.model,
+                target: routingInfo.target
+            });
+        }
+    } else if (!effectiveTarget && effectiveModel) {
+        // No auto-route, but resolve target based on model
+        effectiveTarget = getTargetForModel(effectiveModel);
+    }
+
     // 1. Check for Tool Commands
     const toolCommand = await tryHandleToolCommand(message);
     if (toolCommand) {
@@ -85,7 +114,7 @@ const handleChatRequest = async ({
             if (!conversation) {
                 conversation = new Conversation({
                     userId,
-                    model,
+                    model: effectiveModel,
                     systemPrompt: effectiveSystemPrompt,
                     messages: []
                 });
@@ -142,7 +171,7 @@ const handleChatRequest = async ({
 
     if (useRag === true && message && ragStore) {
         try {
-            const ollamaHost = resolveTarget(target);
+            const ollamaHost = resolveTarget(effectiveTarget);
             const searchResults = await ragStore.searchSimilarChunks(message, {
                 topK: ragTopK || 5,
                 minScore: 0.3,
@@ -180,14 +209,14 @@ const handleChatRequest = async ({
     ];
 
     const ollamaPayload = buildOllamaPayload({
-        model,
+        model: effectiveModel,
         messages: formattedMessages,
         options: sanitizeOptions(options),
         streamEnabled: false
     });
 
     // Call Ollama
-    const url = `${resolveTarget(target)}/api/chat`;
+    const url = `${resolveTarget(effectiveTarget)}/api/chat`;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 120000);
 
@@ -244,7 +273,7 @@ const handleChatRequest = async ({
         if (!conversation) {
             conversation = new Conversation({
                 userId,
-                model,
+                model: effectiveModel,
                 systemPrompt: effectiveSystemPrompt,
                 messages: []
             });
@@ -273,7 +302,7 @@ const handleChatRequest = async ({
             if (stats) {
                 assistantMsg.stats = stats;
                 assistantMsg.stats.parameters = options;
-                assistantMsg.stats.meta = { model };
+                assistantMsg.stats.meta = { model: effectiveModel };
             }
 
             conversation.messages.push(assistantMsg);
@@ -299,10 +328,16 @@ const handleChatRequest = async ({
         response: finalContent,
         conversationId: conversation?._id || null,
         messageId: assistantMessageId,
+        model: effectiveModel,
+        target: effectiveTarget,
+        routing: routingInfo ? {
+            taskType: routingInfo.taskType,
+            routed: routingInfo.routed
+        } : null,
         stats: stats || null,
         ragUsed,
         ragSources,
-        warning: isThinkingModel(model) ? 'This model has thinking capabilities. Enable streaming for better response quality.' : undefined
+        warning: isThinkingModel(effectiveModel) ? 'This model has thinking capabilities. Enable streaming for better response quality.' : undefined
     };
 };
 

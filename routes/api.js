@@ -9,6 +9,7 @@ const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...
 
 // Import Service Logic
 const { handleChatRequest } = require('../src/services/chatService');
+const { getRoutingStatus, classifyQuery, HOSTS, MODEL_ROUTING, TASK_MODELS } = require('../src/services/modelRouter');
 
 // V3: Import RAG Store
 const { getRagStore } = require('../src/services/ragStore');
@@ -38,12 +39,62 @@ router.get('/ollama/models', async (req, res) => {
     }
 });
 
+// MODEL ROUTING: Get routing configuration and status
+router.get('/models/routing', async (req, res) => {
+    try {
+        const status = await getRoutingStatus();
+        res.json({
+            status: 'success',
+            data: status
+        });
+    } catch (err) {
+        res.status(500).json({ status: 'error', message: err.message });
+    }
+});
+
+// MODEL ROUTING: Classify a query (preview routing decision)
+router.post('/models/classify', async (req, res) => {
+    const { message } = req.body;
+    if (!message) {
+        return res.status(400).json({ status: 'error', message: 'Message is required' });
+    }
+    try {
+        const classification = await classifyQuery(message);
+        const recommendation = TASK_MODELS[classification] || TASK_MODELS.general_chat;
+        res.json({
+            status: 'success',
+            data: {
+                taskType: classification,
+                recommendedModel: recommendation.model,
+                recommendedHost: recommendation.host,
+                hostUrl: HOSTS[recommendation.host]
+            }
+        });
+    } catch (err) {
+        res.status(500).json({ status: 'error', message: err.message });
+    }
+});
+
 // CHAT: Delegated to chatService
 router.post('/chat', optionalAuth, async (req, res) => {
-  const { target = process.env.OLLAMA_HOST || 'localhost:11434', model, message, messages = [], system, options = {}, conversationId, useRag, ragTopK, ragFilters } = req.body;
+  const { 
+    target = process.env.OLLAMA_HOST || 'localhost:11434', 
+    model, 
+    message, 
+    messages = [], 
+    system, 
+    options = {}, 
+    conversationId, 
+    useRag, 
+    ragTopK, 
+    ragFilters,
+    autoRoute = false,  // Enable smart model routing
+    taskType = null     // Override task classification (code_generation, deep_reasoning, etc.)
+  } = req.body;
   const userId = getUserId(res);
 
-  if (!model) return res.status(400).json({ status: 'error', message: 'Model is required' });
+  // Model is optional if autoRoute is enabled
+  if (!model && !autoRoute) return res.status(400).json({ status: 'error', message: 'Model is required (or enable autoRoute)' });
   if (!message) return res.status(400).json({ status: 'error', message: 'Message is required' });
 
   try {
@@ -59,13 +110,18 @@ router.post('/chat', optionalAuth, async (req, res) => {
         ragTopK,
         ragFilters,
         target,
-        ragStore
+        ragStore,
+        autoRoute,
+        taskType
     });
 
     res.json({
         status: 'success',
         data: result,
         // Top-level fields for backward compatibility or cleaner API response
+        model: result.model,
+        target: result.target,
+        routing: result.routing,
         ragUsed: result.ragUsed,
         ragSources: result.ragSources,
         warning: result.warning
