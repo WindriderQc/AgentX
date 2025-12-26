@@ -286,7 +286,7 @@ curl https://n8n.specialblend.icu/healthz
 sudo apt install cifs-utils
 
 # Create mount points
-sudo mkdir -p /mnt/smb/Media /mnt/smb/Datalake
+sudo mkdir -p /mnt/media /mnt/datalake
 
 # Create credentials file
 sudo nano /etc/samba/nas-creds
@@ -295,14 +295,14 @@ sudo nano /etc/samba/nas-creds
 sudo chmod 600 /etc/samba/nas-creds
 
 # Add to /etc/fstab
-//nas.local/Media /mnt/smb/Media cifs credentials=/etc/samba/nas-creds,uid=1000,gid=1000,iocharset=utf8 0 0
-//nas.local/Datalake /mnt/smb/Datalake cifs credentials=/etc/samba/nas-creds,uid=1000,gid=1000,iocharset=utf8 0 0
+//nas.local/Media /mnt/media cifs credentials=/etc/samba/nas-creds,uid=1000,gid=1000,iocharset=utf8 0 0
+//nas.local/Datalake /mnt/datalake cifs credentials=/etc/samba/nas-creds,uid=1000,gid=1000,iocharset=utf8 0 0
 
 # Mount
 sudo mount -a
 
 # Verify
-ls /mnt/smb/Media
+ls /mnt/media
 ```
 
 ### For Docker n8n
