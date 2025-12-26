@@ -3,6 +3,8 @@ node_modules/
 npm-debug.log*
 .env
 logs/
+*.log
+server.log
 
 # Qdrant
 qdrant_data/
