@@ -11,6 +11,7 @@ const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...
 
 // Helper to detect thinking models
 const isThinkingModel = (model) => {
+    if (!model) return false;
     const thinkingModels = ['qwen', 'deepseek-r1', 'deepthink', 'o1', 'o3', 'reasoning'];
     return thinkingModels.some(pattern => model.toLowerCase().includes(pattern));
 };
@@ -85,9 +86,11 @@ const handleChatRequest = async ({
             preferredModel: model && model !== 'auto' ? model : null
         });
         
+        // Always use routing result when autoRoute is enabled
+        effectiveModel = routingInfo.model;
+        effectiveTarget = routingInfo.target;
+        
         if (routingInfo.routed) {
-            effectiveModel = routingInfo.model;
-            effectiveTarget = routingInfo.target;
             logger.info('Request routed', {
                 taskType: routingInfo.taskType,
                 model: routingInfo.model,
