@@ -138,6 +138,10 @@ app.use('/api/history', historyRoutes);
 const dataapiRoutes = require('../routes/dataapi');
 app.use('/api/dataapi', dataapiRoutes);
 
+// Dashboard routes
+const dashboardRoutes = require('../routes/dashboard');
+app.use('/api/dashboard', dashboardRoutes);
+
 // Legacy/Compatibility routes
 // Map /conversations -> history
 app.use('/api/conversations', historyRoutes);

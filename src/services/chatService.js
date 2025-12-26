@@ -4,6 +4,7 @@ const { getOrCreateProfile } = require('../helpers/userHelpers');
 const { extractResponse, buildOllamaPayload } = require('../helpers/ollamaResponseHandler');
 const { sanitizeOptions, resolveTarget } = require('../utils');
 const { tryHandleToolCommand } = require('./toolService');
+const { executeTool, parseToolCalls } = require('./toolExecutor');
 const logger = require('../../config/logger');
 const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
 
@@ -14,10 +15,16 @@ const isThinkingModel = (model) => {
 };
 
 // Helper to get active prompt
-const getActivePrompt = async (system) => {
+const getActivePrompt = async (system, personaName = 'default_chat') => {
     try {
-        const activePrompt = await PromptConfig.getActive('default_chat');
+        const activePrompt = await PromptConfig.getActive(personaName);
         if (activePrompt) return activePrompt;
+
+        // If specific persona requested but not found, try default
+        if (personaName !== 'default_chat') {
+            const defaultPrompt = await PromptConfig.getActive('default_chat');
+            if (defaultPrompt) return defaultPrompt;
+        }
     } catch (err) {
         logger.warn('Failed to fetch active prompt, falling back to default', { error: err.message });
     }
@@ -124,7 +131,8 @@ const handleChatRequest = async ({
     }
 
     // 2. Standard Chat Flow
-    const activePrompt = await getActivePrompt(system);
+    const persona = options.persona || 'default_chat';
+    const activePrompt = await getActivePrompt(system, persona);
     const userProfile = await getOrCreateProfile(userId);
 
     // RAG Logic
@@ -206,6 +214,27 @@ const handleChatRequest = async ({
 
     if (warning) logger.warn('Response extraction warning', { model, warning });
 
+    // 3. Tool Execution Loop (Recursive potential, but limited to 1 turn for now)
+    let finalContent = assistantMessageContent;
+    let toolExecutionResult = null;
+
+    // Check if assistant wants to call a tool
+    const toolCall = parseToolCalls(assistantMessageContent);
+    if (toolCall) {
+        logger.info('Tool call detected', { tool: toolCall.tool });
+        try {
+            const result = await executeTool(toolCall.tool, toolCall.params);
+            toolExecutionResult = result;
+
+            // Append result to content for the user to see (or hidden?)
+            // For now, we append it so the user knows what happened.
+            // Ideally, we would feed this back to the model, but for v1 we just report it.
+            finalContent += `\n\n--- Tool Execution ---\nTool: ${toolCall.tool}\nStatus: ${result.status}\nResult: ${JSON.stringify(result.data, null, 2)}`;
+        } catch (err) {
+            finalContent += `\n\n--- Tool Execution Failed ---\nError: ${err.message}`;
+        }
+    }
+
     // Save to DB
     let conversation;
     let assistantMessageId = null;
@@ -228,12 +257,17 @@ const handleChatRequest = async ({
         if (assistantMessageContent && assistantMessageContent.trim()) {
             const assistantMsg = conversation.messages.create({
                 role: 'assistant',
-                content: assistantMessageContent.trim()
+                content: finalContent.trim()
             });
 
             if (thinking) {
                 assistantMsg.metadata = assistantMsg.metadata || {};
                 assistantMsg.metadata.thinking = thinking;
+            }
+
+            if (toolExecutionResult) {
+                assistantMsg.metadata = assistantMsg.metadata || {};
+                assistantMsg.metadata.toolExecution = toolExecutionResult;
             }
 
             if (stats) {
@@ -262,7 +296,7 @@ const handleChatRequest = async ({
     }
 
     return {
-        response: assistantMessageContent,
+        response: finalContent,
         conversationId: conversation?._id || null,
         messageId: assistantMessageId,
         stats: stats || null,
