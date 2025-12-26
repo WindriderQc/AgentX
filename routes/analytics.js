@@ -427,4 +427,141 @@ router.get('/stats', requireAuth, async (req, res) => {
   }
 });
 
+/**
+ * GET /api/analytics/feedback/summary
+ * Enhanced feedback aggregation for self-improving loop
+ * Returns overall metrics, per-model, per-prompt-version, and low performers
+ * Query params:
+ *   - from (ISO date, default: 30 days)
+ *   - to (ISO date, default: now)
+ *   - threshold (number, default: 0.7 - flag prompts below this)
+ */
+router.get('/feedback/summary', requireAuth, async (req, res) => {
+  try {
+    const { from, to, threshold = 0.7 } = req.query;
+    const userId = res.locals.user.userId;
+    const minPositiveRate = parseFloat(threshold);
+
+    // Default to 30 days for summary
+    const toDate = to ? new Date(to) : new Date();
+    const fromDate = from ? new Date(from) : new Date(toDate.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    const dateFilter = {
+      createdAt: { $gte: fromDate, $lte: toDate },
+      userId: userId
+    };
+
+    // Overall feedback metrics
+    const overallAgg = await Conversation.aggregate([
+      { $match: dateFilter },
+      { $unwind: '$messages' },
+      { $match: { 'messages.feedback.rating': { $in: [1, -1] } } },
+      { $group: {
+          _id: null,
+          totalFeedback: { $sum: 1 },
+          positive: { $sum: { $cond: [{ $eq: ['$messages.feedback.rating', 1] }, 1, 0] } },
+          negative: { $sum: { $cond: [{ $eq: ['$messages.feedback.rating', -1] }, 1, 0] } }
+        }
+      }
+    ]);
+
+    const overall = {
+      totalFeedback: overallAgg[0]?.totalFeedback || 0,
+      positive: overallAgg[0]?.positive || 0,
+      negative: overallAgg[0]?.negative || 0,
+      positiveRate: overallAgg[0] ? overallAgg[0].positive / overallAgg[0].totalFeedback : 0
+    };
+
+    // By model
+    const byModel = await Conversation.aggregate([
+      { $match: dateFilter },
+      { $unwind: '$messages' },
+      { $match: { 'messages.feedback.rating': { $in: [1, -1] } } },
+      { $group: {
+          _id: '$model',
+          positive: { $sum: { $cond: [{ $eq: ['$messages.feedback.rating', 1] }, 1, 0] } },
+          negative: { $sum: { $cond: [{ $eq: ['$messages.feedback.rating', -1] }, 1, 0] } }
+        }
+      },
+      { $project: {
+          _id: 0,
+          model: '$_id',
+          positive: 1,
+          negative: 1,
+          total: { $add: ['$positive', '$negative'] },
+          rate: { $cond: [{ $gt: [{ $add: ['$positive', '$negative'] }, 0] }, 
+                          { $divide: ['$positive', { $add: ['$positive', '$negative'] }] }, 0] }
+        }
+      },
+      { $sort: { total: -1 } }
+    ]);
+
+    // By prompt version
+    const byPromptVersion = await Conversation.aggregate([
+      { $match: dateFilter },
+      { $unwind: '$messages' },
+      { $match: { 'messages.feedback.rating': { $in: [1, -1] } } },
+      { $group: {
+          _id: { name: '$promptName', version: '$promptVersion' },
+          positive: { $sum: { $cond: [{ $eq: ['$messages.feedback.rating', 1] }, 1, 0] } },
+          negative: { $sum: { $cond: [{ $eq: ['$messages.feedback.rating', -1] }, 1, 0] } }
+        }
+      },
+      { $project: {
+          _id: 0,
+          promptName: '$_id.name',
+          promptVersion: '$_id.version',
+          positive: 1,
+          negative: 1,
+          total: { $add: ['$positive', '$negative'] },
+          rate: { $cond: [{ $gt: [{ $add: ['$positive', '$negative'] }, 0] }, 
+                          { $divide: ['$positive', { $add: ['$positive', '$negative'] }] }, 0] }
+        }
+      },
+      { $sort: { promptName: 1, promptVersion: -1 } }
+    ]);
+
+    // Identify low performers (below threshold)
+    const lowPerformingPrompts = byPromptVersion.filter(p => p.rate < minPositiveRate && p.total >= 5);
+
+    // A/B comparison: group by promptName and compare versions
+    const promptGroups = {};
+    byPromptVersion.forEach(p => {
+      if (!promptGroups[p.promptName]) promptGroups[p.promptName] = [];
+      promptGroups[p.promptName].push(p);
+    });
+
+    const abComparisons = Object.entries(promptGroups)
+      .filter(([name, versions]) => versions.length > 1)
+      .map(([name, versions]) => {
+        const sorted = versions.sort((a, b) => b.rate - a.rate);
+        return {
+          promptName: name,
+          bestVersion: sorted[0],
+          versions: sorted,
+          recommendation: sorted[0].rate > minPositiveRate 
+            ? `Keep version ${sorted[0].promptVersion}` 
+            : 'All versions underperforming - needs prompt revision'
+        };
+      });
+
+    res.json({
+      status: 'success',
+      data: {
+        from: fromDate.toISOString(),
+        to: toDate.toISOString(),
+        threshold: minPositiveRate,
+        overall,
+        byModel,
+        byPromptVersion,
+        lowPerformingPrompts,
+        abComparisons
+      }
+    });
+  } catch (err) {
+    logger.error('Analytics feedback summary error', { error: err.message });
+    res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
 module.exports = router;

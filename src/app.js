@@ -142,6 +142,10 @@ app.use('/api/dataapi', dataapiRoutes);
 const voiceRoutes = require('../routes/voice');
 app.use('/api/voice', voiceRoutes);
 
+// Prompt management routes (A/B testing)
+const promptRoutes = require('../routes/prompts');
+app.use('/api/prompts', promptRoutes);
+
 // Dashboard routes
 const dashboardRoutes = require('../routes/dashboard');
 app.use('/api/dashboard', dashboardRoutes);
