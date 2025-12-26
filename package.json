@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "test": "jest --silent",
+    "test:e2e": "./test-all.sh",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "test:load": "./tests/load/run-tests.sh",
