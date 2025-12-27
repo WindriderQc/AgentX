@@ -50,24 +50,24 @@
 │  192.168.2.99:11434     │  │  192.168.2.12:11434             │  │  :3003                  │
 │                         │  │                                 │  │                         │
 │  ┌───────────────────┐  │  │  ┌───────────────────────────┐  │  │  ┌───────────────────┐  │
-│  │  Qwen 2.5 7B      │  │  │  │  Llama 3.3 70B            │  │  │  │  Storage Scans    │  │
-│  │  (Front Door)     │  │  │  │  (Planning, Coding)       │  │  │  │  - NAS indexing   │  │
+│  │  Qwen 2.5 7B      │  │  │  │  DeepSeek R1:8B           │  │  │  │  Storage Scans    │  │
+│  │  (Front Door)     │  │  │  │  (Deep Reasoning)         │  │  │  │  - NAS indexing   │  │
 │  └───────────────────┘  │  │  └───────────────────────────┘  │  │  │  - Directory walk │  │
 │  ┌───────────────────┐  │  │  ┌───────────────────────────┐  │  │  └───────────────────┘  │
-│  │  Whisper (STT)    │  │  │  │  DeepSeek R1 32B          │  │  │  ┌───────────────────┐  │
-│  │  (Voice Input)    │  │  │  │  (Deep Reasoning)         │  │  │  │  File Browser     │  │
+│  │  Qwen 2.5:3B      │  │  │  │  Qwen 2.5-coder:14B       │  │  │  ┌───────────────────┐  │
+│  │  Qwen 3:4B/8B     │  │  │  │  (Code Generation)        │  │  │  │  File Browser     │  │
 │  └───────────────────┘  │  │  └───────────────────────────┘  │  │  │  - Query/filter   │  │
-│                         │  │  ┌───────────────────────────┐  │  │  │  - Duplicates     │  │
-│  Role: Low-latency      │  │  │  Gemma 3 12B              │  │  │  │  - Exports        │  │
-│  conversational entry   │  │  │  (Vision, Creative)       │  │  │  └───────────────────┘  │
-│  point. Quick queries.  │  │  └───────────────────────────┘  │  │  ┌───────────────────┐  │
+│  ┌───────────────────┐  │  │  ┌───────────────────────────┐  │  │  │  - Duplicates     │  │
+│  │  nomic-embed-text │  │  │  │  Gemma 3:12B              │  │  │  │  - Exports        │  │
+│  │  (RAG Embeddings) │  │  │  │  (Vision, Creative)       │  │  │  └───────────────────┘  │
+│  └───────────────────┘  │  │  └───────────────────────────┘  │  │  ┌───────────────────┐  │
 │                         │  │  ┌───────────────────────────┐  │  │  │  Integration Sink │  │
-│                         │  │  │  nomic-embed-text         │  │  │  │  - n8n events     │  │
-│                         │  │  │  (RAG Embeddings)         │  │  │  │  - ClickUp        │  │
-│                         │  │  └───────────────────────────┘  │  │  └───────────────────┘  │
+│  Role: Low-latency      │  │  │  Qwen 3:14B               │  │  │  │  - n8n events     │  │
+│  conversational entry   │  │  │  Llama 3.1:8B             │  │  │  │  - ClickUp        │  │
+│  point. Quick queries.  │  │  └───────────────────────────┘  │  │  └───────────────────┘  │
 │                         │  │                                 │  │                         │
-│  GPU: RTX 3080 Ti 12GB  │  │  GPU: RTX 5070 Ti (TBD VRAM)   │  │  API Endpoints:         │
-│                         │  │  Role: Heavy workloads         │  │  /api/v1/storage/*      │
+│  GPU: RTX 3080 Ti 12GB  │  │  GPU: RTX 5070 Ti               │  │  API Endpoints:         │
+│                         │  │  Role: Heavy workloads          │  │  /api/v1/storage/*      │
 └─────────────────────────┘  └─────────────────────────────────┘  │  /api/v1/files/*        │
                                                                    │  /integrations/*        │
                                                                    │  (n8n routes → AgentX)  │
