@@ -26,10 +26,10 @@
             <div class="hero-content">
                 <div class="hero-top">
                     <div>
-                        <div class="eyebrow">AgentX • Visualization</div>
-                        <h1>AgentX Dashboard</h1>
+                        <div class="eyebrow">AgentX • Unified Operations</div>
+                        <h1>Operations Center</h1>
                         <p class="lede">
-                            Live event feed and geospatial visualization of logs.
+                            Monitor system health, manage n8n automations, and track database performance.
                         </p>
                     </div>
                     <div class="hero-actions">
@@ -50,12 +50,20 @@
                         <span>AgentX</span>
                         <span class="status-dot status-unknown"></span>
                     </div>
+                    <div class="health-item" id="health-mongodb">
+                        <span>MongoDB</span>
+                        <span class="status-dot status-unknown"></span>
+                    </div>
                     <div class="health-item" id="health-ollama99">
                         <span>Ollama (99)</span>
                         <span class="status-dot status-unknown"></span>
                     </div>
                     <div class="health-item" id="health-ollama12">
                         <span>Ollama (12)</span>
+                        <span class="status-dot status-unknown"></span>
+                    </div>
+                    <div class="health-item" id="health-n8n">
+                        <span>n8n</span>
                         <span class="status-dot status-unknown"></span>
                     </div>
                 </div>
@@ -68,152 +76,473 @@
                 </div>
             </aside>
 
-            <!-- AgentX Content Placeholder -->
-            <section class="panel main-panel">
-                <div class="panel-head">
-                    <div>
-                        <p class="eyebrow">Overview</p>
-                        <h2>AgentX Operations</h2>
+            <section class="main-content-area">
+                <nav class="tabs-nav">
+                    <button class="tab-btn active" data-tab="overview">Overview</button>
+                    <button class="tab-btn" data-tab="n8n">n8n Ops</button>
+                    <button class="tab-btn" data-tab="system">System Metrics</button>
+                </nav>
+
+                <!-- TAB: OVERVIEW -->
+                <div id="overview-tab" class="tab-content active">
+                    <div class="panel main-panel">
+                        <div class="panel-head">
+                            <div>
+                                <p class="eyebrow">Operations</p>
+                                <h2>Service Status</h2>
+                            </div>
+                        </div>
+                        <div class="p-4">
+                            <div class="stat-grid-modern">
+                                <div class="stat-card-modern">
+                                    <div class="stat-label">Uptime</div>
+                                    <div class="stat-value" id="sys-uptime">0s</div>
+                                </div>
+                                <div class="stat-card-modern">
+                                    <div class="stat-label">Memory Usage</div>
+                                    <div class="stat-value" id="sys-mem">0 MB</div>
+                                </div>
+                                <div class="stat-card-modern">
+                                    <div class="stat-label">DB Documents</div>
+                                    <div class="stat-value" id="db-total-docs">0</div>
+                                </div>
+                            </div>
+
+                            <div class="content-placeholder mt-4">
+                                <p class="text-muted">Welcome to the consolidated AgentX Dashboard.</p>
+                                <p class="text-muted">Use the sidebars to monitor system health and database collections
+                                    in real-time.</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
-                <div class="p-4 text-center text-muted">
-                    <p>Welcome to the consolidated AgentX Dashboard.</p>
-                    <p>Use the sidebar to monitor system health and database collections.</p>
+
+                <!-- TAB: N8N OPS -->
+                <div id="n8n-tab" class="tab-content">
+                    <div class="grid-2-col">
+                        <div class="panel">
+                            <div class="panel-head">
+                                <h2><i class="fas fa-bolt me-2"></i>Webhook Trigger</h2>
+                            </div>
+                            <div class="p-4">
+                                <div class="field">
+                                    <label>Select Workflow</label>
+                                    <select id="workflowSelector">
+                                        <option value="agentmail">AgentMail (Gmail AI Agent)</option>
+                                        <option value="rag-ingest">RAG Ingestion</option>
+                                        <option value="chat-complete">Chat Completion</option>
+                                        <option value="analytics">Analytics Event</option>
+                                        <option value="custom">Custom Webhook...</option>
+                                    </select>
+                                </div>
+                                <div id="customWebhookDiv" style="display: none;" class="field">
+                                    <label>Custom Webhook URL</label>
+                                    <input type="text" id="customWebhookId" placeholder="UUID or full URL">
+                                </div>
+                                <div class="field">
+                                    <label>Payload (JSON)</label>
+                                    <textarea id="webhookPayload" rows="8">{
+  "event": "test_trigger",
+  "source": "operations-center",
+  "data": { "message": "Manual test trigger" }
+}</textarea>
+                                </div>
+                                <div class="action-row">
+                                    <button class="primary full" id="triggerWebhookBtn">Trigger Webhook</button>
+                                </div>
+                                <div id="triggerResult" class="mt-4 hidden result-box"></div>
+                            </div>
+                        </div>
+
+                        <div class="panel">
+                            <div class="panel-head d-flex justify-content-between">
+                                <h2><i class="fas fa-list me-2"></i>Event Log</h2>
+                                <button class="ghost small" id="clearEventLogBtn">Clear</button>
+                            </div>
+                            <div class="p-0">
+                                <div class="event-log-container" id="eventLog">
+                                    <div class="event-entry">
+                                        <strong>Console Ready</strong><br>
+                                        <small class="text-muted">Initialized at <span id="initTime"></span></small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB: SYSTEM METRICS -->
+                <div id="system-tab" class="tab-content">
+                    <section class="panel">
+                        <div class="panel-head">
+                            <div>
+                                <p class="eyebrow">Real-time Status</p>
+                                <h2>System Health</h2>
+                            </div>
+                            <div class="controls">
+                                <button id="clearCacheBtn" class="ghost small">Clear Embedding Cache</button>
+                                <div id="timestamp" class="pill">Updating...</div>
+                            </div>
+                        </div>
+
+                        <div class="stat-grid-premium">
+                            <!-- Cache Card -->
+                            <div class="stat-card-premium">
+                                <p class="label">Cache Performance</p>
+                                <h3><span class="status-dot" id="cacheStatus"></span><span id="cacheHitRate">0%</span>
+                                </h3>
+                                <p class="hint">Hit Rate</p>
+                                <div class="metric-progress">
+                                    <div class="metric-fill" id="cacheBar" style="width: 0%"></div>
+                                </div>
+                                <div class="detail-list">
+                                    <div class="detail-item"><span>Hits</span><span id="cacheHits">0</span></div>
+                                    <div class="detail-item"><span>Misses</span><span id="cacheMisses">0</span></div>
+                                    <div class="detail-item"><span>Size</span><span id="cacheSize">0/0</span></div>
+                                    <div class="detail-item"><span>Mem</span><span id="cacheMem">0 B</span></div>
+                                </div>
+                            </div>
+
+                            <!-- Database Card -->
+                            <div class="stat-card-premium">
+                                <p class="label">Database</p>
+                                <h3><span class="status-dot healthy"></span><span id="dbTotalDocs">0</span></h3>
+                                <p class="hint">Total Documents</p>
+                                <div class="detail-list" style="margin-top: 24px;">
+                                    <div class="detail-item"><span>Conversations</span><span
+                                            id="dbConversations">0</span></div>
+                                    <div class="detail-item"><span>Prompts</span><span id="dbPrompts">0</span></div>
+                                    <div class="detail-item"><span>Users</span><span id="dbUsers">0</span></div>
+                                    <div class="detail-item"><span>Indexes</span><span id="dbIndexes">0</span></div>
+                                </div>
+                            </div>
+
+                            <!-- Connections Card -->
+                            <div class="stat-card-premium">
+                                <p class="label">Connections</p>
+                                <h3><span class="status-dot" id="connStatus"></span><span id="connActive">0</span></h3>
+                                <p class="hint">Active / <span id="connMax">0</span> Max</p>
+                                <div class="metric-progress">
+                                    <div class="metric-fill" id="connBar" style="width: 0%"></div>
+                                </div>
+                                <div class="detail-list">
+                                    <div class="detail-item"><span>Available</span><span id="connAvail">0</span></div>
+                                    <div class="detail-item"><span>Waiting</span><span id="connWaiting">0</span></div>
+                                    <div class="detail-item"><span>Pool</span><span id="connPool">0-0</span></div>
+                                </div>
+                            </div>
+
+                            <!-- System Card -->
+                            <div class="stat-card-premium">
+                                <p class="label">System Resources</p>
+                                <h3><span class="status-dot" id="sysStatus"></span><span id="sysMem">0 MB</span></h3>
+                                <p class="hint">Memory Used / <span id="sysTotalMem">0</span> Total</p>
+                                <div class="metric-progress">
+                                    <div class="metric-fill" id="sysBar" style="width: 0%"></div>
+                                </div>
+                                <div class="detail-list">
+                                    <div class="detail-item"><span>Node</span><span id="sysNode">v?</span></div>
+                                    <div class="detail-item"><span>Uptime</span><span id="sysUptime">0s</span></div>
+                                    <div class="detail-item"><span>Platform</span><span id="sysPlatform">?</span></div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Detailed System Info -->
+                    <section class="panel" style="margin-top: 20px;">
+                        <div class="panel-head">
+                            <div>
+                                <p class="eyebrow">Details</p>
+                                <h2>Extended Diagnostics</h2>
+                            </div>
+                        </div>
+                        <div class="layout" style="grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));">
+                            <div class="stat-card compact">
+                                <h3 style="font-size: 16px; margin-bottom: 12px;">Cache Stats</h3>
+                                <div class="detail-list">
+                                    <div class="detail-item"><span>Total Req</span><span id="detailCacheTotal">0</span>
+                                    </div>
+                                    <div class="detail-item"><span>Avg Entry</span><span id="detailCacheAvg">0 B</span>
+                                    </div>
+                                    <div class="detail-item"><span>Evictions</span><span id="detailCacheEvict">0</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="stat-card compact">
+                                <h3 style="font-size: 16px; margin-bottom: 12px;">DB Info</h3>
+                                <div class="detail-list">
+                                    <div class="detail-item"><span>Name</span><span id="detailDbName">?</span></div>
+                                    <div class="detail-item"><span>Host</span><span id="detailDbHost">?</span></div>
+                                    <div class="detail-item"><span>Collections</span><span
+                                            id="detailDbCollections">0</span></div>
+                                </div>
+                            </div>
+                            <div class="stat-card compact">
+                                <h3 style="font-size: 16px; margin-bottom: 12px;">Memory Heap</h3>
+                                <div class="detail-list">
+                                    <div class="detail-item"><span>Used</span><span id="detailHeapUsed">0</span></div>
+                                    <div class="detail-item"><span>Total</span><span id="detailHeapTotal">0</span></div>
+                                    <div class="detail-item"><span>RSS</span><span id="detailRss">0</span></div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
                 </div>
             </section>
         </main>
     </div>
 
     <style>
-        .dashboard-layout {
-            display: grid;
-            grid-template-columns: 280px 1fr;
-            grid-template-rows: auto auto;
-            gap: 20px;
-        }
-
-        .feed-panel {
-            grid-column: 1 / -1;
-        }
-
-        .scroll-container {
-            max-height: 600px;
-            overflow-y: auto;
-        }
-
-        .summary-card {
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid var(--panel-border);
-            border-radius: 8px;
-            padding: 12px;
-            margin-bottom: 8px;
-            cursor: pointer;
-            transition: background 0.2s;
+        /* Tabs */
+        .tabs-nav {
             display: flex;
-            justify-content: space-between;
-            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 1px solid var(--panel-border);
+            padding-bottom: 0;
         }
 
-        .summary-card:hover {
-            background: rgba(255, 255, 255, 0.08);
-        }
-
-        .summary-card.selected {
-            background: rgba(124, 240, 255, 0.1);
-            border-color: var(--accent);
-        }
-
-        /* Health Styles */
-        .health-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 8px 0;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        .tab-btn {
+            background: transparent;
+            color: var(--muted);
+            border: none;
+            border-bottom: 2px solid transparent;
+            padding: 12px 20px;
             font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
         }
 
-        .health-item:last-child {
-            border-bottom: none;
+        .tab-btn:hover {
+            color: var(--text);
+            background: rgba(255, 255, 255, 0.03);
         }
 
-        .status-dot {
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            display: inline-block;
+        .tab-btn.active {
+            color: var(--accent);
+            border-bottom-color: var(--accent);
+            background: rgba(124, 240, 255, 0.05);
         }
 
-        .status-online {
-            background: #4ade80;
-            box-shadow: 0 0 8px #4ade80;
+        .tab-content {
+            display: none;
         }
 
-        .status-offline {
-            background: #f87171;
-            box-shadow: 0 0 8px #f87171;
+        .tab-content.active {
+            display: block;
+            animation: fadeIn 0.3s ease;
         }
 
-        .status-unknown {
-            background: #94a3b8;
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(5px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
-        .mt-4 {
-            margin-top: 1.5rem;
+        /* Modern Stats */
+        .stat-grid-modern {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
         }
 
-        .badge {
-            background: var(--accent);
-            color: #0f172a;
-            padding: 2px 8px;
-            border-radius: 99px;
-            font-size: 11px;
-            font-weight: 700;
-        }
-
-        .map-container {
-            height: 500px;
+        .stat-card-modern {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--panel-border);
+            padding: 20px;
+            border-radius: 12px;
             position: relative;
         }
 
-        .feed-table {
-            width: 100%;
-            border-collapse: collapse;
+        /* Premium Stats (Analytics-style) */
+        .stat-grid-premium {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            padding: 20px;
         }
 
-        .feed-table td {
-            padding: 10px;
-            border-bottom: 1px solid var(--panel-border);
+        .stat-card-premium {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--panel-border);
+            padding: 24px;
+            border-radius: 12px;
+            position: relative;
+        }
+
+        .stat-card-premium .label {
+            font-size: 12px;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+
+        .stat-card-premium h3 {
+            font-size: 32px;
+            font-weight: 700;
             color: var(--text);
+            margin: 8px 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .stat-card-premium .hint {
+            font-size: 13px;
+            color: var(--muted);
+            margin-bottom: 12px;
+        }
+
+        .metric-progress {
+            height: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
+            margin-top: 12px;
+            overflow: hidden;
+        }
+
+        .metric-fill {
+            height: 100%;
+            background: var(--accent);
+            transition: width 0.3s ease;
+        }
+
+        .detail-list {
+            margin-top: 16px;
+            font-size: 13px;
+            display: grid;
+            gap: 8px;
+        }
+
+        .detail-item {
+            display: flex;
+            justify-content: space-between;
+            color: var(--muted);
+        }
+
+        .detail-item span:last-child {
+            color: var(--text);
+            font-weight: 500;
+        }
+
+        .status-dot.healthy {
+            background: #00ff80;
+            box-shadow: 0 0 8px rgba(0, 255, 128, 0.4);
+        }
+
+        .status-dot.warning {
+            background: #ffc800;
+            box-shadow: 0 0 8px rgba(255, 200, 0, 0.4);
+        }
+
+        .status-dot.error {
+            background: #ff3232;
+            box-shadow: 0 0 8px rgba(255, 50, 50, 0.4);
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        /* n8n Styles */
+        .grid-2-col {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .event-log-container {
+            max-height: 500px;
+            overflow-y: auto;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 0 0 12px 12px;
+        }
+
+        .event-entry {
+            padding: 10px;
+            border-left: 3px solid var(--accent);
+            background: rgba(255, 255, 255, 0.02);
+            margin-bottom: 10px;
             font-size: 13px;
         }
 
-        .feed-table i {
-            margin-right: 8px;
+        .event-entry.success {
+            border-left-color: #4ade80;
         }
 
-        .text-info {
-            color: #38bdf8;
+        .event-entry.error {
+            border-left-color: #f87171;
         }
 
-        .text-warning {
-            color: #facc15;
+        .event-entry.info {
+            border-left-color: #38bdf8;
         }
 
-        .text-danger {
-            color: #f87171;
+        .result-box {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 15px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid var(--panel-border);
         }
 
-        .text-success {
-            color: #4ade80;
+        .progress-mini {
+            height: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
+            margin-top: 10px;
+            overflow: hidden;
         }
 
-        .text-primary {
-            color: #818cf8;
+        .progress-mini .fill {
+            height: 100%;
+            background: var(--accent);
+            width: 0%;
+            transition: width 0.3s;
+        }
+
+        .detail-list-modern {
+            display: grid;
+            gap: 10px;
+        }
+
+        .detail-item-modern {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 6px;
         }
 
         @media (max-width: 900px) {
             .dashboard-layout {
+                grid-template-columns: 1fr;
+            }
+
+            .grid-2-col {
                 grid-template-columns: 1fr;
             }
         }
