@@ -1,0 +1,237 @@
+{
+  "name": "SBQC - TEST PACK (One-click Validation)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "ManualTrigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-920, 0]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            { "name": "testRoot", "value": "/mnt/media/_sbqc_test" }
+          ],
+          "number": [
+            { "name": "batchSize", "value": 25 }
+          ],
+          "boolean": [
+            { "name": "tryBulkInsert", "value": true }
+          ]
+        },
+        "options": {}
+      },
+      "id": "SetConfig",
+      "name": "Set Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [-740, 0]
+    },
+    {
+      "parameters": {
+        "url": "http://192.168.2.33:3003/health",
+        "options": { "timeout": 5000, "fullResponse": false }
+      },
+      "id": "DataAPIHealth",
+      "name": "Probe - DataAPI /health",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-520, -240],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "http://192.168.2.33:3080/health",
+        "options": { "timeout": 5000, "fullResponse": false }
+      },
+      "id": "AgentXHealth",
+      "name": "Probe - AgentX /health",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-520, -120],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "http://192.168.2.99:11434/api/tags",
+        "options": { "timeout": 5000, "fullResponse": false }
+      },
+      "id": "Ollama99",
+      "name": "Probe - Ollama99 /api/tags",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-520, 0],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "http://192.168.2.12:11434/api/tags",
+        "options": { "timeout": 5000, "fullResponse": false }
+      },
+      "id": "Ollama12",
+      "name": "Probe - Ollama12 /api/tags",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-520, 120],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://192.168.2.33:3003/api/v1/storage/scan",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"roots\": [ $json.testRoot ],\n  \"extensions\": [\"txt\",\"md\",\"pdf\",\"jpg\",\"jpeg\",\"png\",\"mp4\",\"mkv\",\"bin\"],\n  \"metadata\": {\n    \"initiator\": \"n8n-test-pack\",\n    \"purpose\": \"validate-pipeline\",\n    \"workflow\": \"SBQC-TEST-PACK\"\n  }\n}",
+        "options": { "timeout": 15000 }
+      },
+      "id": "CreateScan",
+      "name": "Create Scan Record (DataAPI)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-520, 260],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "command": "bash",
+        "arguments": "-lc",
+        "input": "set -euo pipefail\n\nROOT=\"{{ $json.testRoot }}\"\n\nif [ ! -d \"$ROOT\" ]; then\n  echo \"ERROR|missing_root|$ROOT\" >&2\n  exit 2\nfi\n\n# small scan: everything under test root\nfind \"$ROOT\" -type f -printf \"%p|%s|%T@\\n\"",
+        "options": { "timeout": 300 }
+      },
+      "id": "FindTestFiles",
+      "name": "Execute: find test files",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [-300, 260],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg = $items('Set Config')[0].json;\nconst out = $input.first().json;\nconst stdout = out.stdout || '';\n\nconst lines = stdout.split('\\n').map(s => s.trim()).filter(Boolean);\nconst files = [];\nfor (const line of lines) {\n  const [path, sizeStr, mtimeStr] = line.split('|');\n  const size = Number(sizeStr);\n  const mtime = Number(mtimeStr);\n  if (!path || !Number.isFinite(size) || !Number.isFinite(mtime)) continue;\n\n  const segs = path.split('/');\n  const filename = segs.pop() || '';\n  const dirname = segs.join('/') || '';\n  const dot = filename.lastIndexOf('.');\n  const extension = dot >= 0 ? filename.slice(dot + 1).toLowerCase() : '';\n\n  files.push({\n    path,\n    size,\n    modified: new Date(mtime * 1000).toISOString(),\n    dirname,\n    filename,\n    extension\n  });\n}\n\nconst batchSize = Number(cfg.batchSize || 25);\nconst batches = [];\nfor (let i = 0; i < files.length; i += batchSize) {\n  batches.push(files.slice(i, i + batchSize));\n}\n\nreturn batches.map((b, idx) => ({ json: { batchIndex: idx, batchSize: b.length, files: b, totalFiles: files.length } }));"
+      },
+      "id": "ParseBatch",
+      "name": "Parse + Batch (testRoot)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-80, 260]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$items('Set Config')[0].json.tryBulkInsert}}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "IfTryBulk",
+      "name": "IF tryBulkInsert",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [140, 260]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://192.168.2.33:3003/api/v1/files/bulk",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"scanId\": $('Create Scan Record (DataAPI)').first().json?.data?.scanId || $('Create Scan Record (DataAPI)').first().json?.data?.id || null,\n  \"files\": $json.files,\n  \"meta\": {\n    \"source\": \"n8n-test-pack\",\n    \"workflow\": \"SBQC-TEST-PACK\",\n    \"batchIndex\": $json.batchIndex,\n    \"batchSize\": $json.batchSize\n  }\n}",
+        "options": { "timeout": 60000 }
+      },
+      "id": "PostBulk",
+      "name": "POST /api/v1/files/bulk (test batch)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [360, 200],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "function safeJson(nodeName) {\n  try {\n    const it = $items(nodeName);\n    return it && it[0] ? it[0].json : null;\n  } catch (e) {\n    return null;\n  }\n}\n\nfunction okHttp(obj, predicate) {\n  if (!obj || typeof obj !== 'object') return false;\n  if (obj.error) return false;\n  return predicate(obj);\n}\n\nconst cfg = safeJson('Set Config') || {};\n\nconst dataapi = safeJson('Probe - DataAPI /health');\nconst agentx  = safeJson('Probe - AgentX /health');\nconst o99     = safeJson('Probe - Ollama99 /api/tags');\nconst o12     = safeJson('Probe - Ollama12 /api/tags');\n\nconst scanRes = safeJson('Create Scan Record (DataAPI)');\nconst findRes = safeJson('Execute: find test files');\n\nconst dataapiOk = okHttp(dataapi, x => x.status === 'ok' || x.status === 'success' || x.ok === true);\nconst agentxOk  = okHttp(agentx,  x => x.status === 'ok' || x.status === 'success' || x.ok === true);\nconst o99Ok     = okHttp(o99,     x => Array.isArray(x.models) || typeof x.models === 'object');\nconst o12Ok     = okHttp(o12,     x => Array.isArray(x.models) || typeof x.models === 'object');\n\nconst scanOk = okHttp(scanRes, x => !!(x.data && (x.data.scanId || x.data.id)) || !!x.scanId || !!x.id);\nconst findOk = !findRes?.error && typeof findRes?.stdout === 'string';\n\n// Bulk insert is optional; treat as \"warn\" if endpoint missing but tryBulkInsert=true\nlet bulkStatus = 'skipped';\nlet bulkDetail = null;\nif (cfg.tryBulkInsert) {\n  try {\n    const bulk = safeJson('POST /api/v1/files/bulk (test batch)');\n    if (!bulk) {\n      bulkStatus = 'warn';\n      bulkDetail = { message: 'bulk node not executed or no output' };\n    } else if (bulk.error) {\n      bulkStatus = 'warn';\n      bulkDetail = bulk.error;\n    } else {\n      bulkStatus = 'ok';\n      bulkDetail = bulk;\n    }\n  } catch (e) {\n    bulkStatus = 'warn';\n    bulkDetail = { message: e.message };\n  }\n}\n\n// File count from Parse node items\nlet totalFiles = 0;\ntry {\n  const items = $items('Parse + Batch (testRoot)');\n  if (items && items[0]) totalFiles = items[0].json.totalFiles || 0;\n} catch (e) {}\n\nconst criticalOk = dataapiOk && agentxOk && o99Ok && o12Ok && findOk;\nconst overall = criticalOk ? 'PASS' : 'FAIL';\n\nconst report = {\n  timestamp: new Date().toISOString(),\n  overall,\n  config: cfg,\n  probes: {\n    dataapi: dataapiOk ? 'ok' : 'fail',\n    agentx: agentxOk ? 'ok' : 'fail',\n    ollama_99: o99Ok ? 'ok' : 'fail',\n    ollama_12: o12Ok ? 'ok' : 'fail'\n  },\n  scan: {\n    createScan: scanOk ? 'ok' : 'warn',\n    scanId: scanRes?.data?.scanId || scanRes?.data?.id || null\n  },\n  nas: {\n    testRootExistsAndScanned: findOk ? 'ok' : 'fail',\n    totalFiles\n  },\n  bulkInsert: {\n    status: bulkStatus,\n    detail: bulkDetail\n  },\n  notes: {\n    bulkInsertIsOptional: true,\n    ifBulkWarn: 'This is expected until DataAPI /api/v1/files/bulk exists or requires auth headers.'\n  }\n};\n\nreturn [{ json: report }];"
+      },
+      "id": "BuildReport",
+      "name": "Build PASS/FAIL Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [560, 260]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://192.168.2.33:3003/integrations/events/n8n",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"workflow_id\": \"SBQC-TEST-PACK\",\n  \"event_type\": \"test_pack\",\n  \"data\": $json\n}",
+        "options": { "timeout": 15000 }
+      },
+      "id": "LogToSink",
+      "name": "Log Report to DataAPI Sink",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [800, 260],
+      "continueOnFail": true
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [[{ "node": "Set Config", "type": "main", "index": 0 }]]
+    },
+    "Set Config": {
+      "main": [
+        [
+          { "node": "Probe - DataAPI /health", "type": "main", "index": 0 },
+          { "node": "Probe - AgentX /health", "type": "main", "index": 0 },
+          { "node": "Probe - Ollama99 /api/tags", "type": "main", "index": 0 },
+          { "node": "Probe - Ollama12 /api/tags", "type": "main", "index": 0 },
+          { "node": "Create Scan Record (DataAPI)", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Create Scan Record (DataAPI)": {
+      "main": [[{ "node": "Execute: find test files", "type": "main", "index": 0 }]]
+    },
+    "Execute: find test files": {
+      "main": [[{ "node": "Parse + Batch (testRoot)", "type": "main", "index": 0 }]]
+    },
+    "Parse + Batch (testRoot)": {
+      "main": [[{ "node": "IF tryBulkInsert", "type": "main", "index": 0 }]]
+    },
+    "IF tryBulkInsert": {
+      "main": [
+        [[{ "node": "POST /api/v1/files/bulk (test batch)", "type": "main", "index": 0 }]],
+        [[{ "node": "Build PASS/FAIL Report", "type": "main", "index": 0 }]]
+      ]
+    },
+    "POST /api/v1/files/bulk (test batch)": {
+      "main": [[{ "node": "Build PASS/FAIL Report", "type": "main", "index": 0 }]]
+    },
+    "Probe - DataAPI /health": {
+      "main": [[{ "node": "Build PASS/FAIL Report", "type": "main", "index": 0 }]]
+    },
+    "Probe - AgentX /health": {
+      "main": [[{ "node": "Build PASS/FAIL Report", "type": "main", "index": 0 }]]
+    },
+    "Probe - Ollama99 /api/tags": {
+      "main": [[{ "node": "Build PASS/FAIL Report", "type": "main", "index": 0 }]]
+    },
+    "Probe - Ollama12 /api/tags": {
+      "main": [[{ "node": "Build PASS/FAIL Report", "type": "main", "index": 0 }]]
+    },
+    "Build PASS/FAIL Report": {
+      "main": [[{ "node": "Log Report to DataAPI Sink", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionTimeout": 600,
+    "timezone": "America/Toronto",
+    "saveExecutionProgress": true
+  },
+  "versionId": "1"
+}

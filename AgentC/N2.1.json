@@ -1,0 +1,234 @@
+{
+  "name": "SBQC - N2.1 NAS File Scanner (Daily 2AM)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 2 * * *"
+            }
+          ]
+        }
+      },
+      "id": "Cron2am",
+      "name": "Schedule (Daily 2AM)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -820,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://192.168.2.33:3003/api/v1/storage/scan",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"roots\": [\"/mnt/media\", \"/mnt/datalake\"],\n  \"extensions\": [\"mp4\",\"mkv\",\"avi\",\"mov\",\"mp3\",\"flac\",\"wav\",\"jpg\",\"jpeg\",\"png\",\"gif\",\"webp\",\"pdf\",\"txt\",\"md\"],\n  \"metadata\": {\n    \"initiator\": \"n8n-daily-scan\",\n    \"purpose\": \"index-media-and-docs\",\n    \"host\": \"192.168.2.199\",\n    \"workflow\": \"SBQC-N2.1\"\n  }\n}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "CreateScan",
+      "name": "Create Scan Record (DataAPI)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -580,
+        0
+      ],
+      "continueOnFail": false
+    },
+    {
+      "parameters": {
+        "command": "bash",
+        "arguments": "-lc",
+        "input": "set -euo pipefail\n\n# Tune these roots if needed\nROOTS=(/mnt/media /mnt/datalake)\n\n# Find media + common doc types. Output: path|size|mtime_epoch\n# - %p = full path\n# - %s = size bytes\n# - %T@ = mtime epoch (float)\n\nfor root in \"${ROOTS[@]}\"; do\n  if [ -d \"$root\" ]; then\n    find \"$root\" -type f \\( \\\n      -iname \"*.mp4\" -o -iname \"*.mkv\" -o -iname \"*.avi\" -o -iname \"*.mov\" -o \\\n      -iname \"*.mp3\" -o -iname \"*.flac\" -o -iname \"*.wav\" -o \\\n      -iname \"*.jpg\" -o -iname \"*.jpeg\" -o -iname \"*.png\" -o -iname \"*.gif\" -o -iname \"*.webp\" -o \\\n      -iname \"*.pdf\" -o -iname \"*.txt\" -o -iname \"*.md\" \\\n    \\) -printf \"%p|%s|%T@\\n\"\n  else\n    echo \"WARN|missing_root|$root|0\" >&2\n  fi\ndone",
+        "options": {
+          "timeout": 3600
+        }
+      },
+      "id": "FindFiles",
+      "name": "Execute: find files",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        -340,
+        0
+      ],
+      "continueOnFail": false
+    },
+    {
+      "parameters": {
+        "jsCode": "const stdout = $input.first().json.stdout || '';\nconst lines = stdout.split('\\n').map(l => l.trim()).filter(Boolean);\n\n// Convert find output lines: path|size|mtime\nconst files = [];\nfor (const line of lines) {\n  const parts = line.split('|');\n  if (parts.length < 3) continue;\n  const path = parts[0];\n  const size = Number(parts[1]);\n  const mtime = Number(parts[2]);\n\n  if (!path || !Number.isFinite(size) || !Number.isFinite(mtime)) continue;\n\n  const segs = path.split('/');\n  const filename = segs.pop() || '';\n  const dirname = segs.join('/') || '';\n  const dot = filename.lastIndexOf('.');\n  const extension = dot >= 0 ? filename.slice(dot + 1).toLowerCase() : '';\n\n  files.push({\n    path,\n    size,\n    modified: new Date(mtime * 1000).toISOString(),\n    dirname,\n    filename,\n    extension\n  });\n}\n\n// Batch into 100\nconst batches = [];\nfor (let i = 0; i < files.length; i += 100) {\n  batches.push(files.slice(i, i + 100));\n}\n\nreturn batches.map((batch, idx) => ({\n  json: {\n    batchIndex: idx,\n    batchSize: batch.length,\n    files: batch\n  }\n}));"
+      },
+      "id": "BatchFiles",
+      "name": "Parse + Batch (100)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -90,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{'http://192.168.2.33:3003/api/v1/storage/scan/' + ($('Create Scan Record (DataAPI)').first().json.data?.scan_id || $('Create Scan Record (DataAPI)').first().json.data?.id || $('Create Scan Record (DataAPI)').first().json.scan_id) + '/batch'}}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"files\": $json.files,\n  \"meta\": {\n    \"source\": \"n8n\",\n    \"workflow\": \"SBQC-N2.1\",\n    \"batchIndex\": $json.batchIndex,\n    \"batchSize\": $json.batchSize\n  }\n}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "PostBulk",
+      "name": "POST Batch to DataAPI /storage/scan/:id/batch",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        160,
+        0
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const scanId = $('Create Scan Record (DataAPI)').first().json.data?.scanId\n  || $('Create Scan Record (DataAPI)').first().json.data?.id\n  || $('Create Scan Record (DataAPI)').first().json.scanId\n  || null;\n\nreturn [{\n  json: {\n    scanId,\n    totalBatches: $items('Parse + Batch (100)').length,\n    totalFiles: $items('Parse + Batch (100)').reduce((sum, it) => sum + (it.json.batchSize || 0), 0),\n    finishedAt: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "Summarize",
+      "name": "Summarize Run",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        420,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://192.168.2.33:3003/integrations/events/n8n",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"workflow_id\": \"SBQC-N2.1-nas-scan\",\n  \"event_type\": \"scan_complete\",\n  \"data\": $json\n}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "LogScanComplete",
+      "name": "Log scan_complete to DataAPI sink",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        670,
+        0
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{'http://192.168.2.33:3003/api/v1/storage/scan/' + ($json.scanId || '')}}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"status\": \"completed\"\n}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "MarkCompleted",
+      "name": "Mark Scan Completed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        670,
+        140
+      ],
+      "continueOnFail": true
+    }
+  ],
+  "connections": {
+    "Schedule (Daily 2AM)": {
+      "main": [
+        [
+          {
+            "node": "Create Scan Record (DataAPI)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Scan Record (DataAPI)": {
+      "main": [
+        [
+          {
+            "node": "Execute: find files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute: find files": {
+      "main": [
+        [
+          {
+            "node": "Parse + Batch (100)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse + Batch (100)": {
+      "main": [
+        [
+          {
+            "node": "POST Batch to DataAPI /storage/scan/:id/batch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST Batch to DataAPI /storage/scan/:id/batch": {
+      "main": [
+        [
+          {
+            "node": "Summarize Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summarize Run": {
+      "main": [
+        [
+          {
+            "node": "Log scan_complete to DataAPI sink",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Mark Scan Completed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionTimeout": 7200,
+    "timezone": "America/Toronto",
+    "saveExecutionProgress": true
+  },
+  "versionId": "1"
+}

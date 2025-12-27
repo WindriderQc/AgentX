@@ -1,0 +1,292 @@
+{
+  "name": "SBQC - N1.3 Ops AI Diagnostic (Webhook)",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "sbqc-ops-diagnostic",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "WebhookTrigger",
+      "name": "Webhook (Ops Diagnostic)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -700,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://192.168.2.33:3003/health",
+        "options": {
+          "timeout": 5000,
+          "fullResponse": false
+        }
+      },
+      "id": "DataAPIHealth",
+      "name": "Probe - DataAPI /health",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -440,
+        -180
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "http://192.168.2.33:3080/health",
+        "options": {
+          "timeout": 5000,
+          "fullResponse": false
+        }
+      },
+      "id": "AgentXHealth",
+      "name": "Probe - AgentX /health",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -440,
+        -60
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "http://192.168.2.99:11434/api/tags",
+        "options": {
+          "timeout": 5000,
+          "fullResponse": false
+        }
+      },
+      "id": "Ollama99",
+      "name": "Probe - Ollama99 /api/tags",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -440,
+        60
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "http://192.168.2.12:11434/api/tags",
+        "options": {
+          "timeout": 5000,
+          "fullResponse": false
+        }
+      },
+      "id": "Ollama12",
+      "name": "Probe - Ollama12 /api/tags",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -440,
+        180
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "id": "MergeAll",
+      "name": "Merge Probes",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        -200,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "function safeGet(nodeName) {\n  try {\n    const it = $items(nodeName);\n    return it && it[0] ? it[0].json : null;\n  } catch (e) {\n    return null;\n  }\n}\n\nfunction isOk(obj, okPred) {\n  if (!obj || typeof obj !== 'object') return false;\n  if (obj.error) return false;\n  return okPred(obj);\n}\n\nconst incoming = $input.first().json || {};\n\nconst dataapi = safeGet('Probe - DataAPI /health');\nconst agentx  = safeGet('Probe - AgentX /health');\nconst o99     = safeGet('Probe - Ollama99 /api/tags');\nconst o12     = safeGet('Probe - Ollama12 /api/tags');\n\nconst dataapiOk = isOk(dataapi, (x) => x.status === 'ok' || x.status === 'success' || x.ok === true);\nconst agentxOk  = isOk(agentx,  (x) => x.status === 'ok' || x.status === 'success' || x.ok === true);\nconst o99Ok     = isOk(o99,     (x) => Array.isArray(x.models) || typeof x.models === 'object');\nconst o12Ok     = isOk(o12,     (x) => Array.isArray(x.models) || typeof x.models === 'object');\n\nconst snapshot = {\n  timestamp: new Date().toISOString(),\n  overall: (dataapiOk && agentxOk && o99Ok && o12Ok) ? 'healthy' : 'degraded',\n  incoming, // whatever the webhook caller sent\n  components: {\n    dataapi: {\n      status: dataapiOk ? 'ok' : 'error',\n      detail: dataapiOk ? dataapi : (dataapi && dataapi.error ? dataapi.error : dataapi)\n    },\n    agentx: {\n      status: agentxOk ? 'ok' : 'error',\n      detail: agentxOk ? agentx : (agentx && agentx.error ? agentx.error : agentx)\n    },\n    ollama_99: {\n      status: o99Ok ? 'ok' : 'error',\n      modelsCount: o99Ok && Array.isArray(o99.models) ? o99.models.length : undefined,\n      detail: o99Ok ? { models: o99.models } : (o99 && o99.error ? o99.error : o99)\n    },\n    ollama_12: {\n      status: o12Ok ? 'ok' : 'error',\n      modelsCount: o12Ok && Array.isArray(o12.models) ? o12.models.length : undefined,\n      detail: o12Ok ? { models: o12.models } : (o12 && o12.error ? o12.error : o12)\n    }\n  }\n};\n\n// This is what we’ll pass into AgentX as context\nreturn [{ json: { snapshot } }];"
+      },
+      "id": "BuildSnapshot",
+      "name": "Build Snapshot",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        40,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://192.168.2.33:3080/api/chat",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"qwen2.5:7b\",\n  \"target\": \"192.168.2.99:11434\",\n  \"persona\": \"sbqc_ops\",\n  \"message\": \"You are SBQC Ops. Analyze this live system snapshot, identify likely root causes, and propose concrete next actions.\\n\\nRules:\\n- Be short, structured, and actionable.\\n- If degraded: name the failing component(s), give top 3 hypotheses, and a step-by-step fix plan.\\n- If healthy: still flag any risk signals (latency, model list empty, etc.).\\n\\nSnapshot JSON:\\n\" + JSON.stringify($json.snapshot, null, 2)\n}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "CallAgentXChat",
+      "name": "AgentX Chat (sbqc_ops)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        0
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const snap = $items('Build Snapshot')[0].json.snapshot;\nconst ai = $input.first().json;\n\n// If AgentX call failed, normalize the error\nlet ok = true;\nlet payload = ai;\n\nif (ai && ai.error) {\n  ok = false;\n  payload = { error: ai.error };\n}\n\nreturn [{\n  json: {\n    status: ok ? 'success' : 'error',\n    snapshot: snap,\n    agentx: payload\n  }\n}];"
+      },
+      "id": "NormalizeResponse",
+      "name": "Normalize Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        540,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{$json}}",
+        "options": {}
+      },
+      "id": "RespondWebhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        780,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook (Ops Diagnostic)": {
+      "main": [
+        [
+          {
+            "node": "Probe - DataAPI /health",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Probe - AgentX /health",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Probe - Ollama99 /api/tags",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Probe - Ollama12 /api/tags",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Probe - DataAPI /health": {
+      "main": [
+        [
+          {
+            "node": "Merge Probes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Probe - AgentX /health": {
+      "main": [
+        [
+          {
+            "node": "Merge Probes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Probe - Ollama99 /api/tags": {
+      "main": [
+        [
+          {
+            "node": "Merge Probes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Probe - Ollama12 /api/tags": {
+      "main": [
+        [
+          {
+            "node": "Merge Probes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Probes": {
+      "main": [
+        [
+          {
+            "node": "Build Snapshot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Snapshot": {
+      "main": [
+        [
+          {
+            "node": "AgentX Chat (sbqc_ops)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AgentX Chat (sbqc_ops)": {
+      "main": [
+        [
+          {
+            "node": "Normalize Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionTimeout": 180,
+    "timezone": "America/Toronto",
+    "saveExecutionProgress": true
+  },
+  "versionId": "1"
+}
