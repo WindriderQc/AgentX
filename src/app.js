@@ -32,7 +32,7 @@ app.use((req, res, next) => {
 });
 
 // Middleware Setup
-const allowedOrigins = process.env.CORS_ORIGINS 
+const allowedOrigins = process.env.CORS_ORIGINS
   ? process.env.CORS_ORIGINS.split(',').map(o => o.trim())
   : IN_PROD ? ['http://localhost:3080'] : true;
 
@@ -48,10 +48,10 @@ app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 app.use(mongoSanitize({
   replaceWith: '_',
   onSanitize: ({ req, key }) => {
-    logger.warn('Sanitized malicious input', { 
-      ip: req.ip, 
+    logger.warn('Sanitized malicious input', {
+      ip: req.ip,
       key,
-      path: req.path 
+      path: req.path
     });
   }
 }));
@@ -135,8 +135,6 @@ app.use('/api/profile', profileRoutes);
 const historyRoutes = require('../routes/history');
 app.use('/api/history', historyRoutes);
 
-const dataapiRoutes = require('../routes/dataapi');
-app.use('/api/dataapi', dataapiRoutes);
 
 // Voice routes (STT, TTS, voice chat)
 const voiceRoutes = require('../routes/voice');
@@ -159,16 +157,6 @@ app.use('/api/conversations', historyRoutes);
 // The historyRoutes already has /:id for GET /api/history/:id
 // The legacy route is /api/conversations/:id -> historyRoutes handles this fine.
 
-// Proxy /api/v1 to DataAPI (localhost:3003)
-app.use('/api/v1', (req, res, next) => {
-  if (process.env.DATAAPI_API_KEY) {
-    req.headers['x-api-key'] = process.env.DATAAPI_API_KEY;
-  }
-  next();
-}, createProxyMiddleware({
-  target: process.env.DATAAPI_BASE_URL ? `${process.env.DATAAPI_BASE_URL}/api/v1` : 'http://localhost:3003/api/v1',
-  changeOrigin: true
-}));
 
 // Mount Main API routes (Chat, Feedback, Ollama)
 // This is still 'api.js' but stripped of other concerns
@@ -183,8 +171,8 @@ app.get('/health', (_req, res) => {
     status: isHealthy ? 'ok' : 'degraded',
     port: process.env.PORT || 3080,
     details: {
-        mongodb: systemHealth.mongodb.status,
-        ollama: systemHealth.ollama.status
+      mongodb: systemHealth.mongodb.status,
+      ollama: systemHealth.ollama.status
     }
   });
 });
@@ -209,7 +197,7 @@ app.get('/api/config', (_req, res) => {
 // External Health Check - Checks DataAPI and other Ollama hosts
 app.get('/api/health/external', async (_req, res) => {
   const fetch = require('node-fetch');
-  
+
   const targets = [
     { name: 'dataapi', url: 'http://192.168.2.33:3003/health' },
     { name: 'ollama99', url: 'http://192.168.2.99:11434/api/tags' },
