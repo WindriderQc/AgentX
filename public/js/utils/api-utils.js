@@ -39,7 +39,7 @@ export const getIssLocation = async () => {
   try {
     const response = await fetch(ISS_API_URL);
     if (!response.ok) {
-        throw new Error(`Network response was not ok: ${response.statusText}`);
+      throw new Error(`Network response was not ok: ${response.statusText}`);
     }
     const data = await response.json();
     return data;
@@ -55,12 +55,7 @@ export const getIssLocation = async () => {
  * @returns {Promise<any>} A promise that resolves with the response data.
  */
 export const get = async (url) => {
-  // Auto-prefix with /api/v1 if it looks like a DataAPI endpoint (starts with / and not /api)
-  // This is a heuristic to support legacy views moved to AgentX
   let targetUrl = url;
-  if (url.startsWith('/') && !url.startsWith('/api')) {
-    targetUrl = `/api/v1${url}`;
-  }
 
   try {
     const response = await fetch(targetUrl);
@@ -97,9 +92,9 @@ export const postData = async (url = '', data = '') => {
     });
 
     if (!response.ok) {
-        // Attempt to get more detailed error info from the body
-        const errorBody = await response.text();
-        throw new Error(`Request failed with status ${response.status}: ${errorBody}`);
+      // Attempt to get more detailed error info from the body
+      const errorBody = await response.text();
+      throw new Error(`Request failed with status ${response.status}: ${errorBody}`);
     }
 
     // Check if the response is JSON before trying to parse it

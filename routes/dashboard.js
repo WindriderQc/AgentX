@@ -17,9 +17,9 @@ async function checkUrl(url, options = {}) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
     try {
-        const response = await fetch(url, { 
+        const response = await fetch(url, {
             signal: controller.signal,
-            headers 
+            headers
         });
         clearTimeout(timeoutId);
         return { status: response.ok ? 'online' : 'error', code: response.status };
@@ -54,9 +54,6 @@ router.get('/health', async (req, res) => {
             host: OLLAMA_HOST_2,
             models: []
         },
-        dataapi: {
-            status: 'unknown'
-        },
         timestamp: new Date().toISOString()
     };
 
@@ -86,42 +83,11 @@ router.get('/health', async (req, res) => {
         })()
     ]);
 
-    // Check DataAPI aggregated health endpoint
-    try {
-        const healthUrl = `${DATAAPI_BASE_URL}/api/v1/system/health`;
-        const headers = DATAAPI_API_KEY ? { 'x-api-key': DATAAPI_API_KEY } : {};
-        
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000);
-        
-        const response = await fetch(healthUrl, { 
-            signal: controller.signal,
-            headers 
-        });
-        clearTimeout(timeoutId);
-        
-        if (response.ok) {
-            const data = await response.json();
-            status.dataapi = {
-                status: 'online',
-                version: data.data?.dataapi?.version,
-                mongodb: data.data?.mongodb?.status,
-                overall: data.data?.overall
-            };
-        } else {
-            status.dataapi.status = 'error';
-            status.dataapi.code = response.status;
-        }
-    } catch (err) {
-        status.dataapi.status = 'offline';
-        status.dataapi.error = err.message;
-    }
 
     // Calculate overall health
-    const allOnline = 
+    const allOnline =
         status.mongodb.status === 'connected' &&
-        (status.ollama_primary.status === 'online' || status.ollama_secondary.status === 'online') &&
-        status.dataapi.status === 'online';
+        (status.ollama_primary.status === 'online' || status.ollama_secondary.status === 'online');
 
     status.overall = allOnline ? 'healthy' : 'degraded';
 
@@ -129,6 +95,35 @@ router.get('/health', async (req, res) => {
         status: 'success',
         data: status
     });
+});
+
+/**
+ * GET /api/dashboard/stats
+ * Get basic statistics for AgentX database collections
+ */
+router.get('/stats', async (req, res) => {
+    try {
+        const db = mongoose.connection.db;
+        const collections = await db.listCollections().toArray();
+        const stats = await Promise.all(collections.map(async (col) => {
+            // Skip system collections or internal ones if needed
+            if (col.name.startsWith('system.')) return null;
+            const count = await db.collection(col.name).countDocuments();
+            return {
+                collection: col.name,
+                db: mongoose.connection.name,
+                count
+            };
+        }));
+
+        res.json({
+            status: 'success',
+            data: stats.filter(Boolean)
+        });
+    } catch (err) {
+        logger.error('Dashboard stats error', { error: err.message });
+        res.status(500).json({ status: 'error', message: err.message });
+    }
 });
 
 module.exports = router;

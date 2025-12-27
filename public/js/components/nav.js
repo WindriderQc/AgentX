@@ -10,7 +10,6 @@ export function injectNav(activePage = '') {
     const navItems = [
         { label: 'Chat', href: '/', id: 'chat' },
         { label: 'Analytics', href: '/analytics.html', id: 'analytics' },
-        { label: 'Data Tools', href: '/dataapi.html', id: 'dataapi' },
         { label: 'Dashboard', href: '/dashboard.html', id: 'dashboard' },
         { label: 'AI Control', href: '/ai-control.html', id: 'ai-control' }
     ];

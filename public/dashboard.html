@@ -1,264 +1,283 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AgentX • Dashboard</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css">
-  
-  <!-- Chart.js & Geo -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-geo"></script>
-  <script src="https://unpkg.com/topojson-client@3"></script>
-  <!-- FontAwesome for icons -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgentX • Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+
+    <!-- Chart.js & Geo -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-geo"></script>
+    <script src="https://unpkg.com/topojson-client@3"></script>
+    <!-- FontAwesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
+
 <body>
-  <div class="bg-grid"></div>
-  <div class="page dashboard-page">
-    <header class="hero">
-      <div class="hero-content">
-        <div class="hero-top">
-          <div>
-            <div class="eyebrow">GraphysX • Visualization</div>
-            <h1>DataAPI Dashboard</h1>
-            <p class="lede">
-              Live event feed and geospatial visualization of logs.
-            </p>
-          </div>
-          <div class="hero-actions">
-            <nav class="agentx-nav"></nav>
-          </div>
-        </div>
-      </div>
-    </header>
-
-    <main class="layout dashboard-layout">
-        <!-- Sidebar: Health & Collections -->
-        <aside class="panel sidebar-panel">
-            <div class="panel-head">
-                <h2>System Health</h2>
-            </div>
-            <div id="health-container" class="p-3">
-                <div class="health-item" id="health-dataapi">
-                    <span>DataAPI</span>
-                    <span class="status-dot status-unknown"></span>
-                </div>
-                <div class="health-item" id="health-agentx">
-                    <span>AgentX</span>
-                    <span class="status-dot status-unknown"></span>
-                </div>
-                <div class="health-item" id="health-ollama99">
-                    <span>Ollama (99)</span>
-                    <span class="status-dot status-unknown"></span>
-                </div>
-                <div class="health-item" id="health-ollama12">
-                    <span>Ollama (12)</span>
-                    <span class="status-dot status-unknown"></span>
+    <div class="bg-grid"></div>
+    <div class="page dashboard-page">
+        <header class="hero">
+            <div class="hero-content">
+                <div class="hero-top">
+                    <div>
+                        <div class="eyebrow">AgentX • Visualization</div>
+                        <h1>AgentX Dashboard</h1>
+                        <p class="lede">
+                            Live event feed and geospatial visualization of logs.
+                        </p>
+                    </div>
+                    <div class="hero-actions">
+                        <nav class="agentx-nav"></nav>
+                    </div>
                 </div>
             </div>
+        </header>
 
-            <div class="panel-head mt-4">
-                <h2>Collections</h2>
-            </div>
-            <div id="card-scroll-container" class="scroll-container">
-                <div class="text-center text-muted p-3">Loading stats...</div>
-            </div>
-        </aside>
-
-        <!-- Main Map -->
-        <section class="panel map-panel">
-            <div class="panel-head">
-                <div>
-                    <p class="eyebrow">Geospatial</p>
-                    <h2>World Map <span id="worldMapTitle" style="color: var(--accent);"></span></h2>
+        <main class="layout dashboard-layout">
+            <!-- Sidebar: Health & Collections -->
+            <aside class="panel sidebar-panel">
+                <div class="panel-head">
+                    <h2>System Health</h2>
                 </div>
-                <div class="controls">
-                    <label class="switch">
-                        <input type="checkbox" id="toggleMapDataFeed">
-                        <span class="slider"></span>
-                    </label>
-                    <span class="label">Show Data Feed</span>
+                <div id="health-container" class="p-3">
+                    <div class="health-item" id="health-agentx">
+                        <span>AgentX</span>
+                        <span class="status-dot status-unknown"></span>
+                    </div>
+                    <div class="health-item" id="health-ollama99">
+                        <span>Ollama (99)</span>
+                        <span class="status-dot status-unknown"></span>
+                    </div>
+                    <div class="health-item" id="health-ollama12">
+                        <span>Ollama (12)</span>
+                        <span class="status-dot status-unknown"></span>
+                    </div>
                 </div>
-            </div>
-            
-            <div class="map-container">
-                <canvas id="worldMap"></canvas>
-            </div>
-            
-            <div id="mapDataFeedCard" style="display: none; margin-top: 20px;">
-                <div class="log-window" id="mapDataFeed" style="height: 200px;"></div>
-            </div>
-        </section>
 
-        <!-- Live Feed -->
-        <section class="panel feed-panel">
-            <div class="panel-head">
-                <div>
-                    <p class="eyebrow">Real-time</p>
-                    <h2>Live Event Feed</h2>
+                <div class="panel-head mt-4">
+                    <h2>Collections</h2>
                 </div>
-            </div>
-            <div class="feed-scroll-container">
-                <table class="feed-table">
-                    <tbody>
-                        <tr class="no-items-row"><td colspan="3" style="text-align: center; color: var(--muted); padding: 20px;">Waiting for events...</td></tr>
-                    </tbody>
-                </table>
-            </div>
-        </section>
-    </main>
-  </div>
+                <div id="card-scroll-container" class="scroll-container">
+                    <div class="text-center text-muted p-3">Loading stats...</div>
+                </div>
+            </aside>
 
-  <style>
-      .dashboard-layout {
-          display: grid;
-          grid-template-columns: 280px 1fr;
-          grid-template-rows: auto auto;
-          gap: 20px;
-      }
-      .feed-panel {
-          grid-column: 1 / -1;
-      }
+            <!-- AgentX Content Placeholder -->
+            <section class="panel main-panel">
+                <div class="panel-head">
+                    <div>
+                        <p class="eyebrow">Overview</p>
+                        <h2>AgentX Operations</h2>
+                    </div>
+                </div>
+                <div class="p-4 text-center text-muted">
+                    <p>Welcome to the consolidated AgentX Dashboard.</p>
+                    <p>Use the sidebar to monitor system health and database collections.</p>
+                </div>
+            </section>
+        </main>
+    </div>
 
-      .scroll-container {
-          max-height: 600px;
-          overflow-y: auto;
-      }
+    <style>
+        .dashboard-layout {
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            grid-template-rows: auto auto;
+            gap: 20px;
+        }
 
-      .summary-card {
-          background: rgba(255,255,255,0.03);
-          border: 1px solid var(--panel-border);
-          border-radius: 8px;
-          padding: 12px;
-          margin-bottom: 8px;
-          cursor: pointer;
-          transition: background 0.2s;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-      }
-      .summary-card:hover { background: rgba(255,255,255,0.08); }
-      .summary-card.selected {
-          background: rgba(124, 240, 255, 0.1);
-          border-color: var(--accent);
-      }
+        .feed-panel {
+            grid-column: 1 / -1;
+        }
 
-      /* Health Styles */
-      .health-item {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 8px 0;
-          border-bottom: 1px solid rgba(255,255,255,0.05);
-          font-size: 14px;
-      }
-      .health-item:last-child { border-bottom: none; }
-      .status-dot {
-          width: 10px;
-          height: 10px;
-          border-radius: 50%;
-          display: inline-block;
-      }
-      .status-online { background: #4ade80; box-shadow: 0 0 8px #4ade80; }
-      .status-offline { background: #f87171; box-shadow: 0 0 8px #f87171; }
-      .status-unknown { background: #94a3b8; }
-      .mt-4 { margin-top: 1.5rem; }
+        .scroll-container {
+            max-height: 600px;
+            overflow-y: auto;
+        }
 
-      .badge {
-          background: var(--accent);
-          color: #0f172a;
-          padding: 2px 8px;
-          border-radius: 99px;
-          font-size: 11px;
-          font-weight: 700;
-      }
+        .summary-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--panel-border);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
 
-      .map-container {
-          height: 500px;
-          position: relative;
-      }
+        .summary-card:hover {
+            background: rgba(255, 255, 255, 0.08);
+        }
 
-      .feed-table { width: 100%; border-collapse: collapse; }
-      .feed-table td {
-          padding: 10px;
-          border-bottom: 1px solid var(--panel-border);
-          color: var(--text);
-          font-size: 13px;
-      }
-      .feed-table i { margin-right: 8px; }
-      .text-info { color: #38bdf8; }
-      .text-warning { color: #facc15; }
-      .text-danger { color: #f87171; }
-      .text-success { color: #4ade80; }
-      .text-primary { color: #818cf8; }
+        .summary-card.selected {
+            background: rgba(124, 240, 255, 0.1);
+            border-color: var(--accent);
+        }
 
-      @media (max-width: 900px) {
-          .dashboard-layout { grid-template-columns: 1fr; }
-      }
-  </style>
+        /* Health Styles */
+        .health-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            font-size: 14px;
+        }
 
-  <!-- Scripts: Loaded as modules to allow imports -->
-  <script type="module" src="/js/dashboard.js"></script>
+        .health-item:last-child {
+            border-bottom: none;
+        }
 
-  <!-- Init Script -->
-  <script type="module">
-      import { API } from '/js/utils/index.js';
-      import { injectNav } from '/js/components/nav.js';
-      
-      injectNav('dashboard');
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+        }
 
-      async function loadStats() {
-          const container = document.getElementById('card-scroll-container');
-          try {
-              // AgentX API might not expose raw stats for all collections, defaulting to a known one
-              // Or use DataAPI proxy if available
-              const response = await API.get('/stats');
-              const stats = response.data;
-              
-              if (!stats || stats.length === 0) {
-                  container.innerHTML = '<div class="text-center text-muted p-3">No collections found.</div>';
-                  return;
-              }
+        .status-online {
+            background: #4ade80;
+            box-shadow: 0 0 8px #4ade80;
+        }
 
-              container.innerHTML = '';
+        .status-offline {
+            background: #f87171;
+            box-shadow: 0 0 8px #f87171;
+        }
 
-              stats.forEach(stat => {
-                  const card = document.createElement('div');
-                  card.className = 'summary-card';
-                  card.setAttribute('data-collection', stat.collection);
+        .status-unknown {
+            background: #94a3b8;
+        }
 
-                  if (stat.collection === 'userLogs') {
-                      card.classList.add('selected');
-                  }
-                  
-                  card.innerHTML = `
+        .mt-4 {
+            margin-top: 1.5rem;
+        }
+
+        .badge {
+            background: var(--accent);
+            color: #0f172a;
+            padding: 2px 8px;
+            border-radius: 99px;
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        .map-container {
+            height: 500px;
+            position: relative;
+        }
+
+        .feed-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .feed-table td {
+            padding: 10px;
+            border-bottom: 1px solid var(--panel-border);
+            color: var(--text);
+            font-size: 13px;
+        }
+
+        .feed-table i {
+            margin-right: 8px;
+        }
+
+        .text-info {
+            color: #38bdf8;
+        }
+
+        .text-warning {
+            color: #facc15;
+        }
+
+        .text-danger {
+            color: #f87171;
+        }
+
+        .text-success {
+            color: #4ade80;
+        }
+
+        .text-primary {
+            color: #818cf8;
+        }
+
+        @media (max-width: 900px) {
+            .dashboard-layout {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+
+    <!-- Scripts: Loaded as modules to allow imports -->
+    <script type="module" src="/js/dashboard.js"></script>
+
+    <!-- Init Script -->
+    <script type="module">
+        import { API } from '/js/utils/index.js';
+        import { injectNav } from '/js/components/nav.js';
+
+        injectNav('dashboard');
+
+        async function loadStats() {
+            const container = document.getElementById('card-scroll-container');
+            try {
+                // AgentX API might not expose raw stats for all collections, defaulting to a known one
+                // Or use DataAPI proxy if available
+                const response = await API.get('/api/dashboard/stats');
+                const stats = response.data;
+
+                if (!stats || stats.length === 0) {
+                    container.innerHTML = '<div class="text-center text-muted p-3">No collections found.</div>';
+                    return;
+                }
+
+                container.innerHTML = '';
+
+                stats.forEach(stat => {
+                    const card = document.createElement('div');
+                    card.className = 'summary-card';
+                    card.setAttribute('data-collection', stat.collection);
+
+                    if (stat.collection === 'userLogs') {
+                        card.classList.add('selected');
+                    }
+
+                    card.innerHTML = `
                       <div>
                           <div style="font-weight:600;">${stat.collection}</div>
                           <div style="font-size:11px; color:var(--muted);">${stat.db}</div>
                       </div>
                       <span class="badge">${stat.count}</span>
                   `;
-                  
-                  container.appendChild(card);
-              });
 
-              // dashboard.js exposes this on window
-              if (window.setupDashboardInteractions) {
-                  window.setupDashboardInteractions();
-              }
+                    container.appendChild(card);
+                });
 
-          } catch (error) {
-              console.error('Failed to load stats:', error);
-              // Fallback UI
-              container.innerHTML = '<div style="padding:10px; color:var(--muted);">Failed to load stats.<br><small>DataAPI connectivity issue.</small></div>';
-          }
-      }
+                // dashboard.js exposes this on window
+                if (window.setupDashboardInteractions) {
+                    window.setupDashboardInteractions();
+                }
 
-      loadStats();
-  </script>
+            } catch (error) {
+                console.error('Failed to load stats:', error);
+                // Fallback UI
+                container.innerHTML = '<div style="padding:10px; color:var(--muted);">Failed to load stats.<br><small>Backend connectivity issue.</small></div>';
+            }
+        }
+
+        loadStats();
+    </script>
 </body>
+
 </html>
