@@ -206,6 +206,30 @@ app.get('/api/config', (_req, res) => {
   });
 });
 
+// External Health Check - Checks DataAPI and other Ollama hosts
+app.get('/api/health/external', async (_req, res) => {
+  const fetch = require('node-fetch');
+  
+  const targets = [
+    { name: 'dataapi', url: 'http://192.168.2.33:3003/health' },
+    { name: 'ollama99', url: 'http://192.168.2.99:11434/api/tags' },
+    { name: 'ollama12', url: 'http://192.168.2.12:11434/api/tags' }
+  ];
+
+  const results = {};
+
+  await Promise.all(targets.map(async (target) => {
+    try {
+      const response = await fetch(target.url, { timeout: 3000 });
+      results[target.name] = response.ok ? 'online' : 'offline';
+    } catch (err) {
+      results[target.name] = 'offline';
+    }
+  }));
+
+  res.json(results);
+});
+
 // Error logging middleware (must be after routes)
 app.use(errorLogger);
 
