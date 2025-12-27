@@ -1,0 +1,138 @@
+{
+  "name": "SBQC - N2.2 File Hash Enrichment",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "sbqc-n2-2-hash-enrichment",
+        "options": {}
+      },
+      "id": "WebhookTrigger",
+      "name": "Webhook (Scan Complete)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -400,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{'http://192.168.2.33:3003/api/v1/files/browse?scan_id=' + $json.scan_id + '&hasHash=false&limit=500'}}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "GetUnhashedFiles",
+      "name": "Get Unhashed Files (DataAPI)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -150,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "data.files",
+        "options": {}
+      },
+      "id": "SplitFiles",
+      "name": "Split Into Items",
+      "type": "n8n-nodes-base.itemLists",
+      "typeVersion": 3,
+      "position": [
+        100,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "command": "={{'sha256sum \"' + $json.path + '\" | cut -d\" \" -f1'}}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "ComputeHash",
+      "name": "SSH: Compute Hash",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        350,
+        0
+      ],
+      "notesInFlow": true,
+      "notes": "Assumes n8n has SSH access or local mount access to the same paths"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{'http://192.168.2.33:3003/api/v1/files/' + $json._id}}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"sha256\": \"={{$node[\"SSH: Compute Hash\"].json.stdout.trim()}}\"\n}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "UpdateFile",
+      "name": "Update File (DataAPI)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        600,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "WebhookTrigger": {
+      "main": [
+        [
+          {
+            "node": "GetUnhashedFiles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GetUnhashedFiles": {
+      "main": [
+        [
+          {
+            "node": "SplitFiles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SplitFiles": {
+      "main": [
+        [
+          {
+            "node": "ComputeHash",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ComputeHash": {
+      "main": [
+        [
+          {
+            "node": "UpdateFile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionTimeout": 3600
+  },
+  "versionId": "1"
+}

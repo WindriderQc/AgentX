@@ -1,0 +1,146 @@
+{
+  "name": "SBQC - N3.1 Model Health & Latency Monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutes": 10
+            }
+          ]
+        }
+      },
+      "id": "ScheduleTrigger",
+      "name": "Schedule (10 min)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -400,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://192.168.2.99:11434/api/tags",
+        "options": {
+          "timeout": 5000,
+          "fullResponse": true
+        }
+      },
+      "id": "PingUGFrank",
+      "name": "Ping UGFrank (99)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -150,
+        -100
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "http://192.168.2.12:11434/api/tags",
+        "options": {
+          "timeout": 5000,
+          "fullResponse": true
+        }
+      },
+      "id": "PingUGBrutal",
+      "name": "Ping UGBrutal (12)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -150,
+        100
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const frank = $node[\"Ping UGFrank (99)\"].json;\nconst brutal = $node[\"Ping UGBrutal (12)\"].json;\n\nreturn [{\n  json: {\n    timestamp: new Date().toISOString(),\n    hosts: [\n      {\n        name: \"UGFrank\",\n        ip: \"192.168.2.99\",\n        status: frank.statusCode === 200 ? \"online\" : \"offline\",\n        latency: frank.headers?.['x-runtime'] || \"unknown\",\n        models: frank.body?.models?.length || 0\n      },\n      {\n        name: \"UGBrutal\",\n        ip: \"192.168.2.12\",\n        status: brutal.statusCode === 200 ? \"online\" : \"offline\",\n        latency: brutal.headers?.['x-runtime'] || \"unknown\",\n        models: brutal.body?.models?.length || 0\n      }\n    ]\n  }\n}];"
+      },
+      "id": "FormatResults",
+      "name": "Format Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        100,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://192.168.2.33:3003/integrations/events/n8n",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"workflow_id\": \"SBQC-N3.1-model-monitor\",\n  \"event_type\": \"model_health_update\",\n  \"data\": $json\n}",
+        "options": {}
+      },
+      "id": "LogToDataAPI",
+      "name": "Log to DataAPI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        350,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "ScheduleTrigger": {
+      "main": [
+        [
+          {
+            "node": "PingUGFrank",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "PingUGBrutal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PingUGFrank": {
+      "main": [
+        [
+          {
+            "node": "FormatResults",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PingUGBrutal": {
+      "main": [
+        [
+          {
+            "node": "FormatResults",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FormatResults": {
+      "main": [
+        [
+          {
+            "node": "LogToDataAPI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {},
+  "versionId": "1"
+}
