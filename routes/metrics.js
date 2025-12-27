@@ -8,7 +8,7 @@
 const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
-const { requireAuth } = require('../src/middleware/auth');
+const { optionalAuth } = require('../src/middleware/auth');
 const { getEmbeddingsService } = require('../src/services/embeddings');
 
 /**
@@ -16,11 +16,11 @@ const { getEmbeddingsService } = require('../src/services/embeddings');
  * Get embedding cache statistics
  * Requires authentication
  */
-router.get('/cache', requireAuth, (req, res) => {
+router.get('/cache', optionalAuth, (req, res) => {
   try {
     const embeddingsService = getEmbeddingsService();
     const cacheStats = embeddingsService.getCacheStats();
-    
+
     res.json({
       status: 'success',
       data: {
@@ -42,11 +42,11 @@ router.get('/cache', requireAuth, (req, res) => {
  * Clear embedding cache
  * Requires authentication (admin only recommended)
  */
-router.post('/cache/clear', requireAuth, (req, res) => {
+router.post('/cache/clear', optionalAuth, (req, res) => {
   try {
     const embeddingsService = getEmbeddingsService();
     embeddingsService.clearCache();
-    
+
     res.json({
       status: 'success',
       message: 'Cache cleared successfully'
@@ -65,17 +65,17 @@ router.post('/cache/clear', requireAuth, (req, res) => {
  * Get MongoDB statistics
  * Requires authentication
  */
-router.get('/database', requireAuth, async (req, res) => {
+router.get('/database', optionalAuth, async (req, res) => {
   try {
     const db = mongoose.connection.db;
-    
+
     // Get database stats
     const dbStats = await db.stats();
-    
+
     // Get collection stats
     const collections = await db.listCollections().toArray();
     const collectionStats = {};
-    
+
     for (const collection of collections) {
       const stats = await db.collection(collection.name).stats();
       collectionStats[collection.name] = {
@@ -87,7 +87,7 @@ router.get('/database', requireAuth, async (req, res) => {
         totalIndexSize: stats.totalIndexSize
       };
     }
-    
+
     res.json({
       status: 'success',
       data: {
@@ -117,10 +117,10 @@ router.get('/database', requireAuth, async (req, res) => {
  * Get MongoDB connection pool statistics
  * Requires authentication
  */
-router.get('/connection', requireAuth, (req, res) => {
+router.get('/connection', optionalAuth, (req, res) => {
   try {
     const connection = mongoose.connection;
-    
+
     res.json({
       status: 'success',
       data: {
@@ -149,22 +149,22 @@ router.get('/connection', requireAuth, (req, res) => {
  * Get overall system metrics
  * Requires authentication
  */
-router.get('/system', requireAuth, async (req, res) => {
+router.get('/system', optionalAuth, async (req, res) => {
   try {
     const embeddingsService = getEmbeddingsService();
     const cacheStats = embeddingsService.getCacheStats();
-    
+
     const db = mongoose.connection.db;
     const dbStats = await db.stats();
-    
+
     const connection = mongoose.connection;
-    
+
     // Calculate uptime
     const uptime = process.uptime();
-    
+
     // Memory usage
     const memoryUsage = process.memoryUsage();
-    
+
     res.json({
       status: 'success',
       data: {
@@ -226,13 +226,13 @@ function formatUptime(seconds) {
   const hours = Math.floor((seconds % 86400) / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   const secs = Math.floor(seconds % 60);
-  
+
   const parts = [];
   if (days > 0) parts.push(`${days}d`);
   if (hours > 0) parts.push(`${hours}h`);
   if (minutes > 0) parts.push(`${minutes}m`);
   if (secs > 0) parts.push(`${secs}s`);
-  
+
   return parts.join(' ') || '0s';
 }
 
