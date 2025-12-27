@@ -294,6 +294,94 @@
     </div>
 
     <style>
+        /* Dashboard Layout */
+        .dashboard-layout {
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            gap: 20px;
+        }
+
+        .sidebar-panel {
+            position: sticky;
+            top: 20px;
+            align-self: start;
+        }
+
+        .scroll-container {
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .summary-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--panel-border);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .summary-card:hover {
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .summary-card.selected {
+            background: rgba(124, 240, 255, 0.1);
+            border-color: var(--accent);
+        }
+
+        /* Health Styles */
+        .health-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            font-size: 14px;
+        }
+
+        .health-item:last-child {
+            border-bottom: none;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .status-online {
+            background: #4ade80;
+            box-shadow: 0 0 8px #4ade80;
+        }
+
+        .status-offline {
+            background: #f87171;
+            box-shadow: 0 0 8px #f87171;
+        }
+
+        .status-unknown {
+            background: #94a3b8;
+        }
+
+        .mt-4 {
+            margin-top: 1.5rem;
+        }
+
+        .badge {
+            background: var(--accent);
+            color: #0f172a;
+            padding: 2px 8px;
+            border-radius: 99px;
+            font-size: 11px;
+            font-weight: 700;
+        }
+
         /* Tabs */
         .tabs-nav {
             display: flex;
