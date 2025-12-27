@@ -1,0 +1,298 @@
+{
+  "name": "SBQC - N1.1 System Health Check (5 min)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "ScheduleTrigger",
+      "name": "Schedule (Every 5 min)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -620,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://192.168.2.33:3003/health",
+        "options": {
+          "timeout": 5000,
+          "fullResponse": false
+        }
+      },
+      "id": "DataAPIHealth",
+      "name": "DataAPI Health",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -360,
+        -180
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "http://192.168.2.33:3080/health",
+        "options": {
+          "timeout": 5000,
+          "fullResponse": false
+        }
+      },
+      "id": "AgentXHealth",
+      "name": "AgentX Health",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -360,
+        -60
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "http://192.168.2.99:11434/api/tags",
+        "options": {
+          "timeout": 5000,
+          "fullResponse": false
+        }
+      },
+      "id": "Ollama99",
+      "name": "Ollama 99 Tags",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -360,
+        60
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "http://192.168.2.12:11434/api/tags",
+        "options": {
+          "timeout": 5000,
+          "fullResponse": false
+        }
+      },
+      "id": "Ollama12",
+      "name": "Ollama 12 Tags",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -360,
+        180
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "id": "MergeAll",
+      "name": "Merge All Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        -120,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "function isHttpOk(obj) {\n  if (!obj || typeof obj !== 'object') return false;\n  // n8n HTTP Request node (continueOnFail) often returns { error: {...} }\n  if (obj.error) return false;\n  return true;\n}\n\nfunction safeGet(nodeName) {\n  try {\n    const items = $items(nodeName);\n    return items && items[0] ? items[0].json : null;\n  } catch (e) {\n    return null;\n  }\n}\n\nconst dataapi = safeGet('DataAPI Health');\nconst agentx = safeGet('AgentX Health');\nconst ollama99 = safeGet('Ollama 99 Tags');\nconst ollama12 = safeGet('Ollama 12 Tags');\n\nconst dataapiOk = isHttpOk(dataapi) && (dataapi.status === 'ok' || dataapi.status === 'success' || dataapi.ok === true);\nconst agentxOk = isHttpOk(agentx) && (agentx.status === 'ok' || agentx.status === 'success' || agentx.ok === true);\nconst ollama99Ok = isHttpOk(ollama99) && (Array.isArray(ollama99.models) || typeof ollama99.models === 'object');\nconst ollama12Ok = isHttpOk(ollama12) && (Array.isArray(ollama12.models) || typeof ollama12.models === 'object');\n\nconst results = {\n  timestamp: new Date().toISOString(),\n  overall: (dataapiOk && agentxOk && ollama99Ok && ollama12Ok) ? 'healthy' : 'degraded',\n  alert: !(dataapiOk && agentxOk && ollama99Ok && ollama12Ok),\n  components: {\n    dataapi: {\n      status: dataapiOk ? 'ok' : 'error',\n      detail: dataapiOk ? dataapi : (dataapi && dataapi.error ? dataapi.error : dataapi)\n    },\n    agentx: {\n      status: agentxOk ? 'ok' : 'error',\n      detail: agentxOk ? agentx : (agentx && agentx.error ? agentx.error : agentx)\n    },\n    ollama_99: {\n      status: ollama99Ok ? 'ok' : 'error',\n      modelsCount: ollama99Ok && Array.isArray(ollama99.models) ? ollama99.models.length : undefined,\n      detail: ollama99Ok ? { models: ollama99.models } : (ollama99 && ollama99.error ? ollama99.error : ollama99)\n    },\n    ollama_12: {\n      status: ollama12Ok ? 'ok' : 'error',\n      modelsCount: ollama12Ok && Array.isArray(ollama12.models) ? ollama12.models.length : undefined,\n      detail: ollama12Ok ? { models: ollama12.models } : (ollama12 && ollama12.error ? ollama12.error : ollama12)\n    }\n  }\n};\n\nreturn [{ json: results }];"
+      },
+      "id": "Aggregate",
+      "name": "Aggregate Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        120,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.alert}}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "IFDegraded",
+      "name": "IF Degraded",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        360,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://192.168.2.33:3003/integrations/events/n8n",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"workflow_id\": \"SBQC-N1.1-health-check\",\n  \"event_type\": \"health_probe\",\n  \"data\": $json\n}",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "id": "LogToSink",
+      "name": "Log to DataAPI Sink",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        600,
+        -60
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "mode": "passThrough"
+      },
+      "id": "NoopOk",
+      "name": "Healthy (No-op)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        600,
+        80
+      ]
+    }
+  ],
+  "connections": {
+    "Schedule (Every 5 min)": {
+      "main": [
+        [
+          {
+            "node": "DataAPI Health",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "AgentX Health",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Ollama 99 Tags",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Ollama 12 Tags",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DataAPI Health": {
+      "main": [
+        [
+          {
+            "node": "Merge All Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AgentX Health": {
+      "main": [
+        [
+          {
+            "node": "Merge All Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama 99 Tags": {
+      "main": [
+        [
+          {
+            "node": "Merge All Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama 12 Tags": {
+      "main": [
+        [
+          {
+            "node": "Merge All Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge All Results": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Status": {
+      "main": [
+        [
+          {
+            "node": "IF Degraded",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Degraded": {
+      "main": [
+        [
+          {
+            "node": "Log to DataAPI Sink",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Healthy (No-op)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionTimeout": 120,
+    "timezone": "America/Toronto",
+    "saveExecutionProgress": true
+  },
+  "versionId": "1"
+}

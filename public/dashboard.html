@@ -37,9 +37,31 @@
     </header>
 
     <main class="layout dashboard-layout">
-        <!-- Sidebar: Collections -->
-        <aside class="panel collections-panel">
+        <!-- Sidebar: Health & Collections -->
+        <aside class="panel sidebar-panel">
             <div class="panel-head">
+                <h2>System Health</h2>
+            </div>
+            <div id="health-container" class="p-3">
+                <div class="health-item" id="health-dataapi">
+                    <span>DataAPI</span>
+                    <span class="status-dot status-unknown"></span>
+                </div>
+                <div class="health-item" id="health-agentx">
+                    <span>AgentX</span>
+                    <span class="status-dot status-unknown"></span>
+                </div>
+                <div class="health-item" id="health-ollama99">
+                    <span>Ollama (99)</span>
+                    <span class="status-dot status-unknown"></span>
+                </div>
+                <div class="health-item" id="health-ollama12">
+                    <span>Ollama (12)</span>
+                    <span class="status-dot status-unknown"></span>
+                </div>
+            </div>
+
+            <div class="panel-head mt-4">
                 <h2>Collections</h2>
             </div>
             <div id="card-scroll-container" class="scroll-container">
@@ -124,6 +146,27 @@
           background: rgba(124, 240, 255, 0.1);
           border-color: var(--accent);
       }
+
+      /* Health Styles */
+      .health-item {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 8px 0;
+          border-bottom: 1px solid rgba(255,255,255,0.05);
+          font-size: 14px;
+      }
+      .health-item:last-child { border-bottom: none; }
+      .status-dot {
+          width: 10px;
+          height: 10px;
+          border-radius: 50%;
+          display: inline-block;
+      }
+      .status-online { background: #4ade80; box-shadow: 0 0 8px #4ade80; }
+      .status-offline { background: #f87171; box-shadow: 0 0 8px #f87171; }
+      .status-unknown { background: #94a3b8; }
+      .mt-4 { margin-top: 1.5rem; }
 
       .badge {
           background: var(--accent);

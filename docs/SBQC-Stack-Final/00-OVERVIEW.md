@@ -32,8 +32,8 @@
 
 | Host | IP | Role | Services |
 |------|-----|------|----------|
-| **UGBrutal** | 192.168.2.12 | GPU Inference (5070 Ti) | Ollama: Llama 3.3 70B, DeepSeek R1 32B, Gemma 3, nomic-embed-text |
-| **UGFrank** | 192.168.2.99 | GPU Inference (3080 Ti) | Ollama: Qwen 2.5 7B (front-door), Whisper (STT) |
+| **UGBrutal** | 192.168.2.12 | GPU Inference (5070 Ti) | Ollama: deepseek-r1:8b, gemma3:12b-it-qat, qwen2.5-coder:14b, qwen3:14b, llama3.1:8b |
+| **UGFrank** | 192.168.2.99 | GPU Inference (3080 Ti) | Ollama: qwen2.5:7b-instruct-q4_0, qwen2.5:3b, qwen3:4b, qwen3:8b, nomic-embed-text:latest |
 | **Docker Host** | 192.168.2.33 | App Server | DataAPI:3003, AgentX:3080, MongoDB:27017 |
 | **UGStation** | 192.168.2.199 | Automation | n8n:5678 (tunneled to https://n8n.specialblend.icu) |
 
@@ -102,56 +102,63 @@ POST /api/n8n/event/:type    - Event trigger
 
 ## 🚧 What Needs to Be Built
 
-### Priority 1: SBQC Ops Agent
-- [ ] Validate DataAPI health/storage endpoints
-- [ ] Create n8n health check workflow
-- [ ] Create SBQC Ops agent persona in AgentX
-- [ ] Wire agent to DataAPI via MCP-style HTTP tool calls
+### Priority 1: SBQC Ops Agent ✅ COMPLETE
+- [x] Validate DataAPI health/storage endpoints
+- [x] Create SBQC Ops agent persona in AgentX (`sbqc_ops`)
+- [x] Wire agent to DataAPI via tool calls (8 tools available)
+- [x] Dashboard health endpoint with dual Ollama monitoring
 
-### Priority 2: Datalake Janitor
-- [ ] Validate/extend n8n file scanning capabilities
-- [ ] Implement SHA256 hashing in DataAPI
-- [ ] Build deduplication logic
-- [ ] RAG embedding for file metadata
-- [ ] Chat tools for file.search, dedupe.suggestDeletes
+### Priority 2: Datalake Janitor ✅ COMPLETE
+- [x] Implement SHA256 hashing in DataAPI scanner
+- [x] Create datalake_janitor persona in AgentX
+- [x] Add janitor tools (file_search, janitor_flag, janitor_unflag, rag_file_metadata)
+- [x] Duplicate detection working (found 1.6GB wasted space!)
+- [ ] n8n workflow for scheduled scanning
+- [ ] RAG embedding for file metadata (endpoint ready)
 
-### Priority 3: Multi-Model Routing
-- [ ] Model router service in AgentX
-- [ ] Front-door (Qwen) → specialist routing
+### Priority 3: Multi-Model Routing ✅ COMPLETE
+- [x] Model router service in AgentX (`src/services/modelRouter.js`)
+- [x] Front-door (Qwen 7B) → specialist routing (DeepSeek, Gemma, Qwen-coder)
+- [x] GET /api/models/routing - routing status & available models
+- [x] POST /api/models/classify - query classification preview
+- [x] autoRoute & taskType params in /api/chat
 - [ ] n8n workflow for model health monitoring
 
-### Priority 4: Voice I/O
-- [ ] Whisper integration (STT)
-- [ ] TTS service selection
+### Priority 4: Voice I/O ✅ COMPLETE
+- [x] Voice service with local Whisper + OpenAI fallback (`src/services/voiceService.js`)
+- [x] Voice routes: /health, /transcribe, /synthesize, /chat (`routes/voice.js`)
+- [ ] Deploy faster-whisper-server on 192.168.2.99:8000 (currently uses OpenAI fallback)
 - [ ] Frontend voice controls
 
-### Priority 5: Self-Improving Loop
-- [ ] Aggregate feedback analytics
-- [ ] Prompt version A/B testing
+### Priority 5: Self-Improving Loop ✅ COMPLETE
+- [x] Feedback model with aggregation methods (`models/Feedback.js`)
+- [x] Feedback summary endpoint with A/B comparison (`routes/analytics.js`)
+- [x] Prompt CRUD and A/B test configuration (`routes/prompts.js`)
+- [x] Weighted random selection in PromptConfig.getActive()
+- [x] Comprehensive test suite (6 new test files)
 - [ ] n8n workflow for prompt optimization
 
 ---
 
 ## 🧹 Cleanup Tasks (Stale Documentation)
 
-The following files in **DataAPI repo** reference `/api/v1/n8n/*` endpoints that were **removed/migrated to AgentX**. They should be archived or deleted:
+### ✅ COMPLETED - DataAPI n8n Docs Archived
 
-| File | Status | Action |
-|------|--------|--------|
-| `dataapi/N8N_INTEGRATION.md` | ❌ Stale | Archive to `docs/archive/` |
-| `dataapi/N8N_QUICKSTART.md` | ❌ Stale | Archive to `docs/archive/` |
-| `dataapi/N8N_WEBHOOK_INTEGRATION.md` | ❌ Stale | Archive to `docs/archive/` |
-| `dataapi/N8N_NODE_SETUP.md` | ❌ Stale | Archive to `docs/archive/` |
-| `dataapi/N8N_IMPLEMENTATION_SUMMARY.md` | ❌ Stale | Archive to `docs/archive/` |
-| `dataapi/SBQC.json` | ⚠️ Outdated | Update URLs to use AgentX endpoints |
-| `dataapi/Ollama.14b.Chatbot.json` | ⚠️ Outdated | Update URLs to use AgentX endpoints |
-| `dataapi/views/archived/n8n-test.ejs` | ⚠️ References old endpoints | Already in archived folder |
-| `dataapi/views/archived/ai-control.ejs` | ⚠️ References old endpoints | Already in archived folder |
+The following files have been **archived** to `dataapi/docs/archive/n8n-legacy/`:
 
-**Recommended cleanup command:**
-```bash
-cd dataapi
-mkdir -p docs/archive/n8n-legacy
-mv N8N_*.md docs/archive/n8n-legacy/
-```
-- [ ] n8n workflow for prompt optimization
+| File | Status |
+|------|--------|
+| `N8N_INTEGRATION.md` | ✅ Archived |
+| `N8N_QUICKSTART.md` | ✅ Archived |
+| `N8N_WEBHOOK_INTEGRATION.md` | ✅ Archived |
+| `N8N_NODE_SETUP.md` | ✅ Archived |
+| `N8N_IMPLEMENTATION_SUMMARY.md` | ✅ Archived |
+| `SBQC.json` | ✅ Archived |
+
+The `dataapi/DOCS_INDEX.md` has been updated to point to the archived location and clarify that n8n triggers are now in AgentX.
+
+### Remaining Cleanup
+| Item | Status | Notes |
+|------|--------|-------|
+| `dataapi/views/archived/` | ✅ OK | Already in archived folder |
+| AgentX docs | ✅ OK | Current and accurate |

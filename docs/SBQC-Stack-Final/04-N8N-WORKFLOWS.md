@@ -176,6 +176,25 @@ $input.first().json.event
 
 ---
 
+### Workflow N1.1b: Datalake Janitor Orchestrator
+
+**Trigger:** Schedule (Daily 2 AM) or Manual
+
+**Purpose:** The "Master Switch" that kicks off the daily NAS scanning and maintenance cycle.
+
+**Logic:**
+1. **Trigger N2.1:** Calls DataAPI `POST /api/v1/storage/scan` to start a new scan.
+2. **Log Event:** Sends `orchestrator_start` event to DataAPI integration sink.
+
+**HTTP Request (Trigger N2.1):**
+```
+Method: POST
+URL: http://192.168.2.33:3003/api/v1/storage/scan
+Body: { "path": "/mnt/nas/data", "recursive": true }
+```
+
+---
+
 ## Priority 2 Workflows
 
 ### Workflow N2.1: NAS File Scanner
@@ -215,13 +234,14 @@ $input.first().json.event
 │  For Each Batch:            │
 │  - Get file stats (size,    │
 │    modified, extension)     │
-│  - POST /n8n/nas/files      │
+│  - POST /storage/scan/:id/  │
+│         batch               │
 └────────────────┬────────────┘
                  │
                  ▼
 ┌─────────────────────────────┐
 │  Update Scan Status         │
-│  PATCH /n8n/nas/scan/:id    │
+│  PATCH /storage/scan/:id    │
 │  {status: "completed"}      │
 └────────────────┬────────────┘
                  │
@@ -287,15 +307,36 @@ return batches.map(batch => ({ json: { files: batch } }));
 **Bulk Insert Files:**
 ```
 Method: POST
-URL: http://192.168.2.33:3003/api/v1/files/bulk
+URL: http://192.168.2.33:3003/api/v1/storage/scan/{{ $('Create Scan Record').first().json.data.scan_id }}/batch
+Headers:
+  - x-api-key: <DATAAPI_API_KEY>
+  - Content-Type: application/json
 Body:
 {
   "files": {{ $json.files }},
-  "scanId": "{{ $('Create Scan Record').first().json.data.scanId }}"
+  "meta": {
+    "batch_number": {{ $runIndex + 1 }},
+    "source": "n8n-nas-scan"
+  }
 }
 ```
 
-> **Note:** This endpoint needs to be created - see Task D2.1 in DataAPI tasks.
+> **✓ Implemented:** This endpoint was added in DataAPI v1.x and supports upsert operations with `bulkWrite`.
+
+**Mark Scan Complete:**
+```
+Method: PATCH
+URL: http://192.168.2.33:3003/api/v1/storage/scan/{{ $('Create Scan Record').first().json.data.scan_id }}
+Headers:
+  - x-api-key: <DATAAPI_API_KEY>
+  - Content-Type: application/json
+Body:
+{
+  "status": "completed"
+}
+```
+
+Response: Automatically sets `finished_at` timestamp.
 
 ---
 
@@ -477,6 +518,86 @@ Body:
 │  - Create draft prompt version          │
 │  - Send report to admin                 │
 └─────────────────────────────────────────┘
+```
+
+---
+
+### Workflow N1.3: Ops AI Diagnostic (Webhook)
+
+**Trigger:** Webhook (Manual or triggered by N1.2 on error)
+
+**Purpose:** Perform deep AI analysis of system health when issues are detected.
+
+**Webhook URL:** `https://n8n.specialblend.icu/webhook/sbqc-ops-diagnostic`
+
+```
+┌─────────────────┐
+│  Webhook        │
+│  (POST)         │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────┐
+│  HTTP Request (Parallel Probes)                         │
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐    │
+│  │ DataAPI      │ │ AgentX       │ │ Ollama 99    │    │
+│  │ /health      │ │ /health      │ │ /api/tags    │    │
+│  └──────────────┘ └──────────────┘ └──────────────┘    │
+└────────────────────────────┬────────────────────────────┘
+                             │
+                             ▼
+                   ┌─────────────────┐
+                   │  Merge & Format │
+                   └────────┬────────┘
+                            │
+                            ▼
+                   ┌─────────────────┐
+                   │  AgentX Chat    │
+                   │  (AI Analysis)  │
+                   └────────┬────────┘
+                            │
+                            ▼
+                   ┌─────────────────┐
+                   │  Respond to     │
+                   │  Webhook        │
+                   └─────────────────┘
+```
+
+---
+
+## Priority 3 Workflows
+
+### Workflow N3.1: Model Health & Latency Monitor
+
+**Trigger:** Schedule (Every 10 minutes)
+
+**Purpose:** Track Ollama model availability and response latency for routing decisions.
+
+```
+┌─────────────────┐
+│  Schedule       │
+│  (Every 10 min) │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────┐
+│  HTTP Request (Parallel)                                │
+│  ┌──────────────┐ ┌──────────────┐                      │
+│  │ Ollama 99    │ │ Ollama 12    │                      │
+│  │ /api/tags    │ │ /api/tags    │                      │
+│  └──────────────┘ └──────────────┘                      │
+└────────────────────────────┬────────────────────────────┘
+                             │
+                             ▼
+                   ┌─────────────────┐
+                   │  Format Results │
+                   └────────┬────────┘
+                            │
+                            ▼
+                   ┌─────────────────┐
+                   │  Log to DataAPI │
+                   │  (Event Sink)   │
+                   └─────────────────┘
 ```
 
 ---

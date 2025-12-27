@@ -77,7 +77,7 @@ function initializeFeed(onNewEvent) {
             if (url === privateUrl && fallback) {
                 try {
                     es.close();
-                } catch (e) {}
+                } catch (e) { }
                 connect(publicUrl, false);
             }
         };
@@ -98,13 +98,44 @@ const createFeedItemRow = (item) => {
     return row;
 };
 
+// Health Check Logic
+async function updateHealthStatus() {
+    try {
+        // Check local AgentX health
+        const localHealth = await API.get('/health');
+        const agentxDot = document.querySelector('#health-agentx .status-dot');
+        if (agentxDot) {
+            agentxDot.className = `status-dot status-${localHealth.status === 'ok' ? 'online' : 'offline'}`;
+        }
+
+        // Check external health via AgentX proxy
+        const externalHealth = await API.get('/api/health/external');
+
+        const map = {
+            dataapi: '#health-dataapi',
+            ollama99: '#health-ollama99',
+            ollama12: '#health-ollama12'
+        };
+
+        for (const [key, selector] of Object.entries(map)) {
+            const dot = document.querySelector(`${selector} .status-dot`);
+            if (dot) {
+                dot.className = `status-dot status-${externalHealth[key] === 'online' ? 'online' : 'offline'}`;
+            }
+        }
+    } catch (error) {
+        console.error('Health check failed:', error);
+    }
+}
+
+
 // Expose setup function for dynamic loading
-window.setupDashboardInteractions = function() {
+window.setupDashboardInteractions = function () {
     let selectedCollection = null;
     const summaryCards = document.querySelectorAll('.summary-card');
 
     summaryCards.forEach(card => {
-        card.addEventListener('click', function() {
+        card.addEventListener('click', function () {
             summaryCards.forEach(c => c.classList.remove('selected'));
             this.classList.add('selected');
             selectedCollection = this.getAttribute('data-collection');
@@ -120,12 +151,12 @@ window.setupDashboardInteractions = function() {
     listAllLogs("userLogs");
 };
 
-document.addEventListener('DOMContentLoaded', async function() {
+document.addEventListener('DOMContentLoaded', async function () {
     const toggleMapDataFeed = document.getElementById('toggleMapDataFeed');
     const mapDataFeedCard = document.getElementById('mapDataFeedCard');
 
     if (toggleMapDataFeed) {
-        toggleMapDataFeed.addEventListener('change', function() {
+        toggleMapDataFeed.addEventListener('change', function () {
             mapDataFeedCard.style.display = this.checked ? 'block' : 'none';
         });
     }
@@ -149,7 +180,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             feedTableBody.removeChild(feedTableBody.lastChild);
         }
     });
-    
+
     // If cards are already present (static HTML), setup interactions
     if (document.querySelectorAll('.summary-card').length > 0) {
         window.setupDashboardInteractions();
@@ -260,7 +291,7 @@ function updateMapDataFeed(countryCounts) {
     `;
 
     // Sort by count desc
-    const sorted = Object.entries(countryCounts).sort((a,b) => b[1] - a[1]);
+    const sorted = Object.entries(countryCounts).sort((a, b) => b[1] - a[1]);
 
     for (const [country, value] of sorted) {
         tableHTML += `
@@ -275,9 +306,12 @@ function updateMapDataFeed(countryCounts) {
             </tbody>
         </table>
     `;
-
     dataFeedContainer.innerHTML = tableHTML;
 }
+
+// Start health polling
+updateHealthStatus();
+setInterval(updateHealthStatus, 30000); // Every 30 seconds
 
 function listAllLogs(source) {
     // We try to fetch from DataAPI proxy
@@ -285,8 +319,8 @@ function listAllLogs(source) {
 
     fetch(url)
         .then(response => {
-             if (!response.ok) throw new Error("DataAPI not available");
-             return response.json();
+            if (!response.ok) throw new Error("DataAPI not available");
+            return response.json();
         })
         .then(result => {
             // Use the server-side aggregation endpoint to get authoritative counts for the world map
