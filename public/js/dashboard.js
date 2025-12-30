@@ -1,9 +1,10 @@
 // AgentX Unified Operations Center Logic
+// Single-page dashboard - no tabs, all sections visible
 import { API } from './utils/index.js';
 
-let activeTab = 'overview';
 let metricsInterval = null;
 let healthInterval = null;
+let eventsInterval = null;
 
 // --- UTILITIES ---
 
@@ -20,39 +21,51 @@ function formatNumber(num) {
     return num.toLocaleString();
 }
 
+function timeAgo(date) {
+    const seconds = Math.floor((new Date() - new Date(date)) / 1000);
+    if (seconds < 60) return 'just now';
+    if (seconds < 3600) return Math.floor(seconds / 60) + 'm ago';
+    if (seconds < 86400) return Math.floor(seconds / 3600) + 'h ago';
+    return Math.floor(seconds / 86400) + 'd ago';
+}
+
 // --- HEALTH LOGIC ---
 
 async function updateHealthStatus() {
     try {
-        // AgentX Health (Local)
+        // 1. AgentX Health (Local)
         const localHealth = await API.get('/health');
-        const agentxDot = document.querySelector('#health-agentx .status-dot');
+        const agentxDot = document.querySelector('#health-agentx .dot');
         if (agentxDot) {
-            agentxDot.className = `status-dot status-${localHealth.status === 'ok' ? 'online' : 'offline'}`;
+            agentxDot.classList.toggle('online', localHealth.status === 'ok');
+            agentxDot.classList.toggle('offline', localHealth.status !== 'ok');
         }
 
-        // External Health (Ollama & n8n via aggregated endpoint)
+        // 2. MongoDB Health (via /api/dashboard/health)
+        const dashHealth = await API.get('/api/dashboard/health');
+        const mongoDot = document.querySelector('#health-mongodb .dot');
+        if (mongoDot) {
+            const mongoOk = dashHealth.data?.mongodb?.status === 'connected';
+            mongoDot.classList.toggle('online', mongoOk);
+            mongoDot.classList.toggle('offline', !mongoOk);
+        }
+
+        // 3. External Health (Ollama, DataAPI, n8n via aggregated endpoint)
         const externalHealth = await API.get('/api/health/external');
 
         const map = {
-            ollama99: '#health-ollama99',
-            ollama12: '#health-ollama12',
+            ollama: '#health-ollama',
+            dataapi: '#health-dataapi',
             n8n: '#health-n8n'
         };
 
         for (const [key, selector] of Object.entries(map)) {
-            const dot = document.querySelector(`${selector} .status-dot`);
+            const dot = document.querySelector(`${selector} .dot`);
             if (dot) {
-                const status = externalHealth[key] === 'online' || externalHealth[key]?.status === 'success' || externalHealth[key]?.status === 'ok' ? 'online' : 'offline';
-                dot.className = `status-dot status-${status}`;
+                const isOk = externalHealth[key]?.status === 'ok';
+                dot.classList.toggle('online', isOk);
+                dot.classList.toggle('offline', !isOk);
             }
-        }
-
-        // MongoDB Health (via /api/dashboard/health)
-        const dashHealth = await API.get('/api/dashboard/health');
-        const mongoDot = document.querySelector('#health-mongodb .status-dot');
-        if (mongoDot) {
-            mongoDot.className = `status-dot status-${dashHealth.data?.mongodb?.status === 'connected' ? 'online' : 'offline'}`;
         }
 
     } catch (error) {
@@ -60,10 +73,11 @@ async function updateHealthStatus() {
     }
 }
 
-// --- TAB: OVERVIEW LOGIC ---
+// --- OVERVIEW / QUICK STATS LOGIC ---
 
-async function updateOverviewStats() {
+async function updateQuickStats() {
     try {
+        // Get collection stats for document count
         const stats = await API.get('/api/dashboard/stats');
         const totalDocs = stats.data.reduce((sum, s) => sum + s.count, 0);
 
@@ -72,53 +86,157 @@ async function updateOverviewStats() {
 
         // System metrics for overview cards
         const sys = await API.get('/api/metrics/system');
-        document.getElementById('sys-uptime').textContent = sys.data.uptime.formatted;
-        document.getElementById('sys-mem').textContent = sys.data.memory.formatted.rss;
+        const uptimeEl = document.getElementById('sys-uptime');
+        
+        if (uptimeEl) uptimeEl.textContent = sys.data.uptime.formatted;
+
+        // Memory metric card with bar and status
+        const memEl = document.getElementById('sys-mem');
+        const sysBar = document.getElementById('sysBar');
+        const sysTotalMem = document.getElementById('sysTotalMem');
+        const sysStatus = document.getElementById('sysStatus');
+        
+        if (memEl && sys.data.memory) {
+            const heapUsed = (sys.data.memory.heapUsed / (1024 * 1024)).toFixed(2);
+            const heapTotal = (sys.data.memory.heapTotal / (1024 * 1024)).toFixed(2);
+            const memPct = ((sys.data.memory.heapUsed / sys.data.memory.heapTotal) * 100);
+            
+            memEl.textContent = `${heapUsed} MB`;
+            if (sysTotalMem) sysTotalMem.textContent = `${heapTotal} MB`;
+            if (sysBar) sysBar.style.width = `${memPct}%`;
+            if (sysStatus) {
+                sysStatus.className = 'status-dot ' + (memPct > 90 ? 'error' : memPct > 80 ? 'warning' : 'healthy');
+            }
+        }
+
+        // Cache hit rate metric card with bar
+        const cache = await API.get('/api/metrics/cache');
+        const hitRate = (cache.data.cache.hitRate * 100).toFixed(0);
+        const hitRateEl = document.getElementById('cache-hit-rate');
+        const cacheBar = document.getElementById('cacheBar');
+        const cacheStatus = document.getElementById('cacheStatus');
+        const cacheHits = document.getElementById('cacheHits');
+        const cacheMisses = document.getElementById('cacheMisses');
+        
+        if (hitRateEl) hitRateEl.textContent = hitRate + '%';
+        if (cacheBar) cacheBar.style.width = hitRate + '%';
+        if (cacheStatus) {
+            cacheStatus.className = 'status-dot ' + (hitRate >= 80 ? 'healthy' : hitRate >= 50 ? 'warning' : 'error');
+        }
+        if (cacheHits) cacheHits.textContent = formatNumber(cache.data.cache.hits || 0);
+        if (cacheMisses) cacheMisses.textContent = formatNumber(cache.data.cache.misses || 0);
+
+        // Database connections metric card with bar
+        const db = await API.get('/api/metrics/database');
+        const connActive = document.getElementById('connActive');
+        const connMax = document.getElementById('connMax');
+        const connAvail = document.getElementById('connAvail');
+        const connBar = document.getElementById('connBar');
+        const connStatus = document.getElementById('connStatus');
+        
+        if (db.data.connections && connActive && connMax) {
+            const active = db.data.connections.current || 0;
+            const max = db.data.connections.max || 10;
+            const avail = db.data.connections.available || 0;
+            const connPct = (active / max) * 100;
+            
+            connActive.textContent = active;
+            connMax.textContent = max;
+            if (connAvail) connAvail.textContent = avail;
+            if (connBar) connBar.style.width = `${connPct}%`;
+            if (connStatus) {
+                connStatus.className = 'status-dot ' + (connPct > 90 ? 'error' : connPct > 75 ? 'warning' : 'healthy');
+            }
+        }
 
     } catch (error) {
-        console.error('Overview stats refresh failed:', error);
+        console.error('Quick stats refresh failed:', error);
     }
 }
 
-// --- TAB: N8N OPS LOGIC ---
+async function updateSystemEvents() {
+    const container = document.getElementById('system-events-list');
+    if (!container) return;
 
-function logEvent(message, type = 'info') {
-    const logContainer = document.getElementById('eventLog');
-    if (!logContainer) return;
+    try {
+        const response = await API.get('/api/events/system?limit=15');
+        const events = response.data;
 
-    const eventDiv = document.createElement('div');
-    eventDiv.className = `event-entry ${type}`;
-    const time = new Date().toLocaleTimeString();
+        if (!events || events.length === 0) {
+            container.innerHTML = `
+                <div class="event-row">
+                    <div class="event-content">
+                        <div class="event-message" style="color: var(--muted);">No recent events.</div>
+                    </div>
+                </div>`;
+            return;
+        }
 
-    eventDiv.innerHTML = `
-        <strong>${message}</strong><br>
-        <code>${time}</code>
-    `;
+        container.innerHTML = events.map(event => `
+            <div class="event-row">
+                <div class="event-indicator ${getEventType(event.type)}"></div>
+                <div class="event-content">
+                    <div class="event-message">${escapeHtml(event.message)}</div>
+                    <div class="event-time">${timeAgo(event.timestamp)}</div>
+                </div>
+            </div>
+        `).join('');
 
-    logContainer.insertBefore(eventDiv, logContainer.firstChild);
-
-    // Trim log
-    while (logContainer.children.length > 50) {
-        logContainer.removeChild(logContainer.lastChild);
+    } catch (error) {
+        console.error('Failed to fetch system events:', error);
+        container.innerHTML = `
+            <div class="event-row">
+                <div class="event-indicator error"></div>
+                <div class="event-content">
+                    <div class="event-message">Failed to load events</div>
+                    <div class="event-time">${error.message}</div>
+                </div>
+            </div>`;
     }
+}
+
+function getEventType(type) {
+    switch (type?.toLowerCase()) {
+        case 'error': return 'error';
+        case 'warn':
+        case 'warning': return 'warn';
+        case 'success': return 'success';
+        case 'info':
+        default: return 'info';
+    }
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+// --- N8N WEBHOOK LOGIC ---
+
+function showWebhookResult(message, isError = false) {
+    const resultDiv = document.getElementById('triggerResult');
+    if (!resultDiv) return;
+    
+    resultDiv.classList.add('visible');
+    resultDiv.style.color = isError ? '#f87171' : '#4ade80';
+    resultDiv.innerHTML = message;
 }
 
 async function handleWebhookTrigger() {
     const selector = document.getElementById('workflowSelector');
     const payloadRaw = document.getElementById('webhookPayload').value;
-    const resultDiv = document.getElementById('triggerResult');
 
     let payload;
     try {
         payload = JSON.parse(payloadRaw);
     } catch (e) {
-        logEvent('Invalid JSON payload', 'error');
+        showWebhookResult('Invalid JSON payload', true);
         return;
     }
 
-    logEvent(`Triggering ${selector.value}...`, 'info');
-    resultDiv.classList.remove('hidden');
-    resultDiv.innerHTML = 'Connecting...';
+    showWebhookResult('Triggering...');
 
     try {
         let endpoint;
@@ -139,21 +257,19 @@ async function handleWebhookTrigger() {
 
         const result = await response.json();
         if (response.ok) {
-            logEvent(`✓ ${selector.value} success`, 'success');
-            resultDiv.innerHTML = `<div class="text-success">Success</div><pre>${JSON.stringify(result, null, 2)}</pre>`;
+            showWebhookResult(`✓ Success\n${JSON.stringify(result, null, 2)}`);
         } else {
-            logEvent(`✗ ${selector.value} failed (${response.status})`, 'error');
-            resultDiv.innerHTML = `<div class="text-danger">Error ${response.status}</div><pre>${JSON.stringify(result, null, 2)}</pre>`;
+            showWebhookResult(`✗ Error ${response.status}\n${JSON.stringify(result, null, 2)}`, true);
         }
     } catch (error) {
-        logEvent(`Network error: ${error.message}`, 'error');
-        resultDiv.innerHTML = `<div class="text-danger">Network Error</div><pre>${error.message}</pre>`;
+        showWebhookResult(`Network Error: ${error.message}`, true);
     }
 }
 
-// --- TAB: SYSTEM METRICS LOGIC ---
+// --- SYSTEM METRICS LOGIC ---
 
-function setStatus(el, val, healthyThreshold = 70, warningThreshold = 90, reverse = false) {
+function setStatusDot(el, val, healthyThreshold = 70, warningThreshold = 90, reverse = false) {
+    if (!el) return;
     let status = 'healthy';
     if (!reverse) {
         if (val >= healthyThreshold) status = 'healthy';
@@ -170,9 +286,8 @@ function setStatus(el, val, healthyThreshold = 70, warningThreshold = 90, revers
 
 async function refreshSystemMetrics() {
     try {
-        const [cache, database, conn, sys] = await Promise.all([
+        const [cache, conn, sys] = await Promise.all([
             API.get('/api/metrics/cache'),
-            API.get('/api/metrics/database'),
             API.get('/api/metrics/connection'),
             API.get('/api/metrics/system')
         ]);
@@ -180,157 +295,123 @@ async function refreshSystemMetrics() {
         // --- Cache ---
         const cacheData = cache.data.cache;
         const hitRate = (cacheData.hitRate * 100);
+        
         const elHitRate = document.getElementById('cacheHitRate');
         if (elHitRate) {
-            elHitRate.textContent = hitRate.toFixed(1) + '%';
-            document.getElementById('cacheBar').style.width = hitRate + '%';
-            setStatus(document.getElementById('cacheStatus'), hitRate, 70, 50);
+            elHitRate.textContent = hitRate.toFixed(0) + '%';
+            const barEl = document.getElementById('cacheBar');
+            if (barEl) barEl.style.width = hitRate + '%';
+            setStatusDot(document.getElementById('cacheStatus'), hitRate, 70, 50);
         }
 
-        document.getElementById('cacheHits').textContent = formatNumber(cacheData.hitCount);
-        document.getElementById('cacheMisses').textContent = formatNumber(cacheData.missCount);
-        document.getElementById('cacheSize').textContent = `${cacheData.size}/${cacheData.maxSize || '∞'}`;
-        document.getElementById('cacheMem').textContent = formatBytes(cacheData.memorySizeBytes);
-
-        document.getElementById('detailCacheTotal').textContent = formatNumber(cacheData.hitCount + cacheData.missCount);
-        document.getElementById('detailCacheAvg').textContent = formatBytes(cacheData.avgEntrySizeBytes);
-        document.getElementById('detailCacheEvict').textContent = formatNumber(cacheData.evictions);
-
-        // --- Database ---
-        const dbData = database.data;
-        const totalDocs = Object.values(dbData.collections).reduce((a, b) => a + (b.count || 0), 0);
-        document.getElementById('dbTotalDocs').textContent = formatNumber(totalDocs);
-        document.getElementById('dbConversations').textContent = formatNumber(dbData.collections.conversations?.count);
-        document.getElementById('dbPrompts').textContent = formatNumber(dbData.collections.promptconfigs?.count);
-        document.getElementById('dbUsers').textContent = formatNumber(dbData.collections.userprofiles?.count);
-        document.getElementById('dbIndexes').textContent = dbData.database.indexes;
-
-        document.getElementById('detailDbName').textContent = dbData.database.name;
-        document.getElementById('detailDbHost').textContent = conn.data.host;
-        document.getElementById('detailDbCollections').textContent = Object.keys(dbData.collections).length;
+        const hitsEl = document.getElementById('cacheHits');
+        const missEl = document.getElementById('cacheMisses');
+        if (hitsEl) hitsEl.textContent = formatNumber(cacheData.hitCount);
+        if (missEl) missEl.textContent = formatNumber(cacheData.missCount);
 
         // --- Connections ---
         const activeConn = conn.data.activeConnections || 0;
         const maxConn = conn.data.poolSize || 100;
         const connUsage = (activeConn / maxConn) * 100;
 
-        document.getElementById('connActive').textContent = activeConn;
-        document.getElementById('connMax').textContent = maxConn;
-        document.getElementById('connBar').style.width = connUsage + '%';
-        setStatus(document.getElementById('connStatus'), connUsage, 70, 90, true);
+        const connActiveEl = document.getElementById('connActive');
+        const connMaxEl = document.getElementById('connMax');
+        const connAvailEl = document.getElementById('connAvail');
+        const connBarEl = document.getElementById('connBar');
 
-        document.getElementById('connAvail').textContent = conn.data.availableConnections || '0';
-        document.getElementById('connWaiting').textContent = conn.data.waitingConnections || '0';
-        document.getElementById('connPool').textContent = `${conn.data.minPoolSize || 0}-${conn.data.poolSize || 0}`;
+        if (connActiveEl) connActiveEl.textContent = activeConn;
+        if (connMaxEl) connMaxEl.textContent = maxConn;
+        if (connBarEl) connBarEl.style.width = connUsage + '%';
+        if (connAvailEl) connAvailEl.textContent = conn.data.availableConnections || '0';
+        setStatusDot(document.getElementById('connStatus'), connUsage, 70, 90, true);
 
         // --- System ---
         const sysData = sys.data;
-        const usedMemMB = Math.round(sysData.memory.rss / 1024 / 1024);
-        const totalMemMB = Math.round(sysData.memory.heapTotal / 1024 / 1024);
-
-        document.getElementById('sysMem').textContent = formatBytes(sysData.memory.rss);
-        document.getElementById('sysTotalMem').textContent = formatBytes(sysData.memory.heapTotal);
+        const heapUsedMB = Math.round(sysData.memory.heapUsed / 1024 / 1024);
+        const heapTotalMB = Math.round(sysData.memory.heapTotal / 1024 / 1024);
         const memUsagePercent = (sysData.memory.heapUsed / sysData.memory.heapTotal) * 100;
-        document.getElementById('sysBar').style.width = memUsagePercent + '%';
-        setStatus(document.getElementById('sysStatus'), memUsagePercent, 70, 85, true);
 
-        document.getElementById('sysNode').textContent = 'v18+';
-        document.getElementById('sysUptime').textContent = sysData.uptime.formatted;
-        document.getElementById('sysPlatform').textContent = 'Linux';
+        const heapUsedEl = document.getElementById('heapUsed');
+        const heapTotalEl = document.getElementById('heapTotal');
+        const sysBarEl = document.getElementById('sysBar');
+        const sysNodeEl = document.getElementById('sysNode');
+        const sysPlatformEl = document.getElementById('sysPlatform');
 
-        document.getElementById('detailHeapUsed').textContent = sysData.memory.formatted.heapUsed;
-        document.getElementById('detailHeapTotal').textContent = sysData.memory.formatted.heapTotal;
-        document.getElementById('detailRss').textContent = sysData.memory.formatted.rss;
-
-        // Update timestamp
-        const now = new Date().toLocaleTimeString();
-        const tsEl = document.getElementById('timestamp');
-        if (tsEl) tsEl.textContent = `Updated: ${now}`;
+        if (heapUsedEl) heapUsedEl.textContent = heapUsedMB + ' MB';
+        if (heapTotalEl) heapTotalEl.textContent = heapTotalMB + ' MB';
+        if (sysBarEl) sysBarEl.style.width = memUsagePercent + '%';
+        if (sysNodeEl) sysNodeEl.textContent = sysData.nodeVersion || 'v18+';
+        if (sysPlatformEl) sysPlatformEl.textContent = sysData.platform || 'Linux';
+        setStatusDot(document.getElementById('sysStatus'), memUsagePercent, 80, 90, true);
 
     } catch (error) {
         console.error('Metrics refresh failed:', error);
     }
 }
 
-async function clearCache() {
-    if (!confirm('Clear embedding cache? This will reset all cache statistics.')) return;
+async function loadCollections() {
+    const container = document.getElementById('collections-list');
+    if (!container) return;
+
     try {
-        await fetch('/api/metrics/cache/clear', { method: 'POST' });
-        logEvent('Cache cleared successfully', 'success');
-        refreshSystemMetrics();
-    } catch (e) {
-        logEvent('Failed to clear cache', 'error');
+        const stats = await API.get('/api/dashboard/stats');
+        
+        if (!stats.data || stats.data.length === 0) {
+            container.innerHTML = '<div class="collection-item"><span style="color: var(--muted);">No collections</span></div>';
+            return;
+        }
+
+        container.innerHTML = stats.data.map(coll => `
+            <div class="collection-item">
+                <div class="collection-info">
+                    <span class="name">${coll.collection}</span>
+                    <span class="db">${coll.database || 'agentx'}</span>
+                </div>
+                <span class="count">${formatNumber(coll.count)}</span>
+            </div>
+        `).join('');
+    } catch (error) {
+        console.error('Failed to load collections:', error);
+        container.innerHTML = '<div class="collection-item"><span style="color: #f87171;">Failed to load</span></div>';
     }
 }
 
 // --- INITIALIZATION ---
 
-function handleTabSwitch(tabId) {
-    activeTab = tabId;
-
-    // UI Update
-    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tabId));
-    document.querySelectorAll('.tab-content').forEach(content => content.classList.toggle('active', content.id === `${tabId}-tab`));
-
-    // Interval Management
-    if (metricsInterval) clearInterval(metricsInterval);
-
-    if (tabId === 'overview') {
-        updateOverviewStats();
-    } else if (tabId === 'system') {
-        refreshSystemMetrics();
-        metricsInterval = setInterval(refreshSystemMetrics, 5000);
-    } else if (tabId === 'n8n') {
-        document.getElementById('initTime').textContent = new Date().toLocaleTimeString();
-    }
-}
-
 document.addEventListener('DOMContentLoaded', () => {
-    // Health checks are global (sidebar)
+    // Initial data load
     updateHealthStatus();
+    updateQuickStats();
+    updateSystemEvents();
+    refreshSystemMetrics();
+    loadCollections();
+
+    // Periodic updates
     healthInterval = setInterval(updateHealthStatus, 30000);
+    eventsInterval = setInterval(updateSystemEvents, 60000);
+    metricsInterval = setInterval(refreshSystemMetrics, 10000);
 
-    // Tab buttons
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.addEventListener('click', () => handleTabSwitch(btn.dataset.tab));
-    });
-
-    // n8n Listeners
+    // n8n Webhook Listeners
     const triggerBtn = document.getElementById('triggerWebhookBtn');
     if (triggerBtn) triggerBtn.addEventListener('click', handleWebhookTrigger);
-
-    const clearLogBtn = document.getElementById('clearEventLogBtn');
-    if (clearLogBtn) clearLogBtn.addEventListener('click', () => {
-        const log = document.getElementById('eventLog');
-        if (log) log.innerHTML = '';
-        logEvent('Log cleared', 'info');
-    });
 
     const workflowSelector = document.getElementById('workflowSelector');
     if (workflowSelector) {
         workflowSelector.addEventListener('change', (e) => {
             const customDiv = document.getElementById('customWebhookDiv');
-            customDiv.style.display = e.target.value === 'custom' ? 'block' : 'none';
+            if (customDiv) customDiv.style.display = e.target.value === 'custom' ? 'block' : 'none';
         });
     }
 
-    // System Metrics Listeners
-    const clearCacheBtn = document.getElementById('clearCacheBtn');
-    if (clearCacheBtn) clearCacheBtn.addEventListener('click', clearCache);
+    // Refresh buttons
+    const refreshEventsBtn = document.getElementById('refreshEventsBtn');
+    if (refreshEventsBtn) refreshEventsBtn.addEventListener('click', updateSystemEvents);
 
-    // Default tab
-    handleTabSwitch('overview');
-});
-
-// Setup function for the sidebar collections
-window.setupDashboardInteractions = function () {
-    const cards = document.querySelectorAll('.summary-card');
-    cards.forEach(card => {
-        card.addEventListener('click', function () {
-            cards.forEach(c => c.classList.remove('selected'));
-            this.classList.add('selected');
-            // In the unified dashboard, clicking a card could show collection details if we implement it.
-            logEvent(`Navigating to collection: ${this.dataset.collection}`, 'info');
+    const refreshMetricsBtn = document.getElementById('refreshMetricsBtn');
+    if (refreshMetricsBtn) {
+        refreshMetricsBtn.addEventListener('click', () => {
+            refreshSystemMetrics();
+            loadCollections();
         });
-    });
-};
+    }
+});
