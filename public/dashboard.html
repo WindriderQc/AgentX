@@ -4,696 +4,753 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AgentX • Dashboard</title>
+    <title>AgentX • Operations Center</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap"
         rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
-
-    <!-- Chart.js & Geo -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-geo"></script>
-    <script src="https://unpkg.com/topojson-client@3"></script>
-    <!-- FontAwesome for icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-</head>
-
-<body>
-    <div class="bg-grid"></div>
-    <div class="page dashboard-page">
-        <header class="hero">
-            <div class="hero-content">
-                <div class="hero-top">
-                    <div>
-                        <div class="eyebrow">AgentX • Unified Operations</div>
-                        <h1>Operations Center</h1>
-                        <p class="lede">
-                            Monitor system health, manage n8n automations, and track database performance.
-                        </p>
-                    </div>
-                    <div class="hero-actions">
-                        <nav class="agentx-nav"></nav>
-                    </div>
-                </div>
-            </div>
-        </header>
-
-        <main class="layout dashboard-layout">
-            <!-- Sidebar: Health & Collections -->
-            <aside class="panel sidebar-panel">
-                <div class="panel-head">
-                    <h2>System Health</h2>
-                </div>
-                <div id="health-container" class="p-3">
-                    <div class="health-item" id="health-agentx">
-                        <span>AgentX</span>
-                        <span class="status-dot status-unknown"></span>
-                    </div>
-                    <div class="health-item" id="health-mongodb">
-                        <span>MongoDB</span>
-                        <span class="status-dot status-unknown"></span>
-                    </div>
-                    <div class="health-item" id="health-ollama99">
-                        <span>Ollama (99)</span>
-                        <span class="status-dot status-unknown"></span>
-                    </div>
-                    <div class="health-item" id="health-ollama12">
-                        <span>Ollama (12)</span>
-                        <span class="status-dot status-unknown"></span>
-                    </div>
-                    <div class="health-item" id="health-n8n">
-                        <span>n8n</span>
-                        <span class="status-dot status-unknown"></span>
-                    </div>
-                </div>
-
-                <div class="panel-head mt-4">
-                    <h2>Collections</h2>
-                </div>
-                <div id="card-scroll-container" class="scroll-container">
-                    <div class="text-center text-muted p-3">Loading stats...</div>
-                </div>
-            </aside>
-
-            <section class="main-content-area">
-                <nav class="tabs-nav">
-                    <button class="tab-btn active" data-tab="overview">Overview</button>
-                    <button class="tab-btn" data-tab="n8n">n8n Ops</button>
-                    <button class="tab-btn" data-tab="system">System Metrics</button>
-                </nav>
-
-                <!-- TAB: OVERVIEW -->
-                <div id="overview-tab" class="tab-content active">
-                    <div class="panel main-panel">
-                        <div class="panel-head">
-                            <div>
-                                <p class="eyebrow">Operations</p>
-                                <h2>Service Status</h2>
-                            </div>
-                        </div>
-                        <div class="p-4">
-                            <div class="stat-grid-modern">
-                                <div class="stat-card-modern">
-                                    <div class="stat-label">Uptime</div>
-                                    <div class="stat-value" id="sys-uptime">0s</div>
-                                </div>
-                                <div class="stat-card-modern">
-                                    <div class="stat-label">Memory Usage</div>
-                                    <div class="stat-value" id="sys-mem">0 MB</div>
-                                </div>
-                                <div class="stat-card-modern">
-                                    <div class="stat-label">DB Documents</div>
-                                    <div class="stat-value" id="db-total-docs">0</div>
-                                </div>
-                            </div>
-
-                            <div class="content-placeholder mt-4">
-                                <p class="text-muted">Welcome to the consolidated AgentX Dashboard.</p>
-                                <p class="text-muted">Use the sidebars to monitor system health and database collections
-                                    in real-time.</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- TAB: N8N OPS -->
-                <div id="n8n-tab" class="tab-content">
-                    <div class="grid-2-col">
-                        <div class="panel">
-                            <div class="panel-head">
-                                <h2><i class="fas fa-bolt me-2"></i>Webhook Trigger</h2>
-                            </div>
-                            <div class="p-4">
-                                <div class="field">
-                                    <label>Select Workflow</label>
-                                    <select id="workflowSelector">
-                                        <option value="agentmail">AgentMail (Gmail AI Agent)</option>
-                                        <option value="rag-ingest">RAG Ingestion</option>
-                                        <option value="chat-complete">Chat Completion</option>
-                                        <option value="analytics">Analytics Event</option>
-                                        <option value="custom">Custom Webhook...</option>
-                                    </select>
-                                </div>
-                                <div id="customWebhookDiv" style="display: none;" class="field">
-                                    <label>Custom Webhook URL</label>
-                                    <input type="text" id="customWebhookId" placeholder="UUID or full URL">
-                                </div>
-                                <div class="field">
-                                    <label>Payload (JSON)</label>
-                                    <textarea id="webhookPayload" rows="8">{
-  "event": "test_trigger",
-  "source": "operations-center",
-  "data": { "message": "Manual test trigger" }
-}</textarea>
-                                </div>
-                                <div class="action-row">
-                                    <button class="primary full" id="triggerWebhookBtn">Trigger Webhook</button>
-                                </div>
-                                <div id="triggerResult" class="mt-4 hidden result-box"></div>
-                            </div>
-                        </div>
-
-                        <div class="panel">
-                            <div class="panel-head d-flex justify-content-between">
-                                <h2><i class="fas fa-list me-2"></i>Event Log</h2>
-                                <button class="ghost small" id="clearEventLogBtn">Clear</button>
-                            </div>
-                            <div class="p-0">
-                                <div class="event-log-container" id="eventLog">
-                                    <div class="event-entry">
-                                        <strong>Console Ready</strong><br>
-                                        <small class="text-muted">Initialized at <span id="initTime"></span></small>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- TAB: SYSTEM METRICS -->
-                <div id="system-tab" class="tab-content">
-                    <section class="panel">
-                        <div class="panel-head">
-                            <div>
-                                <p class="eyebrow">Real-time Status</p>
-                                <h2>System Health</h2>
-                            </div>
-                            <div class="controls">
-                                <button id="clearCacheBtn" class="ghost small">Clear Embedding Cache</button>
-                                <div id="timestamp" class="pill">Updating...</div>
-                            </div>
-                        </div>
-
-                        <div class="stat-grid-premium">
-                            <!-- Cache Card -->
-                            <div class="stat-card-premium">
-                                <p class="label">Cache Performance</p>
-                                <h3><span class="status-dot" id="cacheStatus"></span><span id="cacheHitRate">0%</span>
-                                </h3>
-                                <p class="hint">Hit Rate</p>
-                                <div class="metric-progress">
-                                    <div class="metric-fill" id="cacheBar" style="width: 0%"></div>
-                                </div>
-                                <div class="detail-list">
-                                    <div class="detail-item"><span>Hits</span><span id="cacheHits">0</span></div>
-                                    <div class="detail-item"><span>Misses</span><span id="cacheMisses">0</span></div>
-                                    <div class="detail-item"><span>Size</span><span id="cacheSize">0/0</span></div>
-                                    <div class="detail-item"><span>Mem</span><span id="cacheMem">0 B</span></div>
-                                </div>
-                            </div>
-
-                            <!-- Database Card -->
-                            <div class="stat-card-premium">
-                                <p class="label">Database</p>
-                                <h3><span class="status-dot healthy"></span><span id="dbTotalDocs">0</span></h3>
-                                <p class="hint">Total Documents</p>
-                                <div class="detail-list" style="margin-top: 24px;">
-                                    <div class="detail-item"><span>Conversations</span><span
-                                            id="dbConversations">0</span></div>
-                                    <div class="detail-item"><span>Prompts</span><span id="dbPrompts">0</span></div>
-                                    <div class="detail-item"><span>Users</span><span id="dbUsers">0</span></div>
-                                    <div class="detail-item"><span>Indexes</span><span id="dbIndexes">0</span></div>
-                                </div>
-                            </div>
-
-                            <!-- Connections Card -->
-                            <div class="stat-card-premium">
-                                <p class="label">Connections</p>
-                                <h3><span class="status-dot" id="connStatus"></span><span id="connActive">0</span></h3>
-                                <p class="hint">Active / <span id="connMax">0</span> Max</p>
-                                <div class="metric-progress">
-                                    <div class="metric-fill" id="connBar" style="width: 0%"></div>
-                                </div>
-                                <div class="detail-list">
-                                    <div class="detail-item"><span>Available</span><span id="connAvail">0</span></div>
-                                    <div class="detail-item"><span>Waiting</span><span id="connWaiting">0</span></div>
-                                    <div class="detail-item"><span>Pool</span><span id="connPool">0-0</span></div>
-                                </div>
-                            </div>
-
-                            <!-- System Card -->
-                            <div class="stat-card-premium">
-                                <p class="label">System Resources</p>
-                                <h3><span class="status-dot" id="sysStatus"></span><span id="sysMem">0 MB</span></h3>
-                                <p class="hint">Memory Used / <span id="sysTotalMem">0</span> Total</p>
-                                <div class="metric-progress">
-                                    <div class="metric-fill" id="sysBar" style="width: 0%"></div>
-                                </div>
-                                <div class="detail-list">
-                                    <div class="detail-item"><span>Node</span><span id="sysNode">v?</span></div>
-                                    <div class="detail-item"><span>Uptime</span><span id="sysUptime">0s</span></div>
-                                    <div class="detail-item"><span>Platform</span><span id="sysPlatform">?</span></div>
-                                </div>
-                            </div>
-                        </div>
-                    </section>
-
-                    <!-- Detailed System Info -->
-                    <section class="panel" style="margin-top: 20px;">
-                        <div class="panel-head">
-                            <div>
-                                <p class="eyebrow">Details</p>
-                                <h2>Extended Diagnostics</h2>
-                            </div>
-                        </div>
-                        <div class="layout" style="grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));">
-                            <div class="stat-card compact">
-                                <h3 style="font-size: 16px; margin-bottom: 12px;">Cache Stats</h3>
-                                <div class="detail-list">
-                                    <div class="detail-item"><span>Total Req</span><span id="detailCacheTotal">0</span>
-                                    </div>
-                                    <div class="detail-item"><span>Avg Entry</span><span id="detailCacheAvg">0 B</span>
-                                    </div>
-                                    <div class="detail-item"><span>Evictions</span><span id="detailCacheEvict">0</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="stat-card compact">
-                                <h3 style="font-size: 16px; margin-bottom: 12px;">DB Info</h3>
-                                <div class="detail-list">
-                                    <div class="detail-item"><span>Name</span><span id="detailDbName">?</span></div>
-                                    <div class="detail-item"><span>Host</span><span id="detailDbHost">?</span></div>
-                                    <div class="detail-item"><span>Collections</span><span
-                                            id="detailDbCollections">0</span></div>
-                                </div>
-                            </div>
-                            <div class="stat-card compact">
-                                <h3 style="font-size: 16px; margin-bottom: 12px;">Memory Heap</h3>
-                                <div class="detail-list">
-                                    <div class="detail-item"><span>Used</span><span id="detailHeapUsed">0</span></div>
-                                    <div class="detail-item"><span>Total</span><span id="detailHeapTotal">0</span></div>
-                                    <div class="detail-item"><span>RSS</span><span id="detailRss">0</span></div>
-                                </div>
-                            </div>
-                        </div>
-                    </section>
-                </div>
-            </section>
-        </main>
-    </div>
-
     <style>
-        /* Dashboard Layout */
-        .dashboard-layout {
-            display: grid;
-            grid-template-columns: 280px 1fr;
-            gap: 20px;
+        /* ========================================
+           OPERATIONS CENTER - SINGLE PAGE LAYOUT
+           ======================================== */
+        
+        .ops-page {
+            min-height: 100vh;
+            padding: 20px 30px;
+            max-width: 1600px;
+            margin: 0 auto;
+            display: block; /* Override flex from .page */
         }
 
-        .sidebar-panel {
-            position: sticky;
-            top: 20px;
-            align-self: start;
-        }
-
-        .scroll-container {
-            max-height: 600px;
-            overflow-y: auto;
-        }
-
-        .summary-card {
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid var(--panel-border);
-            border-radius: 8px;
-            padding: 12px;
-            margin-bottom: 8px;
-            cursor: pointer;
-            transition: background 0.2s;
+        .ops-header {
             display: flex;
             justify-content: space-between;
-            align-items: center;
-        }
-
-        .summary-card:hover {
-            background: rgba(255, 255, 255, 0.08);
-        }
-
-        .summary-card.selected {
-            background: rgba(124, 240, 255, 0.1);
-            border-color: var(--accent);
-        }
-
-        /* Health Styles */
-        .health-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 8px 0;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-            font-size: 14px;
-        }
-
-        .health-item:last-child {
-            border-bottom: none;
-        }
-
-        .status-dot {
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            display: inline-block;
-        }
-
-        .status-online {
-            background: #4ade80;
-            box-shadow: 0 0 8px #4ade80;
-        }
-
-        .status-offline {
-            background: #f87171;
-            box-shadow: 0 0 8px #f87171;
-        }
-
-        .status-unknown {
-            background: #94a3b8;
-        }
-
-        .mt-4 {
-            margin-top: 1.5rem;
-        }
-
-        .badge {
-            background: var(--accent);
-            color: #0f172a;
-            padding: 2px 8px;
-            border-radius: 99px;
-            font-size: 11px;
-            font-weight: 700;
-        }
-
-        /* Tabs */
-        .tabs-nav {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
+            align-items: flex-start;
+            margin-bottom: 24px;
+            padding-bottom: 20px;
             border-bottom: 1px solid var(--panel-border);
-            padding-bottom: 0;
         }
 
-        .tab-btn {
-            background: transparent;
-            color: var(--muted);
-            border: none;
-            border-bottom: 2px solid transparent;
-            padding: 12px 20px;
-            font-size: 14px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .tab-btn:hover {
+        .ops-header h1 {
+            font-size: 28px;
+            margin: 0;
             color: var(--text);
-            background: rgba(255, 255, 255, 0.03);
         }
 
-        .tab-btn.active {
-            color: var(--accent);
-            border-bottom-color: var(--accent);
-            background: rgba(124, 240, 255, 0.05);
-        }
-
-        .tab-content {
-            display: none;
-        }
-
-        .tab-content.active {
-            display: block;
-            animation: fadeIn 0.3s ease;
-        }
-
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(5px);
-            }
-
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        /* Modern Stats */
-        .stat-grid-modern {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-        }
-
-        .stat-card-modern {
-            background: rgba(255, 255, 255, 0.02);
-            border: 1px solid var(--panel-border);
-            padding: 20px;
-            border-radius: 12px;
-            position: relative;
-        }
-
-        /* Premium Stats (Analytics-style) */
-        .stat-grid-premium {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 20px;
-            padding: 20px;
-        }
-
-        .stat-card-premium {
-            background: rgba(255, 255, 255, 0.02);
-            border: 1px solid var(--panel-border);
-            padding: 24px;
-            border-radius: 12px;
-            position: relative;
-        }
-
-        .stat-card-premium .label {
-            font-size: 12px;
-            color: var(--muted);
+        .ops-header .eyebrow {
+            font-size: 11px;
             text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-bottom: 8px;
+            letter-spacing: 2px;
+            color: var(--accent);
+            margin-bottom: 4px;
         }
 
-        .stat-card-premium h3 {
-            font-size: 32px;
-            font-weight: 700;
+        .ops-header .lede {
+            color: var(--muted);
+            font-size: 14px;
+            margin-top: 8px;
+            max-width: 500px;
+        }
+
+        /* Health Bar - Compact Top Strip */
+        .health-strip {
+            display: flex;
+            gap: 24px;
+            align-items: center;
+            padding: 14px 24px;
+            background: linear-gradient(135deg, rgba(124,240,255,0.03) 0%, rgba(255,255,255,0.02) 100%);
+            border: 1px solid var(--panel-border);
+            border-radius: 12px;
+            margin-bottom: 24px;
+        }
+
+        .health-strip-title {
+            font-weight: 600;
             color: var(--text);
-            margin: 8px 0;
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 8px;
+            padding-right: 24px;
+            border-right: 1px solid var(--panel-border);
+            font-size: 13px;
         }
 
-        .stat-card-premium .hint {
+        .health-strip-title i {
+            color: var(--accent);
+        }
+
+        .health-strip-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
             font-size: 13px;
             color: var(--muted);
-            margin-bottom: 12px;
         }
 
-        .metric-progress {
-            height: 4px;
-            background: rgba(255, 255, 255, 0.1);
+        .health-strip-item .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #64748b;
+            transition: all 0.3s;
+        }
+
+        .health-strip-item .dot.online {
+            background: #4ade80;
+            box-shadow: 0 0 10px rgba(74, 222, 128, 0.6);
+        }
+
+        .health-strip-item .dot.offline {
+            background: #f87171;
+            box-shadow: 0 0 10px rgba(248, 113, 113, 0.6);
+        }
+
+        /* Metrics Grid */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .metric-card {
+            background: rgba(0,0,0,0.25);
+            border-radius: 10px;
+            padding: 16px 18px;
+        }
+
+        .metric-card .metric-label {
+            font-size: 10px;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+
+        .metric-card .metric-value {
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .metric-card .metric-bar {
+            height: 3px;
+            background: rgba(255,255,255,0.1);
             border-radius: 2px;
             margin-top: 12px;
             overflow: hidden;
         }
 
-        .metric-fill {
+        .metric-card .metric-fill {
             height: 100%;
             background: var(--accent);
-            transition: width 0.3s ease;
+            transition: width 0.3s;
         }
 
-        .detail-list {
-            margin-top: 16px;
-            font-size: 13px;
-            display: grid;
-            gap: 8px;
-        }
-
-        .detail-item {
-            display: flex;
-            justify-content: space-between;
+        .metric-card .metric-detail {
+            font-size: 11px;
             color: var(--muted);
+            margin-top: 8px;
         }
 
-        .detail-item span:last-child {
-            color: var(--text);
-            font-weight: 500;
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            flex-shrink: 0;
         }
 
-        .status-dot.healthy {
-            background: #00ff80;
-            box-shadow: 0 0 8px rgba(0, 255, 128, 0.4);
-        }
+        .status-dot.healthy { background: #4ade80; box-shadow: 0 0 6px rgba(74,222,128,0.5); }
+        .status-dot.warning { background: #fbbf24; box-shadow: 0 0 6px rgba(251,191,36,0.5); }
+        .status-dot.error { background: #f87171; box-shadow: 0 0 6px rgba(248,113,113,0.5); }
 
-        .status-dot.warning {
-            background: #ffc800;
-            box-shadow: 0 0 8px rgba(255, 200, 0, 0.4);
-        }
-
-        .status-dot.error {
-            background: #ff3232;
-            box-shadow: 0 0 8px rgba(255, 50, 50, 0.4);
-        }
-
-        .stat-label {
-            font-size: 12px;
-            color: var(--muted);
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-bottom: 8px;
-        }
-
-        .stat-value {
-            font-size: 24px;
-            font-weight: 700;
-            color: var(--text);
-        }
-
-        /* n8n Styles */
-        .grid-2-col {
+        /* Three Column Grid Layout */
+        .ops-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 1fr 1fr 340px;
             gap: 20px;
         }
 
-        .event-log-container {
-            max-height: 500px;
-            overflow-y: auto;
-            padding: 15px;
-            background: rgba(0, 0, 0, 0.2);
-            border-radius: 0 0 12px 12px;
+        /* Section Cards */
+        .section-card {
+            background: rgba(255,255,255,0.02);
+            border: 1px solid var(--panel-border);
+            border-radius: 12px;
+            overflow: hidden;
         }
 
-        .event-entry {
-            padding: 10px;
-            border-left: 3px solid var(--accent);
-            background: rgba(255, 255, 255, 0.02);
-            margin-bottom: 10px;
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--panel-border);
+            background: rgba(255,255,255,0.01);
+        }
+
+        .section-header h2 {
+            font-size: 14px;
+            font-weight: 600;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--text);
+        }
+
+        .section-header h2 i {
+            color: var(--accent);
             font-size: 13px;
         }
 
-        .event-entry.success {
-            border-left-color: #4ade80;
+        .section-body {
+            padding: 16px 20px;
         }
 
-        .event-entry.error {
-            border-left-color: #f87171;
-        }
-
-        .event-entry.info {
-            border-left-color: #38bdf8;
-        }
-
-        .result-box {
-            background: rgba(0, 0, 0, 0.3);
-            padding: 15px;
-            border-radius: 8px;
-            font-family: monospace;
-            font-size: 12px;
-            max-height: 200px;
+        /* Events List - Clean Design */
+        .events-list {
+            max-height: 420px;
             overflow-y: auto;
+        }
+
+        .event-row {
+            display: flex;
+            gap: 12px;
+            padding: 12px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+        }
+
+        .event-row:last-child {
+            border-bottom: none;
+        }
+
+        .event-indicator {
+            width: 3px;
+            border-radius: 2px;
+            flex-shrink: 0;
+        }
+
+        .event-indicator.error { background: #f87171; }
+        .event-indicator.success { background: #4ade80; }
+        .event-indicator.info { background: #38bdf8; }
+        .event-indicator.warn { background: #fbbf24; }
+
+        .event-content {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .event-message {
+            font-size: 13px;
+            color: var(--text);
+            font-weight: 500;
+            line-height: 1.4;
+        }
+
+        .event-time {
+            font-size: 11px;
+            color: var(--muted);
+            margin-top: 4px;
+        }
+
+        /* n8n Webhook Panel */
+        .webhook-form {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .field-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .field-group label {
+            font-size: 11px;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .webhook-form select,
+        .webhook-form textarea,
+        .webhook-form input {
+            background: rgba(0,0,0,0.3);
+            border: 1px solid var(--panel-border);
+            border-radius: 8px;
+            padding: 10px 14px;
+            color: var(--text);
+            font-size: 13px;
+            width: 100%;
+            transition: border-color 0.2s;
+        }
+
+        .webhook-form select:focus,
+        .webhook-form textarea:focus,
+        .webhook-form input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .webhook-form textarea {
+            font-family: 'Monaco', 'Consolas', monospace;
+            font-size: 12px;
+            resize: vertical;
+            min-height: 90px;
+        }
+
+        .webhook-result {
+            background: rgba(0,0,0,0.4);
+            border-radius: 8px;
+            padding: 12px;
+            font-family: monospace;
+            font-size: 11px;
+            max-height: 100px;
+            overflow-y: auto;
+            display: none;
             border: 1px solid var(--panel-border);
         }
 
-        .progress-mini {
-            height: 4px;
-            background: rgba(255, 255, 255, 0.1);
+        .webhook-result.visible {
+            display: block;
+        }
+
+        /* Metrics Grid */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+        }
+
+        .metric-card {
+            background: rgba(0,0,0,0.25);
+            border-radius: 10px;
+            padding: 14px 16px;
+        }
+
+        .metric-card .metric-label {
+            font-size: 10px;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+        }
+
+        .metric-card .metric-value {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .metric-card .metric-bar {
+            height: 3px;
+            background: rgba(255,255,255,0.1);
             border-radius: 2px;
             margin-top: 10px;
             overflow: hidden;
         }
 
-        .progress-mini .fill {
+        .metric-card .metric-fill {
             height: 100%;
             background: var(--accent);
-            width: 0%;
             transition: width 0.3s;
         }
 
-        .detail-list-modern {
-            display: grid;
-            gap: 10px;
+        .metric-card .metric-detail {
+            font-size: 11px;
+            color: var(--muted);
+            margin-top: 6px;
         }
 
-        .detail-item-modern {
+        /* Collections List */
+        .collections-list {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .collection-item {
             display: flex;
             justify-content: space-between;
-            padding: 10px;
-            background: rgba(255, 255, 255, 0.02);
-            border-radius: 6px;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+            font-size: 13px;
         }
 
-        @media (max-width: 900px) {
-            .dashboard-layout {
+        .collection-item:last-child {
+            border-bottom: none;
+        }
+
+        .collection-info .name {
+            color: var(--text);
+            font-weight: 500;
+        }
+
+        .collection-info .db {
+            font-size: 10px;
+            color: var(--muted);
+        }
+
+        .collection-item .count {
+            background: var(--accent);
+            color: #0f172a;
+            padding: 3px 10px;
+            border-radius: 99px;
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        /* Status Indicators */
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .status-dot.healthy { background: #4ade80; box-shadow: 0 0 6px rgba(74,222,128,0.5); }
+        .status-dot.warning { background: #fbbf24; box-shadow: 0 0 6px rgba(251,191,36,0.5); }
+        .status-dot.error { background: #f87171; box-shadow: 0 0 6px rgba(248,113,113,0.5); }
+
+        /* Tooltip System */
+        [data-tooltip] {
+            position: relative;
+            cursor: help;
+        }
+
+        [data-tooltip]:hover::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            margin-bottom: 8px;
+            padding: 8px 12px;
+            background: rgba(15, 23, 42, 0.98);
+            color: var(--text);
+            font-size: 12px;
+            line-height: 1.4;
+            border-radius: 6px;
+            border: 1px solid var(--panel-border);
+            white-space: normal;
+            max-width: 280px;
+            width: max-content;
+            z-index: 1000;
+            pointer-events: none;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+            animation: tooltipFadeIn 0.2s ease-out;
+        }
+
+        [data-tooltip]:hover::before {
+            content: '';
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            margin-bottom: 2px;
+            border: 6px solid transparent;
+            border-top-color: var(--panel-border);
+            z-index: 1001;
+            pointer-events: none;
+            animation: tooltipFadeIn 0.2s ease-out;
+        }
+
+        @keyframes tooltipFadeIn {
+            from { opacity: 0; transform: translateX(-50%) translateY(4px); }
+            to { opacity: 1; transform: translateX(-50%) translateY(0); }
+        }
+
+        /* Button Styles */
+        .btn-sm {
+            padding: 8px 14px;
+            font-size: 12px;
+            border-radius: 8px;
+            border: 1px solid var(--panel-border);
+            background: transparent;
+            color: var(--muted);
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn-sm:hover {
+            background: rgba(255,255,255,0.05);
+            color: var(--text);
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: #0f172a;
+            border: none;
+            font-weight: 600;
+        }
+
+        .btn-primary:hover {
+            opacity: 0.9;
+        }
+
+        /* Responsive */
+        @media (max-width: 1200px) {
+            .ops-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+            .ops-grid > .section-card:nth-child(3) {
+                grid-column: span 2;
+            }
+        }
+
+        @media (max-width: 800px) {
+            .ops-page {
+                padding: 16px;
+            }
+            .ops-grid {
                 grid-template-columns: 1fr;
             }
-
-            .grid-2-col {
-                grid-template-columns: 1fr;
+            .ops-grid > .section-card:nth-child(3) {
+                grid-column: span 1;
+            }
+            .metrics-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .health-strip {
+                flex-wrap: wrap;
+            }
+            .health-strip .uptime-info {
+                width: 100%;
+                margin-left: 0;
+                margin-top: 8px;
+                justify-content: center;
+            }
+            .health-strip {
+                flex-wrap: wrap;
+                gap: 12px;
+            }
+            .health-strip-title {
+                width: 100%;
+                border-right: none;
+                border-bottom: 1px solid var(--panel-border);
+                padding-bottom: 12px;
+                margin-bottom: 4px;
             }
         }
     </style>
+</head>
 
-    <!-- Scripts: Loaded as modules to allow imports -->
+<body>
+    <div class="bg-grid"></div>
+    <div class="page ops-page">
+        
+        <!-- Header -->
+        <header class="ops-header">
+            <div>
+                <div class="eyebrow">AgentX • Unified Operations</div>
+                <h1>Operations Center</h1>
+                <p class="lede">Monitor health, trigger workflows, and track system metrics — all in one view.</p>
+            </div>
+            <nav class="agentx-nav"></nav>
+        </header>
+
+        <!-- Health Strip -->
+        <div class="health-strip">
+            <span class="health-strip-title"><i class="fas fa-heartbeat"></i> System Health</span>
+            <div class="health-strip-item" id="health-agentx">
+                <span class="dot"></span>
+                <span>AgentX</span>
+            </div>
+            <div class="health-strip-item" id="health-mongodb">
+                <span class="dot"></span>
+                <span>MongoDB</span>
+            </div>
+            <div class="health-strip-item" id="health-dataapi">
+                <span class="dot"></span>
+                <span>DataAPI</span>
+            </div>
+            <div class="health-strip-item" id="health-ollama">
+                <span class="dot"></span>
+                <span>Ollama</span>
+            </div>
+            <div class="health-strip-item" id="health-n8n">
+                <span class="dot"></span>
+                <span>n8n</span>
+            </div>
+            <div class="uptime-info">
+                <i class="fas fa-clock"></i>
+                <span>Uptime:</span>
+                <span class="value" id="sys-uptime">—</span>
+            </div>
+        </div>
+
+        <!-- Metrics Grid -->
+        <div class="metrics-grid">
+            <div class="metric-card" data-tooltip="Percentage of embedding cache hits vs misses. Higher is better - means fewer expensive API calls to the embedding service.">
+                <div class="metric-label">Cache Hit Rate</div>
+                <div class="metric-value">
+                    <span class="status-dot healthy" id="cacheStatus"></span>
+                    <span id="cache-hit-rate">0%</span>
+                </div>
+                <div class="metric-bar"><div class="metric-fill" id="cacheBar" style="width: 0%"></div></div>
+                <div class="metric-detail"><span id="cacheHits">0</span> hits / <span id="cacheMisses">0</span> miss</div>
+            </div>
+            <div class="metric-card" data-tooltip="Total number of documents stored across all MongoDB collections (conversations, configs, user profiles, etc.)">
+                <div class="metric-label">DB Documents</div>
+                <div class="metric-value">
+                    <span class="status-dot healthy"></span>
+                    <span id="db-total-docs">0</span>
+                </div>
+                <div class="metric-detail">Across all collections</div>
+            </div>
+            <div class="metric-card" data-tooltip="Active database connections out of maximum pool size. Monitor to detect connection leaks or pool exhaustion.">
+                <div class="metric-label">Connections</div>
+                <div class="metric-value">
+                    <span class="status-dot healthy" id="connStatus"></span>
+                    <span id="connActive">0</span>/<span id="connMax">0</span>
+                </div>
+                <div class="metric-bar"><div class="metric-fill" id="connBar" style="width: 0%"></div></div>
+                <div class="metric-detail"><span id="connAvail">0</span> available</div>
+            </div>
+            <div class="metric-card" data-tooltip="Node.js heap memory usage. Shows V8 JavaScript heap allocation. Warning at >80%, critical at >90%.">
+                <div class="metric-label">Memory (Heap)</div>
+                <div class="metric-value">
+                    <span class="status-dot healthy" id="sysStatus"></span>
+                    <span id="sys-mem">0 MB</span>
+                </div>
+                <div class="metric-bar"><div class="metric-fill" id="sysBar" style="width: 0%"></div></div>
+                <div class="metric-detail">of <span id="sysTotalMem">0</span></div>
+            </div>
+        </div>
+
+        <!-- Main Grid: 3 Sections -->
+        <div class="ops-grid">
+            
+            <!-- Section 1: System Events -->
+            <div class="section-card">
+                <div class="section-header">
+                    <h2><i class="fas fa-stream"></i> Recent Events</h2>
+                    <button class="btn-sm" id="refreshEventsBtn"><i class="fas fa-sync-alt"></i></button>
+                </div>
+                <div class="section-body">
+                    <div class="events-list" id="system-events-list">
+                        <div class="event-row">
+                            <div class="event-content">
+                                <div class="event-message" style="color: var(--muted);">Loading events...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 2: n8n Webhook Trigger -->
+            <div class="section-card">
+                <div class="section-header">
+                    <h2><i class="fas fa-bolt"></i> n8n Webhook</h2>
+                </div>
+                <div class="section-body">
+                    <div class="webhook-form">
+                        <div class="field-group">
+                            <label>Workflow</label>
+                            <select id="workflowSelector">
+                                <option value="agentmail">AgentMail (Gmail AI Agent)</option>
+                                <option value="rag-ingest">RAG Ingestion</option>
+                                <option value="chat-complete">Chat Completion</option>
+                                <option value="analytics">Analytics Event</option>
+                                <option value="custom">Custom Webhook...</option>
+                            </select>
+                        </div>
+                        <div class="field-group" id="customWebhookDiv" style="display: none;">
+                            <label>Custom URL</label>
+                            <input type="text" id="customWebhookId" placeholder="UUID or full URL">
+                        </div>
+                        <div class="field-group">
+                            <label>Payload (JSON)</label>
+                            <textarea id="webhookPayload" rows="4">{
+  "event": "test_trigger",
+  "source": "ops-center"
+}</textarea>
+                        </div>
+                        <button class="btn-sm btn-primary" id="triggerWebhookBtn" style="width: 100%; justify-content: center;">
+                            <i class="fas fa-paper-plane"></i> Trigger Webhook
+                        </button>
+                        <div class="webhook-result" id="triggerResult"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 3: System Metrics + Collections -->
+            <div class="section-card">
+                <div class="section-header">
+                    <h2><i class="fas fa-chart-bar"></i> Metrics</h2>
+                    <button class="btn-sm" id="refreshMetricsBtn"><i class="fas fa-sync-alt"></i></button>
+                </div>
+                <div class="section-body">
+                    <div class="metrics-grid">
+                        <div class="metric-card" data-tooltip="Percentage of embedding cache hits vs misses. Higher is better - means fewer expensive API calls to the embedding service.">
+                            <div class="metric-label">Cache</div>
+                            <div class="metric-value">
+                                <span class="status-dot healthy" id="cacheStatus"></span>
+                                <span id="cacheHitRate">0%</span>
+                            </div>
+                            <div class="metric-bar"><div class="metric-fill" id="cacheBar" style="width: 0%"></div></div>
+                            <div class="metric-detail"><span id="cacheHits">0</span> hits / <span id="cacheMisses">0</span> miss</div>
+                        </div>
+                        <div class="metric-card" data-tooltip="Active database connections out of maximum pool size. Monitor to detect connection leaks or pool exhaustion.">
+                            <div class="metric-label">Connections</div>
+                            <div class="metric-value">
+                                <span class="status-dot healthy" id="connStatus"></span>
+                                <span id="connActive">0</span>/<span id="connMax">0</span>
+                            </div>
+                            <div class="metric-bar"><div class="metric-fill" id="connBar" style="width: 0%"></div></div>
+                            <div class="metric-detail"><span id="connAvail">0</span> available</div>
+                        </div>
+                        <div class="metric-card" data-tooltip="Node.js heap memory usage. Shows V8 JavaScript heap allocation. Warning at >80%, critical at >90%.">
+                            <div class="metric-label">Heap</div>
+                            <div class="metric-value">
+                                <span class="status-dot healthy" id="sysStatus"></span>
+                                <span id="heapUsed">0 MB</span>
+                            </div>
+                            <div class="metric-bar"><div class="metric-fill" id="sysBar" style="width: 0%"></div></div>
+                            <div class="metric-detail">of <span id="heapTotal">0 MB</span></div>
+                        </div>
+                        <div class="metric-card" data-tooltip="Node.js version and platform information for the running AgentX server process.">
+                            <div class="metric-label">Node</div>
+                            <div class="metric-value" id="sysNode" style="font-size: 14px;">v18+</div>
+                            <div class="metric-detail" id="sysPlatform">Linux</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Collections Sub-section -->
+                <div class="section-header" style="margin-top: 0; border-top: 1px solid var(--panel-border);">
+                    <h2><i class="fas fa-database"></i> Collections</h2>
+                </div>
+                <div class="section-body">
+                    <div class="collections-list" id="collections-list">
+                        <div class="collection-item">
+                            <span style="color: var(--muted);">Loading...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
     <script type="module" src="/js/dashboard.js"></script>
-
-    <!-- Init Script -->
     <script type="module">
-        import { API } from '/js/utils/index.js';
         import { injectNav } from '/js/components/nav.js';
-
         injectNav('dashboard');
-
-        async function loadStats() {
-            const container = document.getElementById('card-scroll-container');
-            try {
-                // AgentX API might not expose raw stats for all collections, defaulting to a known one
-                // Or use DataAPI proxy if available
-                const response = await API.get('/api/dashboard/stats');
-                const stats = response.data;
-
-                if (!stats || stats.length === 0) {
-                    container.innerHTML = '<div class="text-center text-muted p-3">No collections found.</div>';
-                    return;
-                }
-
-                container.innerHTML = '';
-
-                stats.forEach(stat => {
-                    const card = document.createElement('div');
-                    card.className = 'summary-card';
-                    card.setAttribute('data-collection', stat.collection);
-
-                    if (stat.collection === 'userLogs') {
-                        card.classList.add('selected');
-                    }
-
-                    card.innerHTML = `
-                      <div>
-                          <div style="font-weight:600;">${stat.collection}</div>
-                          <div style="font-size:11px; color:var(--muted);">${stat.db}</div>
-                      </div>
-                      <span class="badge">${stat.count}</span>
-                  `;
-
-                    container.appendChild(card);
-                });
-
-                // dashboard.js exposes this on window
-                if (window.setupDashboardInteractions) {
-                    window.setupDashboardInteractions();
-                }
-
-            } catch (error) {
-                console.error('Failed to load stats:', error);
-                // Fallback UI
-                container.innerHTML = '<div style="padding:10px; color:var(--muted);">Failed to load stats.<br><small>Backend connectivity issue.</small></div>';
-            }
-        }
-
-        loadStats();
     </script>
 </body>
 

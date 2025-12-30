@@ -77,15 +77,21 @@ router.get('/database', optionalAuth, async (req, res) => {
     const collectionStats = {};
 
     for (const collection of collections) {
-      const stats = await db.collection(collection.name).stats();
-      collectionStats[collection.name] = {
-        count: stats.count,
-        size: stats.size,
-        avgObjSize: stats.avgObjSize,
-        storageSize: stats.storageSize,
-        indexes: stats.nindexes,
-        totalIndexSize: stats.totalIndexSize
-      };
+      try {
+        // Use collStats command as .stats() is deprecated/removed in newer drivers
+        const stats = await db.command({ collStats: collection.name });
+        collectionStats[collection.name] = {
+          count: stats.count,
+          size: stats.size,
+          avgObjSize: stats.avgObjSize,
+          storageSize: stats.storageSize,
+          indexes: stats.nindexes,
+          totalIndexSize: stats.totalIndexSize
+        };
+      } catch (err) {
+        // Fallback or skip if collStats fails (e.g. views)
+        collectionStats[collection.name] = { count: 0, error: 'Stats unavailable' };
+      }
     }
 
     res.json({

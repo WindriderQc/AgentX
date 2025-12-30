@@ -906,6 +906,36 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // Update config summary display in both config panel and chat header
+  function updateConfigSummary() {
+    const modelName = elements.modelSelect.value || '—';
+    const shortModel = modelName.length > 15 ? modelName.substring(0, 12) + '...' : modelName;
+    
+    // Update config panel summary
+    const summaryModelEl = document.getElementById('summaryModel');
+    if (summaryModelEl) summaryModelEl.textContent = shortModel;
+    
+    const summaryRagEl = document.getElementById('summaryRag');
+    if (summaryRagEl) summaryRagEl.textContent = elements.ragToggle.checked ? 'On' : 'Off';
+    
+    const summaryStreamEl = document.getElementById('summaryStream');
+    if (summaryStreamEl) summaryStreamEl.textContent = elements.streamToggle.checked ? 'On' : 'Off';
+    
+    const summaryTempEl = document.getElementById('summaryTemp');
+    if (summaryTempEl) summaryTempEl.textContent = elements.temperature.value;
+    
+    // Update chat panel config summary
+    const chatConfigEl = document.getElementById('chatConfigSummary');
+    if (chatConfigEl) {
+      const ragStatus = elements.ragToggle.checked ? '+RAG' : '';
+      const streamStatus = elements.streamToggle.checked ? '' : 'No-Stream';
+      const extras = [ragStatus, streamStatus].filter(s => s).join(', ');
+      const summary = extras ? `${shortModel} (${extras})` : shortModel;
+      chatConfigEl.textContent = summary;
+      chatConfigEl.setAttribute('data-tooltip', `Model: ${modelName}\\nRAG: ${elements.ragToggle.checked ? 'Enabled' : 'Disabled'}\\nStreaming: ${elements.streamToggle.checked ? 'Enabled' : 'Disabled'}\\nTemperature: ${elements.temperature.value}`);
+    }
+  }
+
   function attachEvents() {
     elements.micBtn.addEventListener('click', toggleVoiceInput);
     elements.ttsToggle.addEventListener('change', persistSettings);
@@ -934,6 +964,25 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
+    // Toggle entire config panel (collapsible)
+    const configPanel = document.getElementById('configPanel');
+    const configPanelHeader = document.getElementById('configPanelHeader');
+    const configBody = document.getElementById('configBody');
+    const configSummary = document.getElementById('configSummary');
+
+    if (configPanelHeader && configBody) {
+      configPanelHeader.addEventListener('click', () => {
+        configPanel.classList.toggle('collapsed');
+        const isCollapsed = configPanel.classList.contains('collapsed');
+        if (isCollapsed) {
+          updateConfigSummary();
+          configSummary.style.display = 'block';
+        } else {
+          configSummary.style.display = 'none';
+        }
+      });
+    }
+
     elements.messageInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
         sendMessage();
@@ -948,10 +997,19 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.modelSelect.addEventListener('change', () => {
       state.settings.model = elements.modelSelect.value;
       persistSettings();
+      updateConfigSummary();
     });
 
-    elements.streamToggle.addEventListener('change', persistSettings);
-    elements.ragToggle.addEventListener('change', persistSettings);
+    elements.streamToggle.addEventListener('change', () => {
+      persistSettings();
+      updateConfigSummary();
+    });
+    
+    elements.ragToggle.addEventListener('change', () => {
+      persistSettings();
+      updateConfigSummary();
+    });
+    
     if (elements.statsToggle) elements.statsToggle.addEventListener('change', persistSettings);
 
     // Auto-refresh models when host or port changes
@@ -1014,6 +1072,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     setHistoryToggleLabels();
+    
+    // Update config summary on parameter changes (temperature, etc.)
+    document.addEventListener('input', (e) => {
+      if (e.target.type === 'range' || e.target.id === 'temperature') {
+        updateConfigSummary();
+      }
+    });
+
+    // Initialize config summary
+    updateConfigSummary();
 
     // Load history and open latest conversation if available
     const history = await loadHistoryList();

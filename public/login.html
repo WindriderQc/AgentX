@@ -235,6 +235,17 @@
         const showRegisterLink = document.getElementById('showRegister');
         const showLoginLink = document.getElementById('showLogin');
 
+        // Get redirect URL from query string
+        function getRedirectUrl() {
+            const params = new URLSearchParams(window.location.search);
+            const redirect = params.get('redirect');
+            // Validate it's a local path (security measure)
+            if (redirect && redirect.startsWith('/') && !redirect.startsWith('//')) {
+                return redirect;
+            }
+            return '/'; // Default to home
+        }
+
         // Toggle between login and register
         showRegisterLink.addEventListener('click', (e) => {
             e.preventDefault();
@@ -294,8 +305,8 @@
                 if (data.status === 'success') {
                     // Store user info
                     localStorage.setItem('user', JSON.stringify(data.user));
-                    // Redirect to app
-                    window.location.href = '/';
+                    // Redirect to requested page or home
+                    window.location.href = getRedirectUrl();
                 } else {
                     showError('login', data.message || 'Login failed');
                     btn.disabled = false;
@@ -335,7 +346,7 @@
                     showSuccess('Account created! Redirecting...');
                     localStorage.setItem('user', JSON.stringify(data.user));
                     setTimeout(() => {
-                        window.location.href = '/';
+                        window.location.href = getRedirectUrl();
                     }, 1500);
                 } else {
                     showError('register', data.message || 'Registration failed');
