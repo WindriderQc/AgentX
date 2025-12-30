@@ -22,8 +22,8 @@
       "parameters": {
         "method": "POST",
         "url": "http://192.168.2.33:3003/api/v1/storage/scan",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "httpHeaderAuth",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "{\n  \"roots\": [\"/mnt/media\", \"/mnt/datalake\"],\n  \"extensions\": [\"mp4\",\"mkv\",\"avi\",\"mov\",\"mp3\",\"flac\",\"wav\",\"jpg\",\"jpeg\",\"png\",\"gif\",\"webp\",\"pdf\",\"txt\",\"md\"],\n  \"batch_size\": 1000,\n  \"compute_hashes\": true,\n  \"hash_max_size\": 104857600\n}",
@@ -38,8 +38,8 @@
       "position": [-150, 0],
       "credentials": {
         "httpHeaderAuth": {
-          "id": "DataAPI API Key",
-          "name": "DataAPI API Key"
+          "id": "PIrrA2wpOppzVodi",
+          "name": "Header Auth account"
         }
       },
       "notesInFlow": true,
@@ -49,8 +49,8 @@
       "parameters": {
         "method": "POST",
         "url": "http://192.168.2.33:3003/integrations/events/n8n",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "httpHeaderAuth",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={\n  \"workflow_id\": \"SBQC-N2.1-nas-scan\",\n  \"event_type\": \"scan_triggered\",\n  \"data\": {\n    \"scan_id\": {{ JSON.stringify($json.data?.scan_id || $json.scan_id) }},\n    \"roots\": {{ JSON.stringify($json.data?.roots || []) }},\n    \"triggered_at\": \"{{ new Date().toISOString() }}\"\n  }\n}",
@@ -66,8 +66,8 @@
       "continueOnFail": true,
       "credentials": {
         "httpHeaderAuth": {
-          "id": "DataAPI API Key",
-          "name": "DataAPI API Key"
+          "id": "PIrrA2wpOppzVodi",
+          "name": "Header Auth account"
         }
       }
     }
