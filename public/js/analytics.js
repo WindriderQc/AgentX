@@ -445,7 +445,7 @@ function renderSystemMetrics(metrics) {
     elements.sysTotalMem.textContent = formatBytes(sys.memory.heapTotal);
     const memUsagePercent = (sys.memory.heapUsed / sys.memory.heapTotal) * 100;
     elements.sysBar.style.width = `${memUsagePercent}%`;
-    setStatus(elements.sysStatus, memUsagePercent, 70, 85, true);
+    setStatus(elements.sysStatus, memUsagePercent, 80, 90, true);
 
     // Safe access to optional elements
     if (elements.sysNode) elements.sysNode.textContent = sys.nodeVersion || 'v18+';
