@@ -1,0 +1,441 @@
+{
+  "name": "SBQC - N5.1 Feedback Analysis & Prompt Optimization",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 3 * * 0"
+            }
+          ]
+        }
+      },
+      "id": "ScheduleTrigger",
+      "name": "Schedule (Weekly Sun 3AM)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-600, 0]
+    },
+    {
+      "parameters": {
+        "path": "sbqc-n5-1-feedback-analysis",
+        "options": {}
+      },
+      "id": "WebhookTrigger",
+      "name": "Webhook (Manual)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-600, 200],
+      "disabled": false
+    },
+    {
+      "parameters": {},
+      "id": "MergeTriggers",
+      "name": "Merge Triggers",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [-350, 100]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://192.168.2.33:3080/api/analytics/feedback/summary",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "GetFeedbackSummary",
+      "name": "Get Feedback Summary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-100, 100],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "AgentX API Key",
+          "name": "AgentX API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst summary = data.data || data;\n\n// Calculate overall stats\nconst overall = summary.overall || { total: 0, positive: 0, negative: 0 };\nconst positiveRate = overall.total > 0 ? overall.positive / overall.total : 0;\n\n// Identify underperforming prompts (< 70% positive)\nconst byPrompt = summary.byPromptVersion || [];\nconst underperformers = byPrompt.filter(p => {\n  const rate = p.total > 5 ? p.positive / p.total : 1;\n  return rate < 0.7;\n});\n\n// Identify underperforming models\nconst byModel = summary.byModel || [];\nconst slowModels = byModel.filter(m => m.avgLatency > 5000);\n\nreturn [{\n  json: {\n    overall: {\n      total: overall.total,\n      positiveRate: Math.round(positiveRate * 100),\n      weeklyTrend: summary.trend || 'unknown'\n    },\n    underperformers,\n    slowModels,\n    hasIssues: underperformers.length > 0 || slowModels.length > 0,\n    analyzedAt: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "AnalyzeFeedback",
+      "name": "Analyze Feedback Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [150, 100]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "issues-check",
+              "leftValue": "={{ $json.hasIssues }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      },
+      "id": "CheckIssues",
+      "name": "Has Issues?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [400, 100]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://192.168.2.33:3080/api/analytics/feedback?rating=negative&limit=20",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "GetNegativeFeedback",
+      "name": "Get Negative Feedback Examples",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [650, 0],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "AgentX API Key",
+          "name": "AgentX API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const analysis = $('Analyze Feedback Data').first().json;\nconst negativeFeedback = $input.first().json.data || [];\n\n// Build analysis prompt for AI\nconst prompt = `You are an AI prompt optimization expert. Analyze the following feedback data and provide specific, actionable recommendations.\n\n## Current Performance\n- Overall positive rate: ${analysis.overall.positiveRate}%\n- Total feedback items: ${analysis.overall.total}\n\n## Underperforming Prompt Versions\n${JSON.stringify(analysis.underperformers, null, 2)}\n\n## Slow Models (>5s latency)\n${JSON.stringify(analysis.slowModels, null, 2)}\n\n## Sample Negative Feedback\n${negativeFeedback.slice(0, 10).map(f => `- \"${f.comment || 'No comment'}\" (prompt: ${f.promptVersion || 'default'})`).join('\\n')}\n\n## Your Task\nProvide:\n1. Root cause analysis (2-3 likely causes)\n2. Specific prompt modifications to try\n3. Suggested A/B test configuration\n4. Model routing recommendations if applicable\n\nFormat your response as structured JSON with keys: causes, promptSuggestions, abTestConfig, modelRecommendations`;\n\nreturn [{\n  json: {\n    prompt,\n    analysisData: analysis,\n    negativeSamples: negativeFeedback.length\n  }\n}];"
+      },
+      "id": "PrepareAIPrompt",
+      "name": "Prepare AI Analysis Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://192.168.2.33:3080/api/chat",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"message\": {{ JSON.stringify($json.prompt) }},\n  \"model\": \"qwen2.5:7b-instruct-q4_0\",\n  \"useRag\": false,\n  \"persona\": \"sbqc_ops\"\n}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "CallAIForAnalysis",
+      "name": "Get AI Recommendations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1150, 0],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "AgentX API Key",
+          "name": "AgentX API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const aiResponse = $input.first().json;\nconst analysisData = $('Prepare AI Analysis Prompt').first().json.analysisData;\n\nconst report = {\n  type: 'feedback_analysis',\n  generatedAt: new Date().toISOString(),\n  summary: {\n    positiveRate: analysisData.overall.positiveRate,\n    totalFeedback: analysisData.overall.total,\n    issuesFound: analysisData.underperformers.length + analysisData.slowModels.length\n  },\n  underperformers: analysisData.underperformers,\n  slowModels: analysisData.slowModels,\n  aiRecommendations: aiResponse.response || aiResponse.message || 'No recommendations generated',\n  status: 'pending_review',\n  humanGate: true\n};\n\nreturn [{ json: report }];"
+      },
+      "id": "BuildReport",
+      "name": "Build Analysis Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1400, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const analysis = $input.first().json;\n\nconst report = {\n  type: 'feedback_analysis',\n  generatedAt: new Date().toISOString(),\n  summary: {\n    positiveRate: analysis.overall.positiveRate,\n    totalFeedback: analysis.overall.total,\n    issuesFound: 0\n  },\n  message: 'No issues detected. All prompts performing above threshold.',\n  status: 'healthy'\n};\n\nreturn [{ json: report }];"
+      },
+      "id": "NoIssuesReport",
+      "name": "No Issues Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [650, 200]
+    },
+    {
+      "parameters": {},
+      "id": "MergeReports",
+      "name": "Merge Reports",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [1650, 100]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://192.168.2.33:3003/integrations/events/n8n",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"workflow_id\": \"N5.1\",\n  \"event_type\": \"feedback_analysis_complete\",\n  \"data\": {{ JSON.stringify($json) }}\n}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "LogToDataAPI",
+      "name": "Log Report (DataAPI)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1900, 100],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "DataAPI API Key",
+          "name": "DataAPI API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "pending-check",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "pending_review",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      },
+      "id": "NeedsHumanReview",
+      "name": "Needs Human Review?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2150, 100]
+    },
+    {
+      "parameters": {
+        "jsCode": "// PLACEHOLDER: Send notification to admin\n// Options:\n// 1. Email via SMTP node\n// 2. Slack message\n// 3. Discord webhook\n// 4. Store in MongoDB for dashboard pickup\n\nconst report = $input.first().json;\n\nconsole.log('=== FEEDBACK ANALYSIS REQUIRES REVIEW ===');\nconsole.log('Issues found:', report.summary.issuesFound);\nconsole.log('Recommendations available in report');\n\nreturn [{ json: { notified: true, method: 'console', report } }];"
+      },
+      "id": "NotifyAdmin",
+      "name": "Notify Admin (Placeholder)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2400, 50],
+      "notesInFlow": true,
+      "notes": "Replace with Slack/Email/Discord notification"
+    }
+  ],
+  "connections": {
+    "ScheduleTrigger": {
+      "main": [
+        [
+          {
+            "node": "MergeTriggers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WebhookTrigger": {
+      "main": [
+        [
+          {
+            "node": "MergeTriggers",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "MergeTriggers": {
+      "main": [
+        [
+          {
+            "node": "GetFeedbackSummary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GetFeedbackSummary": {
+      "main": [
+        [
+          {
+            "node": "AnalyzeFeedback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AnalyzeFeedback": {
+      "main": [
+        [
+          {
+            "node": "CheckIssues",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CheckIssues": {
+      "main": [
+        [
+          {
+            "node": "GetNegativeFeedback",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "NoIssuesReport",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GetNegativeFeedback": {
+      "main": [
+        [
+          {
+            "node": "PrepareAIPrompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PrepareAIPrompt": {
+      "main": [
+        [
+          {
+            "node": "CallAIForAnalysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CallAIForAnalysis": {
+      "main": [
+        [
+          {
+            "node": "BuildReport",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BuildReport": {
+      "main": [
+        [
+          {
+            "node": "MergeReports",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NoIssuesReport": {
+      "main": [
+        [
+          {
+            "node": "MergeReports",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "MergeReports": {
+      "main": [
+        [
+          {
+            "node": "LogToDataAPI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LogToDataAPI": {
+      "main": [
+        [
+          {
+            "node": "NeedsHumanReview",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NeedsHumanReview": {
+      "main": [
+        [
+          {
+            "node": "NotifyAdmin",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "SBQC",
+      "id": "sbqc"
+    },
+    {
+      "name": "Priority-5",
+      "id": "p5"
+    },
+    {
+      "name": "Feedback",
+      "id": "feedback"
+    },
+    {
+      "name": "Self-Improving",
+      "id": "loop"
+    }
+  ],
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
+}

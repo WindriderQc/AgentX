@@ -1,13 +1,28 @@
 ````md
-# SBQC n8n Workflows — Import + Test Instructions (N1.1, N1.2, N2.1)
+# SBQC n8n Workflows — Import + Test Instructions
 
-Last updated: 2025-12-26  
-Scope: the 3 workflow JSON exports we just generated:
-- **N1.1** System Health Check (every 5 min)
-- **N1.2** Ops AI Diagnostic (webhook)
-- **N2.1** NAS File Scanner (daily 2AM)
+**Last updated:** 2025-12-30  
+**Workflow Count:** 7 workflows (finalized after redundancy removal)
 
-Reference architecture + endpoint contracts: :contentReference[oaicite:0]{index=0} :contentReference[oaicite:1]{index=1} :contentReference[oaicite:2]{index=2}
+## Active Workflow Files
+
+| File | Name | Purpose |
+|------|------|---------|
+| `N1.1.json` | System Health Check | Monitor all services every 5 min |
+| `N1.3.json` | Ops AI Diagnostic | AI-powered system analysis |
+| `N2.1.json` | NAS File Scanner + Hash | Trigger DataAPI scan with SHA256 hashing |
+| `N2.3.json` | RAG Document Ingestion | Feed docs to AgentX RAG |
+| `N3.1.json` | Model Health Monitor | Track Ollama latency |
+| `N3.2.json` | External AI Gateway | Allow external AI queries |
+| `N5.1.json` | Feedback Analysis | Weekly prompt optimization |
+
+## ❌ Removed (Redundant)
+
+- **N1.1b** - Duplicate of N2.1
+- **N1.2** - DataAPI never pushes events to n8n
+- **N2.2** - Hashing now done by DataAPI Scanner natively
+
+Reference architecture: SBQC-Stack-Final docs
 
 ---
 

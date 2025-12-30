@@ -277,6 +277,108 @@
             color: var(--muted);
             text-transform: uppercase;
             letter-spacing: 1px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .field-help {
+            color: var(--accent);
+            cursor: help;
+            font-size: 12px;
+        }
+
+        .field-hint {
+            font-size: 11px;
+            color: var(--muted);
+            margin-top: -2px;
+        }
+
+        .workflow-description {
+            font-size: 12px;
+            color: var(--text);
+            opacity: 0.7;
+            padding: 8px 10px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 6px;
+            margin-top: 4px;
+        }
+
+        .help-banner {
+            background: linear-gradient(135deg, rgba(59,130,246,0.15), rgba(139,92,246,0.15));
+            border: 1px solid rgba(59,130,246,0.3);
+            border-radius: 10px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+
+        .help-content {
+            color: var(--text);
+        }
+
+        .help-content strong {
+            display: block;
+            margin-bottom: 10px;
+            color: var(--accent);
+        }
+
+        .help-content p {
+            margin: 8px 0;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .help-content ul {
+            margin: 12px 0;
+            padding-left: 20px;
+            font-size: 12px;
+        }
+
+        .help-content ul li {
+            margin: 6px 0;
+        }
+
+        .help-note {
+            background: rgba(255,255,255,0.05);
+            padding: 8px 12px;
+            border-radius: 6px;
+            margin-top: 12px;
+            font-size: 12px;
+        }
+
+        .help-note a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        .help-note a:hover {
+            text-decoration: underline;
+        }
+
+        .payload-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 6px;
+        }
+
+        .btn-xs {
+            padding: 4px 10px;
+            font-size: 11px;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid var(--panel-border);
+            border-radius: 6px;
+            color: var(--text);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-xs:hover {
+            background: rgba(255,255,255,0.15);
+            border-color: var(--accent);
+        }
+
+        .btn-xs i {
+            margin-right: 4px;
         }
 
         .webhook-form select,
@@ -655,11 +757,26 @@
             <div class="section-card">
                 <div class="section-header">
                     <h2><i class="fas fa-bolt"></i> n8n Webhook</h2>
+                    <button class="btn-sm" id="n8nHelpBtn" title="Show help"><i class="fas fa-question-circle"></i></button>
+                </div>
+                <div class="help-banner" id="n8nHelpBanner" style="display: none;">
+                    <div class="help-content">
+                        <strong><i class="fas fa-info-circle"></i> n8n Webhook Testing</strong>
+                        <p>Trigger n8n workflows directly from this dashboard. Select a pre-configured workflow or enter a custom webhook UUID/URL.</p>
+                        <ul>
+                            <li><strong>AgentMail:</strong> Triggers Gmail AI agent for email processing</li>
+                            <li><strong>RAG Ingestion:</strong> Processes documents for AI knowledge base</li>
+                            <li><strong>Chat Completion:</strong> Tests AI chat endpoint</li>
+                            <li><strong>Analytics:</strong> Sends analytics events</li>
+                            <li><strong>Custom:</strong> Use any n8n webhook UUID or full URL</li>
+                        </ul>
+                        <p class="help-note">💡 <strong>Tip:</strong> Find webhook IDs in n8n at <a href="https://n8n.specialblend.icu" target="_blank">n8n.specialblend.icu</a></p>
+                    </div>
                 </div>
                 <div class="section-body">
                     <div class="webhook-form">
                         <div class="field-group">
-                            <label>Workflow</label>
+                            <label>Workflow <span class="field-help" title="Select a pre-configured workflow or choose Custom to enter your own webhook"><i class="fas fa-info-circle"></i></span></label>
                             <select id="workflowSelector">
                                 <option value="agentmail">AgentMail (Gmail AI Agent)</option>
                                 <option value="rag-ingest">RAG Ingestion</option>
@@ -667,17 +784,24 @@
                                 <option value="analytics">Analytics Event</option>
                                 <option value="custom">Custom Webhook...</option>
                             </select>
+                            <div class="workflow-description" id="workflowDescription">Processes email using AI agent with Gmail integration</div>
                         </div>
                         <div class="field-group" id="customWebhookDiv" style="display: none;">
-                            <label>Custom URL</label>
-                            <input type="text" id="customWebhookId" placeholder="UUID or full URL">
+                            <label>Custom URL <span class="field-help" title="Enter n8n webhook UUID (e.g., c1deca83-ecb4-...) or full URL"><i class="fas fa-info-circle"></i></span></label>
+                            <input type="text" id="customWebhookId" placeholder="e.g., c1deca83-ecb4-48ad-b485-59195cee9a61">
+                            <small class="field-hint">Enter UUID or full webhook URL from n8n</small>
                         </div>
                         <div class="field-group">
-                            <label>Payload (JSON)</label>
+                            <label>Payload (JSON) <span class="field-help" title="JSON data to send to the webhook. Edit as needed for your test."><i class="fas fa-info-circle"></i></span></label>
                             <textarea id="webhookPayload" rows="4">{
   "event": "test_trigger",
   "source": "ops-center"
 }</textarea>
+                            <div class="payload-actions">
+                                <button class="btn-xs" id="formatJsonBtn" title="Format JSON"><i class="fas fa-align-left"></i> Format</button>
+                                <button class="btn-xs" id="examplePayloadBtn" title="Load example payload"><i class="fas fa-lightbulb"></i> Example</button>
+                                <button class="btn-xs" id="clearPayloadBtn" title="Clear payload"><i class="fas fa-eraser"></i> Clear</button>
+                            </div>
                         </div>
                         <button class="btn-sm btn-primary" id="triggerWebhookBtn" style="width: 100%; justify-content: center;">
                             <i class="fas fa-paper-plane"></i> Trigger Webhook
