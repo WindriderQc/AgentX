@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AgentX • Analytics</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <style>
+    .tabs-nav {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 24px;
+      border-bottom: 1px solid var(--panel-border);
+      padding-bottom: 0;
+    }
+    .tab-btn {
+      background: transparent;
+      color: var(--muted);
+      border: none;
+      border-bottom: 2px solid transparent;
+      padding: 12px 20px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      border-radius: 6px 6px 0 0;
+      transition: all 0.2s;
+    }
+    .tab-btn:hover {
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .tab-btn.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+      background: rgba(124, 240, 255, 0.05);
+    }
+    .tab-content {
+      display: none;
+    }
+    .tab-content.active {
+      display: block;
+      animation: fadeIn 0.3s ease;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(5px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* System Metrics Specific Styles */
+    .metric-progress {
+      height: 4px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 2px;
+      margin-top: 12px;
+      overflow: hidden;
+    }
+    .metric-fill {
+      height: 100%;
+      background: var(--accent);
+      transition: width 0.3s ease;
+    }
+    .status-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 6px;
+    }
+    .status-dot.healthy { background: #00ff80; box-shadow: 0 0 8px rgba(0,255,128,0.4); }
+    .status-dot.warning { background: #ffc800; box-shadow: 0 0 8px rgba(255,200,0,0.4); }
+    .status-dot.error { background: #ff3232; box-shadow: 0 0 8px rgba(255,50,50,0.4); }
+
+    .detail-list {
+        margin-top: 16px;
+        font-size: 13px;
+        display: grid;
+        gap: 8px;
+    }
+    .detail-item {
+        display: flex;
+        justify-content: space-between;
+        color: var(--muted);
+    }
+    .detail-item span:last-child {
+        color: var(--text);
+        font-weight: 500;
+    }
+  </style>
+</head>
+<body>
+  <div class="bg-grid"></div>
+  <div class="page analytics-page">
+    <header class="hero analytics-hero">
+      <div class="hero-content">
+        <div class="hero-top">
+          <div>
+            <div class="eyebrow">GraphysX • Observability</div>
+            <h1>Analytics & System</h1>
+            <p class="lede">
+              Monitor business performance and system health in one place.
+            </p>
+          </div>
+          <div class="hero-actions">
+            <!-- Navigation injected here -->
+            <nav class="agentx-nav"></nav>
+            <div class="controls">
+                <button id="refreshBtn" class="primary">Refresh data</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="layout analytics-layout">
+
+      <div class="tabs-nav">
+        <button class="tab-btn active" data-tab="product">Product Analytics</button>
+        <button class="tab-btn" data-tab="system">System Metrics</button>
+      </div>
+
+      <!-- PRODUCT ANALYTICS TAB -->
+      <div id="product-tab" class="tab-content active">
+        <section class="panel analytics-grid">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Overview</p>
+              <h2>At-a-glance totals</h2>
+            </div>
+            <div class="controls">
+              <label class="pill inline">Last
+                <select id="periodSelect">
+                  <option value="7">7 days</option>
+                  <option value="14">14 days</option>
+                  <option value="30">30 days</option>
+                </select>
+              </label>
+            </div>
+          </div>
+          <div class="stat-grid">
+            <div class="stat-card">
+              <p class="label">Conversations</p>
+              <h3 id="totalConversations">–</h3>
+              <p class="hint">Count within selected period.</p>
+            </div>
+            <div class="stat-card">
+              <p class="label">Messages</p>
+              <h3 id="totalMessages">–</h3>
+              <p class="hint">Sum of all messages.</p>
+            </div>
+            <div class="stat-card">
+              <p class="label">Feedback (positive)</p>
+              <h3><span id="positiveFeedback">–</span> <small id="positiveRate"></small></h3>
+              <p class="hint">Thumbs up vs down.</p>
+            </div>
+            <div class="stat-card">
+              <p class="label">RAG adoption</p>
+              <h3 id="ragUsage">–</h3>
+              <p class="hint">% of conversations using RAG.</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Usage</p>
+              <h2>Volume trends</h2>
+            </div>
+            <div class="controls">
+              <label>Group by</label>
+              <select id="usageGroupSelect">
+                <option value="day">Day</option>
+                <option value="model">Model</option>
+                <option value="promptVersion">Prompt version</option>
+              </select>
+            </div>
+          </div>
+          <canvas id="usageChart" height="120"></canvas>
+          <div class="chart-empty" id="usageEmpty">No usage data for this period.</div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Feedback</p>
+              <h2>Sentiment split</h2>
+            </div>
+            <div class="controls">
+              <label>Group by</label>
+              <select id="feedbackGroupSelect">
+                <option value="model">Model</option>
+                <option value="promptVersion">Prompt version</option>
+              </select>
+            </div>
+          </div>
+          <canvas id="feedbackChart" height="120"></canvas>
+          <div class="chart-empty" id="feedbackEmpty">No feedback captured in this window.</div>
+        </section>
+
+        <section class="panel rag-panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Retrieval usage</p>
+              <h2>RAG adoption & satisfaction</h2>
+            </div>
+          </div>
+          <div class="rag-grid">
+            <div class="rag-figure">
+              <canvas id="ragDonut" width="180" height="180"></canvas>
+              <div class="donut-center" id="ragDonutLabel">–</div>
+              <p class="hint">Share of conversations with <code>ragUsed: true</code>.</p>
+            </div>
+            <div class="rag-metrics">
+              <div class="stat-card compact">
+                <p class="label">RAG conversations</p>
+                <h3 id="ragConversations">–</h3>
+                <p class="hint">Positive rate: <span id="ragPositiveRate">–</span></p>
+              </div>
+              <div class="stat-card compact">
+                <p class="label">Non-RAG conversations</p>
+                <h3 id="noRagConversations">–</h3>
+                <p class="hint">Positive rate: <span id="noRagPositiveRate">–</span></p>
+              </div>
+              <div class="stat-card compact">
+                <p class="label">Delta</p>
+                <h3 id="ragDelta">–</h3>
+                <p class="hint">RAG vs non-RAG positive rate.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- SYSTEM METRICS TAB -->
+      <div id="system-tab" class="tab-content">
+        <section class="panel">
+            <div class="panel-head">
+                <div>
+                  <p class="eyebrow">Real-time Status</p>
+                  <h2>System Health</h2>
+                </div>
+                <div class="controls">
+                    <button id="clearCacheBtn" class="ghost small">Clear Embedding Cache</button>
+                    <div id="timestamp" class="pill">Updating...</div>
+                </div>
+            </div>
+
+            <div class="stat-grid" id="system-metrics-grid">
+                <!-- Cache Card -->
+                <div class="stat-card">
+                    <p class="label">Cache Performance</p>
+                    <h3><span class="status-dot" id="cacheStatus"></span><span id="cacheHitRate">0%</span></h3>
+                    <p class="hint">Hit Rate</p>
+                    <div class="metric-progress"><div class="metric-fill" id="cacheBar" style="width: 0%"></div></div>
+                    <div class="detail-list">
+                        <div class="detail-item"><span>Hits</span><span id="cacheHits">0</span></div>
+                        <div class="detail-item"><span>Misses</span><span id="cacheMisses">0</span></div>
+                        <div class="detail-item"><span>Size</span><span id="cacheSize">0/0</span></div>
+                        <div class="detail-item"><span>Mem</span><span id="cacheMem">0 B</span></div>
+                    </div>
+                </div>
+
+                <!-- Database Card -->
+                <div class="stat-card">
+                    <p class="label">Database</p>
+                    <h3><span class="status-dot healthy"></span><span id="dbTotalDocs">0</span></h3>
+                    <p class="hint">Total Documents</p>
+                    <div class="detail-list" style="margin-top: 24px;">
+                        <div class="detail-item"><span>Conversations</span><span id="dbConversations">0</span></div>
+                        <div class="detail-item"><span>Prompts</span><span id="dbPrompts">0</span></div>
+                        <div class="detail-item"><span>Users</span><span id="dbUsers">0</span></div>
+                        <div class="detail-item"><span>Indexes</span><span id="dbIndexes">0</span></div>
+                    </div>
+                </div>
+
+                <!-- Connections Card -->
+                <div class="stat-card">
+                    <p class="label">Connections</p>
+                    <h3><span class="status-dot" id="connStatus"></span><span id="connActive">0</span></h3>
+                    <p class="hint">Active / <span id="connMax">0</span> Max</p>
+                    <div class="metric-progress"><div class="metric-fill" id="connBar" style="width: 0%"></div></div>
+                    <div class="detail-list">
+                        <div class="detail-item"><span>Available</span><span id="connAvail">0</span></div>
+                        <div class="detail-item"><span>Waiting</span><span id="connWaiting">0</span></div>
+                        <div class="detail-item"><span>Pool</span><span id="connPool">0-0</span></div>
+                    </div>
+                </div>
+
+                <!-- System Card -->
+                <div class="stat-card">
+                    <p class="label">System Resources</p>
+                    <h3><span class="status-dot" id="sysStatus"></span><span id="sysMem">0 MB</span></h3>
+                    <p class="hint">Memory Used / <span id="sysTotalMem">0</span> Total</p>
+                    <div class="metric-progress"><div class="metric-fill" id="sysBar" style="width: 0%"></div></div>
+                    <div class="detail-list">
+                        <div class="detail-item"><span>Node</span><span id="sysNode">v?</span></div>
+                        <div class="detail-item"><span>Uptime</span><span id="sysUptime">0s</span></div>
+                        <div class="detail-item"><span>Platform</span><span id="sysPlatform">?</span></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Detailed System Info -->
+        <section class="panel" style="margin-top: 20px;">
+             <div class="panel-head">
+                <div>
+                  <p class="eyebrow">Details</p>
+                  <h2>Extended Diagnostics</h2>
+                </div>
+            </div>
+            <div class="layout" style="grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));">
+                <div class="stat-card compact">
+                    <h3 style="font-size: 16px; margin-bottom: 12px;">Cache Stats</h3>
+                    <div class="detail-list">
+                        <div class="detail-item"><span>Total Req</span><span id="detailCacheTotal">0</span></div>
+                        <div class="detail-item"><span>Avg Entry</span><span id="detailCacheAvg">0 B</span></div>
+                        <div class="detail-item"><span>Evictions</span><span id="detailCacheEvict">0</span></div>
+                    </div>
+                </div>
+                <div class="stat-card compact">
+                    <h3 style="font-size: 16px; margin-bottom: 12px;">DB Info</h3>
+                    <div class="detail-list">
+                        <div class="detail-item"><span>Name</span><span id="detailDbName">?</span></div>
+                        <div class="detail-item"><span>Host</span><span id="detailDbHost">?</span></div>
+                        <div class="detail-item"><span>Collections</span><span id="detailDbCollections">0</span></div>
+                    </div>
+                </div>
+                <div class="stat-card compact">
+                    <h3 style="font-size: 16px; margin-bottom: 12px;">Memory Heap</h3>
+                    <div class="detail-list">
+                        <div class="detail-item"><span>Used</span><span id="detailHeapUsed">0</span></div>
+                        <div class="detail-item"><span>Total</span><span id="detailHeapTotal">0</span></div>
+                        <div class="detail-item"><span>RSS</span><span id="detailRss">0</span></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+      </div>
+
+    </main>
+  </div>
+
+  <script type="module">
+    import { injectNav } from '/js/components/nav.js';
+    injectNav('analytics');
+  </script>
+  <script src="/js/analytics.js"></script>
+</body>
+</html>
