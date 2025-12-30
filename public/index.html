@@ -8,6 +8,99 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
+  <style>
+    /* Tooltip System */
+    [data-tooltip] {
+      position: relative;
+      cursor: help;
+    }
+
+    [data-tooltip]:hover::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      margin-bottom: 8px;
+      padding: 8px 12px;
+      background: rgba(15, 23, 42, 0.98);
+      color: var(--text);
+      font-size: 12px;
+      line-height: 1.4;
+      border-radius: 6px;
+      border: 1px solid var(--panel-border);
+      white-space: normal;
+      max-width: 280px;
+      width: max-content;
+      z-index: 1000;
+      pointer-events: none;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+      animation: tooltipFadeIn 0.2s ease-out;
+    }
+
+    [data-tooltip]:hover::before {
+      content: '';
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      margin-bottom: 2px;
+      border: 6px solid transparent;
+      border-top-color: var(--panel-border);
+      z-index: 1001;
+      pointer-events: none;
+      animation: tooltipFadeIn 0.2s ease-out;
+    }
+
+    @keyframes tooltipFadeIn {
+      from { opacity: 0; transform: translateX(-50%) translateY(4px); }
+      to { opacity: 1; transform: translateX(-50%) translateY(0); }
+    }
+
+    /* Collapsible Config Panel */
+    .config.collapsible-panel .panel-head.clickable {
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .config.collapsible-panel .panel-head.clickable:hover {
+      background: rgba(255,255,255,0.02);
+    }
+    .panel-toggle-icon {
+      font-size: 12px;
+      color: var(--muted);
+      transition: transform 0.3s;
+    }
+    .config.collapsed .panel-toggle-icon {
+      transform: rotate(-90deg);
+    }
+    .config.collapsed .config-body {
+      display: none;
+    }
+    .config-summary {
+      padding: 12px 16px;
+      background: rgba(0,0,0,0.2);
+      border-top: 1px solid var(--panel-border);
+    }
+    .summary-items {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px 20px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .summary-item strong {
+      color: var(--text);
+    }
+
+    /* Compact config display in chat header */
+    .pill.inline .label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--muted);
+      margin-right: 6px;
+    }
+  </style>
 </head>
 <body>
   <div class="bg-grid"></div>
@@ -61,6 +154,10 @@
             <h2>AI Dialogue</h2>
           </div>
           <div class="controls">
+            <div class="pill inline" style="margin-right: 12px;">
+              <span class="label">Config</span>
+              <strong id="chatConfigSummary" style="font-size: 11px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" data-tooltip="Current model and settings">—</strong>
+            </div>
             <div class="pill inline">
               <span class="label">Messages</span>
               <strong id="statMessages">0</strong>
@@ -78,10 +175,10 @@
 
         <div class="composer">
           <div class="quick-actions">
-            <button class="chip" data-quick="What can you help me with?">Help</button>
-            <button class="chip" data-quick="Summarize recent events.">Summary</button>
-            <button class="chip" data-quick="List available tools.">Tools</button>
-            <button class="chip" data-quick="Brainstorm next steps for my project.">Brainstorm</button>
+            <button class="chip" data-quick="What can you help me with?" data-tooltip="Ask the AI about its capabilities and available features">Help</button>
+            <button class="chip" data-quick="Summarize recent events." data-tooltip="Get a summary of your recent conversation history">Summary</button>
+            <button class="chip" data-quick="List available tools." data-tooltip="View all tools and commands available to the AI agent">Tools</button>
+            <button class="chip" data-quick="Brainstorm next steps for my project." data-tooltip="Get creative suggestions and ideas for your project">Brainstorm</button>
           </div>
           <textarea id="messageInput" rows="3" placeholder="Type to your agent..."></textarea>
           <div class="composer-actions">
@@ -104,13 +201,25 @@
         </div>
       </section>
 
-      <aside class="panel config">
-        <div class="panel-head tight">
+      <aside class="panel config collapsible-panel collapsed" id="configPanel">
+        <div class="panel-head tight clickable" id="configPanelHeader">
           <div>
             <p class="eyebrow">Models & memory</p>
-            <h2>Configuration</h2>
+            <h2>Configuration <span class="panel-toggle-icon">▼</span></h2>
           </div>
         </div>
+
+        <!-- Config Summary (shown when panel collapsed) -->
+        <div class="config-summary" id="configSummary" style="display: block;">
+          <div class="summary-items">
+            <span class="summary-item"><strong>Model:</strong> <span id="summaryModel">—</span></span>
+            <span class="summary-item"><strong>RAG:</strong> <span id="summaryRag">Off</span></span>
+            <span class="summary-item"><strong>Stream:</strong> <span id="summaryStream">On</span></span>
+            <span class="summary-item"><strong>Temp:</strong> <span id="summaryTemp">0.7</span></span>
+          </div>
+        </div>
+
+        <div class="config-body" id="configBody">
 
         <div class="field">
           <label>Target host</label>
@@ -138,7 +247,7 @@
 
         <div class="note" id="feedback">Waiting for configuration.</div>
 
-        <div class="field inline-toggle">
+        <div class="field inline-toggle" data-tooltip="Real-time streaming shows AI responses as they're generated. Recommended for longer answers and thinking models.">
           <label>Streaming</label>
           <label class="switch">
             <input type="checkbox" id="streamToggle" checked>
@@ -147,7 +256,7 @@
           <div class="hint">Stream responses in real-time (recommended for thinking models).</div>
         </div>
 
-        <div class="field inline-toggle">
+        <div class="field inline-toggle" data-tooltip="RAG (Retrieval-Augmented Generation) enhances responses by retrieving relevant context from your stored documents and conversation history.">
           <label>Enable RAG</label>
           <label class="switch">
             <input type="checkbox" id="ragToggle">
@@ -181,8 +290,7 @@
 
         <div class="collapsible-section">
           <div class="section-header" id="tuningHeader">
-            <h3>Model Tuning Parameters</h3>
-            <span class="toggle-icon">▼</span>
+            <h3>Model Tuning Parameters <span class="panel-toggle-icon">▼</span></h3>
           </div>
           <div class="section-content hidden" id="tuningContent">
 
@@ -242,6 +350,8 @@
 
           </div>
         </div>
+
+        </div> <!-- End config-body -->
       </aside>
     </main>
     </div> <!-- End main-content -->

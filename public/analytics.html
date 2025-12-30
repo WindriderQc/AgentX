@@ -1,354 +1,575 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AgentX • Analytics</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-  <style>
-    .tabs-nav {
-      display: flex;
-      gap: 4px;
-      margin-bottom: 24px;
-      border-bottom: 1px solid var(--panel-border);
-      padding-bottom: 0;
-    }
-    .tab-btn {
-      background: transparent;
-      color: var(--muted);
-      border: none;
-      border-bottom: 2px solid transparent;
-      padding: 12px 20px;
-      font-size: 14px;
-      font-weight: 500;
-      cursor: pointer;
-      border-radius: 6px 6px 0 0;
-      transition: all 0.2s;
-    }
-    .tab-btn:hover {
-      color: var(--text);
-      background: rgba(255, 255, 255, 0.02);
-    }
-    .tab-btn.active {
-      color: var(--accent);
-      border-bottom-color: var(--accent);
-      background: rgba(124, 240, 255, 0.05);
-    }
-    .tab-content {
-      display: none;
-    }
-    .tab-content.active {
-      display: block;
-      animation: fadeIn 0.3s ease;
-    }
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(5px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgentX • Analytics</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <style>
+        /* ========================================
+           ANALYTICS - SINGLE PAGE LAYOUT
+           ======================================== */
+        
+        .analytics-page {
+            min-height: 100vh;
+            padding: 20px 30px;
+            max-width: 1600px;
+            margin: 0 auto;
+            display: block; /* Override flex from .page */
+        }
 
-    /* System Metrics Specific Styles */
-    .metric-progress {
-      height: 4px;
-      background: rgba(255,255,255,0.1);
-      border-radius: 2px;
-      margin-top: 12px;
-      overflow: hidden;
-    }
-    .metric-fill {
-      height: 100%;
-      background: var(--accent);
-      transition: width 0.3s ease;
-    }
-    .status-dot {
-      display: inline-block;
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      margin-right: 6px;
-    }
-    .status-dot.healthy { background: #00ff80; box-shadow: 0 0 8px rgba(0,255,128,0.4); }
-    .status-dot.warning { background: #ffc800; box-shadow: 0 0 8px rgba(255,200,0,0.4); }
-    .status-dot.error { background: #ff3232; box-shadow: 0 0 8px rgba(255,50,50,0.4); }
+        .analytics-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 24px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--panel-border);
+        }
 
-    .detail-list {
-        margin-top: 16px;
-        font-size: 13px;
-        display: grid;
-        gap: 8px;
-    }
-    .detail-item {
-        display: flex;
-        justify-content: space-between;
-        color: var(--muted);
-    }
-    .detail-item span:last-child {
-        color: var(--text);
-        font-weight: 500;
-    }
-  </style>
+        .analytics-header h1 {
+            font-size: 28px;
+            margin: 0;
+            color: var(--text);
+        }
+
+        .analytics-header .eyebrow {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: var(--accent);
+            margin-bottom: 4px;
+        }
+
+        .analytics-header .lede {
+            color: var(--muted);
+            font-size: 14px;
+            margin-top: 8px;
+            max-width: 500px;
+        }
+
+        .header-controls {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .header-controls select {
+            background: rgba(0,0,0,0.3);
+            border: 1px solid var(--panel-border);
+            border-radius: 8px;
+            padding: 10px 14px;
+            color: var(--text);
+            font-size: 13px;
+        }
+
+        .header-controls button {
+            background: var(--accent);
+            color: #0f172a;
+            border: none;
+            padding: 10px 18px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .header-controls button:hover {
+            opacity: 0.9;
+        }
+
+        /* Stats Row */
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%);
+            border: 1px solid var(--panel-border);
+            border-radius: 12px;
+            padding: 20px 24px;
+            transition: transform 0.2s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-2px);
+        }
+
+        .stat-card .value {
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--text);
+            line-height: 1.2;
+        }
+
+        .stat-card .label {
+            font-size: 11px;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-bottom: 8px;
+        }
+
+        .stat-card .sub {
+            font-size: 12px;
+            color: var(--muted);
+            margin-top: 6px;
+        }
+
+        /* Two Column Layout */
+        .analytics-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 24px;
+        }
+
+        .analytics-grid.full {
+            grid-template-columns: 1fr;
+        }
+
+        /* Section Cards */
+        .section-card {
+            background: rgba(255,255,255,0.02);
+            border: 1px solid var(--panel-border);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--panel-border);
+            background: rgba(255,255,255,0.01);
+        }
+
+        .section-header h2 {
+            font-size: 14px;
+            font-weight: 600;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--text);
+        }
+
+        .section-header h2 i {
+            color: var(--accent);
+            font-size: 13px;
+        }
+
+        .section-body {
+            padding: 20px;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 220px;
+        }
+
+        .chart-empty {
+            color: var(--muted);
+            text-align: center;
+            padding: 40px;
+            font-size: 13px;
+            display: none;
+        }
+
+        .chart-empty.visible {
+            display: block;
+        }
+
+        /* System Metrics Section */
+        .system-section {
+            margin-top: 32px;
+            padding-top: 32px;
+            border-top: 1px solid var(--panel-border);
+        }
+
+        .system-section .section-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 20px;
+        }
+
+        .system-section .section-title i {
+            color: var(--accent);
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+        }
+
+        .metric-card {
+            background: rgba(0,0,0,0.25);
+            border-radius: 10px;
+            padding: 16px 18px;
+        }
+
+        .metric-card .metric-label {
+            font-size: 10px;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+
+        .metric-card .metric-value {
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .metric-card .metric-bar {
+            height: 3px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 2px;
+            margin-top: 12px;
+            overflow: hidden;
+        }
+
+        .metric-card .metric-fill {
+            height: 100%;
+            background: var(--accent);
+            transition: width 0.3s;
+        }
+
+        .metric-card .metric-detail {
+            font-size: 11px;
+            color: var(--muted);
+            margin-top: 8px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            flex-shrink: 0;
+        }
+
+        .status-dot.healthy { background: #4ade80; box-shadow: 0 0 6px rgba(74,222,128,0.5); }
+        .status-dot.warning { background: #fbbf24; box-shadow: 0 0 6px rgba(251,191,36,0.5); }
+        .status-dot.error { background: #f87171; box-shadow: 0 0 6px rgba(248,113,113,0.5); }
+
+        /* Tooltip System */
+        [data-tooltip] {
+            position: relative;
+            cursor: help;
+        }
+
+        [data-tooltip]:hover::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            margin-bottom: 8px;
+            padding: 8px 12px;
+            background: rgba(15, 23, 42, 0.98);
+            color: var(--text);
+            font-size: 12px;
+            line-height: 1.4;
+            border-radius: 6px;
+            border: 1px solid var(--panel-border);
+            white-space: normal;
+            max-width: 280px;
+            width: max-content;
+            z-index: 1000;
+            pointer-events: none;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+            animation: tooltipFadeIn 0.2s ease-out;
+        }
+
+        [data-tooltip]:hover::before {
+            content: '';
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            margin-bottom: 2px;
+            border: 6px solid transparent;
+            border-top-color: var(--panel-border);
+            z-index: 1001;
+            pointer-events: none;
+            animation: tooltipFadeIn 0.2s ease-out;
+        }
+
+        @keyframes tooltipFadeIn {
+            from { opacity: 0; transform: translateX(-50%) translateY(4px); }
+            to { opacity: 1; transform: translateX(-50%) translateY(0); }
+        }
+
+        /* RAG Section */
+        .rag-grid {
+            display: flex;
+            gap: 30px;
+            align-items: center;
+        }
+
+        .rag-donut-wrap {
+            position: relative;
+            width: 160px;
+            height: 160px;
+            flex-shrink: 0;
+        }
+
+        .rag-donut-wrap canvas {
+            width: 100% !important;
+            height: 100% !important;
+        }
+
+        .donut-center {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .rag-stats {
+            flex: 1;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+        }
+
+        .rag-stat .value {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .rag-stat .label {
+            font-size: 11px;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 6px;
+        }
+
+        .rag-stat .sub {
+            font-size: 11px;
+            color: var(--muted);
+            margin-top: 4px;
+        }
+
+        /* Responsive */
+        @media (max-width: 1200px) {
+            .analytics-grid {
+                grid-template-columns: 1fr;
+            }
+            .metrics-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 800px) {
+            .analytics-page {
+                padding: 16px;
+            }
+            .stats-row {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .rag-grid {
+                flex-direction: column;
+            }
+            .rag-stats {
+                grid-template-columns: 1fr;
+            }
+            .metrics-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
 </head>
 <body>
-  <div class="bg-grid"></div>
-  <div class="page analytics-page">
-    <header class="hero analytics-hero">
-      <div class="hero-content">
-        <div class="hero-top">
-          <div>
-            <div class="eyebrow">GraphysX • Observability</div>
-            <h1>Analytics & System</h1>
-            <p class="lede">
-              Monitor business performance and system health in one place.
-            </p>
-          </div>
-          <div class="hero-actions">
-            <!-- Navigation injected here -->
-            <nav class="agentx-nav"></nav>
-            <div class="controls">
-                <button id="refreshBtn" class="primary">Refresh data</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </header>
-
-    <main class="layout analytics-layout">
-
-      <div class="tabs-nav">
-        <button class="tab-btn active" data-tab="product">Product Analytics</button>
-        <button class="tab-btn" data-tab="system">System Metrics</button>
-      </div>
-
-      <!-- PRODUCT ANALYTICS TAB -->
-      <div id="product-tab" class="tab-content active">
-        <section class="panel analytics-grid">
-          <div class="panel-head">
+    <div class="bg-grid"></div>
+    <div class="page analytics-page">
+        
+        <!-- Header -->
+        <header class="analytics-header">
             <div>
-              <p class="eyebrow">Overview</p>
-              <h2>At-a-glance totals</h2>
+                <div class="eyebrow">AgentX • Intelligence</div>
+                <h1>Analytics</h1>
+                <p class="lede">Monitor product metrics, usage trends, and system health in one view.</p>
             </div>
-            <div class="controls">
-              <label class="pill inline">Last
+            <div class="header-controls">
+                <nav class="agentx-nav"></nav>
                 <select id="periodSelect">
-                  <option value="7">7 days</option>
-                  <option value="14">14 days</option>
-                  <option value="30">30 days</option>
+                    <option value="7">Last 7 days</option>
+                    <option value="14">Last 14 days</option>
+                    <option value="30">Last 30 days</option>
                 </select>
-              </label>
+                <button id="refreshBtn"><i class="fas fa-sync-alt"></i> Refresh</button>
             </div>
-          </div>
-          <div class="stat-grid">
-            <div class="stat-card">
-              <p class="label">Conversations</p>
-              <h3 id="totalConversations">–</h3>
-              <p class="hint">Count within selected period.</p>
-            </div>
-            <div class="stat-card">
-              <p class="label">Messages</p>
-              <h3 id="totalMessages">–</h3>
-              <p class="hint">Sum of all messages.</p>
-            </div>
-            <div class="stat-card">
-              <p class="label">Feedback (positive)</p>
-              <h3><span id="positiveFeedback">–</span> <small id="positiveRate"></small></h3>
-              <p class="hint">Thumbs up vs down.</p>
-            </div>
-            <div class="stat-card">
-              <p class="label">RAG adoption</p>
-              <h3 id="ragUsage">–</h3>
-              <p class="hint">% of conversations using RAG.</p>
-            </div>
-          </div>
-        </section>
+        </header>
 
-        <section class="panel">
-          <div class="panel-head">
-            <div>
-              <p class="eyebrow">Usage</p>
-              <h2>Volume trends</h2>
+        <!-- Quick Stats -->
+        <div class="stats-row">
+            <div class="stat-card" data-tooltip="Total number of conversations initiated in the selected time period">
+                <div class="label">Conversations</div>
+                <div class="value" id="totalConversations">—</div>
+                <div class="sub">Total in period</div>
             </div>
-            <div class="controls">
-              <label>Group by</label>
-              <select id="usageGroupSelect">
-                <option value="day">Day</option>
-                <option value="model">Model</option>
-                <option value="promptVersion">Prompt version</option>
-              </select>
+            <div class="stat-card" data-tooltip="Total number of messages exchanged across all conversations (user + AI responses)">
+                <div class="label">Messages</div>
+                <div class="value" id="totalMessages">—</div>
+                <div class="sub">Sum of all messages</div>
             </div>
-          </div>
-          <canvas id="usageChart" height="120"></canvas>
-          <div class="chart-empty" id="usageEmpty">No usage data for this period.</div>
-        </section>
+            <div class="stat-card" data-tooltip="Number and percentage of conversations that received positive feedback (thumbs up)">
+                <div class="label">Positive Feedback</div>
+                <div class="value"><span id="positiveFeedback">—</span> <small id="positiveRate" style="font-size: 14px; color: var(--muted);"></small></div>
+                <div class="sub">Thumbs up rate</div>
+            </div>
+            <div class="stat-card" data-tooltip="Percentage of conversations using RAG (Retrieval-Augmented Generation) to enhance responses with context">
+                <div class="label">RAG Adoption</div>
+                <div class="value" id="ragUsage">—</div>
+                <div class="sub">Using retrieval</div>
+            </div>
+        </div>
 
-        <section class="panel">
-          <div class="panel-head">
-            <div>
-              <p class="eyebrow">Feedback</p>
-              <h2>Sentiment split</h2>
-            </div>
-            <div class="controls">
-              <label>Group by</label>
-              <select id="feedbackGroupSelect">
-                <option value="model">Model</option>
-                <option value="promptVersion">Prompt version</option>
-              </select>
-            </div>
-          </div>
-          <canvas id="feedbackChart" height="120"></canvas>
-          <div class="chart-empty" id="feedbackEmpty">No feedback captured in this window.</div>
-        </section>
+        <!-- Hidden elements for JS compatibility -->
+        <div style="display: none;">
+            <span id="cacheSize"></span>
+            <span id="cacheMem"></span>
+            <span id="dbConversations"></span>
+            <span id="dbPrompts"></span>
+            <span id="dbUsers"></span>
+            <span id="dbIndexes"></span>
+            <span id="connWaiting"></span>
+            <span id="connPool"></span>
+            <span id="sysNode"></span>
+            <span id="sysUptime"></span>
+            <span id="sysPlatform"></span>
+            <span id="detailCacheTotal"></span>
+            <span id="detailCacheAvg"></span>
+            <span id="detailCacheEvict"></span>
+            <span id="detailDbName"></span>
+            <span id="detailDbHost"></span>
+            <span id="detailDbCollections"></span>            <span id="detailHeapUsed"></span>
+            <span id="detailHeapTotal"></span>
+            <span id="detailRss"></span>            <span id="detailHeapUsed"></span>
+            <span id="detailHeapTotal"></span>
+            <span id="detailRss"></span>
+            <span id="cacheStatus"></span>
+            <span id="cacheHitRate"></span>
+            <span id="cacheBar"></span>
+            <span id="cacheHits"></span>
+            <span id="cacheMisses"></span>
+            <span id="dbTotalDocs"></span>
+            <span id="connStatus"></span>
+            <span id="connActive"></span>
+            <span id="connMax"></span>
+            <span id="connBar"></span>
+            <span id="connAvail"></span>
+            <span id="sysStatus"></span>
+            <span id="sysMem"></span>
+            <span id="sysBar"></span>
+            <span id="sysTotalMem"></span>
+            <span id="sysTimestamp"></span>
+        </div>
 
-        <section class="panel rag-panel">
-          <div class="panel-head">
-            <div>
-              <p class="eyebrow">Retrieval usage</p>
-              <h2>RAG adoption & satisfaction</h2>
-            </div>
-          </div>
-          <div class="rag-grid">
-            <div class="rag-figure">
-              <canvas id="ragDonut" width="180" height="180"></canvas>
-              <div class="donut-center" id="ragDonutLabel">–</div>
-              <p class="hint">Share of conversations with <code>ragUsed: true</code>.</p>
-            </div>
-            <div class="rag-metrics">
-              <div class="stat-card compact">
-                <p class="label">RAG conversations</p>
-                <h3 id="ragConversations">–</h3>
-                <p class="hint">Positive rate: <span id="ragPositiveRate">–</span></p>
-              </div>
-              <div class="stat-card compact">
-                <p class="label">Non-RAG conversations</p>
-                <h3 id="noRagConversations">–</h3>
-                <p class="hint">Positive rate: <span id="noRagPositiveRate">–</span></p>
-              </div>
-              <div class="stat-card compact">
-                <p class="label">Delta</p>
-                <h3 id="ragDelta">–</h3>
-                <p class="hint">RAG vs non-RAG positive rate.</p>
-              </div>
-            </div>
-          </div>
-        </section>
-      </div>
-
-      <!-- SYSTEM METRICS TAB -->
-      <div id="system-tab" class="tab-content">
-        <section class="panel">
-            <div class="panel-head">
-                <div>
-                  <p class="eyebrow">Real-time Status</p>
-                  <h2>System Health</h2>
+        <!-- Usage + Feedback Charts -->
+        <div class="analytics-grid">
+            <div class="section-card">
+                <div class="section-header">
+                    <h2><i class="fas fa-chart-line"></i> Usage Trends</h2>
+                    <select id="usageGroupSelect" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 10px; color: var(--text); font-size: 12px;">
+                        <option value="day">By Day</option>
+                        <option value="model">By Model</option>
+                        <option value="promptVersion">By Prompt</option>
+                    </select>
                 </div>
-                <div class="controls">
-                    <button id="clearCacheBtn" class="ghost small">Clear Embedding Cache</button>
-                    <div id="timestamp" class="pill">Updating...</div>
-                </div>
-            </div>
-
-            <div class="stat-grid" id="system-metrics-grid">
-                <!-- Cache Card -->
-                <div class="stat-card">
-                    <p class="label">Cache Performance</p>
-                    <h3><span class="status-dot" id="cacheStatus"></span><span id="cacheHitRate">0%</span></h3>
-                    <p class="hint">Hit Rate</p>
-                    <div class="metric-progress"><div class="metric-fill" id="cacheBar" style="width: 0%"></div></div>
-                    <div class="detail-list">
-                        <div class="detail-item"><span>Hits</span><span id="cacheHits">0</span></div>
-                        <div class="detail-item"><span>Misses</span><span id="cacheMisses">0</span></div>
-                        <div class="detail-item"><span>Size</span><span id="cacheSize">0/0</span></div>
-                        <div class="detail-item"><span>Mem</span><span id="cacheMem">0 B</span></div>
+                <div class="section-body">
+                    <div class="chart-container">
+                        <canvas id="usageChart"></canvas>
                     </div>
+                    <div class="chart-empty" id="usageEmpty">No usage data for this period.</div>
                 </div>
+            </div>
 
-                <!-- Database Card -->
-                <div class="stat-card">
-                    <p class="label">Database</p>
-                    <h3><span class="status-dot healthy"></span><span id="dbTotalDocs">0</span></h3>
-                    <p class="hint">Total Documents</p>
-                    <div class="detail-list" style="margin-top: 24px;">
-                        <div class="detail-item"><span>Conversations</span><span id="dbConversations">0</span></div>
-                        <div class="detail-item"><span>Prompts</span><span id="dbPrompts">0</span></div>
-                        <div class="detail-item"><span>Users</span><span id="dbUsers">0</span></div>
-                        <div class="detail-item"><span>Indexes</span><span id="dbIndexes">0</span></div>
+            <div class="section-card">
+                <div class="section-header">
+                    <h2><i class="fas fa-smile"></i> Feedback Distribution</h2>
+                    <select id="feedbackGroupSelect" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 10px; color: var(--text); font-size: 12px;">
+                        <option value="model">By Model</option>
+                        <option value="promptVersion">By Prompt</option>
+                    </select>
+                </div>
+                <div class="section-body">
+                    <div class="chart-container">
+                        <canvas id="feedbackChart"></canvas>
                     </div>
+                    <div class="chart-empty" id="feedbackEmpty">No feedback captured in this window.</div>
                 </div>
+            </div>
+        </div>
 
-                <!-- Connections Card -->
-                <div class="stat-card">
-                    <p class="label">Connections</p>
-                    <h3><span class="status-dot" id="connStatus"></span><span id="connActive">0</span></h3>
-                    <p class="hint">Active / <span id="connMax">0</span> Max</p>
-                    <div class="metric-progress"><div class="metric-fill" id="connBar" style="width: 0%"></div></div>
-                    <div class="detail-list">
-                        <div class="detail-item"><span>Available</span><span id="connAvail">0</span></div>
-                        <div class="detail-item"><span>Waiting</span><span id="connWaiting">0</span></div>
-                        <div class="detail-item"><span>Pool</span><span id="connPool">0-0</span></div>
-                    </div>
+        <!-- RAG Section -->
+        <div class="analytics-grid full">
+            <div class="section-card">
+                <div class="section-header">
+                    <h2><i class="fas fa-database"></i> RAG Adoption & Satisfaction</h2>
                 </div>
-
-                <!-- System Card -->
-                <div class="stat-card">
-                    <p class="label">System Resources</p>
-                    <h3><span class="status-dot" id="sysStatus"></span><span id="sysMem">0 MB</span></h3>
-                    <p class="hint">Memory Used / <span id="sysTotalMem">0</span> Total</p>
-                    <div class="metric-progress"><div class="metric-fill" id="sysBar" style="width: 0%"></div></div>
-                    <div class="detail-list">
-                        <div class="detail-item"><span>Node</span><span id="sysNode">v?</span></div>
-                        <div class="detail-item"><span>Uptime</span><span id="sysUptime">0s</span></div>
-                        <div class="detail-item"><span>Platform</span><span id="sysPlatform">?</span></div>
+                <div class="section-body">
+                    <div class="rag-grid">
+                        <div class="rag-donut-wrap">
+                            <canvas id="ragDonut"></canvas>
+                            <div class="donut-center" id="ragDonutLabel">—</div>
+                        </div>
+                        <div class="rag-stats">
+                            <div class="rag-stat" data-tooltip="Conversations that used RAG to retrieve relevant context before generating responses. Shows count and positive feedback rate.">
+                                <div class="label">RAG Conversations</div>
+                                <div class="value" id="ragConversations">—</div>
+                                <div class="sub">Positive: <span id="ragPositiveRate">—</span></div>
+                            </div>
+                            <div class="rag-stat" data-tooltip="Conversations without RAG retrieval (direct model responses). Shows count and positive feedback rate.">
+                                <div class="label">Non-RAG Conversations</div>
+                                <div class="value" id="noRagConversations">—</div>
+                                <div class="sub">Positive: <span id="noRagPositiveRate">—</span></div>
+                            </div>
+                            <div class="rag-stat" data-tooltip="Difference in positive feedback rates between RAG and non-RAG conversations. Positive delta means RAG performs better.">
+                                <div class="label">RAG vs Non-RAG</div>
+                                <div class="value" id="ragDelta">—</div>
+                                <div class="sub">Delta in positive rate</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
-        </section>
+        </div>
 
-        <!-- Detailed System Info -->
-        <section class="panel" style="margin-top: 20px;">
-             <div class="panel-head">
-                <div>
-                  <p class="eyebrow">Details</p>
-                  <h2>Extended Diagnostics</h2>
-                </div>
-            </div>
-            <div class="layout" style="grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));">
-                <div class="stat-card compact">
-                    <h3 style="font-size: 16px; margin-bottom: 12px;">Cache Stats</h3>
-                    <div class="detail-list">
-                        <div class="detail-item"><span>Total Req</span><span id="detailCacheTotal">0</span></div>
-                        <div class="detail-item"><span>Avg Entry</span><span id="detailCacheAvg">0 B</span></div>
-                        <div class="detail-item"><span>Evictions</span><span id="detailCacheEvict">0</span></div>
-                    </div>
-                </div>
-                <div class="stat-card compact">
-                    <h3 style="font-size: 16px; margin-bottom: 12px;">DB Info</h3>
-                    <div class="detail-list">
-                        <div class="detail-item"><span>Name</span><span id="detailDbName">?</span></div>
-                        <div class="detail-item"><span>Host</span><span id="detailDbHost">?</span></div>
-                        <div class="detail-item"><span>Collections</span><span id="detailDbCollections">0</span></div>
-                    </div>
-                </div>
-                <div class="stat-card compact">
-                    <h3 style="font-size: 16px; margin-bottom: 12px;">Memory Heap</h3>
-                    <div class="detail-list">
-                        <div class="detail-item"><span>Used</span><span id="detailHeapUsed">0</span></div>
-                        <div class="detail-item"><span>Total</span><span id="detailHeapTotal">0</span></div>
-                        <div class="detail-item"><span>RSS</span><span id="detailRss">0</span></div>
-                    </div>
-                </div>
-            </div>
-        </section>
-      </div>
+        <!-- System Metrics Section moved to top -->
+    </div>
 
-    </main>
-  </div>
-
-  <script type="module">
-    import { injectNav } from '/js/components/nav.js';
-    injectNav('analytics');
-  </script>
-  <script src="/js/analytics.js"></script>
+    <script type="module">
+        import { injectNav } from '/js/components/nav.js';
+        injectNav('analytics');
+    </script>
+    <script src="/js/analytics.js"></script>
 </body>
 </html>

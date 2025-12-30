@@ -7,6 +7,7 @@ module.exports = {
       instances: 'max',
       exec_mode: 'cluster',
       watch: false,
+      node_args: '--max-old-space-size=512',
       env: {
         NODE_ENV: 'development'
         // PORT and other vars are read from .env (do not hardcode secrets here)
