@@ -19,8 +19,8 @@ const elements = {
   feedbackEmpty: document.getElementById('feedbackEmpty'),
 
   // System Metrics Elements
-  clearCacheBtn: document.getElementById('clearCacheBtn'),
-  timestamp: document.getElementById('timestamp'),
+  // clearCacheBtn: document.getElementById('clearCacheBtn'), // Removed in single-page view
+  timestamp: document.getElementById('sysTimestamp'), // Updated ID
   // Cache
   cacheStatus: document.getElementById('cacheStatus'),
   cacheHitRate: document.getElementById('cacheHitRate'),
@@ -69,7 +69,6 @@ const charts = {
   rag: null,
 };
 
-let activeTab = 'product';
 let systemInterval = null;
 
 /* -------------------------------------------------------------------------- */
@@ -441,26 +440,21 @@ function renderSystemMetrics(metrics) {
     elements.connPool.textContent = `${conn.minPoolSize}-${conn.poolSize}`;
 
     // --- System ---
-    const usedMemMB = Math.round(sys.memory.rss / 1024 / 1024);
-    const totalMemMB = Math.round(sys.memory.heapTotal / 1024 / 1024); // Approximation for visualization relative to heap
-    // Better to use absolute check for system health, but let's just show usage
-
-    elements.sysMem.textContent = formatBytes(sys.memory.rss);
-    elements.sysTotalMem.textContent = formatBytes(sys.memory.heapTotal); // Just displaying heap total for context
+    // Use heap metrics consistently for the Memory (Heap) display
+    elements.sysMem.textContent = formatBytes(sys.memory.heapUsed);
+    elements.sysTotalMem.textContent = formatBytes(sys.memory.heapTotal);
     const memUsagePercent = (sys.memory.heapUsed / sys.memory.heapTotal) * 100;
     elements.sysBar.style.width = `${memUsagePercent}%`;
-    setStatus(elements.sysStatus, memUsagePercent, 70, 85, true);
+    setStatus(elements.sysStatus, memUsagePercent, 80, 90, true);
 
-    elements.sysNode.textContent = process?.version || 'v18+'; // Frontend doesn't know process, but API might send it. API sends nodeVersion?
-    // Checking API response in metrics.js... it doesn't send nodeVersion explicitly in the 'system' block I wrote earlier?
-    // Actually, looking at routes/metrics.js: it sends `uptime` and `memory`. It does NOT send nodeVersion.
-    // I should probably fix that in the backend if I want it, but for now I'll use what I have.
-    elements.sysUptime.textContent = sys.uptime.formatted;
-    elements.sysPlatform.textContent = 'Linux'; // Placeholder or add to API
+    // Safe access to optional elements
+    if (elements.sysNode) elements.sysNode.textContent = sys.nodeVersion || 'v18+';
+    if (elements.sysUptime) elements.sysUptime.textContent = sys.uptime.formatted;
+    if (elements.sysPlatform) elements.sysPlatform.textContent = sys.platform || 'Linux';
 
-    elements.detailHeapUsed.textContent = sys.memory.formatted.heapUsed;
-    elements.detailHeapTotal.textContent = sys.memory.formatted.heapTotal;
-    elements.detailRss.textContent = sys.memory.formatted.rss;
+    if (elements.detailHeapUsed) elements.detailHeapUsed.textContent = sys.memory.formatted.heapUsed;
+    if (elements.detailHeapTotal) elements.detailHeapTotal.textContent = sys.memory.formatted.heapTotal;
+    if (elements.detailRss) elements.detailRss.textContent = sys.memory.formatted.rss;
 }
 
 async function clearCache() {
@@ -477,37 +471,20 @@ async function clearCache() {
 /*                                Initialization                              */
 /* -------------------------------------------------------------------------- */
 
-function handleTabSwitch(tabName) {
-    activeTab = tabName;
-
-    // UI Update
-    document.querySelectorAll('.tab-btn').forEach(b => {
-        b.classList.toggle('active', b.dataset.tab === tabName);
-    });
-    document.querySelectorAll('.tab-content').forEach(c => {
-        c.classList.toggle('active', c.id === `${tabName}-tab`);
-    });
-
-    // Logic Switch
-    if (tabName === 'product') {
-        if (systemInterval) clearInterval(systemInterval);
-        refreshProduct();
-    } else {
-        refreshSystem();
-        if (systemInterval) clearInterval(systemInterval);
-        systemInterval = setInterval(refreshSystem, 5000); // 5s poll for system stats
-    }
-}
-
 async function refreshAll() {
-    if (activeTab === 'product') {
-        elements.refreshBtn.textContent = 'Refreshing...';
-        elements.refreshBtn.disabled = true;
-        await refreshProduct();
-        elements.refreshBtn.textContent = 'Refresh data';
+    elements.refreshBtn.innerHTML = '<i class="fas fa-sync-alt fa-spin"></i> Refreshing...';
+    elements.refreshBtn.disabled = true;
+    
+    try {
+        await Promise.all([
+            refreshProduct(),
+            refreshSystem()
+        ]);
+    } catch (e) {
+        console.error('Refresh failed:', e);
+    } finally {
+        elements.refreshBtn.innerHTML = '<i class="fas fa-sync-alt"></i> Refresh';
         elements.refreshBtn.disabled = false;
-    } else {
-        await refreshSystem();
     }
 }
 
@@ -516,17 +493,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (!isAuthenticated) return;
   
   // Event Listeners
-  elements.refreshBtn.addEventListener('click', refreshAll);
-  elements.periodSelect.addEventListener('change', refreshProduct);
-  elements.usageGroupSelect.addEventListener('change', refreshProduct);
-  elements.feedbackGroupSelect.addEventListener('change', refreshProduct);
-  elements.clearCacheBtn.addEventListener('click', clearCache);
-
-  // Tabs
-  document.querySelectorAll('.tab-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => handleTabSwitch(e.target.dataset.tab));
-  });
-
+  if (elements.refreshBtn) elements.refreshBtn.addEventListener('click', refreshAll);
+  if (elements.periodSelect) elements.periodSelect.addEventListener('change', refreshProduct);
+  if (elements.usageGroupSelect) elements.usageGroupSelect.addEventListener('change', refreshProduct);
+  if (elements.feedbackGroupSelect) elements.feedbackGroupSelect.addEventListener('change', refreshProduct);
+  
   // Initial Load
-  handleTabSwitch('product');
+  refreshAll();
+  
+  // Poll system metrics
+  systemInterval = setInterval(refreshSystem, 5000);
 });

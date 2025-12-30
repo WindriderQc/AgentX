@@ -200,8 +200,8 @@ app.get('/api/health/external', async (_req, res) => {
 
   const targets = [
     { name: 'dataapi', url: 'http://192.168.2.33:3003/health' },
-    { name: 'ollama99', url: 'http://192.168.2.99:11434/api/tags' },
-    { name: 'ollama12', url: 'http://192.168.2.12:11434/api/tags' }
+    { name: 'ollama', url: 'http://192.168.2.99:11434/api/tags' }, // Primary Ollama
+    { name: 'n8n', url: process.env.N8N_WEBHOOK_BASE_URL ? process.env.N8N_WEBHOOK_BASE_URL.split('/webhook')[0] + '/healthz' : 'https://n8n.specialblend.icu/healthz' }
   ];
 
   const results = {};
@@ -209,13 +209,30 @@ app.get('/api/health/external', async (_req, res) => {
   await Promise.all(targets.map(async (target) => {
     try {
       const response = await fetch(target.url, { timeout: 3000 });
-      results[target.name] = response.ok ? 'online' : 'offline';
+      results[target.name] = { status: response.ok ? 'ok' : 'error' };
     } catch (err) {
-      results[target.name] = 'offline';
+      results[target.name] = { status: 'error' };
     }
   }));
 
   res.json(results);
+});
+
+// Proxy for DataAPI appevents (to avoid CORS and simplify dashboard)
+app.get('/api/events/system', async (req, res) => {
+  const fetch = require('node-fetch');
+  const limit = req.query.limit || 10;
+  
+  try {
+    const response = await fetch(`http://192.168.2.33:3003/api/v1/collection/appevents/items?limit=${limit}`, {
+      headers: { 'x-api-key': process.env.DATAAPI_API_KEY || '41c15baab2ddbca5a83cfac2612fc22afa8fcd0b1a725ac14ef33eef87a8a146' }
+    });
+    const data = await response.json();
+    res.json(data);
+  } catch (err) {
+    console.error('[AgentX] Failed to proxy appevents:', err.message);
+    res.status(500).json({ status: 'error', message: 'Failed to fetch system events' });
+  }
 });
 
 // Error logging middleware (must be after routes)
