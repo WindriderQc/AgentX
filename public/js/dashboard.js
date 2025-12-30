@@ -224,6 +224,57 @@ function showWebhookResult(message, isError = false) {
     resultDiv.innerHTML = message;
 }
 
+// Update workflow description based on selection
+function updateWorkflowDescription(workflow) {
+    const descriptions = {
+        'agentmail': 'Processes email using AI agent with Gmail integration',
+        'rag-ingest': 'Ingests documents into the RAG vector store for AI knowledge',
+        'chat-complete': 'Tests AI chat completion with AgentX backend',
+        'analytics': 'Logs analytics events to MongoDB for tracking',
+        'custom': 'Use any n8n webhook UUID or full URL'
+    };
+    
+    const descDiv = document.getElementById('workflowDescription');
+    if (descDiv) {
+        descDiv.textContent = descriptions[workflow] || 'Select a workflow to see description';
+    }
+}
+
+// Update payload example based on workflow type
+function updatePayloadExample(workflow) {
+    const examples = {
+        'agentmail': JSON.stringify({
+            event: 'email_check',
+            source: 'ops-center',
+            action: 'process_inbox'
+        }, null, 2),
+        'rag-ingest': JSON.stringify({
+            event: 'document_ingest',
+            source: '/mnt/smb/Docs',
+            fileTypes: ['md', 'txt', 'pdf']
+        }, null, 2),
+        'chat-complete': JSON.stringify({
+            message: 'What is the SBQC stack?',
+            model: 'llama3.1',
+            stream: false
+        }, null, 2),
+        'analytics': JSON.stringify({
+            event: 'user_action',
+            action: 'dashboard_view',
+            timestamp: new Date().toISOString()
+        }, null, 2),
+        'custom': JSON.stringify({
+            event: 'test_trigger',
+            source: 'ops-center'
+        }, null, 2)
+    };
+    
+    const textarea = document.getElementById('webhookPayload');
+    if (textarea) {
+        textarea.value = examples[workflow] || examples['custom'];
+    }
+}
+
 async function handleWebhookTrigger() {
     const selector = document.getElementById('workflowSelector');
     const payloadRaw = document.getElementById('webhookPayload').value;
@@ -400,6 +451,47 @@ document.addEventListener('DOMContentLoaded', () => {
         workflowSelector.addEventListener('change', (e) => {
             const customDiv = document.getElementById('customWebhookDiv');
             if (customDiv) customDiv.style.display = e.target.value === 'custom' ? 'block' : 'none';
+            updateWorkflowDescription(e.target.value);
+            updatePayloadExample(e.target.value);
+        });
+    }
+
+    // n8n Help toggle
+    const n8nHelpBtn = document.getElementById('n8nHelpBtn');
+    const n8nHelpBanner = document.getElementById('n8nHelpBanner');
+    if (n8nHelpBtn && n8nHelpBanner) {
+        n8nHelpBtn.addEventListener('click', () => {
+            const isVisible = n8nHelpBanner.style.display !== 'none';
+            n8nHelpBanner.style.display = isVisible ? 'none' : 'block';
+        });
+    }
+
+    // Payload action buttons
+    const formatJsonBtn = document.getElementById('formatJsonBtn');
+    if (formatJsonBtn) {
+        formatJsonBtn.addEventListener('click', () => {
+            const textarea = document.getElementById('webhookPayload');
+            try {
+                const parsed = JSON.parse(textarea.value);
+                textarea.value = JSON.stringify(parsed, null, 2);
+            } catch (e) {
+                alert('Invalid JSON - cannot format');
+            }
+        });
+    }
+
+    const examplePayloadBtn = document.getElementById('examplePayloadBtn');
+    if (examplePayloadBtn) {
+        examplePayloadBtn.addEventListener('click', () => {
+            const workflow = document.getElementById('workflowSelector').value;
+            updatePayloadExample(workflow);
+        });
+    }
+
+    const clearPayloadBtn = document.getElementById('clearPayloadBtn');
+    if (clearPayloadBtn) {
+        clearPayloadBtn.addEventListener('click', () => {
+            document.getElementById('webhookPayload').value = '{}';
         });
     }
 

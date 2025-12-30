@@ -1,0 +1,269 @@
+{
+  "name": "SBQC - N3.2 External AI Trigger Gateway",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "sbqc-ai-query",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "WebhookTrigger",
+      "name": "Webhook (/ai-query)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-400, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\n\n// Validate required fields\nif (!input.body || !input.body.message) {\n  return [{\n    json: {\n      error: true,\n      status: 400,\n      message: 'Missing required field: message'\n    }\n  }];\n}\n\nconst request = {\n  message: input.body.message,\n  model: input.body.model || 'qwen2.5:7b-instruct-q4_0',\n  useRag: input.body.useRag !== false,\n  persona: input.body.persona || null,\n  conversationId: input.body.conversationId || null,\n  autoRoute: input.body.autoRoute !== false,\n  taskType: input.body.taskType || null,\n  metadata: {\n    source: 'n8n-gateway',\n    triggeredAt: new Date().toISOString(),\n    clientIp: input.headers?.['x-forwarded-for'] || 'unknown'\n  },\n  error: false\n};\n\nreturn [{ json: request }];"
+      },
+      "id": "ValidateRequest",
+      "name": "Validate & Prepare Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-150, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "error-check",
+              "leftValue": "={{ $json.error }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      },
+      "id": "CheckError",
+      "name": "Check for Errors",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [100, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://192.168.2.33:3080/api/chat",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"message\": \"{{ $json.message }}\",\n  \"model\": \"{{ $json.model }}\",\n  \"useRag\": {{ $json.useRag }},\n  \"autoRoute\": {{ $json.autoRoute }}\n  {{ $json.persona ? ', \"persona\": \"' + $json.persona + '\"' : '' }}\n  {{ $json.conversationId ? ', \"conversationId\": \"' + $json.conversationId + '\"' : '' }}\n  {{ $json.taskType ? ', \"taskType\": \"' + $json.taskType + '\"' : '' }}\n}",
+        "options": {
+          "timeout": 120000,
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "id": "CallAgentX",
+      "name": "Call AgentX Chat",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [350, -50],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "AgentX API Key",
+          "name": "AgentX API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\n\n// Format success response\nconst result = {\n  success: true,\n  response: response.body?.response || response.response || response.message || 'No response',\n  model: response.body?.model || response.model || 'unknown',\n  conversationId: response.body?.conversationId || null,\n  ragUsed: response.body?.ragUsed || false,\n  tokens: response.body?.tokens || null,\n  latency: response.body?.latency || null,\n  timestamp: new Date().toISOString()\n};\n\nreturn [{ json: result }];"
+      },
+      "id": "FormatSuccess",
+      "name": "Format Success Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [600, -50]
+    },
+    {
+      "parameters": {
+        "jsCode": "const error = $input.first().json;\n\nreturn [{\n  json: {\n    success: false,\n    error: error.message || 'Invalid request',\n    status: error.status || 400,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "FormatError",
+      "name": "Format Error Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [350, 150]
+    },
+    {
+      "parameters": {},
+      "id": "MergeResponses",
+      "name": "Merge Responses",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [850, 50]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "RespondToWebhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1100, 50]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://192.168.2.33:3003/integrations/events/n8n",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"workflow_id\": \"N3.2\",\n  \"event_type\": \"ai_gateway_request\",\n  \"data\": {\n    \"success\": {{ $json.success }},\n    \"model\": \"{{ $json.model || 'unknown' }}\",\n    \"ragUsed\": {{ $json.ragUsed || false }},\n    \"timestamp\": \"{{ $json.timestamp }}\"\n  }\n}",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "id": "LogRequest",
+      "name": "Log to DataAPI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1350, 50],
+      "continueOnFail": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "DataAPI API Key",
+          "name": "DataAPI API Key"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "WebhookTrigger": {
+      "main": [
+        [
+          {
+            "node": "ValidateRequest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ValidateRequest": {
+      "main": [
+        [
+          {
+            "node": "CheckError",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CheckError": {
+      "main": [
+        [
+          {
+            "node": "CallAgentX",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "FormatError",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CallAgentX": {
+      "main": [
+        [
+          {
+            "node": "FormatSuccess",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FormatSuccess": {
+      "main": [
+        [
+          {
+            "node": "MergeResponses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FormatError": {
+      "main": [
+        [
+          {
+            "node": "MergeResponses",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "MergeResponses": {
+      "main": [
+        [
+          {
+            "node": "RespondToWebhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RespondToWebhook": {
+      "main": [
+        [
+          {
+            "node": "LogRequest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "SBQC",
+      "id": "sbqc"
+    },
+    {
+      "name": "Priority-3",
+      "id": "p3"
+    },
+    {
+      "name": "AI-Gateway",
+      "id": "ai"
+    }
+  ],
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
+}

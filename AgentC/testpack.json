@@ -96,9 +96,9 @@
     },
     {
       "parameters": {
-        "command": "bash",
-        "arguments": "-lc",
-        "input": "set -euo pipefail\n\nROOT=\"{{ $json.testRoot }}\"\n\nif [ ! -d \"$ROOT\" ]; then\n  echo \"ERROR|missing_root|$ROOT\" >&2\n  exit 2\nfi\n\n# small scan: everything under test root\nfind \"$ROOT\" -type f -printf \"%p|%s|%T@\\n\"",
+        "command": "sh",
+        "arguments": "-c",
+        "input": "set -eu\n\nROOT=\"{{ $json.testRoot }}\"\n\nif [ ! -d \"$ROOT\" ]; then\n  echo \"ERROR|missing_root|$ROOT\" >&2\n  exit 2\nfi\n\n# small scan: everything under test root\nfind \"$ROOT\" -type f -printf \"%p|%s|%T@\\n\" 2>/dev/null || true",
         "options": { "timeout": 300 }
       },
       "id": "FindTestFiles",

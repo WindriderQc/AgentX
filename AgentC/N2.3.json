@@ -1,0 +1,336 @@
+{
+  "name": "SBQC - N2.3 RAG Document Ingestion",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "sbqc-n2-3-rag-ingest",
+        "options": {
+          "responseMode": "onReceived"
+        }
+      },
+      "id": "WebhookTrigger",
+      "name": "Webhook (Manual/Event)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-600, 0]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 3 * * 0"
+            }
+          ]
+        }
+      },
+      "id": "ScheduleTrigger",
+      "name": "Schedule (Weekly Sun 3AM)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-600, 200],
+      "disabled": true
+    },
+    {
+      "parameters": {},
+      "id": "MergeTriggers",
+      "name": "Merge Triggers",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [-350, 100]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Configuration for document directories to scan\nconst config = $input.first().json;\n\n// Default directories if not provided via webhook\nconst directories = config.directories || [\n  { path: '/mnt/smb/Docs', pattern: '*.md', source: 'nas-docs' },\n  { path: '/mnt/smb/Docs', pattern: '*.txt', source: 'nas-docs' },\n  { path: '/mnt/smb/Docs', pattern: '*.pdf', source: 'nas-docs' }\n];\n\nreturn directories.map(dir => ({ json: dir }));"
+      },
+      "id": "ConfigureDirs",
+      "name": "Configure Directories",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-100, 100]
+    },
+    {
+      "parameters": {
+        "command": "=find \"{{ $json.path }}\" -type f -name \"{{ $json.pattern }}\" -mtime -7 -printf \"%p|%s|%T@\\n\" 2>/dev/null | head -100",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "FindFiles",
+      "name": "Find Recent Files",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [150, 100],
+      "notesInFlow": true,
+      "notes": "Find files modified in last 7 days, limit 100 per pattern"
+    },
+    {
+      "parameters": {
+        "jsCode": "const stdout = $input.first().json.stdout || '';\nconst source = $input.first().json.source || 'nas-docs';\nconst lines = stdout.split('\\n').filter(l => l.trim());\n\nif (lines.length === 0) {\n  return [{ json: { skip: true, reason: 'No files found' } }];\n}\n\nconst files = lines.map(line => {\n  const [path, size, modified] = line.split('|');\n  const parts = path.split('/');\n  const filename = parts.pop();\n  const ext = filename.split('.').pop().toLowerCase();\n  \n  return {\n    path,\n    filename,\n    extension: ext,\n    size: parseInt(size) || 0,\n    modified: new Date(parseFloat(modified) * 1000).toISOString(),\n    source,\n    skip: false\n  };\n});\n\nreturn files.map(f => ({ json: f }));"
+      },
+      "id": "ParseFiles",
+      "name": "Parse File List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [400, 100]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "skip-check",
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      },
+      "id": "FilterSkipped",
+      "name": "Filter Skipped",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [650, 100]
+    },
+    {
+      "parameters": {
+        "command": "=cat \"{{ $json.path }}\" 2>/dev/null | head -c 50000",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "ReadContent",
+      "name": "Read File Content",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [900, 100],
+      "notesInFlow": true,
+      "notes": "Read first 50KB of each file"
+    },
+    {
+      "parameters": {
+        "jsCode": "const file = $input.first().json;\nconst content = file.stdout || '';\n\n// Skip empty files\nif (!content.trim()) {\n  return [{ json: { skip: true, reason: 'Empty content' } }];\n}\n\nreturn [{\n  json: {\n    source: file.source || 'nas-docs',\n    path: file.path,\n    title: file.filename,\n    text: content,\n    tags: ['nas', 'documents', file.extension],\n    metadata: {\n      size: file.size,\n      modified: file.modified,\n      ingestedAt: new Date().toISOString()\n    }\n  }\n}];"
+      },
+      "id": "PreparePayload",
+      "name": "Prepare RAG Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1150, 100]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://192.168.2.33:3080/api/rag/ingest",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "IngestToAgentX",
+      "name": "Ingest to AgentX RAG",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1400, 100],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "AgentX API Key",
+          "name": "AgentX API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst results = {\n  total: items.length,\n  success: 0,\n  failed: 0,\n  errors: []\n};\n\nfor (const item of items) {\n  if (item.json.status === 'success' || item.json.id) {\n    results.success++;\n  } else {\n    results.failed++;\n    results.errors.push({\n      path: item.json.path,\n      error: item.json.message || 'Unknown error'\n    });\n  }\n}\n\nresults.timestamp = new Date().toISOString();\nresults.summary = `Ingested ${results.success}/${results.total} documents`;\n\nreturn [{ json: results }];"
+      },
+      "id": "SummarizeResults",
+      "name": "Summarize Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1650, 100]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://192.168.2.33:3003/integrations/events/n8n",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"workflow_id\": \"N2.3\",\n  \"event_type\": \"rag_ingest_complete\",\n  \"data\": {{ JSON.stringify($json) }}\n}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "LogToDataAPI",
+      "name": "Log Event (DataAPI)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1900, 100],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "DataAPI API Key",
+          "name": "DataAPI API Key"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "WebhookTrigger": {
+      "main": [
+        [
+          {
+            "node": "MergeTriggers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ScheduleTrigger": {
+      "main": [
+        [
+          {
+            "node": "MergeTriggers",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "MergeTriggers": {
+      "main": [
+        [
+          {
+            "node": "ConfigureDirs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ConfigureDirs": {
+      "main": [
+        [
+          {
+            "node": "FindFiles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FindFiles": {
+      "main": [
+        [
+          {
+            "node": "ParseFiles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ParseFiles": {
+      "main": [
+        [
+          {
+            "node": "FilterSkipped",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FilterSkipped": {
+      "main": [
+        [
+          {
+            "node": "ReadContent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ReadContent": {
+      "main": [
+        [
+          {
+            "node": "PreparePayload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PreparePayload": {
+      "main": [
+        [
+          {
+            "node": "IngestToAgentX",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IngestToAgentX": {
+      "main": [
+        [
+          {
+            "node": "SummarizeResults",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SummarizeResults": {
+      "main": [
+        [
+          {
+            "node": "LogToDataAPI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "SBQC",
+      "id": "sbqc"
+    },
+    {
+      "name": "Priority-2",
+      "id": "p2"
+    },
+    {
+      "name": "RAG",
+      "id": "rag"
+    }
+  ],
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
+}
