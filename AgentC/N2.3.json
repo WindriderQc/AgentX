@@ -132,8 +132,8 @@
       "parameters": {
         "method": "POST",
         "url": "http://192.168.2.33:3080/api/rag/ingest",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "httpHeaderAuth",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify($json) }}",
@@ -148,8 +148,8 @@
       "position": [1400, 100],
       "credentials": {
         "httpHeaderAuth": {
-          "id": "AgentX API Key",
-          "name": "AgentX API Key"
+          "id": "PIrrA2wpOppzVodi",
+          "name": "Header Auth account"
         }
       }
     },
@@ -167,8 +167,8 @@
       "parameters": {
         "method": "POST",
         "url": "http://192.168.2.33:3003/integrations/events/n8n",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "httpHeaderAuth",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={\n  \"workflow_id\": \"N2.3\",\n  \"event_type\": \"rag_ingest_complete\",\n  \"data\": {{ JSON.stringify($json) }}\n}",
@@ -183,8 +183,8 @@
       "position": [1900, 100],
       "credentials": {
         "httpHeaderAuth": {
-          "id": "DataAPI API Key",
-          "name": "DataAPI API Key"
+          "id": "PIrrA2wpOppzVodi",
+          "name": "Header Auth account"
         }
       }
     }

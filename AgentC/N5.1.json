@@ -42,8 +42,8 @@
       "parameters": {
         "method": "GET",
         "url": "http://192.168.2.33:3080/api/analytics/feedback/summary",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "httpHeaderAuth",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "options": {
           "timeout": 30000
         }
@@ -55,8 +55,8 @@
       "position": [-100, 100],
       "credentials": {
         "httpHeaderAuth": {
-          "id": "AgentX API Key",
-          "name": "AgentX API Key"
+          "id": "PIrrA2wpOppzVodi",
+          "name": "Header Auth account"
         }
       }
     },
@@ -102,8 +102,8 @@
       "parameters": {
         "method": "GET",
         "url": "http://192.168.2.33:3080/api/analytics/feedback?rating=negative&limit=20",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "httpHeaderAuth",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "options": {
           "timeout": 15000
         }
@@ -115,8 +115,8 @@
       "position": [650, 0],
       "credentials": {
         "httpHeaderAuth": {
-          "id": "AgentX API Key",
-          "name": "AgentX API Key"
+          "id": "PIrrA2wpOppzVodi",
+          "name": "Header Auth account"
         }
       }
     },
@@ -134,8 +134,8 @@
       "parameters": {
         "method": "POST",
         "url": "http://192.168.2.33:3080/api/chat",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "httpHeaderAuth",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={\n  \"message\": {{ JSON.stringify($json.prompt) }},\n  \"model\": \"qwen2.5:7b-instruct-q4_0\",\n  \"useRag\": false,\n  \"persona\": \"sbqc_ops\"\n}",
@@ -150,8 +150,8 @@
       "position": [1150, 0],
       "credentials": {
         "httpHeaderAuth": {
-          "id": "AgentX API Key",
-          "name": "AgentX API Key"
+          "id": "PIrrA2wpOppzVodi",
+          "name": "Header Auth account"
         }
       }
     },

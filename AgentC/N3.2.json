@@ -55,8 +55,8 @@
       "parameters": {
         "method": "POST",
         "url": "http://192.168.2.33:3080/api/chat",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "httpHeaderAuth",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={\n  \"message\": \"{{ $json.message }}\",\n  \"model\": \"{{ $json.model }}\",\n  \"useRag\": {{ $json.useRag }},\n  \"autoRoute\": {{ $json.autoRoute }}\n  {{ $json.persona ? ', \"persona\": \"' + $json.persona + '\"' : '' }}\n  {{ $json.conversationId ? ', \"conversationId\": \"' + $json.conversationId + '\"' : '' }}\n  {{ $json.taskType ? ', \"taskType\": \"' + $json.taskType + '\"' : '' }}\n}",
@@ -76,8 +76,8 @@
       "position": [350, -50],
       "credentials": {
         "httpHeaderAuth": {
-          "id": "AgentX API Key",
-          "name": "AgentX API Key"
+          "id": "PIrrA2wpOppzVodi",
+          "name": "Header Auth account"
         }
       }
     },
