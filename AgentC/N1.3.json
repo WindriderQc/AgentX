@@ -19,6 +19,8 @@
     {
       "parameters": {
         "url": "http://192.168.2.33:3003/health",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "options": {
           "timeout": 5000,
           "fullResponse": false
@@ -32,11 +34,19 @@
         -440,
         -180
       ],
-      "continueOnFail": true
+      "continueOnFail": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "PIrrA2wpOppzVodi",
+          "name": "Header Auth account"
+        }
+      }
     },
     {
       "parameters": {
         "url": "http://192.168.2.33:3080/health",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "options": {
           "timeout": 5000,
           "fullResponse": false
@@ -50,7 +60,13 @@
         -440,
         -60
       ],
-      "continueOnFail": true
+      "continueOnFail": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "PIrrA2wpOppzVodi",
+          "name": "Header Auth account"
+        }
+      }
     },
     {
       "parameters": {
@@ -112,14 +128,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        40,
-        0
-      ]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "http://192.168.2.33:3080/api/chat",
+        4authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={\n  \"model\": \"qwen2.5:7b\",\n  \"target\": \"192.168.2.99:11434\",\n  \"persona\": \"sbqc_ops\",\n  \"message\": \"You are SBQC Ops. Analyze this live system snapshot, identify likely root causes, and propose concrete next actions.\\n\\nRules:\\n- Be short, structured, and actionable.\\n- If degraded: name the failing component(s), give top 3 hypotheses, and a step-by-step fix plan.\\n- If healthy: still flag any risk signals (latency, model list empty, etc.).\\n\\nSnapshot JSON:\\n\" + JSON.stringify($json.snapshot, null, 2)\n}",
@@ -128,6 +138,20 @@
         }
       },
       "id": "CallAgentXChat",
+      "name": "AgentX Chat (sbqc_ops)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        0
+      ],
+      "continueOnFail": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "PIrrA2wpOppzVodi",
+          "name": "Header Auth account"
+        }
+      },
       "name": "AgentX Chat (sbqc_ops)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -210,7 +234,7 @@
           {
             "node": "Merge Probes",
             "type": "main",
-            "index": 0
+            "index": 1
           }
         ]
       ]
@@ -221,7 +245,7 @@
           {
             "node": "Merge Probes",
             "type": "main",
-            "index": 0
+            "index": 2
           }
         ]
       ]
@@ -232,7 +256,7 @@
           {
             "node": "Merge Probes",
             "type": "main",
-            "index": 0
+            "index": 3
           }
         ]
       ]
