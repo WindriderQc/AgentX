@@ -491,23 +491,8 @@ async function loadScans() {
     if (!container) return;
 
     try {
-        // Fetch scans from DataAPI via AgentX proxy or direct if configured
-        // Assuming AgentX has a proxy route or we use the direct DataAPI URL if accessible
-        // For now, let's assume AgentX proxies /api/v1/storage/scans -> DataAPI
-        // If not, we might need to hit DataAPI directly (http://192.168.2.33:3003)
-        // But CORS might be an issue. Let's try the proxy route first.
-        
-        // NOTE: AgentX needs a route to proxy this. If it doesn't exist, we might need to add it.
-        // Checking routes/api.js... it seems we don't have a direct proxy for storage scans yet.
-        // However, we can try to fetch from DataAPI directly if the browser allows it (CORS).
-        // Or better, we add a proxy endpoint in AgentX.
-        
-        // Let's try fetching from DataAPI directly for now, assuming CORS is permissive or same-origin if proxied.
-        // Actually, looking at the user's request, they want buttons.
-        // Let's assume we can hit the DataAPI.
-        
-        const response = await fetch('http://192.168.2.33:3003/api/v1/storage/scans?limit=5');
-        const result = await response.json();
+        // Fetch scans via AgentX proxy to handle authentication
+        const result = await API.get('/api/dashboard/scans?limit=5');
         
         if (result.status !== 'success' || !result.data.scans || result.data.scans.length === 0) {
             container.innerHTML = '<div class="scan-item"><span style="color: var(--muted);">No recent scans</span></div>';
@@ -543,8 +528,7 @@ async function loadScans() {
 window.stopScan = async (scanId) => {
     if (!confirm('Are you sure you want to stop this scan?')) return;
     try {
-        const res = await fetch(`http://192.168.2.33:3003/api/v1/storage/stop/${scanId}`, { method: 'POST' });
-        const data = await res.json();
+        const data = await API.post(`/api/dashboard/scans/${scanId}/stop`);
         if (data.status === 'success') {
             alert('Scan stop requested');
             loadScans();
@@ -558,8 +542,7 @@ window.stopScan = async (scanId) => {
 
 window.viewScanReport = async (scanId) => {
     try {
-        const res = await fetch(`http://192.168.2.33:3003/api/v1/storage/status/${scanId}`);
-        const data = await res.json();
+        const data = await API.get(`/api/dashboard/scans/${scanId}/report`);
         
         const modal = document.getElementById('scanReportModal');
         const content = document.getElementById('scanReportContent');

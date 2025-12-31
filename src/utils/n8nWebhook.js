@@ -65,6 +65,16 @@ async function triggerWebhook(webhookId, data = {}, options = {}) {
     const result = await response.json();
     const elapsed = Date.now() - requestStart;
     
+    if (!response.ok) {
+      logger.warn(`[n8n] Webhook returned error: ${webhookId} (${response.status}) - ${JSON.stringify(result)}`);
+      return {
+        success: false,
+        status: response.status,
+        error: result.message || `HTTP Error ${response.status}`,
+        data: result
+      };
+    }
+
     logger.info(`[n8n] Webhook response: ${webhookId} (${elapsed}ms)`);
     
     return {

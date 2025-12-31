@@ -380,10 +380,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const send = async (rating) => {
       try {
+        // Disable controls while sending
+        up.disabled = true;
+        down.disabled = true;
+        comment.disabled = true;
+
         await sendFeedback(messageId, rating, comment.value);
+        
+        // Hide controls on success
+        up.style.display = 'none';
+        down.style.display = 'none';
+        comment.style.display = 'none';
+        label.style.display = 'none';
+
         status.textContent = rating > 0 ? 'Thanks! Marked helpful.' : 'Noted. Feedback saved.';
       } catch (err) {
         status.textContent = err.message;
+        // Re-enable on error
+        up.disabled = false;
+        down.disabled = false;
+        comment.disabled = false;
       }
     };
 

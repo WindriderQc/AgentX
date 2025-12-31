@@ -7,8 +7,8 @@ const logger = require('../config/logger');
 // Environment variables
 const OLLAMA_HOST = process.env.OLLAMA_HOST || 'http://localhost:11434';
 const OLLAMA_HOST_2 = process.env.OLLAMA_HOST_2 || 'http://192.168.2.12:11434';
-const DATAAPI_BASE_URL = process.env.DATAAPI_BASE_URL || 'http://localhost:3003';
-const DATAAPI_API_KEY = process.env.DATAAPI_API_KEY;
+const DATAAPI_BASE_URL = process.env.DATAAPI_BASE_URL || 'http://192.168.2.33:3003';
+const DATAAPI_API_KEY = process.env.DATAAPI_API_KEY || '41c15baab2ddbca5a83cfac2612fc22afa8fcd0b1a725ac14ef33eef87a8a146';
 
 // Helper to check URL with optional headers
 async function checkUrl(url, options = {}) {
@@ -123,6 +123,70 @@ router.get('/stats', async (req, res) => {
     } catch (err) {
         logger.error('Dashboard stats error', { error: err.message });
         res.status(500).json({ status: 'error', message: err.message });
+    }
+});
+
+/**
+ * Proxy Routes for DataAPI Scans
+ * These allow the dashboard to interact with DataAPI without exposing the API key
+ */
+
+// GET /api/dashboard/scans - List recent scans
+router.get('/scans', async (req, res) => {
+    try {
+        const limit = req.query.limit || 5;
+        const url = `${DATAAPI_BASE_URL}/api/v1/storage/scans?limit=${limit}`;
+        
+        const response = await fetch(url, {
+            headers: { 'x-api-key': DATAAPI_API_KEY }
+        });
+        
+        if (!response.ok) {
+            throw new Error(`DataAPI responded with ${response.status}`);
+        }
+        
+        const data = await response.json();
+        res.json(data);
+    } catch (err) {
+        logger.error('Proxy scans error', { error: err.message });
+        res.status(502).json({ status: 'error', message: 'Failed to fetch scans from DataAPI' });
+    }
+});
+
+// POST /api/dashboard/scans/:id/stop - Stop a running scan
+router.post('/scans/:id/stop', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const url = `${DATAAPI_BASE_URL}/api/v1/storage/stop/${id}`;
+        
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'x-api-key': DATAAPI_API_KEY }
+        });
+        
+        const data = await response.json();
+        res.status(response.status).json(data);
+    } catch (err) {
+        logger.error('Proxy stop scan error', { error: err.message });
+        res.status(502).json({ status: 'error', message: 'Failed to stop scan' });
+    }
+});
+
+// GET /api/dashboard/scans/:id/report - Get scan report
+router.get('/scans/:id/report', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const url = `${DATAAPI_BASE_URL}/api/v1/storage/status/${id}`;
+        
+        const response = await fetch(url, {
+            headers: { 'x-api-key': DATAAPI_API_KEY }
+        });
+        
+        const data = await response.json();
+        res.status(response.status).json(data);
+    } catch (err) {
+        logger.error('Proxy scan report error', { error: err.message });
+        res.status(502).json({ status: 'error', message: 'Failed to fetch scan report' });
     }
 });
 
