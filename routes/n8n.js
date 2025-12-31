@@ -52,6 +52,57 @@ router.get('/health', n8nAuth, (req, res) => {
 });
 
 /**
+ * Deploy workflows from AgentC folder to n8n instance
+ * POST /api/n8n/deploy
+ * 
+ * Body: {
+ *   workflows: Array of workflow IDs (e.g., ['N3.1', 'N3.2']) or empty for all
+ * }
+ */
+router.post('/deploy', n8nAuth, async (req, res, next) => {
+  try {
+    const { workflows } = req.body;
+    const { exec } = require('child_process');
+    const path = require('path');
+    
+    // Build command
+    const scriptPath = path.join(__dirname, '../scripts/deploy-n8n-workflows.sh');
+    let cmd = scriptPath;
+    
+    if (workflows && Array.isArray(workflows) && workflows.length > 0) {
+      const files = workflows.map(id => `${id}.json`).join(' ');
+      cmd = `${scriptPath} ${files}`;
+    }
+    
+    logger.info('Deploying n8n workflows', { workflows: workflows || 'all', cmd });
+    
+    // Execute deployment script
+    exec(cmd, { cwd: path.join(__dirname, '..') }, (error, stdout, stderr) => {
+      if (error) {
+        logger.error('n8n deployment failed', { error: error.message, stderr });
+        return res.status(500).json({
+          status: 'error',
+          message: 'Deployment failed',
+          error: error.message,
+          stderr
+        });
+      }
+      
+      logger.info('n8n deployment completed', { stdout });
+      res.json({
+        status: 'success',
+        message: 'Workflows deployed successfully',
+        output: stdout,
+        stderr: stderr || null
+      });
+    });
+    
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
  * Trigger RAG ingestion webhook
  * POST /api/n8n/rag/ingest
  * 
