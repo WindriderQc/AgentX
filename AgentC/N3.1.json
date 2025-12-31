@@ -17,7 +17,33 @@
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.1,
       "position": [
-        -400,
+        -600,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "path": "sbqc-n3-1-model-monitor",
+        "options": {}
+      },
+      "id": "WebhookTrigger",
+      "name": "Webhook (Manual)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -600,
+        100
+      ],
+      "webhookId": "sbqc-n3-1-model-monitor"
+    },
+    {
+      "parameters": {},
+      "id": "MergeTriggers",
+      "name": "Merge Triggers",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        -350,
         0
       ]
     },
@@ -99,6 +125,28 @@
   ],
   "connections": {
     "ScheduleTrigger": {
+      "main": [
+        [
+          {
+            "node": "MergeTriggers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WebhookTrigger": {
+      "main": [
+        [
+          {
+            "node": "MergeTriggers",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "MergeTriggers": {
       "main": [
         [
           {

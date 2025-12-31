@@ -230,14 +230,13 @@ function showWebhookResult(message, isError = false) {
 // Update workflow description based on selection
 function updateWorkflowDescription(workflow) {
     const descriptions = {
+        'n1-1': 'Run system-wide health checks (DataAPI, AgentX, Ollama)',
         'n1-3': 'Diagnose system health using AgentX (Ops Persona)',
+        'n2-1': 'Trigger NAS file scan and indexing process',
         'n2-3': 'Trigger RAG ingestion for documents',
+        'n3-1': 'Monitor model availability and latency across nodes',
         'n3-2': 'Gateway for external tools to query AgentX',
         'n5-1': 'Analyze feedback and optimize prompts',
-        'agentmail': 'Processes email using AI agent with Gmail integration',
-        'rag-ingest': 'Ingests documents into the RAG vector store for AI knowledge',
-        'chat-complete': 'Tests AI chat completion with AgentX backend',
-        'analytics': 'Logs analytics events to MongoDB for tracking',
         'custom': 'Use any n8n webhook UUID or full URL'
     };
     
@@ -250,8 +249,11 @@ function updateWorkflowDescription(workflow) {
     const urlDiv = document.getElementById('workflowUrlDisplay');
     if (urlDiv) {
         const endpointMap = {
+            'n1-1': 'sbqc-n1-1-health-check',
             'n1-3': 'sbqc-ops-diagnostic',
+            'n2-1': 'sbqc-n2-1-nas-scan',
             'n2-3': 'sbqc-n2-3-rag-ingest',
+            'n3-1': 'sbqc-n3-1-model-monitor',
             'n3-2': 'sbqc-ai-query',
             'n5-1': 'sbqc-n5-1-feedback-analysis'
         };
@@ -259,8 +261,6 @@ function updateWorkflowDescription(workflow) {
         let url = '';
         if (workflow === 'custom') {
             url = '(Enter custom UUID or URL below)';
-        } else if (workflow === 'agentmail') {
-            url = 'POST https://n8n.specialblend.icu/webhook/c1deca83-ecb4-48ad-b485-59195cee9a61';
         } else if (endpointMap[workflow]) {
             url = `POST /api/n8n/trigger/${endpointMap[workflow]}`;
         } else {
@@ -273,13 +273,23 @@ function updateWorkflowDescription(workflow) {
 // Update payload example based on workflow type
 function updatePayloadExample(workflow) {
     const examples = {
+        'n1-1': JSON.stringify({
+            source: 'dashboard-manual'
+        }, null, 2),
         'n1-3': JSON.stringify({
             source: 'dashboard-test'
+        }, null, 2),
+        'n2-1': JSON.stringify({
+            action: 'start_scan',
+            roots: ['/mnt/media', '/mnt/datalake']
         }, null, 2),
         'n2-3': JSON.stringify({
             directories: [
                 { path: '/mnt/smb/Docs', pattern: '*.md', source: 'nas-docs' }
             ]
+        }, null, 2),
+        'n3-1': JSON.stringify({
+            check: 'immediate'
         }, null, 2),
         'n3-2': JSON.stringify({
             body: {
@@ -290,26 +300,6 @@ function updatePayloadExample(workflow) {
         }, null, 2),
         'n5-1': JSON.stringify({
             source: 'manual-trigger'
-        }, null, 2),
-        'agentmail': JSON.stringify({
-            event: 'email_check',
-            source: 'ops-center',
-            action: 'process_inbox'
-        }, null, 2),
-        'rag-ingest': JSON.stringify({
-            event: 'document_ingest',
-            source: '/mnt/smb/Docs',
-            fileTypes: ['md', 'txt', 'pdf']
-        }, null, 2),
-        'chat-complete': JSON.stringify({
-            message: 'What is the SBQC stack?',
-            model: 'llama3.1',
-            stream: false
-        }, null, 2),
-        'analytics': JSON.stringify({
-            event: 'user_action',
-            action: 'dashboard_view',
-            timestamp: new Date().toISOString()
         }, null, 2),
         'custom': JSON.stringify({
             event: 'test_trigger',
@@ -342,15 +332,16 @@ async function handleWebhookTrigger() {
         
         // Map friendly names to webhook IDs/Paths
         const endpointMap = {
+            'n1-1': 'sbqc-n1-1-health-check',
             'n1-3': 'sbqc-ops-diagnostic',
+            'n2-1': 'sbqc-n2-1-nas-scan',
             'n2-3': 'sbqc-n2-3-rag-ingest',
+            'n3-1': 'sbqc-n3-1-model-monitor',
             'n3-2': 'sbqc-ai-query',
             'n5-1': 'sbqc-n5-1-feedback-analysis'
         };
 
-        if (selector.value === 'agentmail') {
-            endpoint = 'https://n8n.specialblend.icu/webhook/c1deca83-ecb4-48ad-b485-59195cee9a61';
-        } else if (selector.value === 'custom') {
+        if (selector.value === 'custom') {
             const customId = document.getElementById('customWebhookId').value.trim();
             endpoint = customId.startsWith('http') ? customId : `/api/n8n/trigger/${customId}`;
         } else if (endpointMap[selector.value]) {
