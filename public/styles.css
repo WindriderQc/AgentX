@@ -1241,7 +1241,7 @@ button:active {
 
 .ops-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 20px;
   margin-bottom: 24px;
 }
@@ -1321,6 +1321,10 @@ button:active {
 .event-content {
   flex: 1;
   min-width: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
 }
 
 .event-message {
@@ -1333,7 +1337,9 @@ button:active {
 .event-time {
   font-size: 11px;
   color: var(--muted);
-  margin-top: 4px;
+  margin-top: 0;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .webhook-form {
