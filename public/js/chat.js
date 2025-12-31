@@ -153,6 +153,7 @@ document.addEventListener('DOMContentLoaded', () => {
     model: '',
     stream: true,  // Enable streaming by default for better UX and thinking model support
     tts: false,    // Disable TTS by default
+    useRag: true,  // Enable RAG by default
     system: 'You are AgentX, a concise and capable local assistant. Keep answers brief and actionable.',
     options: {
       temperature: 0.7,
@@ -252,7 +253,7 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.systemPrompt.value = cfg.system;
     elements.streamToggle.checked = cfg.stream;
     elements.ttsToggle.checked = cfg.tts || false;
-    elements.ragToggle.checked = cfg.useRag || false;
+    elements.ragToggle.checked = cfg.useRag !== undefined ? cfg.useRag : true;
     elements.statsToggle.checked = state.showStats; // V4
     elements.temperature.value = cfg.options.temperature;
     elements.topP.value = cfg.options.top_p;
