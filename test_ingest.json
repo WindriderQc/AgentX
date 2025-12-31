@@ -1,0 +1,6 @@
+{
+  "source": "manual_test",
+  "path": "/mnt/datalake/RAG/Tech_notes.txt",
+  "title": "Tech Notes Manual Test",
+  "text": "Install Mosquitto. sudo apt install mosquitto. mosquitto -d. Run mosquitto in the background as a daemon. Install MongoDB. sudo apt-get install -y mongodb-org. Start MongoDB: sudo systemctl start mongod."
+}

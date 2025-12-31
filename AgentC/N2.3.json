@@ -2,17 +2,31 @@
   "name": "SBQC - N2.3 RAG Document Ingestion",
   "nodes": [
     {
+      "parameters": {},
+      "id": "57728430-8175-4660-9d1c-ea852c266295",
+      "name": "Merge Triggers",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        784,
+        640
+      ]
+    },
+    {
       "parameters": {
+        "httpMethod": "POST",
         "path": "sbqc-n2-3-rag-ingest",
-        "options": {
-          "responseMode": "onReceived"
-        }
+        "options": {}
       },
-      "id": "WebhookTrigger",
+      "id": "8bffc509-0047-440f-833e-78d7723cb63b",
       "name": "Webhook (Manual/Event)",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [-600, 0]
+      "position": [
+        528,
+        528
+      ],
+      "webhookId": "90fc9b0d-f21b-4db0-a8fc-29631475a3d2"
     },
     {
       "parameters": {
@@ -25,96 +39,68 @@
           ]
         }
       },
-      "id": "ScheduleTrigger",
+      "id": "2a5bc964-4d04-440c-9c42-b69a87c3a715",
       "name": "Schedule (Weekly Sun 3AM)",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [-600, 200],
-      "disabled": true
-    },
-    {
-      "parameters": {},
-      "id": "MergeTriggers",
-      "name": "Merge Triggers",
-      "type": "n8n-nodes-base.merge",
-      "typeVersion": 3,
-      "position": [-350, 100]
+      "position": [
+        528,
+        736
+      ]
     },
     {
       "parameters": {
-        "jsCode": "// Configuration for document directories to scan\nconst config = $input.first().json;\n\n// Default directories if not provided via webhook\nconst directories = config.directories || [\n  { path: '/mnt/datalake/RAG', pattern: '*.md', source: 'nas-docs' },\n  { path: '/mnt/datalake/RAG', pattern: '*.txt', source: 'nas-docs' },\n  { path: '/mnt/datalake/RAG', pattern: '*.pdf', source: 'nas-docs' }\n];\n\nreturn directories.map(dir => ({ json: dir }));"
+        "command": "=find \"{{ $json.path }}\" -type f -name \"{{ $json.pattern }}\" -mtime -7 -exec stat -c \"%n|%s|%Y\" {} + 2>/dev/null | head -100"
       },
-      "id": "ConfigureDirs",
-      "name": "Configure Directories",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [-100, 100]
-    },
-    {
-      "parameters": {
-        "command": "=find \"{{ $json.path }}\" -type f -name \"{{ $json.pattern }}\" -mtime -7 -printf \"%p|%s|%T@\\n\" 2>/dev/null | head -100",
-        "options": {
-          "timeout": 60000
-        }
-      },
-      "id": "FindFiles",
+      "id": "ac958d84-1f4f-47ef-ad82-f8ecd4cf28f3",
       "name": "Find Recent Files",
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
-      "position": [150, 100],
+      "position": [
+        1280,
+        640
+      ],
       "notesInFlow": true,
       "notes": "Find files modified in last 7 days, limit 100 per pattern"
     },
     {
       "parameters": {
+        "jsCode": "// Configuration for document directories to scan\nconst config = $input.first().json;\n\n// Default directories if not provided via webhook\nconst directories = config.directories || [\n  { path: '/mnt/datalake/RAG', pattern: '*.md', source: 'nas-docs' },\n  { path: '/mnt/datalake/RAG', pattern: '*.txt', source: 'nas-docs' },\n  { path: '/mnt/datalake/RAG', pattern: '*.pdf', source: 'nas-docs' }\n];\n\nreturn directories.map(dir => ({ json: dir }));"
+      },
+      "id": "411848a4-cf95-4616-85be-3d82ff48607b",
+      "name": "Configure Directories",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        640
+      ]
+    },
+    {
+      "parameters": {
         "jsCode": "const stdout = $input.first().json.stdout || '';\nconst source = $input.first().json.source || 'nas-docs';\nconst lines = stdout.split('\\n').filter(l => l.trim());\n\nif (lines.length === 0) {\n  return [{ json: { skip: true, reason: 'No files found' } }];\n}\n\nconst files = lines.map(line => {\n  const [path, size, modified] = line.split('|');\n  const parts = path.split('/');\n  const filename = parts.pop();\n  const ext = filename.split('.').pop().toLowerCase();\n  \n  return {\n    path,\n    filename,\n    extension: ext,\n    size: parseInt(size) || 0,\n    modified: new Date(parseFloat(modified) * 1000).toISOString(),\n    source,\n    skip: false\n  };\n});\n\nreturn files.map(f => ({ json: f }));"
       },
-      "id": "ParseFiles",
+      "id": "8c94b476-de07-41fb-9c5d-fb735182c1c1",
       "name": "Parse File List",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [400, 100]
+      "position": [
+        1536,
+        640
+      ]
     },
     {
       "parameters": {
-        "conditions": {
-          "options": {
-            "leftValue": "",
-            "caseSensitive": true,
-            "typeValidation": "strict"
-          },
-          "combinator": "and",
-          "conditions": [
-            {
-              "id": "skip-check",
-              "leftValue": "={{ $json.skip }}",
-              "rightValue": false,
-              "operator": {
-                "type": "boolean",
-                "operation": "equals"
-              }
-            }
-          ]
-        }
+        "command": "=cat \"{{ $json.path }}\" 2>/dev/null | head -c 50000"
       },
-      "id": "FilterSkipped",
-      "name": "Filter Skipped",
-      "type": "n8n-nodes-base.filter",
-      "typeVersion": 2,
-      "position": [650, 100]
-    },
-    {
-      "parameters": {
-        "command": "=cat \"{{ $json.path }}\" 2>/dev/null | head -c 50000",
-        "options": {
-          "timeout": 30000
-        }
-      },
-      "id": "ReadContent",
+      "id": "4748931f-7f42-4107-b709-115ca46de94c",
       "name": "Read File Content",
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
-      "position": [900, 100],
+      "position": [
+        2032,
+        640
+      ],
       "notesInFlow": true,
       "notes": "Read first 50KB of each file"
     },
@@ -122,11 +108,14 @@
       "parameters": {
         "jsCode": "const file = $input.first().json;\nconst content = file.stdout || '';\n\n// Skip empty files\nif (!content.trim()) {\n  return [{ json: { skip: true, reason: 'Empty content' } }];\n}\n\nreturn [{\n  json: {\n    source: file.source || 'nas-docs',\n    path: file.path,\n    title: file.filename,\n    text: content,\n    tags: ['nas', 'documents', file.extension],\n    metadata: {\n      size: file.size,\n      modified: file.modified,\n      ingestedAt: new Date().toISOString()\n    }\n  }\n}];"
       },
-      "id": "PreparePayload",
+      "id": "7dfc1fa0-68d4-4cce-beba-a4302c0ffb75",
       "name": "Prepare RAG Payload",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1150, 100]
+      "position": [
+        2288,
+        640
+      ]
     },
     {
       "parameters": {
@@ -141,11 +130,14 @@
           "timeout": 30000
         }
       },
-      "id": "IngestToAgentX",
+      "id": "401ea00d-7596-4e5d-8795-93f62a0024e8",
       "name": "Ingest to AgentX RAG",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1400, 100],
+      "position": [
+        2528,
+        640
+      ],
       "credentials": {
         "httpHeaderAuth": {
           "id": "PIrrA2wpOppzVodi",
@@ -157,11 +149,14 @@
       "parameters": {
         "jsCode": "const items = $input.all();\nconst results = {\n  total: items.length,\n  success: 0,\n  failed: 0,\n  errors: []\n};\n\nfor (const item of items) {\n  if (item.json.status === 'success' || item.json.id) {\n    results.success++;\n  } else {\n    results.failed++;\n    results.errors.push({\n      path: item.json.path,\n      error: item.json.message || 'Unknown error'\n    });\n  }\n}\n\nresults.timestamp = new Date().toISOString();\nresults.summary = `Ingested ${results.success}/${results.total} documents`;\n\nreturn [{ json: results }];"
       },
-      "id": "SummarizeResults",
+      "id": "bf730a56-3229-491e-82ac-bcb979c3615e",
       "name": "Summarize Results",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1650, 100]
+      "position": [
+        2784,
+        640
+      ]
     },
     {
       "parameters": {
@@ -176,20 +171,68 @@
           "timeout": 10000
         }
       },
-      "id": "LogToDataAPI",
+      "id": "22cc3079-43c0-42cb-af6c-2b5a1e9e7c2e",
       "name": "Log Event (DataAPI)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1900, 100],
+      "position": [
+        3040,
+        640
+      ],
       "credentials": {
         "httpHeaderAuth": {
           "id": "PIrrA2wpOppzVodi",
           "name": "Header Auth account"
         }
       }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "skip-check",
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "ff68dcdf-c983-4013-a38d-db91a8aeb60a",
+      "name": "Filter Skipped",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [
+        1792,
+        640
+      ]
     }
   ],
+  "pinData": {},
   "connections": {
+    "Merge Triggers": {
+      "main": [
+        [
+          {
+            "node": "Configure Directories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Webhook (Manual/Event)": {
       "main": [
         [
@@ -212,11 +255,11 @@
         ]
       ]
     },
-    "Merge Triggers": {
+    "Find Recent Files": {
       "main": [
         [
           {
-            "node": "Configure Directories",
+            "node": "Parse File List",
             "type": "main",
             "index": 0
           }
@@ -234,33 +277,11 @@
         ]
       ]
     },
-    "Find Recent Files": {
-      "main": [
-        [
-          {
-            "node": "Parse File List",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Parse File List": {
       "main": [
         [
           {
             "node": "Filter Skipped",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Filter Skipped": {
-      "main": [
-        [
-          {
-            "node": "Read File Content",
             "type": "main",
             "index": 0
           }
@@ -310,27 +331,46 @@
           }
         ]
       ]
+    },
+    "Filter Skipped": {
+      "main": [
+        [
+          {
+            "node": "Read File Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
+  "active": true,
   "settings": {
     "executionOrder": "v1"
   },
-  "staticData": null,
+  "versionId": "783457e6-a1c8-49a1-ad03-eab249a6eb54",
+  "meta": {
+    "instanceId": "ca580fc430adef1acb1ce2edcaa87003dbe27624cb6bdeb1646bc119793c0b29"
+  },
+  "id": "J4OlEw4eKGwgUHp1",
   "tags": [
     {
-      "name": "SBQC",
-      "id": "sbqc"
+      "updatedAt": "2025-12-30T05:51:55.489Z",
+      "createdAt": "2025-12-30T05:51:55.489Z",
+      "id": "B82usZklozFclFUP",
+      "name": "RAG"
     },
     {
-      "name": "Priority-2",
-      "id": "p2"
+      "updatedAt": "2025-12-30T05:51:55.501Z",
+      "createdAt": "2025-12-30T05:51:55.501Z",
+      "id": "DZsk7aIAuiUISy78",
+      "name": "SBQC"
     },
     {
-      "name": "RAG",
-      "id": "rag"
+      "updatedAt": "2025-12-30T05:51:55.520Z",
+      "createdAt": "2025-12-30T05:51:55.520Z",
+      "id": "390ULtAJTDO5YHnY",
+      "name": "Priority-2"
     }
-  ],
-  "meta": {
-    "templateCredsSetupCompleted": true
-  }
+  ]
 }
