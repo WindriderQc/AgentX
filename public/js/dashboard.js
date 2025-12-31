@@ -233,6 +233,7 @@ function updateWorkflowDescription(workflow) {
         'n1-1': 'Run system-wide health checks (DataAPI, AgentX, Ollama)',
         'n1-3': 'Diagnose system health using AgentX (Ops Persona)',
         'n2-1': 'Trigger NAS file scan and indexing process',
+        'n2-2': 'Trigger Inverse Scan (Everything EXCEPT media files)',
         'n2-3': 'Trigger RAG ingestion for documents',
         'n3-1': 'Monitor model availability and latency across nodes',
         'n3-2': 'Gateway for external tools to query AgentX',
@@ -252,6 +253,7 @@ function updateWorkflowDescription(workflow) {
             'n1-1': 'sbqc-n1-1-health-check',
             'n1-3': 'sbqc-ops-diagnostic',
             'n2-1': 'sbqc-n2-1-nas-scan',
+            'n2-2': 'sbqc-n2-2-nas-full-scan',
             'n2-3': 'sbqc-n2-3-rag-ingest',
             'n3-1': 'sbqc-n3-1-model-monitor',
             'n3-2': 'sbqc-ai-query',
@@ -282,6 +284,11 @@ function updatePayloadExample(workflow) {
         'n2-1': JSON.stringify({
             action: 'start_scan',
             roots: ['/mnt/media', '/mnt/datalake']
+        }, null, 2),
+        'n2-2': JSON.stringify({
+            action: 'start_inverse_scan',
+            roots: ['/mnt/media', '/mnt/datalake'],
+            exclude_extensions: ['mp4','mkv','jpg','png']
         }, null, 2),
         'n2-3': JSON.stringify({
             directories: [
