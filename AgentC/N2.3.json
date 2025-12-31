@@ -56,6 +56,7 @@
       "name": "Find Recent Files",
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
+      "executeOnce": false,
       "position": [
         1280,
         640
@@ -78,7 +79,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const stdout = $input.first().json.stdout || '';\nconst source = $input.first().json.source || 'nas-docs';\nconst lines = stdout.split('\\n').filter(l => l.trim());\n\nif (lines.length === 0) {\n  return [{ json: { skip: true, reason: 'No files found' } }];\n}\n\nconst files = lines.map(line => {\n  const [path, size, modified] = line.split('|');\n  const parts = path.split('/');\n  const filename = parts.pop();\n  const ext = filename.split('.').pop().toLowerCase();\n  \n  return {\n    path,\n    filename,\n    extension: ext,\n    size: parseInt(size) || 0,\n    modified: new Date(parseFloat(modified) * 1000).toISOString(),\n    source,\n    skip: false\n  };\n});\n\nreturn files.map(f => ({ json: f }));"
+        "jsCode": "const items = $input.all();\nlet allFiles = [];\n\nfor (const item of items) {\n  const stdout = item.json.stdout || '';\n  const source = item.json.source || 'nas-docs';\n  \n  if (!stdout.trim()) continue;\n\n  const lines = stdout.split('\\n').filter(l => l.trim());\n  \n  const files = lines.map(line => {\n    const [path, size, modified] = line.split('|');\n    const parts = path.split('/');\n    const filename = parts.pop();\n    const ext = filename.split('.').pop().toLowerCase();\n    \n    return {\n      json: {\n        path,\n        filename,\n        extension: ext,\n        size: parseInt(size) || 0,\n        modified: new Date(parseFloat(modified) * 1000).toISOString(),\n        source,\n        skip: false\n      }\n    };\n  });\n  \n  allFiles = allFiles.concat(files);\n}\n\nif (allFiles.length === 0) {\n  return [{ json: { skip: true, reason: 'No files found' } }];\n}\n\nreturn allFiles;"
       },
       "id": "8c94b476-de07-41fb-9c5d-fb735182c1c1",
       "name": "Parse File List",
@@ -97,6 +98,7 @@
       "name": "Read File Content",
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
+      "executeOnce": false,
       "position": [
         2032,
         640
@@ -106,7 +108,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const file = $input.first().json;\nconst content = file.stdout || '';\n\n// Skip empty files\nif (!content.trim()) {\n  return [{ json: { skip: true, reason: 'Empty content' } }];\n}\n\nreturn [{\n  json: {\n    source: file.source || 'nas-docs',\n    path: file.path,\n    title: file.filename,\n    text: content,\n    tags: ['nas', 'documents', file.extension],\n    metadata: {\n      size: file.size,\n      modified: file.modified,\n      ingestedAt: new Date().toISOString()\n    }\n  }\n}];"
+        "jsCode": "const executionResults = $input.all();\nconst originalFiles = $(\"Filter Skipped\").all();\n\nconst results = [];\n\n// Safety check for length mismatch\nconst count = Math.min(executionResults.length, originalFiles.length);\n\nfor (let i = 0; i < count; i++) {\n  const execResult = executionResults[i].json;\n  const originalFile = originalFiles[i].json;\n  \n  const content = execResult.stdout || '';\n\n  // Only process files with content\n  if (content.trim()) {\n    results.push({\n      json: {\n        source: originalFile.source || 'nas-docs',\n        path: originalFile.path,\n        title: originalFile.filename,\n        text: content,\n        tags: ['nas', 'documents', originalFile.extension],\n        metadata: {\n          size: originalFile.size,\n          modified: originalFile.modified,\n          ingestedAt: new Date().toISOString()\n        }\n      }\n    });\n  }\n}\n\nreturn results;"
       },
       "id": "7dfc1fa0-68d4-4cce-beba-a4302c0ffb75",
       "name": "Prepare RAG Payload",
@@ -125,7 +127,7 @@
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "=JSON.stringify($json)",
+        "jsonBody": "={{ $json }}",
         "options": {
           "timeout": 30000
         }
@@ -147,7 +149,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const items = $input.all();\nconst results = {\n  total: items.length,\n  success: 0,\n  failed: 0,\n  errors: []\n};\n\nfor (const item of items) {\n  if (item.json.status === 'success' || item.json.id) {\n    results.success++;\n  } else {\n    results.failed++;\n    results.errors.push({\n      path: item.json.path,\n      error: item.json.message || 'Unknown error'\n    });\n  }\n}\n\nresults.timestamp = new Date().toISOString();\nresults.summary = `Ingested ${results.success}/${results.total} documents`;\n\nreturn [{ json: results }];"
+        "jsCode": "const items = $input.all();\nconst results = {\n  total: items.length,\n  success: 0,\n  failed: 0,\n  errors: []\n};\n\nfor (const item of items) {\n  const res = item.json;\n  // Accept 'created', 'updated', 'success' or presence of documentId as success\n  if (res.status === 'success' || res.status === 'created' || res.status === 'updated' || res.id || res.documentId) {\n    results.success++;\n  } else {\n    results.failed++;\n    results.errors.push({\n      error: res.message || 'Unknown error'\n    });\n  }\n}\n\nresults.timestamp = new Date().toISOString();\nresults.summary = `Ingested ${results.success}/${results.total} documents`;\n\nreturn [{ json: results }];"
       },
       "id": "bf730a56-3229-491e-82ac-bcb979c3615e",
       "name": "Summarize Results",
@@ -166,7 +168,7 @@
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "=JSON.stringify({\n  \"workflow_id\": \"N2.3\",\n  \"event_type\": \"rag_ingest_complete\",\n  \"data\": $json\n})",
+        "jsonBody": "={{ {\n  \"workflow_id\": \"N2.3\",\n  \"event_type\": \"rag_ingest_complete\",\n  \"data\": $json\n} }}",
         "options": {
           "timeout": 10000
         }
