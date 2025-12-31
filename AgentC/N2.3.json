@@ -136,7 +136,7 @@
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json) }}",
+        "jsonBody": "=JSON.stringify($json)",
         "options": {
           "timeout": 30000
         }
@@ -171,7 +171,7 @@
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"workflow_id\": \"N2.3\",\n  \"event_type\": \"rag_ingest_complete\",\n  \"data\": {{ JSON.stringify($json) }}\n}",
+        "jsonBody": "=JSON.stringify({\n  \"workflow_id\": \"N2.3\",\n  \"event_type\": \"rag_ingest_complete\",\n  \"data\": $json\n})",
         "options": {
           "timeout": 10000
         }

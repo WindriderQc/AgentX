@@ -138,7 +138,7 @@
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"message\": {{ JSON.stringify($json.prompt) }},\n  \"model\": \"qwen2.5:7b-instruct-q4_0\",\n  \"useRag\": false,\n  \"persona\": \"sbqc_ops\"\n}",
+        "jsonBody": "=JSON.stringify({\n  \"message\": $json.prompt,\n  \"model\": \"qwen2.5:7b-instruct-q4_0\",\n  \"useRag\": false,\n  \"persona\": \"sbqc_ops\"\n})",
         "options": {
           "timeout": 120000
         }
@@ -191,7 +191,7 @@
         "nodeCredentialType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"workflow_id\": \"N5.1\",\n  \"event_type\": \"feedback_analysis_complete\",\n  \"data\": {{ JSON.stringify($json) }}\n}",
+        "jsonBody": "=JSON.stringify({\n  \"workflow_id\": \"N5.1\",\n  \"event_type\": \"feedback_analysis_complete\",\n  \"data\": $json\n})",
         "options": {
           "timeout": 10000
         }

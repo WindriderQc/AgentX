@@ -53,7 +53,7 @@
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"workflow_id\": \"SBQC-N2.1-nas-scan\",\n  \"event_type\": \"scan_triggered\",\n  \"data\": {\n    \"scan_id\": {{ JSON.stringify($json.data?.scan_id || $json.scan_id) }},\n    \"roots\": {{ JSON.stringify($json.data?.roots || []) }},\n    \"triggered_at\": \"{{ new Date().toISOString() }}\"\n  }\n}",
+        "jsonBody": "=JSON.stringify({\n  \"workflow_id\": \"SBQC-N2.1-nas-scan\",\n  \"event_type\": \"scan_triggered\",\n  \"data\": {\n    \"scan_id\": $json.data?.scan_id || $json.scan_id,\n    \"roots\": $json.data?.roots || [],\n    \"triggered_at\": new Date().toISOString()\n  }\n})",
         "options": {
           "timeout": 10000
         }
