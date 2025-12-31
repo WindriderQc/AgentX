@@ -227,6 +227,10 @@ function showWebhookResult(message, isError = false) {
 // Update workflow description based on selection
 function updateWorkflowDescription(workflow) {
     const descriptions = {
+        'n1-3': 'Diagnose system health using AgentX (Ops Persona)',
+        'n2-3': 'Trigger RAG ingestion for documents',
+        'n3-2': 'Gateway for external tools to query AgentX',
+        'n5-1': 'Analyze feedback and optimize prompts',
         'agentmail': 'Processes email using AI agent with Gmail integration',
         'rag-ingest': 'Ingests documents into the RAG vector store for AI knowledge',
         'chat-complete': 'Tests AI chat completion with AgentX backend',
@@ -243,6 +247,24 @@ function updateWorkflowDescription(workflow) {
 // Update payload example based on workflow type
 function updatePayloadExample(workflow) {
     const examples = {
+        'n1-3': JSON.stringify({
+            source: 'dashboard-test'
+        }, null, 2),
+        'n2-3': JSON.stringify({
+            directories: [
+                { path: '/mnt/smb/Docs', pattern: '*.md', source: 'nas-docs' }
+            ]
+        }, null, 2),
+        'n3-2': JSON.stringify({
+            body: {
+                message: 'Hello AgentX, are you online?',
+                model: 'qwen2.5:7b-instruct-q4_0',
+                useRag: false
+            }
+        }, null, 2),
+        'n5-1': JSON.stringify({
+            source: 'manual-trigger'
+        }, null, 2),
         'agentmail': JSON.stringify({
             event: 'email_check',
             source: 'ops-center',
@@ -291,11 +313,22 @@ async function handleWebhookTrigger() {
 
     try {
         let endpoint;
+        
+        // Map friendly names to webhook IDs/Paths
+        const endpointMap = {
+            'n1-3': 'sbqc-ops-diagnostic',
+            'n2-3': 'sbqc-n2-3-rag-ingest',
+            'n3-2': 'sbqc-ai-query',
+            'n5-1': 'sbqc-n5-1-feedback-analysis'
+        };
+
         if (selector.value === 'agentmail') {
             endpoint = 'https://n8n.specialblend.icu/webhook/c1deca83-ecb4-48ad-b485-59195cee9a61';
         } else if (selector.value === 'custom') {
             const customId = document.getElementById('customWebhookId').value.trim();
             endpoint = customId.startsWith('http') ? customId : `/api/n8n/trigger/${customId}`;
+        } else if (endpointMap[selector.value]) {
+            endpoint = `/api/n8n/trigger/${endpointMap[selector.value]}`;
         } else {
             endpoint = `/api/n8n/${selector.value}`;
         }
