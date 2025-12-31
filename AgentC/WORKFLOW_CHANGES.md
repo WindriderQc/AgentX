@@ -1,4 +1,6 @@
-# Agent C Workflow Changes - December 30, 2025
+# Agent C Workflow Changes
+
+**Last Updated:** December 31, 2025
 
 ## Summary of Changes
 
@@ -9,6 +11,7 @@
 
 **Workflows Updated:**
 - ✅ **N2.1** - Now triggers DataAPI Scanner with `compute_hashes: true` and `hash_max_size: 104857600` (100MB)
+- ✅ **N2.3** - RAG Document Ingestion (Production-ready after Dec 31 fixes)
 
 **Final Workflow Count: 7** (down from 10)
 
@@ -21,7 +24,7 @@
 | N1.1 | System Health Check | Every 5 min | Monitor all services |
 | N1.3 | Ops AI Diagnostic | Webhook | AI-powered system analysis |
 | N2.1 | NAS File Scanner + Hash | Daily 2AM | Trigger DataAPI scan with hashing |
-| N2.3 | RAG Document Ingestion | Weekly/Manual | Feed docs to AgentX RAG |
+| N2.3 | RAG Document Ingestion | Weekly Sun 3AM / Manual | Feed docs to AgentX RAG ✅ |
 | N3.1 | Model Health Monitor | Every 10 min | Track Ollama latency |
 | N3.2 | External AI Gateway | Webhook | Public AI API endpoint |
 | N5.1 | Feedback Analysis | Weekly Sun 3AM | Prompt optimization |
@@ -69,6 +72,74 @@ Scanner handles:
 - ✅ Batch MongoDB upserts (1000/batch)
 - ✅ Progress tracking in nas_scans collection
 - ✅ Error handling and recovery
+
+---
+
+## N2.3 Production Fixes (December 31, 2025)
+
+The RAG Document Ingestion workflow required several fixes to work in the n8n Docker environment.
+
+### Environment Discovery
+- **n8n Host:** 192.168.2.199 (Docker container running Alpine Linux)
+- **Shell:** BusyBox (not GNU coreutils)
+- **NAS Mount:** `/mnt/datalake/RAG` (bind-mounted into container)
+
+### Issues & Fixes
+
+#### 1. BusyBox `find` Incompatibility
+**Problem:** GNU `find -printf` not available in BusyBox.
+**Fix:** Use `find ... -exec stat -c "%n|%s|%Y" {} +` instead.
+
+```bash
+# Before (fails on Alpine/BusyBox)
+find "/mnt/datalake/RAG" -type f -name "*.txt" -mtime -7 -printf "%p|%s|%T@\n"
+
+# After (works on Alpine/BusyBox)
+find "/mnt/datalake/RAG" -type f -name "*.txt" -mtime -7 -exec stat -c "%n|%s|%Y" {} + 2>/dev/null | head -100
+```
+
+#### 2. "Execute Once" Flag on Loop Nodes
+**Problem:** The "Find Recent Files" and "Read File Content" nodes had "Execute Once" enabled by default, causing only the first item to be processed.
+**Fix:** Set `"executeOnce": false` explicitly in workflow JSON.
+
+#### 3. Parse File List Logic
+**Problem:** Original code used `$input.first()`, only processing the first directory pattern.
+**Fix:** Loop through `$input.all()` to aggregate files from all patterns (*.md, *.txt, *.pdf).
+
+#### 4. Metadata Preservation
+**Problem:** The `cat` command in "Read File Content" replaces input JSON with stdout, losing file metadata.
+**Fix:** Reference the original file list from "Filter Skipped" node using `$("Filter Skipped").all()`.
+
+#### 5. JSON Body Format for HTTP Request
+**Problem:** Using `JSON.stringify($json)` in n8n HTTP node when `specifyBody: "json"` is set causes double-encoding.
+**Fix:** Use expression `={{ $json }}` directly.
+
+#### 6. Success Status Recognition
+**Problem:** Summarize Results node expected `status: 'success'`, but AgentX returns `status: 'created'`.
+**Fix:** Accept `created`, `updated`, or presence of `documentId` as success indicators.
+
+### Final Working Configuration
+
+```json
+{
+  "Find Recent Files": {
+    "command": "find ... -exec stat -c \"%n|%s|%Y\" {} +",
+    "executeOnce": false
+  },
+  "Read File Content": {
+    "command": "cat ... | head -c 50000",
+    "executeOnce": false
+  },
+  "Ingest to AgentX RAG": {
+    "jsonBody": "={{ $json }}"
+  }
+}
+```
+
+### Verification
+- Qdrant point count increased from 36 → 38+ after successful run
+- Workflow completes end-to-end (green checkmarks on all nodes)
+- Summary shows "Ingested 2/2 documents"
 
 ---
 

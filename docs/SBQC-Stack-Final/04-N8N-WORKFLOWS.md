@@ -5,6 +5,43 @@
 
 ---
 
+## Design Principles (Non-Negotiable)
+
+These rules ensure the system stays maintainable and doesn't rot:
+
+### Role Separation
+- **n8n** = Orchestration, scheduling, glue, and audit. Never "thinks".
+- **AgentX** = The only AI brain. All reasoning goes through AgentX.
+- **DataAPI** = Storage + truth. Source of file/scan data.
+- **Ollama** = Inference only. n8n never calls Ollama directly for reasoning.
+
+### Design Smells (Stop If You See These)
+- ❌ n8n making decisions instead of AgentX
+- ❌ Ollama called directly from n8n for reasoning
+- ❌ Large file logic inside Code nodes
+- ❌ Missing integration event logs
+- ❌ Silent failures (no sink logging)
+
+### Workflow Dependency Order
+Build and test in this order:
+1. N1.1 System Health → N1.3 Ops Diagnostic
+2. N2.1 NAS Scan → N2.2 Inverse Scan → N2.3 RAG Ingest
+3. N3.1 Model Health → N3.2 AI Gateway
+4. N5.1 Feedback Analysis
+
+### Scan Lifecycle State Machine
+```
+queued → running → ingesting → hashing(optional) → done | failed
+```
+
+### Event-Driven Architecture
+All workflows should emit events to the integration sink:
+- `scan.started`, `scan.batch_ingested`, `scan.done`, `scan.failed`
+- `health_probe`, `ops_alert`
+- `rag.ingested`, `feedback.analyzed`
+
+---
+
 ## Important Endpoint Notes
 
 > **DataAPI (port 3003):** Storage/file data endpoints
@@ -145,60 +182,13 @@ return [{
 
 ### Workflow N1.2: DataAPI Health Probe (Webhook Receiver)
 
-**Trigger:** Webhook (receives events from DataAPI)
-
-**Purpose:** Receive and process events pushed from DataAPI.
-
-**Webhook URL:** `https://n8n.specialblend.icu/webhook/<WEBHOOK_ID>`
-
-```
-┌─────────────────┐
-│  Webhook        │
-│  (POST)         │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│  Switch         │
-│  (event type)   │
-└────────┬────────┘
-         │
-    ┌────┴────────────┬─────────────────┐
-    │                 │                 │
-    ▼                 ▼                 ▼
-┌─────────┐   ┌─────────────┐   ┌────────────┐
-│ scan_   │   │ files_      │   │ storage_   │
-│ complete│   │ exported    │   │ alert      │
-└────┬────┘   └──────┬──────┘   └─────┬──────┘
-     │               │                 │
-     ▼               ▼                 ▼
-  [Process]      [Process]        [Alert Admin]
-```
-
-**Switch Node Logic:**
-```javascript
-// Route based on event field
-$input.first().json.event
-```
+> **❌ DEPRECATED:** This workflow has been removed. DataAPI does not push events to n8n (uses internal EventEmitter only). n8n workflows call DataAPI endpoints directly.
 
 ---
 
 ### Workflow N1.1b: Datalake Janitor Orchestrator
 
-**Trigger:** Schedule (Daily 2 AM) or Manual
-
-**Purpose:** The "Master Switch" that kicks off the daily NAS scanning and maintenance cycle.
-
-**Logic:**
-1. **Trigger N2.1:** Calls DataAPI `POST /api/v1/storage/scan` to start a new scan.
-2. **Log Event:** Sends `orchestrator_start` event to DataAPI integration sink.
-
-**HTTP Request (Trigger N2.1):**
-```
-Method: POST
-URL: http://192.168.2.33:3003/api/v1/storage/scan
-Body: { "path": "/mnt/nas/data", "recursive": true }
-```
+> **❌ DEPRECATED:** This workflow has been removed. It was a duplicate of N2.1.
 
 ---
 
@@ -354,84 +344,139 @@ Response: Automatically sets `finished_at` timestamp.
 
 ---
 
-### Workflow N2.2: File Enrichment (Hashing)
+### Workflow N2.2: NAS Full/Other Scan (Weekly)
 
-**Trigger:** Webhook (triggered after scan completes)
+**Status:** Pending test  
+**Trigger:** Schedule (Weekly Sunday 3AM) OR Webhook (Manual)  
+**Webhook Path:** `sbqc-n2-2-nas-full-scan`
 
-**Purpose:** Compute SHA256 hashes for new files.
+**Purpose:** Inverse scan - finds files that are NOT standard media types. Useful for discovering forgotten files, unusual content, and cleanup candidates.
 
-```
-┌─────────────────┐
-│  Webhook        │
-│  (scan_complete)│
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────────────────┐
-│  Query New Files            │
-│  GET /n8n/nas/files         │
-│  ?scanId=X&hasHash=false    │
-└────────────────┬────────────┘
-                 │
-                 ▼
-┌─────────────────────────────┐
-│  Loop: For Each File        │
-│  Execute: sha256sum <path>  │
-│  Update: PATCH file record  │
-└─────────────────────────────┘
+**Logic:**
+1. **Trigger DataAPI Scanner** with `exclude_extensions` to skip common media files
+2. **Log Event** to integration sink
+
+**Key Configuration:**
+```json
+{
+  "roots": ["/mnt/media", "/mnt/datalake"],
+  "exclude_extensions": ["mp4","mkv","avi","mov","mp3","flac","wav","jpg","jpeg","png","gif","webp","pdf","txt","md"],
+  "compute_hashes": true,
+  "hash_max_size": 104857600
+}
 ```
 
-**Note:** This can be slow for many files. Consider:
-- Running on a dedicated worker
-- Limiting to files under a certain size
-- Using n8n's "Split in Batches" with concurrency
+This surfaces files like: executables, archives (.zip, .tar), database files, config files, scripts, and other non-standard content that may need attention.
 
 ---
 
-### Workflow N2.3: RAG Document Ingestion
+### Workflow N2.3: RAG Document Ingestion ✅ PRODUCTION-READY
 
-**Trigger:** Manual or Webhook
+**Status:** Working as of December 31, 2025  
+**Trigger:** Schedule (Weekly Sunday 3AM) OR Webhook (Manual)  
+**Webhook URL:** `https://n8n.specialblend.icu/webhook/sbqc-n2-3-rag-ingest`
 
-**Purpose:** Ingest documents into AgentX RAG for semantic search.
+**Purpose:** Scan NAS directories for documents and ingest them into AgentX RAG for semantic search.
 
 ```
-┌─────────────────────┐
-│  Manual Trigger     │
-│  (or File Watcher)  │
-└────────┬────────────┘
-         │
-         ▼
-┌─────────────────────────────┐
-│  Read Files from Directory  │
-│  (e.g., /mnt/smb/Docs/*.md) │
-└────────────────┬────────────┘
-                 │
-                 ▼
-┌─────────────────────────────┐
-│  For Each File:             │
-│  POST AgentX /api/rag/ingest│
-│  {                          │
-│    "source": "nas-docs",    │
-│    "path": "<filepath>",    │
-│    "title": "<filename>",   │
-│    "text": "<content>"      │
-│  }                          │
-└─────────────────────────────┘
+┌─────────────────┐   ┌─────────────────┐
+│  Schedule       │   │  Webhook        │
+│  (Sun 3AM)      │   │  (Manual)       │
+└────────┬────────┘   └────────┬────────┘
+         │                     │
+         ▼                     ▼
+┌─────────────────────────────────────────────────────────┐
+│  Merge Triggers                                         │
+└────────────────────────────┬────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────┐
+│  Configure Directories                  │
+│  [*.md, *.txt, *.pdf] from             │
+│  /mnt/datalake/RAG                      │
+└────────────────────────────┬────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────┐
+│  Find Recent Files (Execute Command)   │
+│  find ... -mtime -7 -exec stat ...     │
+│  ⚠️ executeOnce: false                 │
+└────────────────────────────┬────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────┐
+│  Parse File List (aggregate all items) │
+└────────────────────────────┬────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────┐
+│  Filter Skipped (skip: false)          │
+└────────────────────────────┬────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────┐
+│  Read File Content (cat file)          │
+│  ⚠️ executeOnce: false                 │
+└────────────────────────────┬────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────┐
+│  Prepare RAG Payload                    │
+│  (merge content with original metadata) │
+└────────────────────────────┬────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────┐
+│  POST AgentX /api/rag/ingest           │
+│  Body: ={{ $json }}                    │
+└────────────────────────────┬────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────┐
+│  Summarize Results                      │
+│  (count created/updated/failed)         │
+└────────────────────────────┬────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────┐
+│  Log Event (DataAPI)                    │
+│  POST /integrations/events/n8n          │
+└─────────────────────────────────────────┘
 ```
 
-**AgentX Ingest:**
+#### Critical Configuration Notes
+
+> **⚠️ Alpine/BusyBox Compatibility:**  
+> n8n runs in Docker on Alpine Linux. Use `stat` instead of `find -printf`:
+> ```bash
+> find "/mnt/datalake/RAG" -type f -name "*.txt" -mtime -7 -exec stat -c "%n|%s|%Y" {} + 2>/dev/null | head -100
+> ```
+
+> **⚠️ Execute Once Flag:**  
+> Both "Find Recent Files" and "Read File Content" nodes MUST have `executeOnce: false`.
+> This is set in the JSON but can also be toggled in the n8n UI (Settings tab).
+
+> **⚠️ Metadata Preservation:**  
+> The "Prepare RAG Payload" node must reference `$("Filter Skipped").all()` to get original file metadata,
+> since the `cat` command replaces input JSON with stdout.
+
+#### HTTP Request Configuration
+
+**Ingest to AgentX RAG:**
 ```
 Method: POST
 URL: http://192.168.2.33:3080/api/rag/ingest
-Authentication: Predefined Credential (AgentX API Key)
-Body:
-{
-  "source": "nas-docs",
-  "path": "{{ $json.path }}",
-  "title": "{{ $json.filename }}",
-  "text": "{{ $json.content }}",
-  "tags": ["nas", "documents"]
-}
+Authentication: Header Auth (x-api-key)
+Specify Body: JSON
+JSON Body: ={{ $json }}
+```
+
+**Log Event (DataAPI):**
+```
+Method: POST
+URL: http://192.168.2.33:3003/integrations/events/n8n
+Authentication: Header Auth (x-api-key)
+JSON Body: ={{ { "workflow_id": "N2.3", "event_type": "rag_ingest_complete", "data": $json } }}
 ```
 
 ---
@@ -443,6 +488,8 @@ Body:
 **Trigger:** Schedule (every 10 minutes) OR Webhook (Manual Test)
 
 **Purpose:** Track model availability and latency.
+
+**Webhook URL:** `https://n8n.specialblend.icu/webhook/sbqc-n3-1-model-monitor`
 
 **Webhook URL:** `https://n8n.specialblend.icu/webhook/sbqc-n3-1-model-monitor`
 
@@ -474,16 +521,22 @@ Body:
 
 ---
 
-### Workflow N3.2: AI Chat Trigger
+### Workflow N3.2: External AI Trigger Gateway
+
+**Status:** ✅ Built | ⏳ Pending Import & Testing
 
 **Trigger:** Webhook (external apps can trigger AI responses)
 
-**Purpose:** Allow external systems to get AI responses via n8n.
+**Purpose:** Allow external systems (apps, scripts, other n8n workflows) to get AI responses via a gateway webhook.
+
+**Webhook URL:** `https://n8n.specialblend.icu/webhook/sbqc-ai-query`
+
+> ⚠️ **Note:** Webhook path in JSON is `sbqc-ai-query` (not following standard sbqc-nX.Y pattern)
 
 ```
 ┌─────────────────┐
 │  Webhook        │
-│  /ai-query      │
+│  /sbqc-ai-query │
 └────────┬────────┘
          │
          ▼
@@ -509,9 +562,13 @@ Body:
 
 ### Workflow N5.1: Feedback Analysis & Prompt Optimization
 
-**Trigger:** Schedule (Weekly, Sunday 3AM)
+**Status:** ✅ Built | ⏳ Pending Import & Testing
 
-**Purpose:** Analyze feedback and suggest prompt improvements.
+**Trigger:** Schedule (Weekly, Sunday 3AM) OR Webhook (Manual)
+
+**Purpose:** Analyze feedback data, identify underperforming prompts (< 70% positive rate) and slow models, suggest improvements via AI analysis.
+
+**Webhook URL:** `https://n8n.specialblend.icu/webhook/sbqc-n5-1-feedback-analysis`
 
 ```
 ┌─────────────────────┐
@@ -591,16 +648,21 @@ Body:
 
 ---
 
-## Webhook IDs Needed
+## Webhook IDs Needed (Optional)
 
-Create these webhooks in n8n and add IDs to DataAPI `.env`:
+> ⚠️ **Note:** These webhook environment variables are **OPTIONAL** and used for future DataAPI → n8n event pushing functionality. Currently, all n8n workflows pull data from DataAPI directly rather than waiting for DataAPI to push events.
 
-| Webhook Purpose | n8n Path | Env Variable |
-|----------------|----------|--------------|
-| Scan Complete | `/webhook/scan-complete` | `N8N_WEBHOOK_SCAN_COMPLETE` |
-| Files Exported | `/webhook/files-exported` | `N8N_WEBHOOK_FILES_EXPORTED` |
-| Storage Alert | `/webhook/storage-alert` | `N8N_WEBHOOK_STORAGE_ALERT` |
-| Generic Events | `/webhook/generic` | `N8N_WEBHOOK_GENERIC` |
+If you want DataAPI to push events to n8n, create these webhooks in n8n and add IDs to DataAPI `.env`:
+
+| Webhook Purpose | n8n Path | Env Variable | Status |
+|----------------|----------|--------------|--------|
+| Scan Complete | `/webhook/scan-complete` | `N8N_WEBHOOK_SCAN_COMPLETE` | Optional |
+| Files Exported | `/webhook/files-exported` | `N8N_WEBHOOK_FILES_EXPORTED` | Optional |
+| Storage Alert | `/webhook/storage-alert` | `N8N_WEBHOOK_STORAGE_ALERT` | Optional |
+| Generic Events | `/webhook/generic` | `N8N_WEBHOOK_GENERIC` | Optional |
+
+**Current Architecture:** n8n polls DataAPI endpoints on schedule (every 5 minutes, hourly, etc.)  
+**Future Enhancement:** DataAPI could push events to these webhooks for real-time triggers
 
 ---
 
@@ -629,8 +691,22 @@ sudo mount -a
 
 ## Testing Checklist
 
-- [ ] N1.1: Health check runs and logs results
-- [ ] N1.2: Webhook receives test event from DataAPI
-- [ ] N2.1: File scanner completes and updates DataAPI
-- [ ] N2.3: RAG ingestion works for test documents
-- [ ] SMB mounts accessible from n8n container/host
+### Priority 1 - Foundation
+- [x] N1.1: Health check runs and logs results
+- [x] N1.2: Webhook receives test event from DataAPI *(No longer needed - AgentX handles triggers)*
+- [x] N1.3: Ops AI Diagnostic analyzes system health
+
+### Priority 2 - File Operations
+- [x] N2.1: Media scan completes and updates DataAPI
+- [x] N2.2: NAS Full/Other scan (inverse scan) finds non-media files
+- [x] N2.3: RAG ingestion works for test documents (FIXED 2025-01)
+
+### Priority 3 - Monitoring & External
+- [x] N3.1: Model health monitor tracks Ollama latency
+- [ ] N3.2: External AI gateway returns responses to webhook callers *(Built, pending import & testing)*
+
+### Priority 5 - Optimization
+- [ ] N5.1: Feedback analysis identifies underperformers *(Built, pending import & testing)*
+
+### Infrastructure
+- [x] SMB mounts accessible from n8n container/host

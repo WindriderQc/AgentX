@@ -1,28 +1,30 @@
 ````md
-# SBQC n8n Workflows — Import + Test Instructions
+# SBQC n8n Workflows - Import + Test Instructions
 
-**Last updated:** 2025-12-30  
-**Workflow Count:** 7 workflows (finalized after redundancy removal)
+**Last updated:** 2025-01-01
+**Workflow Count:** 5 active workflows
 
 ## Active Workflow Files
 
-| File | Name | Purpose |
-|------|------|---------|
-| `N1.1.json` | System Health Check | Monitor all services every 5 min |
-| `N1.3.json` | Ops AI Diagnostic | AI-powered system analysis |
-| `N2.1.json` | NAS File Scanner + Hash | Trigger DataAPI scan with SHA256 hashing |
-| `N2.3.json` | RAG Document Ingestion | Feed docs to AgentX RAG |
-| `N3.1.json` | Model Health Monitor | Track Ollama latency |
-| `N3.2.json` | External AI Gateway | Allow external AI queries |
-| `N5.1.json` | Feedback Analysis | Weekly prompt optimization |
+| File | Name | Status | Purpose |
+|------|------|--------|---------|
+| `N1.1.json` | System Health Check | OK | Monitor all services every 5 min |
+| `N1.3.json` | Ops AI Diagnostic | Pending | AI-powered system analysis |
+| `N2.1.json` | NAS File Scanner | OK | Trigger DataAPI scan |
+| `N2.2.json` | NAS Full/Other Scan | 🔄 Pending test | Weekly scan for non-standard file types |
+| `N2.3.json` | RAG Document Ingestion | **WORKING** | Feed docs to AgentX Qdrant |
+| `N3.1.json` | Model Health Monitor | 🔄 Pending test | Track Ollama latency |
+| `N3.2.json` | External AI Gateway | 🔄 Built, not tested | Webhook to route queries through AgentX |
+| `N5.1.json` | Feedback Analysis | 🔄 Built, not tested | Weekly prompt optimization analysis |
 
-## ❌ Removed (Redundant)
+## Removed / Deprecated
 
-- **N1.1b** - Duplicate of N2.1
-- **N1.2** - DataAPI never pushes events to n8n
-- **N2.2** - Hashing now done by DataAPI Scanner natively
+| File | Reason |
+|------|--------|
+| **N1.1b.json** | Duplicate of N2.1 - deleted |
+| **N1.2.json** | DataAPI never pushes events to n8n |
 
-Reference architecture: SBQC-Stack-Final docs
+Reference architecture: `docs/SBQC-Stack-Final/`
 
 ---
 
