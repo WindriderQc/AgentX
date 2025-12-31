@@ -8,7 +8,11 @@ const logger = require('../config/logger');
 const OLLAMA_HOST = process.env.OLLAMA_HOST || 'http://localhost:11434';
 const OLLAMA_HOST_2 = process.env.OLLAMA_HOST_2 || 'http://192.168.2.12:11434';
 const DATAAPI_BASE_URL = process.env.DATAAPI_BASE_URL || 'http://192.168.2.33:3003';
-const DATAAPI_API_KEY = process.env.DATAAPI_API_KEY || '41c15baab2ddbca5a83cfac2612fc22afa8fcd0b1a725ac14ef33eef87a8a146';
+const DATAAPI_API_KEY = process.env.DATAAPI_API_KEY;
+
+if (!DATAAPI_API_KEY) {
+    logger.warn('DATAAPI_API_KEY not set - dashboard scans proxy will not work');
+}
 
 // Helper to check URL with optional headers
 async function checkUrl(url, options = {}) {
