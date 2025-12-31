@@ -110,6 +110,36 @@
         "combineBy": "combineAll",
         "options": {}
       },
+      "id": "MergeA",
+      "name": "Merge A",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        -300,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "id": "MergeB",
+      "name": "Merge B",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        -250,
+        -60
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
       "id": "MergeAll",
       "name": "Merge Probes",
       "type": "n8n-nodes-base.merge",
@@ -128,11 +158,19 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        4authentication": "genericCredentialType",
+        40,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://192.168.2.33:3080/api/chat",
+        "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"model\": \"qwen2.5:7b\",\n  \"target\": \"192.168.2.99:11434\",\n  \"persona\": \"sbqc_ops\",\n  \"message\": \"You are SBQC Ops. Analyze this live system snapshot, identify likely root causes, and propose concrete next actions.\\n\\nRules:\\n- Be short, structured, and actionable.\\n- If degraded: name the failing component(s), give top 3 hypotheses, and a step-by-step fix plan.\\n- If healthy: still flag any risk signals (latency, model list empty, etc.).\\n\\nSnapshot JSON:\\n\" + JSON.stringify($json.snapshot, null, 2)\n}",
+        "jsonBody": "=JSON.stringify({\n  \"model\": \"qwen2.5:7b\",\n  \"target\": \"192.168.2.99:11434\",\n  \"persona\": \"sbqc_ops\",\n  \"message\": \"You are SBQC Ops. Analyze this live system snapshot, identify likely root causes, and propose concrete next actions.\\n\\nRules:\\n- Be short, structured, and actionable.\\n- If degraded: name the failing component(s), give top 3 hypotheses, and a step-by-step fix plan.\\n- If healthy: still flag any risk signals (latency, model list empty, etc.).\\n\\nSnapshot JSON:\\n\" + JSON.stringify($json.snapshot, null, 2)\n})",
         "options": {
           "timeout": 60000
         }
@@ -151,15 +189,7 @@
           "id": "PIrrA2wpOppzVodi",
           "name": "Header Auth account"
         }
-      },
-      "name": "AgentX Chat (sbqc_ops)",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        300,
-        0
-      ],
-      "continueOnFail": true
+      }
     },
     {
       "parameters": {
@@ -221,7 +251,7 @@
       "main": [
         [
           {
-            "node": "Merge Probes",
+            "node": "Merge A",
             "type": "main",
             "index": 0
           }
@@ -232,7 +262,7 @@
       "main": [
         [
           {
-            "node": "Merge Probes",
+            "node": "Merge A",
             "type": "main",
             "index": 1
           }
@@ -243,9 +273,9 @@
       "main": [
         [
           {
-            "node": "Merge Probes",
+            "node": "Merge B",
             "type": "main",
-            "index": 2
+            "index": 1
           }
         ]
       ]
@@ -256,7 +286,29 @@
           {
             "node": "Merge Probes",
             "type": "main",
-            "index": 3
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge A": {
+      "main": [
+        [
+          {
+            "node": "Merge B",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge B": {
+      "main": [
+        [
+          {
+            "node": "Merge Probes",
+            "type": "main",
+            "index": 0
           }
         ]
       ]

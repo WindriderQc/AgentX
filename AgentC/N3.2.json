@@ -59,7 +59,7 @@
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"message\": \"{{ $json.message }}\",\n  \"model\": \"{{ $json.model }}\",\n  \"useRag\": {{ $json.useRag }},\n  \"autoRoute\": {{ $json.autoRoute }}\n  {{ $json.persona ? ', \"persona\": \"' + $json.persona + '\"' : '' }}\n  {{ $json.conversationId ? ', \"conversationId\": \"' + $json.conversationId + '\"' : '' }}\n  {{ $json.taskType ? ', \"taskType\": \"' + $json.taskType + '\"' : '' }}\n}",
+        "jsonBody": "=JSON.stringify({\n  \"message\": $json.message,\n  \"model\": $json.model,\n  \"useRag\": $json.useRag,\n  \"autoRoute\": $json.autoRoute,\n  \"persona\": $json.persona,\n  \"conversationId\": $json.conversationId,\n  \"taskType\": $json.taskType\n})",
         "options": {
           "timeout": 120000,
           "response": {
@@ -129,7 +129,7 @@
         "nodeCredentialType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"workflow_id\": \"N3.2\",\n  \"event_type\": \"ai_gateway_request\",\n  \"data\": {\n    \"success\": {{ $json.success }},\n    \"model\": \"{{ $json.model || 'unknown' }}\",\n    \"ragUsed\": {{ $json.ragUsed || false }},\n    \"timestamp\": \"{{ $json.timestamp }}\"\n  }\n}",
+        "jsonBody": "=JSON.stringify({\n  \"workflow_id\": \"N3.2\",\n  \"event_type\": \"ai_gateway_request\",\n  \"data\": {\n    \"success\": $json.success,\n    \"model\": $json.model || 'unknown',\n    \"ragUsed\": $json.ragUsed || false,\n    \"timestamp\": $json.timestamp\n  }\n})",
         "options": {
           "timeout": 5000
         }
