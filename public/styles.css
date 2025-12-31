@@ -337,18 +337,92 @@ body {
 .chat-window {
   border: 1px solid var(--panel-border);
   border-radius: 14px;
-  padding: 14px;
-  height: 420px;
+  padding: 20px;
+  height: 70vh;
+  min-height: 500px;
   overflow-y: auto;
   background: rgba(255, 255, 255, 0.02);
 }
 
 .bubble {
-  padding: 12px 14px;
+  padding: 16px 20px;
   border-radius: 12px;
-  margin-bottom: 12px;
-  line-height: 1.5;
-  max-width: 82%;
+  margin-bottom: 16px;
+  line-height: 1.6;
+  max-width: 85%;
+  font-size: 15px;
+}
+
+/* Markdown Styles within Bubbles */
+.bubble p {
+  margin-bottom: 10px;
+}
+.bubble p:last-child {
+  margin-bottom: 0;
+}
+.bubble h1, .bubble h2, .bubble h3, .bubble h4 {
+  margin-top: 16px;
+  margin-bottom: 8px;
+  font-weight: 600;
+  color: var(--text);
+}
+.bubble h1 { font-size: 1.4em; }
+.bubble h2 { font-size: 1.2em; }
+.bubble h3 { font-size: 1.1em; }
+
+.bubble ul, .bubble ol {
+  margin-bottom: 10px;
+  padding-left: 24px;
+}
+.bubble li {
+  margin-bottom: 4px;
+}
+
+.bubble code {
+  font-family: 'Fira Code', monospace;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.9em;
+  color: #e0e0e0;
+}
+
+.bubble pre {
+  background: rgba(0, 0, 0, 0.4);
+  padding: 12px;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 10px 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.bubble pre code {
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  font-size: 0.9em;
+}
+
+.bubble blockquote {
+  border-left: 3px solid var(--accent);
+  margin: 10px 0;
+  padding-left: 12px;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.bubble a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--accent);
+}
+.bubble a:hover {
+  border-bottom-style: solid;
+}
+
+.bubble strong {
+  color: #fff;
+  font-weight: 600;
 }
 
 .bubble .meta {
