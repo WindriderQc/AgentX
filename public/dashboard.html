@@ -104,21 +104,74 @@
         <!-- Main Grid: 3 Sections -->
         <div class="ops-grid">
             
-            <!-- Section 1: System Events -->
+
+            <!-- Section 3: System Metrics + Collections -->
             <div class="section-card">
                 <div class="section-header">
-                    <h2><i class="fas fa-stream"></i> Recent Events</h2>
-                    <button class="btn-sm" id="refreshEventsBtn"><i class="fas fa-sync-alt"></i></button>
+                    <h2><i class="fas fa-chart-bar"></i> Metrics</h2>
+                    <button class="btn-sm" id="refreshMetricsBtn"><i class="fas fa-sync-alt"></i></button>
                 </div>
                 <div class="section-body">
-                    <div class="events-list" id="system-events-list">
-                        <div class="event-row">
-                            <div class="event-content">
-                                <div class="event-message" style="color: var(--muted);">Loading events...</div>
+                    <div class="metrics-grid">
+                        <div class="metric-card" data-tooltip="Percentage of embedding cache hits vs misses. Higher is better - means fewer expensive API calls to the embedding service.">
+                            <div class="metric-label">Cache</div>
+                            <div class="metric-value">
+                                <span class="status-dot healthy" id="cacheStatus"></span>
+                                <span id="cacheHitRate">0%</span>
                             </div>
+                            <div class="metric-bar"><div class="metric-fill" id="cacheBar" style="width: 0%"></div></div>
+                            <div class="metric-detail"><span id="cacheHits">0</span> hits / <span id="cacheMisses">0</span> miss</div>
+                        </div>
+                        <div class="metric-card" data-tooltip="Active database connections out of maximum pool size. Monitor to detect connection leaks or pool exhaustion.">
+                            <div class="metric-label">Connections</div>
+                            <div class="metric-value">
+                                <span class="status-dot healthy" id="connStatus"></span>
+                                <span id="connActive">0</span>/<span id="connMax">0</span>
+                            </div>
+                            <div class="metric-bar"><div class="metric-fill" id="connBar" style="width: 0%"></div></div>
+                            <div class="metric-detail"><span id="connAvail">0</span> available</div>
+                        </div>
+                        <div class="metric-card" data-tooltip="Node.js heap memory usage. Shows V8 JavaScript heap allocation. Warning at >80%, critical at >90%.">
+                            <div class="metric-label">Heap</div>
+                            <div class="metric-value">
+                                <span class="status-dot healthy" id="sysStatus"></span>
+                                <span id="heapUsed">0 MB</span>
+                            </div>
+                            <div class="metric-bar"><div class="metric-fill" id="sysBar" style="width: 0%"></div></div>
+                            <div class="metric-detail">of <span id="heapTotal">0 MB</span></div>
+                        </div>
+                        <div class="metric-card" data-tooltip="Node.js version and platform information for the running AgentX server process.">
+                            <div class="metric-label">Node</div>
+                            <div class="metric-value" id="sysNode" style="font-size: 14px;">v18+</div>
+                            <div class="metric-detail" id="sysPlatform">Linux</div>
                         </div>
                     </div>
                 </div>
+
+                <!-- Collections Sub-section -->
+                <div class="section-header" style="margin-top: 0; border-top: 1px solid var(--panel-border);">
+                    <h2><i class="fas fa-database"></i> Collections</h2>
+                </div>
+                <div class="section-body">
+                    <div class="collections-list" id="collections-list">
+                        <div class="collection-item">
+                            <span style="color: var(--muted);">Loading...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- DataAPI Scans Sub-section -->
+                <div class="section-header" style="margin-top: 0; border-top: 1px solid var(--panel-border);">
+                    <h2><i class="fas fa-hdd"></i> DataAPI Scans</h2>
+                    <button class="btn-sm" id="refreshScansBtn" title="Refresh Scans"><i class="fas fa-sync-alt"></i></button>
+                </div>
+                <div class="section-body">
+                    <div class="scans-list" id="scans-list" style="max-height: 200px; overflow-y: auto;">
+                        <div class="scan-item"><span style="color: var(--muted);">Loading...</span></div>
+                    </div>
+                </div>
+
+
             </div>
 
             <!-- Section 2: n8n Webhook Trigger -->
@@ -190,73 +243,6 @@
                         <div class="webhook-result" id="triggerResult"></div>
                     </div>
                 </div>
-            </div>
-
-            <!-- Section 3: System Metrics + Collections -->
-            <div class="section-card">
-                <div class="section-header">
-                    <h2><i class="fas fa-chart-bar"></i> Metrics</h2>
-                    <button class="btn-sm" id="refreshMetricsBtn"><i class="fas fa-sync-alt"></i></button>
-                </div>
-                <div class="section-body">
-                    <div class="metrics-grid">
-                        <div class="metric-card" data-tooltip="Percentage of embedding cache hits vs misses. Higher is better - means fewer expensive API calls to the embedding service.">
-                            <div class="metric-label">Cache</div>
-                            <div class="metric-value">
-                                <span class="status-dot healthy" id="cacheStatus"></span>
-                                <span id="cacheHitRate">0%</span>
-                            </div>
-                            <div class="metric-bar"><div class="metric-fill" id="cacheBar" style="width: 0%"></div></div>
-                            <div class="metric-detail"><span id="cacheHits">0</span> hits / <span id="cacheMisses">0</span> miss</div>
-                        </div>
-                        <div class="metric-card" data-tooltip="Active database connections out of maximum pool size. Monitor to detect connection leaks or pool exhaustion.">
-                            <div class="metric-label">Connections</div>
-                            <div class="metric-value">
-                                <span class="status-dot healthy" id="connStatus"></span>
-                                <span id="connActive">0</span>/<span id="connMax">0</span>
-                            </div>
-                            <div class="metric-bar"><div class="metric-fill" id="connBar" style="width: 0%"></div></div>
-                            <div class="metric-detail"><span id="connAvail">0</span> available</div>
-                        </div>
-                        <div class="metric-card" data-tooltip="Node.js heap memory usage. Shows V8 JavaScript heap allocation. Warning at >80%, critical at >90%.">
-                            <div class="metric-label">Heap</div>
-                            <div class="metric-value">
-                                <span class="status-dot healthy" id="sysStatus"></span>
-                                <span id="heapUsed">0 MB</span>
-                            </div>
-                            <div class="metric-bar"><div class="metric-fill" id="sysBar" style="width: 0%"></div></div>
-                            <div class="metric-detail">of <span id="heapTotal">0 MB</span></div>
-                        </div>
-                        <div class="metric-card" data-tooltip="Node.js version and platform information for the running AgentX server process.">
-                            <div class="metric-label">Node</div>
-                            <div class="metric-value" id="sysNode" style="font-size: 14px;">v18+</div>
-                            <div class="metric-detail" id="sysPlatform">Linux</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Collections Sub-section -->
-                <div class="section-header" style="margin-top: 0; border-top: 1px solid var(--panel-border);">
-                    <h2><i class="fas fa-database"></i> Collections</h2>
-                </div>
-                <div class="section-body">
-                    <div class="collections-list" id="collections-list">
-                        <div class="collection-item">
-                            <span style="color: var(--muted);">Loading...</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- DataAPI Scans Sub-section -->
-                <div class="section-header" style="margin-top: 0; border-top: 1px solid var(--panel-border);">
-                    <h2><i class="fas fa-hdd"></i> DataAPI Scans</h2>
-                    <button class="btn-sm" id="refreshScansBtn" title="Refresh Scans"><i class="fas fa-sync-alt"></i></button>
-                </div>
-                <div class="section-body">
-                    <div class="scans-list" id="scans-list" style="max-height: 200px; overflow-y: auto;">
-                        <div class="scan-item"><span style="color: var(--muted);">Loading...</span></div>
-                    </div>
-                </div>
 
                 <!-- RAG Ingestion Sub-section -->
                 <div class="section-header" style="margin-top: 0; border-top: 1px solid var(--panel-border);">
@@ -271,6 +257,23 @@
                         <i class="fas fa-file-import"></i> Trigger Ingestion
                     </button>
                     <div id="ragResult" style="margin-top: 8px; font-size: 11px; color: var(--muted); display: none;"></div>
+                </div>
+            </div>
+
+            <!-- Section 3: System Events -->
+            <div class="section-card" style="grid-column: 1 / -1;">
+                <div class="section-header">
+                    <h2><i class="fas fa-stream"></i> Recent Events</h2>
+                    <button class="btn-sm" id="refreshEventsBtn"><i class="fas fa-sync-alt"></i></button>
+                </div>
+                <div class="section-body">
+                    <div class="events-list" id="system-events-list">
+                        <div class="event-row">
+                            <div class="event-content">
+                                <div class="event-message" style="color: var(--muted);">Loading events...</div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
