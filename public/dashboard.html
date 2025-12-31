@@ -764,10 +764,10 @@
                         <strong><i class="fas fa-info-circle"></i> n8n Webhook Testing</strong>
                         <p>Trigger n8n workflows directly from this dashboard. Select a pre-configured workflow or enter a custom webhook UUID/URL.</p>
                         <ul>
-                            <li><strong>AgentMail:</strong> Triggers Gmail AI agent for email processing</li>
-                            <li><strong>RAG Ingestion:</strong> Processes documents for AI knowledge base</li>
-                            <li><strong>Chat Completion:</strong> Tests AI chat endpoint</li>
-                            <li><strong>Analytics:</strong> Sends analytics events</li>
+                            <li><strong>N1.3 Ops AI Diagnostic:</strong> Diagnose system health using AgentX (Ops Persona)</li>
+                            <li><strong>N2.3 RAG Ingestion:</strong> Trigger RAG ingestion for documents</li>
+                            <li><strong>N3.2 AI Gateway:</strong> Gateway for external tools to query AgentX</li>
+                            <li><strong>N5.1 Feedback Analysis:</strong> Analyze feedback and optimize prompts</li>
                             <li><strong>Custom:</strong> Use any n8n webhook UUID or full URL</li>
                         </ul>
                         <p class="help-note">💡 <strong>Tip:</strong> Find webhook IDs in n8n at <a href="https://n8n.specialblend.icu" target="_blank">n8n.specialblend.icu</a></p>
@@ -788,6 +788,7 @@
                                 <option value="analytics">Analytics Event</option>
                                 <option value="custom">Custom Webhook...</option>
                             </select>
+                            <div class="field-hint" id="workflowUrlDisplay" style="margin-top: 4px; font-family: monospace; color: var(--accent); font-size: 12px;"></div>
                             <div class="workflow-description" id="workflowDescription">Processes email using AI agent with Gmail integration</div>
                         </div>
                         <div class="field-group" id="customWebhookDiv" style="display: none;">

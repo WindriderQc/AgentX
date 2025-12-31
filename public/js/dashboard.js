@@ -242,6 +242,29 @@ function updateWorkflowDescription(workflow) {
     if (descDiv) {
         descDiv.textContent = descriptions[workflow] || 'Select a workflow to see description';
     }
+
+    // Update URL display
+    const urlDiv = document.getElementById('workflowUrlDisplay');
+    if (urlDiv) {
+        const endpointMap = {
+            'n1-3': 'sbqc-ops-diagnostic',
+            'n2-3': 'sbqc-n2-3-rag-ingest',
+            'n3-2': 'sbqc-ai-query',
+            'n5-1': 'sbqc-n5-1-feedback-analysis'
+        };
+        
+        let url = '';
+        if (workflow === 'custom') {
+            url = '(Enter custom UUID or URL below)';
+        } else if (workflow === 'agentmail') {
+            url = 'POST https://n8n.specialblend.icu/webhook/c1deca83-ecb4-48ad-b485-59195cee9a61';
+        } else if (endpointMap[workflow]) {
+            url = `POST /api/n8n/trigger/${endpointMap[workflow]}`;
+        } else {
+            url = `POST /api/n8n/${workflow}`;
+        }
+        urlDiv.textContent = url;
+    }
 }
 
 // Update payload example based on workflow type
