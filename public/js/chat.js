@@ -543,6 +543,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       setStatus(`Connected to ${targetHost()}`, 'success');
       setFeedback('Models refreshed from Ollama.', 'success');
+      updateConfigSummary();
     } catch (err) {
       console.warn('Failed to fetch models:', err.message);
       setStatus('Connection failed', 'error');
@@ -1079,7 +1080,7 @@ document.addEventListener('DOMContentLoaded', () => {
     attachEvents();
     clearChat();
     loadProfile();
-    fetchModels();
+    await fetchModels();
 
     // Set initial UI toggle states
     if (elements.toggleLogBtn) {
