@@ -1,16 +1,17 @@
 # SBQC Stack - Final Architecture Overview
 
 **Created:** December 26, 2025  
+**Updated:** December 5, 2025 (Audit/Migration)
 **Purpose:** Consolidated architecture and task breakdown for AI coding agents
 
 ---
 
-## � How to Use This Documentation
+## 📖 How to Use This Documentation
 
 **New to the SBQC Stack? Start here:**
 1. **Read this file first** (00-OVERVIEW.md) - Understand the big picture
-2. [01-ARCHITECTURE.md](01-ARCHITECTURE.md) - Learn design principles
-3. [05-DEPLOYMENT.md](05-DEPLOYMENT.md#environment-variables-reference) - Configure your environment
+2. [01-ARCHITECTURE.md](01-ARCHITECTURE.md) - Learn design principles & security/auth
+3. [05-DEPLOYMENT.md](05-DEPLOYMENT.md#environment-variables-reference) - Configure your environment & secrets
 4. [07-AGENTX-API-REFERENCE.md](07-AGENTX-API-REFERENCE.md) - Explore available endpoints
 
 **Building workflows?**
@@ -21,43 +22,18 @@
 → [Infrastructure Summary](#infrastructure-summary) - Network topology (this doc)  
 → [MongoDB Structure](#mongodb-structure) - Database schemas (this doc)
 
-**Validating features?**
-→ [03-AGENTX-TASKS.md](03-AGENTX-TASKS.md) - AgentX validation tasks  
-→ [02-DATAAPI-TASKS.md](02-DATAAPI-TASKS.md) - DataAPI validation tasks
-
 ---
 
 ## 📋 Document Index
 
 | File | Purpose | When to Read |
 |------|---------|--------------|
-| [README.md](README.md) | **📖 START HERE** - Navigation hub for all docs | Finding your way |
+| [README.md](../README.md) | **📖 START HERE** - Navigation hub for all docs | Finding your way |
 | [00-AUDIT-SUMMARY.md](00-AUDIT-SUMMARY.md) | Documentation audit summary & fixes | Internal QA |
-| [01-ARCHITECTURE.md](01-ARCHITECTURE.md) | Complete system diagram, components, flows | Understanding "why" |
-| [02-DATAAPI-TASKS.md](02-DATAAPI-TASKS.md) | DataAPI validation + feature roadmap | DataAPI development |
-| [03-AGENTX-TASKS.md](03-AGENTX-TASKS.md) | AgentX validation + feature roadmap | AgentX development |
+| [01-ARCHITECTURE.md](01-ARCHITECTURE.md) | Complete system diagram, components, flows, auth, security | Understanding "why" |
 | [04-N8N-WORKFLOWS.md](04-N8N-WORKFLOWS.md) | n8n workflow specifications | Building automations |
 | [05-DEPLOYMENT.md](05-DEPLOYMENT.md) | Deployment & environment configuration | Setup & deployment |
-| [06-AGENT-PROMPTS.md](06-AGENT-PROMPTS.md) | System prompts for AI coding agents | Agent configuration |
 | [07-AGENTX-API-REFERENCE.md](07-AGENTX-API-REFERENCE.md) | Complete API documentation (40+ endpoints) | API integration |
-| [archive/DISCREPANCY_AUDIT.md](archive/DISCREPANCY_AUDIT.md) | Detailed audit findings (archived) | Historical reference |
-| [archive/AGENT_C_PLAN_v2.md](archive/AGENT_C_PLAN_v2.md) | Agent C planning doc (archived) | Historical reference |
-
----
-
-## 🎯 Priority Order (Confirmed) �📋 Document Index
-
-| File | Purpose |
-|------|---------|
-| [00-AUDIT-SUMMARY.md](00-AUDIT-SUMMARY.md) | **⚠️ READ FIRST** - Documentation audit summary & remaining fixes |
-| [01-ARCHITECTURE.md](01-ARCHITECTURE.md) | Complete system diagram, components, and data flows |
-| [02-DATAAPI-TASKS.md](02-DATAAPI-TASKS.md) | DataAPI repo: validation + new features needed |
-| [03-AGENTX-TASKS.md](03-AGENTX-TASKS.md) | AgentX repo: validation + new features needed |
-| [04-N8N-WORKFLOWS.md](04-N8N-WORKFLOWS.md) | n8n workflow specifications |
-| [05-DEPLOYMENT.md](05-DEPLOYMENT.md) | How to run & configure everything |
-| [06-AGENT-PROMPTS.md](06-AGENT-PROMPTS.md) | System prompts for coding agents |
-| [07-AGENTX-API-REFERENCE.md](07-AGENTX-API-REFERENCE.md) | **✅ NEW** Complete API reference with all 40+ endpoints |
-| [DISCREPANCY_AUDIT.md](DISCREPANCY_AUDIT.md) | Detailed audit findings with impact analysis |
 
 ---
 
@@ -111,11 +87,11 @@
 - ✅ Storage scanning (`/api/v1/storage/*`) - API key OR session auth
 - ✅ File browser & exports (`/api/v1/files/*`) - API key OR session auth  
 - ✅ Integration event sink (`/integrations/events/n8n`) - receives events FROM n8n
-- ❌ **n8n trigger routes REMOVED** - migrated to AgentX `/api/n8n/*`
-- ⚠️ Stale docs to archive: `N8N_*.md`, `SBQC.json`, `Ollama.14b.Chatbot.json`
-- ⚠️ Needs validation testing
 
 ### AgentX (192.168.2.33:3080)
+- ✅ **Authentication**: Session-based login, API Keys, Rate Limiting
+- ✅ **Security**: Helmet headers, CSRF protection, Mongo sanitization, Audit logging
+- ✅ **Performance**: Embedding caching, MongoDB Indexing, Connection pooling
 - ✅ Chat with conversation logging (`POST /api/chat`)
 - ✅ User profiles & memory injection (`GET/POST /api/profile`)
 - ✅ Feedback collection (`POST /api/feedback`)
@@ -128,64 +104,9 @@
 - ✅ Model routing (`GET/POST /api/models/*`)
 - ✅ **n8n Integration** (`POST /api/n8n/*`) - health checks, webhook triggers
 - ✅ Frontend chat UI + n8n-control.html
-- ⚠️ Needs validation testing
-
-**Complete AgentX API Endpoints (port 3080):**
-
-```
-Chat & Conversations
-POST /api/chat                           - Send message with RAG/routing
-GET  /api/history/                       - List conversations
-GET  /api/history/:id                    - Get conversation + history
-PATCH /api/history/conversations/:id     - Update conversation title
-
-User & Feedback
-GET  /api/profile                        - Get user preferences
-POST /api/profile                        - Create/update profile
-POST /api/feedback                       - Submit message ratings
-
-Analytics & Data Export
-GET  /api/analytics/usage                - Usage metrics
-GET  /api/analytics/feedback             - Feedback metrics
-GET  /api/analytics/rag/stats            - RAG performance
-GET  /api/dataset/conversations          - Export conversations
-GET  /api/dataset/prompts                - List prompts
-POST /api/dataset/prompts                - Create prompt version
-
-RAG Integration
-POST /api/rag/ingest                     - Ingest documents
-POST /api/rag/search                     - Search documents
-GET  /api/rag/documents                  - List documents
-
-Model Management
-GET  /api/models/routing                 - Routing config
-POST /api/models/classify                - Classify query
-
-Prompt Management
-GET  /api/prompts/                       - List prompts
-GET  /api/prompts/:name                  - Get prompt
-POST /api/prompts/                       - Create prompt
-POST /api/prompts/:name/ab-test          - Configure A/B test
-
-Voice I/O
-GET  /api/voice/health                   - Voice service status
-POST /api/voice/transcribe               - Speech to text
-POST /api/voice/synthesize               - Text to speech
-POST /api/voice/chat                     - Voice chat
-
-n8n Integration
-GET  /api/n8n/diagnostic                 - Connection test
-GET  /api/n8n/health                     - Health check
-POST /api/n8n/rag/ingest                 - Trigger RAG ingest
-POST /api/n8n/chat/complete              - Trigger chat webhook
-POST /api/n8n/analytics                  - Trigger analytics
-POST /api/n8n/trigger/:id                - Generic trigger
-POST /api/n8n/event/:type                - Event trigger
-```
 
 ### n8n
 - ✅ Running at https://n8n.specialblend.icu
-- ⚠️ Needs workflows built
 
 ---
 
@@ -225,7 +146,7 @@ POST /api/n8n/event/:type                - Event trigger
 - [x] Prompt CRUD and A/B test configuration (`routes/prompts.js`)
 - [x] Weighted random selection in PromptConfig.getActive()
 - [x] Comprehensive test suite (6 new test files)
-- [ ] n8n workflow for prompt optimization
+- [x] n8n workflow for prompt optimization
 
 ---
 
@@ -234,8 +155,6 @@ POST /api/n8n/event/:type                - Event trigger
 | Workflow | Status | Notes |
 |----------|--------|-------|
 | **N1.1** System Health Check | ✅ Working | Every 5 min, monitors all services |
-| **N1.1b** Duplicate Orchestrator | ❌ Removed | Was duplicate of N2.1 |
-| **N1.2** Storage Event Handler | ❌ Removed | DataAPI doesn't push events to n8n |
 | **N1.3** Ops AI Diagnostic | 🔄 Pending test | AI-powered system analysis via webhook |
 | **N2.1** NAS File Scanner | ✅ Working | Daily 2AM, triggers DataAPI scan |
 | **N2.2** NAS Full/Other Scan | 🔄 Pending test | Weekly inverse scan for non-standard files |
@@ -243,28 +162,3 @@ POST /api/n8n/event/:type                - Event trigger
 | **N3.1** Model Health Monitor | 🔄 Pending test | Track Ollama latency every 10 min |
 | **N3.2** External AI Gateway | ✅ Built | ⏳ Pending Import & Testing | Webhook to route external queries through AgentX |
 | **N5.1** Feedback Analysis | ✅ Built | ⏳ Pending Import & Testing | Weekly prompt optimization analysis |
-
----
-
-## 🧹 Cleanup Tasks (Stale Documentation)
-
-### ✅ COMPLETED - DataAPI n8n Docs Archived
-
-The following files have been **archived** to `dataapi/docs/archive/n8n-legacy/`:
-
-| File | Status |
-|------|--------|
-| `N8N_INTEGRATION.md` | ✅ Archived |
-| `N8N_QUICKSTART.md` | ✅ Archived |
-| `N8N_WEBHOOK_INTEGRATION.md` | ✅ Archived |
-| `N8N_NODE_SETUP.md` | ✅ Archived |
-| `N8N_IMPLEMENTATION_SUMMARY.md` | ✅ Archived |
-| `SBQC.json` | ✅ Archived |
-
-The `dataapi/DOCS_INDEX.md` has been updated to point to the archived location and clarify that n8n triggers are now in AgentX.
-
-### Remaining Cleanup
-| Item | Status | Notes |
-|------|--------|-------|
-| `dataapi/views/archived/` | ✅ OK | Already in archived folder |
-| AgentX docs | ✅ OK | Current and accurate |
