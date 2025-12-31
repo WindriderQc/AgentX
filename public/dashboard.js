@@ -111,7 +111,7 @@ async function updateQuickStats() {
 
         // Cache hit rate metric card with bar
         const cache = await API.get('/api/metrics/cache');
-        const hitRate = (cache.data.cache.hitRate * 100).toFixed(0);
+        const hitRate = parseFloat(cache.data.cache.hitRate || 0).toFixed(0);
         const hitRateEl = document.getElementById('cache-hit-rate');
         const cacheBar = document.getElementById('cacheBar');
         const cacheStatus = document.getElementById('cacheStatus');
@@ -123,8 +123,8 @@ async function updateQuickStats() {
         if (cacheStatus) {
             cacheStatus.className = 'status-dot ' + (hitRate >= 80 ? 'healthy' : hitRate >= 50 ? 'warning' : 'error');
         }
-        if (cacheHits) cacheHits.textContent = formatNumber(cache.data.cache.hits || 0);
-        if (cacheMisses) cacheMisses.textContent = formatNumber(cache.data.cache.misses || 0);
+        if (cacheHits) cacheHits.textContent = formatNumber(cache.data.cache.hitCount || 0);
+        if (cacheMisses) cacheMisses.textContent = formatNumber(cache.data.cache.missCount || 0);
 
         // Database connections metric card with bar
         const db = await API.get('/api/metrics/database');
