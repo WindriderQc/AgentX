@@ -294,6 +294,23 @@ body {
   margin: 4px 0 0;
 }
 
+/* Collapsible Config Panel */
+.config.collapsed .config-body {
+  display: none;
+}
+
+.panel-toggle-icon {
+  display: inline-block;
+  transition: transform 0.2s;
+  margin-left: 8px;
+  font-size: 0.8em;
+  color: var(--muted);
+}
+
+.config.collapsed .panel-toggle-icon {
+  transform: rotate(-90deg);
+}
+
 .controls {
   display: flex;
   align-items: center;
