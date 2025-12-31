@@ -5,6 +5,13 @@
 
 const logger = require('../../config/logger');
 
+// Regex for Llama 3 style tags: <|start_header_id|>role<|end_header_id|>
+// Strictly requires <| and |> to avoid false positives with pipes in content
+const LLAMA3_HEADER_REGEX = /<\|start_header_id\|>.*?<\|end_header_id\|>/g;
+
+// Other special tokens (eot_id, etc)
+const OTHER_TOKENS_REGEX = /<\|(?:eot_id|begin_of_text|end_of_text|fin)\|>/g;
+
 /**
  * Detect if model has thinking/reasoning capabilities
  * @param {string} model - Model name
@@ -18,6 +25,20 @@ function isThinkingModel(model) {
   return thinkingModels.some(pattern => 
     model.toLowerCase().includes(pattern)
   );
+}
+
+/**
+ * Clean up content by removing known leaked template tags (e.g. Llama 3 headers)
+ * @param {string} content
+ * @returns {string}
+ */
+function cleanContent(content) {
+  if (!content) return content;
+
+  return content
+    .replace(LLAMA3_HEADER_REGEX, '')
+    .replace(OTHER_TOKENS_REGEX, '')
+    .trim();
 }
 
 /**
@@ -90,16 +111,32 @@ function extractResponse(data, model) {
   // 2. response (legacy generate API format)
   // 3. message.thinking (fallback for thinking-only responses)
   
+  let rawContent = '';
   if (hasMessageContent) {
-    result.content = data.message.content.trim();
+    rawContent = data.message.content;
   } else if (hasResponse) {
-    result.content = data.response.trim();
+    rawContent = data.response;
   } else if (hasThinking) {
     // Use thinking as content if no other response available
-    result.content = data.message.thinking.trim();
+    rawContent = data.message.thinking;
     result.warning = 'Used thinking output as response (no content field)';
     logger.warn('Using thinking as response', { model, reason: 'No content field' });
   }
+
+  // Clean the content
+  const cleanedContent = cleanContent(rawContent);
+
+  // If originally non-empty content became empty after cleaning (e.g. only tags),
+  // log for debugging purposes. This helps identify if we are aggressively stripping too much
+  // or if the model output was indeed just "internal noise".
+  if (rawContent && String(rawContent).trim() && !cleanedContent) {
+    logger.warn('Content became empty after cleaning', {
+      model,
+      originalLength: String(rawContent).length
+    });
+  }
+
+  result.content = cleanedContent;
 
   // Check for incomplete responses
   if (data.done === false) {
@@ -157,5 +194,6 @@ function buildOllamaPayload(params) {
 module.exports = {
   isThinkingModel,
   extractResponse,
-  buildOllamaPayload
+  buildOllamaPayload,
+  cleanContent // Export for testing
 };
