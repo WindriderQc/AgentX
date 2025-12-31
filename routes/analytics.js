@@ -23,10 +23,7 @@ router.get('/usage', requireAuth, async (req, res) => {
   try {
     const { from, to, groupBy } = req.query;
     // In requireAuth middleware, user is attached to res.locals.user
-    // userId in Conversation model refers to the 'userId' string field (e.g. 'testuser')
-    // NOT the Mongo _id.
-    const userId = res.locals.user.userId;
-
+    
     // Parse date range (default: last 7 days)
     const toDate = to ? new Date(to) : new Date();
     const fromDate = from ? new Date(from) : new Date(toDate.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -135,8 +132,7 @@ router.get('/usage', requireAuth, async (req, res) => {
 router.get('/feedback', requireAuth, async (req, res) => {
   try {
     const { from, to, groupBy } = req.query;
-    const userId = res.locals.user.userId;
-
+    
     // Parse date range
     const toDate = to ? new Date(to) : new Date();
     const fromDate = from ? new Date(from) : new Date(toDate.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -245,8 +241,7 @@ router.get('/feedback', requireAuth, async (req, res) => {
 router.get('/rag-stats', requireAuth, async (req, res) => {
   try {
     const { from, to } = req.query;
-    const userId = res.locals.user.userId;
-
+    
     // Parse date range
     const toDate = to ? new Date(to) : new Date();
     const fromDate = from ? new Date(from) : new Date(toDate.getTime() - 7 * 24 * 60 * 60 * 1000);
