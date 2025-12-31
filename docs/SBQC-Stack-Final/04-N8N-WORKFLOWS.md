@@ -1,7 +1,282 @@
 # 04 - n8n Workflow Specifications
 
 **n8n Instance:** https://n8n.specialblend.icu (http://192.168.2.199:5678)  
-**SMB Mounts:** To be configured on the n8n host
+**SMB Mounts:** To be configured on the n8n host  
+**Workflow Location:** `/home/yb/codes/AgentX/AgentC/*.json`  
+**Deployment Script:** `/home/yb/codes/AgentX/scripts/deploy-n8n-workflows.sh`
+
+---
+
+## Table of Contents
+1. [Automated Workflow Deployment](#automated-workflow-deployment)
+2. [Design Principles](#design-principles-non-negotiable)
+3. [Important Endpoint Notes](#important-endpoint-notes)
+4. [Credential Setup](#credential-setup)
+5. [Workflow Specifications](#priority-1-workflows)
+
+---
+
+## Automated Workflow Deployment
+
+### Overview
+
+The SBQC Stack uses an automated deployment script to import and update n8n workflows via the n8n REST API. This eliminates manual import/export and integrates workflow management into your Git workflow.
+
+**Location:** `/home/yb/codes/AgentX/scripts/deploy-n8n-workflows.sh`
+
+### Quick Start
+
+```bash
+# Check API connectivity
+./scripts/deploy-n8n-workflows.sh --check
+
+# Deploy all workflows
+./scripts/deploy-n8n-workflows.sh
+
+# Deploy specific workflow
+./scripts/deploy-n8n-workflows.sh N3.1.json
+```
+
+### Setup n8n API Access
+
+#### Option 1: Enable API in n8n Settings (Recommended)
+
+1. **Access n8n:** http://192.168.2.199:5678
+2. **Navigate to:** Settings → API
+3. **Enable:** "API enabled"
+4. **Generate API Key:** Click "Generate API Key"
+5. **Copy the key** and save it securely
+
+#### Option 2: Use Basic Auth (If API disabled)
+
+If API endpoint authentication is disabled in n8n, the script will work without credentials.
+
+### Configure Environment Variables
+
+Add to your shell profile (`~/.bashrc` or `~/.zshrc`):
+
+```bash
+# n8n API Configuration
+export N8N_URL="http://192.168.2.199:5678"
+export N8N_API_KEY="n8n_api_YOUR_KEY_HERE"
+```
+
+Reload your shell:
+```bash
+source ~/.bashrc
+```
+
+### Usage Examples
+
+#### Deploy All Workflows
+```bash
+cd /home/yb/codes/AgentX
+./scripts/deploy-n8n-workflows.sh
+```
+
+Output:
+```
+╔═══════════════════════════════════════════════════════════╗
+║       n8n Workflow Deployment Script v1.0                ║
+╚═══════════════════════════════════════════════════════════╝
+
+ℹ Checking n8n API connectivity at http://192.168.2.199:5678...
+✓ Connected to n8n API (5 workflows found)
+
+ℹ Deploying all workflows from /home/yb/codes/AgentX/AgentC...
+
+ℹ Deploying workflow: SBQC - N1.1 System Health Check
+✓ Updated workflow: SBQC - N1.1 System Health Check (ID: 1)
+
+ℹ Deploying workflow: SBQC - N3.1 Model Health & Latency Monitor
+ℹ Workflow not found, creating new...
+✓ Created workflow: SBQC - N3.1 Model Health & Latency Monitor (ID: 8)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✓ Deployed 8 workflows
+```
+
+#### Deploy Single Workflow
+```bash
+./scripts/deploy-n8n-workflows.sh N3.1.json
+```
+
+#### Check API Connectivity
+```bash
+./scripts/deploy-n8n-workflows.sh --check
+```
+
+### Integrate with Git Workflow
+
+#### Pre-commit Hook (Automatic Validation)
+
+Create `.git/hooks/pre-commit`:
+
+```bash
+#!/bin/bash
+# Validate n8n workflow JSON files before commit
+
+echo "Validating n8n workflow JSON files..."
+
+for workflow in AgentC/N*.json; do
+    if [ -f "$workflow" ]; then
+        if ! jq empty "$workflow" 2>/dev/null; then
+            echo "❌ Invalid JSON: $workflow"
+            exit 1
+        fi
+        echo "✓ Valid JSON: $workflow"
+    fi
+done
+
+echo "✓ All workflow JSON files valid"
+```
+
+Make it executable:
+```bash
+chmod +x .git/hooks/pre-commit
+```
+
+#### Post-merge Hook (Auto-deploy on pull)
+
+Create `.git/hooks/post-merge`:
+
+```bash
+#!/bin/bash
+# Auto-deploy workflows after git pull/merge
+
+changed_workflows=$(git diff-tree -r --name-only --no-commit-id ORIG_HEAD HEAD | grep '^AgentC/N.*\.json$')
+
+if [ -n "$changed_workflows" ]; then
+    echo "Detected workflow changes, deploying to n8n..."
+    ./scripts/deploy-n8n-workflows.sh
+fi
+```
+
+Make it executable:
+```bash
+chmod +x .git/hooks/post-merge
+```
+
+### Deployment Workflow
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  1. Edit Workflow JSON                                      │
+│     AgentC/N3.1.json                                        │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│  2. Validate JSON (pre-commit hook)                         │
+│     jq empty N3.1.json                                      │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│  3. Commit & Push                                           │
+│     git add AgentC/N3.1.json                                │
+│     git commit -m "fix: N3.1 node reference issue"         │
+│     git push origin main                                    │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│  4. Deploy to n8n                                           │
+│     ./scripts/deploy-n8n-workflows.sh N3.1.json             │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│  5. Verify in n8n UI                                        │
+│     http://192.168.2.199:5678                               │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### n8n API Endpoints Used
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `GET` | `/api/v1/workflows` | List all workflows |
+| `POST` | `/api/v1/workflows` | Create new workflow |
+| `PUT` | `/api/v1/workflows/:id` | Update existing workflow |
+| `GET` | `/api/v1/workflows/:id` | Get workflow details |
+
+**API Documentation:** https://docs.n8n.io/api/
+
+### Troubleshooting
+
+#### API Key Issues
+```bash
+# Test API key
+curl -H "X-N8N-API-KEY: $N8N_API_KEY" http://192.168.2.199:5678/api/v1/workflows
+
+# Expected: {"data": [...]}
+# If 401: Check API key
+# If 404: API may be disabled in n8n settings
+```
+
+#### Connection Issues
+```bash
+# Test n8n service
+curl http://192.168.2.199:5678/healthz
+
+# Check if n8n is running
+ssh ubundocker
+docker ps | grep n8n
+```
+
+#### JSON Validation
+```bash
+# Validate workflow JSON
+jq empty AgentC/N3.1.json
+
+# Pretty-print JSON
+jq '.' AgentC/N3.1.json
+```
+
+### CI/CD Integration
+
+#### GitHub Actions Example
+
+```yaml
+name: Deploy n8n Workflows
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'AgentC/*.json'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Deploy to n8n
+        env:
+          N8N_URL: ${{ secrets.N8N_URL }}
+          N8N_API_KEY: ${{ secrets.N8N_API_KEY }}
+        run: |
+          chmod +x scripts/deploy-n8n-workflows.sh
+          ./scripts/deploy-n8n-workflows.sh
+```
+
+### Best Practices
+
+1. **Always validate JSON** before deploying
+2. **Test workflows** in n8n UI after deployment
+3. **Use version control** for all workflow changes
+4. **Keep API keys secure** (use environment variables, not hardcoded)
+5. **Deploy to staging** first if you have multiple n8n instances
+6. **Monitor deployment** logs for errors
+
+### Security Considerations
+
+- **API Keys:** Never commit API keys to Git
+- **Network Access:** n8n API should only be accessible from trusted hosts
+- **Audit Logging:** n8n tracks all workflow changes
+- **Credentials:** Workflow credentials are stored separately in n8n (not in JSON)
 
 ---
 

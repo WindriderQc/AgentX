@@ -85,7 +85,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const frank = $node[\"Ping UGFrank (99)\"].json;\nconst brutal = $node[\"Ping UGBrutal (12)\"].json;\n\nreturn [{\n  json: {\n    timestamp: new Date().toISOString(),\n    hosts: [\n      {\n        name: \"UGFrank\",\n        ip: \"192.168.2.99\",\n        status: frank.statusCode === 200 ? \"online\" : \"offline\",\n        latency: frank.headers?.['x-runtime'] || \"unknown\",\n        models: frank.body?.models?.length || 0\n      },\n      {\n        name: \"UGBrutal\",\n        ip: \"192.168.2.12\",\n        status: brutal.statusCode === 200 ? \"online\" : \"offline\",\n        latency: brutal.headers?.['x-runtime'] || \"unknown\",\n        models: brutal.body?.models?.length || 0\n      }\n    ]\n  }\n}];"
+        "jsCode": "const frank = $input.first().json;\nconst brutal = $input.all()[1]?.json || {};\n\nreturn [{\n  json: {\n    timestamp: new Date().toISOString(),\n    hosts: [\n      {\n        name: \"UGFrank\",\n        ip: \"192.168.2.99\",\n        status: frank.statusCode === 200 ? \"online\" : \"offline\",\n        latency: frank.headers?.['x-runtime'] || \"unknown\",\n        models: frank.body?.models?.length || 0,\n        responseTime: frank.statusCode ? (frank.timings?.response || 0) : null\n      },\n      {\n        name: \"UGBrutal\",\n        ip: \"192.168.2.12\",\n        status: brutal.statusCode === 200 ? \"online\" : \"offline\",\n        latency: brutal.headers?.['x-runtime'] || \"unknown\",\n        models: brutal.body?.models?.length || 0,\n        responseTime: brutal.statusCode ? (brutal.timings?.response || 0) : null\n      }\n    ]\n  }\n}];"
       },
       "id": "FormatResults",
       "name": "Format Results",
@@ -104,7 +104,7 @@
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"workflow_id\": \"SBQC-N3.1-model-monitor\",\n  \"event_type\": \"model_health_update\",\n  \"data\": $json\n}",
+        "jsonBody": "={{\n  workflow_id: \"SBQC-N3.1-model-monitor\",\n  event_type: \"model_health_update\",\n  data: $json\n}}",
         "options": {}
       },
       "id": "LogToDataAPI",

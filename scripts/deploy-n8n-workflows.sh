@@ -1,0 +1,272 @@
+#!/bin/bash
+# n8n Workflow Deployment Script
+# Automatically imports/updates workflows to n8n instance via REST API
+# 
+# Usage:
+#   ./deploy-n8n-workflows.sh                    # Deploy all workflows
+#   ./deploy-n8n-workflows.sh N3.1.json          # Deploy specific workflow
+#   ./deploy-n8n-workflows.sh --check            # Check API connectivity
+
+set -e
+
+# Load environment variables from .env if it exists
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+if [ -f "$PROJECT_ROOT/.env" ]; then
+    export $(grep -v '^#' "$PROJECT_ROOT/.env" | grep -v '^$' | xargs)
+fi
+
+# Configuration
+N8N_URL="${N8N_URL:-http://192.168.2.199:5678}"
+N8N_API_KEY="${N8N_API_KEY:-}"
+WORKFLOWS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../AgentC" && pwd)"
+COLORED_OUTPUT=true
+
+# Colors
+if [ "$COLORED_OUTPUT" = true ]; then
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    YELLOW='\033[1;33m'
+    BLUE='\033[0;34m'
+    NC='\033[0m' # No Color
+else
+    RED=''
+    GREEN=''
+    YELLOW=''
+    BLUE=''
+    NC=''
+fi
+
+# Helper functions
+log_info() {
+    echo -e "${BLUE}ℹ${NC} $1"
+}
+
+log_success() {
+    echo -e "${GREEN}✓${NC} $1"
+}
+
+log_warning() {
+    echo -e "${YELLOW}⚠${NC} $1"
+}
+
+log_error() {
+    echo -e "${RED}✗${NC} $1"
+}
+
+# Check if jq is installed
+if ! command -v jq &> /dev/null; then
+    log_error "jq is required but not installed. Install with: sudo apt-get install jq"
+    exit 1
+fi
+
+# Check API connectivity
+check_n8n_api() {
+    log_info "Checking n8n API connectivity at $N8N_URL..."
+    
+    if [ -z "$N8N_API_KEY" ]; then
+        log_warning "N8N_API_KEY not set. Trying without authentication..."
+        response=$(curl -s -w "\n%{http_code}" "$N8N_URL/api/v1/workflows" || echo "000")
+    else
+        response=$(curl -s -w "\n%{http_code}" -H "X-N8N-API-KEY: $N8N_API_KEY" "$N8N_URL/api/v1/workflows" || echo "000")
+    fi
+    
+    http_code=$(echo "$response" | tail -n 1)
+    body=$(echo "$response" | head -n -1)
+    
+    if [ "$http_code" = "200" ]; then
+        workflow_count=$(echo "$body" | jq -r '.data | length' 2>/dev/null || echo "0")
+        log_success "Connected to n8n API (${workflow_count} workflows found)"
+        return 0
+    elif [ "$http_code" = "401" ]; then
+        log_error "Authentication failed. Check N8N_API_KEY environment variable."
+        return 1
+    elif [ "$http_code" = "000" ]; then
+        log_error "Cannot reach n8n at $N8N_URL. Is the service running?"
+        return 1
+    else
+        log_error "API returned HTTP $http_code"
+        return 1
+    fi
+}
+
+# Get workflow ID by name
+get_workflow_id() {
+    local workflow_name="$1"
+    
+    if [ -z "$N8N_API_KEY" ]; then
+        workflows=$(curl -s "$N8N_URL/api/v1/workflows" 2>/dev/null || echo '{"data":[]}')
+    else
+        workflows=$(curl -s -H "X-N8N-API-KEY: $N8N_API_KEY" "$N8N_URL/api/v1/workflows" 2>/dev/null || echo '{"data":[]}')
+    fi
+    
+    workflow_id=$(echo "$workflows" | jq -r ".data[] | select(.name == \"$workflow_name\") | .id" 2>/dev/null)
+    echo "$workflow_id"
+}
+
+# Import or update workflow
+deploy_workflow() {
+    local workflow_file="$1"
+    local workflow_name=$(basename "$workflow_file" .json)
+    
+    if [ ! -f "$workflow_file" ]; then
+        log_error "Workflow file not found: $workflow_file"
+        return 1
+    fi
+    
+    # Validate JSON
+    if ! jq empty "$workflow_file" 2>/dev/null; then
+        log_error "Invalid JSON in $workflow_file"
+        return 1
+    fi
+    
+    # Get workflow name from JSON
+    local wf_name=$(jq -r '.name' "$workflow_file")
+    log_info "Deploying workflow: $wf_name"
+    
+    # Check if workflow exists
+    local existing_id=$(get_workflow_id "$wf_name")
+    
+    if [ -n "$existing_id" ]; then
+        # Update existing workflow
+        log_info "Found existing workflow (ID: $existing_id), updating..."
+        
+        # Strip fields that n8n API doesn't accept (id, versionId, createdAt, updatedAt, etc.)
+        local cleaned_json=$(jq 'del(.id, .versionId, .createdAt, .updatedAt, .shared, .triggerCount, .versionCounter, .isArchived, .meta, .pinData, .tags, .staticData, .active) | .settings //= {}' "$workflow_file")
+        
+        if [ -z "$N8N_API_KEY" ]; then
+            response=$(curl -s -w "\n%{http_code}" -X PUT \
+                -H "Content-Type: application/json" \
+                -d "$cleaned_json" \
+                "$N8N_URL/api/v1/workflows/$existing_id" 2>/dev/null || echo -e "\n000")
+        else
+            response=$(curl -s -w "\n%{http_code}" -X PUT \
+                -H "Content-Type: application/json" \
+                -H "X-N8N-API-KEY: $N8N_API_KEY" \
+                -d "$cleaned_json" \
+                "$N8N_URL/api/v1/workflows/$existing_id" 2>/dev/null || echo -e "\n000")
+        fi
+        
+        http_code=$(echo "$response" | tail -n 1)
+        body=$(echo "$response" | head -n -1)
+        
+        if [ "$http_code" = "200" ]; then
+            log_success "Updated workflow: $wf_name (ID: $existing_id)"
+            return 0
+        else
+            log_error "Failed to update workflow (HTTP $http_code)"
+            echo "$body" | jq '.' 2>/dev/null || echo "$body"
+            return 1
+        fi
+    else
+        # Create new workflow
+        log_info "Workflow not found, creating new..."
+        
+        # Clean JSON for creation too
+        local cleaned_json=$(jq 'del(.id, .versionId, .createdAt, .updatedAt, .shared, .triggerCount, .versionCounter, .isArchived, .meta, .pinData, .tags, .staticData, .active) | .settings //= {}' "$workflow_file")
+        
+        if [ -z "$N8N_API_KEY" ]; then
+            response=$(curl -s -w "\n%{http_code}" -X POST \
+                -H "Content-Type: application/json" \
+                -d "$cleaned_json" \
+                "$N8N_URL/api/v1/workflows" 2>/dev/null || echo -e "\n000")
+        else
+            response=$(curl -s -w "\n%{http_code}" -X POST \
+                -H "Content-Type: application/json" \
+                -H "X-N8N-API-KEY: $N8N_API_KEY" \
+                -d "$cleaned_json" \
+                "$N8N_URL/api/v1/workflows" 2>/dev/null || echo -e "\n000")
+        fi
+        
+        http_code=$(echo "$response" | tail -n 1)
+        body=$(echo "$response" | head -n -1)
+        
+        if [ "$http_code" = "200" ] || [ "$http_code" = "201" ]; then
+            new_id=$(echo "$body" | jq -r '.data.id' 2>/dev/null || echo "unknown")
+            log_success "Created workflow: $wf_name (ID: $new_id)"
+            return 0
+        else
+            log_error "Failed to create workflow (HTTP $http_code)"
+            echo "$body" | jq '.' 2>/dev/null || echo "$body"
+            return 1
+        fi
+    fi
+}
+
+# Main script
+main() {
+    echo ""
+    echo "╔═══════════════════════════════════════════════════════════╗"
+    echo "║       n8n Workflow Deployment Script v1.0                ║"
+    echo "╚═══════════════════════════════════════════════════════════╝"
+    echo ""
+    
+    # Check for --check flag
+    if [ "$1" = "--check" ]; then
+        check_n8n_api
+        exit $?
+    fi
+    
+    # Check API connectivity first
+    if ! check_n8n_api; then
+        log_error "Cannot proceed without API connectivity"
+        echo ""
+        log_info "Troubleshooting steps:"
+        echo "  1. Verify n8n is running: docker ps | grep n8n"
+        echo "  2. Check firewall: curl http://192.168.2.199:5678/healthz"
+        echo "  3. Set API key: export N8N_API_KEY='your-api-key'"
+        echo ""
+        exit 1
+    fi
+    
+    echo ""
+    
+    # Deploy specific workflow or all
+    if [ -n "$1" ] && [ "$1" != "--check" ]; then
+        # Deploy specific workflow
+        if [[ "$1" == *.json ]]; then
+            workflow_path="$WORKFLOWS_DIR/$1"
+        else
+            workflow_path="$WORKFLOWS_DIR/$1.json"
+        fi
+        
+        if [ ! -f "$workflow_path" ]; then
+            log_error "Workflow not found: $workflow_path"
+            exit 1
+        fi
+        
+        deploy_workflow "$workflow_path"
+        exit $?
+    else
+        # Deploy all workflows
+        log_info "Deploying all workflows from $WORKFLOWS_DIR..."
+        echo ""
+        
+        success_count=0
+        fail_count=0
+        
+        for workflow_file in "$WORKFLOWS_DIR"/N*.json; do
+            if [ -f "$workflow_file" ]; then
+                if deploy_workflow "$workflow_file"; then
+                    ((success_count++))
+                else
+                    ((fail_count++))
+                fi
+                echo ""
+            fi
+        done
+        
+        # Summary
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        log_success "Deployed $success_count workflows"
+        if [ $fail_count -gt 0 ]; then
+            log_error "Failed $fail_count workflows"
+        fi
+        echo ""
+        
+        exit $([ $fail_count -eq 0 ] && echo 0 || echo 1)
+    fi
+}
+
+# Run main function
+main "$@"
