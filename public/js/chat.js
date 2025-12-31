@@ -318,8 +318,14 @@ document.addEventListener('DOMContentLoaded', () => {
     meta.appendChild(document.createTextNode(' • '));
     meta.appendChild(time);
 
-    const body = document.createElement('p');
-    body.textContent = content;
+    const body = document.createElement('div');
+    if (typeof marked !== 'undefined') {
+      // Configure marked options if needed
+      // marked.setOptions({ breaks: true }); 
+      body.innerHTML = marked.parse(content);
+    } else {
+      body.textContent = content;
+    }
 
     bubble.appendChild(meta);
     bubble.appendChild(body);
