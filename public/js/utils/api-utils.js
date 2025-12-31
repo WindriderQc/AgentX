@@ -107,29 +107,7 @@ export const getIssLocation = async () => {
   }
 };
 
-/**
- * Generic GET request wrapper.
- * @param {string} url - The URL to fetch.
- * @returns {Promise<any>} A promise that resolves with the response data.
- */
-export const get = async (url) => {
-  let targetUrl = url;
 
-  try {
-    const response = await fetch(targetUrl);
-    if (!response.ok) {
-      throw new Error(`Request failed with status ${response.status}`);
-    }
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      return await response.json();
-    }
-    return await response.text();
-  } catch (error) {
-    console.error('Error in API.get:', error);
-    throw error;
-  }
-};
 
 /**
  * Posts data to a URL using the fetch API.
