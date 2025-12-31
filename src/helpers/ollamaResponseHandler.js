@@ -5,6 +5,13 @@
 
 const logger = require('../../config/logger');
 
+// Regex for Llama 3 style tags: <|start_header_id|>role<|end_header_id|>
+// Strictly requires <| and |> to avoid false positives with pipes in content
+const LLAMA3_HEADER_REGEX = /<\|start_header_id\|>.*?<\|end_header_id\|>/g;
+
+// Other special tokens (eot_id, etc)
+const OTHER_TOKENS_REGEX = /<\|(?:eot_id|begin_of_text|end_of_text|fin)\|>/g;
+
 /**
  * Detect if model has thinking/reasoning capabilities
  * @param {string} model - Model name
@@ -28,16 +35,9 @@ function isThinkingModel(model) {
 function cleanContent(content) {
   if (!content) return content;
 
-  // Regex for Llama 3 style tags: <|start_header_id|>role<|end_header_id|>
-  // Also handles malformed tags sometimes seen (missing leading <)
-  const llama3HeaderRegex = /(?:<\||\|)start_header_id(?:>|\|>).*?(?:<\||\|)end_header_id(?:>|\|>)/g;
-
-  // Other special tokens
-  const otherTokensRegex = /(?:<\||\|)(?:eot_id|begin_of_text|end_of_text|fin)(?:>|\|>)/g;
-
   return content
-    .replace(llama3HeaderRegex, '')
-    .replace(otherTokensRegex, '')
+    .replace(LLAMA3_HEADER_REGEX, '')
+    .replace(OTHER_TOKENS_REGEX, '')
     .trim();
 }
 
@@ -124,7 +124,19 @@ function extractResponse(data, model) {
   }
 
   // Clean the content
-  result.content = cleanContent(rawContent);
+  const cleanedContent = cleanContent(rawContent);
+
+  // If originally non-empty content became empty after cleaning (e.g. only tags),
+  // log for debugging purposes. This helps identify if we are aggressively stripping too much
+  // or if the model output was indeed just "internal noise".
+  if (rawContent && String(rawContent).trim() && !cleanedContent) {
+    logger.warn('Content became empty after cleaning', {
+      model,
+      originalLength: String(rawContent).length
+    });
+  }
+
+  result.content = cleanedContent;
 
   // Check for incomplete responses
   if (data.done === false) {
@@ -182,5 +194,6 @@ function buildOllamaPayload(params) {
 module.exports = {
   isThinkingModel,
   extractResponse,
-  buildOllamaPayload
+  buildOllamaPayload,
+  cleanContent // Export for testing
 };
