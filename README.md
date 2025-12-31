@@ -32,7 +32,7 @@ AgentX is a Node.js application that transforms your local Ollama instance into 
 ## 🌟 Key Features
 
 ### Core Capabilities
-- **�� Advanced Chat Interface**: Rich UI with model selection, parameter tuning, and conversation history
+- **💬 Advanced Chat Interface**: Rich UI with model selection, parameter tuning, and conversation history
 - **🧠 Conversation Memory**: MongoDB-backed persistence with session management and feedback tracking
 - **👤 User Profiles**: Personal memory injection into system prompts for context-aware responses
 - **📚 RAG (Retrieval-Augmented Generation)**: Semantic search over your documents for knowledge-grounded answers
@@ -60,19 +60,22 @@ AgentX is a Node.js application that transforms your local Ollama instance into 
 ### Installation
 
 1. **Clone and install dependencies:**
-   \`\`\`bash
+   ```bash
    git clone https://github.com/WindriderQc/AgentX.git
    cd AgentX
    npm install
-   \`\`\`
+   ```
 
-2. **Configure environment** (create \`.env\` file):
-   \`\`\`bash
+2. **Configure environment** (create `.env` file):
+   ```bash
    MONGODB_URI=mongodb://localhost:27017/agentx
    OLLAMA_HOST=http://localhost:11434
    EMBEDDING_MODEL=nomic-embed-text
    PORT=3080
-   \`\`\`
+   # Optional
+   # OLLAMA_HOST_2=http://192.168.2.12:11434 # Secondary Ollama instance
+   # DATAAPI_BASE_URL=http://localhost:3003 # Companion tool server
+   ```
 
 ### DataAPI tool server (optional, recommended)
 
@@ -90,14 +93,14 @@ DATAAPI_API_KEY=change-me-long-random
 DataAPI must be configured with the matching `DATAAPI_API_KEY` and will require an `x-api-key` header on all tool endpoints under `/api/v1/*`.
 
 3. **Start the server:**
-   \`\`\`bash
+   ```bash
    npm start
-   \`\`\`
+   ```
 
 4. **Open your browser:**
-   \`\`\`
+   ```
    http://localhost:3080
-   \`\`\`
+   ```
 
 See [Quick Start Guide](docs/onboarding/quickstart.md) for detailed setup instructions.
 
@@ -134,32 +137,32 @@ See [Quick Start Guide](docs/onboarding/quickstart.md) for detailed setup instru
 ## 🎯 Usage Examples
 
 ### Basic Chat
-\`\`\`bash
-curl -X POST http://localhost:3080/api/chat \\
-  -H "Content-Type: application/json" \\
+```bash
+curl -X POST http://localhost:3080/api/chat \
+  -H "Content-Type: application/json" \
   -d '{
     "model": "llama3",
     "message": "Explain quantum computing",
     "options": {"temperature": 0.7}
   }'
-\`\`\`
+```
 
 ### RAG-Enhanced Chat
-\`\`\`bash
-curl -X POST http://localhost:3080/api/chat \\
-  -H "Content-Type: application/json" \\
+```bash
+curl -X POST http://localhost:3080/api/chat \
+  -H "Content-Type: application/json" \
   -d '{
     "model": "llama3",
     "message": "What does our documentation say about RAG?",
     "useRag": true,
     "ragTopK": 5
   }'
-\`\`\`
+```
 
 ### Document Ingestion
-\`\`\`bash
-curl -X POST http://localhost:3080/api/rag/ingest \\
-  -H "Content-Type: application/json" \\
+```bash
+curl -X POST http://localhost:3080/api/rag/ingest \
+  -H "Content-Type: application/json" \
   -d '{
     "source": "docs",
     "path": "/guides/getting-started.md",
@@ -167,18 +170,18 @@ curl -X POST http://localhost:3080/api/rag/ingest \\
     "text": "Your document content here...",
     "tags": ["guide", "documentation"]
   }'
-\`\`\`
+```
 
 ---
 
 ## 🗂️ Project Structure
 
-\`\`\`
+```
 AgentX/
 ├── server.js              # Express app entry point
 ├── package.json           # Dependencies and scripts
 ├── config/
-│   └── db.js             # MongoDB connection
+│   └── logger.js         # Logger configuration
 ├── models/               # Mongoose schemas
 │   ├── Conversation.js   # Chat history with feedback
 │   ├── UserProfile.js    # User memory and preferences
@@ -187,16 +190,18 @@ AgentX/
 │   ├── api.js           # Core chat and profile endpoints
 │   ├── rag.js           # RAG ingestion and search
 │   ├── analytics.js     # Usage and feedback metrics
-│   └── dataset.js       # Conversation export
+│   ├── dataset.js       # Conversation export
+│   └── ...              # Other routes (history, dashboard, n8n, etc.)
 ├── src/
 │   ├── services/
 │   │   ├── ragStore.js  # Vector store implementation
-│   │   └── embeddings.js # Ollama embedding service
-│   └── utils.js         # Helper functions
+│   │   ├── chatService.js # Chat orchestration
+│   │   ├── embeddings.js # Ollama embedding service
+│   └── utils/           # Helper functions
 ├── public/              # Frontend (HTML/JS/CSS)
 ├── docs/                # Documentation
 └── specs/               # Architecture specifications
-\`\`\`
+```
 
 ---
 
@@ -204,13 +209,16 @@ AgentX/
 
 Run endpoint validation tests:
 
-\`\`\`bash
+```bash
 # Test V3 RAG endpoints
 ./test-v3-rag.sh
 
 # Test V4 Analytics endpoints
 ./test-v4-analytics.sh http://localhost:3080
-\`\`\`
+
+# Comprehensive Backend Test
+./test-backend.sh
+```
 
 ---
 
@@ -220,8 +228,8 @@ Run endpoint validation tests:
 - [ ] Ollama running with required models installed
 - [ ] Environment variables set correctly
 - [ ] Port 3080 accessible (or configured alternative)
-- [ ] Health check passes: \`curl http://localhost:3080/health\`
-- [ ] Models load successfully: \`curl http://localhost:3080/api/ollama/models\`
+- [ ] Health check passes: `curl http://localhost:3080/health`
+- [ ] Models load successfully: `curl http://localhost:3080/api/ollama/models`
 
 ---
 
@@ -266,7 +274,7 @@ systemctl show -p ActiveState,SubState,Result pm2-yb
 
 ---
 
-## �� License
+## 📄 License
 
 MIT License - See LICENSE file for details
 
