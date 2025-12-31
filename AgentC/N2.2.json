@@ -73,22 +73,22 @@
     }
   ],
   "connections": {
-    "CronWeekly": {
+    "Schedule (Weekly Sun 3AM)": {
       "main": [
         [
           {
-            "node": "TriggerScan",
+            "node": "Trigger DataAPI Scanner (Inverse)",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "TriggerScan": {
+    "Trigger DataAPI Scanner (Inverse)": {
       "main": [
         [
           {
-            "node": "LogEvent",
+            "node": "Log scan_triggered event",
             "type": "main",
             "index": 0
           }
