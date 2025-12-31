@@ -124,25 +124,6 @@
 
             <div class="section-card">
                 <div class="section-header">
-                    <h2><i class="fas fa-smile"></i> Feedback Distribution</h2>
-                    <select id="feedbackGroupSelect" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 10px; color: var(--text); font-size: 12px;">
-                        <option value="model">By Model</option>
-                        <option value="promptVersion">By Prompt</option>
-                    </select>
-                </div>
-                <div class="section-body">
-                    <div class="chart-container">
-                        <canvas id="feedbackChart"></canvas>
-                    </div>
-                    <div class="chart-empty" id="feedbackEmpty">No feedback captured in this window.</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- RAG Section -->
-        <div class="analytics-grid full">
-            <div class="section-card">
-                <div class="section-header">
                     <h2><i class="fas fa-database"></i> RAG Adoption & Satisfaction</h2>
                 </div>
                 <div class="section-body">
@@ -169,6 +150,25 @@
                             </div>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Feedback Section -->
+        <div class="analytics-grid full">
+            <div class="section-card">
+                <div class="section-header">
+                    <h2><i class="fas fa-smile"></i> Feedback Distribution</h2>
+                    <select id="feedbackGroupSelect" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 10px; color: var(--text); font-size: 12px;">
+                        <option value="model">By Model</option>
+                        <option value="promptVersion">By Prompt</option>
+                    </select>
+                </div>
+                <div class="section-body">
+                    <div class="chart-container">
+                        <canvas id="feedbackChart"></canvas>
+                    </div>
+                    <div class="chart-empty" id="feedbackEmpty">No feedback captured in this window.</div>
                 </div>
             </div>
         </div>
