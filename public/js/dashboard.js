@@ -484,6 +484,95 @@ async function loadCollections() {
     }
 }
 
+// --- SCANS LOGIC ---
+
+async function loadScans() {
+    const container = document.getElementById('scans-list');
+    if (!container) return;
+
+    try {
+        // Fetch scans from DataAPI via AgentX proxy or direct if configured
+        // Assuming AgentX has a proxy route or we use the direct DataAPI URL if accessible
+        // For now, let's assume AgentX proxies /api/v1/storage/scans -> DataAPI
+        // If not, we might need to hit DataAPI directly (http://192.168.2.33:3003)
+        // But CORS might be an issue. Let's try the proxy route first.
+        
+        // NOTE: AgentX needs a route to proxy this. If it doesn't exist, we might need to add it.
+        // Checking routes/api.js... it seems we don't have a direct proxy for storage scans yet.
+        // However, we can try to fetch from DataAPI directly if the browser allows it (CORS).
+        // Or better, we add a proxy endpoint in AgentX.
+        
+        // Let's try fetching from DataAPI directly for now, assuming CORS is permissive or same-origin if proxied.
+        // Actually, looking at the user's request, they want buttons.
+        // Let's assume we can hit the DataAPI.
+        
+        const response = await fetch('http://192.168.2.33:3003/api/v1/storage/scans?limit=5');
+        const result = await response.json();
+        
+        if (result.status !== 'success' || !result.data.scans || result.data.scans.length === 0) {
+            container.innerHTML = '<div class="scan-item"><span style="color: var(--muted);">No recent scans</span></div>';
+            return;
+        }
+
+        container.innerHTML = result.data.scans.map(scan => {
+            const isRunning = scan.status === 'running';
+            const statusClass = isRunning ? 'running' : (scan.status === 'complete' ? 'complete' : 'stopped');
+            const duration = scan.duration ? `${scan.duration}s` : (isRunning ? 'Running...' : '-');
+            
+            return `
+            <div class="scan-item">
+                <div class="scan-info">
+                    <span class="id" title="${scan._id}">${scan._id.substring(0, 8)}...</span>
+                    <span class="status ${statusClass}">${scan.status}</span>
+                    <span style="font-size: 10px; color: var(--muted);">${timeAgo(scan.started_at)} • ${scan.counts?.files_processed || 0} files</span>
+                </div>
+                <div class="scan-actions">
+                    ${isRunning ? `<button class="btn-xs danger" onclick="window.stopScan('${scan._id}')" title="Stop Scan"><i class="fas fa-stop"></i></button>` : ''}
+                    <button class="btn-xs" onclick="window.viewScanReport('${scan._id}')" title="View Report"><i class="fas fa-file-alt"></i></button>
+                </div>
+            </div>
+            `;
+        }).join('');
+
+    } catch (error) {
+        console.error('Failed to load scans:', error);
+        container.innerHTML = '<div class="scan-item"><span style="color: #f87171;">Failed to load scans</span></div>';
+    }
+}
+
+window.stopScan = async (scanId) => {
+    if (!confirm('Are you sure you want to stop this scan?')) return;
+    try {
+        const res = await fetch(`http://192.168.2.33:3003/api/v1/storage/stop/${scanId}`, { method: 'POST' });
+        const data = await res.json();
+        if (data.status === 'success') {
+            alert('Scan stop requested');
+            loadScans();
+        } else {
+            alert('Failed to stop scan: ' + data.message);
+        }
+    } catch (e) {
+        alert('Error stopping scan: ' + e.message);
+    }
+};
+
+window.viewScanReport = async (scanId) => {
+    try {
+        const res = await fetch(`http://192.168.2.33:3003/api/v1/storage/status/${scanId}`);
+        const data = await res.json();
+        
+        const modal = document.getElementById('scanReportModal');
+        const content = document.getElementById('scanReportContent');
+        
+        if (modal && content) {
+            content.textContent = JSON.stringify(data.data, null, 2);
+            modal.style.display = 'flex';
+        }
+    } catch (e) {
+        alert('Error fetching report: ' + e.message);
+    }
+};
+
 // --- INITIALIZATION ---
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -593,6 +682,71 @@ document.addEventListener('DOMContentLoaded', () => {
         refreshMetricsBtn.addEventListener('click', () => {
             refreshSystemMetrics();
             loadCollections();
+        });
+    }
+
+    const refreshScansBtn = document.getElementById('refreshScansBtn');
+    if (refreshScansBtn) {
+        refreshScansBtn.addEventListener('click', loadScans);
+    }
+
+    // Initial load of scans
+    loadScans();
+    setInterval(loadScans, 10000); // Refresh scans every 10s
+
+    // Modal Close
+    const closeBtn = document.getElementById('closeScanReportBtn');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+            document.getElementById('scanReportModal').style.display = 'none';
+        });
+    }
+    
+    // Close modal on outside click
+    window.addEventListener('click', (e) => {
+        const modal = document.getElementById('scanReportModal');
+        if (e.target === modal) {
+            modal.style.display = 'none';
+        }
+    });
+
+    // RAG Trigger
+    const triggerRagBtn = document.getElementById('triggerRagBtn');
+    if (triggerRagBtn) {
+        triggerRagBtn.addEventListener('click', async () => {
+            const dir = document.getElementById('ragTargetDir').value || '/mnt/datalake/RAG';
+            const resultEl = document.getElementById('ragResult');
+            
+            triggerRagBtn.disabled = true;
+            triggerRagBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Triggering...';
+            
+            try {
+                // Trigger N2.3 via webhook
+                const payload = {
+                    directories: [
+                        { path: dir, pattern: '*.md', source: 'manual-trigger' },
+                        { path: dir, pattern: '*.txt', source: 'manual-trigger' },
+                        { path: dir, pattern: '*.pdf', source: 'manual-trigger' }
+                    ]
+                };
+
+                // Use the generic webhook trigger endpoint
+                const res = await API.post('/api/n8n/trigger/sbqc-n2-3-rag-ingest', payload);
+                
+                resultEl.style.display = 'block';
+                resultEl.style.color = '#4ade80';
+                resultEl.textContent = 'Ingestion triggered successfully!';
+                
+            } catch (error) {
+                console.error('RAG trigger failed:', error);
+                resultEl.style.display = 'block';
+                resultEl.style.color = '#f87171';
+                resultEl.textContent = 'Failed: ' + (error.message || 'Unknown error');
+            } finally {
+                triggerRagBtn.disabled = false;
+                triggerRagBtn.innerHTML = '<i class="fas fa-file-import"></i> Trigger Ingestion';
+                setTimeout(() => { resultEl.style.display = 'none'; }, 5000);
+            }
         });
     }
 });

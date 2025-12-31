@@ -62,9 +62,12 @@ Per 04-N8N-WORKFLOWS.md + discussion additions:
 | ID | Name | Trigger | Status | JSON |
 |----|------|---------|--------|------|
 | N2.1 | NAS File Scanner + Hash | Schedule (daily 2AM) | ✅ Done | `N2.1.json` |
+| N2.2 | NAS Full/Other Scan | Schedule (Weekly Sun 3AM) | ✅ Done | `N2.2.json` |
 | N2.3 | RAG Document Ingestion | Webhook/Weekly | ✅ Done | `N2.3.json` |
 
-**Note:** N2.1 now includes SHA256 hashing via DataAPI's built-in `compute_hashes` option (files <100MB).
+**Note:** 
+- N2.1 now includes SHA256 hashing via DataAPI's built-in `compute_hashes` option.
+- N2.2 performs an "inverse scan" (everything EXCEPT media files) to map the rest of the disk.
 
 ### Phase 3: AI-Aware Workflows (Priority 3) — ✅ COMPLETE
 
@@ -73,11 +76,11 @@ Per 04-N8N-WORKFLOWS.md + discussion additions:
 | N3.1 | Model Health & Latency Monitor | Schedule (10 min) | ✅ Done | `N3.1.json` |
 | N3.2 | External AI Trigger Gateway | Webhook | ✅ Done | `N3.2.json` |
 
-### Phase 4: RAG Ingestion — ❌ NOT STARTED
+### Phase 4: RAG Ingestion — ✅ MERGED
 
 | ID | Name | Trigger | Status | Notes |
 |----|------|---------|--------|-------|
-| N4.1 | Docs → RAG Pipeline | Manual/Schedule | ❌ Pending | Feeds AgentX memory |
+| N4.1 | Docs → RAG Pipeline | Manual/Schedule | ✅ Merged | Implemented as **N2.3** |
 
 ### Phase 5: Self-Improving Loop (Priority 5) — ✅ COMPLETE
 
@@ -98,6 +101,13 @@ These must exist for workflows to function:
 | `/api/v1/storage/scans` | GET | N2.1 verify | ✅ Exists |
 | `/api/v1/storage/status/:id` | GET/PATCH | N2.1 | ⚠️ Needs verification |
 | `/api/v1/storage/scan/:id/batch` | POST | N2.1 batch | ✅ **IMPLEMENTED** (Dec 26, 2025) |
+
+## 🚀 Next Steps (Post-Phase 2)
+
+1.  **Voice I/O Workflows**: Design and implement workflows for voice command processing (Priority 4).
+2.  **Scan Resume**: Add checkpointing to DataAPI scanner to allow resuming interrupted scans.
+3.  **Advanced Analytics**: Build workflows to analyze scan data (e.g., "Duplicate Finder", "Large File Report").
+
 | `/api/v1/storage/scan/:id` | GET | N2.1 poll | ✅ **IMPLEMENTED** (Dec 26, 2025) |
 | `/api/v1/storage/scan/:id` | PATCH | N2.1 complete | ✅ **IMPLEMENTED** (Dec 26, 2025) |
 | `/api/v1/files/duplicates` | GET | N2.3 | ✅ Exists |
