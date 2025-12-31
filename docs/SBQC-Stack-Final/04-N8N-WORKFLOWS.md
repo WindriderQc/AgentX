@@ -38,17 +38,24 @@
 
 ### Workflow N1.1: System Health Check
 
-**Trigger:** Schedule (every 5 minutes)
+**Trigger:** Schedule (every 5 minutes) OR Webhook (Manual Test)
 
 **Purpose:** Monitor all system components and alert on failures.
 
+**Webhook URL:** `https://n8n.specialblend.icu/webhook/sbqc-n1-1-health-check`
+
 ```
-┌─────────────────┐
-│  Schedule       │
-│  (Every 5 min)  │
-└────────┬────────┘
-         │
-         ▼
+┌─────────────────┐   ┌─────────────────┐
+│  Schedule       │   │  Webhook        │
+│  (Every 5 min)  │   │  (Manual Test)  │
+└────────┬────────┘   └────────┬────────┘
+         │                     │
+         ▼                     ▼
+┌─────────────────────────────────────────────────────────┐
+│  Merge Triggers                                         │
+└────────────────────────────┬────────────────────────────┘
+                             │
+                             ▼
 ┌─────────────────────────────────────────────────────────┐
 │  HTTP Request (Parallel)                                │
 │  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐    │
@@ -199,17 +206,24 @@ Body: { "path": "/mnt/nas/data", "recursive": true }
 
 ### Workflow N2.1: NAS File Scanner
 
-**Trigger:** Schedule (Daily at 2:00 AM)
+**Trigger:** Schedule (Daily at 2:00 AM) OR Webhook (Manual Trigger)
 
 **Purpose:** Scan NAS directories and index files to DataAPI.
 
+**Webhook URL:** `https://n8n.specialblend.icu/webhook/sbqc-n2-1-nas-scan`
+
 ```
-┌─────────────────┐
-│  Schedule       │
-│  (Daily 2AM)    │
-└────────┬────────┘
-         │
-         ▼
+┌─────────────────┐   ┌─────────────────┐
+│  Schedule       │   │  Webhook        │
+│  (Daily 2AM)    │   │  (Manual Test)  │
+└────────┬────────┘   └────────┬────────┘
+         │                     │
+         ▼                     ▼
+┌─────────────────────────────────────────────────────────┐
+│  Merge Triggers                                         │
+└────────────────────────────┬────────────────────────────┘
+                             │
+                             ▼
 ┌─────────────────────┐
 │  Create Scan Record │
 │  POST /n8n/nas/scan │
@@ -426,17 +440,24 @@ Body:
 
 ### Workflow N3.1: Model Health Monitor
 
-**Trigger:** Schedule (every 10 minutes)
+**Trigger:** Schedule (every 10 minutes) OR Webhook (Manual Test)
 
 **Purpose:** Track model availability and latency.
 
+**Webhook URL:** `https://n8n.specialblend.icu/webhook/sbqc-n3-1-model-monitor`
+
 ```
-┌─────────────────┐
-│  Schedule       │
-│  (Every 10 min) │
-└────────┬────────┘
-         │
-         ▼
+┌─────────────────┐   ┌─────────────────┐
+│  Schedule       │   │  Webhook        │
+│  (Every 10 min)  │   │  (Manual Test)  │
+└────────┬────────┘   └────────┬────────┘
+         │                     │
+         ▼                     ▼
+┌─────────────────────────────────────────────────────────┐
+│  Merge Triggers                                         │
+└────────────────────────────┬────────────────────────────┘
+                             │
+                             ▼
 ┌─────────────────────────────────────────┐
 │  For Each Ollama Host:                  │
 │  GET /api/tags                          │
@@ -567,38 +588,6 @@ Body:
 
 ## Priority 3 Workflows
 
-### Workflow N3.1: Model Health & Latency Monitor
-
-**Trigger:** Schedule (Every 10 minutes)
-
-**Purpose:** Track Ollama model availability and response latency for routing decisions.
-
-```
-┌─────────────────┐
-│  Schedule       │
-│  (Every 10 min) │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────────────────────────────────────────────┐
-│  HTTP Request (Parallel)                                │
-│  ┌──────────────┐ ┌──────────────┐                      │
-│  │ Ollama 99    │ │ Ollama 12    │                      │
-│  │ /api/tags    │ │ /api/tags    │                      │
-│  └──────────────┘ └──────────────┘                      │
-└────────────────────────────┬────────────────────────────┘
-                             │
-                             ▼
-                   ┌─────────────────┐
-                   │  Format Results │
-                   └────────┬────────┘
-                            │
-                            ▼
-                   ┌─────────────────┐
-                   │  Log to DataAPI │
-                   │  (Event Sink)   │
-                   └─────────────────┘
-```
 
 ---
 
