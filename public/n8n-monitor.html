@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>n8n Workflow Monitor • AgentX</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .monitor-page {
+            min-height: 100vh;
+            padding: 20px 30px;
+            max-width: 1800px;
+            margin: 0 auto;
+        }
+        
+        .monitor-header {
+            margin-bottom: 24px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--panel-border);
+        }
+        
+        .monitor-header h1 {
+            font-size: 28px;
+            margin: 0 0 8px 0;
+            color: var(--text);
+        }
+        
+        .monitor-header .lede {
+            color: var(--muted);
+            font-size: 14px;
+        }
+        
+        .monitor-grid {
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+        
+        .workflow-list {
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 12px;
+            padding: 20px;
+            height: fit-content;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        
+        .workflow-list h2 {
+            font-size: 16px;
+            margin: 0 0 16px 0;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 600;
+        }
+        
+        .workflow-item {
+            padding: 12px;
+            margin-bottom: 8px;
+            background: rgba(255,255,255,0.02);
+            border: 1px solid var(--panel-border);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .workflow-item:hover {
+            background: rgba(124,240,255,0.05);
+            border-color: var(--accent);
+        }
+        
+        .workflow-item.active {
+            background: rgba(124,240,255,0.1);
+            border-color: var(--accent);
+        }
+        
+        .workflow-item .wf-name {
+            font-weight: 600;
+            color: var(--text);
+            font-size: 14px;
+            margin-bottom: 4px;
+        }
+        
+        .workflow-item .wf-id {
+            font-size: 11px;
+            color: var(--muted);
+            font-family: 'Monaco', monospace;
+        }
+        
+        .workflow-item .wf-status {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            text-transform: uppercase;
+            font-weight: 600;
+            margin-top: 6px;
+        }
+        
+        .wf-status.active { background: rgba(34,197,94,0.2); color: #22c55e; }
+        .wf-status.inactive { background: rgba(148,163,184,0.2); color: #94a3b8; }
+        
+        .workflow-details {
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 12px;
+            padding: 24px;
+            min-height: 80vh;
+        }
+        
+        .detail-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--panel-border);
+        }
+        
+        .detail-header h2 {
+            font-size: 20px;
+            margin: 0 0 4px 0;
+            color: var(--text);
+        }
+        
+        .detail-header .wf-meta {
+            font-size: 12px;
+            color: var(--muted);
+        }
+        
+        .detail-actions {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .btn {
+            padding: 10px 16px;
+            border-radius: 8px;
+            border: none;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 13px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #7cf0ff 0%, #4facfe 100%);
+            color: #0a0e1a;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(124,240,255,0.3);
+        }
+        
+        .btn-secondary {
+            background: rgba(148,163,184,0.1);
+            color: var(--text);
+            border: 1px solid var(--panel-border);
+        }
+        
+        .btn-secondary:hover {
+            background: rgba(148,163,184,0.15);
+        }
+        
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .detail-tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 20px;
+            border-bottom: 1px solid var(--panel-border);
+        }
+        
+        .tab {
+            padding: 10px 20px;
+            background: transparent;
+            border: none;
+            color: var(--muted);
+            font-weight: 600;
+            font-size: 13px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+        
+        .tab:hover {
+            color: var(--text);
+        }
+        
+        .tab.active {
+            color: var(--accent);
+            border-bottom-color: var(--accent);
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .webhook-url {
+            background: rgba(15,23,42,0.6);
+            padding: 12px;
+            border-radius: 6px;
+            border: 1px solid var(--panel-border);
+            font-family: 'Monaco', monospace;
+            font-size: 12px;
+            color: var(--accent);
+            word-break: break-all;
+            margin-bottom: 16px;
+        }
+        
+        .test-form {
+            margin-bottom: 24px;
+        }
+        
+        .form-group {
+            margin-bottom: 16px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 600;
+            font-size: 13px;
+            color: var(--text);
+        }
+        
+        .form-group input,
+        .form-group textarea {
+            width: 100%;
+            padding: 10px 12px;
+            background: rgba(15,23,42,0.6);
+            border: 1px solid var(--panel-border);
+            border-radius: 6px;
+            color: var(--text);
+            font-size: 13px;
+            font-family: 'Monaco', monospace;
+        }
+        
+        .form-group textarea {
+            min-height: 120px;
+            resize: vertical;
+        }
+        
+        .event-log {
+            background: rgba(15,23,42,0.6);
+            border: 1px solid var(--panel-border);
+            border-radius: 8px;
+            padding: 16px;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        
+        .event-log h3 {
+            font-size: 14px;
+            margin: 0 0 12px 0;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .event-item {
+            padding: 12px;
+            margin-bottom: 10px;
+            background: rgba(255,255,255,0.02);
+            border: 1px solid rgba(148,163,184,0.1);
+            border-radius: 6px;
+        }
+        
+        .event-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        
+        .event-type {
+            font-weight: 600;
+            color: var(--accent);
+            font-size: 12px;
+        }
+        
+        .event-timestamp {
+            font-size: 11px;
+            color: var(--muted);
+        }
+        
+        .event-data {
+            background: rgba(0,0,0,0.3);
+            padding: 10px;
+            border-radius: 4px;
+            font-family: 'Monaco', monospace;
+            font-size: 11px;
+            color: #94a3b8;
+            white-space: pre-wrap;
+            overflow-x: auto;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--muted);
+        }
+        
+        .empty-state i {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.3;
+        }
+        
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+            color: var(--muted);
+        }
+        
+        .loading i {
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .status-badge.success {
+            background: rgba(34,197,94,0.2);
+            color: #22c55e;
+        }
+        
+        .status-badge.error {
+            background: rgba(248,113,113,0.2);
+            color: #f87171;
+        }
+        
+        .status-badge.info {
+            background: rgba(124,240,255,0.2);
+            color: #7cf0ff;
+        }
+        
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            padding: 16px 20px;
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 8px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+            display: none;
+            align-items: center;
+            gap: 12px;
+            z-index: 1000;
+        }
+        
+        .toast.show {
+            display: flex;
+            animation: slideIn 0.3s ease;
+        }
+        
+        @keyframes slideIn {
+            from { transform: translateX(400px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div class="monitor-page">
+        <div class="monitor-header">
+            <div class="eyebrow">AgentX Operations</div>
+            <h1><i class="fas fa-network-wired"></i> n8n Workflow Monitor</h1>
+            <p class="lede">Test and monitor SBQC n8n workflows. Trigger webhooks, view execution history, and monitor real-time events.</p>
+        </div>
+        
+        <div class="monitor-grid">
+            <div class="workflow-list">
+                <h2>Workflows</h2>
+                <div id="workflow-container">
+                    <div class="loading">
+                        <i class="fas fa-spinner"></i> Loading workflows...
+                    </div>
+                </div>
+            </div>
+            
+            <div class="workflow-details">
+                <div id="detail-container">
+                    <div class="empty-state">
+                        <i class="fas fa-hand-pointer"></i>
+                        <p>Select a workflow to view details and test controls</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="toast" class="toast">
+            <i class="fas fa-check-circle"></i>
+            <span id="toast-message"></span>
+        </div>
+    </div>
+    
+    <script>
+        const WORKFLOWS = [
+            { id: 'N1.1', name: 'System Health Monitor', webhook: 'sbqc-n1-1-system-health', type: 'GET' },
+            { id: 'N1.3', name: 'Ops Diagnostic', webhook: 'sbqc-n1-3-ops-diagnostic', type: 'GET' },
+            { id: 'N2.1', name: 'NAS Scan', webhook: 'sbqc-n2-1-nas-scan', type: 'POST' },
+            { id: 'N2.2', name: 'NAS Full Scan', webhook: 'sbqc-n2-2-nas-full-scan', type: 'POST' },
+            { id: 'N2.3', name: 'RAG Ingest', webhook: 'sbqc-n2-3-rag-ingest', type: 'POST' },
+            { id: 'N3.1', name: 'Model Health & Latency Monitor', webhook: 'sbqc-n3-1-model-monitor', type: 'GET' },
+            { id: 'N3.2', name: 'External AI Trigger Gateway', webhook: 'sbqc-ai-query', type: 'POST' },
+            { id: 'N5.1', name: 'Feedback Analysis', webhook: 'sbqc-n5-1-feedback-analysis', type: 'POST' }
+        ];
+        
+        const N8N_BASE = 'http://192.168.2.199:5678';
+        const DATAAPI_BASE = 'http://192.168.2.33:3003';
+        
+        let currentWorkflow = null;
+        let events = [];
+        let eventRefreshInterval = null;
+        
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toast');
+            const msgEl = document.getElementById('toast-message');
+            msgEl.textContent = message;
+            toast.className = `toast show ${type}`;
+            setTimeout(() => toast.classList.remove('show'), 3000);
+        }
+        
+        function formatTimestamp(ts) {
+            const d = new Date(ts);
+            return d.toLocaleString('en-CA', { hour12: false }).replace(',', '');
+        }
+        
+        function renderWorkflowList() {
+            const container = document.getElementById('workflow-container');
+            container.innerHTML = WORKFLOWS.map(wf => `
+                <div class="workflow-item ${currentWorkflow?.id === wf.id ? 'active' : ''}" 
+                     onclick="selectWorkflow('${wf.id}')">
+                    <div class="wf-name">${wf.name}</div>
+                    <div class="wf-id">${wf.id}</div>
+                    <span class="wf-status active">${wf.type}</span>
+                </div>
+            `).join('');
+        }
+        
+        function selectWorkflow(id) {
+            currentWorkflow = WORKFLOWS.find(wf => wf.id === id);
+            renderWorkflowList();
+            renderWorkflowDetails();
+            loadEvents();
+            
+            // Start event refresh
+            if (eventRefreshInterval) clearInterval(eventRefreshInterval);
+            eventRefreshInterval = setInterval(loadEvents, 10000);
+        }
+        
+        function renderWorkflowDetails() {
+            if (!currentWorkflow) return;
+            
+            const webhookUrl = `${N8N_BASE}/webhook/${currentWorkflow.webhook}`;
+            
+            document.getElementById('detail-container').innerHTML = `
+                <div class="detail-header">
+                    <div>
+                        <h2>${currentWorkflow.name}</h2>
+                        <div class="wf-meta">${currentWorkflow.id} • ${currentWorkflow.type} webhook</div>
+                    </div>
+                    <div class="detail-actions">
+                        <button class="btn btn-secondary" onclick="openN8nEditor()">
+                            <i class="fas fa-external-link-alt"></i> Open in n8n
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="detail-tabs">
+                    <button class="tab active" onclick="switchTab('test')">Test</button>
+                    <button class="tab" onclick="switchTab('events')">Event History</button>
+                </div>
+                
+                <div id="tab-test" class="tab-content active">
+                    <div class="webhook-url">${webhookUrl}</div>
+                    
+                    <div class="test-form">
+                        ${currentWorkflow.type === 'POST' ? `
+                            <div class="form-group">
+                                <label>Request Body (JSON)</label>
+                                <textarea id="test-payload">{
+  "test": true,
+  "source": "agentx-monitor"
+}</textarea>
+                            </div>
+                        ` : ''}
+                        
+                        <button class="btn btn-primary" onclick="triggerWorkflow()">
+                            <i class="fas fa-play"></i> Trigger Workflow
+                        </button>
+                    </div>
+                    
+                    <div id="test-result"></div>
+                </div>
+                
+                <div id="tab-events" class="tab-content">
+                    <div class="event-log">
+                        <h3>Recent Events</h3>
+                        <div id="event-list">
+                            <div class="loading">
+                                <i class="fas fa-spinner"></i> Loading events...
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        function switchTab(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            
+            event.target.classList.add('active');
+            document.getElementById(`tab-${tab}`).classList.add('active');
+            
+            if (tab === 'events') {
+                loadEvents();
+            }
+        }
+        
+        async function triggerWorkflow() {
+            const btn = event.target;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Triggering...';
+            
+            try {
+                const url = `${N8N_BASE}/webhook/${currentWorkflow.webhook}`;
+                const options = {
+                    method: currentWorkflow.type,
+                };
+                
+                if (currentWorkflow.type === 'POST') {
+                    const payload = document.getElementById('test-payload').value;
+                    options.headers = { 'Content-Type': 'application/json' };
+                    options.body = payload;
+                }
+                
+                const response = await fetch(url, options);
+                const result = await response.text();
+                
+                document.getElementById('test-result').innerHTML = `
+                    <div class="event-log" style="margin-top: 16px;">
+                        <h3>Response</h3>
+                        <div class="event-item">
+                            <div class="event-header">
+                                <span class="status-badge ${response.ok ? 'success' : 'error'}">
+                                    <i class="fas fa-${response.ok ? 'check' : 'times'}-circle"></i>
+                                    ${response.status} ${response.statusText}
+                                </span>
+                                <span class="event-timestamp">${formatTimestamp(new Date())}</span>
+                            </div>
+                            <div class="event-data">${result}</div>
+                        </div>
+                    </div>
+                `;
+                
+                showToast('Workflow triggered successfully!');
+                setTimeout(loadEvents, 2000);
+                
+            } catch (err) {
+                document.getElementById('test-result').innerHTML = `
+                    <div class="event-log" style="margin-top: 16px;">
+                        <h3>Error</h3>
+                        <div class="event-item">
+                            <div class="event-header">
+                                <span class="status-badge error">
+                                    <i class="fas fa-times-circle"></i> Failed
+                                </span>
+                            </div>
+                            <div class="event-data">${err.message}</div>
+                        </div>
+                    </div>
+                `;
+                showToast('Failed to trigger workflow', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-play"></i> Trigger Workflow';
+            }
+        }
+        
+        async function loadEvents() {
+            if (!currentWorkflow) return;
+            
+            try {
+                const response = await fetch(`${DATAAPI_BASE}/api/v1/integrations/events/n8n?limit=50`);
+                const allEvents = await response.json();
+                
+                // Filter events for current workflow
+                events = allEvents.filter(e => 
+                    e.body.workflow_id && 
+                    e.body.workflow_id.toLowerCase().includes(currentWorkflow.id.toLowerCase())
+                );
+                
+                renderEvents();
+            } catch (err) {
+                console.error('Failed to load events:', err);
+            }
+        }
+        
+        function renderEvents() {
+            const container = document.getElementById('event-list');
+            if (!container) return;
+            
+            if (events.length === 0) {
+                container.innerHTML = '<div class="empty-state"><i class="fas fa-inbox"></i><p>No events yet</p></div>';
+                return;
+            }
+            
+            container.innerHTML = events.slice(0, 20).map(evt => {
+                const eventType = evt.body.event_type || 'event';
+                const timestamp = formatTimestamp(evt.at);
+                const data = JSON.stringify(evt.body.data || {}, null, 2);
+                
+                return `
+                    <div class="event-item">
+                        <div class="event-header">
+                            <span class="event-type">${eventType}</span>
+                            <span class="event-timestamp">${timestamp}</span>
+                        </div>
+                        <div class="event-data">${data}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        function openN8nEditor() {
+            window.open('https://n8n.specialblend.icu', '_blank');
+        }
+        
+        // Initialize
+        renderWorkflowList();
+    </script>
+</body>
+</html>
