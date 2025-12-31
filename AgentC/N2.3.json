@@ -42,7 +42,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Configuration for document directories to scan\nconst config = $input.first().json;\n\n// Default directories if not provided via webhook\nconst directories = config.directories || [\n  { path: '/mnt/smb/Docs', pattern: '*.md', source: 'nas-docs' },\n  { path: '/mnt/smb/Docs', pattern: '*.txt', source: 'nas-docs' },\n  { path: '/mnt/smb/Docs', pattern: '*.pdf', source: 'nas-docs' }\n];\n\nreturn directories.map(dir => ({ json: dir }));"
+        "jsCode": "// Configuration for document directories to scan\nconst config = $input.first().json;\n\n// Default directories if not provided via webhook\nconst directories = config.directories || [\n  { path: '/mnt/datalake/RAG', pattern: '*.md', source: 'nas-docs' },\n  { path: '/mnt/datalake/RAG', pattern: '*.txt', source: 'nas-docs' },\n  { path: '/mnt/datalake/RAG', pattern: '*.pdf', source: 'nas-docs' }\n];\n\nreturn directories.map(dir => ({ json: dir }));"
       },
       "id": "ConfigureDirs",
       "name": "Configure Directories",

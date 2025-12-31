@@ -526,4 +526,54 @@ document.addEventListener('DOMContentLoaded', () => {
     if (refreshScansBtn) {
         refreshScansBtn.addEventListener('click', loadScans);
     }
+
+    // RAG Trigger
+    const triggerRagBtn = document.getElementById('triggerRagBtn');
+    if (triggerRagBtn) {
+        triggerRagBtn.addEventListener('click', async () => {
+            const dir = document.getElementById('ragTargetDir').value || '/mnt/smb/Docs';
+            const resultEl = document.getElementById('ragResult');
+            
+            triggerRagBtn.disabled = true;
+            triggerRagBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Triggering...';
+            
+            try {
+                // Trigger N2.3 via webhook
+                // We need the webhook ID for N2.3. Assuming it's 'sbqc-n2-3-rag-ingest' based on the JSON file.
+                // We'll use the same proxy/logic as handleWebhookTrigger but specific here.
+                
+                const payload = {
+                    directories: [
+                        { path: dir, pattern: '*.md', source: 'manual-trigger' },
+                        { path: dir, pattern: '*.txt', source: 'manual-trigger' },
+                        { path: dir, pattern: '*.pdf', source: 'manual-trigger' }
+                    ]
+                };
+
+                // Use the generic webhook trigger endpoint if available, or construct URL
+                // Since we don't have a direct backend proxy for arbitrary webhooks, we'll try to hit n8n directly
+                // OR use the existing handleWebhookTrigger logic if we can reuse it.
+                // Let's reuse the logic by calling the same endpoint.
+                
+                // We need to know the n8n URL. In handleWebhookTrigger it uses /integrations/n8n/webhook/:id
+                // Let's assume AgentX has this route.
+                
+                const res = await API.post('/integrations/n8n/webhook/sbqc-n2-3-rag-ingest', payload);
+                
+                resultEl.style.display = 'block';
+                resultEl.style.color = '#4ade80';
+                resultEl.textContent = 'Ingestion triggered successfully!';
+                
+            } catch (error) {
+                console.error('RAG trigger failed:', error);
+                resultEl.style.display = 'block';
+                resultEl.style.color = '#f87171';
+                resultEl.textContent = 'Failed: ' + (error.message || 'Unknown error');
+            } finally {
+                triggerRagBtn.disabled = false;
+                triggerRagBtn.innerHTML = '<i class="fas fa-file-import"></i> Trigger Ingestion';
+                setTimeout(() => { resultEl.style.display = 'none'; }, 5000);
+            }
+        });
+    }
 });
