@@ -93,11 +93,11 @@
     }
   ],
   "connections": {
-    "Cron2am": {
+    "Schedule (Daily 2AM)": {
       "main": [
         [
           {
-            "node": "MergeTriggers",
+            "node": "Merge Triggers",
             "type": "main",
             "index": 0
           }
@@ -108,29 +108,29 @@
       "main": [
         [
           {
-            "node": "MergeTriggers",
+            "node": "Merge Triggers",
             "type": "main",
             "index": 1
           }
         ]
       ]
     },
-    "MergeTriggers": {
+    "Merge Triggers": {
       "main": [
         [
           {
-            "node": "TriggerScan",
+            "node": "Trigger DataAPI Scanner",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "TriggerScan": {
+    "Trigger DataAPI Scanner": {
       "main": [
         [
           {
-            "node": "LogEvent",
+            "node": "Log scan_triggered event",
             "type": "main",
             "index": 0
           }

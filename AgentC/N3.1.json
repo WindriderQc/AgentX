@@ -124,71 +124,71 @@
     }
   ],
   "connections": {
-    "ScheduleTrigger": {
+    "Schedule (10 min)": {
       "main": [
         [
           {
-            "node": "MergeTriggers",
+            "node": "Merge Triggers",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "WebhookTrigger": {
+    "Webhook (Manual)": {
       "main": [
         [
           {
-            "node": "MergeTriggers",
+            "node": "Merge Triggers",
             "type": "main",
             "index": 1
           }
         ]
       ]
     },
-    "MergeTriggers": {
+    "Merge Triggers": {
       "main": [
         [
           {
-            "node": "PingUGFrank",
+            "node": "Ping UGFrank (99)",
             "type": "main",
             "index": 0
           },
           {
-            "node": "PingUGBrutal",
+            "node": "Ping UGBrutal (12)",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "PingUGFrank": {
+    "Ping UGFrank (99)": {
       "main": [
         [
           {
-            "node": "FormatResults",
+            "node": "Format Results",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "PingUGBrutal": {
+    "Ping UGBrutal (12)": {
       "main": [
         [
           {
-            "node": "FormatResults",
+            "node": "Format Results",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "FormatResults": {
+    "Format Results": {
       "main": [
         [
           {
-            "node": "LogToDataAPI",
+            "node": "Log to DataAPI",
             "type": "main",
             "index": 0
           }

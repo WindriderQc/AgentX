@@ -250,161 +250,161 @@
     }
   ],
   "connections": {
-    "ScheduleTrigger": {
+    "Schedule (Weekly Sun 3AM)": {
       "main": [
         [
           {
-            "node": "MergeTriggers",
+            "node": "Merge Triggers",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "WebhookTrigger": {
+    "Webhook (Manual)": {
       "main": [
         [
           {
-            "node": "MergeTriggers",
+            "node": "Merge Triggers",
             "type": "main",
             "index": 1
           }
         ]
       ]
     },
-    "MergeTriggers": {
+    "Merge Triggers": {
       "main": [
         [
           {
-            "node": "GetFeedbackSummary",
+            "node": "Get Feedback Summary",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "GetFeedbackSummary": {
+    "Get Feedback Summary": {
       "main": [
         [
           {
-            "node": "AnalyzeFeedback",
+            "node": "Analyze Feedback Data",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "AnalyzeFeedback": {
+    "Analyze Feedback Data": {
       "main": [
         [
           {
-            "node": "CheckIssues",
+            "node": "Has Issues?",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "CheckIssues": {
+    "Has Issues?": {
       "main": [
         [
           {
-            "node": "GetNegativeFeedback",
+            "node": "Get Negative Feedback Examples",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "NoIssuesReport",
+            "node": "No Issues Report",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "GetNegativeFeedback": {
+    "Get Negative Feedback Examples": {
       "main": [
         [
           {
-            "node": "PrepareAIPrompt",
+            "node": "Prepare AI Analysis Prompt",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "PrepareAIPrompt": {
+    "Prepare AI Analysis Prompt": {
       "main": [
         [
           {
-            "node": "CallAIForAnalysis",
+            "node": "Get AI Recommendations",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "CallAIForAnalysis": {
+    "Get AI Recommendations": {
       "main": [
         [
           {
-            "node": "BuildReport",
+            "node": "Build Analysis Report",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "BuildReport": {
+    "Build Analysis Report": {
       "main": [
         [
           {
-            "node": "MergeReports",
+            "node": "Merge Reports",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "NoIssuesReport": {
+    "No Issues Report": {
       "main": [
         [
           {
-            "node": "MergeReports",
+            "node": "Merge Reports",
             "type": "main",
             "index": 1
           }
         ]
       ]
     },
-    "MergeReports": {
+    "Merge Reports": {
       "main": [
         [
           {
-            "node": "LogToDataAPI",
+            "node": "Log Report (DataAPI)",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "LogToDataAPI": {
+    "Log Report (DataAPI)": {
       "main": [
         [
           {
-            "node": "NeedsHumanReview",
+            "node": "Needs Human Review?",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "NeedsHumanReview": {
+    "Needs Human Review?": {
       "main": [
         [
           {
-            "node": "NotifyAdmin",
+            "node": "Notify Admin (Placeholder)",
             "type": "main",
             "index": 0
           }
