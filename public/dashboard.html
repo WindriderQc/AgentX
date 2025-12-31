@@ -497,6 +497,74 @@
             overflow-y: auto;
         }
 
+        /* Scans List */
+        .scans-list {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .scan-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+            font-size: 13px;
+        }
+
+        .scan-item:last-child {
+            border-bottom: none;
+        }
+
+        .scan-info {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .scan-info .id {
+            color: var(--text);
+            font-family: monospace;
+            font-size: 11px;
+        }
+
+        .scan-info .status {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .scan-info .status.running { color: #fbbf24; }
+        .scan-info .status.complete { color: #4ade80; }
+        .scan-info .status.stopped { color: #f87171; }
+
+        .scan-actions {
+            display: flex;
+            gap: 6px;
+        }
+
+        .btn-xs {
+            padding: 4px 8px;
+            font-size: 10px;
+            border-radius: 4px;
+            border: 1px solid var(--panel-border);
+            background: rgba(255,255,255,0.05);
+            color: var(--muted);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-xs:hover {
+            background: rgba(255,255,255,0.1);
+            color: var(--text);
+        }
+
+        .btn-xs.danger:hover {
+            background: rgba(248,113,113,0.2);
+            color: #f87171;
+            border-color: rgba(248,113,113,0.3);
+        }
+
         .collection-item {
             display: flex;
             justify-content: space-between;
@@ -895,10 +963,32 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- DataAPI Scans Sub-section -->
+                <div class="section-header" style="margin-top: 0; border-top: 1px solid var(--panel-border);">
+                    <h2><i class="fas fa-hdd"></i> DataAPI Scans</h2>
+                    <button class="btn-sm" id="refreshScansBtn" title="Refresh Scans"><i class="fas fa-sync-alt"></i></button>
+                </div>
+                <div class="section-body">
+                    <div class="scans-list" id="scans-list" style="max-height: 200px; overflow-y: auto;">
+                        <div class="scan-item"><span style="color: var(--muted);">Loading...</span></div>
+                    </div>
+                </div>
             </div>
 
         </div>
 
+    </div>
+
+    <!-- Scan Report Modal -->
+    <div id="scanReportModal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 2000; align-items: center; justify-content: center;">
+        <div class="modal-content" style="background: #1e293b; padding: 24px; border-radius: 12px; width: 80%; max-width: 800px; max-height: 80vh; overflow-y: auto; border: 1px solid var(--panel-border);">
+            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h2 style="margin: 0; font-size: 20px;">Scan Report</h2>
+                <button class="btn-sm" id="closeScanReportBtn"><i class="fas fa-times"></i></button>
+            </div>
+            <pre id="scanReportContent" style="background: rgba(0,0,0,0.3); padding: 16px; border-radius: 8px; overflow-x: auto; font-family: monospace; font-size: 12px; color: #e2e8f0;"></pre>
+        </div>
     </div>
 
     <script type="module" src="/js/dashboard.js"></script>
