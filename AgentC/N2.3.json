@@ -190,121 +190,121 @@
     }
   ],
   "connections": {
-    "WebhookTrigger": {
+    "Webhook (Manual/Event)": {
       "main": [
         [
           {
-            "node": "MergeTriggers",
+            "node": "Merge Triggers",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "ScheduleTrigger": {
+    "Schedule (Weekly Sun 3AM)": {
       "main": [
         [
           {
-            "node": "MergeTriggers",
+            "node": "Merge Triggers",
             "type": "main",
             "index": 1
           }
         ]
       ]
     },
-    "MergeTriggers": {
+    "Merge Triggers": {
       "main": [
         [
           {
-            "node": "ConfigureDirs",
+            "node": "Configure Directories",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "ConfigureDirs": {
+    "Configure Directories": {
       "main": [
         [
           {
-            "node": "FindFiles",
+            "node": "Find Recent Files",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "FindFiles": {
+    "Find Recent Files": {
       "main": [
         [
           {
-            "node": "ParseFiles",
+            "node": "Parse File List",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "ParseFiles": {
+    "Parse File List": {
       "main": [
         [
           {
-            "node": "FilterSkipped",
+            "node": "Filter Skipped",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "FilterSkipped": {
+    "Filter Skipped": {
       "main": [
         [
           {
-            "node": "ReadContent",
+            "node": "Read File Content",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "ReadContent": {
+    "Read File Content": {
       "main": [
         [
           {
-            "node": "PreparePayload",
+            "node": "Prepare RAG Payload",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "PreparePayload": {
+    "Prepare RAG Payload": {
       "main": [
         [
           {
-            "node": "IngestToAgentX",
+            "node": "Ingest to AgentX RAG",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "IngestToAgentX": {
+    "Ingest to AgentX RAG": {
       "main": [
         [
           {
-            "node": "SummarizeResults",
+            "node": "Summarize Results",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "SummarizeResults": {
+    "Summarize Results": {
       "main": [
         [
           {
-            "node": "LogToDataAPI",
+            "node": "Log Event (DataAPI)",
             "type": "main",
             "index": 0
           }
