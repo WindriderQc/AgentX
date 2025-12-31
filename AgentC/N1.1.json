@@ -17,7 +17,33 @@
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.1,
       "position": [
-        -620,
+        -820,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "path": "sbqc-n1-1-health-check",
+        "options": {}
+      },
+      "id": "WebhookTrigger",
+      "name": "Webhook (Manual)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -820,
+        100
+      ],
+      "webhookId": "sbqc-n1-1-health-check"
+    },
+    {
+      "parameters": {},
+      "id": "MergeTriggers",
+      "name": "Merge Triggers",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        -600,
         0
       ]
     },
@@ -178,6 +204,28 @@
   ],
   "connections": {
     "Schedule (Every 5 min)": {
+      "main": [
+        [
+          {
+            "node": "MergeTriggers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook (Manual)": {
+      "main": [
+        [
+          {
+            "node": "MergeTriggers",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "MergeTriggers": {
       "main": [
         [
           {

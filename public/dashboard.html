@@ -795,14 +795,13 @@
                         <div class="field-group">
                             <label>Workflow <span class="field-help" title="Select a pre-configured workflow or choose Custom to enter your own webhook"><i class="fas fa-info-circle"></i></span></label>
                             <select id="workflowSelector">
+                                <option value="n1-1">N1.1 System Health Check</option>
                                 <option value="n1-3">N1.3 Ops AI Diagnostic</option>
+                                <option value="n2-1">N2.1 NAS File Scanner</option>
                                 <option value="n2-3">N2.3 RAG Ingestion</option>
+                                <option value="n3-1">N3.1 Model Health Monitor</option>
                                 <option value="n3-2">N3.2 AI Gateway</option>
                                 <option value="n5-1">N5.1 Feedback Analysis</option>
-                                <option value="agentmail">AgentMail (Legacy)</option>
-                                <option value="rag-ingest">RAG Ingestion (Legacy)</option>
-                                <option value="chat-complete">Chat Completion (Legacy)</option>
-                                <option value="analytics">Analytics Event</option>
                                 <option value="custom">Custom Webhook...</option>
                             </select>
                             <div class="field-hint" id="workflowUrlDisplay" style="margin-top: 4px; font-family: monospace; color: var(--accent); font-size: 12px;"></div>
