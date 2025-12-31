@@ -217,11 +217,14 @@ function escapeHtml(str) {
 
 function showWebhookResult(message, isError = false) {
     const resultDiv = document.getElementById('triggerResult');
+    const headerDiv = document.getElementById('resultHeader');
     if (!resultDiv) return;
     
     resultDiv.classList.add('visible');
+    if (headerDiv) headerDiv.classList.add('visible');
+    
     resultDiv.style.color = isError ? '#f87171' : '#4ade80';
-    resultDiv.innerHTML = message;
+    resultDiv.textContent = message; // Use textContent to preserve formatting and prevent XSS
 }
 
 // Update workflow description based on selection
@@ -548,6 +551,38 @@ document.addEventListener('DOMContentLoaded', () => {
     if (clearPayloadBtn) {
         clearPayloadBtn.addEventListener('click', () => {
             document.getElementById('webhookPayload').value = '{}';
+        });
+    }
+
+    // Result action buttons
+    const expandResultBtn = document.getElementById('expandResultBtn');
+    if (expandResultBtn) {
+        expandResultBtn.addEventListener('click', () => {
+            const resultDiv = document.getElementById('triggerResult');
+            const icon = expandResultBtn.querySelector('i');
+            resultDiv.classList.toggle('expanded');
+            if (resultDiv.classList.contains('expanded')) {
+                icon.classList.remove('fa-expand');
+                icon.classList.add('fa-compress');
+            } else {
+                icon.classList.remove('fa-compress');
+                icon.classList.add('fa-expand');
+            }
+        });
+    }
+
+    const copyResultBtn = document.getElementById('copyResultBtn');
+    if (copyResultBtn) {
+        copyResultBtn.addEventListener('click', () => {
+            const resultDiv = document.getElementById('triggerResult');
+            const text = resultDiv.textContent;
+            navigator.clipboard.writeText(text).then(() => {
+                const originalIcon = copyResultBtn.innerHTML;
+                copyResultBtn.innerHTML = '<i class="fas fa-check"></i>';
+                setTimeout(() => {
+                    copyResultBtn.innerHTML = originalIcon;
+                }, 2000);
+            });
         });
     }
 

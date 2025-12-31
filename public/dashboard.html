@@ -414,15 +414,32 @@
             padding: 12px;
             font-family: monospace;
             font-size: 11px;
-            max-height: 100px;
+            max-height: 150px;
             overflow-y: auto;
             display: none;
             border: 1px solid var(--panel-border);
+            transition: max-height 0.3s ease;
+            white-space: pre-wrap; /* Preserve formatting */
         }
 
         .webhook-result.visible {
             display: block;
         }
+
+        .webhook-result.expanded {
+            max-height: 600px;
+        }
+
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 12px;
+            margin-bottom: 4px;
+            display: none;
+        }
+        .result-header.visible { display: flex; }
+        .result-label { font-size: 11px; color: var(--muted); font-weight: 600; text-transform: uppercase; }
 
         /* Metrics Grid */
         .metrics-grid {
@@ -811,6 +828,14 @@
                         <button class="btn-sm btn-primary" id="triggerWebhookBtn" style="width: 100%; justify-content: center;">
                             <i class="fas fa-paper-plane"></i> Trigger Webhook
                         </button>
+                        
+                        <div class="result-header" id="resultHeader">
+                            <span class="result-label">Response</span>
+                            <div class="payload-actions">
+                                <button class="btn-xs" id="expandResultBtn" title="Expand view"><i class="fas fa-expand"></i></button>
+                                <button class="btn-xs" id="copyResultBtn" title="Copy to clipboard"><i class="fas fa-copy"></i></button>
+                            </div>
+                        </div>
                         <div class="webhook-result" id="triggerResult"></div>
                     </div>
                 </div>
