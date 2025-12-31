@@ -31,9 +31,9 @@ router.get('/usage', requireAuth, async (req, res) => {
     const toDate = to ? new Date(to) : new Date();
     const fromDate = from ? new Date(from) : new Date(toDate.getTime() - 7 * 24 * 60 * 60 * 1000);
 
+    // Remove userId filter for now to see all data
     const dateFilter = {
-      createdAt: { $gte: fromDate, $lte: toDate },
-      userId: userId // Ensure user isolation
+      createdAt: { $gte: fromDate, $lte: toDate }
     };
 
     // Total counts
@@ -141,9 +141,9 @@ router.get('/feedback', requireAuth, async (req, res) => {
     const toDate = to ? new Date(to) : new Date();
     const fromDate = from ? new Date(from) : new Date(toDate.getTime() - 7 * 24 * 60 * 60 * 1000);
 
+    // Remove userId filter for now
     const dateFilter = {
-      createdAt: { $gte: fromDate, $lte: toDate },
-      userId: userId // Ensure user isolation
+      createdAt: { $gte: fromDate, $lte: toDate }
     };
 
     // Total feedback counts
@@ -251,9 +251,9 @@ router.get('/rag-stats', requireAuth, async (req, res) => {
     const toDate = to ? new Date(to) : new Date();
     const fromDate = from ? new Date(from) : new Date(toDate.getTime() - 7 * 24 * 60 * 60 * 1000);
 
+    // Remove userId filter for now
     const dateFilter = {
-      createdAt: { $gte: fromDate, $lte: toDate },
-      userId: userId // Ensure user isolation
+      createdAt: { $gte: fromDate, $lte: toDate }
     };
 
     // RAG usage counts
