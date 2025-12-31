@@ -3,6 +3,10 @@
 **Version:** 1.0  
 **Date:** December 26, 2025
 
+📖 **See Also:**  
+→ [04-N8N-WORKFLOWS.md](04-N8N-WORKFLOWS.md) - Workflow implementations of these design principles  
+→ [07-AGENTX-API-REFERENCE.md](07-AGENTX-API-REFERENCE.md) - Complete API documentation
+
 ---
 
 ## System Diagram

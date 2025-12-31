@@ -1,6 +1,129 @@
 # 05 - Deployment Guide
 
-**Last Updated:** December 26, 2025
+**Last Updated:** December 31, 2025
+
+---
+
+## Quick Start
+
+**For new deployments, start here:**
+1. [Environment Variables Reference](#environment-variables-reference) - Configure first!
+2. [MongoDB Setup](#1-mongodb-setup)
+3. [DataAPI Deployment](#2-dataapi-deployment)
+4. [AgentX Deployment](#3-agentx-deployment)
+5. [n8n Setup](#4-n8n-setup)
+
+---
+
+## Environment Variables Reference
+
+### AgentX (.env)
+
+**Required Variables:**
+
+| Variable | Type | Example | Description |
+|----------|------|---------|-------------|
+| `MONGODB_URI` | Connection | `mongodb://192.168.2.33:27017/agentx` | MongoDB connection string |
+| `PORT` | Number | `3080` | AgentX server port |
+| `SESSION_SECRET` | Secret | (32+ chars) | Session encryption key |
+| `CSRF_SECRET` | Secret | (32+ chars) | CSRF token secret |
+| `AGENTX_API_KEY` | Secret | (32+ chars) | API key for automation access |
+
+**Ollama & RAG:**
+
+| Variable | Type | Example | Description |
+|----------|------|---------|-------------|
+| `OLLAMA_HOST` | URL | `http://192.168.2.99:11434` | Primary Ollama instance (front-door) |
+| `EMBEDDING_MODEL` | String | `nomic-embed-text` | Model for RAG embeddings |
+| `VECTOR_STORE_TYPE` | String | `qdrant` or `memory` | Vector store backend |
+| `QDRANT_URL` | URL | `http://192.168.2.33:6333` | Qdrant server URL (if using) |
+| `QDRANT_COLLECTION` | String | `agentx_embeddings` | Qdrant collection name |
+
+**Integration:**
+
+| Variable | Type | Example | Description |
+|----------|------|---------|-------------|
+| `DATAAPI_BASE_URL` | URL | `http://192.168.2.33:3003` | DataAPI base URL |
+| `DATAAPI_API_KEY` | Secret | (32+ chars) | API key for DataAPI access |
+| `N8N_WEBHOOK_BASE_URL` | URL | `https://n8n.specialblend.icu/webhook` | n8n webhook base |
+| `N8N_API_KEY` | Secret | (32+ chars) | API key for n8n to call AgentX |
+
+**Optional:**
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `NODE_ENV` | String | `development` | `production` or `development` |
+| `CORS_ORIGINS` | String | `*` | Comma-separated allowed origins |
+| `HOST` | String | `localhost` | Server bind address |
+
+**Generate Secrets:**
+```bash
+# Generate all secrets at once
+node -e "const c=require('crypto'); console.log('SESSION_SECRET='+c.randomBytes(32).toString('hex')); console.log('CSRF_SECRET='+c.randomBytes(32).toString('hex')); console.log('AGENTX_API_KEY='+c.randomBytes(32).toString('hex')); console.log('DATAAPI_API_KEY='+c.randomBytes(32).toString('hex')); console.log('N8N_API_KEY='+c.randomBytes(32).toString('hex'));"
+```
+
+---
+
+### DataAPI (.env)
+
+**Required Variables:**
+
+| Variable | Type | Example | Description |
+|----------|------|---------|-------------|
+| `MONGODB_URI` | Connection | `mongodb://192.168.2.33:27017/SBQC` | MongoDB connection string |
+| `PORT` | Number | `3003` | DataAPI server port |
+| `SESSION_SECRET` | Secret | (32+ chars) | Session encryption key |
+| `N8N_API_KEY` | Secret | (32+ chars) | API key for n8n access |
+
+**n8n Webhook IDs (Optional):**
+
+| Variable | Type | Description |
+|----------|------|-------------|
+| `N8N_WEBHOOK_SCAN_COMPLETE` | String | Webhook ID for scan completion events |
+| `N8N_WEBHOOK_FILES_EXPORTED` | String | Webhook ID for export events |
+| `N8N_WEBHOOK_STORAGE_ALERT` | String | Webhook ID for storage alerts |
+| `N8N_WEBHOOK_GENERIC` | String | Generic webhook ID |
+
+> ⚠️ **Note:** These webhook env vars are OPTIONAL. They're for future DataAPI → n8n event pushing. Currently, n8n pulls from DataAPI directly.
+
+**Configuration:**
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `N8N_LAN_ONLY` | Boolean | `true` | Restrict n8n endpoints to LAN |
+| `N8N_WEBHOOK_BASE_URL` | URL | - | n8n webhook base URL |
+
+---
+
+### n8n Configuration
+
+**n8n Environment:**
+
+| Variable | Value | Description |
+|----------|-------|-------------|
+| `N8N_PORT` | `5678` | n8n web UI port |
+| `N8N_PROTOCOL` | `https` | Use https (via Cloudflare tunnel) |
+| `N8N_HOST` | `n8n.specialblend.icu` | Public domain |
+| `WEBHOOK_URL` | `https://n8n.specialblend.icu` | Webhook base URL |
+
+**n8n Infrastructure:**
+- **Host:** Ubundocker (192.168.2.199)
+- **Deployment:** Docker container
+- **Local Access:** http://192.168.2.199:5678
+- **Public Access:** https://n8n.specialblend.icu (via Cloudflare Tunnel)
+- **Tunnel:** Cloudflare exposes local port 5678 to public domain
+
+**n8n Credentials to Create:**
+
+1. **Header Auth (x-api-key)** - For calling AgentX/DataAPI
+   - Name: `AgentX API Key`
+   - Header: `x-api-key`
+   - Value: Same as `AGENTX_API_KEY` from AgentX .env
+
+2. **Header Auth (x-api-key)** - For calling DataAPI
+   - Name: `DataAPI API Key`
+   - Header: `x-api-key`
+   - Value: Same as `N8N_API_KEY` from DataAPI .env
 
 ---
 
@@ -9,7 +132,7 @@
 | Host | IP | Services | Notes |
 |------|-----|----------|-------|
 | Docker Host | 192.168.2.33 | DataAPI, AgentX, MongoDB | Main application server |
-| UGStation | 192.168.2.199 | n8n | Automation workflows |
+| Ubundocker | 192.168.2.199 | n8n (Docker) | Automation, https://n8n.specialblend.icu (Cloudflare) |
 | UGBrutal | 192.168.2.12 | Ollama (5070 Ti) | Heavy inference |
 | UGFrank | 192.168.2.99 | Ollama (3080 Ti) | Fast inference |
 

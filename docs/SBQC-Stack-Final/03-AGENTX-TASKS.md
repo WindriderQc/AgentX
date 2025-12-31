@@ -5,6 +5,10 @@
 **Database:** MongoDB `agentx` @ 192.168.2.33:27017  
 **Version:** 1.3.1
 
+📖 **See Also:**  
+→ [07-AGENTX-API-REFERENCE.md](07-AGENTX-API-REFERENCE.md) - Complete API documentation with all 40+ endpoints  
+→ [05-DEPLOYMENT.md](05-DEPLOYMENT.md#environment-variables-reference) - Environment configuration guide
+
 ---
 
 ## Current State Summary
@@ -69,14 +73,16 @@ curl -X POST http://192.168.2.33:3080/api/chat \
 ---
 
 ### Task A0.2: User Profile & Memory Validation
-**Context:** `routes/api.js`, `models/UserProfile.js`
+**Context:** `routes/profile.js`, `models/UserProfile.js`
+
+> 📖 **Full API docs:** [07-AGENTX-API-REFERENCE.md#user-profile--feedback](07-AGENTX-API-REFERENCE.md#user-profile--feedback)
 
 ```bash
 # Get profile:
-curl http://192.168.2.33:3080/api/user/profile?userId=testuser
+curl http://192.168.2.33:3080/api/profile?userId=testuser
 
 # Update profile:
-curl -X POST http://192.168.2.33:3080/api/user/profile \
+curl -X POST http://192.168.2.33:3080/api/profile \
   -H "Content-Type: application/json" \
   -d '{
     "userId": "testuser",

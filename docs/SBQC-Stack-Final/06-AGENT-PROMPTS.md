@@ -477,3 +477,137 @@ curl host:11434/api/tags      # List models via API
 curl host:11434/api/generate  # Generate completion
 curl host:11434/api/chat      # Chat completion
 ```
+
+---
+
+## Agent C: SBQC Ops (Infrastructure Monitor)
+
+### System Prompt
+
+```markdown
+You are SBQC Ops, a precise personal assistant + home IT manager for the SBQC stack. You use only the HTTP MCP tool to probe, test, and maintain DataAPI (storage scan jobs, export flows, logs) running on port 3003 on the LAN. Be cautious, auditable, and idempotent.
+
+## Configuration
+DATAAPI_BASE_URL_API = "http://192.168.2.33:3003/api/v1"
+DATAAPI_BASE_URL_ROOT = "http://192.168.2.33:3003"
+
+## Ground Rules
+1. **Read-only first.** Only do writes for low-risk tests or explicit maintenance.
+2. **Audit trail.** After each task sequence, POST a compact report to the sink.
+3. **Secrets hygiene.** Never echo full secrets/signatures (show last 6 chars).
+4. **Idempotency.** Generate a correlation_id (e.g., `sbqc-<ISO8601>-<rand>`).
+5. **Retries.** On 429/5xx: backoff 1s → 2s → 4s (max 3). Record attempts.
+
+## Authentication
+Use header authentication for all requests:
+`x-api-key`: <YOUR_API_KEY_HERE>
+
+## Playbooks
+
+### 1) Health Check (Read-Only)
+**Goal:** Verify API responsiveness.
+- `GET ${DATAAPI_BASE_URL_API}/n8n/health` → Expect 200 OK.
+- `GET ${DATAAPI_BASE_URL_API}/storage/scans?limit=1` → Expect 200 OK.
+- **Log:** Latency & status.
+
+### 2) Sink Probe (Write, Low-Risk)
+**Goal:** Verify integration sink is accepting events.
+- `POST ${DATAAPI_BASE_URL_ROOT}/integrations/events/n8n`
+- **Body:**
+  ```json
+  {
+    "workflow_id": "sbqc-ops-agent",
+    "event_type": "agent_probe",
+    "correlation_id": "<generated>",
+    "probe": {"what":"integration_sink","ts":"<ISO8601>"}
+  }
+  ```
+- Expect: 200 OK with { "ok": true, "id": "..." }.
+
+### 3) Storage Scans (Maintenance)
+**Goal:** Trigger or monitor NAS file indexing.
+- **Start:** `POST ${DATAAPI_BASE_URL_API}/storage/scan` → Expect scan_id.
+- **Monitor:** `GET ${DATAAPI_BASE_URL_API}/storage/status/<scan_id>` every 10–30s.
+- **Stop:** `POST ${DATAAPI_BASE_URL_API}/storage/stop/<scan_id>` (Only if confirmed).
+- **List:** `GET ${DATAAPI_BASE_URL_API}/storage/scans`.
+
+### 4) File Exports (Maintenance)
+**Goal:** Generate reports of file system stats.
+- **Generate:** `POST ${DATAAPI_BASE_URL_API}/files/export` → Expect export filename.
+- **List:** `GET ${DATAAPI_BASE_URL_API}/files/exports`.
+- **Optimized:** `GET ${DATAAPI_BASE_URL_API}/files/export-optimized/<type>` (types: full, summary, media, stats).
+- **Delete:** `DELETE ${DATAAPI_BASE_URL_API}/files/exports/<filename>` (Only if confirmed).
+
+## Error Handling
+- **401/403:** Stop immediately. Check API Key.
+- **400:** Show sent body (redacted); highlight missing/invalid fields.
+- **429:** Backoff (1/2/4s), then log and stop.
+- **5xx:** Retry once (1–2s), then log and stop.
+
+## Tool Output Format
+For every call show:
+1. Method & Full URL
+2. Redacted Headers
+3. Body/Query
+4. Expected Success (Status + Schema)
+5. Result Summary (Status, Key Fields, Latency)
+6. One-line Verdict
+```
+
+---
+
+## Multi-Model Architecture Vision
+
+### Overview
+
+The SBQC Stack implements a **local multi-model AI cloud** with specialized models for different tasks:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  Browser UI (AgentX @ 192.168.2.33:3080)                                    │
+│  - Main chat interface                                                      │
+│  - Voice input/output                                                       │
+│  - Action buttons (workflows, queries)                                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                        │
+                                        ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  Front Door (UGFrank @ 192.168.2.99)                                        │
+│  3080 Ti - Fast Response                                                    │
+│  ├── qwen2.5:7b-instruct - Entry point, conversation, routing               │
+│  ├── nomic-embed-text - Embeddings for RAG                                  │
+│  └── (Future) Whisper STT + Piper TTS                                       │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                        │
+                                        ▼ (routes complex tasks)
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  Back Office (UGBrutal @ 192.168.2.12)                                      │
+│  5070 Ti - Heavy Compute                                                    │
+│  ├── deepseek-r1:8b - Reasoning, logic puzzles, chain-of-thought            │
+│  ├── gemma3:12b - Creative, friendly, vision (multimodal future)            │
+│  └── qwen2.5-coder:14b - Coding, planning, long context                     │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Model Routing Strategy
+
+The front-door agent (Qwen on UGFrank) decides which specialist to invoke:
+
+| Task Type | Route To | Reason |
+|-----------|----------|--------|
+| General conversation | qwen2.5:7b @ UGFrank | Fast, always-on |
+| Code generation/review | qwen2.5-coder:14b @ UGBrutal | Best for code |
+| Logic puzzles, reasoning | deepseek-r1:8b @ UGBrutal | Chain-of-thought |
+| Creative writing, stories | gemma3:12b @ UGBrutal | Natural, friendly tone |
+| Image analysis (future) | gemma3 multimodal @ UGBrutal | Vision capability |
+| RAG embedding | nomic-embed-text @ UGFrank | Fast embeddings |
+
+### Implementation Pattern
+
+The routing is handled through n8n workflows that:
+1. Receive intent from AgentX chat
+2. Parse task type from user message
+3. Route HTTP request to appropriate Ollama host/model
+4. Return response to AgentX for delivery
+
+This creates the illusion of one intelligent assistant while leveraging specialized models behind the scenes.

@@ -1,6 +1,32 @@
-# AgentX v1.0.0
+# AgentX v1.3.1
 
 **Production-ready local AI assistant with RAG, conversation memory, and continuous improvement capabilities.**
+
+---
+
+## 📖 Documentation Hub
+
+**For complete, up-to-date documentation, see the SBQC Stack documentation:**
+
+### 🎯 Start Here
+- **[00-OVERVIEW.md](docs/SBQC-Stack-Final/00-OVERVIEW.md)** - System architecture overview & getting started guide
+- **[00-AUDIT-SUMMARY.md](docs/SBQC-Stack-Final/00-AUDIT-SUMMARY.md)** - Latest documentation status & changes
+- **[07-AGENTX-API-REFERENCE.md](docs/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md)** - Complete API documentation (40+ endpoints)
+
+### 🔧 Configuration & Deployment
+- **[05-DEPLOYMENT.md](docs/SBQC-Stack-Final/05-DEPLOYMENT.md)** - Environment variables & deployment guide
+- **[01-ARCHITECTURE.md](docs/SBQC-Stack-Final/01-ARCHITECTURE.md)** - System design & architecture decisions
+
+### 🔨 Development & Testing
+- **[03-AGENTX-TASKS.md](docs/SBQC-Stack-Final/03-AGENTX-TASKS.md)** - Validation tasks & feature roadmap
+- **[04-N8N-WORKFLOWS.md](docs/SBQC-Stack-Final/04-N8N-WORKFLOWS.md)** - n8n workflow specifications
+
+### 📚 Additional Resources
+- **[Quick Start Guide](docs/onboarding/quickstart.md)** - Installation & setup (original guide)
+- **[Backend Overview](docs/architecture/backend-overview.md)** - Implementation details
+- **[API Contracts](docs/api/contracts/)** - Version-specific API contracts
+
+---
 
 ## Documentation Map
 

@@ -4,6 +4,11 @@
 **Running at:** http://192.168.2.33:3003  
 **Database:** MongoDB `SBQC` @ 192.168.2.33:27017
 
+📖 **See Also:**  
+→ [07-AGENTX-API-REFERENCE.md#n8n-integration](07-AGENTX-API-REFERENCE.md#n8n-integration) - AgentX n8n endpoints  
+→ [05-DEPLOYMENT.md#environment-variables-reference](05-DEPLOYMENT.md#environment-variables-reference) - DataAPI configuration  
+→ [04-N8N-WORKFLOWS.md](04-N8N-WORKFLOWS.md) - How n8n workflows use DataAPI
+
 ---
 
 ## Phase 0: Validation & Testing (Priority 1)
