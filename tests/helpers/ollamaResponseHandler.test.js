@@ -113,7 +113,7 @@ describe('Ollama Response Handler', () => {
     it('should handle tags in the middle of content', () => {
       const content = 'Start <|start_header_id|>system<|end_header_id|> End';
       const expected = 'Start  End';
-      expect(cleanContent(content)).toBe('Start  End'.trim());
+      expect(cleanContent(content)).toBe(expected.trim());
     });
   });
 
