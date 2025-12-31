@@ -10,3 +10,5 @@ server.log
 qdrant_data/
 qdrant.log
 qdrant
+qdrant.tar.gz
+storage/
