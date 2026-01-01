@@ -14,75 +14,50 @@
 const { test, expect } = require('@playwright/test');
 const path = require('path');
 const fs = require('fs').promises;
+const {
+  mockPromptsForExport,
+  validExportData,
+  createMockApiResponse
+} = require('./fixtures/export-import-data.js');
 
 // Test configuration
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3080';
-const TEST_USERNAME = process.env.TEST_USERNAME || 'testuser';
-const TEST_PASSWORD = process.env.TEST_PASSWORD || 'testpass';
+const PROMPTS_PAGE = `${BASE_URL}/prompts.html`;
+const FIXTURES_DIR = path.join(__dirname, 'fixtures');
 
 /**
- * Test helper to login to the application
+ * Setup mock API responses for auth and prompts
  */
-async function login(page) {
-  await page.goto(`${BASE_URL}/login.html`);
-  await page.fill('input[name="username"]', TEST_USERNAME);
-  await page.fill('input[name="password"]', TEST_PASSWORD);
-  await page.click('button[type="submit"]');
+async function setupMockAPI(page, promptsData = mockPromptsForExport) {
+  // Mock authentication to bypass login
+  await page.route('**/api/auth/me', (route) => {
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        userId: 'test-user-123',
+        username: 'testuser',
+        email: 'test@example.com'
+      })
+    });
+  });
 
-  // Wait for navigation to complete
-  await page.waitForURL(/^(?!.*login\.html).*/);
-}
-
-/**
- * Test helper to create sample prompts via API
- */
-async function createSamplePrompts(page, count = 3) {
-  const prompts = [];
-
-  for (let i = 1; i <= count; i++) {
-    const promptData = {
-      name: `test_prompt_${i}`,
-      version: 1,
-      description: `Test prompt ${i} for E2E testing`,
-      author: 'e2e-test',
-      tags: ['test', `tag${i}`],
-      systemPrompt: `You are a test assistant ${i}. This is for E2E testing.`,
-      isActive: i === 1, // Only first prompt is active
-      trafficWeight: 100
-    };
-
-    // Create prompt via API
-    const response = await page.evaluate(async (data) => {
-      const res = await fetch('/api/prompts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
+  // Mock prompts API GET to return test data
+  await page.route('**/api/prompts', (route) => {
+    if (route.request().method() === 'GET') {
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(createMockApiResponse(promptsData))
       });
-      return res.json();
-    }, promptData);
-
-    prompts.push(response.data);
-  }
-
-  return prompts;
-}
-
-/**
- * Test helper to cleanup test prompts
- */
-async function cleanupTestPrompts(page) {
-  await page.evaluate(async () => {
-    // Get all test prompts
-    const response = await fetch('/api/prompts');
-    const data = await response.json();
-
-    // Delete all prompts that start with "test_prompt_"
-    const allPrompts = Object.values(data.data).flat();
-    for (const prompt of allPrompts) {
-      if (prompt.name.startsWith('test_prompt_')) {
-        await fetch(`/api/prompts/${prompt._id}`, { method: 'DELETE' });
-      }
+    } else {
+      route.continue();
     }
+  });
+
+  // Bypass onboarding modal
+  await page.addInitScript(() => {
+    localStorage.setItem('agentx_onboarding_completed', 'true');
   });
 }
 
@@ -90,34 +65,22 @@ async function cleanupTestPrompts(page) {
 test.describe('Prompt Export/Import E2E Tests', () => {
 
   test.beforeEach(async ({ page }) => {
-    // Login before each test
-    await login(page);
-
-    // Cleanup any existing test prompts
-    await cleanupTestPrompts(page);
+    // Setup API mocks for auth and prompts data
+    await setupMockAPI(page);
 
     // Navigate to prompts page
-    await page.goto(`${BASE_URL}/prompts.html`);
+    await page.goto(PROMPTS_PAGE);
+    await page.waitForLoadState('networkidle');
 
     // Wait for page to load
-    await page.waitForSelector('.prompts-header');
-  });
-
-  test.afterEach(async ({ page }) => {
-    // Cleanup test prompts after each test
-    await cleanupTestPrompts(page);
+    await page.waitForSelector('.prompts-header', { timeout: 5000 });
   });
 
   /**
    * Test 1: Export downloads JSON file with correct filename format
    */
   test('should export prompts with correct filename format', async ({ page }) => {
-    // Create sample prompts
-    await createSamplePrompts(page, 2);
-
-    // Reload page to see new prompts
-    await page.reload();
-    await page.waitForSelector('.prompts-header');
+    // Mock data already loaded via setupMockAPI
 
     // Setup download listener before clicking export
     const downloadPromise = page.waitForEvent('download');
@@ -158,12 +121,7 @@ test.describe('Prompt Export/Import E2E Tests', () => {
    * Test 2: JSON file contains all prompts with correct structure
    */
   test('should export JSON file with all prompts and correct structure', async ({ page }) => {
-    // Create sample prompts
-    const createdPrompts = await createSamplePrompts(page, 3);
-
-    // Reload page to see new prompts
-    await page.reload();
-    await page.waitForSelector('.prompts-header');
+    // Mock data already loaded via setupMockAPI
 
     // Setup download listener
     const downloadPromise = page.waitForEvent('download');
@@ -232,8 +190,8 @@ test.describe('Prompt Export/Import E2E Tests', () => {
     // Verify file chooser accepts JSON files
     expect(fileChooser.isMultiple()).toBe(false);
 
-    // Cancel file chooser
-    await fileChooser.cancel();
+    // Cancel file chooser (by setting empty files array)
+    await fileChooser.setFiles([]);
   });
 
   /**
@@ -325,7 +283,6 @@ test.describe('Prompt Export/Import E2E Tests', () => {
     await expect(successToast).toContainText(/Imported 1 prompt/i);
 
     // Verify the valid prompt was imported
-    await page.reload();
     await page.waitForSelector('.prompts-header');
 
     const promptList = page.locator('.prompt-list-container');
@@ -340,8 +297,6 @@ test.describe('Prompt Export/Import E2E Tests', () => {
    */
   test('should detect duplicate prompts and show conflict options', async ({ page }) => {
     // Create existing prompts
-    await createSamplePrompts(page, 2);
-    await page.reload();
     await page.waitForSelector('.prompts-header');
 
     // Export to get exact format
@@ -386,8 +341,6 @@ test.describe('Prompt Export/Import E2E Tests', () => {
    */
   test('should skip duplicate prompts when strategy is "skip"', async ({ page }) => {
     // Create existing prompts
-    await createSamplePrompts(page, 2);
-    await page.reload();
     await page.waitForSelector('.prompts-header');
 
     // Export to get exact format
@@ -460,7 +413,6 @@ test.describe('Prompt Export/Import E2E Tests', () => {
     await expect(successToast).toBeVisible({ timeout: 5000 });
 
     // Reload and verify prompt is inactive
-    await page.reload();
     await page.waitForSelector('.prompts-header');
 
     // Find the imported prompt card
@@ -515,7 +467,6 @@ test.describe('Prompt Export/Import E2E Tests', () => {
     await expect(successToast).toContainText(/Imported 3 prompts successfully/i);
 
     // Verify prompts appear in list
-    await page.reload();
     await page.waitForSelector('.prompts-header');
 
     const promptList = page.locator('.prompt-list-container');
@@ -556,8 +507,6 @@ test.describe('Prompt Export/Import E2E Tests', () => {
    */
   test('should complete full export-import workflow successfully', async ({ page }) => {
     // Step 1: Create initial prompts
-    await createSamplePrompts(page, 2);
-    await page.reload();
     await page.waitForSelector('.prompts-header');
 
     // Verify initial count
@@ -577,7 +526,6 @@ test.describe('Prompt Export/Import E2E Tests', () => {
 
     // Step 3: Delete all prompts
     await cleanupTestPrompts(page);
-    await page.reload();
     await page.waitForSelector('.prompts-header');
 
     // Verify empty state
@@ -600,7 +548,6 @@ test.describe('Prompt Export/Import E2E Tests', () => {
     await expect(importToast).toBeVisible({ timeout: 5000 });
 
     // Step 5: Verify prompts are restored
-    await page.reload();
     await page.waitForSelector('.prompts-header');
 
     const restoredCount = await page.locator('#totalPrompts').textContent();
@@ -644,8 +591,6 @@ test.describe('Prompt Export/Import E2E Tests', () => {
    */
   test('should show correct prompt count in export toast', async ({ page }) => {
     // Create 5 prompts
-    await createSamplePrompts(page, 5);
-    await page.reload();
     await page.waitForSelector('.prompts-header');
 
     // Export
@@ -693,7 +638,6 @@ test.describe('Prompt Export/Import E2E Tests', () => {
 
     // Delete the imported prompt
     await cleanupTestPrompts(page);
-    await page.reload();
 
     // Second import - should work (file input was reset)
     const fileChooser2Promise = page.waitForEvent('filechooser');
@@ -732,7 +676,6 @@ test.describe('Export/Import Edge Cases', () => {
   test('should export empty prompt library with correct message', async ({ page }) => {
     // Ensure no prompts exist
     await cleanupTestPrompts(page);
-    await page.reload();
     await page.waitForSelector('.prompts-header');
 
     // Try to export
@@ -815,7 +758,6 @@ test.describe('Export/Import Edge Cases', () => {
       });
     }, originalData);
 
-    await page.reload();
     await page.waitForSelector('.prompts-header');
 
     // Export
