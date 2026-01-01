@@ -20,6 +20,7 @@ const { requireAuth } = require('../src/middleware/auth');
  *   - limit (number, default: 50, max: 500)
  *   - cursor (conversationId for pagination)
  *   - minFeedback (1 = positive only, -1 = negative only, 0 = any feedback)
+ *   - promptName (string, filter by prompt name)
  *   - promptVersion (number, filter by specific version)
  *   - model (string, filter by model)
  * Response: { data: [...conversations], nextCursor: <id> | null }
@@ -30,6 +31,7 @@ router.get('/conversations', requireAuth, async (req, res) => {
       limit = 50,
       cursor,
       minFeedback,
+      promptName,
       promptVersion,
       model
     } = req.query;
@@ -39,7 +41,7 @@ router.get('/conversations', requireAuth, async (req, res) => {
 
     // Build filter
     const filter = {};
-    
+
     // Validate cursor as ObjectId before using in query
     if (cursor) {
       if (!mongoose.Types.ObjectId.isValid(cursor)) {
@@ -50,7 +52,7 @@ router.get('/conversations', requireAuth, async (req, res) => {
       }
       filter._id = { $gt: new mongoose.Types.ObjectId(cursor) };
     }
-    
+
     if (minFeedback !== undefined) {
       const rating = parseInt(minFeedback, 10);
       if (rating === 1 || rating === -1) {
@@ -59,7 +61,12 @@ router.get('/conversations', requireAuth, async (req, res) => {
         filter['messages.feedback.rating'] = { $exists: true };
       }
     }
-    
+
+    // Filter by prompt name
+    if (promptName) {
+      filter.promptName = promptName;
+    }
+
     // Only apply promptVersion filter if it parses to a valid integer
     if (promptVersion !== undefined) {
       const parsedVersion = parseInt(promptVersion, 10);
@@ -67,7 +74,7 @@ router.get('/conversations', requireAuth, async (req, res) => {
         filter.promptVersion = parsedVersion;
       }
     }
-    
+
     if (model) {
       filter.model = model;
     }

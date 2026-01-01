@@ -341,13 +341,13 @@ export class PerformanceMetricsDashboard {
       </div>
     `;
 
-    // Attach click handlers for detailed view
-    content.querySelectorAll('.metric-card').forEach(card => {
-      card.addEventListener('click', (e) => {
-        if (!e.target.closest('.metric-actions') && !e.target.closest('.model-breakdown-toggle')) {
-          const promptName = card.dataset.promptName;
-          this.viewDetailedAnalytics(promptName);
-        }
+    // Attach click handlers for "View Samples" buttons
+    content.querySelectorAll('.view-samples-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const promptName = btn.dataset.promptName;
+        const promptVersion = parseInt(btn.dataset.promptVersion);
+        this.viewConversationSamples(promptName, promptVersion);
       });
     });
 
@@ -540,6 +540,10 @@ export class PerformanceMetricsDashboard {
         </div>
 
         <div class="metric-card-actions">
+          <button class="btn-sm ghost view-samples-btn" data-prompt-name="${this.escapeHtml(promptName)}" data-prompt-version="${promptVersion}">
+            <i class="fas fa-comments"></i>
+            View Samples
+          </button>
           <button class="btn-sm ghost" onclick="event.stopPropagation(); window.location.href='/analytics.html?promptName=${encodeURIComponent(promptName)}'">
             <i class="fas fa-chart-bar"></i>
             Details
@@ -613,6 +617,343 @@ export class PerformanceMetricsDashboard {
    */
   viewDetailedAnalytics(promptName) {
     window.location.href = `/analytics.html?promptName=${encodeURIComponent(promptName)}`;
+  }
+
+  /**
+   * View conversation samples for a specific prompt version
+   */
+  async viewConversationSamples(promptName, promptVersion) {
+    // Show modal immediately with loading state
+    this.showConversationSamplesModal({
+      promptName,
+      promptVersion,
+      loading: true,
+      samples: [],
+      error: null
+    });
+
+    try {
+      // Fetch sample conversations
+      const response = await fetch(
+        `/api/dataset/conversations?promptName=${encodeURIComponent(promptName)}&promptVersion=${promptVersion}&limit=10`,
+        { credentials: 'include' }
+      );
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+
+      const result = await response.json();
+      if (result.status !== 'success') {
+        throw new Error(result.message || 'Failed to load conversation samples');
+      }
+
+      // Update modal with actual data
+      this.showConversationSamplesModal({
+        promptName,
+        promptVersion,
+        loading: false,
+        samples: result.data,
+        error: null
+      });
+    } catch (error) {
+      console.error('Failed to load conversation samples:', error);
+      this.showConversationSamplesModal({
+        promptName,
+        promptVersion,
+        loading: false,
+        samples: [],
+        error: error.message
+      });
+    }
+  }
+
+  /**
+   * Show conversation samples modal
+   */
+  showConversationSamplesModal(data) {
+    const { promptName, promptVersion, loading, samples, error } = data;
+
+    // Remove existing modal if any
+    const existingModal = document.getElementById('conversationSamplesModal');
+    if (existingModal) {
+      existingModal.remove();
+    }
+
+    // Create modal overlay
+    const modalOverlay = document.createElement('div');
+    modalOverlay.id = 'conversationSamplesModal';
+    modalOverlay.className = 'modal-overlay';
+    modalOverlay.innerHTML = `
+      <div class="modal-container conversation-samples-modal">
+        <div class="modal-header">
+          <h2>
+            <i class="fas fa-comments"></i>
+            ${this.escapeHtml(promptName)} v${promptVersion} - Conversation Samples
+          </h2>
+          <button class="modal-close" id="closeSamplesModal" title="Close">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+
+        <div class="modal-body">
+          ${loading ? this.renderSamplesLoading() : error ? this.renderSamplesError(error) : this.renderSamplesContent(samples)}
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn-secondary" id="exportSamplesBtn" ${loading || error ? 'disabled' : ''}>
+            <i class="fas fa-download"></i>
+            Export JSON
+          </button>
+          <button class="btn-primary" id="closeSamplesModalBtn">
+            Close
+          </button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modalOverlay);
+
+    // Attach event listeners
+    this.attachSamplesModalListeners(modalOverlay, samples, promptName, promptVersion);
+  }
+
+  /**
+   * Render loading state for samples
+   */
+  renderSamplesLoading() {
+    return `
+      <div class="samples-loading">
+        <div class="spinner-small"></div>
+        <span>Loading conversation samples...</span>
+      </div>
+    `;
+  }
+
+  /**
+   * Render error state for samples
+   */
+  renderSamplesError(errorMessage) {
+    return `
+      <div class="samples-error">
+        <i class="fas fa-exclamation-triangle"></i>
+        <h3>Failed to Load Samples</h3>
+        <p>${this.escapeHtml(errorMessage)}</p>
+      </div>
+    `;
+  }
+
+  /**
+   * Render samples content with filter tabs
+   */
+  renderSamplesContent(samples) {
+    if (!samples || samples.length === 0) {
+      return `
+        <div class="samples-empty">
+          <i class="fas fa-inbox"></i>
+          <h3>No Conversation Samples</h3>
+          <p>No conversations found for this prompt version.</p>
+        </div>
+      `;
+    }
+
+    // Separate samples by feedback
+    const positiveSamples = samples.filter(s => s.feedback && s.feedback.rating === 1);
+    const negativeSamples = samples.filter(s => s.feedback && s.feedback.rating === -1);
+
+    return `
+      <div class="samples-container">
+        <!-- Filter Tabs -->
+        <div class="samples-tabs">
+          <button class="samples-tab active" data-filter="all">
+            All (${samples.length})
+          </button>
+          <button class="samples-tab" data-filter="positive">
+            <i class="fas fa-thumbs-up"></i>
+            Positive (${positiveSamples.length})
+          </button>
+          <button class="samples-tab" data-filter="negative">
+            <i class="fas fa-thumbs-down"></i>
+            Negative (${negativeSamples.length})
+          </button>
+        </div>
+
+        <!-- Samples List -->
+        <div class="samples-list" id="samplesList">
+          ${this.renderSamplesList(samples, 'all')}
+        </div>
+      </div>
+    `;
+  }
+
+  /**
+   * Render list of samples based on filter
+   */
+  renderSamplesList(samples, filter) {
+    let filteredSamples = samples;
+
+    if (filter === 'positive') {
+      filteredSamples = samples.filter(s => s.feedback && s.feedback.rating === 1);
+    } else if (filter === 'negative') {
+      filteredSamples = samples.filter(s => s.feedback && s.feedback.rating === -1);
+    }
+
+    if (filteredSamples.length === 0) {
+      return `
+        <div class="samples-empty-filter">
+          <i class="fas fa-filter"></i>
+          <p>No ${filter} samples found</p>
+        </div>
+      `;
+    }
+
+    return filteredSamples.map(sample => this.renderSampleCard(sample)).join('');
+  }
+
+  /**
+   * Render a single sample card
+   */
+  renderSampleCard(sample) {
+    const feedbackClass = sample.feedback
+      ? sample.feedback.rating === 1 ? 'positive' : 'negative'
+      : 'neutral';
+    const feedbackIcon = sample.feedback
+      ? sample.feedback.rating === 1 ? 'fa-thumbs-up' : 'fa-thumbs-down'
+      : 'fa-minus-circle';
+
+    const timestamp = new Date(sample.metadata.createdAt).toLocaleString();
+    const inputPreview = sample.input.length > 200 ? sample.input.substring(0, 200) + '...' : sample.input;
+    const outputPreview = sample.output.length > 300 ? sample.output.substring(0, 300) + '...' : sample.output;
+
+    return `
+      <div class="sample-card" data-sample-id="${sample.id}">
+        <div class="sample-header">
+          <div class="sample-meta">
+            <span class="sample-model">
+              <i class="fas fa-cube"></i>
+              ${this.escapeHtml(sample.model)}
+            </span>
+            <span class="sample-timestamp">
+              <i class="fas fa-clock"></i>
+              ${timestamp}
+            </span>
+            ${sample.ragUsed ? '<span class="sample-rag-badge"><i class="fas fa-database"></i> RAG</span>' : ''}
+          </div>
+          <div class="sample-feedback ${feedbackClass}">
+            <i class="fas ${feedbackIcon}"></i>
+          </div>
+        </div>
+
+        <div class="sample-conversation">
+          <div class="sample-message user">
+            <div class="message-label">
+              <i class="fas fa-user"></i>
+              User Query
+            </div>
+            <div class="message-content">${this.escapeHtml(inputPreview)}</div>
+          </div>
+
+          <div class="sample-message assistant">
+            <div class="message-label">
+              <i class="fas fa-robot"></i>
+              AI Response
+            </div>
+            <div class="message-content">${this.escapeHtml(outputPreview)}</div>
+          </div>
+        </div>
+
+        ${sample.feedback && sample.feedback.comment ? `
+          <div class="sample-feedback-comment">
+            <i class="fas fa-comment"></i>
+            <span>${this.escapeHtml(sample.feedback.comment)}</span>
+          </div>
+        ` : ''}
+
+        <div class="sample-stats">
+          <span class="sample-stat">
+            <i class="fas fa-comments"></i>
+            ${sample.metadata.conversationLength} messages
+          </span>
+          ${sample.metadata.ragSourceCount > 0 ? `
+            <span class="sample-stat">
+              <i class="fas fa-database"></i>
+              ${sample.metadata.ragSourceCount} RAG sources
+            </span>
+          ` : ''}
+        </div>
+      </div>
+    `;
+  }
+
+  /**
+   * Attach event listeners for samples modal
+   */
+  attachSamplesModalListeners(modalOverlay, samples, promptName, promptVersion) {
+    // Close button (X)
+    const closeBtn = modalOverlay.querySelector('#closeSamplesModal');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', () => {
+        modalOverlay.remove();
+      });
+    }
+
+    // Close button (footer)
+    const closeModalBtn = modalOverlay.querySelector('#closeSamplesModalBtn');
+    if (closeModalBtn) {
+      closeModalBtn.addEventListener('click', () => {
+        modalOverlay.remove();
+      });
+    }
+
+    // Click outside to close
+    modalOverlay.addEventListener('click', (e) => {
+      if (e.target === modalOverlay) {
+        modalOverlay.remove();
+      }
+    });
+
+    // Export button
+    const exportBtn = modalOverlay.querySelector('#exportSamplesBtn');
+    if (exportBtn && samples && samples.length > 0) {
+      exportBtn.addEventListener('click', () => {
+        this.exportSamplesAsJSON(samples, promptName, promptVersion);
+      });
+    }
+
+    // Filter tabs
+    const tabs = modalOverlay.querySelectorAll('.samples-tab');
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        const filter = tab.dataset.filter;
+
+        // Update active tab
+        tabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+
+        // Update samples list
+        const samplesList = modalOverlay.querySelector('#samplesList');
+        if (samplesList) {
+          samplesList.innerHTML = this.renderSamplesList(samples, filter);
+        }
+      });
+    });
+  }
+
+  /**
+   * Export samples as JSON file
+   */
+  exportSamplesAsJSON(samples, promptName, promptVersion) {
+    const dataStr = JSON.stringify(samples, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(dataBlob);
+
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${promptName}_v${promptVersion}_samples_${Date.now()}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   }
 
   /**

@@ -11,6 +11,7 @@ import { TemplateTester } from './components/TemplateTester.js';
 import { Toast } from './components/shared/Toast.js';
 import { PerformanceMetricsDashboard } from './components/PerformanceMetricsDashboard.js';
 import { OnboardingWizard } from './components/OnboardingWizard.js';
+import { PromptVersionCompare } from './components/PromptVersionCompare.js';
 
 // Global state
 const state = {
@@ -36,6 +37,7 @@ let abTestConfigPanel;
 let templateTester;
 let onboardingWizard;
 let metricsDashboard;
+let versionCompare;
 let api;
 let toast;
 
@@ -91,9 +93,12 @@ function initializeComponents() {
 
   // Initialize onboarding wizard
   onboardingWizard = new OnboardingWizard(api, toast);
-  
+
   // Initialize metrics dashboard
   metricsDashboard = new PerformanceMetricsDashboard('metricsDashboard', state);
+
+  // Initialize version comparison
+  versionCompare = new PromptVersionCompare(api, toast);
 
   // Attach component event handlers
   promptListView.on('edit', handleEdit);
@@ -175,6 +180,11 @@ function attachEventListeners() {
   document.getElementById('importFileInput').addEventListener('change', (e) => {
     handleImportFile(e.target.files[0]);
     e.target.value = ''; // Reset file input
+  });
+
+  // Compare Versions button
+  document.getElementById('compareVersionsBtn').addEventListener('click', () => {
+    showVersionCompareSelector();
   });
 
   // Keyboard shortcuts
@@ -1065,6 +1075,114 @@ async function executeImport(prompts, strategy) {
 
   console.log(`Import complete: ${imported} imported, ${skipped} skipped, ${failed} failed`);
 }
+
+/**
+ * Show prompt selector for version comparison
+ */
+function showVersionCompareSelector() {
+  const promptNames = Object.keys(state.prompts);
+
+  if (promptNames.length === 0) {
+    toast.info('No prompts available to compare');
+    return;
+  }
+
+  // Filter prompts that have at least 2 versions
+  const comparablePrompts = promptNames.filter(name => {
+    const versions = state.prompts[name];
+    return versions && versions.length >= 2;
+  });
+
+  if (comparablePrompts.length === 0) {
+    toast.info('No prompts with multiple versions found. Create additional versions to enable comparison.');
+    return;
+  }
+
+  // Create selection modal
+  const modalHtml = `
+    <div class="modal-overlay" id="promptSelectorModal" style="display: flex;">
+      <div class="modal-container" style="max-width: 500px;">
+        <div class="modal-header">
+          <h2>
+            <i class="fas fa-columns"></i>
+            Select Prompt to Compare
+          </h2>
+          <button class="modal-close" onclick="document.getElementById('promptSelectorModal').remove()">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+
+        <div class="modal-body">
+          <p style="margin-bottom: 16px; color: var(--muted);">
+            Choose a prompt with multiple versions to compare:
+          </p>
+          <div class="form-group">
+            <label>Prompt Name</label>
+            <select id="promptNameSelect" class="form-control" size="8" style="width: 100%;">
+              ${comparablePrompts.map(name => {
+                const versions = state.prompts[name];
+                return `<option value="${name}">${name} (${versions.length} versions)</option>`;
+              }).join('')}
+            </select>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn-secondary" onclick="document.getElementById('promptSelectorModal').remove()">
+            <i class="fas fa-times"></i> Cancel
+          </button>
+          <button class="btn-primary" id="confirmPromptSelectBtn">
+            <i class="fas fa-columns"></i> Compare Versions
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+  // Auto-select first item
+  const select = document.getElementById('promptNameSelect');
+  if (select && select.options.length > 0) {
+    select.selectedIndex = 0;
+  }
+
+  // Attach confirm handler
+  document.getElementById('confirmPromptSelectBtn').addEventListener('click', () => {
+    const selectedPrompt = select.value;
+    document.getElementById('promptSelectorModal').remove();
+
+    if (selectedPrompt) {
+      versionCompare.open(selectedPrompt);
+    }
+  });
+
+  // Double-click to select
+  select.addEventListener('dblclick', () => {
+    const selectedPrompt = select.value;
+    document.getElementById('promptSelectorModal').remove();
+
+    if (selectedPrompt) {
+      versionCompare.open(selectedPrompt);
+    }
+  });
+
+  // Click outside to close
+  const modal = document.getElementById('promptSelectorModal');
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      modal.remove();
+    }
+  });
+}
+
+/**
+ * Listen for version change events from comparison modal
+ */
+window.addEventListener('prompt-version-changed', async (e) => {
+  console.log('Version changed, reloading prompts:', e.detail);
+  await loadPrompts();
+});
 
 // Initialize app when DOM is ready
 if (document.readyState === 'loading') {
