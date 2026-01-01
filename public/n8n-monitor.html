@@ -9,401 +9,40 @@
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        .monitor-page {
-            min-height: 100vh;
-            padding: 20px 30px;
-            max-width: 1800px;
-            margin: 0 auto;
-        }
-        
-        .monitor-header {
-            margin-bottom: 24px;
-            padding-bottom: 20px;
-            border-bottom: 1px solid var(--panel-border);
-        }
-        
-        .monitor-header h1 {
-            font-size: 28px;
-            margin: 0 0 8px 0;
-            color: var(--text);
-        }
-        
-        .monitor-header .lede {
-            color: var(--muted);
-            font-size: 14px;
-        }
-        
-        .monitor-grid {
-            display: grid;
-            grid-template-columns: 350px 1fr;
-            gap: 24px;
-            margin-bottom: 24px;
-        }
-        
-        .workflow-list {
-            background: var(--panel-bg);
-            border: 1px solid var(--panel-border);
-            border-radius: 12px;
-            padding: 20px;
-            height: fit-content;
-            max-height: 80vh;
-            overflow-y: auto;
-        }
-        
-        .workflow-list h2 {
-            font-size: 16px;
-            margin: 0 0 16px 0;
-            color: var(--accent);
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            font-weight: 600;
-        }
-        
-        .workflow-item {
-            padding: 12px;
-            margin-bottom: 8px;
-            background: rgba(255,255,255,0.02);
-            border: 1px solid var(--panel-border);
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        
-        .workflow-item:hover {
-            background: rgba(124,240,255,0.05);
-            border-color: var(--accent);
-        }
-        
-        .workflow-item.active {
-            background: rgba(124,240,255,0.1);
-            border-color: var(--accent);
-        }
-        
-        .workflow-item .wf-name {
-            font-weight: 600;
-            color: var(--text);
-            font-size: 14px;
-            margin-bottom: 4px;
-        }
-        
-        .workflow-item .wf-id {
-            font-size: 11px;
-            color: var(--muted);
-            font-family: 'Monaco', monospace;
-        }
-        
-        .workflow-item .wf-status {
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-size: 10px;
-            text-transform: uppercase;
-            font-weight: 600;
-            margin-top: 6px;
-        }
-        
-        .wf-status.active { background: rgba(34,197,94,0.2); color: #22c55e; }
-        .wf-status.inactive { background: rgba(148,163,184,0.2); color: #94a3b8; }
-        
-        .workflow-details {
-            background: var(--panel-bg);
-            border: 1px solid var(--panel-border);
-            border-radius: 12px;
-            padding: 24px;
-            min-height: 80vh;
-        }
-        
-        .detail-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 24px;
-            padding-bottom: 16px;
-            border-bottom: 1px solid var(--panel-border);
-        }
-        
-        .detail-header h2 {
-            font-size: 20px;
-            margin: 0 0 4px 0;
-            color: var(--text);
-        }
-        
-        .detail-header .wf-meta {
-            font-size: 12px;
-            color: var(--muted);
-        }
-        
-        .detail-actions {
-            display: flex;
-            gap: 10px;
-        }
-        
-        .btn {
-            padding: 10px 16px;
-            border-radius: 8px;
-            border: none;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-            font-size: 13px;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-        }
-        
-        .btn-primary {
-            background: linear-gradient(135deg, #7cf0ff 0%, #4facfe 100%);
-            color: #0a0e1a;
-        }
-        
-        .btn-primary:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(124,240,255,0.3);
-        }
-        
-        .btn-secondary {
-            background: rgba(148,163,184,0.1);
-            color: var(--text);
-            border: 1px solid var(--panel-border);
-        }
-        
-        .btn-secondary:hover {
-            background: rgba(148,163,184,0.15);
-        }
-        
-        .btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-        
-        .detail-tabs {
-            display: flex;
-            gap: 4px;
-            margin-bottom: 20px;
-            border-bottom: 1px solid var(--panel-border);
-        }
-        
-        .tab {
-            padding: 10px 20px;
-            background: transparent;
-            border: none;
-            color: var(--muted);
-            font-weight: 600;
-            font-size: 13px;
-            cursor: pointer;
-            border-bottom: 2px solid transparent;
-            transition: all 0.2s;
-        }
-        
-        .tab:hover {
-            color: var(--text);
-        }
-        
-        .tab.active {
-            color: var(--accent);
-            border-bottom-color: var(--accent);
-        }
-        
-        .tab-content {
-            display: none;
-        }
-        
-        .tab-content.active {
-            display: block;
-        }
-        
-        .webhook-url {
-            background: rgba(15,23,42,0.6);
-            padding: 12px;
-            border-radius: 6px;
-            border: 1px solid var(--panel-border);
-            font-family: 'Monaco', monospace;
-            font-size: 12px;
-            color: var(--accent);
-            word-break: break-all;
-            margin-bottom: 16px;
-        }
-        
-        .test-form {
-            margin-bottom: 24px;
-        }
-        
-        .form-group {
-            margin-bottom: 16px;
-        }
-        
-        .form-group label {
-            display: block;
-            margin-bottom: 6px;
-            font-weight: 600;
-            font-size: 13px;
-            color: var(--text);
-        }
-        
-        .form-group input,
-        .form-group textarea {
-            width: 100%;
-            padding: 10px 12px;
-            background: rgba(15,23,42,0.6);
-            border: 1px solid var(--panel-border);
-            border-radius: 6px;
-            color: var(--text);
-            font-size: 13px;
-            font-family: 'Monaco', monospace;
-        }
-        
-        .form-group textarea {
-            min-height: 120px;
-            resize: vertical;
-        }
-        
-        .event-log {
-            background: rgba(15,23,42,0.6);
-            border: 1px solid var(--panel-border);
-            border-radius: 8px;
-            padding: 16px;
-            max-height: 500px;
-            overflow-y: auto;
-        }
-        
-        .event-log h3 {
-            font-size: 14px;
-            margin: 0 0 12px 0;
-            color: var(--accent);
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-        
-        .event-item {
-            padding: 12px;
-            margin-bottom: 10px;
-            background: rgba(255,255,255,0.02);
-            border: 1px solid rgba(148,163,184,0.1);
-            border-radius: 6px;
-        }
-        
-        .event-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 8px;
-        }
-        
-        .event-type {
-            font-weight: 600;
-            color: var(--accent);
-            font-size: 12px;
-        }
-        
-        .event-timestamp {
-            font-size: 11px;
-            color: var(--muted);
-        }
-        
-        .event-data {
-            background: rgba(0,0,0,0.3);
-            padding: 10px;
-            border-radius: 4px;
-            font-family: 'Monaco', monospace;
-            font-size: 11px;
-            color: #94a3b8;
-            white-space: pre-wrap;
-            overflow-x: auto;
-        }
-        
-        .empty-state {
-            text-align: center;
-            padding: 60px 20px;
-            color: var(--muted);
-        }
-        
-        .empty-state i {
-            font-size: 48px;
-            margin-bottom: 16px;
-            opacity: 0.3;
-        }
-        
-        .loading {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 40px;
-            color: var(--muted);
-        }
-        
-        .loading i {
-            animation: spin 1s linear infinite;
-        }
-        
-        @keyframes spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
-        }
-        
-        .status-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            padding: 6px 12px;
-            border-radius: 6px;
-            font-size: 12px;
-            font-weight: 600;
-        }
-        
-        .status-badge.success {
-            background: rgba(34,197,94,0.2);
-            color: #22c55e;
-        }
-        
-        .status-badge.error {
-            background: rgba(248,113,113,0.2);
-            color: #f87171;
-        }
-        
-        .status-badge.info {
-            background: rgba(124,240,255,0.2);
-            color: #7cf0ff;
-        }
-        
-        .toast {
-            position: fixed;
-            bottom: 24px;
-            right: 24px;
-            padding: 16px 20px;
-            background: var(--panel-bg);
-            border: 1px solid var(--panel-border);
-            border-radius: 8px;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
-            display: none;
-            align-items: center;
-            gap: 12px;
-            z-index: 1000;
-        }
-        
-        .toast.show {
-            display: flex;
-            animation: slideIn 0.3s ease;
-        }
-        
-        @keyframes slideIn {
-            from { transform: translateX(400px); opacity: 0; }
-            to { transform: translateX(0); opacity: 1; }
-        }
-    </style>
 </head>
 <body>
+    <nav class="top-nav">
+        <a href="index.html"><i class="fas fa-comments"></i> Chat</a>
+        <a href="dashboard.html"><i class="fas fa-tachometer-alt"></i> Operations</a>
+        <a href="n8n-monitor.html" class="active"><i class="fas fa-network-wired"></i> n8n Monitor</a>
+        <a href="analytics.html"><i class="fas fa-chart-line"></i> Analytics</a>
+    </nav>
     <div class="monitor-page">
         <div class="monitor-header">
-            <div class="eyebrow">AgentX Operations</div>
-            <h1><i class="fas fa-network-wired"></i> n8n Workflow Monitor</h1>
+            <div class="eyebrow">AgentX • Operations</div>
+            <h1><i class="fas fa-network-wired"></i><span class="title-separator"></span>n8n Workflow Monitor</h1>
             <p class="lede">Test and monitor SBQC n8n workflows. Trigger webhooks, view execution history, and monitor real-time events.</p>
         </div>
         
         <div class="monitor-grid">
             <div class="workflow-list">
                 <h2>Workflows</h2>
+                
+                <div class="deploy-section">
+                    <h3><i class="fas fa-upload"></i> Deploy to n8n</h3>
+                    <div class="deploy-controls">
+                        <button class="deploy-btn" onclick="deployWorkflows(false)">
+                            <i class="fas fa-upload"></i> Deploy Selected
+                        </button>
+                        <button class="deploy-btn" onclick="deployWorkflows(true)">
+                            <i class="fas fa-sync"></i> Deploy All
+                        </button>
+                    </div>
+                    <div id="deploy-log" class="deploy-log"></div>
+                </div>
+                
                 <div id="workflow-container">
+                    <!-- Populated dynamically -->
                     <div class="loading">
                         <i class="fas fa-spinner"></i> Loading workflows...
                     </div>
@@ -419,11 +58,10 @@
                 </div>
             </div>
         </div>
-        
-        <div id="toast" class="toast">
-            <i class="fas fa-check-circle"></i>
-            <span id="toast-message"></span>
-        </div>
+    </div>
+    <div id="toast" class="toast">
+        <i class="fas fa-check-circle"></i>
+        <span id="toast-message"></span>
     </div>
     
     <script>
@@ -438,12 +76,54 @@
             { id: 'N5.1', name: 'Feedback Analysis', webhook: 'sbqc-n5-1-feedback-analysis', type: 'POST' }
         ];
         
-        const N8N_BASE = 'http://192.168.2.199:5678';
+        const N8N_BASE = 'https://n8n.specialblend.icu';
         const DATAAPI_BASE = 'http://192.168.2.33:3003';
+        const AGENTX_BASE = 'http://192.168.2.33:3080';
         
         let currentWorkflow = null;
         let events = [];
         let eventRefreshInterval = null;
+        
+        async function deployWorkflows(deployAll) {
+            const btn = event.target;
+            const logEl = document.getElementById('deploy-log');
+            
+            btn.disabled = true;
+            logEl.classList.add('show');
+            logEl.textContent = deployAll ? 'Deploying all workflows...\n' : 'Deploying selected workflow...\n';
+            
+            try {
+                const payload = {};
+                if (!deployAll && currentWorkflow) {
+                    payload.workflows = [currentWorkflow.id];
+                }
+                
+                const response = await fetch(`${AGENTX_BASE}/api/n8n/deploy`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-api-key': localStorage.getItem('apiKey') || ''
+                    },
+                    body: JSON.stringify(payload)
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    logEl.textContent += result.output || 'Deployment completed successfully!\n';
+                    showToast('Deployment successful!');
+                } else {
+                    logEl.textContent += `ERROR: ${result.message}\n${result.stderr || ''}`;
+                    showToast('Deployment failed', 'error');
+                }
+                
+            } catch (err) {
+                logEl.textContent += `ERROR: ${err.message}`;
+                showToast('Deployment failed', 'error');
+            } finally {
+                btn.disabled = false;
+            }
+        }
         
         function showToast(message, type = 'success') {
             const toast = document.getElementById('toast');
@@ -463,8 +143,10 @@
             container.innerHTML = WORKFLOWS.map(wf => `
                 <div class="workflow-item ${currentWorkflow?.id === wf.id ? 'active' : ''}" 
                      onclick="selectWorkflow('${wf.id}')">
-                    <div class="wf-name">${wf.name}</div>
-                    <div class="wf-id">${wf.id}</div>
+                    <div class="wf-info">
+                        <span class="wf-id">${wf.id}</span>
+                        <span class="wf-name">${wf.name}</span>
+                    </div>
                     <span class="wf-status active">${wf.type}</span>
                 </div>
             `).join('');
@@ -615,7 +297,11 @@
             if (!currentWorkflow) return;
             
             try {
-                const response = await fetch(`${DATAAPI_BASE}/api/v1/integrations/events/n8n?limit=50`);
+                const response = await fetch(`${DATAAPI_BASE}/api/v1/integrations/events/n8n?limit=50`, { credentials: 'include' });
+                if (response.status === 401) {
+                    showToast('Please log in to DataAPI to view events', 'error');
+                    return;
+                }
                 const allEvents = await response.json();
                 
                 // Filter events for current workflow
@@ -639,21 +325,32 @@
                 return;
             }
             
-            container.innerHTML = events.slice(0, 20).map(evt => {
+            container.innerHTML = events.slice(0, 20).map((evt, index) => {
                 const eventType = evt.body.event_type || 'event';
                 const timestamp = formatTimestamp(evt.at);
-                const data = JSON.stringify(evt.body.data || {}, null, 2);
+                const fullData = JSON.stringify(evt.body, null, 2);
+                const summary = JSON.stringify(evt.body).substring(0, 80) + (JSON.stringify(evt.body).length > 80 ? '...' : '');
                 
                 return `
-                    <div class="event-item">
+                    <div class="event-item" onclick="toggleEventDetails(${index})">
                         <div class="event-header">
-                            <span class="event-type">${eventType}</span>
-                            <span class="event-timestamp">${timestamp}</span>
+                            <div class="event-meta">
+                                <span class="event-type">${eventType}</span>
+                                <span class="event-timestamp">${timestamp}</span>
+                            </div>
                         </div>
-                        <div class="event-data">${data}</div>
+                        <div class="event-summary">${summary}</div>
+                        <div class="event-details" id="event-details-${index}">
+                            <pre>${fullData}</pre>
+                        </div>
                     </div>
                 `;
             }).join('');
+        }
+
+        function toggleEventDetails(index) {
+            const el = document.getElementById(`event-details-${index}`);
+            if (el) el.classList.toggle('show');
         }
         
         function openN8nEditor() {

@@ -44,7 +44,7 @@ const buildSystemPrompt = (basePrompt, userProfile, ragContext) => {
     let effectiveSystemPrompt = basePrompt;
 
     if (ragContext) {
-        effectiveSystemPrompt = ragContext + '\n' + effectiveSystemPrompt;
+        effectiveSystemPrompt += `\n\n=== RETRIEVED CONTEXT ===\nYou have access to the following retrieved context from the user's files. \nCRITICAL INSTRUCTION: The user's question is likely about the data contained in this context. \n- If the context contains a list of "Available Ingested Documents", and the user asks what files are ingested, LIST THEM.\n- If the context contains JSON or structured data, READ IT CAREFULLY to find the specific value requested (e.g., "totalFiles", counts, names).\n- Answer the question DIRECTLY using the data found.\n- Cite the source file name.\n\n${ragContext}\n\n=== END CONTEXT ===`;
     }
 
     if (userProfile.about) {
@@ -175,9 +175,11 @@ const handleChatRequest = async ({
     if (useRag === true && message && ragStore) {
         try {
             const ollamaHost = resolveTarget(effectiveTarget);
+            
+            // 1. Standard Semantic Search
             const searchResults = await ragStore.searchSimilarChunks(message, {
                 topK: ragTopK || 5,
-                minScore: 0.3,
+                minScore: 0.25, // Lowered threshold to ensure relevant context is captured
                 filters: ragFilters,
                 ollamaHost
             });
@@ -196,8 +198,29 @@ const handleChatRequest = async ({
                     });
                 });
                 ragContext += '\n=== End Context ===\n';
-                logger.info('RAG context injected', { chunkCount: searchResults.length });
             }
+
+            // 2. Check for "List Files" Intent
+            // If the user asks about what files are available, we inject the document list.
+            const listFilesRegex = /list.*files|what.*files.*ingested|show.*documents|which.*files|what.*do.*you.*have/i;
+            if (listFilesRegex.test(message)) {
+                logger.info('Detected file listing intent');
+                const docs = await ragStore.listDocuments();
+                if (docs.length > 0) {
+                    ragUsed = true;
+                    const docList = docs.map(d => `- ${d.title} (Source: ${d.source})`).join('\n');
+                    const docContext = `\n\n=== Available Ingested Documents ===\nThe following files are currently ingested in the RAG system:\n${docList}\n=== End Document List ===\n`;
+                    
+                    // Prepend to ensure visibility
+                    if (ragContext) {
+                        ragContext = docContext + ragContext;
+                    } else {
+                        ragContext = docContext;
+                    }
+                    logger.info('Injected document list', { count: docs.length });
+                }
+            }
+
         } catch (err) {
             logger.error('RAG retrieval error', { error: err.message });
         }

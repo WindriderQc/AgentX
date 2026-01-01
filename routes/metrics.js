@@ -71,6 +71,22 @@ router.get('/database', optionalAuth, async (req, res) => {
 
     // Get database stats
     const dbStats = await db.stats();
+    
+    // Get server status for connections
+    let connectionStats = {};
+    try {
+      const serverStatus = await db.command({ serverStatus: 1 });
+      if (serverStatus && serverStatus.connections) {
+        connectionStats = {
+          current: serverStatus.connections.current,
+          available: serverStatus.connections.available,
+          max: serverStatus.connections.current + serverStatus.connections.available
+        };
+      }
+    } catch (err) {
+      // Fallback if no permission
+      connectionStats = { current: 0, available: 0, max: 0 };
+    }
 
     // Get collection stats
     const collections = await db.listCollections().toArray();
@@ -105,6 +121,7 @@ router.get('/database', optionalAuth, async (req, res) => {
           indexes: dbStats.indexes,
           indexSize: dbStats.indexSize
         },
+        connections: connectionStats,
         collections: collectionStats,
         timestamp: new Date().toISOString()
       }
