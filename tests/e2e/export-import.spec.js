@@ -849,14 +849,12 @@ test.describe('Export/Import Edge Cases', () => {
     const exportedPrompt = exportData.find(p => p.name === 'metadata_test');
     expect(exportedPrompt).toBeDefined();
 
-    // Verify key metadata is preserved
+    // Verify all metadata is preserved (fixed frontend bug in PromptsAPI.create)
     expect(exportedPrompt.description).toBe(originalData[0].description);
-    expect(exportedPrompt.tags).toEqual(originalData[0].tags);
     expect(exportedPrompt.systemPrompt).toBe(originalData[0].systemPrompt);
     expect(exportedPrompt.trafficWeight).toBe(originalData[0].trafficWeight);
-
-    // Author field exists (may have default value from import process)
-    expect(exportedPrompt.author).toBeTruthy();
+    expect(exportedPrompt.tags).toEqual(originalData[0].tags);
+    expect(exportedPrompt.author).toBe(originalData[0].author);
 
     // Cleanup
     await fs.unlink(exportPath).catch(() => {});

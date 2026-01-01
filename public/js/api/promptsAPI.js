@@ -87,6 +87,8 @@ export class PromptsAPI {
           name: data.name?.trim(),
           systemPrompt: data.systemPrompt?.trim(),
           description: data.description?.trim(),
+          author: data.author?.trim(),
+          tags: data.tags || [],
           isActive: data.isActive ?? false,
           trafficWeight: data.trafficWeight ?? 100
         })
