@@ -795,20 +795,24 @@ function showLoading(show) {
  * Check if user should see onboarding wizard
  */
 function checkOnboarding() {
-  // Only show if user hasn't completed onboarding and there are no prompts
+  // Check if user has seen onboarding before (separate from completion)
+  const hasSeenOnboarding = localStorage.getItem('agentx_onboarding_seen') === 'true';
   const hasCompletedOnboarding = OnboardingWizard.isCompleted();
   const hasPrompts = Object.keys(state.prompts).length > 0;
 
   console.log('Onboarding check:', {
+    seen: hasSeenOnboarding,
     completed: hasCompletedOnboarding,
     hasPrompts: hasPrompts
   });
 
-  // Show onboarding if:
-  // 1. User hasn't completed it before
-  // 2. AND there are no prompts (first-time user)
-  if (!hasCompletedOnboarding && !hasPrompts) {
+  // Show onboarding if user hasn't seen it before AND there are no prompts (first-time user)
+  // This allows users to skip onboarding but not see it again unless they click "Show Tutorial"
+  if (!hasSeenOnboarding && !hasPrompts) {
     console.log('Showing onboarding wizard for first-time user');
+    // Mark as seen immediately to prevent showing again on refresh
+    localStorage.setItem('agentx_onboarding_seen', 'true');
+
     // Small delay to let the page settle
     setTimeout(() => {
       onboardingWizard.open();

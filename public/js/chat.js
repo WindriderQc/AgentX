@@ -810,6 +810,40 @@ document.addEventListener('DOMContentLoaded', () => {
       }
   }
 
+  async function loadActivePrompt() {
+      try {
+          const res = await fetch('/api/prompts/default_chat', { credentials: 'include' });
+          if (res.ok) {
+              const result = await res.json();
+              const activePromptNameEl = document.getElementById('activePromptName');
+
+              if (result.status === 'success' && result.data.length > 0) {
+                  const activePrompts = result.data.filter(p => p.isActive);
+                  if (activePrompts.length > 0) {
+                      const promptName = `${activePrompts[0].name} v${activePrompts[0].version}`;
+                      if (activePromptNameEl) {
+                          activePromptNameEl.textContent = promptName;
+                          activePromptNameEl.setAttribute('data-tooltip', `Active prompt: ${promptName}`);
+                      }
+                      return;
+                  }
+              }
+          }
+
+          // Fallback if no active prompt found
+          const activePromptNameEl = document.getElementById('activePromptName');
+          if (activePromptNameEl) {
+              activePromptNameEl.textContent = 'default_chat';
+          }
+      } catch (err) {
+          console.error('Failed to load active prompt:', err);
+          const activePromptNameEl = document.getElementById('activePromptName');
+          if (activePromptNameEl) {
+              activePromptNameEl.textContent = 'default_chat';
+          }
+      }
+  }
+
   function setHistoryToggleLabels() {
     if (!elements.page) return;
     const isHidden = elements.page.classList.contains('history-hidden');
@@ -1087,6 +1121,7 @@ document.addEventListener('DOMContentLoaded', () => {
     attachEvents();
     clearChat();
     loadProfile();
+    loadActivePrompt();
     await fetchModels();
 
     // Set initial UI toggle states

@@ -8,13 +8,17 @@ export class OnboardingWizard {
     this.api = api;
     this.toast = toast;
     this.currentStep = 1;
-    this.totalSteps = 5;
+    this.totalSteps = 7;
     this.promptData = {
       name: '',
       description: '',
       systemPrompt: '',
       isActive: false,
       trafficWeight: 100
+    };
+    this.profileData = {
+      about: '',
+      customInstructions: ''
     };
     this.overlay = null;
     this.isOpen = false;
@@ -33,6 +37,10 @@ export class OnboardingWizard {
       systemPrompt: '',
       isActive: false,
       trafficWeight: 100
+    };
+    this.profileData = {
+      about: '',
+      customInstructions: ''
     };
 
     this.render();
@@ -161,6 +169,12 @@ export class OnboardingWizard {
       case 5:
         body.innerHTML = this.renderStep5();
         break;
+      case 6:
+        body.innerHTML = this.renderStep6();
+        break;
+      case 7:
+        body.innerHTML = this.renderStep7();
+        break;
     }
 
     // Render navigation buttons
@@ -214,9 +228,125 @@ export class OnboardingWizard {
   }
 
   /**
-   * Step 2: Create Your First Prompt
+   * Step 2: User Profile Setup (NEW)
    */
   renderStep2() {
+    return `
+      <div class="onboarding-step step-profile">
+        <div class="step-icon">
+          <i class="fas fa-user-circle"></i>
+        </div>
+        <h3>Tell AgentX About Yourself</h3>
+        <p class="step-description">
+          Your profile information is injected into EVERY conversation, helping the AI remember your preferences and context.
+        </p>
+
+        <div class="form-section">
+          <div class="form-group">
+            <label>
+              About You
+              <span class="field-hint">Background, role, interests (this is your "memory")</span>
+            </label>
+            <textarea
+              id="wizardProfileAbout"
+              rows="4"
+              placeholder="I'm a software engineer working on Node.js projects. I prefer concise technical explanations."
+            >${this.profileData.about}</textarea>
+            <div class="field-note">
+              <i class="fas fa-lightbulb"></i>
+              Example: "I'm a data scientist at a healthcare startup. I work with Python and SQL daily."
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>
+              Custom Instructions (Optional)
+              <span class="field-hint">Specific behavior preferences</span>
+            </label>
+            <textarea
+              id="wizardProfileInstructions"
+              rows="3"
+              placeholder="Always format code blocks with syntax highlighting. Use metric units."
+            >${this.profileData.customInstructions}</textarea>
+          </div>
+        </div>
+
+        <div class="info-box">
+          <i class="fas fa-info-circle"></i>
+          <div>
+            <strong>Privacy Note:</strong> This information is stored locally in your AgentX database and never sent to external services (only to your local Ollama).
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  /**
+   * Step 3: Understanding Profiles vs Prompts (NEW)
+   */
+  renderStep3() {
+    return `
+      <div class="onboarding-step step-concepts">
+        <div class="step-icon">
+          <i class="fas fa-graduation-cap"></i>
+        </div>
+        <h3>Two Key Concepts</h3>
+        <p class="step-description">
+          AgentX uses two layers to customize your AI experience:
+        </p>
+
+        <div class="concepts-grid">
+          <div class="concept-card">
+            <div class="concept-icon">
+              <i class="fas fa-user-circle"></i>
+            </div>
+            <h4>User Profile</h4>
+            <ul class="concept-points">
+              <li><strong>Who YOU are</strong></li>
+              <li>Injected into ALL conversations</li>
+              <li>Your "memory" and preferences</li>
+              <li>Set once, applies everywhere</li>
+            </ul>
+            <div class="concept-example">
+              <strong>Example:</strong><br>
+              "I'm a Python developer. I prefer concise answers."
+            </div>
+          </div>
+
+          <div class="concept-card">
+            <div class="concept-icon">
+              <i class="fas fa-code"></i>
+            </div>
+            <h4>System Prompt</h4>
+            <ul class="concept-points">
+              <li><strong>How the AI BEHAVES</strong></li>
+              <li>Selected per conversation</li>
+              <li>Defines AI's role and tone</li>
+              <li>Can have multiple versions</li>
+            </ul>
+            <div class="concept-example">
+              <strong>Example:</strong><br>
+              "You are a code review assistant. Focus on best practices."
+            </div>
+          </div>
+        </div>
+
+        <div class="info-box success">
+          <i class="fas fa-layer-group"></i>
+          <div>
+            <strong>How They Work Together:</strong><br>
+            Profile + Prompt = Effective System Prompt sent to AI<br>
+            <code>System Prompt + "\\n\\nUser Profile: [your profile]" + Custom Instructions</code>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  /**
+   * Step 4: Create Your First Prompt
+   */
+  renderStep4() {
     return `
       <div class="onboarding-step step-create">
         <div class="step-icon">
@@ -283,9 +413,9 @@ export class OnboardingWizard {
   }
 
   /**
-   * Step 3: Understand Variables
+   * Step 5: Understand Variables
    */
-  renderStep3() {
+  renderStep5() {
     return `
       <div class="onboarding-step step-variables">
         <div class="step-icon">
@@ -335,9 +465,9 @@ Please respond to their questions professionally.</pre>
   }
 
   /**
-   * Step 4: Activation Settings
+   * Step 6: Activation Settings
    */
-  renderStep4() {
+  renderStep6() {
     return `
       <div class="onboarding-step step-activation">
         <div class="step-icon">
@@ -409,9 +539,9 @@ Please respond to their questions professionally.</pre>
   }
 
   /**
-   * Step 5: Complete
+   * Step 7: Complete
    */
-  renderStep5() {
+  renderStep7() {
     const promptName = this.promptData.name || 'your prompt';
 
     return `
@@ -475,7 +605,7 @@ Please respond to their questions professionally.</pre>
   renderNavigation() {
     const isFirstStep = this.currentStep === 1;
     const isLastStep = this.currentStep === this.totalSteps;
-    const isSecondStep = this.currentStep === 2;
+    const isStep4 = this.currentStep === 4;
 
     let buttons = '';
 
@@ -506,7 +636,7 @@ Please respond to their questions professionally.</pre>
           Finish
         </button>
       `;
-    } else if (isSecondStep) {
+    } else if (isStep4) {
       buttons += `
         <button class="btn-primary" id="onboardingNext">
           Continue
@@ -553,40 +683,61 @@ Please respond to their questions professionally.</pre>
       this.attachStep2Listeners();
     } else if (this.currentStep === 4) {
       this.attachStep4Listeners();
-    } else if (this.currentStep === 5) {
-      this.attachStep5Listeners();
+    } else if (this.currentStep === 6) {
+      this.attachStep6Listeners();
+    } else if (this.currentStep === 7) {
+      this.attachStep7Listeners();
     }
   }
 
   /**
-   * Attach Step 2 listeners (form inputs)
+   * Attach Step 2 listeners (profile inputs)
    */
   attachStep2Listeners() {
-    const nameInput = document.getElementById('wizardPromptName');
-    const descInput = document.getElementById('wizardDescription');
-    const promptInput = document.getElementById('wizardSystemPrompt');
+    const aboutField = document.getElementById('wizardProfileAbout');
+    const instructionsField = document.getElementById('wizardProfileInstructions');
 
-    if (nameInput) {
-      nameInput.addEventListener('input', (e) => {
+    if (aboutField) {
+      aboutField.addEventListener('input', (e) => {
+        this.profileData.about = e.target.value;
+      });
+    }
+    if (instructionsField) {
+      instructionsField.addEventListener('input', (e) => {
+        this.profileData.customInstructions = e.target.value;
+      });
+    }
+  }
+
+  /**
+   * Attach Step 4 listeners (prompt creation form)
+   */
+  attachStep4Listeners() {
+    const nameField = document.getElementById('wizardPromptName');
+    const descField = document.getElementById('wizardDescription');
+    const promptField = document.getElementById('wizardSystemPrompt');
+
+    if (nameField) {
+      nameField.addEventListener('input', (e) => {
         this.promptData.name = e.target.value;
       });
     }
-    if (descInput) {
-      descInput.addEventListener('input', (e) => {
+    if (descField) {
+      descField.addEventListener('input', (e) => {
         this.promptData.description = e.target.value;
       });
     }
-    if (promptInput) {
-      promptInput.addEventListener('input', (e) => {
+    if (promptField) {
+      promptField.addEventListener('input', (e) => {
         this.promptData.systemPrompt = e.target.value;
       });
     }
   }
 
   /**
-   * Attach Step 4 listeners (activation settings)
+   * Attach Step 6 listeners (activation settings)
    */
-  attachStep4Listeners() {
+  attachStep6Listeners() {
     const activeCheckbox = document.getElementById('wizardIsActive');
     const weightSlider = document.getElementById('wizardTrafficWeight');
     const weightNum = document.getElementById('wizardTrafficWeightNum');
@@ -615,9 +766,9 @@ Please respond to their questions professionally.</pre>
   }
 
   /**
-   * Attach Step 5 listeners (completion actions)
+   * Attach Step 7 listeners (completion actions)
    */
-  attachStep5Listeners() {
+  attachStep7Listeners() {
     const viewLink = document.getElementById('viewPromptsLink');
     const createLink = document.getElementById('createAnotherLink');
 
@@ -655,18 +806,26 @@ Please respond to their questions professionally.</pre>
    * Handle Next button
    */
   async handleNext() {
-    // Validate current step before proceeding
+    // Save profile on step 2 before proceeding
     if (this.currentStep === 2) {
-      if (!this.validateStep2()) {
+      const success = await this.saveProfile();
+      if (!success) {
+        return; // Stay on step 2 if save failed
+      }
+    }
+
+    // Validate and create prompt on step 4
+    if (this.currentStep === 4) {
+      if (!this.validateStep4()) {
         return;
       }
     }
 
-    // If on step 4, create the prompt before going to step 5
-    if (this.currentStep === 4) {
+    // Create prompt on step 6 (after activation settings)
+    if (this.currentStep === 6) {
       const success = await this.createPrompt();
       if (!success) {
-        return; // Stay on step 4 if creation failed
+        return; // Stay on step 6 if creation failed
       }
     }
 
@@ -677,9 +836,9 @@ Please respond to their questions professionally.</pre>
   }
 
   /**
-   * Validate Step 2 (form validation)
+   * Validate Step 4 (prompt creation form validation)
    */
-  validateStep2() {
+  validateStep4() {
     const name = this.promptData.name.trim();
     const systemPrompt = this.promptData.systemPrompt.trim();
     const errorDiv = document.getElementById('wizardError');
@@ -772,6 +931,66 @@ Please respond to their questions professionally.</pre>
 
     } finally {
       // Restore button state
+      if (nextBtn) {
+        nextBtn.disabled = false;
+        nextBtn.innerHTML = 'Next <i class="fas fa-arrow-right"></i>';
+      }
+    }
+  }
+
+  /**
+   * Save user profile via API
+   */
+  async saveProfile() {
+    const nextBtn = document.getElementById('onboardingNext');
+
+    try {
+      // Show loading state
+      if (nextBtn) {
+        nextBtn.disabled = true;
+        nextBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+      }
+
+      // Call API to save profile
+      const response = await fetch('/api/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          about: this.profileData.about.trim(),
+          preferences: {
+            customInstructions: this.profileData.customInstructions.trim()
+          }
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.status !== 'success') {
+        throw new Error(result.message || 'Failed to save profile');
+      }
+
+      // Success - show toast notification
+      if (this.toast) {
+        this.toast.success('Profile saved successfully!');
+      }
+
+      return true;
+
+    } catch (error) {
+      console.error('Failed to save profile:', error);
+
+      // Show error in toast
+      if (this.toast) {
+        this.toast.error(`Failed to save profile: ${error.message}`);
+      } else {
+        alert(`Failed to save profile: ${error.message}`);
+      }
+
+      return false;
+
+    } finally {
+      // Reset button state
       if (nextBtn) {
         nextBtn.disabled = false;
         nextBtn.innerHTML = 'Next <i class="fas fa-arrow-right"></i>';

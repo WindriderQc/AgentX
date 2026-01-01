@@ -35,7 +35,7 @@ async function ensureDefaultPromptConfig() {
   try {
     const PromptConfig = require('../models/PromptConfig');
     
-    const activePrompt = await PromptConfig.findOne({ name: 'default_chat', status: 'active' });
+    const activePrompt = await PromptConfig.findOne({ name: 'default_chat', isActive: true });
     
     if (!activePrompt) {
       logger.info('[V4] No active prompt found, creating default_chat v1');
@@ -45,7 +45,7 @@ async function ensureDefaultPromptConfig() {
         version: 1,
         systemPrompt: 'You are AgentX, a concise and capable local assistant. Keep answers brief and actionable.',
         description: 'Initial default system prompt',
-        status: 'active',
+        isActive: true,
         author: 'system'
       });
       

@@ -261,7 +261,7 @@ router.post('/render', requireAuth, async (req, res) => {
         const rendered = renderTemplate(prompt.systemPrompt, variables || {});
 
         // Update usage stats
-        prompt.stats.usageCount++;
+        prompt.stats.impressions++;
         await prompt.save();
 
         logger.info('Prompt rendered', { name: prompt.name, version: prompt.version });

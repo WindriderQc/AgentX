@@ -7,7 +7,8 @@ const { optionalAuth } = require('../src/middleware/auth');
 // PROFILE
 router.get('/', async (req, res) => {
     try {
-        const profile = await getOrCreateProfile('default');
+        const userId = getUserId(res) || 'default'; // Fallback for backward compatibility
+        const profile = await getOrCreateProfile(userId);
         res.json({ status: 'success', data: profile });
     } catch (err) {
         res.status(500).json({ status: 'error', message: err.message });
@@ -17,8 +18,9 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
     const { about, preferences } = req.body;
     try {
+        const userId = getUserId(res) || 'default'; // Fallback for backward compatibility
         const profile = await UserProfile.findOneAndUpdate(
-            { userId: 'default' },
+            { userId },
             { $set: { about, preferences, updatedAt: Date.now() } },
             { new: true, upsert: true }
         );
