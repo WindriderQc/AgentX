@@ -755,46 +755,37 @@ This section tracks the current implementation status and areas requiring develo
 
 **Current Gap:** Onboarding wizard exists only on prompts page, not on main chat interface (index.html) - See next section
 
-**🚧 Chat Interface First-Run Experience - MISSING:**
+**✅ Chat Interface First-Run Experience - COMPLETE (Janitor Project):**
 
-**Problem:** Users landing on `index.html` (chat interface) have no guided setup:
-- No welcome wizard explaining features (RAG, memory, multi-model support)
-- No prompt to configure user profile before first chat
-- No guidance on model selection or prompt configuration
-- Users must discover advanced features via top navigation bar
-- Profile modal exists but isn't surfaced proactively
+**Status:** Fully implemented with onboarding wizard and navigation improvements
 
-**What Exists:**
-- ✅ Profile modal embedded in chat interface (accessible via header button)
-- ✅ Prompt selection dropdown in config panel (populated from `/api/prompts`)
-- ✅ Model configuration panel with advanced settings (collapsible)
-- ✅ OnboardingWizard pattern proven on prompts page (1,032 lines, fully reusable architecture)
-- ✅ Toast notification system for user feedback
+**Implemented Features:**
+- ✅ **ChatOnboardingWizard.js** (738 lines) - 5-step wizard for first-time users
+  - Step 1: Welcome screen explaining AgentX features (RAG, memory, multi-model)
+  - Step 2: Profile setup with API integration (about you + custom instructions)
+  - Step 3: Prompt/model selection with dropdown (fetches from `/api/prompts`)
+  - Step 4: RAG introduction and toggle configuration
+  - Step 5: Completion with "don't show again" checkbox
+- ✅ **Auto-trigger logic** - Shows on first visit when no conversation history exists
+- ✅ **Manual trigger** - Tutorial button in header (graduation cap icon)
+- ✅ **Profile prompt alert** - Blue banner prompts empty profile setup
+- ✅ **Gamified setup checklist** - 4-item progress tracker (profile, first chat, RAG usage, account)
+- ✅ **localStorage tracking** - Completion flags and preference persistence
+- ✅ **Integration hooks** - Profile save, message send, RAG toggle trigger progress updates
+- ✅ **Responsive design** - Mobile-friendly CSS (183 lines added)
 
-**What's Missing:**
-- ❌ Chat-specific onboarding wizard (`ChatOnboardingWizard.js` component)
-- ❌ Auto-trigger logic for first-time users (localStorage-based)
-- ❌ Progressive feature disclosure (step-by-step introduction to RAG, memory, prompts)
-- ❌ Integration between profile setup and first conversation experience
-- ❌ Setup checklist or progress tracking for new users
+**Files Created/Modified:**
+- New: `/public/js/components/ChatOnboardingWizard.js` (738 lines)
+- Modified: `/public/index.html` (+392 lines - wizard integration, alerts, checklist)
+- Modified: `/public/js/chat.js` (+17 lines - integration hooks)
+- Docs: Test plan, completion report, automated tests (6/6 passed)
 
-**Proposed Solution:** 5-step wizard adapted from existing OnboardingWizard pattern
-1. **Welcome** - Explain AgentX chat features (RAG, user memory, multi-model, smart prompts)
-2. **Profile Setup** - Collect "About You" and custom instructions (reuse existing Step 2 logic)
-3. **Choose Your Setup** - Select system prompt from `/api/prompts` and default Ollama model
-4. **RAG Introduction** - Educate on document search toggle and when to use it
-5. **Completion** - Show next steps, link to advanced features, "Don't show again" checkbox
+**Testing Status:**
+- ✅ Automated integration tests: 6/6 passed
+- ⏳ Manual browser testing: Pending user verification
+- 📋 Test plan: 16 test cases documented in `/docs/testing/CHAT_ONBOARDING_TEST_PLAN.md`
 
-**Implementation Effort:** Low (2-3 hours)
-- Copy OnboardingWizard.js structure
-- Adapt 5 step templates for chat focus
-- Change localStorage keys (`agentx_chat_onboarding_*`)
-- Add trigger logic to index.html
-- Test auto-trigger and manual re-open
-
-**Files to Create/Modify:**
-- New: `/public/js/components/ChatOnboardingWizard.js` (~800-1000 lines)
-- Modify: `/public/index.html` (add tutorial button, import component, trigger logic)
+**Current Gap:** Manual QA in browser needed to verify end-to-end flow
 
 ### 📋 Development Workflow Conventions (Not Yet Established)
 
