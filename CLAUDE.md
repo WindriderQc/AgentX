@@ -603,6 +603,24 @@ beforeAll(async () => {
 
 This section tracks the current implementation status and areas requiring development attention.
 
+### 📊 Codebase Metrics (as of 2026-01-01)
+
+**Implementation Status:**
+- ✅ **Core Services:** 11 services (chatService, ragStore, embeddings, modelRouter, toolService, etc.)
+- ✅ **API Routes:** 14 route files covering 40+ endpoints
+- ✅ **Data Models:** 5 Mongoose schemas (Conversation, PromptConfig, UserProfile, etc.)
+- ✅ **Frontend:** 6 HTML pages, 19 JavaScript modules
+- ✅ **Test Coverage:** 13 test files (2,235 lines) covering integration, services, helpers, models
+- ✅ **Documentation:** 60+ markdown files (17,393 lines total)
+- ✅ **n8n Workflows:** 9 workflow JSONs with deployment automation
+
+**Architecture Verified:**
+- Service-Oriented Architecture (Routes → Services → Models → DB/Ollama)
+- Singleton pattern for stateful services (RAG store, embedding cache)
+- Factory pattern for vector stores (in-memory + Qdrant)
+- Dual authentication (Session + API Key)
+- PM2 cluster mode deployment with CI/CD
+
 ### ✅ Implemented & Production-Ready
 
 **Core Chat System:**
@@ -642,31 +660,51 @@ This section tracks the current implementation status and areas requiring develo
 
 ### 🚧 Partially Implemented / Needs Work
 
-**Analytics & Metrics (V4) - BARELY STARTED:**
-- **Status:** Basic feedback collection exists, but analytics endpoints need expansion
-- **Need:** Architecture definition, feature implementation, comprehensive metrics dashboard
-- **Files:** `/routes/analytics.js` (exists but minimal)
-- **n8n Integration:** Prompt improvement workflows documented but need backend expansion
+**Analytics & Metrics (V4) - FUNCTIONAL BUT NEEDS EXPANSION:**
+- **Status:** 5 analytics endpoints implemented (563 lines in `/routes/analytics.js`)
+- **Implemented:**
+  - `GET /api/analytics/usage` - Conversation/message counts with grouping
+  - `GET /api/analytics/feedback` - Positive/negative rates with breakdown
+  - `GET /api/analytics/rag-stats` - RAG usage vs non-RAG performance
+  - `GET /api/analytics/stats` - Token usage, performance metrics
+  - `GET /api/analytics/feedback/summary` - A/B comparison, low performers
+  - Frontend: `/public/analytics.html` (18,779 bytes) - Basic visualization
+- **Need:** Real-time monitoring, advanced visualizations, cost tracking, expanded dashboard
+- **n8n Integration:** Prompt improvement workflows documented but need production testing
 
-**Security & Rate Limiting - NOT IMPLEMENTED:**
+**Security & Rate Limiting - PARTIALLY IMPLEMENTED:**
 - **Dependencies:** Installed (helmet, express-rate-limit, express-mongo-sanitize)
-- **Status:** Need architecture, configuration, and testing
-- **Critical:**
+- **Status:**
+  - ✅ **express-mongo-sanitize**: ACTIVE at `/src/app.js:48-57` (replaces malicious chars, logs events)
+  - ⚠️ **helmet**: INSTALLED but DISABLED (line 26: "removed for local network compatibility")
+  - ❌ **express-rate-limit**: NOT CONFIGURED (no usage in codebase)
+  - ✅ Custom security headers set manually (X-Content-Type-Options, X-Frame-Options, X-XSS-Protection)
+- **Critical Gaps:**
   - Rate limiting per user/IP
   - API key validation beyond basic header check
-  - Request sanitization
-  - CORS policy refinement
-- **Files:** Security middleware not yet configured in `/src/app.js`
+  - Helmet re-evaluation for production
+- **Files:** `/src/app.js:4-57`, `/src/middleware/auth.js` (129 lines)
 
 **AgentC Directory - PLANNING PHASE:**
-- **Location:** `/AgentC/` with N1.1, N2.1, N3.1, N5.1 JSON files
-- **Status:** Documentation and n8n workflow JSON repository
+- **Location:** `/AgentC/` with 9 n8n workflow JSON files
+- **Status:** n8n workflows version-controlled and deployment-ready
+- **Workflows:**
+  - N1.1.json (12.6KB) - System Health Check
+  - N1.3.json (10.7KB) - Ops Diagnostic
+  - N2.1.json (4.1KB) - NAS Scan
+  - N2.2.json (4.2KB) - NAS Full Scan
+  - N2.3.json (11.5KB) - RAG Ingest
+  - N3.1.json (5.0KB) - Model Monitor (Fixed)
+  - N3.2.json (7.6KB) - AI Query
+  - N5.1.json (13.7KB) - Feedback Analysis
+  - testpack.json (11.9KB) - Test workflow pack
+- **Documentation:** `/AgentC/README.md` (315 lines), deployment script at `/scripts/deploy-n8n-workflows.sh`
+- **n8n Instance:** http://192.168.2.199:5678 (public: https://n8n.specialblend.icu)
 - **Plan Evolution Needed:**
   - Integration with MCP tools
   - Cloud AI LLM specific use cases on top of Ollama
   - Minor automated workflow implementations
   - Global architecture review
-- **Current:** Some AI agent tests done but JSONs not in main codebase
 - **Priority:** TODO when requirements solidify
 
 ### 🔴 Critical Architecture Review Needed
