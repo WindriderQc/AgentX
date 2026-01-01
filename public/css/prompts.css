@@ -2051,6 +2051,25 @@
     animation: pulse 2s ease-in-out infinite;
 }
 
+.prompt-health-alert.loading .alert-icon i {
+    animation: none;
+}
+
+.prompt-health-alert.loading .alert-icon {
+    background: rgba(100, 181, 246, 0.15);
+}
+
+.prompt-health-alert.loading {
+    background: linear-gradient(135deg, rgba(100, 181, 246, 0.1) 0%, rgba(66, 165, 245, 0.05) 100%);
+    border-color: rgba(100, 181, 246, 0.3);
+    border-left-color: var(--accent);
+}
+
+.prompt-health-alert.loading .alert-title {
+    color: var(--muted);
+    font-size: 14px;
+}
+
 @keyframes pulse {
     0%, 100% {
         opacity: 1;

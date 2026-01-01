@@ -82,8 +82,8 @@ export class PromptImprovementWizard {
       }
 
       this.analysisData = result.data;
-      this.suggestedPrompt = this.analysisData.llmAnalysis?.suggested_prompt || 
-                             this.analysisData.prompt.systemPrompt;
+      const basePrompt = this.analysisData?.prompt?.systemPrompt || '';
+      this.suggestedPrompt = this.analysisData?.llmAnalysis?.suggested_prompt || basePrompt;
       this.customizedPrompt = this.suggestedPrompt;
 
     } catch (error) {
@@ -226,7 +226,16 @@ export class PromptImprovementWizard {
 
     if (!this.analysisData) return '<div class="wizard-step"><p>Loading...</p></div>';
 
-    const { patternAnalysis, llmAnalysis } = this.analysisData;
+    const patternAnalysis = this.analysisData?.patternAnalysis || {
+      patterns: [],
+      themes: [],
+      stats: {
+        totalConversations: 0,
+        avgMessagesPerConversation: 0,
+        mostCommonFailurePoints: []
+      }
+    };
+    const { llmAnalysis } = this.analysisData;
 
     return `
       <div class="wizard-step analysis-step">
@@ -572,16 +581,26 @@ export class PromptImprovementWizard {
 
       if (!createResponse.ok) throw new Error('Failed to create prompt');
       const createResult = await createResponse.json();
+      const newVersion = createResult?.data?.version || this.promptVersion + 1;
 
       // If A/B testing, update old version's traffic weight
       if (this.enableABTest) {
         const oldTraffic = 100 - this.trafficSplit;
-        await fetch(`/api/prompts/${this.promptName}/${this.promptVersion}`, {
-          method: 'PATCH',
+        const abResponse = await fetch(`/api/prompts/${encodeURIComponent(this.promptName)}/ab-test`, {
+          method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ trafficWeight: oldTraffic })
+          body: JSON.stringify({
+            versions: [
+              { version: this.promptVersion, weight: oldTraffic },
+              { version: newVersion, weight: this.trafficSplit }
+            ]
+          })
         });
+        if (!abResponse.ok) {
+          const errorPayload = await abResponse.json().catch(() => ({}));
+          throw new Error(errorPayload.message || 'Failed to configure A/B test');
+        }
       }
 
       this.toast.success('Improved version created successfully!');

@@ -365,12 +365,21 @@ router.post('/:name/analyze-failures', optionalAuth, async (req, res) => {
         .lean();
         
         if (conversations.length === 0) {
+            const emptyAnalysis = analyzeFailurePatterns([]);
             return res.json({
                 status: 'success',
                 data: {
                     message: 'No negative feedback found for this prompt version',
+                    prompt: {
+                        name: prompt.name,
+                        version: prompt.version,
+                        systemPrompt: prompt.systemPrompt
+                    },
                     conversations: 0,
-                    analysis: null
+                    patternAnalysis: emptyAnalysis,
+                    llmAnalysis: null,
+                    llmError: null,
+                    rawLlmResponse: null
                 }
             });
         }

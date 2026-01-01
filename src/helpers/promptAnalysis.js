@@ -201,12 +201,17 @@ Be specific and actionable. Focus on changes that directly address the identifie
 
     const fetch = (await import('node-fetch')).default;
 
-    // Call Ollama with analysis model (using qwen2.5:32b or deepseek-r1 for reasoning)
+    const analysisModel = process.env.PROMPT_ANALYSIS_MODEL
+      || process.env.OLLAMA_ANALYSIS_MODEL
+      || process.env.OLLAMA_MODEL
+      || 'qwen2.5:7b';
+
+    // Call Ollama with analysis model (configurable)
     const response = await fetch(`${ollamaHost}/api/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'qwen2.5:32b', // Use reasoning model for better analysis
+        model: analysisModel,
         prompt: analysisPrompt,
         stream: false,
         options: {
@@ -250,7 +255,7 @@ Be specific and actionable. Focus on changes that directly address the identifie
       success: true,
       analysis: structuredAnalysis,
       raw_response: analysisText,
-      model_used: 'qwen2.5:32b'
+      model_used: analysisModel
     };
 
   } catch (error) {

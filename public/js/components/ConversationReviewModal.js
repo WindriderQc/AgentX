@@ -64,7 +64,8 @@ export class ConversationReviewModal {
         promptName: this.promptName,
         promptVersion: this.promptVersion.toString(),
         minFeedback: '-1', // Negative feedback only
-        limit: '50'
+        limit: '50',
+        format: 'full'
       });
 
       const response = await fetch(`/api/dataset/conversations?${params}`, {
@@ -80,7 +81,34 @@ export class ConversationReviewModal {
         throw new Error(result.message || 'Failed to load conversations');
       }
 
-      this.conversations = result.data.conversations || [];
+      const rawConversations = Array.isArray(result.data)
+        ? result.data
+        : result.data?.conversations || [];
+
+      this.conversations = rawConversations.map((conv) => {
+        if (Array.isArray(conv.messages)) {
+          return conv;
+        }
+
+        const fallbackMessages = [];
+        if (conv.input) {
+          fallbackMessages.push({ role: 'user', content: conv.input });
+        }
+        if (conv.output) {
+          const feedback = conv.feedback ? { ...conv.feedback } : undefined;
+          fallbackMessages.push({
+            role: 'assistant',
+            content: conv.output,
+            feedback
+          });
+        }
+
+        return {
+          ...conv,
+          createdAt: conv.createdAt || conv.metadata?.createdAt,
+          messages: fallbackMessages
+        };
+      });
       this.applyFilter();
       this.renderConversationList();
     } catch (error) {

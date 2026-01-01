@@ -33,7 +33,9 @@ router.get('/conversations', requireAuth, async (req, res) => {
       minFeedback,
       promptName,
       promptVersion,
-      model
+      model,
+      format,
+      includeMessages
     } = req.query;
 
     // Parse and validate limit (clamp to positive integers, max 500)
@@ -89,6 +91,16 @@ router.get('/conversations', requireAuth, async (req, res) => {
     const hasMore = conversations.length > parsedLimit;
     const results = hasMore ? conversations.slice(0, parsedLimit) : conversations;
     const nextCursor = hasMore ? results[results.length - 1]._id.toString() : null;
+
+    const wantsFull = format === 'full' || includeMessages === 'true';
+
+    if (wantsFull) {
+      return res.json({
+        status: 'success',
+        data: { conversations: results },
+        nextCursor
+      });
+    }
 
     // Transform to dataset format
     const dataset = results.map(conv => {

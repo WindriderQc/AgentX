@@ -101,7 +101,8 @@ describe('POST /api/prompts/:name/analyze-failures', () => {
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('success');
     expect(res.body.data.conversations).toBe(0);
-    expect(res.body.data.analysis).toBeNull();
+    expect(res.body.data.patternAnalysis).toBeDefined();
+    expect(res.body.data.llmAnalysis).toBeNull();
   });
 
   it('returns 404 for invalid prompt name', async () => {

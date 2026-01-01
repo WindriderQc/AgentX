@@ -41,6 +41,7 @@ export class PromptHealthMonitor {
     if (this.loading) return;
 
     this.loading = true;
+    this.render(); // Show loading state
 
     try {
       // Calculate date range for last 7 days
@@ -89,6 +90,24 @@ export class PromptHealthMonitor {
    */
   render() {
     if (!this.container) return;
+
+    // Show loading state
+    if (this.loading) {
+      this.container.style.display = 'block';
+      this.container.innerHTML = `
+        <div class="prompt-health-alert loading">
+          <div class="alert-icon">
+            <i class="fas fa-circle-notch fa-spin"></i>
+          </div>
+          <div class="alert-content">
+            <div class="alert-header">
+              <span class="alert-title">Checking Prompt Health...</span>
+            </div>
+          </div>
+        </div>
+      `;
+      return;
+    }
 
     // Don't show if dismissed or no issues found
     if (this.isDismissed || this.lowPerformingPrompts.length === 0) {
