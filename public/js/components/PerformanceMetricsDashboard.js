@@ -244,6 +244,25 @@ export class PerformanceMetricsDashboard {
 
       this.metricsData = result.data;
 
+      // Fetch trending data
+      let trendingUrl = `/api/analytics/trending?days=${days}`;
+      if (this.selectedModel && this.selectedModel !== 'all') {
+        trendingUrl += `&model=${encodeURIComponent(this.selectedModel)}`;
+      }
+
+      try {
+        const trendingResponse = await fetch(trendingUrl, { credentials: 'include' });
+        if (trendingResponse.ok) {
+          const trendingResult = await trendingResponse.json();
+          if (trendingResult.status === 'success') {
+            this.trendingData = trendingResult.data.trending;
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to load trending data:', err);
+        this.trendingData = null;
+      }
+
       // Extract available models from data
       this.extractAvailableModels();
 
@@ -393,6 +412,9 @@ export class PerformanceMetricsDashboard {
     const positiveRate = overall.positiveRate;
     const negativeRate = 1 - positiveRate;
 
+    // Calculate trending
+    const trending = this.calculateTrending(prompt);
+
     // Determine status color
     let statusClass = 'good';
     if (positiveRate < 0.5) statusClass = 'poor';
@@ -460,7 +482,15 @@ export class PerformanceMetricsDashboard {
                 <i class="fas fa-thumbs-up"></i>
                 Positive Rate
               </div>
-              <div class="metric-value positive">${(positiveRate * 100).toFixed(1)}%</div>
+              <div class="metric-value positive">
+                ${(positiveRate * 100).toFixed(1)}%
+                ${trending ? `
+                  <span class="trending-indicator trending-${trending.color}" title="${trending.tooltip}">
+                    <i class="fas ${trending.icon}"></i>
+                    <span class="trending-label">${trending.label}</span>
+                  </span>
+                ` : ''}
+              </div>
             </div>
           </div>
 
@@ -520,13 +550,62 @@ export class PerformanceMetricsDashboard {
   }
 
   /**
-   * Calculate trending indicator (mock implementation)
-   * In production, would compare current period vs previous period
+   * Calculate trending indicator using trending API data
+   * Compares current period vs previous period
    */
   calculateTrending(data) {
-    // For now, return null to hide trending
-    // TODO: Implement by comparing time periods
-    return null;
+    // If no trending data available, return null
+    if (!this.trendingData || !Array.isArray(this.trendingData)) {
+      return null;
+    }
+
+    // Find matching trending data for this prompt
+    const trending = this.trendingData.find(item =>
+      item.promptName === data.promptName &&
+      item.promptVersion === data.promptVersion
+    );
+
+    if (!trending) {
+      return null;
+    }
+
+    // Return trending indicator based on status
+    switch (trending.status) {
+      case 'improving':
+        return {
+          direction: 'up',
+          icon: 'fa-arrow-up',
+          color: 'success',
+          label: `+${(trending.percentChange || 0).toFixed(1)}%`,
+          tooltip: `Improving: ${(trending.delta * 100).toFixed(1)}% increase in positive rate`
+        };
+      case 'declining':
+        return {
+          direction: 'down',
+          icon: 'fa-arrow-down',
+          color: 'danger',
+          label: `${(trending.percentChange || 0).toFixed(1)}%`,
+          tooltip: `Declining: ${Math.abs(trending.delta * 100).toFixed(1)}% decrease in positive rate`
+        };
+      case 'stable':
+        return {
+          direction: 'stable',
+          icon: 'fa-minus',
+          color: 'muted',
+          label: 'Stable',
+          tooltip: 'Performance stable compared to previous period'
+        };
+      case 'new':
+        return {
+          direction: 'new',
+          icon: 'fa-sparkles',
+          color: 'info',
+          label: 'New',
+          tooltip: 'New prompt with no previous data'
+        };
+      default:
+        return null;
+    }
   }
 
   /**

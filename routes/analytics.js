@@ -714,4 +714,153 @@ router.get('/prompt-metrics', requireAuth, async (req, res) => {
   }
 });
 
+/**
+ * GET /api/analytics/trending
+ * Get trending data by comparing current period vs previous period
+ * Query params:
+ *   - days: number of days for current period (default: 7)
+ *   - model: filter by specific model (optional)
+ */
+router.get('/trending', requireAuth, async (req, res) => {
+  try {
+    const { days = 7, model: filterModel } = req.query;
+    const daysNum = parseInt(days);
+
+    // Current period
+    const currentTo = new Date();
+    const currentFrom = new Date(currentTo.getTime() - daysNum * 24 * 60 * 60 * 1000);
+
+    // Previous period (same duration, ending at currentFrom)
+    const previousTo = currentFrom;
+    const previousFrom = new Date(previousTo.getTime() - daysNum * 24 * 60 * 60 * 1000);
+
+    // Helper function to get metrics for a time period
+    const getMetricsForPeriod = async (fromDate, toDate) => {
+      const dateFilter = {
+        createdAt: { $gte: fromDate, $lte: toDate }
+      };
+
+      if (filterModel) {
+        dateFilter.model = filterModel;
+      }
+
+      const data = await Conversation.aggregate([
+        { $match: dateFilter },
+        { $unwind: '$messages' },
+        { $match: { 'messages.feedback.rating': { $in: [1, -1] } } },
+        { $group: {
+            _id: {
+              name: '$promptName',
+              version: '$promptVersion'
+            },
+            total: { $sum: 1 },
+            positive: { $sum: { $cond: [{ $eq: ['$messages.feedback.rating', 1] }, 1, 0] } },
+            negative: { $sum: { $cond: [{ $eq: ['$messages.feedback.rating', -1] }, 1, 0] } }
+          }
+        }
+      ]);
+
+      const metrics = {};
+      data.forEach(item => {
+        const key = `${item._id.name}_v${item._id.version}`;
+        const positiveRate = item.total > 0 ? item.positive / item.total : 0;
+        metrics[key] = {
+          promptName: item._id.name,
+          promptVersion: item._id.version,
+          total: item.total,
+          positive: item.positive,
+          negative: item.negative,
+          positiveRate
+        };
+      });
+
+      return metrics;
+    };
+
+    // Get metrics for both periods
+    const [currentMetrics, previousMetrics] = await Promise.all([
+      getMetricsForPeriod(currentFrom, currentTo),
+      getMetricsForPeriod(previousFrom, previousTo)
+    ]);
+
+    // Calculate trending for each prompt
+    const trending = {};
+    const allKeys = new Set([...Object.keys(currentMetrics), ...Object.keys(previousMetrics)]);
+
+    allKeys.forEach(key => {
+      const current = currentMetrics[key];
+      const previous = previousMetrics[key];
+
+      if (current && previous) {
+        // Both periods have data - calculate trend
+        const delta = current.positiveRate - previous.positiveRate;
+        const percentChange = previous.positiveRate > 0
+          ? (delta / previous.positiveRate) * 100
+          : 0;
+
+        trending[key] = {
+          promptName: current.promptName,
+          promptVersion: current.promptVersion,
+          current: {
+            total: current.total,
+            positiveRate: current.positiveRate
+          },
+          previous: {
+            total: previous.total,
+            positiveRate: previous.positiveRate
+          },
+          delta,
+          percentChange,
+          trend: delta > 0.05 ? 'up' : delta < -0.05 ? 'down' : 'stable',
+          status: delta > 0.05 ? 'improving' : delta < -0.05 ? 'declining' : 'stable'
+        };
+      } else if (current) {
+        // New prompt (no previous data)
+        trending[key] = {
+          promptName: current.promptName,
+          promptVersion: current.promptVersion,
+          current: {
+            total: current.total,
+            positiveRate: current.positiveRate
+          },
+          previous: null,
+          delta: null,
+          percentChange: null,
+          trend: 'new',
+          status: 'new'
+        };
+      }
+    });
+
+    // Convert to array and sort by absolute delta (biggest changes first)
+    const trendingArray = Object.values(trending).sort((a, b) => {
+      const deltaA = Math.abs(a.delta || 0);
+      const deltaB = Math.abs(b.delta || 0);
+      return deltaB - deltaA;
+    });
+
+    res.json({
+      status: 'success',
+      data: {
+        periods: {
+          current: {
+            from: currentFrom.toISOString(),
+            to: currentTo.toISOString()
+          },
+          previous: {
+            from: previousFrom.toISOString(),
+            to: previousTo.toISOString()
+          }
+        },
+        days: daysNum,
+        filterModel: filterModel || null,
+        trending: trendingArray
+      }
+    });
+  } catch (err) {
+    logger.error('Analytics trending error', { error: err.message, stack: err.stack });
+    res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
 module.exports = router;

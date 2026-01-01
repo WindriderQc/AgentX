@@ -2151,6 +2151,56 @@
     color: rgb(52, 211, 153);
 }
 
+/* Trending Indicator */
+.trending-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 8px;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    vertical-align: middle;
+    transition: all 0.2s ease;
+}
+
+.trending-indicator i {
+    font-size: 10px;
+}
+
+.trending-label {
+    font-size: 10px;
+}
+
+.trending-success {
+    background: rgba(52, 211, 153, 0.15);
+    color: rgb(52, 211, 153);
+    border: 1px solid rgba(52, 211, 153, 0.3);
+}
+
+.trending-danger {
+    background: rgba(248, 113, 113, 0.15);
+    color: rgb(248, 113, 113);
+    border: 1px solid rgba(248, 113, 113, 0.3);
+}
+
+.trending-muted {
+    background: rgba(156, 163, 175, 0.15);
+    color: rgb(156, 163, 175);
+    border: 1px solid rgba(156, 163, 175, 0.3);
+}
+
+.trending-info {
+    background: rgba(96, 165, 250, 0.15);
+    color: rgb(96, 165, 250);
+    border: 1px solid rgba(96, 165, 250, 0.3);
+}
+
+.trending-indicator:hover {
+    transform: scale(1.05);
+}
+
 /* Feedback Bar */
 .feedback-bar {
     display: flex;
