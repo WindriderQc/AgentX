@@ -20,6 +20,86 @@
 
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+
+    <!-- Simple Mode Styles -->
+    <style>
+        /* Simple Mode Toggle */
+        .simple-mode-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--panel-border);
+            background: var(--panel);
+            transition: all 0.2s;
+            user-select: none;
+        }
+
+        .simple-mode-toggle:hover {
+            border-color: var(--accent);
+            background: rgba(124, 240, 255, 0.05);
+        }
+
+        .simple-mode-toggle input[type="checkbox"] {
+            display: none;
+        }
+
+        .simple-mode-toggle .toggle-label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text);
+        }
+
+        .simple-mode-toggle input:checked + .toggle-label i {
+            color: var(--accent);
+        }
+
+        .simple-mode-toggle input:checked + .toggle-label i::before {
+            content: "\f205"; /* fa-toggle-on */
+        }
+
+        /* Hide advanced features in simple mode */
+        body.simple-mode .advanced-feature {
+            display: none !important;
+        }
+
+        /* Simple mode indicator */
+        body.simple-mode .prompts-header .lede::after {
+            content: " (Simple Mode)";
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        /* Show helpful message in simple mode */
+        body.simple-mode .advanced-notice {
+            display: block !important;
+        }
+
+        .advanced-notice {
+            display: none;
+            background: rgba(124, 240, 255, 0.1);
+            border: 1px solid rgba(124, 240, 255, 0.3);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 20px;
+            color: var(--text);
+        }
+
+        .advanced-notice i {
+            color: var(--accent);
+            margin-right: 8px;
+        }
+
+        .advanced-notice a {
+            color: var(--accent);
+            text-decoration: underline;
+        }
+    </style>
 </head>
 <body>
     <!-- Top Navigation -->
@@ -50,13 +130,21 @@
                 <p class="lede">Create, version, and A/B test system prompts with performance tracking.</p>
             </div>
             <div class="header-controls">
-                <button id="exportPromptsBtn" class="ghost btn-sm" title="Export prompt library as JSON">
+                <!-- Simple Mode Toggle -->
+                <label class="simple-mode-toggle" title="Toggle between simple and advanced mode">
+                    <input type="checkbox" id="simpleModeToggle">
+                    <span class="toggle-label">
+                        <i class="fas fa-toggle-off"></i> Simple Mode
+                    </span>
+                </label>
+
+                <button id="exportPromptsBtn" class="ghost btn-sm advanced-feature" title="Export prompt library as JSON">
                     <i class="fas fa-download"></i> Export
                 </button>
-                <button id="importPromptsBtn" class="ghost btn-sm" title="Import prompts from JSON file">
+                <button id="importPromptsBtn" class="ghost btn-sm advanced-feature" title="Import prompts from JSON file">
                     <i class="fas fa-upload"></i> Import
                 </button>
-                <button id="compareVersionsBtn" class="ghost btn-sm" title="Compare prompt versions">
+                <button id="compareVersionsBtn" class="ghost btn-sm advanced-feature" title="Compare prompt versions">
                     <i class="fas fa-columns"></i> Compare Versions
                 </button>
                 <button id="showOnboardingBtn" class="ghost btn-sm">
@@ -77,12 +165,12 @@
                 <div class="value" id="totalPrompts">—</div>
                 <div class="sub">Across all versions</div>
             </div>
-            <div class="stat-card">
+            <div class="stat-card advanced-feature">
                 <div class="label">Active A/B Tests</div>
                 <div class="value" id="activeTests">—</div>
                 <div class="sub">Running experiments</div>
             </div>
-            <div class="stat-card">
+            <div class="stat-card advanced-feature">
                 <div class="label">Avg. Positive Rate</div>
                 <div class="value" id="avgPositiveRate">—</div>
                 <div class="sub">Across all prompts</div>
@@ -94,11 +182,17 @@
             </div>
         </div>
 
+        <!-- Simple Mode Notice -->
+        <div class="advanced-notice">
+            <i class="fas fa-info-circle"></i>
+            <strong>Simple Mode Active:</strong> Advanced features are hidden. Toggle off Simple Mode above to access A/B testing, version comparison, performance metrics, and improvement wizard.
+        </div>
+
         <!-- Performance Metrics Dashboard -->
-        <div id="metricsDashboard"></div>
+        <div id="metricsDashboard" class="advanced-feature"></div>
 
         <!-- Prompt Health Alert -->
-        <div id="promptHealthAlert"></div>
+        <div id="promptHealthAlert" class="advanced-feature"></div>
 
         <!-- Filter/Search Bar -->
         <div class="toolbar">
@@ -118,7 +212,7 @@
                     <option value="impressions">Sort by Usage</option>
                     <option value="positiveRate">Sort by Performance</option>
                 </select>
-                <button id="advancedFiltersBtn" class="btn-sm ghost" title="Show Advanced Filters">
+                <button id="advancedFiltersBtn" class="btn-sm ghost advanced-feature" title="Show Advanced Filters">
                     <i class="fas fa-filter"></i>
                     <span>More Filters</span>
                 </button>
@@ -126,7 +220,7 @@
         </div>
 
         <!-- Advanced Filters Panel (collapsible) -->
-        <div id="advancedFiltersPanel" class="advanced-filters-panel" style="display: none;">
+        <div id="advancedFiltersPanel" class="advanced-filters-panel advanced-feature" style="display: none;">
             <div class="advanced-filters-content">
                 <div class="filter-group">
                     <label>
@@ -204,6 +298,34 @@
     <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
     <script>
         require.config({ paths: { 'vs': 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' }});
+    </script>
+
+    <!-- Simple Mode Toggle Script -->
+    <script>
+        // Initialize Simple Mode from localStorage on page load
+        (function() {
+            const simpleModeToggle = document.getElementById('simpleModeToggle');
+            const isSimpleMode = localStorage.getItem('agentx_simple_mode') === 'true';
+
+            // Apply saved state
+            if (isSimpleMode) {
+                simpleModeToggle.checked = true;
+                document.body.classList.add('simple-mode');
+            }
+
+            // Toggle handler
+            simpleModeToggle.addEventListener('change', function(e) {
+                if (e.target.checked) {
+                    document.body.classList.add('simple-mode');
+                    localStorage.setItem('agentx_simple_mode', 'true');
+                    console.log('Simple Mode: ENABLED');
+                } else {
+                    document.body.classList.remove('simple-mode');
+                    localStorage.setItem('agentx_simple_mode', 'false');
+                    console.log('Simple Mode: DISABLED');
+                }
+            });
+        })();
     </script>
 
     <!-- Main App -->
