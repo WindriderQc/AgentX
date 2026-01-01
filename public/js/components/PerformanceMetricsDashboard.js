@@ -12,8 +12,10 @@ export class PerformanceMetricsDashboard {
     this.autoRefresh = false;
     this.refreshInterval = null;
     this.selectedTimeRange = '7d';
+    this.selectedModel = 'all'; // New: model filter
     this.metricsData = null;
     this.loading = false;
+    this.availableModels = []; // New: list of available models
 
     this.init();
   }
@@ -47,6 +49,12 @@ export class PerformanceMetricsDashboard {
             <span class="metrics-subtitle">Real-time prompt analytics</span>
           </div>
           <div class="header-actions">
+            <select id="metricsModelFilter" class="model-filter-selector" title="Filter by model">
+              <option value="all">All Models</option>
+              ${this.availableModels.map(model =>
+                `<option value="${this.escapeHtml(model)}" ${this.selectedModel === model ? 'selected' : ''}>${this.escapeHtml(model)}</option>`
+              ).join('')}
+            </select>
             <select id="metricsTimeRange" class="time-range-selector">
               <option value="7d" ${this.selectedTimeRange === '7d' ? 'selected' : ''}>Last 7 days</option>
               <option value="30d" ${this.selectedTimeRange === '30d' ? 'selected' : ''}>Last 30 days</option>
@@ -117,6 +125,15 @@ export class PerformanceMetricsDashboard {
     if (timeRangeSelector) {
       timeRangeSelector.addEventListener('change', (e) => {
         this.selectedTimeRange = e.target.value;
+        this.loadMetrics();
+      });
+    }
+
+    // Model filter selector
+    const modelFilterSelector = document.getElementById('metricsModelFilter');
+    if (modelFilterSelector) {
+      modelFilterSelector.addEventListener('change', (e) => {
+        this.selectedModel = e.target.value;
         this.loadMetrics();
       });
     }
@@ -198,13 +215,23 @@ export class PerformanceMetricsDashboard {
     this.hideError();
 
     try {
-      const { from, to } = this.getDateRange();
+      // Get days from selected time range
+      let days = 7;
+      switch (this.selectedTimeRange) {
+        case '7d': days = 7; break;
+        case '30d': days = 30; break;
+        case '90d': days = 90; break;
+        case 'all': days = 3650; break; // ~10 years
+      }
 
-      // Fetch feedback metrics with prompt version breakdown
-      const response = await fetch(
-        `/api/analytics/feedback?from=${from}&to=${to}&groupBy=promptVersion`,
-        { credentials: 'include' }
-      );
+      // Build API URL with model filter
+      let apiUrl = `/api/analytics/prompt-metrics?days=${days}`;
+      if (this.selectedModel && this.selectedModel !== 'all') {
+        apiUrl += `&model=${encodeURIComponent(this.selectedModel)}`;
+      }
+
+      // Fetch prompt metrics with model breakdown
+      const response = await fetch(apiUrl, { credentials: 'include' });
 
       if (!response.ok) {
         throw new Error(`API error: ${response.status}`);
@@ -216,6 +243,10 @@ export class PerformanceMetricsDashboard {
       }
 
       this.metricsData = result.data;
+
+      // Extract available models from data
+      this.extractAvailableModels();
+
       this.renderMetrics();
     } catch (error) {
       console.error('Failed to load metrics:', error);
@@ -227,16 +258,49 @@ export class PerformanceMetricsDashboard {
   }
 
   /**
+   * Extract unique models from metrics data
+   */
+  extractAvailableModels() {
+    if (!this.metricsData || !this.metricsData.prompts) return;
+
+    const models = new Set();
+    this.metricsData.prompts.forEach(prompt => {
+      if (prompt.byModel) {
+        prompt.byModel.forEach(modelData => {
+          if (modelData.model) {
+            models.add(modelData.model);
+          }
+        });
+      }
+    });
+
+    this.availableModels = Array.from(models).sort();
+
+    // Update model filter dropdown if it exists
+    const modelFilter = document.getElementById('metricsModelFilter');
+    if (modelFilter && this.availableModels.length > 0) {
+      // Preserve current selection
+      const currentSelection = this.selectedModel;
+
+      // Rebuild options
+      modelFilter.innerHTML = '<option value="all">All Models</option>' +
+        this.availableModels.map(model =>
+          `<option value="${this.escapeHtml(model)}" ${currentSelection === model ? 'selected' : ''}>${this.escapeHtml(model)}</option>`
+        ).join('');
+    }
+  }
+
+  /**
    * Render metrics cards
    */
   renderMetrics() {
     const content = document.getElementById('metricsContent');
     if (!content || !this.metricsData) return;
 
-    const { breakdown } = this.metricsData;
+    const { prompts } = this.metricsData;
 
     // If no data, show empty state
-    if (!breakdown || breakdown.length === 0) {
+    if (!prompts || prompts.length === 0) {
       content.innerHTML = `
         <div class="metrics-empty">
           <i class="fas fa-chart-line"></i>
@@ -247,12 +311,9 @@ export class PerformanceMetricsDashboard {
       return;
     }
 
-    // Aggregate by prompt name
-    const promptGroups = this.aggregateByPromptName(breakdown);
-
-    // Render metric cards
-    const cardsHtml = Object.entries(promptGroups).map(([promptName, data]) =>
-      this.renderMetricCard(promptName, data)
+    // Render metric cards using new data structure
+    const cardsHtml = prompts.map(prompt =>
+      this.renderMetricCard(prompt)
     ).join('');
 
     content.innerHTML = `
@@ -264,9 +325,27 @@ export class PerformanceMetricsDashboard {
     // Attach click handlers for detailed view
     content.querySelectorAll('.metric-card').forEach(card => {
       card.addEventListener('click', (e) => {
-        if (!e.target.closest('.metric-actions')) {
+        if (!e.target.closest('.metric-actions') && !e.target.closest('.model-breakdown-toggle')) {
           const promptName = card.dataset.promptName;
           this.viewDetailedAnalytics(promptName);
+        }
+      });
+    });
+
+    // Attach model breakdown toggle handlers
+    content.querySelectorAll('.model-breakdown-toggle').forEach(toggle => {
+      toggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const card = e.target.closest('.metric-card');
+        const breakdown = card.querySelector('.model-breakdown');
+        const icon = toggle.querySelector('i');
+
+        if (breakdown.style.display === 'none') {
+          breakdown.style.display = 'block';
+          icon.className = 'fas fa-chevron-up';
+        } else {
+          breakdown.style.display = 'none';
+          icon.className = 'fas fa-chevron-down';
         }
       });
     });
@@ -309,8 +388,9 @@ export class PerformanceMetricsDashboard {
   /**
    * Render a single metric card
    */
-  renderMetricCard(promptName, data) {
-    const positiveRate = data.positiveRate;
+  renderMetricCard(prompt) {
+    const { promptName, promptVersion, overall, byModel } = prompt;
+    const positiveRate = overall.positiveRate;
     const negativeRate = 1 - positiveRate;
 
     // Determine status color
@@ -318,15 +398,46 @@ export class PerformanceMetricsDashboard {
     if (positiveRate < 0.5) statusClass = 'poor';
     else if (positiveRate < 0.7) statusClass = 'caution';
 
-    // Calculate trending (mock for now - would need historical data)
-    const trending = this.calculateTrending(data);
+    // Render model breakdown section
+    const modelBreakdownHtml = byModel && byModel.length > 0 ? `
+      <div class="model-breakdown" style="display: none;">
+        <div class="breakdown-header">
+          <i class="fas fa-server"></i>
+          <span>Performance by Model</span>
+        </div>
+        <div class="breakdown-list">
+          ${byModel.map(modelData => {
+            const modelPositiveRate = modelData.positiveRate;
+            let modelStatus = 'good';
+            if (modelPositiveRate < 0.5) modelStatus = 'poor';
+            else if (modelPositiveRate < 0.7) modelStatus = 'caution';
+
+            return `
+              <div class="breakdown-item ${modelStatus}">
+                <div class="breakdown-model">
+                  <i class="fas fa-cube"></i>
+                  <span>${this.escapeHtml(modelData.model)}</span>
+                </div>
+                <div class="breakdown-metrics">
+                  <span class="breakdown-rate ${modelStatus}">${(modelPositiveRate * 100).toFixed(1)}%</span>
+                  <span class="breakdown-count">${modelData.positive}/${modelData.total}</span>
+                </div>
+                <div class="breakdown-bar">
+                  <div class="bar-positive" style="width: ${modelPositiveRate * 100}%"></div>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    ` : '';
 
     return `
       <div class="metric-card ${statusClass}" data-prompt-name="${this.escapeHtml(promptName)}">
         <div class="metric-card-header">
           <div class="metric-name">
             <i class="fas fa-code"></i>
-            <span>${this.escapeHtml(promptName)}</span>
+            <span>${this.escapeHtml(promptName)} <span class="version-badge">v${promptVersion}</span></span>
           </div>
           <div class="metric-status">
             <span class="status-badge ${statusClass}">
@@ -342,7 +453,7 @@ export class PerformanceMetricsDashboard {
                 <i class="fas fa-eye"></i>
                 Total Feedback
               </div>
-              <div class="metric-value">${this.formatNumber(data.totalFeedback)}</div>
+              <div class="metric-value">${this.formatNumber(overall.total)}</div>
             </div>
             <div class="metric-item">
               <div class="metric-label">
@@ -359,14 +470,14 @@ export class PerformanceMetricsDashboard {
                 <i class="fas fa-check-circle"></i>
                 Positive
               </div>
-              <div class="metric-value">${this.formatNumber(data.positive)}</div>
+              <div class="metric-value">${this.formatNumber(overall.positive)}</div>
             </div>
             <div class="metric-item">
               <div class="metric-label">
                 <i class="fas fa-times-circle"></i>
                 Negative
               </div>
-              <div class="metric-value">${this.formatNumber(data.negative)}</div>
+              <div class="metric-value">${this.formatNumber(overall.negative)}</div>
             </div>
           </div>
 
@@ -376,19 +487,26 @@ export class PerformanceMetricsDashboard {
             <div class="feedback-negative" style="width: ${negativeRate * 100}%"></div>
           </div>
 
-          <!-- Version count -->
-          <div class="metric-footer">
-            <span class="version-count">
-              <i class="fas fa-layer-group"></i>
-              ${data.versions.length} version${data.versions.length !== 1 ? 's' : ''}
-            </span>
-            ${trending !== null ? `
-              <span class="trending ${trending > 0 ? 'up' : trending < 0 ? 'down' : 'neutral'}">
-                <i class="fas fa-${trending > 0 ? 'arrow-up' : trending < 0 ? 'arrow-down' : 'minus'}"></i>
-                ${trending !== 0 ? 'Trending' : 'Stable'}
+          <!-- Model breakdown toggle -->
+          ${byModel && byModel.length > 1 ? `
+            <div class="metric-footer">
+              <button class="model-breakdown-toggle">
+                <i class="fas fa-server"></i>
+                <span>${byModel.length} models</span>
+                <i class="fas fa-chevron-down"></i>
+              </button>
+            </div>
+          ` : byModel && byModel.length === 1 ? `
+            <div class="metric-footer">
+              <span class="single-model">
+                <i class="fas fa-cube"></i>
+                ${this.escapeHtml(byModel[0].model)}
               </span>
-            ` : ''}
-          </div>
+            </div>
+          ` : ''}
+
+          <!-- Model breakdown section -->
+          ${modelBreakdownHtml}
         </div>
 
         <div class="metric-card-actions">

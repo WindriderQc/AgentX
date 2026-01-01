@@ -210,6 +210,36 @@ router.get('/feedback', requireAuth, async (req, res) => {
         },
         { $sort: { total: -1 } }
       ]);
+    } else if (groupBy === 'promptAndModel') {
+      // Combined grouping: shows performance of each prompt version on each model
+      breakdown = await Conversation.aggregate([
+        { $match: dateFilter },
+        { $unwind: '$messages' },
+        { $match: { 'messages.feedback.rating': { $in: [1, -1] } } },
+        { $group: {
+            _id: {
+              name: '$promptName',
+              version: '$promptVersion',
+              model: '$model'
+            },
+            total: { $sum: 1 },
+            positive: { $sum: { $cond: [{ $eq: ['$messages.feedback.rating', 1] }, 1, 0] } },
+            negative: { $sum: { $cond: [{ $eq: ['$messages.feedback.rating', -1] }, 1, 0] } }
+          }
+        },
+        { $project: {
+            _id: 0,
+            promptName: '$_id.name',
+            promptVersion: '$_id.version',
+            model: '$_id.model',
+            total: 1,
+            positive: 1,
+            negative: 1,
+            positiveRate: { $cond: [{ $gt: ['$total', 0] }, { $divide: ['$positive', '$total'] }, 0] }
+          }
+        },
+        { $sort: { promptName: 1, promptVersion: -1, model: 1 } }
+      ]);
     }
 
     res.json({
@@ -555,6 +585,131 @@ router.get('/feedback/summary', requireAuth, async (req, res) => {
     });
   } catch (err) {
     logger.error('Analytics feedback summary error', { error: err.message });
+    res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
+/**
+ * GET /api/analytics/prompt-metrics
+ * Returns prompt performance metrics with model breakdown
+ * Optimized for Performance Metrics Dashboard display
+ * Query params:
+ *   - days (number, default: 7)
+ *   - model (string, optional) - Filter by specific model
+ * Response: { prompts: [{ name, version, overall, byModel: [...] }] }
+ */
+router.get('/prompt-metrics', requireAuth, async (req, res) => {
+  try {
+    const { days = 7, model: filterModel } = req.query;
+
+    // Date range
+    const toDate = new Date();
+    const fromDate = new Date(toDate.getTime() - parseInt(days) * 24 * 60 * 60 * 1000);
+
+    const dateFilter = {
+      createdAt: { $gte: fromDate, $lte: toDate }
+    };
+
+    // Add model filter if specified
+    if (filterModel) {
+      dateFilter.model = filterModel;
+    }
+
+    // Get all prompt-model combinations with feedback
+    const rawData = await Conversation.aggregate([
+      { $match: dateFilter },
+      { $unwind: '$messages' },
+      { $match: { 'messages.feedback.rating': { $in: [1, -1] } } },
+      { $group: {
+          _id: {
+            name: '$promptName',
+            version: '$promptVersion',
+            model: '$model'
+          },
+          total: { $sum: 1 },
+          positive: { $sum: { $cond: [{ $eq: ['$messages.feedback.rating', 1] }, 1, 0] } },
+          negative: { $sum: { $cond: [{ $eq: ['$messages.feedback.rating', -1] }, 1, 0] } }
+        }
+      },
+      { $project: {
+          _id: 0,
+          promptName: '$_id.name',
+          promptVersion: '$_id.version',
+          model: '$_id.model',
+          total: 1,
+          positive: 1,
+          negative: 1,
+          positiveRate: { $cond: [{ $gt: ['$total', 0] }, { $divide: ['$positive', '$total'] }, 0] }
+        }
+      },
+      { $sort: { promptName: 1, promptVersion: -1, model: 1 } }
+    ]);
+
+    // Group by prompt and calculate overall + per-model breakdown
+    const promptMap = {};
+
+    rawData.forEach(item => {
+      const key = `${item.promptName}_v${item.promptVersion}`;
+
+      if (!promptMap[key]) {
+        promptMap[key] = {
+          promptName: item.promptName,
+          promptVersion: item.promptVersion,
+          overall: {
+            total: 0,
+            positive: 0,
+            negative: 0,
+            positiveRate: 0
+          },
+          byModel: []
+        };
+      }
+
+      // Aggregate overall stats
+      promptMap[key].overall.total += item.total;
+      promptMap[key].overall.positive += item.positive;
+      promptMap[key].overall.negative += item.negative;
+
+      // Add model-specific data
+      promptMap[key].byModel.push({
+        model: item.model || 'unknown',
+        total: item.total,
+        positive: item.positive,
+        negative: item.negative,
+        positiveRate: item.positiveRate
+      });
+    });
+
+    // Calculate overall positive rates
+    Object.values(promptMap).forEach(prompt => {
+      if (prompt.overall.total > 0) {
+        prompt.overall.positiveRate = prompt.overall.positive / prompt.overall.total;
+      }
+
+      // Sort models by total feedback descending
+      prompt.byModel.sort((a, b) => b.total - a.total);
+    });
+
+    // Convert to array and sort by prompt name/version
+    const prompts = Object.values(promptMap).sort((a, b) => {
+      if (a.promptName !== b.promptName) {
+        return a.promptName.localeCompare(b.promptName);
+      }
+      return b.promptVersion - a.promptVersion;
+    });
+
+    res.json({
+      status: 'success',
+      data: {
+        from: fromDate.toISOString(),
+        to: toDate.toISOString(),
+        days: parseInt(days),
+        filterModel: filterModel || null,
+        prompts
+      }
+    });
+  } catch (err) {
+    logger.error('Analytics prompt metrics error', { error: err.message, stack: err.stack });
     res.status(500).json({ status: 'error', message: err.message });
   }
 });
