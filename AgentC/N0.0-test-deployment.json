@@ -1,0 +1,103 @@
+{
+  "name": "N0.0 - Deployment Test Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "test-deployment",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook-node",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "sbqc-test-deployment"
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "status",
+              "value": "success"
+            },
+            {
+              "name": "workflow",
+              "value": "N0.0 - Deployment Test"
+            },
+            {
+              "name": "version",
+              "value": "1.0.0"
+            },
+            {
+              "name": "deployed_at",
+              "value": "={{ $now.toISO() }}"
+            },
+            {
+              "name": "message",
+              "value": "Deployment script is working! Webhook triggered successfully."
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-response",
+      "name": "Set Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "respond-to-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [690, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Set Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "testing",
+      "id": "test-tag"
+    }
+  ],
+  "triggerCount": 0,
+  "updatedAt": "2026-01-01T00:00:00.000Z",
+  "versionId": "1"
+}
