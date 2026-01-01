@@ -55,16 +55,31 @@ Each prompt is categorized by `scoring_type` which determines how it's evaluated
 
 ## Composite Score Formula
 
-The composite score balances speed and quality:
+The composite score balances speed and quality to determine the **Best Overall** model:
 
 ```javascript
 composite = (quality × 0.5) + (latency_normalized × 0.3) + (speed_normalized × 0.2)
 ```
 
+| Weight | Metric | Rationale |
+|--------|--------|-----------|
+| **50%** | Quality Score | Accuracy matters most - a fast wrong answer is worthless |
+| **30%** | Latency | Response time affects user experience |
+| **20%** | Tokens/sec | Throughput for long responses |
+
 Where:
 - **Quality Score**: 0-10 from LLM judge
 - **Latency Normalized**: `10 - (latency_ms / 3000)`, capped at 0-10
 - **Speed Normalized**: `tokens_per_sec / 10`, capped at 0-10
+
+### Best Overall Model
+
+The model with the highest composite score is crowned **👑 Best Overall**. This model offers the best balance of:
+- Accurate, high-quality responses
+- Reasonable response times
+- Good generation throughput
+
+If no quality-scored tests exist, you'll be prompted to run tests with quality scoring enabled.
 
 ## Files Modified/Created
 

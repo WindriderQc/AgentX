@@ -18,3 +18,10 @@ actions-runner/
 
 # Jest test cache
 jest
+
+# Playwright test artifacts
+playwright-report/
+test-results/
+playwright/.cache/
+tests/e2e/fixtures/
+tests/e2e/downloads/

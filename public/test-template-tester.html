@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Template Tester - Test Page</title>
+
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="/css/global.css">
+  <link rel="stylesheet" href="/css/prompts.css">
+
+  <style>
+    body {
+      padding: 40px;
+      min-height: 100vh;
+      background: var(--bg);
+    }
+
+    .test-container {
+      max-width: 800px;
+      margin: 0 auto;
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 16px;
+      padding: 40px;
+    }
+
+    .test-container h1 {
+      margin-top: 0;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .test-container h1 i {
+      color: var(--accent);
+    }
+
+    .test-prompt {
+      margin-bottom: 32px;
+      padding: 20px;
+      background: rgba(0, 0, 0, 0.2);
+      border: 1px solid var(--panel-border);
+      border-radius: 12px;
+    }
+
+    .test-prompt h3 {
+      margin-top: 0;
+      color: var(--accent);
+      font-family: monospace;
+    }
+
+    .test-prompt pre {
+      margin: 16px 0 0 0;
+      padding: 16px;
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid var(--panel-border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      overflow-x: auto;
+    }
+
+    .btn-test {
+      padding: 12px 24px;
+      background: linear-gradient(135deg, var(--accent), rgb(52, 211, 153));
+      border: none;
+      border-radius: 8px;
+      color: rgb(17, 24, 39);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-right: 12px;
+      margin-bottom: 12px;
+    }
+
+    .btn-test:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(124, 240, 255, 0.3);
+    }
+  </style>
+</head>
+<body>
+  <div id="modals"></div>
+
+  <div class="test-container">
+    <h1>
+      <i class="fas fa-flask"></i>
+      Template Tester Component Test
+    </h1>
+
+    <p style="color: var(--muted); margin-bottom: 32px;">
+      Click the buttons below to test the Template Tester with different prompt configurations.
+    </p>
+
+    <!-- Test Case 1: Simple Prompt -->
+    <div class="test-prompt">
+      <h3>Test Case 1: Simple Chat Prompt</h3>
+      <p style="color: var(--muted); font-size: 14px; margin: 8px 0;">
+        Basic prompt with userName and userProfile variables
+      </p>
+      <pre>You are AgentX, a helpful AI assistant.
+
+User: {{userName}}
+Profile: {{userProfile}}
+
+Please provide clear and concise responses.</pre>
+      <button class="btn-test" onclick="testSimplePrompt()">
+        <i class="fas fa-flask"></i>
+        Test Simple Prompt
+      </button>
+    </div>
+
+    <!-- Test Case 2: Complex Prompt -->
+    <div class="test-prompt">
+      <h3>Test Case 2: RAG-Enhanced Prompt</h3>
+      <p style="color: var(--muted); font-size: 14px; margin: 8px 0;">
+        Advanced prompt with multiple variables including RAG context
+      </p>
+      <pre>You are AgentX, an advanced AI assistant with access to a knowledge base.
+
+## User Context
+Name: {{userName}}
+Profile: {{userProfile}}
+Date: {{currentDate}}
+Time: {{systemTime}}
+
+## Retrieved Context
+{{ragContext}}
+
+## Conversation History
+{{conversationHistory}}
+
+## Instructions
+{{customInstructions}}
+
+Please provide detailed, context-aware responses using the retrieved information above.</pre>
+      <button class="btn-test" onclick="testComplexPrompt()">
+        <i class="fas fa-flask"></i>
+        Test Complex Prompt
+      </button>
+    </div>
+
+    <!-- Test Case 3: No Variables -->
+    <div class="test-prompt">
+      <h3>Test Case 3: Static Prompt (No Variables)</h3>
+      <p style="color: var(--muted); font-size: 14px; margin: 8px 0;">
+        Prompt without any template variables
+      </p>
+      <pre>You are AgentX, a helpful and knowledgeable AI assistant.
+
+Your goal is to provide accurate, helpful, and concise information to users.
+Always be polite and professional in your responses.</pre>
+      <button class="btn-test" onclick="testNoVariablesPrompt()">
+        <i class="fas fa-flask"></i>
+        Test Static Prompt
+      </button>
+    </div>
+
+    <!-- Test Case 4: Nested Variables -->
+    <div class="test-prompt">
+      <h3>Test Case 4: Nested Properties</h3>
+      <p style="color: var(--muted); font-size: 14px; margin: 8px 0;">
+        Prompt with nested variable properties
+      </p>
+      <pre>You are AgentX.
+
+User: {{user.name}} ({{user.email}})
+Preferences: {{profile.preferences}}
+About: {{profile.about}}
+
+Model: {{modelName}}
+Context Window: {{contextWindow}}</pre>
+      <button class="btn-test" onclick="testNestedPrompt()">
+        <i class="fas fa-flask"></i>
+        Test Nested Variables
+      </button>
+    </div>
+  </div>
+
+  <!-- Load Template Tester -->
+  <script type="module">
+    import { TemplateTester } from './js/components/TemplateTester.js';
+
+    // Initialize template tester
+    window.templateTester = new TemplateTester();
+
+    // Test Case 1: Simple Prompt
+    window.testSimplePrompt = function() {
+      window.templateTester.open({
+        name: 'simple_chat',
+        version: 1,
+        systemPrompt: `You are AgentX, a helpful AI assistant.
+
+User: {{userName}}
+Profile: {{userProfile}}
+
+Please provide clear and concise responses.`
+      });
+    };
+
+    // Test Case 2: Complex Prompt
+    window.testComplexPrompt = function() {
+      window.templateTester.open({
+        name: 'rag_enhanced',
+        version: 2,
+        systemPrompt: `You are AgentX, an advanced AI assistant with access to a knowledge base.
+
+## User Context
+Name: {{userName}}
+Profile: {{userProfile}}
+Date: {{currentDate}}
+Time: {{systemTime}}
+
+## Retrieved Context
+{{ragContext}}
+
+## Conversation History
+{{conversationHistory}}
+
+## Instructions
+{{customInstructions}}
+
+Please provide detailed, context-aware responses using the retrieved information above.`
+      });
+    };
+
+    // Test Case 3: No Variables
+    window.testNoVariablesPrompt = function() {
+      window.templateTester.open({
+        name: 'static_prompt',
+        version: 1,
+        systemPrompt: `You are AgentX, a helpful and knowledgeable AI assistant.
+
+Your goal is to provide accurate, helpful, and concise information to users.
+Always be polite and professional in your responses.`
+      });
+    };
+
+    // Test Case 4: Nested Variables
+    window.testNestedPrompt = function() {
+      window.templateTester.open({
+        name: 'nested_vars',
+        version: 1,
+        systemPrompt: `You are AgentX.
+
+User: {{user.name}} ({{user.email}})
+Preferences: {{profile.preferences}}
+About: {{profile.about}}
+
+Model: {{modelName}}
+Context Window: {{contextWindow}}`
+      });
+    };
+
+    console.log('Template Tester test page loaded successfully');
+  </script>
+</body>
+</html>
