@@ -329,10 +329,9 @@ test.describe('Prompt Export/Import E2E Tests', () => {
     // Wait for modal to close
     await expect(importModal).not.toBeVisible({ timeout: 3000 });
 
-    // Wait for page to refresh and show imported prompts
-    await page.waitForTimeout(500);
+    // Reload page to show imported prompts
     await page.reload();
-    await page.waitForSelector('.prompts-header', { timeout: 5000 });
+    await page.waitForSelector('.prompts-header');
 
     // Verify the valid prompt was imported
     const promptCard = page.locator('.prompt-card').filter({ hasText: 'valid_prompt' });
@@ -466,9 +465,8 @@ test.describe('Prompt Export/Import E2E Tests', () => {
     await expect(importModal).not.toBeVisible({ timeout: 3000 });
 
     // Reload page to show imported prompts
-    await page.waitForTimeout(500);
     await page.reload();
-    await page.waitForSelector('.prompts-header', { timeout: 5000 });
+    await page.waitForSelector('.prompts-header');
 
     // Find the imported prompt card
     const promptCard = page.locator('.prompt-card').filter({ hasText: 'active_test_prompt' });
@@ -525,9 +523,8 @@ test.describe('Prompt Export/Import E2E Tests', () => {
     await expect(importModal).not.toBeVisible({ timeout: 3000 });
 
     // Reload page to show imported prompts
-    await page.waitForTimeout(500);
     await page.reload();
-    await page.waitForSelector('.prompts-header', { timeout: 5000 });
+    await page.waitForSelector('.prompts-header');
 
     // Verify prompts appear in list
     const promptCard1 = page.locator('.prompt-card').filter({ hasText: 'new_import_1' });
@@ -695,7 +692,8 @@ test.describe('Prompt Export/Import E2E Tests', () => {
     await expect(importModal1).toBeVisible({ timeout: 3000 });
     await page.click('#confirmImportBtn');
 
-    await page.waitForTimeout(2000); // Wait for import to complete
+    // Wait for success toast to confirm import completed
+    await page.waitForSelector('.toast.success');
 
     // Delete the imported prompt
 

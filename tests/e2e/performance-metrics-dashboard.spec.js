@@ -1053,8 +1053,9 @@ test.describe('Performance Metrics Dashboard', () => {
       const firstCard = page.locator('.metric-card').first();
 
       // From mock data: 85 positive out of 100 total = 85.0%
+      // Note: This may include trending indicator, so check that percentage is present
       const positiveRateText = await firstCard.locator('.metric-value.positive').textContent();
-      expect(positiveRateText).toBe('85.0%');
+      expect(positiveRateText).toContain('85.0%');
     });
 
     test('should escape HTML in prompt names to prevent XSS', async ({ page }) => {

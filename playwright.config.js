@@ -10,11 +10,11 @@ module.exports = defineConfig({
   testDir: './tests/e2e',
 
   // Maximum time one test can run for
-  timeout: 30 * 1000,
+  timeout: 15 * 1000,
 
   expect: {
     // Maximum time expect() should wait for the condition to be met
-    timeout: 5000
+    timeout: 3000
   },
 
   // Run tests in files in parallel
@@ -26,8 +26,8 @@ module.exports = defineConfig({
   // Retry on CI only
   retries: process.env.CI ? 2 : 0,
 
-  // Opt out of parallel tests on CI
-  workers: process.env.CI ? 1 : undefined,
+  // Opt out of parallel tests on CI, otherwise use more workers for speed
+  workers: process.env.CI ? 1 : 4,
 
   // Reporter to use
   reporter: [
@@ -50,10 +50,10 @@ module.exports = defineConfig({
     video: 'retain-on-failure',
 
     // Maximum time each action such as `click()` can take
-    actionTimeout: 10000,
+    actionTimeout: 5000,
 
     // Maximum time page navigation can take
-    navigationTimeout: 30000,
+    navigationTimeout: 10000,
   },
 
   // Configure projects for major browsers
