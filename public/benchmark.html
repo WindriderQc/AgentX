@@ -199,6 +199,99 @@
             font-size: 0.8em;
             margin-left: 10px;
         }
+        .batch-section {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+        .batch-section h2 {
+            color: #222;
+            font-weight: 700;
+            margin-bottom: 20px;
+        }
+        .level-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+        .level-checkbox {
+            display: flex;
+            align-items: center;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .level-checkbox:hover {
+            border-color: #667eea;
+            background: #f8f9fa;
+        }
+        .level-checkbox input {
+            margin-right: 10px;
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+        .level-checkbox label {
+            cursor: pointer;
+            font-weight: 600;
+            color: #222;
+        }
+        .model-selection {
+            margin-bottom: 25px;
+        }
+        .model-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .model-checkbox {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 0.9em;
+        }
+        .model-checkbox input {
+            margin-right: 8px;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 30px;
+            background: #e0e0e0;
+            border-radius: 15px;
+            overflow: hidden;
+            margin: 20px 0;
+            display: none;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+        }
+        .batch-controls {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+        .batch-history {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
     </style>
 </head>
 <body>
@@ -235,7 +328,7 @@
         </div>
 
         <div class="test-form">
-            <h2 style="margin-bottom: 20px;">Run New Test</h2>
+            <h2 style="margin-bottom: 20px;">Quick Single Test</h2>
             <form id="testForm" class="form-grid">
                 <div class="form-group">
                     <label for="host">Ollama Host</label>
@@ -256,6 +349,61 @@
                 <button type="submit" class="btn-primary" id="runBtn">Run Test</button>
             </form>
             <div id="status" class="status"></div>
+        </div>
+
+        <div class="batch-section">
+            <h2>🔥 Batch Benchmark</h2>
+            <p style="color: #666; margin-bottom: 25px;">Run comprehensive tests across multiple models with standardized prompts</p>
+
+            <div>
+                <h3 style="color: #222; margin-bottom: 15px;">Select Prompt Levels</h3>
+                <div class="level-grid">
+                    <div class="level-checkbox">
+                        <input type="checkbox" id="level1" checked>
+                        <label for="level1">Level 1<br><small style="color: #999;">Quick</small></label>
+                    </div>
+                    <div class="level-checkbox">
+                        <input type="checkbox" id="level2">
+                        <label for="level2">Level 2<br><small style="color: #999;">Basic</small></label>
+                    </div>
+                    <div class="level-checkbox">
+                        <input type="checkbox" id="level3">
+                        <label for="level3">Level 3<br><small style="color: #999;">Medium</small></label>
+                    </div>
+                    <div class="level-checkbox">
+                        <input type="checkbox" id="level4">
+                        <label for="level4">Level 4<br><small style="color: #999;">Advanced</small></label>
+                    </div>
+                    <div class="level-checkbox">
+                        <input type="checkbox" id="level5">
+                        <label for="level5">Level 5<br><small style="color: #999;">Expert</small></label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="model-selection">
+                <h3 style="color: #222; margin-bottom: 10px;">Select Models</h3>
+                <div style="margin-bottom: 10px;">
+                    <label style="cursor: pointer; color: #667eea; font-weight: 600;">
+                        <input type="checkbox" id="selectAllModels" style="margin-right: 5px;">
+                        Select All
+                    </label>
+                </div>
+                <div class="model-grid" id="modelCheckboxes">
+                    <p style="color: #999;">Loading models...</p>
+                </div>
+            </div>
+
+            <div class="batch-controls">
+                <button class="btn-primary" id="runBatchBtn">Start Batch Test</button>
+                <span id="batchInfo" style="color: #666;"></span>
+            </div>
+
+            <div class="progress-bar" id="progressBar">
+                <div class="progress-fill" id="progressFill">0%</div>
+            </div>
+
+            <div id="batchStatus" class="status"></div>
         </div>
 
         <div class="charts-grid">
@@ -352,7 +500,158 @@
         // Update models when host changes
         document.getElementById('host').addEventListener('change', (e) => {
             loadModelsForHost(e.target.value);
+            loadBatchModels(e.target.value); // Also update batch model checkboxes
         });
+
+        // Load models for batch testing
+        function loadBatchModels(hostUrl) {
+            const host = ollamaHosts.find(h => h.url === hostUrl);
+            const container = document.getElementById('modelCheckboxes');
+
+            if (host && host.models && host.models.length > 0) {
+                container.innerHTML = host.models.map(model => `
+                    <div class="model-checkbox">
+                        <input type="checkbox" id="batch_${model.replace(/[^a-zA-Z0-9]/g, '_')}" value="${model}" class="batch-model-checkbox">
+                        <label for="batch_${model.replace(/[^a-zA-Z0-9]/g, '_')}">${model}</label>
+                    </div>
+                `).join('');
+            } else {
+                container.innerHTML = '<p style="color: #999;">No models available</p>';
+            }
+
+            updateBatchInfo();
+        }
+
+        // Select all models checkbox
+        document.getElementById('selectAllModels').addEventListener('change', (e) => {
+            const checkboxes = document.querySelectorAll('.batch-model-checkbox');
+            checkboxes.forEach(cb => cb.checked = e.target.checked);
+            updateBatchInfo();
+        });
+
+        // Update batch info when selections change
+        document.addEventListener('change', (e) => {
+            if (e.target.classList.contains('batch-model-checkbox') ||
+                e.target.id.startsWith('level')) {
+                updateBatchInfo();
+            }
+        });
+
+        function updateBatchInfo() {
+            const selectedLevels = [1, 2, 3, 4, 5].filter(l =>
+                document.getElementById(`level${l}`).checked
+            );
+            const selectedModels = Array.from(document.querySelectorAll('.batch-model-checkbox:checked'));
+
+            // Each level has 4 prompts (from our seed data)
+            const promptsPerLevel = 4;
+            const totalTests = selectedLevels.length * promptsPerLevel * selectedModels.length;
+
+            const info = document.getElementById('batchInfo');
+            if (totalTests > 0) {
+                info.textContent = `${selectedModels.length} models × ${selectedLevels.length} levels (${selectedLevels.length * promptsPerLevel} prompts) = ${totalTests} tests`;
+            } else {
+                info.textContent = 'Select levels and models to start';
+            }
+        }
+
+        // Run batch test
+        let currentBatchId = null;
+        let batchPollInterval = null;
+
+        document.getElementById('runBatchBtn').addEventListener('click', async () => {
+            const selectedLevels = [1, 2, 3, 4, 5].filter(l =>
+                document.getElementById(`level${l}`).checked
+            );
+            const selectedModels = Array.from(document.querySelectorAll('.batch-model-checkbox:checked'))
+                .map(cb => cb.value);
+            const host = document.getElementById('host').value;
+
+            if (selectedLevels.length === 0) {
+                alert('Please select at least one prompt level');
+                return;
+            }
+
+            if (selectedModels.length === 0) {
+                alert('Please select at least one model');
+                return;
+            }
+
+            const btn = document.getElementById('runBatchBtn');
+            const status = document.getElementById('batchStatus');
+            const progressBar = document.getElementById('progressBar');
+
+            btn.disabled = true;
+            btn.textContent = 'Starting...';
+            status.style.display = 'none';
+            progressBar.style.display = 'block';
+            document.getElementById('progressFill').style.width = '0%';
+            document.getElementById('progressFill').textContent = '0%';
+
+            try {
+                const res = await fetch(`${BENCHMARK_API}/batch`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        host,
+                        models: selectedModels,
+                        levels: selectedLevels
+                    })
+                });
+
+                const json = await res.json();
+
+                if (json.status === 'success') {
+                    currentBatchId = json.data.batch_id;
+                    btn.textContent = 'Running...';
+
+                    // Poll for progress
+                    batchPollInterval = setInterval(pollBatchProgress, 2000);
+                } else {
+                    throw new Error(json.error || 'Failed to start batch');
+                }
+            } catch (err) {
+                status.className = 'status error';
+                status.textContent = `✗ Error: ${err.message}`;
+                status.style.display = 'block';
+                btn.disabled = false;
+                btn.textContent = 'Start Batch Test';
+                progressBar.style.display = 'none';
+            }
+        });
+
+        async function pollBatchProgress() {
+            if (!currentBatchId) return;
+
+            try {
+                const res = await fetch(`${BENCHMARK_API}/batch/${currentBatchId}`);
+                const json = await res.json();
+                const batch = json.data;
+
+                const progressFill = document.getElementById('progressFill');
+                progressFill.style.width = `${batch.progress}%`;
+                progressFill.textContent = `${batch.progress}% (${batch.completed}/${batch.total_tests})`;
+
+                if (batch.status === 'completed') {
+                    clearInterval(batchPollInterval);
+                    batchPollInterval = null;
+
+                    const status = document.getElementById('batchStatus');
+                    status.className = 'status success';
+                    status.textContent = `✓ Batch completed! ${batch.completed} tests run (${batch.success_rate} success)`;
+                    status.style.display = 'block';
+
+                    const btn = document.getElementById('runBatchBtn');
+                    btn.disabled = false;
+                    btn.textContent = 'Start Batch Test';
+
+                    // Refresh dashboard
+                    loadDashboard();
+                }
+            } catch (err) {
+                console.error('Failed to poll batch progress:', err);
+            }
+        }
 
         // Initialize charts
         function initCharts() {
@@ -498,7 +797,13 @@
         });
 
         // Initialize
-        loadOllamaHosts();
+        loadOllamaHosts().then(() => {
+            // Load batch models for first available host
+            const firstHost = document.getElementById('host').value;
+            if (firstHost) {
+                loadBatchModels(firstHost);
+            }
+        });
         initCharts();
         loadDashboard();
         setInterval(loadDashboard, 5000); // Refresh every 5s

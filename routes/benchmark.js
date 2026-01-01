@@ -8,10 +8,41 @@ const router = express.Router();
 const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
 const mongoose = require('mongoose');
 const logger = require('../config/logger');
+const fs = require('fs').promises;
+const path = require('path');
+const { ObjectId } = mongoose.Types;
 
-// Get MongoDB collection using Mongoose connection
+// Get MongoDB collections using Mongoose connection
 function getCollection() {
     return mongoose.connection.db.collection('benchmark_results');
+}
+
+function getPromptsCollection() {
+    return mongoose.connection.db.collection('benchmark_prompts');
+}
+
+function getBatchCollection() {
+    return mongoose.connection.db.collection('benchmark_batches');
+}
+
+// Seed prompts from JSON file if collection is empty
+async function seedPrompts() {
+    const promptsCollection = getPromptsCollection();
+    const count = await promptsCollection.countDocuments();
+
+    if (count === 0) {
+        const promptsPath = path.join(__dirname, '..', 'data', 'benchmark-prompts.json');
+        const promptsData = await fs.readFile(promptsPath, 'utf-8');
+        const prompts = JSON.parse(promptsData);
+
+        await promptsCollection.insertMany(prompts.map(p => ({
+            ...p,
+            custom: false,
+            created_at: new Date()
+        })));
+
+        logger.info('Seeded benchmark prompts', { count: prompts.length });
+    }
 }
 
 /**
@@ -312,6 +343,264 @@ router.delete('/results', async (req, res) => {
         });
     } catch (err) {
         logger.error('Failed to clear results', { error: err.message });
+        res.status(500).json({ status: 'error', error: err.message });
+    }
+});
+
+/**
+ * GET /api/benchmark/prompts
+ * Get all prompts grouped by level
+ */
+router.get('/prompts', async (req, res) => {
+    try {
+        await seedPrompts(); // Ensure prompts are seeded
+        const promptsCollection = getPromptsCollection();
+
+        const prompts = await promptsCollection
+            .find()
+            .sort({ level: 1, category: 1 })
+            .toArray();
+
+        // Group by level
+        const byLevel = {};
+        prompts.forEach(p => {
+            if (!byLevel[p.level]) {
+                byLevel[p.level] = [];
+            }
+            byLevel[p.level].push(p);
+        });
+
+        res.json({
+            status: 'success',
+            data: {
+                prompts,
+                by_level: byLevel,
+                total: prompts.length
+            }
+        });
+    } catch (err) {
+        logger.error('Failed to fetch prompts', { error: err.message });
+        res.status(500).json({ status: 'error', error: err.message });
+    }
+});
+
+/**
+ * POST /api/benchmark/batch
+ * Start a batch benchmark test
+ * Body: { host, models: ['model1', 'model2'], levels: [1, 2, 3] }
+ */
+router.post('/batch', async (req, res) => {
+    const { host, models, levels, run_name } = req.body;
+
+    if (!host || !models || !Array.isArray(models) || !levels || !Array.isArray(levels)) {
+        return res.status(400).json({
+            status: 'error',
+            error: 'host, models (array), and levels (array) are required'
+        });
+    }
+
+    try {
+        await seedPrompts(); // Ensure prompts are seeded
+        const promptsCollection = getPromptsCollection();
+        const batchCollection = getBatchCollection();
+
+        // Get prompts for selected levels
+        const selectedPrompts = await promptsCollection
+            .find({ level: { $in: levels } })
+            .toArray();
+
+        if (selectedPrompts.length === 0) {
+            return res.status(400).json({
+                status: 'error',
+                error: 'No prompts found for selected levels'
+            });
+        }
+
+        // Create batch record
+        const batch = {
+            host,
+            models,
+            levels,
+            run_name: run_name || `Batch ${new Date().toLocaleString()}`,
+            total_tests: models.length * selectedPrompts.length,
+            completed: 0,
+            failed: 0,
+            status: 'running',
+            results: [],
+            created_at: new Date(),
+            started_at: new Date(),
+            completed_at: null
+        };
+
+        const insertResult = await batchCollection.insertOne(batch);
+        const batchId = insertResult.insertedId.toString();
+
+        // Start batch execution in background
+        executeBatch(batchId, host, models, selectedPrompts).catch(err => {
+            logger.error('Batch execution failed', { batchId, error: err.message });
+        });
+
+        res.json({
+            status: 'success',
+            data: {
+                batch_id: batchId,
+                total_tests: batch.total_tests,
+                message: 'Batch test started'
+            }
+        });
+    } catch (err) {
+        logger.error('Failed to start batch test', { error: err.message });
+        res.status(500).json({ status: 'error', error: err.message });
+    }
+});
+
+/**
+ * Execute batch tests sequentially
+ */
+async function executeBatch(batchId, host, models, prompts) {
+    const batchCollection = getBatchCollection();
+    const resultsCollection = getCollection();
+
+    for (const model of models) {
+        for (const prompt of prompts) {
+            try {
+                const start = Date.now();
+                const response = await fetch(`${host}/api/generate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model, prompt: prompt.prompt, stream: false }),
+                    timeout: 60000 // 60s timeout for complex prompts
+                });
+
+                const data = await response.json();
+                const latency = Date.now() - start;
+                const tokens = Math.ceil((data.response || '').length / 4);
+
+                const result = {
+                    model,
+                    host,
+                    prompt: prompt.prompt,
+                    prompt_level: prompt.level,
+                    prompt_category: prompt.category,
+                    prompt_name: prompt.name,
+                    latency,
+                    tokens,
+                    tokens_per_sec: tokens > 0 ? (tokens / (latency / 1000)).toFixed(2) : 0,
+                    response: data.response || '',
+                    success: true,
+                    batch_id: batchId,
+                    timestamp: new Date()
+                };
+
+                await resultsCollection.insertOne(result);
+                await batchCollection.updateOne(
+                    { _id: new ObjectId(batchId) },
+                    {
+                        $inc: { completed: 1 },
+                        $push: { results: { model, prompt_name: prompt.name, success: true, latency } }
+                    }
+                );
+
+                logger.info('Batch test completed', { batchId, model, prompt: prompt.name, latency });
+
+            } catch (err) {
+                const result = {
+                    model,
+                    host,
+                    prompt: prompt.prompt,
+                    prompt_level: prompt.level,
+                    prompt_category: prompt.category,
+                    prompt_name: prompt.name,
+                    error: err.message,
+                    success: false,
+                    batch_id: batchId,
+                    timestamp: new Date()
+                };
+
+                await resultsCollection.insertOne(result);
+                await batchCollection.updateOne(
+                    { _id: new ObjectId(batchId) },
+                    {
+                        $inc: { completed: 1, failed: 1 },
+                        $push: { results: { model, prompt_name: prompt.name, success: false, error: err.message } }
+                    }
+                );
+
+                logger.error('Batch test failed', { batchId, model, prompt: prompt.name, error: err.message });
+            }
+        }
+    }
+
+    // Mark batch as complete
+    await batchCollection.updateOne(
+        { _id: new ObjectId(batchId) },
+        {
+            $set: {
+                status: 'completed',
+                completed_at: new Date()
+            }
+        }
+    );
+
+    logger.info('Batch execution completed', { batchId });
+}
+
+/**
+ * GET /api/benchmark/batch/:id
+ * Get batch progress and results
+ */
+router.get('/batch/:id', async (req, res) => {
+    try {
+        const batchCollection = getBatchCollection();
+
+        const batch = await batchCollection.findOne({ _id: new ObjectId(req.params.id) });
+
+        if (!batch) {
+            return res.status(404).json({
+                status: 'error',
+                error: 'Batch not found'
+            });
+        }
+
+        const progress = batch.total_tests > 0
+            ? Math.round((batch.completed / batch.total_tests) * 100)
+            : 0;
+
+        res.json({
+            status: 'success',
+            data: {
+                ...batch,
+                progress,
+                success_rate: batch.completed > 0
+                    ? (((batch.completed - batch.failed) / batch.completed) * 100).toFixed(1) + '%'
+                    : '0%'
+            }
+        });
+    } catch (err) {
+        logger.error('Failed to fetch batch', { error: err.message });
+        res.status(500).json({ status: 'error', error: err.message });
+    }
+});
+
+/**
+ * GET /api/benchmark/batches
+ * Get all batch runs
+ */
+router.get('/batches', async (req, res) => {
+    try {
+        const batchCollection = getBatchCollection();
+        const batches = await batchCollection
+            .find()
+            .sort({ created_at: -1 })
+            .limit(20)
+            .toArray();
+
+        res.json({
+            status: 'success',
+            data: { batches, total: batches.length }
+        });
+    } catch (err) {
+        logger.error('Failed to fetch batches', { error: err.message });
         res.status(500).json({ status: 'error', error: err.message });
     }
 });

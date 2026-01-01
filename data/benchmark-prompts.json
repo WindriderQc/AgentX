@@ -1,0 +1,142 @@
+[
+  {
+    "level": 1,
+    "category": "coding",
+    "name": "Hello World",
+    "prompt": "Write a function that returns 'Hello World'",
+    "expected_tokens": 50
+  },
+  {
+    "level": 1,
+    "category": "reasoning",
+    "name": "Simple Logic",
+    "prompt": "If all cats are animals, and some animals are pets, can we conclude all cats are pets? Explain briefly.",
+    "expected_tokens": 100
+  },
+  {
+    "level": 1,
+    "category": "factual",
+    "name": "Basic Fact",
+    "prompt": "What is the capital of France?",
+    "expected_tokens": 20
+  },
+  {
+    "level": 1,
+    "category": "math",
+    "name": "Basic Math",
+    "prompt": "What is 15 + 27?",
+    "expected_tokens": 20
+  },
+  {
+    "level": 2,
+    "category": "coding",
+    "name": "Array Sum",
+    "prompt": "Write a function that takes an array of numbers and returns their sum",
+    "expected_tokens": 100
+  },
+  {
+    "level": 2,
+    "category": "reasoning",
+    "name": "Pattern Recognition",
+    "prompt": "What comes next in this sequence: 2, 4, 8, 16, ?",
+    "expected_tokens": 80
+  },
+  {
+    "level": 2,
+    "category": "factual",
+    "name": "Historical Fact",
+    "prompt": "In what year did World War II end?",
+    "expected_tokens": 50
+  },
+  {
+    "level": 2,
+    "category": "creative",
+    "name": "Short Tagline",
+    "prompt": "Create a catchy tagline for a coffee shop",
+    "expected_tokens": 50
+  },
+  {
+    "level": 3,
+    "category": "coding",
+    "name": "Fibonacci",
+    "prompt": "Write a recursive function to calculate the nth Fibonacci number",
+    "expected_tokens": 150
+  },
+  {
+    "level": 3,
+    "category": "reasoning",
+    "name": "Logic Puzzle",
+    "prompt": "Three boxes contain apples, oranges, and a mix of both. All labels are incorrect. You can pick one fruit from one box. How can you correctly label all boxes?",
+    "expected_tokens": 200
+  },
+  {
+    "level": 3,
+    "category": "factual",
+    "name": "Science Explanation",
+    "prompt": "Explain photosynthesis in simple terms",
+    "expected_tokens": 150
+  },
+  {
+    "level": 3,
+    "category": "math",
+    "name": "Algebra",
+    "prompt": "Solve for x: 2x + 5 = 17",
+    "expected_tokens": 100
+  },
+  {
+    "level": 4,
+    "category": "coding",
+    "name": "Binary Search",
+    "prompt": "Implement a binary search algorithm and explain its time complexity",
+    "expected_tokens": 300
+  },
+  {
+    "level": 4,
+    "category": "reasoning",
+    "name": "Ethical Dilemma",
+    "prompt": "A self-driving car must choose between hitting a pedestrian or swerving and crashing, potentially harming the passenger. Discuss the ethical considerations.",
+    "expected_tokens": 300
+  },
+  {
+    "level": 4,
+    "category": "creative",
+    "name": "Story Plot",
+    "prompt": "Create a plot outline for a sci-fi short story about AI consciousness",
+    "expected_tokens": 250
+  },
+  {
+    "level": 4,
+    "category": "factual",
+    "name": "Complex Topic",
+    "prompt": "Explain the difference between machine learning and deep learning",
+    "expected_tokens": 250
+  },
+  {
+    "level": 5,
+    "category": "coding",
+    "name": "System Design",
+    "prompt": "Design a distributed caching system for a high-traffic web application. Include considerations for consistency, scalability, and fault tolerance.",
+    "expected_tokens": 500
+  },
+  {
+    "level": 5,
+    "category": "reasoning",
+    "name": "Multi-Step Problem",
+    "prompt": "You have 8 balls, one is slightly heavier. Using a balance scale only twice, how do you find the heavier ball? Explain your reasoning step by step.",
+    "expected_tokens": 400
+  },
+  {
+    "level": 5,
+    "category": "creative",
+    "name": "World Building",
+    "prompt": "Create a detailed society on a planet with 40-hour days. Describe their culture, sleep patterns, and how this affects their civilization.",
+    "expected_tokens": 500
+  },
+  {
+    "level": 5,
+    "category": "math",
+    "name": "Calculus Problem",
+    "prompt": "Find the derivative of f(x) = x^3 * sin(x) and explain the product rule",
+    "expected_tokens": 300
+  }
+]
