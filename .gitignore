@@ -12,3 +12,9 @@ qdrant.log
 qdrant
 qdrant.tar.gz
 storage/
+
+# GitHub Actions self-hosted runner
+actions-runner/
+
+# Jest test cache
+jest

@@ -1,0 +1,80 @@
+name: 🚀 Deploy AgentX
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  test:
+    name: 🧪 Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+        
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          
+      - name: 📦 Install Dependencies
+        run: npm ci
+        
+      - name: 🧪 Run Tests
+        run: npm test
+        
+      - name: ✅ Tests Passed
+        run: echo "✅ All tests passed! Ready to deploy."
+
+  deploy-local:
+    name: 🏠 Deploy Local (AgentX)
+    needs: test
+    runs-on: self-hosted
+    if: ${{ github.event_name == 'push' }}
+    environment:
+      name: production
+      url: http://192.168.2.33:3080
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+        
+      - name: 🔄 Update & Restart
+        run: |
+          TARGET_DIR="${{ secrets.AGENTX_DEPLOY_PATH }}"
+          TARGET_DIR="${TARGET_DIR:-/home/yb/codes/AgentX}"
+          
+          echo "📂 Deploying to: $TARGET_DIR"
+          
+          if [ -d "$TARGET_DIR" ]; then
+            cd "$TARGET_DIR"
+            
+            # Backup current state
+            git stash
+            
+            # Update code
+            git fetch origin
+            git reset --hard origin/main
+            
+            # Clean install
+            rm -rf node_modules package-lock.json
+            npm ci
+            
+            # Check if PM2 process exists
+            if pm2 describe agentx > /dev/null 2>&1; then
+              # Zero-downtime reload
+              pm2 reload agentx
+              echo "🔄 PM2 reload complete"
+            else
+              # First time deployment
+              pm2 start server.js --name agentx
+              pm2 save
+              echo "🆕 PM2 started agentx"
+            fi
+            
+            echo "🎉 AgentX Deployment complete!"
+          else
+            echo "❌ Target directory $TARGET_DIR not found on runner!"
+            exit 1
+          fi
