@@ -156,4 +156,45 @@ router.get('/:hostId/models', async (req, res) => {
     }
 });
 
+/**
+ * GET /api/ollama-hosts/proxy/tags
+ * Proxy endpoint for fetching models from configured Ollama host
+ * This avoids CORS issues when frontend needs to access Ollama API
+ */
+router.get('/proxy/tags', async (req, res) => {
+    try {
+        // Use custom host from query param or default to primary configured host
+        const customHost = req.query.host;
+        let ollamaHost;
+
+        if (customHost) {
+            ollamaHost = customHost;
+        } else {
+            const configuredHosts = getConfiguredHosts();
+            ollamaHost = configuredHosts[0]?.url || 'http://localhost:11434';
+        }
+
+        const response = await fetch(`${ollamaHost}/api/tags`, {
+            method: 'GET',
+            timeout: 5000
+        });
+
+        if (!response.ok) {
+            throw new Error(`Ollama returned HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        
+        // Return in Ollama's native format for compatibility
+        res.json(data);
+    } catch (err) {
+        logger.error('Failed to proxy Ollama tags', { error: err.message });
+        res.status(500).json({
+            status: 'error',
+            error: err.message,
+            models: []
+        });
+    }
+});
+
 module.exports = router;

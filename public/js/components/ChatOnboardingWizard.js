@@ -646,12 +646,20 @@ export class ChatOnboardingWizard {
   }
 
   /**
-   * Fetch available models from Ollama
+   * Fetch available models from Ollama through proxy endpoint to avoid CORS
    */
   async fetchModels() {
     try {
-      const ollamaHost = localStorage.getItem('ollama_host') || 'http://localhost:11434';
-      const response = await fetch(`${ollamaHost}/api/tags`);
+      const ollamaHost = localStorage.getItem('ollama_host') || '';
+      
+      // Use proxy endpoint to avoid CORS issues
+      let proxyUrl = '/api/ollama-hosts/proxy/tags';
+      if (ollamaHost && ollamaHost !== 'http://localhost:11434') {
+        // Pass custom host as query parameter
+        proxyUrl += `?host=${encodeURIComponent(ollamaHost)}`;
+      }
+      
+      const response = await fetch(proxyUrl);
       if (!response.ok) throw new Error('Failed to fetch models');
       const data = await response.json();
 
