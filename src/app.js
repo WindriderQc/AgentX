@@ -149,6 +149,10 @@ app.use('/api/prompts', promptRoutes);
 const benchmarkRoutes = require('../routes/benchmark');
 app.use('/api/benchmark', benchmarkRoutes);
 
+// Ollama hosts routes (configuration and models)
+const ollamaHostsRoutes = require('../routes/ollama-hosts');
+app.use('/api/ollama-hosts', ollamaHostsRoutes);
+
 // Dashboard routes
 const dashboardRoutes = require('../routes/dashboard');
 app.use('/api/dashboard', dashboardRoutes);

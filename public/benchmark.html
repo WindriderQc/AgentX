@@ -232,13 +232,15 @@
             <h2 style="margin-bottom: 20px;">Run New Test</h2>
             <form id="testForm" class="form-grid">
                 <div class="form-group">
-                    <label for="model">Model</label>
-                    <input type="text" id="model" placeholder="llama2" required>
-                </div>
-                <div class="form-group">
                     <label for="host">Ollama Host</label>
                     <select id="host" required>
                         <option value="">Loading...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="model">Model</label>
+                    <select id="model" required>
+                        <option value="">Select host first...</option>
                     </select>
                 </div>
                 <div class="form-group">
@@ -290,30 +292,31 @@
         // Fetch Ollama hosts from AgentX config
         async function loadOllamaHosts() {
             try {
-                const res = await fetch('/api/system/health');
-                const data = await res.json();
+                const res = await fetch('/api/ollama-hosts');
+                const json = await res.json();
+                const data = json.data || json;
 
-                // Build host list from environment
-                ollamaHosts = [];
-                if (data.ollama && data.ollama.host) {
-                    ollamaHosts.push({ name: 'Primary', url: data.ollama.host });
-                }
+                if (data.hosts && data.hosts.length > 0) {
+                    ollamaHosts = data.hosts;
 
-                // Add secondary hosts if available
-                const secondaryHost = 'http://192.168.2.12:11434';
-                if (secondaryHost) {
-                    ollamaHosts.push({ name: 'Secondary', url: secondaryHost });
-                }
+                    // Populate host select
+                    const select = document.getElementById('host');
+                    select.innerHTML = ollamaHosts.map(h => {
+                        const status = h.available ? '✓' : '✗';
+                        const modelCount = h.models ? ` [${h.models.length} models]` : '';
+                        return `<option value="${h.url}">${status} ${h.name} (${h.url})${modelCount}</option>`;
+                    }).join('');
 
-                // Populate select
-                const select = document.getElementById('host');
-                select.innerHTML = ollamaHosts.map(h =>
-                    `<option value="${h.url}">${h.name} (${h.url})</option>`
-                ).join('');
+                    // Set default to first available host
+                    const firstAvailable = ollamaHosts.find(h => h.available);
+                    if (firstAvailable) {
+                        select.value = firstAvailable.url;
+                    }
 
-                // Set default
-                if (ollamaHosts.length > 0) {
-                    select.value = ollamaHosts[0].url;
+                    // Load models for default host
+                    loadModelsForHost(select.value);
+                } else {
+                    throw new Error('No hosts configured');
                 }
             } catch (err) {
                 console.error('Failed to load Ollama hosts:', err);
@@ -321,6 +324,29 @@
                     '<option value="http://localhost:11434">Default (http://localhost:11434)</option>';
             }
         }
+
+        // Load available models for selected host
+        function loadModelsForHost(hostUrl) {
+            const host = ollamaHosts.find(h => h.url === hostUrl);
+            const modelSelect = document.getElementById('model');
+
+            if (host && host.models && host.models.length > 0) {
+                // Populate model dropdown
+                modelSelect.innerHTML = host.models.map(model =>
+                    `<option value="${model}">${model}</option>`
+                ).join('');
+
+                // Select first model by default
+                modelSelect.value = host.models[0];
+            } else {
+                modelSelect.innerHTML = '<option value="">No models available</option>';
+            }
+        }
+
+        // Update models when host changes
+        document.getElementById('host').addEventListener('change', (e) => {
+            loadModelsForHost(e.target.value);
+        });
 
         // Initialize charts
         function initCharts() {
