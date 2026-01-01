@@ -97,21 +97,22 @@
 ---
 
 ### Task 4: Consolidate Onboarding Wizards ✅
-**Status:** COMPLETE
-**Commits:** Wizard consolidation
+**Status:** 100% COMPLETE (Both Wizards Refactored)
+**Commits:** Wizard consolidation (Phase 1 + Phase 2)
 
 **Deliverables:**
 - ✅ Created BaseOnboardingWizard.js (326 lines) - Shared base class
 - ✅ Refactored ChatOnboardingWizard.js (780 → 381 lines, 51% reduction)
-- ✅ Total code reduction: 36% (655 lines saved)
-- ✅ Updated index.html to import both wizards
-- ✅ Comprehensive documentation
+- ✅ Refactored OnboardingWizard.js (1,032 → 744 lines, 28% reduction)
+- ✅ Total code reduction: 20% overall (361 lines eliminated from 1,812 lines)
+- ✅ Updated index.html and prompts.html to import base wizard
+- ✅ Comprehensive documentation (2 detailed reports)
 
 **Technical Changes:**
 - **Pattern:** Template Method pattern with inheritance
 - **Base Class:** Contains modal UI, navigation, progress, validation hooks
-- **Subclass:** Only implements step content (renderStep1-5) and business logic
-- **Result:** Eliminated 80% code duplication
+- **Subclasses:** Only implement step content (renderStepN) and business logic
+- **Result:** Eliminated 361 lines of duplicated boilerplate code
 
 **Architecture:**
 ```javascript
@@ -129,28 +130,41 @@ ChatOnboardingWizard.js (381 lines) extends BaseOnboardingWizard
   ├── Prompt/model fetching
   ├── RAG preference handling
   └── Chat-specific preferences
+
+OnboardingWizard.js (744 lines) extends BaseOnboardingWizard
+  ├── 7 step definitions (renderStep1-7)
+  ├── Profile save logic
+  ├── Prompt creation with validation
+  ├── Traffic weight configuration
+  └── Prompts-specific preferences
 ```
 
 **Files Created:**
 - `public/js/components/BaseOnboardingWizard.js` - NEW (base class)
-- `docs/WIZARD_CONSOLIDATION_REPORT.md` - NEW (detailed report)
+- `docs/WIZARD_CONSOLIDATION_REPORT.md` - NEW (Phase 1: ChatOnboardingWizard)
+- `docs/WIZARD_CONSOLIDATION_REPORT_V2.md` - NEW (Phase 2: OnboardingWizard)
 
 **Files Modified:**
 - `public/js/components/ChatOnboardingWizard.js` - REFACTORED (51% reduction)
-- `public/index.html` - Import both wizards
+- `public/js/components/OnboardingWizard.js` - REFACTORED (28% reduction)
+- `public/index.html` - Import base wizard
+- `public/js/prompts.js` - Updated to use instance method (isCompleted)
 
 **Metrics:**
 | Metric | Before | After | Improvement |
 |--------|--------|-------|-------------|
-| Total Lines | 1,812 | 1,157 | ↓ 36% |
-| Duplicate Code | ~800 lines | 0 lines | ✅ Eliminated |
+| Total Lines | 1,812 | 1,451 | ↓ 20% |
+| ChatOnboardingWizard | 780 | 381 | ↓ 51% |
+| OnboardingWizard | 1,032 | 744 | ↓ 28% |
+| Duplicate Code | ~361 lines | 0 lines | ✅ Eliminated |
 | Maintainability | Low | High | ✅ Improved |
 
 **Future Benefits:**
 - Easy to add new wizards (RAGOnboardingWizard, SettingsWizard, etc.)
-- Bug fixes in base benefit all wizards
+- Bug fixes in base benefit all wizards automatically
 - Consistent UX across all wizards
 - Minimal code per new wizard (~300-400 lines vs 700-1000 lines)
+- Standardized hook pattern (onOpen, validateStep, processStep, onFinish)
 
 ---
 
@@ -218,16 +232,16 @@ Simple Mode OFF (Power Users):
 | Category | Files Modified | Files Created | Lines Changed |
 |----------|---------------|---------------|---------------|
 | **HTML** | 2 | 1 | ~200 lines |
-| **JavaScript** | 2 | 2 | ~500 lines |
+| **JavaScript** | 4 | 2 | ~500 lines (net: -361 via consolidation) |
 | **CSS** | 1 | 0 | ~80 lines |
 | **JSON** | 0 | 1 | 1 workflow |
-| **Documentation** | 1 | 6 | ~2,500 lines |
+| **Documentation** | 1 | 7 | ~3,000 lines |
 | **Tests** | 0 | 2 | ~400 lines |
 
 ### Code Quality
-- **Reduced Duplication:** 655 lines eliminated (36% reduction in wizard code)
+- **Reduced Duplication:** 361 lines eliminated (20% overall reduction in wizard code across both wizards)
 - **Test Coverage:** 40/40 automated tests passing (100%)
-- **Documentation:** 6 new comprehensive docs (2,500+ lines)
+- **Documentation:** 7 new comprehensive docs (3,000+ lines including both consolidation reports)
 - **No Breaking Changes:** All changes backward compatible
 
 ### Commits
@@ -265,8 +279,9 @@ Simple Mode OFF (Power Users):
 1. `docs/MANUAL_TEST_SESSION.md` - Task 1 testing
 2. `docs/N8N_DEPLOYMENT_PLAN.md` - Task 2 deployment
 3. `docs/N8N_DEPLOYMENT_TEST_RESULTS.md` - Task 2 results
-4. `docs/WIZARD_CONSOLIDATION_REPORT.md` - Task 4 refactoring
-5. `docs/SIMPLE_MODE_IMPLEMENTATION.md` - Task 5 implementation
+4. `docs/WIZARD_CONSOLIDATION_REPORT.md` - Task 4 refactoring (Phase 1: ChatOnboardingWizard)
+5. `docs/WIZARD_CONSOLIDATION_REPORT_V2.md` - Task 4 refactoring (Phase 2: OnboardingWizard)
+6. `docs/SIMPLE_MODE_IMPLEMENTATION.md` - Task 5 implementation
 
 ### Updated Documentation
 - `CLAUDE.md` - Updated with janitor completion status
@@ -349,9 +364,17 @@ All 5 tasks of the janitor project have been successfully completed:
 **🏆 Janitor Project: MISSION ACCOMPLISHED**
 
 AgentX now has a fully working janitor system with:
-- ✅ Complete onboarding flow
+- ✅ Complete onboarding flow (both chat and prompts wizards)
+- ✅ Consolidated wizard architecture (20% code reduction)
 - ✅ RAG document management
 - ✅ Clean prompts UI with Simple Mode
 - ✅ n8n integration tested
 - ✅ Effective navigation
 - ✅ Lean, user-friendly interfaces
+
+**🎯 Major Achievement: Wizard Consolidation Complete**
+- Both ChatOnboardingWizard and OnboardingWizard now extend BaseOnboardingWizard
+- 361 lines of duplicated code eliminated
+- Standardized architecture enables easy creation of future wizards
+- Consistent UX across all onboarding flows
+- Centralized maintenance reduces technical debt
