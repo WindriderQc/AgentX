@@ -29,6 +29,11 @@ const FIXTURES_DIR = path.join(__dirname, 'fixtures');
  * Setup mock API responses for auth and prompts
  */
 async function setupMockAPI(page, promptsData = mockPromptsForExport) {
+  // Track imported prompts in page context
+  await page.addInitScript(() => {
+    window._testImportedPrompts = [];
+  });
+
   // Mock authentication to bypass login
   await page.route('**/api/auth/me', (route) => {
     route.fulfill({
@@ -42,17 +47,83 @@ async function setupMockAPI(page, promptsData = mockPromptsForExport) {
     });
   });
 
-  // Mock prompts API GET to return test data
-  await page.route('**/api/prompts', (route) => {
-    if (route.request().method() === 'GET') {
+  // Mock prompts API
+  await page.route(/\/api\/prompts(\?.*)?$/, async (route) => {
+    const method = route.request().method();
+
+    if (method === 'GET') {
+      // Return current prompts (initial + imported)
+      const importedPrompts = await page.evaluate(() => window._testImportedPrompts || []);
+      const allPrompts = { ...promptsData };
+
+      // Add imported prompts to the response
+      importedPrompts.forEach(prompt => {
+        if (!allPrompts[prompt.name]) {
+          allPrompts[prompt.name] = [];
+        }
+        allPrompts[prompt.name].push(prompt);
+      });
+
       route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify(createMockApiResponse(promptsData))
+        body: JSON.stringify(createMockApiResponse(allPrompts))
+      });
+    } else if (method === 'POST') {
+      // Mock individual prompt creation
+      const promptData = route.request().postDataJSON();
+      const newPrompt = {
+        ...promptData,
+        _id: `created_${Date.now()}`,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          status: 'success',
+          data: newPrompt
+        })
       });
     } else {
       route.continue();
     }
+  });
+
+  // Mock import endpoint specifically
+  await page.route(/\/api\/prompts\/import/, async (route) => {
+    const requestBody = route.request().postDataJSON();
+    const importCount = requestBody?.prompts?.length || 0;
+
+    // Store imported prompts
+    if (requestBody?.prompts) {
+      await page.evaluate((prompts) => {
+        window._testImportedPrompts = window._testImportedPrompts || [];
+        prompts.forEach(p => {
+          window._testImportedPrompts.push({
+            ...p,
+            _id: `imported_${Date.now()}_${Math.random()}`,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          });
+        });
+      }, requestBody.prompts);
+    }
+
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        status: 'success',
+        message: `Successfully imported ${importCount} prompt${importCount !== 1 ? 's' : ''}`,
+        data: {
+          imported: importCount,
+          skipped: requestBody?.skipped || 0
+        }
+      })
+    });
   });
 
   // Bypass onboarding modal
@@ -525,7 +596,6 @@ test.describe('Prompt Export/Import E2E Tests', () => {
     await expect(exportToast).toBeVisible();
 
     // Step 3: Delete all prompts
-    await cleanupTestPrompts(page);
     await page.waitForSelector('.prompts-header');
 
     // Verify empty state
@@ -637,7 +707,6 @@ test.describe('Prompt Export/Import E2E Tests', () => {
     await page.waitForTimeout(2000); // Wait for import to complete
 
     // Delete the imported prompt
-    await cleanupTestPrompts(page);
 
     // Second import - should work (file input was reset)
     const fileChooser2Promise = page.waitForEvent('filechooser');
@@ -663,19 +732,19 @@ test.describe('Prompt Export/Import E2E Tests', () => {
 test.describe('Export/Import Edge Cases', () => {
 
   test.beforeEach(async ({ page }) => {
-    await login(page);
-    await cleanupTestPrompts(page);
-    await page.goto(`${BASE_URL}/prompts.html`);
-    await page.waitForSelector('.prompts-header');
-  });
+    // Setup API mocks with empty prompts for edge case testing
+    await setupMockAPI(page, {});
 
-  test.afterEach(async ({ page }) => {
-    await cleanupTestPrompts(page);
+    // Navigate to prompts page
+    await page.goto(PROMPTS_PAGE);
+    await page.waitForLoadState('networkidle');
+
+    // Wait for page to load
+    await page.waitForSelector('.prompts-header', { timeout: 5000 });
   });
 
   test('should export empty prompt library with correct message', async ({ page }) => {
     // Ensure no prompts exist
-    await cleanupTestPrompts(page);
     await page.waitForSelector('.prompts-header');
 
     // Try to export
