@@ -165,6 +165,17 @@
           <div class="hint">Models are pulled from the selected Ollama host.</div>
         </div>
 
+        <div class="field">
+          <label>System Prompt</label>
+          <div class="input-row">
+            <select id="promptSelect" style="flex: 1;">
+              <option value="default_chat">Loading prompts…</option>
+            </select>
+            <button class="icon-btn" id="promptInfoBtn" title="View prompt details">ⓘ</button>
+          </div>
+          <div class="hint">Choose which system prompt to use for AI behavior.</div>
+        </div>
+
         <div class="note" id="feedback">Waiting for configuration.</div>
 
         <div class="field inline-toggle" data-tooltip="Real-time streaming shows AI responses as they're generated. Recommended for longer answers and thinking models.">

@@ -115,6 +115,9 @@ document.addEventListener('DOMContentLoaded', () => {
     userName: document.getElementById('userName'),
     logoutBtn: document.getElementById('logoutBtn'),
     loginBtn: document.getElementById('loginBtn'),
+    // Prompt selection elements
+    promptSelect: document.getElementById('promptSelect'),
+    promptInfoBtn: document.getElementById('promptInfoBtn'),
   };
 
   // Fetch server config on load
@@ -622,7 +625,10 @@ document.addEventListener('DOMContentLoaded', () => {
         target: targetHost(),
         model,
         system: elements.systemPrompt.value.trim(),
-        options: readOptions(),
+        options: {
+          ...readOptions(),
+          persona: elements.promptSelect?.value || 'default_chat'  // Phase 2.1: Include selected prompt
+        },
         stream: elements.streamToggle.checked,
         useRag: elements.ragToggle.checked,
         threadId: state.threadId,
@@ -844,6 +850,115 @@ document.addEventListener('DOMContentLoaded', () => {
       }
   }
 
+  // Load available prompts into selector dropdown
+  async function loadPromptSelector() {
+      try {
+          const res = await fetch('/api/prompts', { credentials: 'include' });
+          if (!res.ok) {
+              console.error('Failed to load prompts:', res.status);
+              return;
+          }
+
+          const result = await res.json();
+          if (result.status !== 'success') {
+              console.error('Prompts API error:', result.message);
+              return;
+          }
+
+          const promptSelect = document.getElementById('promptSelect');
+          if (!promptSelect) return;
+
+          // Clear existing options
+          promptSelect.innerHTML = '';
+
+          // Add options for each prompt with active versions
+          const promptNames = Object.keys(result.data).sort();
+          if (promptNames.length === 0) {
+              promptSelect.innerHTML = '<option value="default_chat">default_chat (auto)</option>';
+              return;
+          }
+
+          promptNames.forEach(name => {
+              const versions = result.data[name];
+              const activeVersions = versions.filter(v => v.isActive);
+
+              if (activeVersions.length > 0) {
+                  // Use the highest version active prompt
+                  const latestActive = activeVersions[0];
+                  const option = document.createElement('option');
+                  option.value = name;
+                  option.textContent = `${name} v${latestActive.version}`;
+
+                  // Mark as selected if it's default_chat
+                  if (name === 'default_chat') {
+                      option.selected = true;
+                  }
+
+                  promptSelect.appendChild(option);
+              }
+          });
+
+          // If no default_chat option exists, add fallback
+          if (!promptSelect.querySelector('option[value="default_chat"]')) {
+              const fallback = document.createElement('option');
+              fallback.value = 'default_chat';
+              fallback.textContent = 'default_chat (auto)';
+              fallback.selected = true;
+              promptSelect.insertBefore(fallback, promptSelect.firstChild);
+          }
+
+      } catch (err) {
+          console.error('Failed to load prompt selector:', err);
+      }
+  }
+
+  // Show prompt details modal
+  async function showPromptInfo() {
+      const promptSelect = document.getElementById('promptSelect');
+      if (!promptSelect) return;
+
+      const selectedPrompt = promptSelect.value;
+
+      try {
+          const res = await fetch(`/api/prompts/${selectedPrompt}`, { credentials: 'include' });
+          if (!res.ok) {
+              alert('Failed to load prompt details');
+              return;
+          }
+
+          const result = await res.json();
+          if (result.status !== 'success' || result.data.length === 0) {
+              alert('No prompt data found');
+              return;
+          }
+
+          // Find active version
+          const activeVersion = result.data.find(p => p.isActive) || result.data[0];
+
+          // Create modal content
+          const modalContent = `
+              <h3>${activeVersion.name} v${activeVersion.version}</h3>
+              <p><strong>Description:</strong> ${activeVersion.description || 'No description'}</p>
+              <p><strong>System Prompt:</strong></p>
+              <pre style="background: #000; padding: 10px; border-radius: 4px; max-height: 300px; overflow-y: auto; white-space: pre-wrap; word-wrap: break-word;">${activeVersion.systemPrompt}</pre>
+              <p><strong>Stats:</strong></p>
+              <ul>
+                  <li>Impressions: ${activeVersion.stats?.impressions || 0}</li>
+                  <li>Positive: ${activeVersion.stats?.positiveCount || 0}</li>
+                  <li>Negative: ${activeVersion.stats?.negativeCount || 0}</li>
+              </ul>
+          `;
+
+          // Use existing modal or create simple alert fallback
+          // TODO: Integrate with proper modal component
+          const confirmed = confirm(modalContent.replace(/<[^>]*>/g, '\n').replace(/\n+/g, '\n'));
+
+      } catch (err) {
+          console.error('Failed to show prompt info:', err);
+          alert('Error loading prompt details');
+      }
+  }
+
   function setHistoryToggleLabels() {
     if (!elements.page) return;
     const isHidden = elements.page.classList.contains('history-hidden');
@@ -1012,6 +1127,11 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
+    // Prompt selection events
+    if (elements.promptInfoBtn) {
+      elements.promptInfoBtn.addEventListener('click', showPromptInfo);
+    }
+
     // Toggle tuning parameters section
     const tuningHeader = document.getElementById('tuningHeader');
     const tuningContent = document.getElementById('tuningContent');
@@ -1122,6 +1242,7 @@ document.addEventListener('DOMContentLoaded', () => {
     clearChat();
     loadProfile();
     loadActivePrompt();
+    loadPromptSelector();
     await fetchModels();
 
     // Set initial UI toggle states
