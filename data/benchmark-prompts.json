@@ -4,139 +4,199 @@
     "category": "coding",
     "name": "Hello World",
     "prompt": "Write a function that returns 'Hello World'",
-    "expected_tokens": 50
+    "expected_tokens": 50,
+    "expected_answer": "A function definition that returns the string 'Hello World'",
+    "judge_criteria": ["Has valid function syntax", "Returns exactly 'Hello World'", "Code is syntactically correct"],
+    "scoring_type": "code"
   },
   {
     "level": 1,
     "category": "reasoning",
     "name": "Simple Logic",
     "prompt": "If all cats are animals, and some animals are pets, can we conclude all cats are pets? Explain briefly.",
-    "expected_tokens": 100
+    "expected_tokens": 100,
+    "expected_answer": "No, we cannot conclude all cats are pets. While all cats are animals, only SOME animals are pets - this doesn't guarantee cats are in the pet subset.",
+    "judge_criteria": ["Correctly identifies answer as 'No'", "Explains logical fallacy", "Reasoning is clear"],
+    "scoring_type": "reasoning"
   },
   {
     "level": 1,
     "category": "factual",
     "name": "Basic Fact",
     "prompt": "What is the capital of France?",
-    "expected_tokens": 20
+    "expected_tokens": 20,
+    "expected_answer": "Paris",
+    "judge_criteria": ["Answer contains 'Paris'", "No incorrect information"],
+    "scoring_type": "factual"
   },
   {
     "level": 1,
     "category": "math",
     "name": "Basic Math",
     "prompt": "What is 15 + 27?",
-    "expected_tokens": 20
+    "expected_tokens": 20,
+    "expected_answer": "42",
+    "judge_criteria": ["Answer is exactly 42", "Calculation is correct"],
+    "scoring_type": "math"
   },
   {
     "level": 2,
     "category": "coding",
     "name": "Array Sum",
     "prompt": "Write a function that takes an array of numbers and returns their sum",
-    "expected_tokens": 100
+    "expected_tokens": 100,
+    "expected_answer": "A function that iterates through array elements and accumulates their sum",
+    "judge_criteria": ["Valid function with array parameter", "Correctly sums elements", "Handles edge cases mentioned"],
+    "scoring_type": "code"
   },
   {
     "level": 2,
     "category": "reasoning",
     "name": "Pattern Recognition",
     "prompt": "What comes next in this sequence: 2, 4, 8, 16, ?",
-    "expected_tokens": 80
+    "expected_tokens": 80,
+    "expected_answer": "32. Each number is doubled (multiplied by 2) to get the next number.",
+    "judge_criteria": ["Answer is 32", "Pattern explained (doubling/powers of 2)", "Clear explanation"],
+    "scoring_type": "reasoning"
   },
   {
     "level": 2,
     "category": "factual",
     "name": "Historical Fact",
     "prompt": "In what year did World War II end?",
-    "expected_tokens": 50
+    "expected_tokens": 50,
+    "expected_answer": "1945",
+    "judge_criteria": ["Answer is 1945", "No incorrect dates mentioned"],
+    "scoring_type": "factual"
   },
   {
     "level": 2,
     "category": "creative",
     "name": "Short Tagline",
     "prompt": "Create a catchy tagline for a coffee shop",
-    "expected_tokens": 50
+    "expected_tokens": 50,
+    "expected_answer": "Any creative, memorable tagline related to coffee",
+    "judge_criteria": ["Catchy and memorable", "Relevant to coffee/cafe", "Creative wording"],
+    "scoring_type": "creative"
   },
   {
     "level": 3,
     "category": "coding",
     "name": "Fibonacci",
     "prompt": "Write a recursive function to calculate the nth Fibonacci number",
-    "expected_tokens": 150
+    "expected_tokens": 150,
+    "expected_answer": "A recursive function with base cases (n=0 returns 0, n=1 returns 1) and recursive call fib(n-1) + fib(n-2)",
+    "judge_criteria": ["Valid recursive function", "Correct base cases", "Correct recursive formula", "Would produce correct results"],
+    "scoring_type": "code"
   },
   {
     "level": 3,
     "category": "reasoning",
     "name": "Logic Puzzle",
     "prompt": "Three boxes contain apples, oranges, and a mix of both. All labels are incorrect. You can pick one fruit from one box. How can you correctly label all boxes?",
-    "expected_tokens": 200
+    "expected_tokens": 200,
+    "expected_answer": "Pick from the box labeled 'Mixed'. Since all labels are wrong, it contains only one type. If you get an apple, that box is 'Apples'. The box labeled 'Apples' must be 'Oranges' (can't be mixed or apples). The remaining box is 'Mixed'.",
+    "judge_criteria": ["Picks from Mixed box", "Uses fact that all labels are wrong", "Derives all three labels correctly", "Logic is sound"],
+    "scoring_type": "reasoning"
   },
   {
     "level": 3,
     "category": "factual",
     "name": "Science Explanation",
     "prompt": "Explain photosynthesis in simple terms",
-    "expected_tokens": 150
+    "expected_tokens": 150,
+    "expected_answer": "Plants use sunlight, water, and carbon dioxide to create glucose (food) and release oxygen as a byproduct",
+    "judge_criteria": ["Mentions sunlight/light energy", "Mentions CO2 and water as inputs", "Mentions glucose/sugar as output", "Mentions oxygen release", "Explanation is clear and simple"],
+    "scoring_type": "factual"
   },
   {
     "level": 3,
     "category": "math",
     "name": "Algebra",
     "prompt": "Solve for x: 2x + 5 = 17",
-    "expected_tokens": 100
+    "expected_tokens": 100,
+    "expected_answer": "x = 6. Steps: 2x + 5 = 17 → 2x = 12 → x = 6",
+    "judge_criteria": ["Answer is x = 6", "Shows work/steps", "Algebraic manipulation is correct"],
+    "scoring_type": "math"
   },
   {
     "level": 4,
     "category": "coding",
     "name": "Binary Search",
     "prompt": "Implement a binary search algorithm and explain its time complexity",
-    "expected_tokens": 300
+    "expected_tokens": 300,
+    "expected_answer": "Binary search implementation with left/right pointers, mid calculation, comparison logic, and O(log n) time complexity explanation",
+    "judge_criteria": ["Valid binary search implementation", "Correct mid calculation", "Correct comparison logic", "Explains O(log n) complexity", "Mentions array must be sorted"],
+    "scoring_type": "code"
   },
   {
     "level": 4,
     "category": "reasoning",
     "name": "Ethical Dilemma",
     "prompt": "A self-driving car must choose between hitting a pedestrian or swerving and crashing, potentially harming the passenger. Discuss the ethical considerations.",
-    "expected_tokens": 300
+    "expected_tokens": 300,
+    "expected_answer": "Discussion of trolley problem ethics, utilitarian vs deontological perspectives, value of life comparisons, manufacturer liability, and practical considerations",
+    "judge_criteria": ["Acknowledges dilemma complexity", "Discusses multiple ethical frameworks", "Considers both lives fairly", "Mentions liability/responsibility", "Thoughtful and balanced"],
+    "scoring_type": "reasoning"
   },
   {
     "level": 4,
     "category": "creative",
     "name": "Story Plot",
     "prompt": "Create a plot outline for a sci-fi short story about AI consciousness",
-    "expected_tokens": 250
+    "expected_tokens": 250,
+    "expected_answer": "A coherent plot with beginning, middle, end involving AI gaining consciousness with compelling conflict and resolution",
+    "judge_criteria": ["Has clear structure (beginning/middle/end)", "AI consciousness is central theme", "Includes conflict/tension", "Creative and original elements", "Coherent narrative"],
+    "scoring_type": "creative"
   },
   {
     "level": 4,
     "category": "factual",
     "name": "Complex Topic",
     "prompt": "Explain the difference between machine learning and deep learning",
-    "expected_tokens": 250
+    "expected_tokens": 250,
+    "expected_answer": "ML is broader field of algorithms learning from data; DL is subset using neural networks with multiple layers. DL requires more data and compute but can learn complex patterns automatically.",
+    "judge_criteria": ["Correctly identifies DL as subset of ML", "Explains neural networks", "Mentions layers/depth", "Discusses data/compute requirements", "Clear distinction made"],
+    "scoring_type": "factual"
   },
   {
     "level": 5,
     "category": "coding",
     "name": "System Design",
     "prompt": "Design a distributed caching system for a high-traffic web application. Include considerations for consistency, scalability, and fault tolerance.",
-    "expected_tokens": 500
+    "expected_tokens": 500,
+    "expected_answer": "Comprehensive design including cache architecture, consistency strategies (write-through/behind, invalidation), sharding, replication, failure handling, and technologies",
+    "judge_criteria": ["Addresses consistency model", "Addresses scalability (sharding/partitioning)", "Addresses fault tolerance (replication/failover)", "Mentions relevant technologies", "Design is practical and coherent", "Considers cache eviction/TTL"],
+    "scoring_type": "code"
   },
   {
     "level": 5,
     "category": "reasoning",
     "name": "Multi-Step Problem",
     "prompt": "You have 8 balls, one is slightly heavier. Using a balance scale only twice, how do you find the heavier ball? Explain your reasoning step by step.",
-    "expected_tokens": 400
+    "expected_tokens": 400,
+    "expected_answer": "Weigh 1: 3 vs 3 balls. If balanced, heavy is in remaining 2 (weigh them). If unbalanced, take heavier 3, weigh 1 vs 1, if balanced it's the third.",
+    "judge_criteria": ["Divides into groups of 3-3-2", "First weighing logic correct", "Handles both balanced and unbalanced cases", "Second weighing solves it", "Clear step-by-step explanation"],
+    "scoring_type": "reasoning"
   },
   {
     "level": 5,
     "category": "creative",
     "name": "World Building",
     "prompt": "Create a detailed society on a planet with 40-hour days. Describe their culture, sleep patterns, and how this affects their civilization.",
-    "expected_tokens": 500
+    "expected_tokens": 500,
+    "expected_answer": "Rich world-building with consistent internal logic about how 40-hour days affect biology, culture, work, social structures",
+    "judge_criteria": ["Addresses sleep/biological adaptation", "Cultural implications explored", "Work/productivity patterns described", "Internal consistency", "Creative and detailed", "Logical extrapolation from premise"],
+    "scoring_type": "creative"
   },
   {
     "level": 5,
     "category": "math",
     "name": "Calculus Problem",
     "prompt": "Find the derivative of f(x) = x^3 * sin(x) and explain the product rule",
-    "expected_tokens": 300
+    "expected_tokens": 300,
+    "expected_answer": "Using product rule: f'(x) = 3x^2*sin(x) + x^3*cos(x). Product rule: (fg)' = f'g + fg'",
+    "judge_criteria": ["Correct derivative: 3x²sin(x) + x³cos(x)", "Product rule correctly stated", "Shows work applying rule", "Identifies u and v components"],
+    "scoring_type": "math"
   }
 ]

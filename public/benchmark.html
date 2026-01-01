@@ -111,6 +111,43 @@
             color: var(--accent);
             font-size: 0.9em;
         }
+        .host-selector {
+            background: var(--panel);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--panel-border);
+            padding: 20px 28px;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .host-selector label {
+            color: var(--muted);
+            font-size: 0.85em;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            white-space: nowrap;
+        }
+        .host-selector select {
+            flex: 1;
+            padding: 10px 14px;
+            border: 1px solid var(--panel-border);
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            font-size: 0.95em;
+            color: var(--text);
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+        .host-selector select:focus {
+            outline: none;
+            border-color: var(--accent);
+            background: rgba(0, 0, 0, 0.4);
+            box-shadow: 0 0 0 3px rgba(124, 240, 255, 0.1);
+        }
         .benchmark-forms-wrapper {
             display: grid;
             grid-template-columns: 1fr 1.5fr;
@@ -266,6 +303,10 @@
             color: white;
             box-shadow: 0 2px 8px rgba(205, 127, 50, 0.3);
         }
+        /* Quality score color indicators */
+        .quality-high { color: #2ecc71; font-weight: 600; }
+        .quality-mid { color: #f1c40f; font-weight: 600; }
+        .quality-low { color: #e74c3c; font-weight: 600; }
         .host-badge {
             display: inline-block;
             padding: 4px 10px;
@@ -275,81 +316,98 @@
             font-size: 0.8em;
             margin-left: 10px;
             color: var(--muted);
-        }25px;
-            border-radius: 15px;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        .batch-section {
+            background: var(--panel);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--panel-border);
+            padding: 0;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
         }
         .batch-section h2 {
-            color: #1a1a1a;
-            font-weight: 700;
-            font-size: 1.3em;
-            margin-bottom: 8px;
+            color: var(--text);
+            font-weight: 600;
+            font-size: 1.25em;
+            margin: 0 0 0 0;
+            padding: 24px 28px;
+            letter-spacing: -0.02em;
+            background: linear-gradient(135deg, rgba(124, 240, 255, 0.08), rgba(238, 176, 255, 0.08));
+            border-bottom: 1px solid var(--panel-border);
+            border-radius: var(--radius) var(--radius) 0 0;
         }
         .batch-section > p {
-            color: #555;
-            margin-bottom: 20px;
-            font-size: 0.85em;
+            color: var(--muted);
+            margin-bottom: 24px;
+            padding: 0 28px;
+            font-size: 0.9em;
+            line-height: 1.5;
+            margin-top: 20px;
         }
         .batch-section h3 {
-            color: #1a1a1a;
+            color: var(--muted);
             margin-bottom: 12px;
-            font-size: 0.95em;
-            font-weight: 600;
+            padding: 0 28px;
+            font-size: 0.85em;
+            font-weight: 500;
             text-transform: uppercase;
-            letter-spacing: 0.5px
-            margin-bottom: 15px;
+            letter-spacing: 0.1em;
+        }
+        .batch-section > div {
+            padding: 0 28px 28px 28px;
+        }
             font-size: 1.1em;
             font-weight: 600;
         }
         .level-grid {
-            displ8px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
             margin-bottom: 18px;
         }
         .level-checkbox {
             display: flex;
             align-items: center;
-            gap: 8px;
-            padding: 8px 12ter;
-            gap: 8px;
-            padding: 10px 16px;
-            border: 2px solid #d0d0d0;
-            border-radius: 8px;
+            gap: 6px;
+            padding: 6px 10px;
+            border: 1px solid var(--panel-border);
+            border-radius: 6px;
             cursor: pointer;
             transition: all 0.2s ease;
-            background: #fff;
+            background: rgba(255, 255, 255, 0.03);
             flex: 0 0 auto;
         }
         .level-checkbox:hover {
-            border-color: #667eea;
-            background: #f0f3ff;
+            border-color: var(--accent);
+            background: rgba(124, 240, 255, 0.08);
             transform: translateY(-1px);
-            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.15);
         }
         .level-checkbox input {
             margin: 0;
-            width: 16px;
-            height: 16px;
+            width: 14px;
+            height: 14px;
             cursor: pointer;
-            accent-color: #667eea;
+            accent-color: var(--accent);
         }
         .level-checkbox input:checked + label {
-            color: #667eea;
-            font-weight: 700;
+            color: var(--accent);
+            font-weight: 600;
         }
         .level-checkbox label {
             cursor: pointer;
-            font-weight: 600;
-            color: #333;
-            font-size: 0.95em;
+            font-weight: 500;
+            color: var(--text);
+            font-size: 0.85em;
             margin: 0;
             display: flex;
-            flex-direction: column;
-            gap: 2px;
+            align-items: center;
+            gap: 4px;
+            white-space: nowrap;
         }
         .level-checkbox label small {
-            color: #666;
+            color: var(--muted);
             font-weight: 400;
-            font-size: 0.85em;
+            font-size: 0.9em;
         }
         .model-selection {
             margin-bottom: 18px;
@@ -425,17 +483,36 @@
             overflow: hidden;
             margin: 20px 0;
             display: none;
+            position: relative;
+        }
+        .progress-bar.active {
+            display: block;
         }
         .progress-fill {
+            position: absolute;
+            top: 0;
+            left: 0;
             height: 100%;
             background: linear-gradient(90deg, var(--accent) 0%, rgba(238, 176, 255, 0.8) 100%);
             transition: width 0.3s ease;
+            min-width: 2%;
+            border-radius: 16px 0 0 16px;
+        }
+        .progress-text {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
             display: flex;
             align-items: center;
             justify-content: center;
-            color: var(--bg);
+            color: #fff;
             font-weight: 600;
             font-size: 0.9em;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+            pointer-events: none;
+            z-index: 1;
         }
         .batch-controls {
             display: flex;
@@ -494,16 +571,17 @@
             </div>
         </div>
 
+        <div class="host-selector">
+            <label for="host"><i class="fas fa-server"></i> Ollama Host</label>
+            <select id="host" required>
+                <option value="">Loading...</option>
+            </select>
+        </div>
+
         <div class="benchmark-forms-wrapper">
             <div class="test-form">
                 <h2>⚡ Quick Single Test</h2>
                 <form id="testForm" class="form-grid">
-                    <div class="form-group">
-                        <label for="host">Ollama Host</label>
-                        <select id="host" required>
-                            <option value="">Loading...</option>
-                        </select>
-                    </div>
                     <div class="form-group">
                         <label for="model">Model</label>
                         <select id="model" required>
@@ -530,25 +608,33 @@
                     <div class="level-grid">
                         <div class="level-checkbox">
                             <input type="checkbox" id="level1" checked>
-                            <label for="level1">Level 1<small>Quick</small></label>
+                            <label for="level1">Level 1 <small>· Quick</small></label>
                         </div>
                         <div class="level-checkbox">
                             <input type="checkbox" id="level2">
-                            <label for="level2">Level 2<small>Basic</small></label>
+                            <label for="level2">Level 2 <small>· Basic</small></label>
                         </div>
                         <div class="level-checkbox">
                             <input type="checkbox" id="level3">
-                            <label for="level3">Level 3<small>Medium</small></label>
+                            <label for="level3">Level 3 <small>· Medium</small></label>
                         </div>
                         <div class="level-checkbox">
                             <input type="checkbox" id="level4">
-                            <label for="level4">Level 4<small>Advanced</small></label>
+                            <label for="level4">Level 4 <small>· Advanced</small></label>
                         </div>
                         <div class="level-checkbox">
                             <input type="checkbox" id="level5">
-                            <label for="level5">Level 5<small>Expert</small></label>
+                            <label for="level5">Level 5 <small>· Expert</small></label>
                         </div>
                     </div>
+                </div>
+
+                <div style="margin-bottom: 24px; padding: 16px; background: rgba(46, 204, 113, 0.1); border: 1px solid rgba(46, 204, 113, 0.3); border-radius: 8px;">
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                        <input type="checkbox" id="qualityScoring" checked style="width: 18px; height: 18px;">
+                        <span style="font-weight: 600;"><i class="fas fa-star" style="color: #2ecc71;"></i> Enable Quality Scoring</span>
+                        <small style="color: #999; margin-left: auto;">Uses LLM-as-judge to evaluate response quality</small>
+                    </label>
                 </div>
 
                 <div class="model-selection">
@@ -570,7 +656,8 @@
                 </div>
 
                 <div class="progress-bar" id="progressBar">
-                    <div class="progress-fill" id="progressFill">0%</div>
+                    <div class="progress-fill" id="progressFill"></div>
+                    <div class="progress-text" id="progressText">0%</div>
                 </div>
 
                 <div id="batchStatus" class="status"></div>
@@ -586,10 +673,29 @@
                 <div class="chart-title"><i class="fas fa-tachometer-alt"></i> Tokens per Second</div>
                 <canvas id="tokensChart"></canvas>
             </div>
+            <div class="chart-card">
+                <div class="chart-title"><i class="fas fa-star"></i> Quality Score</div>
+                <canvas id="qualityChart"></canvas>
+            </div>
+            <div class="chart-card">
+                <div class="chart-title"><i class="fas fa-balance-scale"></i> Composite Score</div>
+                <canvas id="compositeChart"></canvas>
+            </div>
         </div>
 
         <div class="leaderboard">
-            <h2 style="margin-bottom: 24px; display: flex; align-items: center; gap: 12px;"><i class="fas fa-trophy" style="color: var(--accent);"></i> Model Leaderboard</h2>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+                <h2 style="display: flex; align-items: center; gap: 12px; margin: 0;"><i class="fas fa-trophy" style="color: var(--accent);"></i> Model Leaderboard</h2>
+                <div class="sort-controls" style="display: flex; gap: 8px; align-items: center;">
+                    <label style="color: #999; font-size: 14px;">Sort by:</label>
+                    <select id="sortBy" style="padding: 6px 12px; border-radius: 6px; background: var(--card-bg); border: 1px solid rgba(255,255,255,0.1); color: #fff;">
+                        <option value="latency">Latency (fastest)</option>
+                        <option value="speed">Tokens/sec (fastest)</option>
+                        <option value="quality">Quality (best)</option>
+                        <option value="composite">Composite (balanced)</option>
+                    </select>
+                </div>
+            </div>
             <table>
                 <thead>
                     <tr>
@@ -597,12 +703,14 @@
                         <th>Model</th>
                         <th>Avg Latency</th>
                         <th>Tokens/sec</th>
+                        <th>Quality</th>
+                        <th>Composite</th>
                         <th>Tests</th>
                     </tr>
                 </thead>
                 <tbody id="leaderboard">
                     <tr>
-                        <td colspan="5" style="text-align: center; color: #999;">No tests run yet</td>
+                        <td colspan="7" style="text-align: center; color: #999;">No tests run yet</td>
                     </tr>
                 </tbody>
             </table>
@@ -611,8 +719,9 @@
 
     <script>
         const BENCHMARK_API = '/api/benchmark';
-        let latencyChart, tokensChart;
+        let latencyChart, tokensChart, qualityChart, compositeChart;
         let ollamaHosts = [];
+        let currentSortBy = 'latency';
 
         // Fetch Ollama hosts from AgentX config
         async function loadOllamaHosts() {
@@ -739,6 +848,7 @@
             const selectedModels = Array.from(document.querySelectorAll('.batch-model-checkbox:checked'))
                 .map(cb => cb.value);
             const host = document.getElementById('host').value;
+            const qualityScoring = document.getElementById('qualityScoring').checked;
 
             if (selectedLevels.length === 0) {
                 alert('Please select at least one prompt level');
@@ -757,9 +867,9 @@
             btn.disabled = true;
             btn.textContent = 'Starting...';
             status.style.display = 'none';
-            progressBar.style.display = 'block';
+            progressBar.classList.add('active');
             document.getElementById('progressFill').style.width = '0%';
-            document.getElementById('progressFill').textContent = '0%';
+            document.getElementById('progressText').textContent = '0%';
 
             try {
                 const res = await fetch(`${BENCHMARK_API}/batch`, {
@@ -768,7 +878,8 @@
                     body: JSON.stringify({
                         host,
                         models: selectedModels,
-                        levels: selectedLevels
+                        levels: selectedLevels,
+                        quality_scoring: qualityScoring
                     })
                 });
 
@@ -776,7 +887,7 @@
 
                 if (json.status === 'success') {
                     currentBatchId = json.data.batch_id;
-                    btn.textContent = 'Running...';
+                    btn.textContent = qualityScoring ? 'Running (with quality)...' : 'Running...';
 
                     // Poll for progress
                     batchPollInterval = setInterval(pollBatchProgress, 2000);
@@ -789,7 +900,7 @@
                 status.style.display = 'block';
                 btn.disabled = false;
                 btn.textContent = 'Start Batch Test';
-                progressBar.style.display = 'none';
+                progressBar.classList.remove('active');
             }
         });
 
@@ -801,9 +912,8 @@
                 const json = await res.json();
                 const batch = json.data;
 
-                const progressFill = document.getElementById('progressFill');
-                progressFill.style.width = `${batch.progress}%`;
-                progressFill.textContent = `${batch.progress}% (${batch.completed}/${batch.total_tests})`;
+                document.getElementById('progressFill').style.width = `${batch.progress}%`;
+                document.getElementById('progressText').textContent = `${batch.progress}% (${batch.completed}/${batch.total_tests})`;
 
                 if (batch.status === 'completed') {
                     clearInterval(batchPollInterval);
@@ -830,6 +940,8 @@
         function initCharts() {
             const latencyCtx = document.getElementById('latencyChart').getContext('2d');
             const tokensCtx = document.getElementById('tokensChart').getContext('2d');
+            const qualityCtx = document.getElementById('qualityChart').getContext('2d');
+            const compositeCtx = document.getElementById('compositeChart').getContext('2d');
 
             latencyChart = new Chart(latencyCtx, {
                 type: 'bar',
@@ -870,12 +982,52 @@
                     scales: { y: { beginAtZero: true } }
                 }
             });
+
+            qualityChart = new Chart(qualityCtx, {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Quality Score (0-10)',
+                        data: [],
+                        backgroundColor: 'rgba(46, 204, 113, 0.8)',
+                        borderColor: 'rgba(46, 204, 113, 1)',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true, max: 10 } }
+                }
+            });
+
+            compositeChart = new Chart(compositeCtx, {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Composite Score (0-10)',
+                        data: [],
+                        backgroundColor: 'rgba(241, 196, 15, 0.8)',
+                        borderColor: 'rgba(241, 196, 15, 1)',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true, max: 10 } }
+                }
+            });
         }
 
         // Load dashboard data
         async function loadDashboard() {
             try {
-                const res = await fetch(`${BENCHMARK_API}/dashboard`);
+                const res = await fetch(`${BENCHMARK_API}/dashboard?sort=${currentSortBy}`);
                 const json = await res.json();
                 const data = json.data || json; // Handle both wrapped and unwrapped responses
 
@@ -899,6 +1051,16 @@
                     tokensChart.data.datasets[0].data = data.model_stats.map(m => parseFloat(m.avg_tokens_per_sec));
                     tokensChart.update();
 
+                    // Update quality chart
+                    qualityChart.data.labels = data.model_stats.map(m => m.model);
+                    qualityChart.data.datasets[0].data = data.model_stats.map(m => parseFloat(m.avg_quality) || 0);
+                    qualityChart.update();
+
+                    // Update composite chart
+                    compositeChart.data.labels = data.model_stats.map(m => m.model);
+                    compositeChart.data.datasets[0].data = data.model_stats.map(m => parseFloat(m.avg_composite) || 0);
+                    compositeChart.update();
+
                     // Update leaderboard
                     const tbody = document.getElementById('leaderboard');
                     tbody.innerHTML = data.model_stats.map((model, idx) => {
@@ -908,12 +1070,20 @@
                         else if (idx === 2) badge = '<span class="badge bronze">🥉 3rd</span>';
                         else badge = `<span>${idx + 1}</span>`;
 
+                        const qualityVal = parseFloat(model.avg_quality);
+                        const compositeVal = parseFloat(model.avg_composite);
+                        const qualityDisplay = !isNaN(qualityVal) ? model.avg_quality : '-';
+                        const compositeDisplay = !isNaN(compositeVal) ? model.avg_composite : '-';
+                        const qualityClass = qualityVal >= 7 ? 'quality-high' : qualityVal >= 4 ? 'quality-mid' : (qualityVal > 0 ? 'quality-low' : '');
+
                         return `
                             <tr>
                                 <td>${badge}</td>
                                 <td><strong>${model.model}</strong></td>
                                 <td>${model.avg_latency} ms</td>
                                 <td>${model.avg_tokens_per_sec}</td>
+                                <td class="${qualityClass}">${qualityDisplay}</td>
+                                <td style="font-weight: bold;">${compositeDisplay}</td>
                                 <td>${model.tests}</td>
                             </tr>
                         `;
@@ -923,6 +1093,12 @@
                 console.error('Failed to load dashboard:', err);
             }
         }
+
+        // Sort selector change handler
+        document.getElementById('sortBy').addEventListener('change', (e) => {
+            currentSortBy = e.target.value;
+            loadDashboard();
+        });
 
         // Run test
         document.getElementById('testForm').addEventListener('submit', async (e) => {
@@ -979,7 +1155,7 @@
         });
         initCharts();
         loadDashboard();
-        setInterval(loadDashboard, 5000); // Refresh every 5s
+        setInterval(loadDashboard, 10000); // Refresh every 10s
     </script>
 </body>
 </html>

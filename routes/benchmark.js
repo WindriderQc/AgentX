@@ -1,6 +1,6 @@
 /**
  * Benchmark Routes
- * LLM performance testing and metrics
+ * LLM performance testing and metrics with quality scoring
  */
 
 const express = require('express');
@@ -11,6 +11,7 @@ const logger = require('../config/logger');
 const fs = require('fs').promises;
 const path = require('path');
 const { ObjectId } = mongoose.Types;
+const { scoreResponse, calculateCompositeScore, JUDGE_CONFIG } = require('../src/services/qualityScorer');
 
 // Get MongoDB collections using Mongoose connection
 function getCollection() {
@@ -217,11 +218,12 @@ router.get('/summary', async (req, res) => {
 
 /**
  * GET /api/benchmark/dashboard
- * Get dashboard data with charts and stats
+ * Get dashboard data with charts and stats including quality metrics
  */
 router.get('/dashboard', async (req, res) => {
     try {
         const resultsCollection = getCollection();
+        const sortBy = req.query.sort || 'latency'; // latency, quality, composite, speed
 
         const [totalTests, successCount, recentTests, modelStats] = await Promise.all([
             resultsCollection.countDocuments(),
@@ -234,12 +236,81 @@ router.get('/dashboard', async (req, res) => {
                         _id: '$model',
                         avg_latency: { $avg: '$latency' },
                         avg_tokens_per_sec: { $avg: { $toDouble: '$tokens_per_sec' } },
+                        avg_quality: { 
+                            $avg: { 
+                                $cond: [
+                                    { $and: [
+                                        { $ne: ['$quality_score', null] },
+                                        { $ne: [{ $type: '$quality_score' }, 'missing'] }
+                                    ]},
+                                    '$quality_score',
+                                    null
+                                ]
+                            }
+                        },
+                        avg_composite: { 
+                            $avg: { 
+                                $cond: [
+                                    { $and: [
+                                        { $ne: ['$composite_score', null] },
+                                        { $ne: [{ $type: '$composite_score' }, 'missing'] }
+                                    ]},
+                                    '$composite_score',
+                                    null
+                                ]
+                            }
+                        },
+                        quality_tests: { 
+                            $sum: { 
+                                $cond: [
+                                    { $and: [
+                                        { $ne: ['$quality_score', null] },
+                                        { $ne: [{ $type: '$quality_score' }, 'missing'] }
+                                    ]},
+                                    1,
+                                    0
+                                ]
+                            }
+                        },
                         count: { $sum: 1 }
                     }
                 },
                 { $sort: { avg_latency: 1 } }
             ]).toArray()
         ]);
+
+        // Sort model stats based on query param
+        let sortedStats = modelStats.map(m => {
+            // Handle null/undefined quality scores
+            const hasQuality = m.avg_quality != null && !isNaN(m.avg_quality);
+            const hasComposite = m.avg_composite != null && !isNaN(m.avg_composite);
+            
+            return {
+                model: m._id,
+                avg_latency: Math.round(m.avg_latency || 0),
+                avg_tokens_per_sec: m.avg_tokens_per_sec ? m.avg_tokens_per_sec.toFixed(2) : '0',
+                avg_quality: hasQuality ? m.avg_quality.toFixed(1) : null,
+                avg_composite: hasComposite ? m.avg_composite.toFixed(1) : null,
+                quality_tests: m.quality_tests || 0,
+                tests: m.count
+            };
+        });
+
+        // Apply sorting
+        switch (sortBy) {
+            case 'quality':
+                sortedStats.sort((a, b) => (b.avg_quality || 0) - (a.avg_quality || 0));
+                break;
+            case 'composite':
+                sortedStats.sort((a, b) => (b.avg_composite || 0) - (a.avg_composite || 0));
+                break;
+            case 'speed':
+                sortedStats.sort((a, b) => parseFloat(b.avg_tokens_per_sec) - parseFloat(a.avg_tokens_per_sec));
+                break;
+            case 'latency':
+            default:
+                sortedStats.sort((a, b) => a.avg_latency - b.avg_latency);
+        }
 
         res.json({
             status: 'success',
@@ -253,14 +324,8 @@ router.get('/dashboard', async (req, res) => {
                         : '0%'
                 },
                 recent_tests: recentTests,
-                model_stats: modelStats.map(m => ({
-                    model: m._id,
-                    avg_latency: Math.round(m.avg_latency),
-                    avg_tokens_per_sec: m.avg_tokens_per_sec
-                        ? m.avg_tokens_per_sec.toFixed(2)
-                        : '0',
-                    tests: m.count
-                }))
+                model_stats: sortedStats,
+                sorted_by: sortBy
             }
         });
     } catch (err) {
@@ -386,11 +451,11 @@ router.get('/prompts', async (req, res) => {
 
 /**
  * POST /api/benchmark/batch
- * Start a batch benchmark test
- * Body: { host, models: ['model1', 'model2'], levels: [1, 2, 3] }
+ * Start a batch benchmark test with optional quality scoring
+ * Body: { host, models: ['model1', 'model2'], levels: [1, 2, 3], quality_scoring: true }
  */
 router.post('/batch', async (req, res) => {
-    const { host, models, levels, run_name } = req.body;
+    const { host, models, levels, run_name, quality_scoring = true } = req.body;
 
     if (!host || !models || !Array.isArray(models) || !levels || !Array.isArray(levels)) {
         return res.status(400).json({
@@ -421,6 +486,7 @@ router.post('/batch', async (req, res) => {
             host,
             models,
             levels,
+            quality_scoring,
             run_name: run_name || `Batch ${new Date().toLocaleString()}`,
             total_tests: models.length * selectedPrompts.length,
             completed: 0,
@@ -435,8 +501,8 @@ router.post('/batch', async (req, res) => {
         const insertResult = await batchCollection.insertOne(batch);
         const batchId = insertResult.insertedId.toString();
 
-        // Start batch execution in background
-        executeBatch(batchId, host, models, selectedPrompts).catch(err => {
+        // Start batch execution in background with quality scoring option
+        executeBatch(batchId, host, models, selectedPrompts, { quality_scoring }).catch(err => {
             logger.error('Batch execution failed', { batchId, error: err.message });
         });
 
@@ -445,7 +511,8 @@ router.post('/batch', async (req, res) => {
             data: {
                 batch_id: batchId,
                 total_tests: batch.total_tests,
-                message: 'Batch test started'
+                quality_scoring,
+                message: `Batch test started${quality_scoring ? ' with quality scoring' : ''}`
             }
         });
     } catch (err) {
@@ -457,9 +524,10 @@ router.post('/batch', async (req, res) => {
 /**
  * Execute batch tests sequentially
  */
-async function executeBatch(batchId, host, models, prompts) {
+async function executeBatch(batchId, host, models, prompts, options = {}) {
     const batchCollection = getBatchCollection();
     const resultsCollection = getCollection();
+    const enableQualityScoring = options.quality_scoring !== false; // Default enabled
 
     for (const model of models) {
         for (const prompt of prompts) {
@@ -475,6 +543,37 @@ async function executeBatch(batchId, host, models, prompts) {
                 const data = await response.json();
                 const latency = Date.now() - start;
                 const tokens = Math.ceil((data.response || '').length / 4);
+                const tokens_per_sec = tokens > 0 ? (tokens / (latency / 1000)).toFixed(2) : 0;
+
+                // Quality scoring (if enabled and not the judge model itself)
+                let qualityData = {};
+                if (enableQualityScoring && model !== JUDGE_CONFIG.model) {
+                    try {
+                        const scores = await scoreResponse({
+                            response: data.response || '',
+                            prompt: prompt
+                        });
+                        
+                        const composite = calculateCompositeScore({
+                            latency,
+                            tokens_per_sec,
+                            quality_score: scores.quality_score
+                        });
+                        
+                        qualityData = {
+                            quality_score: scores.quality_score,
+                            quality_breakdown: scores.breakdown,
+                            quality_explanation: scores.explanation,
+                            scoring_method: scores.scoring_method,
+                            scoring_type: prompt.scoring_type,
+                            composite_score: composite.composite_score,
+                            normalized_scores: composite.normalized
+                        };
+                    } catch (scoreErr) {
+                        logger.warn('Quality scoring failed', { model, prompt: prompt.name, error: scoreErr.message });
+                        qualityData = { quality_score: null, scoring_error: scoreErr.message };
+                    }
+                }
 
                 const result = {
                     model,
@@ -483,13 +582,15 @@ async function executeBatch(batchId, host, models, prompts) {
                     prompt_level: prompt.level,
                     prompt_category: prompt.category,
                     prompt_name: prompt.name,
+                    expected_answer: prompt.expected_answer,
                     latency,
                     tokens,
-                    tokens_per_sec: tokens > 0 ? (tokens / (latency / 1000)).toFixed(2) : 0,
+                    tokens_per_sec,
                     response: data.response || '',
                     success: true,
                     batch_id: batchId,
-                    timestamp: new Date()
+                    timestamp: new Date(),
+                    ...qualityData
                 };
 
                 await resultsCollection.insertOne(result);
@@ -497,7 +598,16 @@ async function executeBatch(batchId, host, models, prompts) {
                     { _id: new ObjectId(batchId) },
                     {
                         $inc: { completed: 1 },
-                        $push: { results: { model, prompt_name: prompt.name, success: true, latency } }
+                        $push: { 
+                            results: { 
+                                model, 
+                                prompt_name: prompt.name, 
+                                success: true, 
+                                latency,
+                                quality_score: qualityData.quality_score,
+                                composite_score: qualityData.composite_score
+                            } 
+                        }
                     }
                 );
 
@@ -601,6 +711,118 @@ router.get('/batches', async (req, res) => {
         });
     } catch (err) {
         logger.error('Failed to fetch batches', { error: err.message });
+        res.status(500).json({ status: 'error', error: err.message });
+    }
+});
+
+/**
+ * GET /api/benchmark/quality-breakdown
+ * Get quality scores broken down by category and level
+ */
+router.get('/quality-breakdown', async (req, res) => {
+    try {
+        const resultsCollection = getCollection();
+        const { model } = req.query;
+        
+        const matchStage = { 
+            success: true, 
+            quality_score: { $ne: null } 
+        };
+        if (model) matchStage.model = model;
+
+        const [byCategory, byLevel, byModel] = await Promise.all([
+            // Breakdown by category (coding, reasoning, factual, etc.)
+            resultsCollection.aggregate([
+                { $match: matchStage },
+                {
+                    $group: {
+                        _id: { model: '$model', category: '$prompt_category' },
+                        avg_quality: { $avg: '$quality_score' },
+                        avg_latency: { $avg: '$latency' },
+                        count: { $sum: 1 }
+                    }
+                },
+                { $sort: { '_id.model': 1, avg_quality: -1 } }
+            ]).toArray(),
+            
+            // Breakdown by level (1-5)
+            resultsCollection.aggregate([
+                { $match: matchStage },
+                {
+                    $group: {
+                        _id: { model: '$model', level: '$prompt_level' },
+                        avg_quality: { $avg: '$quality_score' },
+                        avg_latency: { $avg: '$latency' },
+                        count: { $sum: 1 }
+                    }
+                },
+                { $sort: { '_id.model': 1, '_id.level': 1 } }
+            ]).toArray(),
+            
+            // Overall by model
+            resultsCollection.aggregate([
+                { $match: matchStage },
+                {
+                    $group: {
+                        _id: '$model',
+                        avg_quality: { $avg: '$quality_score' },
+                        avg_composite: { $avg: '$composite_score' },
+                        avg_latency: { $avg: '$latency' },
+                        best_category: { $max: '$quality_score' },
+                        worst_category: { $min: '$quality_score' },
+                        count: { $sum: 1 }
+                    }
+                },
+                { $sort: { avg_composite: -1 } }
+            ]).toArray()
+        ]);
+
+        // Restructure category data by model
+        const categoryByModel = {};
+        byCategory.forEach(item => {
+            const modelName = item._id.model;
+            if (!categoryByModel[modelName]) categoryByModel[modelName] = {};
+            categoryByModel[modelName][item._id.category] = {
+                avg_quality: item.avg_quality.toFixed(1),
+                avg_latency: Math.round(item.avg_latency),
+                tests: item.count
+            };
+        });
+
+        // Restructure level data by model
+        const levelByModel = {};
+        byLevel.forEach(item => {
+            const modelName = item._id.model;
+            if (!levelByModel[modelName]) levelByModel[modelName] = {};
+            levelByModel[modelName][`level_${item._id.level}`] = {
+                avg_quality: item.avg_quality.toFixed(1),
+                avg_latency: Math.round(item.avg_latency),
+                tests: item.count
+            };
+        });
+
+        res.json({
+            status: 'success',
+            data: {
+                overall: byModel.map(m => ({
+                    model: m._id,
+                    avg_quality: m.avg_quality.toFixed(1),
+                    avg_composite: m.avg_composite ? m.avg_composite.toFixed(1) : null,
+                    avg_latency: Math.round(m.avg_latency),
+                    quality_range: {
+                        best: m.best_category.toFixed(1),
+                        worst: m.worst_category.toFixed(1)
+                    },
+                    tests: m.count
+                })),
+                by_category: categoryByModel,
+                by_level: levelByModel,
+                categories: ['coding', 'reasoning', 'factual', 'math', 'creative'],
+                levels: [1, 2, 3, 4, 5]
+            }
+        });
+    } catch (err) {
+        logger.error('Failed to fetch quality breakdown', { error: err.message });
         res.status(500).json({ status: 'error', error: err.message });
     }
 });

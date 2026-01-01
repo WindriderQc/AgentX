@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgentX • Prompt Management</title>
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Styles -->
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="css/prompts.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Monaco Editor -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/editor/editor.main.css">
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <!-- Top Navigation -->
+    <nav class="top-nav">
+        <a href="index.html"><i class="fas fa-comments"></i> Chat</a>
+        <a href="dashboard.html"><i class="fas fa-tachometer-alt"></i> Operations</a>
+        <a href="n8n-monitor.html"><i class="fas fa-network-wired"></i> n8n Monitor</a>
+        <a href="benchmark.html"><i class="fas fa-rocket"></i> Benchmark</a>
+        <a href="analytics.html"><i class="fas fa-chart-line"></i> Analytics</a>
+        <a href="prompts.html" class="active"><i class="fas fa-code"></i> Prompts</a>
+    </nav>
+
+    <!-- Background Grid -->
+    <div class="bg-grid"></div>
+
+    <!-- Main Content -->
+    <div class="prompts-page" style="padding-top: 80px;">
+
+        <!-- Header -->
+        <header class="prompts-header">
+            <div>
+                <div class="eyebrow">AgentX • Configuration</div>
+                <h1>
+                    <i class="fas fa-code"></i>
+                    <span class="title-separator"></span>
+                    Prompt Management
+                </h1>
+                <p class="lede">Create, version, and A/B test system prompts with performance tracking.</p>
+            </div>
+            <div class="header-controls">
+                <button id="exportPromptsBtn" class="ghost btn-sm" title="Export prompt library as JSON">
+                    <i class="fas fa-download"></i> Export
+                </button>
+                <button id="importPromptsBtn" class="ghost btn-sm" title="Import prompts from JSON file">
+                    <i class="fas fa-upload"></i> Import
+                </button>
+                <button id="showOnboardingBtn" class="ghost btn-sm">
+                    <i class="fas fa-graduation-cap"></i> Show Tutorial
+                </button>
+                <button id="createPromptBtn" class="btn-primary">
+                    <i class="fas fa-plus"></i> Create Prompt
+                </button>
+            </div>
+            <!-- Hidden file input for import -->
+            <input type="file" id="importFileInput" accept=".json" style="display: none;">
+        </header>
+
+        <!-- Quick Stats -->
+        <div class="stats-row">
+            <div class="stat-card">
+                <div class="label">Total Prompts</div>
+                <div class="value" id="totalPrompts">—</div>
+                <div class="sub">Across all versions</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Active A/B Tests</div>
+                <div class="value" id="activeTests">—</div>
+                <div class="sub">Running experiments</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Avg. Positive Rate</div>
+                <div class="value" id="avgPositiveRate">—</div>
+                <div class="sub">Across all prompts</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Total Impressions</div>
+                <div class="value" id="totalImpressions">—</div>
+                <div class="sub">Prompt usage count</div>
+            </div>
+        </div>
+
+        <!-- Performance Metrics Dashboard -->
+        <div id="metricsDashboard"></div>
+
+        <!-- Filter/Search Bar -->
+        <div class="toolbar">
+            <div class="search-box">
+                <i class="fas fa-search"></i>
+                <input type="text" id="searchInput" placeholder="Search prompts by name, description, or author...">
+            </div>
+            <div class="filter-controls">
+                <select id="statusFilter">
+                    <option value="all">All Status</option>
+                    <option value="active">Active Only</option>
+                    <option value="inactive">Inactive Only</option>
+                </select>
+                <select id="sortBy">
+                    <option value="name">Sort by Name</option>
+                    <option value="version">Sort by Version</option>
+                    <option value="impressions">Sort by Usage</option>
+                    <option value="positiveRate">Sort by Performance</option>
+                </select>
+                <button id="advancedFiltersBtn" class="btn-sm ghost" title="Show Advanced Filters">
+                    <i class="fas fa-filter"></i>
+                    <span>More Filters</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Advanced Filters Panel (collapsible) -->
+        <div id="advancedFiltersPanel" class="advanced-filters-panel" style="display: none;">
+            <div class="advanced-filters-content">
+                <div class="filter-group">
+                    <label>
+                        <i class="fas fa-tags"></i>
+                        Tags
+                    </label>
+                    <select id="tagFilter" multiple size="4">
+                        <option value="">-- All Tags --</option>
+                    </select>
+                    <div class="field-note">Hold Ctrl/Cmd to select multiple tags</div>
+                </div>
+
+                <div class="filter-group">
+                    <label>
+                        <i class="fas fa-calendar"></i>
+                        Created Date Range
+                    </label>
+                    <div class="date-range-inputs">
+                        <input type="date" id="dateFrom" placeholder="From">
+                        <span>to</span>
+                        <input type="date" id="dateTo" placeholder="To">
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>
+                        <i class="fas fa-user"></i>
+                        Author
+                    </label>
+                    <input type="text" id="authorFilter" placeholder="Filter by author name">
+                </div>
+
+                <div class="filter-actions">
+                    <button id="clearFiltersBtn" class="btn-secondary btn-sm">
+                        <i class="fas fa-times"></i>
+                        Clear All Filters
+                    </button>
+                    <button id="applyFiltersBtn" class="btn-primary btn-sm">
+                        <i class="fas fa-check"></i>
+                        Apply Filters
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Prompt List Container -->
+        <div id="promptListContainer" class="prompt-list-container">
+            <!-- PromptListView component renders here -->
+        </div>
+
+        <!-- Empty State -->
+        <div id="emptyState" class="empty-state" style="display: none;">
+            <i class="fas fa-code" style="font-size: 64px; color: var(--muted); margin-bottom: 20px; opacity: 0.3;"></i>
+            <h2>No Prompts Yet</h2>
+            <p>Create your first system prompt to get started with AgentX customization.</p>
+            <button id="emptyCreateBtn" class="btn-primary">
+                <i class="fas fa-plus"></i> Create First Prompt
+            </button>
+        </div>
+
+        <!-- Loading State -->
+        <div id="loadingState" class="loading-state">
+            <div class="spinner"></div>
+            <p>Loading prompts...</p>
+        </div>
+    </div>
+
+    <!-- Modals Container -->
+    <div id="modals"></div>
+
+    <!-- Toast Container -->
+    <div id="toastContainer" class="toast-container"></div>
+
+    <!-- Monaco Editor Loader -->
+    <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
+    <script>
+        require.config({ paths: { 'vs': 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' }});
+    </script>
+
+    <!-- Main App -->
+    <script src="js/prompts.js" type="module"></script>
+</body>
+</html>
