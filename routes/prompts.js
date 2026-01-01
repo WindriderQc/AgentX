@@ -232,4 +232,96 @@ router.delete('/:id', requireAuth, async (req, res) => {
     }
 });
 
+/**
+ * POST /api/prompts/render
+ * Render a prompt template with variables
+ * Supports Handlebars-like syntax: {{variable}}, {{#if condition}}...{{/if}}, {{#each items}}...{{/each}}
+ */
+router.post('/render', requireAuth, async (req, res) => {
+    const { name, version, variables } = req.body;
+
+    if (!name) {
+        return res.status(400).json({ status: 'error', message: 'Prompt name required' });
+    }
+
+    try {
+        // Find the prompt (specific version or active version)
+        let prompt;
+        if (version) {
+            prompt = await PromptConfig.findOne({ name, version });
+        } else {
+            prompt = await PromptConfig.findOne({ name, isActive: true });
+        }
+
+        if (!prompt) {
+            return res.status(404).json({ status: 'error', message: 'Prompt not found' });
+        }
+
+        // Render the template
+        const rendered = renderTemplate(prompt.systemPrompt, variables || {});
+
+        // Update usage stats
+        prompt.stats.usageCount++;
+        await prompt.save();
+
+        logger.info('Prompt rendered', { name: prompt.name, version: prompt.version });
+
+        res.json({
+            status: 'success',
+            data: {
+                name: prompt.name,
+                version: prompt.version,
+                rendered,
+                variables_used: variables || {}
+            }
+        });
+    } catch (err) {
+        logger.error('Render prompt error', { error: err.message });
+        res.status(500).json({ status: 'error', message: err.message });
+    }
+});
+
+/**
+ * Simple template renderer with Handlebars-like syntax
+ * Supports: {{variable}}, {{#if var}}...{{/if}}, {{#each items}}...{{/each}}
+ */
+function renderTemplate(template, variables) {
+    let rendered = template;
+
+    // Handle {{#if condition}}...{{/if}}
+    rendered = rendered.replace(/\{\{#if\s+(\w+)\}\}([\s\S]*?)\{\{\/if\}\}/g, (match, varName, content) => {
+        const value = variables[varName];
+        return value ? content : '';
+    });
+
+    // Handle {{#each items}}...{{/each}}
+    rendered = rendered.replace(/\{\{#each\s+(\w+)\}\}([\s\S]*?)\{\{\/each\}\}/g, (match, varName, content) => {
+        const items = variables[varName];
+        if (!Array.isArray(items)) return '';
+
+        return items.map((item, index) => {
+            let itemContent = content;
+            // Support {{this}} for simple arrays
+            itemContent = itemContent.replace(/\{\{this\}\}/g, String(item));
+            // Support {{@index}}
+            itemContent = itemContent.replace(/\{\{@index\}\}/g, String(index));
+            // Support object properties {{property}}
+            if (typeof item === 'object') {
+                Object.keys(item).forEach(key => {
+                    const regex = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
+                    itemContent = itemContent.replace(regex, String(item[key]));
+                });
+            }
+            return itemContent;
+        }).join('');
+    });
+
+    // Handle simple {{variable}} substitution
+    rendered = rendered.replace(/\{\{(\w+)\}\}/g, (match, varName) => {
+        return variables.hasOwnProperty(varName) ? String(variables[varName]) : match;
+    });
+
+    return rendered;
+}
+
 module.exports = router;
