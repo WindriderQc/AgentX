@@ -283,7 +283,7 @@
     </div>
 
     <script>
-        const BENCHMARK_API = 'http://localhost:3081';
+        const BENCHMARK_API = '/api/benchmark';
         let latencyChart, tokensChart;
         let ollamaHosts = [];
 
@@ -372,14 +372,15 @@
         async function loadDashboard() {
             try {
                 const res = await fetch(`${BENCHMARK_API}/dashboard`);
-                const data = await res.json();
+                const json = await res.json();
+                const data = json.data || json; // Handle both wrapped and unwrapped responses
 
                 // Update stats
                 document.getElementById('totalTests').textContent = data.overview.total_tests;
                 document.getElementById('successRate').innerHTML =
                     data.overview.success_rate.replace('%', '<span class="stat-unit">%</span>');
 
-                if (data.model_stats.length > 0) {
+                if (data.model_stats && data.model_stats.length > 0) {
                     const fastest = data.model_stats[0];
                     document.getElementById('avgLatency').innerHTML =
                         `${fastest.avg_latency}<span class="stat-unit">ms</span>`;
@@ -441,14 +442,15 @@
                     })
                 });
 
-                const data = await res.json();
+                const json = await res.json();
+                const data = json.data || json;
 
                 if (data.success) {
                     status.className = 'status success';
                     status.textContent = `✓ Test completed in ${data.latency}ms (${data.tokens_per_sec} tokens/s)`;
                 } else {
                     status.className = 'status error';
-                    status.textContent = `✗ Test failed: ${data.error}`;
+                    status.textContent = `✗ Test failed: ${data.error || json.error}`;
                 }
 
                 status.style.display = 'block';

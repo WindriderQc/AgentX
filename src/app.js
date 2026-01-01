@@ -145,6 +145,10 @@ app.use('/api/voice', voiceRoutes);
 const promptRoutes = require('../routes/prompts');
 app.use('/api/prompts', promptRoutes);
 
+// Benchmark routes (LLM performance testing)
+const benchmarkRoutes = require('../routes/benchmark');
+app.use('/api/benchmark', benchmarkRoutes);
+
 // Dashboard routes
 const dashboardRoutes = require('../routes/dashboard');
 app.use('/api/dashboard', dashboardRoutes);
