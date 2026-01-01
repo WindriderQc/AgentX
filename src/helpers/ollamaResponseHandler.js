@@ -5,12 +5,18 @@
 
 const logger = require('../../config/logger');
 
+// Regex patterns for cleaning leaked Llama 3 template tags
+// These patterns are defined as constants to avoid repeated regex compilation
 // Regex for Llama 3 style tags: <|start_header_id|>role<|end_header_id|>
 // Strictly requires <| and |> to avoid false positives with pipes in content
 const LLAMA3_HEADER_REGEX = /<\|start_header_id\|>.*?<\|end_header_id\|>/g;
 
+// Other special tokens: <|eot_id|>, <|begin_of_text|>, etc.
+const LLAMA3_SPECIAL_TOKENS_REGEX = /<\|(eot_id|begin_of_text|end_of_text|fin)\|>/g;
+
 // Other special tokens (eot_id, etc)
 const OTHER_TOKENS_REGEX = /<\|(?:eot_id|begin_of_text|end_of_text|fin)\|>/g;
+
 
 /**
  * Detect if model has thinking/reasoning capabilities
@@ -37,6 +43,7 @@ function cleanContent(content) {
 
   return content
     .replace(LLAMA3_HEADER_REGEX, '')
+    .replace(LLAMA3_SPECIAL_TOKENS_REGEX, '')
     .replace(OTHER_TOKENS_REGEX, '')
     .trim();
 }
