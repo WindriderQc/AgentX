@@ -307,6 +307,86 @@
         .quality-high { color: #2ecc71; font-weight: 600; }
         .quality-mid { color: #f1c40f; font-weight: 600; }
         .quality-low { color: #e74c3c; font-weight: 600; }
+        
+        /* Best overall indicator */
+        .best-overall {
+            background: linear-gradient(135deg, rgba(46, 204, 113, 0.15) 0%, rgba(102, 126, 234, 0.15) 100%);
+            border-left: 3px solid #2ecc71;
+        }
+        
+        /* Tooltip styles */
+        .help-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 16px;
+            height: 16px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            font-size: 10px;
+            color: #999;
+            cursor: help;
+            margin-left: 4px;
+            position: relative;
+        }
+        .help-icon:hover {
+            background: var(--accent);
+            color: #fff;
+        }
+        .tooltip-wrapper {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+        }
+        .tooltip-content {
+            display: none;
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #1a1a2e;
+            border: 1px solid var(--panel-border);
+            border-radius: 8px;
+            padding: 12px 16px;
+            width: 280px;
+            z-index: 1000;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+            margin-bottom: 8px;
+        }
+        .tooltip-content::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 8px solid transparent;
+            border-top-color: #1a1a2e;
+        }
+        .help-icon:hover + .tooltip-content,
+        .tooltip-content:hover {
+            display: block;
+        }
+        .tooltip-title {
+            font-weight: 600;
+            color: var(--accent);
+            margin-bottom: 6px;
+            font-size: 13px;
+        }
+        .tooltip-text {
+            color: #ccc;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+        .tooltip-formula {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 8px 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 11px;
+            color: #2ecc71;
+            margin-top: 8px;
+        }
+        
         .host-badge {
             display: inline-block;
             padding: 4px 10px;
@@ -543,6 +623,7 @@
         <a href="n8n-monitor.html"><i class="fas fa-network-wired"></i> n8n Monitor</a>
         <a href="benchmark.html" class="active"><i class="fas fa-rocket"></i> Benchmark</a>
         <a href="analytics.html"><i class="fas fa-chart-line"></i> Analytics</a>
+        <a href="prompts.html"><i class="fas fa-code"></i> Prompts</a>
     </nav>
     <div class="bg-grid"></div>
     <div class="benchmark-container" style="padding-top: 80px;">
@@ -684,28 +765,64 @@
         </div>
 
         <div class="leaderboard">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
-                <h2 style="display: flex; align-items: center; gap: 12px; margin: 0;"><i class="fas fa-trophy" style="color: var(--accent);"></i> Model Leaderboard</h2>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+                <h2 style="display: flex; align-items: center; gap: 10px; margin: 0;"><i class="fas fa-trophy" style="color: var(--accent);"></i> Model Leaderboard</h2>
                 <div class="sort-controls" style="display: flex; gap: 8px; align-items: center;">
-                    <label style="color: #999; font-size: 14px;">Sort by:</label>
-                    <select id="sortBy" style="padding: 6px 12px; border-radius: 6px; background: var(--card-bg); border: 1px solid rgba(255,255,255,0.1); color: #fff;">
-                        <option value="latency">Latency (fastest)</option>
-                        <option value="speed">Tokens/sec (fastest)</option>
-                        <option value="quality">Quality (best)</option>
-                        <option value="composite">Composite (balanced)</option>
+                    <label style="color: #666; font-size: 13px;">Sort:</label>
+                    <select id="sortBy" style="padding: 6px 12px; border-radius: 6px; background: var(--card-bg); border: 1px solid rgba(255,255,255,0.1); color: #fff; font-size: 13px;">
+                        <option value="composite" selected>Composite ⭐</option>
+                        <option value="quality">Quality</option>
+                        <option value="latency">Latency</option>
+                        <option value="speed">Tokens/sec</option>
                     </select>
                 </div>
             </div>
             <table>
                 <thead>
                     <tr>
-                        <th>Rank</th>
+                        <th style="width: 70px;">#</th>
                         <th>Model</th>
-                        <th>Avg Latency</th>
-                        <th>Tokens/sec</th>
-                        <th>Quality</th>
-                        <th>Composite</th>
-                        <th>Tests</th>
+                        <th>
+                            <span class="tooltip-wrapper">
+                                Latency
+                                <span class="help-icon">?</span>
+                                <span class="tooltip-content">
+                                    <div class="tooltip-title">Response Time</div>
+                                    <div class="tooltip-text">Time to complete response. Lower = faster.</div>
+                                </span>
+                            </span>
+                        </th>
+                        <th>
+                            <span class="tooltip-wrapper">
+                                Speed
+                                <span class="help-icon">?</span>
+                                <span class="tooltip-content">
+                                    <div class="tooltip-title">Tokens/Second</div>
+                                    <div class="tooltip-text">Generation throughput. Higher = faster output.</div>
+                                </span>
+                            </span>
+                        </th>
+                        <th>
+                            <span class="tooltip-wrapper">
+                                Quality
+                                <span class="help-icon">?</span>
+                                <span class="tooltip-content">
+                                    <div class="tooltip-title">Quality Score (0-10)</div>
+                                    <div class="tooltip-text">LLM-judged accuracy & reasoning quality.</div>
+                                </span>
+                            </span>
+                        </th>
+                        <th>
+                            <span class="tooltip-wrapper">
+                                Composite
+                                <span class="help-icon">?</span>
+                                <span class="tooltip-content">
+                                    <div class="tooltip-title">Balanced Score</div>
+                                    <div class="tooltip-text">50% Quality + 30% Latency + 20% Speed</div>
+                                </span>
+                            </span>
+                        </th>
+                        <th style="width: 60px;">N</th>
                     </tr>
                 </thead>
                 <tbody id="leaderboard">
@@ -721,7 +838,7 @@
         const BENCHMARK_API = '/api/benchmark';
         let latencyChart, tokensChart, qualityChart, compositeChart;
         let ollamaHosts = [];
-        let currentSortBy = 'latency';
+        let currentSortBy = 'composite';
 
         // Fetch Ollama hosts from AgentX config
         async function loadOllamaHosts() {
@@ -1061,6 +1178,23 @@
                     compositeChart.data.datasets[0].data = data.model_stats.map(m => parseFloat(m.avg_composite) || 0);
                     compositeChart.update();
 
+                    // Find best overall model (highest composite score)
+                    const modelsWithComposite = data.model_stats.filter(m => m.avg_composite && parseFloat(m.avg_composite) > 0);
+                    let bestOverallModel = null;
+                    if (modelsWithComposite.length > 0) {
+                        bestOverallModel = modelsWithComposite.reduce((best, current) => 
+                            parseFloat(current.avg_composite) > parseFloat(best.avg_composite) ? current : best
+                        );
+                    }
+                    
+                    // Update best overall text
+                    const bestOverallText = document.getElementById('bestOverallText');
+                    if (bestOverallModel) {
+                        bestOverallText.innerHTML = `👑 Best Overall: <strong style="color: #2ecc71;">${bestOverallModel.model}</strong> <span style="color: #888;">(${bestOverallModel.avg_composite} composite)</span>`;
+                    } else {
+                        bestOverallText.innerHTML = `👑 Best Overall: <strong style="color: #888;">Run tests with quality scoring to determine</strong>`;
+                    }
+
                     // Update leaderboard
                     const tbody = document.getElementById('leaderboard');
                     tbody.innerHTML = data.model_stats.map((model, idx) => {
@@ -1075,11 +1209,16 @@
                         const qualityDisplay = !isNaN(qualityVal) ? model.avg_quality : '-';
                         const compositeDisplay = !isNaN(compositeVal) ? model.avg_composite : '-';
                         const qualityClass = qualityVal >= 7 ? 'quality-high' : qualityVal >= 4 ? 'quality-mid' : (qualityVal > 0 ? 'quality-low' : '');
+                        
+                        // Highlight best overall model
+                        const isBestOverall = bestOverallModel && model.model === bestOverallModel.model;
+                        const rowClass = isBestOverall ? 'best-overall' : '';
 
+                        const crown = isBestOverall ? '👑 ' : '';
                         return `
-                            <tr>
+                            <tr class="${rowClass}">
                                 <td>${badge}</td>
-                                <td><strong>${model.model}</strong></td>
+                                <td><strong>${crown}${model.model}</strong></td>
                                 <td>${model.avg_latency} ms</td>
                                 <td>${model.avg_tokens_per_sec}</td>
                                 <td class="${qualityClass}">${qualityDisplay}</td>
