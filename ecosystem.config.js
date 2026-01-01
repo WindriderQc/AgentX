@@ -44,6 +44,28 @@ module.exports = {
         autorestart: true,
         max_restarts: 10,
         min_uptime: '10s'
+    },
+    {
+        name: 'benchmark',
+        cwd: '/home/yb/codes/BenchmarkService',
+        script: './server.js',
+        instances: 1,
+        exec_mode: 'fork',
+        watch: false,
+        env: {
+            NODE_ENV: 'development',
+            PORT: 3081
+        },
+        env_production: {
+            NODE_ENV: 'production',
+            PORT: 3081
+        },
+        merge_logs: true,
+        max_memory_restart: '200M',
+        restart_delay: 4000,
+        autorestart: true,
+        max_restarts: 10,
+        min_uptime: '10s'
     }
   ]
 };
