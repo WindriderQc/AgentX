@@ -56,9 +56,7 @@ app.use(mongoSanitize({
   }
 }));
 
-app.use(express.static(path.join(__dirname, '..', 'public')));
-
-// Session configuration
+// Session configuration BEFORE static files
 // In tests we avoid creating a Mongo-backed session store to prevent open handles.
 let store;
 // Check for E2E testing flag or standard test env
@@ -105,6 +103,10 @@ app.use(attachUser);
 // Request logging middleware
 app.use(requestLogger);
 
+// ============================================
+// API ROUTES (must come BEFORE static files)
+// ============================================
+
 // Auth routes
 const authRoutes = require('../routes/auth');
 app.use('/api/auth', authRoutes);
@@ -135,7 +137,6 @@ app.use('/api/profile', profileRoutes);
 const historyRoutes = require('../routes/history');
 app.use('/api/history', historyRoutes);
 
-
 // Voice routes (STT, TTS, voice chat)
 const voiceRoutes = require('../routes/voice');
 app.use('/api/voice', voiceRoutes);
@@ -162,6 +163,11 @@ app.use('/api/conversations', historyRoutes);
 // This is still 'api.js' but stripped of other concerns
 const apiRoutes = require('../routes/api');
 app.use('/api', apiRoutes);
+
+// ============================================
+// STATIC FILES (must come AFTER API routes)
+// ============================================
+app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // Health Check - Basic
 app.get('/health', (_req, res) => {

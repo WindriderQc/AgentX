@@ -173,6 +173,128 @@
             </div>
         </div>
 
+        <!-- RAG Ingestion Metrics -->
+        <div class="analytics-grid full">
+            <div class="section-card">
+                <div class="section-header">
+                    <h2><i class="fas fa-cubes"></i> RAG Vector Store Metrics</h2>
+                    <div style="display: flex; gap: 8px;">
+                        <button id="toggleRagHelp" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 12px; color: var(--text); font-size: 12px; cursor: pointer;">
+                            <i class="fas fa-question-circle"></i> Help
+                        </button>
+                        <button id="refreshRagBtn" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 12px; color: var(--text); font-size: 12px; cursor: pointer;">
+                            <i class="fas fa-sync-alt"></i> Refresh
+                        </button>
+                    </div>
+                </div>
+                <div class="section-body">
+                    <!-- Help Panel -->
+                    <div id="ragHelpPanel" style="display: none; background: rgba(52, 211, 153, 0.1); border: 1px solid rgba(52, 211, 153, 0.3); border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+                        <div style="display: flex; align-items: start; gap: 12px;">
+                            <i class="fas fa-info-circle" style="color: rgb(52, 211, 153); font-size: 20px; margin-top: 2px;"></i>
+                            <div style="flex: 1;">
+                                <h3 style="font-size: 14px; font-weight: 600; margin: 0 0 12px 0; color: rgb(52, 211, 153);">
+                                    Understanding RAG Metrics
+                                </h3>
+                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px; font-size: 13px; line-height: 1.5;">
+                                    <div>
+                                        <strong style="color: var(--text);">📄 Chunk Count</strong><br>
+                                        <span style="color: var(--muted);">Typical: 12-20 per doc (~800 chars/chunk)<br>More chunks = more granular search</span>
+                                    </div>
+                                    <div>
+                                        <strong style="color: var(--text);">⚡ Processing Time</strong><br>
+                                        <span style="color: var(--muted);">Normal: &lt;500ms per doc<br>Slow: &gt;1s indicates Ollama issues</span>
+                                    </div>
+                                    <div>
+                                        <strong style="color: var(--text);">📊 Status Types</strong><br>
+                                        <span style="color: var(--muted);"><span style="color: #10b981;">created</span> = new, <span style="color: #3b82f6;">updated</span> = changed, <span style="color: #6b7280;">unchanged</span> = same</span>
+                                    </div>
+                                    <div>
+                                        <strong style="color: var(--text);">❤️ Health Status</strong><br>
+                                        <span style="color: var(--muted);"><span style="color: #10b981;">✓</span> = Qdrant connected<br><span style="color: #ef4444;">✗</span> = Qdrant offline</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <button onclick="document.getElementById('ragHelpPanel').style.display='none'" style="background: none; border: none; color: var(--muted); cursor: pointer; font-size: 18px; padding: 0; width: 24px; height: 24px;">×</button>
+                        </div>
+                    </div>
+                    
+                    <div class="rag-metrics-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 20px;">
+                        <div class="stat-card" data-tooltip="Total number of documents ingested into the RAG system">
+                            <div class="label">
+                                Total Documents
+                                <i class="fas fa-info-circle" style="font-size: 11px; color: var(--muted); margin-left: 4px;" title="Total unique documents across all sources"></i>
+                            </div>
+                            <div class="value" id="ragTotalDocs">—</div>
+                            <div class="sub">Across all sources</div>
+                        </div>
+                        <div class="stat-card" data-tooltip="Total number of text chunks (vectors) stored. Typical: 12-20 chunks per document (~800 chars each)">
+                            <div class="label">
+                                Total Chunks
+                                <i class="fas fa-info-circle" style="font-size: 11px; color: var(--muted); margin-left: 4px;" title="Embedded vectors in Qdrant. More chunks = more granular search"></i>
+                            </div>
+                            <div class="value" id="ragTotalChunks">—</div>
+                            <div class="sub">Embedded vectors</div>
+                        </div>
+                        <div class="stat-card" data-tooltip="Average number of chunks per document. Typical: 12-20 for standard docs">
+                            <div class="label">
+                                Avg Chunks/Doc
+                                <i class="fas fa-info-circle" style="font-size: 11px; color: var(--muted); margin-left: 4px;" title="Chunking efficiency metric"></i>
+                            </div>
+                            <div class="value" id="ragAvgChunks">—</div>
+                            <div class="sub">Chunking efficiency</div>
+                        </div>
+                        <div class="stat-card" data-tooltip="Vector store connection status: ✓ = Connected, ✗ = Offline">
+                            <div class="label">
+                                Store Health
+                                <i class="fas fa-info-circle" style="font-size: 11px; color: var(--muted); margin-left: 4px;" title="Qdrant vector database connection"></i>
+                            </div>
+                            <div class="value" id="ragHealth">—</div>
+                            <div class="sub">Connection status</div>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-top: 20px;">
+                        <h3 style="font-size: 14px; font-weight: 600; margin-bottom: 12px; color: var(--text);">
+                            <i class="fas fa-layer-group"></i> Documents by Source
+                        </h3>
+                        <div id="ragSourcesTable" style="overflow-x: auto;">
+                            <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                                <thead style="background: rgba(0,0,0,0.2);">
+                                    <tr>
+                                        <th style="padding: 8px; text-align: left; border-bottom: 1px solid var(--panel-border);">Source</th>
+                                        <th style="padding: 8px; text-align: right; border-bottom: 1px solid var(--panel-border);">Documents</th>
+                                        <th style="padding: 8px; text-align: right; border-bottom: 1px solid var(--panel-border);">Chunks</th>
+                                        <th style="padding: 8px; text-align: right; border-bottom: 1px solid var(--panel-border);">Avg Chunks</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ragSourcesBody">
+                                    <tr>
+                                        <td colspan="4" style="padding: 16px; text-align: center; color: var(--muted);">
+                                            Loading...
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-top: 20px; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 8px; font-size: 12px; color: var(--muted);">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                            <span><i class="fas fa-clock"></i> Oldest Document:</span>
+                            <span id="ragOldest">—</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between;">
+                            <span><i class="fas fa-clock"></i> Newest Document:</span>
+                            <span id="ragNewest">—</span>
+                        </div>
+                    </div>
+                    
+                    <div class="chart-empty" id="ragEmpty" style="display: none;">No RAG data available.</div>
+                </div>
+            </div>
+        </div>
+
         <!-- System Metrics Section moved to top -->
     </div>
 

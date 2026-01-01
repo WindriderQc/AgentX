@@ -111,8 +111,13 @@ router.post(['/ingest', '/documents'], async (req, res) => {
       ...metadata // Allow additional metadata from n8n
     };
 
+    // Track processing time
+    const startTime = Date.now();
+    
     // Upsert document (pass ollamaHost for dynamic embedding service)
     const result = await ragStore.upsertDocumentWithChunks(docMetadata, text, ollamaHost);
+    
+    const processingTimeMs = Date.now() - startTime;
 
     // Return response matching contract exactly
     // DO NOT add extra fields - n8n parses this!
@@ -125,7 +130,11 @@ router.post(['/ingest', '/documents'], async (req, res) => {
     logger.info('RAG document ingested', {
       status: result.status,
       documentId: result.documentId,
-      chunkCount: result.chunkCount
+      chunkCount: result.chunkCount,
+      processingTimeMs,
+      textLength: text.length,
+      source,
+      title
     });
 
   } catch (error) {
@@ -293,6 +302,112 @@ router.delete('/documents/:documentId', async (req, res) => {
     });
   } catch (error) {
     logger.error('RAG delete error', { error: error.message, stack: error.stack });
+    res.status(500).json({
+      error: 'Internal server error',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/rag/metrics
+ * 
+ * Get detailed RAG system metrics including vector store stats,
+ * collection health, and ingestion performance.
+ */
+router.get('/metrics', async (req, res) => {
+  try {
+    // Get base stats from RAG store
+    const stats = await ragStore.getStats();
+    
+    // Get health status
+    const healthy = await ragStore.healthCheck();
+    
+    // Get all documents for additional metrics
+    const documents = await ragStore.listDocuments();
+    
+    // Calculate additional metrics
+    const sourceBreakdown = {};
+    let totalChunks = 0;
+    let oldestDoc = null;
+    let newestDoc = null;
+    
+    documents.forEach(doc => {
+      // Source breakdown
+      if (!sourceBreakdown[doc.source]) {
+        sourceBreakdown[doc.source] = { count: 0, chunks: 0 };
+      }
+      sourceBreakdown[doc.source].count++;
+      sourceBreakdown[doc.source].chunks += doc.chunkCount || 0;
+      totalChunks += doc.chunkCount || 0;
+      
+      // Date tracking
+      if (doc.createdAt) {
+        const docDate = new Date(doc.createdAt);
+        if (!oldestDoc || docDate < new Date(oldestDoc)) {
+          oldestDoc = doc.createdAt;
+        }
+        if (!newestDoc || docDate > new Date(newestDoc)) {
+          newestDoc = doc.createdAt;
+        }
+      }
+    });
+    
+    res.json({
+      status: 'success',
+      healthy,
+      stats: {
+        ...stats,
+        totalDocuments: documents.length,
+        totalChunks,
+        avgChunksPerDoc: documents.length > 0 ? (totalChunks / documents.length).toFixed(2) : 0,
+        sourceBreakdown,
+        oldestDocument: oldestDoc,
+        newestDocument: newestDoc
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('RAG metrics error', { error: error.message, stack: error.stack });
+    res.status(500).json({
+      error: 'Internal server error',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/rag/collections/:collection/info
+ * 
+ * Get detailed information about a specific Qdrant collection.
+ * Requires vector store to be Qdrant.
+ */
+router.get('/collections/:collection/info', async (req, res) => {
+  try {
+    const { collection } = req.params;
+    const qdrantUrl = process.env.QDRANT_URL || 'http://localhost:6333';
+    const fetch = require('node-fetch');
+    
+    // Get collection info from Qdrant
+    const response = await fetch(`${qdrantUrl}/collections/${collection}`);
+    
+    if (!response.ok) {
+      return res.status(404).json({
+        error: 'Collection not found',
+        message: `Collection '${collection}' does not exist in Qdrant`
+      });
+    }
+    
+    const data = await response.json();
+    
+    res.json({
+      status: 'success',
+      collection: collection,
+      info: data.result,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('Collection info error', { error: error.message, stack: error.stack });
     res.status(500).json({
       error: 'Internal server error',
       message: error.message

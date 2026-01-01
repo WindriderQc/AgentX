@@ -18,6 +18,17 @@ const elements = {
   usageEmpty: document.getElementById('usageEmpty'),
   feedbackEmpty: document.getElementById('feedbackEmpty'),
 
+  // RAG Metrics Elements
+  refreshRagBtn: document.getElementById('refreshRagBtn'),
+  ragTotalDocs: document.getElementById('ragTotalDocs'),
+  ragTotalChunks: document.getElementById('ragTotalChunks'),
+  ragAvgChunks: document.getElementById('ragAvgChunks'),
+  ragHealth: document.getElementById('ragHealth'),
+  ragSourcesBody: document.getElementById('ragSourcesBody'),
+  ragOldest: document.getElementById('ragOldest'),
+  ragNewest: document.getElementById('ragNewest'),
+  ragEmpty: document.getElementById('ragEmpty'),
+
   // System Metrics Elements
   // clearCacheBtn: document.getElementById('clearCacheBtn'), // Removed in single-page view
   timestamp: document.getElementById('sysTimestamp'), // Updated ID
@@ -118,6 +129,14 @@ async function fetchJSON(url, method = 'GET') {
   if (!res.ok) {
     throw new Error(`Request failed: ${res.status}`);
   }
+  
+  // Check if response is actually JSON
+  const contentType = res.headers.get('content-type');
+  if (!contentType || !contentType.includes('application/json')) {
+    const text = await res.text();
+    throw new Error(`Expected JSON but got ${contentType}: ${text.substring(0, 100)}`);
+  }
+  
   return res.json();
 }
 
@@ -468,6 +487,123 @@ async function clearCache() {
 }
 
 /* -------------------------------------------------------------------------- */
+/*                              RAG Metrics                                   */
+/* -------------------------------------------------------------------------- */
+
+async function refreshRagMetrics() {
+    try {
+        const data = await fetchJSON('/api/rag/metrics');
+        
+        if (!data || !data.stats) {
+            if (elements.ragEmpty) elements.ragEmpty.style.display = 'block';
+            return;
+        }
+        
+        if (elements.ragEmpty) elements.ragEmpty.style.display = 'none';
+        
+        const stats = data.stats;
+        
+        // Update stats cards
+        if (elements.ragTotalDocs) {
+            elements.ragTotalDocs.textContent = formatNumber(stats.totalDocuments || 0);
+        }
+        if (elements.ragTotalChunks) {
+            elements.ragTotalChunks.textContent = formatNumber(stats.totalChunks || 0);
+        }
+        if (elements.ragAvgChunks) {
+            elements.ragAvgChunks.textContent = stats.avgChunksPerDoc || '0';
+        }
+        if (elements.ragHealth) {
+            const healthIcon = data.healthy ? '✓' : '✗';
+            const healthColor = data.healthy ? 'var(--success)' : 'var(--danger)';
+            elements.ragHealth.innerHTML = `<span style="color: ${healthColor}">${healthIcon} ${data.healthy ? 'Healthy' : 'Offline'}</span>`;
+        }
+        
+        // Update source breakdown table
+        if (elements.ragSourcesBody && stats.sourceBreakdown) {
+            const sources = Object.entries(stats.sourceBreakdown);
+            
+            if (sources.length === 0) {
+                elements.ragSourcesBody.innerHTML = `
+                    <tr>
+                        <td colspan="4" style="padding: 16px; text-align: center; color: var(--muted);">
+                            No documents ingested yet
+                        </td>
+                    </tr>
+                `;
+            } else {
+                elements.ragSourcesBody.innerHTML = sources.map(([source, data]) => {
+                    const avgChunks = data.count > 0 ? (data.chunks / data.count).toFixed(1) : '0';
+                    const avgNum = parseFloat(avgChunks);
+                    
+                    // Color code avg chunks based on typical range (12-20)
+                    let avgColor = 'var(--text)';
+                    let avgIcon = '';
+                    if (avgNum < 8) {
+                        avgColor = '#f59e0b'; // amber - low chunks
+                        avgIcon = '<i class="fas fa-exclamation-triangle" style="font-size: 10px; margin-left: 4px;" title="Low chunk count - document may be very short"></i>';
+                    } else if (avgNum >= 12 && avgNum <= 25) {
+                        avgColor = '#10b981'; // green - optimal
+                        avgIcon = '<i class="fas fa-check-circle" style="font-size: 10px; margin-left: 4px;" title="Optimal chunk count"></i>';
+                    } else if (avgNum > 30) {
+                        avgColor = '#3b82f6'; // blue - large docs
+                        avgIcon = '<i class="fas fa-info-circle" style="font-size: 10px; margin-left: 4px;" title="Large documents"></i>';
+                    }
+                    
+                    return `
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                            <td style="padding: 8px;">
+                                <i class="fas fa-folder" style="color: var(--muted); margin-right: 6px;"></i>${source}
+                            </td>
+                            <td style="padding: 8px; text-align: right;">${formatNumber(data.count)}</td>
+                            <td style="padding: 8px; text-align: right;">${formatNumber(data.chunks)}</td>
+                            <td style="padding: 8px; text-align: right; color: ${avgColor}; font-weight: 500;">
+                                ${avgChunks}${avgIcon}
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+        }
+        
+        // Update date info
+        if (elements.ragOldest) {
+            elements.ragOldest.textContent = stats.oldestDocument 
+                ? new Date(stats.oldestDocument).toLocaleString()
+                : '—';
+        }
+        if (elements.ragNewest) {
+            elements.ragNewest.textContent = stats.newestDocument 
+                ? new Date(stats.newestDocument).toLocaleString()
+                : '—';
+        }
+        
+    } catch (error) {
+        console.error('Failed to fetch RAG metrics:', error);
+        
+        // Show more helpful error in the UI
+        if (elements.ragEmpty) {
+            elements.ragEmpty.innerHTML = `
+                <div style="color: var(--danger); padding: 20px; text-align: center;">
+                    <i class="fas fa-exclamation-triangle"></i><br>
+                    <strong>Failed to load RAG metrics</strong><br>
+                    <small style="color: var(--muted);">${error.message}</small>
+                </div>
+            `;
+            elements.ragEmpty.style.display = 'block';
+        }
+        
+        // Set all fields to error state
+        if (elements.ragTotalDocs) elements.ragTotalDocs.textContent = 'Error';
+        if (elements.ragTotalChunks) elements.ragTotalChunks.textContent = 'Error';
+        if (elements.ragAvgChunks) elements.ragAvgChunks.textContent = 'Error';
+        if (elements.ragHealth) {
+            elements.ragHealth.innerHTML = '<span style="color: var(--danger)">✗ Error</span>';
+        }
+    }
+}
+
+/* -------------------------------------------------------------------------- */
 /*                                Initialization                              */
 /* -------------------------------------------------------------------------- */
 
@@ -478,7 +614,8 @@ async function refreshAll() {
     try {
         await Promise.all([
             refreshProduct(),
-            refreshSystem()
+            refreshSystem(),
+            refreshRagMetrics()
         ]);
     } catch (e) {
         console.error('Refresh failed:', e);
@@ -494,6 +631,28 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   // Event Listeners
   if (elements.refreshBtn) elements.refreshBtn.addEventListener('click', refreshAll);
+  if (elements.refreshRagBtn) {
+    elements.refreshRagBtn.addEventListener('click', async () => {
+      elements.refreshRagBtn.innerHTML = '<i class="fas fa-sync-alt fa-spin"></i> Refreshing...';
+      elements.refreshRagBtn.disabled = true;
+      try {
+        await refreshRagMetrics();
+      } finally {
+        elements.refreshRagBtn.innerHTML = '<i class="fas fa-sync-alt"></i> Refresh';
+        elements.refreshRagBtn.disabled = false;
+      }
+    });
+  }
+  
+  // Toggle RAG help panel
+  const toggleRagHelpBtn = document.getElementById('toggleRagHelp');
+  const ragHelpPanel = document.getElementById('ragHelpPanel');
+  if (toggleRagHelpBtn && ragHelpPanel) {
+    toggleRagHelpBtn.addEventListener('click', () => {
+      const isVisible = ragHelpPanel.style.display !== 'none';
+      ragHelpPanel.style.display = isVisible ? 'none' : 'block';
+    });
+  }
   if (elements.periodSelect) elements.periodSelect.addEventListener('change', refreshProduct);
   if (elements.usageGroupSelect) elements.usageGroupSelect.addEventListener('change', refreshProduct);
   if (elements.feedbackGroupSelect) elements.feedbackGroupSelect.addEventListener('change', refreshProduct);
