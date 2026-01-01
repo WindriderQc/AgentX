@@ -199,10 +199,10 @@
 
 ## Known Limitations
 
-1. **Prompts API requires authentication:**
-   - GET /api/prompts returns 401 without session cookie
-   - This is expected behavior (security)
-   - Works correctly when accessed through browser
+1. **Single-User Mode:**
+   - All API routes use `optionalAuth` middleware for backward compatibility
+   - Works without authentication, falls back to 'default' userId
+   - Multi-user authentication supported but not required
 
 2. **OnboardingWizard not detected by simple grep:**
    - Component is imported as ES module

@@ -6,14 +6,14 @@
 const express = require('express');
 const router = express.Router();
 const PromptConfig = require('../models/PromptConfig');
-const { requireAuth } = require('../src/middleware/auth');
+const { requireAuth, optionalAuth } = require('../src/middleware/auth');
 const logger = require('../config/logger');
 
 /**
  * GET /api/prompts
  * List all prompts (grouped by name)
  */
-router.get('/', requireAuth, async (req, res) => {
+router.get('/', optionalAuth, async (req, res) => {
     try {
         const prompts = await PromptConfig.find().sort({ name: 1, version: -1 });
         
@@ -47,7 +47,7 @@ router.get('/', requireAuth, async (req, res) => {
  * GET /api/prompts/:name
  * Get all versions of a prompt
  */
-router.get('/:name', requireAuth, async (req, res) => {
+router.get('/:name', optionalAuth, async (req, res) => {
     try {
         const prompts = await PromptConfig.getVersions(req.params.name);
         
@@ -70,7 +70,7 @@ router.get('/:name', requireAuth, async (req, res) => {
  * Create a new prompt or new version
  * Body: { name, systemPrompt, description?, isActive?, trafficWeight? }
  */
-router.post('/', requireAuth, async (req, res) => {
+router.post('/', optionalAuth, async (req, res) => {
     const { name, systemPrompt, description, isActive = false, trafficWeight = 100 } = req.body;
     
     if (!name || !systemPrompt) {
@@ -113,7 +113,7 @@ router.post('/', requireAuth, async (req, res) => {
  * Update a prompt (not the systemPrompt - create new version for that)
  * Body: { isActive?, trafficWeight?, description? }
  */
-router.put('/:id', requireAuth, async (req, res) => {
+router.put('/:id', optionalAuth, async (req, res) => {
     const { isActive, trafficWeight, description } = req.body;
     
     try {
@@ -146,7 +146,7 @@ router.put('/:id', requireAuth, async (req, res) => {
  * Configure A/B test between versions
  * Body: { versions: [{ version: number, weight: number }] }
  */
-router.post('/:name/ab-test', requireAuth, async (req, res) => {
+router.post('/:name/ab-test', optionalAuth, async (req, res) => {
     const { versions } = req.body;
     
     if (!versions || !Array.isArray(versions)) {
@@ -203,7 +203,7 @@ router.post('/:name/ab-test', requireAuth, async (req, res) => {
  * DELETE /api/prompts/:id
  * Delete a prompt version (only if not active)
  */
-router.delete('/:id', requireAuth, async (req, res) => {
+router.delete('/:id', optionalAuth, async (req, res) => {
     try {
         const prompt = await PromptConfig.findById(req.params.id);
         
@@ -237,7 +237,7 @@ router.delete('/:id', requireAuth, async (req, res) => {
  * Render a prompt template with variables
  * Supports Handlebars-like syntax: {{variable}}, {{#if condition}}...{{/if}}, {{#each items}}...{{/each}}
  */
-router.post('/render', requireAuth, async (req, res) => {
+router.post('/render', optionalAuth, async (req, res) => {
     const { name, version, variables } = req.body;
 
     if (!name) {
