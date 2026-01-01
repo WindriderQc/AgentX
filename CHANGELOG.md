@@ -5,6 +5,64 @@ All notable changes to AgentX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.2] - 2026-01-01
+
+### Added
+
+#### Model-Aware Performance Metrics
+- **Backend API:** New `/api/analytics/prompt-metrics` endpoint with model breakdown
+- **Enhanced Endpoint:** `/api/analytics/feedback?groupBy=promptAndModel` for cross-model analysis
+- **Model Filter:** Dropdown selector to filter metrics by specific LLM model
+- **Version Badges:** Display prompt version numbers in metric cards
+- **Model Breakdown:** Expandable sections showing per-model performance
+  - Color-coded status indicators (green/yellow/red)
+  - Individual model positive rates and feedback counts
+  - Mini progress bars for visual comparison
+- **Dashboard Enhancement:** Performance Metrics Dashboard now supports:
+  - Filtering by model (e.g., llama3.2, qwen2, deepseek-r1)
+  - Aggregate view across all models
+  - Dynamic model list population from analytics data
+- **CSS Styling:** 220+ lines of responsive styling for model-aware components
+
+#### E2E Test Infrastructure
+- **Playwright Configuration:** Chrome-only testing for optimal resource usage
+- **Test Suites:**
+  - Onboarding Wizard (10 tests) - ✅ All passing
+  - Performance Metrics Dashboard (33 tests)
+  - Advanced Filtering (15 tests)
+  - Export/Import (17 tests)
+- **Test Scripts:** Added npm scripts for running tests
+  - `npm run test:e2e:playwright` - Run all tests
+  - `npm run test:e2e:onboarding` - Onboarding tests
+  - `npm run test:e2e:dashboard` - Dashboard tests
+  - `npm run test:e2e:filtering` - Filtering tests
+  - `npm run test:e2e:export-import` - Import/export tests
+- **Documentation:** Complete test guides in `tests/e2e/` directory
+
+### Changed
+- Performance Metrics Dashboard now uses new prompt-metrics endpoint
+- Playwright configuration optimized for Chrome-only (reduced from 5 browsers)
+- Test execution time reduced from 30+ minutes to ~10 minutes
+
+### Technical Details
+- **Files Modified:** 3 files, 528 insertions, 35 deletions
+- **Backend:** `routes/analytics.js` (+155 lines)
+- **Frontend:** `public/js/components/PerformanceMetricsDashboard.js` (+153 lines)
+- **Styling:** `public/css/prompts.css` (+220 lines)
+- **Tests:** 75 E2E tests across 4 suites
+
+### Benefits
+- ✅ Identify which LLM models work best with specific prompts
+- ✅ Debug model-specific performance issues quickly
+- ✅ Optimize prompt-model pairings based on real feedback data
+- ✅ Make data-driven decisions about model deployment
+- ✅ Comprehensive test coverage for quality assurance
+
+### Documentation
+- Added `PHASE_MODEL_METRICS_COMPLETE.md` - Complete phase documentation
+- Updated test documentation in `tests/e2e/` directory
+- Added handoff guide for next development phase
+
 ## [1.0.0] - 2025-12-04
 
 ### 🎉 Initial Production Release
