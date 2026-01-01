@@ -5,7 +5,7 @@
 
 const request = require('supertest');
 const mongoose = require('mongoose');
-const app = require('../../src/app');
+const { app } = require('../../src/app');
 const PromptConfig = require('../../models/PromptConfig');
 const { createMockMongoDocument } = require('../helpers/testUtils');
 
@@ -26,7 +26,7 @@ describe('Prompts API', () => {
             const promptData = {
                 name: 'test_prompt_1',
                 systemPrompt: 'You are a helpful assistant for testing.',
-                version: 'v1'
+                version: 1
             };
 
             const res = await request(app)
@@ -36,8 +36,8 @@ describe('Prompts API', () => {
 
             expect(res.body.success).toBe(true);
             expect(res.body.prompt.name).toBe('test_prompt_1');
-            expect(res.body.prompt.version).toBe('v1');
-            
+            expect(res.body.prompt.version).toBe(1);
+
             testPrompt = res.body.prompt;
         });
 
@@ -45,7 +45,7 @@ describe('Prompts API', () => {
             const promptData = {
                 name: 'test_prompt_1',
                 systemPrompt: 'Duplicate',
-                version: 'v1'
+                version: 1
             };
 
             const res = await request(app)
@@ -60,7 +60,7 @@ describe('Prompts API', () => {
             const promptData = {
                 name: 'test_prompt_1',
                 systemPrompt: 'Version 2 prompt',
-                version: 'v2'
+                version: 2
             };
 
             const res = await request(app)
@@ -68,7 +68,7 @@ describe('Prompts API', () => {
                 .send(promptData)
                 .expect(201);
 
-            expect(res.body.prompt.version).toBe('v2');
+            expect(res.body.prompt.version).toBe(2);
         });
     });
 
@@ -131,14 +131,14 @@ describe('Prompts API', () => {
             await PromptConfig.create({
                 name: 'test_ab_prompt',
                 systemPrompt: 'Control version',
-                version: 'control',
+                version: 1,
                 trafficWeight: 100,
                 isActive: true
             });
             await PromptConfig.create({
                 name: 'test_ab_prompt',
                 systemPrompt: 'Variant A',
-                version: 'variant_a',
+                version: 2,
                 trafficWeight: 0,
                 isActive: true
             });
@@ -153,8 +153,8 @@ describe('Prompts API', () => {
                 .post('/api/prompts/test_ab_prompt/ab-test')
                 .send({
                     versions: [
-                        { version: 'control', weight: 50 },
-                        { version: 'variant_a', weight: 50 }
+                        { version: 1, weight: 50 },
+                        { version: 2, weight: 50 }
                     ]
                 })
                 .expect(200);
@@ -168,8 +168,8 @@ describe('Prompts API', () => {
                 .post('/api/prompts/test_ab_prompt/ab-test')
                 .send({
                     versions: [
-                        { version: 'control', weight: 30 },
-                        { version: 'variant_a', weight: 30 }
+                        { version: 1, weight: 30 },
+                        { version: 2, weight: 30 }
                     ]
                 })
                 .expect(400);
@@ -184,7 +184,7 @@ describe('Prompts API', () => {
             const prompt = await PromptConfig.create({
                 name: 'test_delete_prompt',
                 systemPrompt: 'To be deleted',
-                version: 'v1'
+                version: 1
             });
 
             const res = await request(app)
@@ -202,8 +202,8 @@ describe('PromptConfig Model', () => {
         beforeAll(async () => {
             await PromptConfig.deleteMany({ name: 'test_weighted' });
             await PromptConfig.create([
-                { name: 'test_weighted', systemPrompt: 'A', version: 'a', trafficWeight: 70, isActive: true },
-                { name: 'test_weighted', systemPrompt: 'B', version: 'b', trafficWeight: 30, isActive: true }
+                { name: 'test_weighted', systemPrompt: 'A', version: 1, trafficWeight: 70, isActive: true },
+                { name: 'test_weighted', systemPrompt: 'B', version: 2, trafficWeight: 30, isActive: true }
             ]);
         });
 
@@ -214,11 +214,11 @@ describe('PromptConfig Model', () => {
         it('should return a prompt based on weights', async () => {
             const result = await PromptConfig.getActive('test_weighted');
             expect(result).toBeDefined();
-            expect(['a', 'b']).toContain(result.version);
+            expect([1, 2]).toContain(result.version);
         });
 
         it('should respect weight distribution over many calls', async () => {
-            const counts = { a: 0, b: 0 };
+            const counts = { 1: 0, 2: 0 };
             const iterations = 100;
 
             for (let i = 0; i < iterations; i++) {
@@ -226,10 +226,10 @@ describe('PromptConfig Model', () => {
                 counts[result.version]++;
             }
 
-            // A should be selected roughly 70% of the time (allow 15% variance)
-            const aRatio = counts.a / iterations;
-            expect(aRatio).toBeGreaterThan(0.55);
-            expect(aRatio).toBeLessThan(0.85);
+            // Version 1 should be selected roughly 70% of the time (allow 15% variance)
+            const v1Ratio = counts[1] / iterations;
+            expect(v1Ratio).toBeGreaterThan(0.55);
+            expect(v1Ratio).toBeLessThan(0.85);
         });
     });
 
@@ -240,7 +240,7 @@ describe('PromptConfig Model', () => {
             testPrompt = await PromptConfig.create({
                 name: 'test_feedback_prompt',
                 systemPrompt: 'Feedback test',
-                version: 'v1',
+                version: 1,
                 stats: { impressions: 0, positiveCount: 0, negativeCount: 0 }
             });
         });

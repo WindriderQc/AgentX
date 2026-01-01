@@ -5,7 +5,7 @@
 
 const request = require('supertest');
 const mongoose = require('mongoose');
-const app = require('../../src/app');
+const { app } = require('../../src/app');
 const Feedback = require('../../models/Feedback');
 const PromptConfig = require('../../models/PromptConfig');
 
@@ -20,7 +20,7 @@ describe('Analytics Feedback API', () => {
             {
                 name: 'test_analytics_prompt',
                 systemPrompt: 'Control version',
-                version: 'control',
+                version: 1,
                 abTestGroup: 'test_experiment_1',
                 trafficWeight: 50,
                 stats: { impressions: 100, positiveCount: 70, negativeCount: 30 }
@@ -28,7 +28,7 @@ describe('Analytics Feedback API', () => {
             {
                 name: 'test_analytics_prompt',
                 systemPrompt: 'Variant version',
-                version: 'variant',
+                version: 2,
                 abTestGroup: 'test_experiment_1',
                 trafficWeight: 50,
                 stats: { impressions: 100, positiveCount: 80, negativeCount: 20 }

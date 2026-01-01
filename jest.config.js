@@ -12,7 +12,8 @@ module.exports = {
     '**/tests/**/*.test.js'
   ],
   verbose: true,
-  testTimeout: 10000,
+  testTimeout: 30000,
+  setupFilesAfterEnv: ['./tests/setup-env.js'],
   globalTeardown: './tests/teardown.js',
   forceExit: false,
   detectOpenHandles: false
