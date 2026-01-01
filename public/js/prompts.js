@@ -834,7 +834,7 @@ function showLoading(show) {
 function checkOnboarding() {
   // Check if user has seen onboarding before (separate from completion)
   const hasSeenOnboarding = localStorage.getItem('agentx_onboarding_seen') === 'true';
-  const hasCompletedOnboarding = OnboardingWizard.isCompleted();
+  const hasCompletedOnboarding = onboardingWizard.isCompleted();
   const hasPrompts = Object.keys(state.prompts).length > 0;
 
   console.log('Onboarding check:', {

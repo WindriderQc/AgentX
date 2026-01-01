@@ -1,190 +1,41 @@
 /**
- * Onboarding Wizard Component
+ * Onboarding Wizard Component (Refactored)
  * Multi-step wizard to guide first-time users through creating their first prompt
+ * Extends BaseOnboardingWizard for shared functionality
  */
 
-export class OnboardingWizard {
+import { BaseOnboardingWizard } from './BaseOnboardingWizard.js';
+
+export class OnboardingWizard extends BaseOnboardingWizard {
   constructor(api, toast) {
-    this.api = api;
-    this.toast = toast;
-    this.currentStep = 1;
-    this.totalSteps = 7;
-    this.promptData = {
-      name: '',
-      description: '',
-      systemPrompt: '',
-      isActive: false,
-      trafficWeight: 100
-    };
-    this.profileData = {
-      about: '',
-      customInstructions: ''
-    };
-    this.overlay = null;
-    this.isOpen = false;
-  }
-
-  /**
-   * Open the wizard
-   */
-  open() {
-    if (this.isOpen) return;
-
-    this.currentStep = 1;
-    this.promptData = {
-      name: '',
-      description: '',
-      systemPrompt: '',
-      isActive: false,
-      trafficWeight: 100
-    };
-    this.profileData = {
-      about: '',
-      customInstructions: ''
-    };
-
-    this.render();
-    this.isOpen = true;
-  }
-
-  /**
-   * Close the wizard
-   */
-  close() {
-    if (this.overlay && this.overlay.parentNode) {
-      this.overlay.parentNode.removeChild(this.overlay);
-    }
-    this.isOpen = false;
-  }
-
-  /**
-   * Mark wizard as completed (won't auto-show again)
-   */
-  markCompleted() {
-    localStorage.setItem('agentx_onboarding_completed', 'true');
-  }
-
-  /**
-   * Check if user has completed onboarding
-   */
-  static isCompleted() {
-    return localStorage.getItem('agentx_onboarding_completed') === 'true';
-  }
-
-  /**
-   * Reset onboarding status (for testing or re-onboarding)
-   */
-  static reset() {
-    localStorage.removeItem('agentx_onboarding_completed');
-  }
-
-  /**
-   * Render the wizard
-   */
-  render() {
-    // Create overlay
-    this.overlay = document.createElement('div');
-    this.overlay.className = 'modal-overlay onboarding-overlay';
-    this.overlay.innerHTML = `
-      <div class="modal-container onboarding-modal">
-        <div class="modal-header">
-          <h2>
-            <i class="fas fa-graduation-cap"></i>
-            Getting Started with Prompt Management
-          </h2>
-          <button class="modal-close" id="onboardingSkip" title="Skip Tutorial">
-            <i class="fas fa-times"></i>
-          </button>
-        </div>
-
-        <div class="onboarding-progress">
-          <div class="progress-bar">
-            <div class="progress-fill" id="onboardingProgress"></div>
-          </div>
-          <div class="progress-text">
-            Step <span id="currentStepNum">1</span> of ${this.totalSteps}
-          </div>
-        </div>
-
-        <div class="modal-body" id="onboardingBody">
-          <!-- Step content will be injected here -->
-        </div>
-
-        <div class="modal-footer" id="onboardingFooter">
-          <!-- Navigation buttons will be injected here -->
-        </div>
-      </div>
-    `;
-
-    document.body.appendChild(this.overlay);
-
-    // Attach event listeners
-    document.getElementById('onboardingSkip').addEventListener('click', () => {
-      this.handleSkip();
+    super(toast, {
+      totalSteps: 7,
+      wizardId: 'onboarding',
+      title: 'Getting Started with Prompt Management',
+      icon: 'fa-graduation-cap'
     });
 
-    // Render current step
-    this.renderStep();
+    // Store API client for prompt creation
+    this.api = api;
   }
 
   /**
-   * Update progress bar
+   * Initialize data when wizard opens
    */
-  updateProgress() {
-    const progress = (this.currentStep / this.totalSteps) * 100;
-    const progressBar = document.getElementById('onboardingProgress');
-    const stepNum = document.getElementById('currentStepNum');
-
-    if (progressBar) {
-      progressBar.style.width = `${progress}%`;
-    }
-    if (stepNum) {
-      stepNum.textContent = this.currentStep;
-    }
-  }
-
-  /**
-   * Render current step content
-   */
-  renderStep() {
-    const body = document.getElementById('onboardingBody');
-    const footer = document.getElementById('onboardingFooter');
-
-    if (!body || !footer) return;
-
-    // Render step content
-    switch (this.currentStep) {
-      case 1:
-        body.innerHTML = this.renderStep1();
-        break;
-      case 2:
-        body.innerHTML = this.renderStep2();
-        break;
-      case 3:
-        body.innerHTML = this.renderStep3();
-        break;
-      case 4:
-        body.innerHTML = this.renderStep4();
-        break;
-      case 5:
-        body.innerHTML = this.renderStep5();
-        break;
-      case 6:
-        body.innerHTML = this.renderStep6();
-        break;
-      case 7:
-        body.innerHTML = this.renderStep7();
-        break;
-    }
-
-    // Render navigation buttons
-    footer.innerHTML = this.renderNavigation();
-
-    // Update progress bar
-    this.updateProgress();
-
-    // Attach step-specific event listeners
-    this.attachStepListeners();
+  onOpen() {
+    this.data = {
+      promptData: {
+        name: '',
+        description: '',
+        systemPrompt: '',
+        isActive: false,
+        trafficWeight: 100
+      },
+      profileData: {
+        about: '',
+        customInstructions: ''
+      }
+    };
   }
 
   /**
@@ -228,7 +79,7 @@ export class OnboardingWizard {
   }
 
   /**
-   * Step 2: User Profile Setup (NEW)
+   * Step 2: User Profile Setup
    */
   renderStep2() {
     return `
@@ -251,7 +102,7 @@ export class OnboardingWizard {
               id="wizardProfileAbout"
               rows="4"
               placeholder="I'm a software engineer working on Node.js projects. I prefer concise technical explanations."
-            >${this.profileData.about}</textarea>
+            >${this.data.profileData.about}</textarea>
             <div class="field-note">
               <i class="fas fa-lightbulb"></i>
               Example: "I'm a data scientist at a healthcare startup. I work with Python and SQL daily."
@@ -267,7 +118,7 @@ export class OnboardingWizard {
               id="wizardProfileInstructions"
               rows="3"
               placeholder="Always format code blocks with syntax highlighting. Use metric units."
-            >${this.profileData.customInstructions}</textarea>
+            >${this.data.profileData.customInstructions}</textarea>
           </div>
         </div>
 
@@ -282,7 +133,7 @@ export class OnboardingWizard {
   }
 
   /**
-   * Step 3: Understanding Profiles vs Prompts (NEW)
+   * Step 3: Understanding Profiles vs Prompts
    */
   renderStep3() {
     return `
@@ -367,7 +218,7 @@ export class OnboardingWizard {
               type="text"
               id="wizardPromptName"
               placeholder="my_first_prompt"
-              value="${this.promptData.name}"
+              value="${this.data.promptData.name}"
             />
             <div class="field-note">
               Use lowercase with underscores. This name groups different versions together.
@@ -383,7 +234,7 @@ export class OnboardingWizard {
               type="text"
               id="wizardDescription"
               placeholder="A helpful assistant for general queries"
-              value="${this.promptData.description}"
+              value="${this.data.promptData.description}"
             />
           </div>
 
@@ -396,7 +247,7 @@ export class OnboardingWizard {
               id="wizardSystemPrompt"
               rows="8"
               placeholder="You are a helpful AI assistant. Answer questions clearly and concisely..."
-            >${this.promptData.systemPrompt}</textarea>
+            >${this.data.promptData.systemPrompt}</textarea>
             <div class="field-note">
               <i class="fas fa-lightbulb"></i>
               Tip: Be specific about the AI's role, tone, and behavior. You can use template variables like <code>{{userName}}</code> for dynamic content.
@@ -485,7 +336,7 @@ Please respond to their questions professionally.</pre>
                 <input
                   type="checkbox"
                   id="wizardIsActive"
-                  ${this.promptData.isActive ? 'checked' : ''}
+                  ${this.data.promptData.isActive ? 'checked' : ''}
                 />
                 <span>Activate Immediately</span>
               </label>
@@ -507,7 +358,7 @@ Please respond to their questions professionally.</pre>
                 id="wizardTrafficWeight"
                 min="1"
                 max="100"
-                value="${this.promptData.trafficWeight}"
+                value="${this.data.promptData.trafficWeight}"
                 class="weight-slider"
               />
               <input
@@ -515,7 +366,7 @@ Please respond to their questions professionally.</pre>
                 id="wizardTrafficWeightNum"
                 min="1"
                 max="100"
-                value="${this.promptData.trafficWeight}"
+                value="${this.data.promptData.trafficWeight}"
                 class="weight-input"
               />
               <span class="weight-unit">%</span>
@@ -542,7 +393,7 @@ Please respond to their questions professionally.</pre>
    * Step 7: Complete
    */
   renderStep7() {
-    const promptName = this.promptData.name || 'your prompt';
+    const promptName = this.data.promptData.name || 'your prompt';
 
     return `
       <div class="onboarding-step step-complete">
@@ -551,7 +402,7 @@ Please respond to their questions professionally.</pre>
         </div>
         <h3>You're All Set!</h3>
         <p class="step-description">
-          ${this.promptData.name ?
+          ${this.data.promptData.name ?
             `Your prompt "<strong>${promptName}</strong>" has been created successfully!` :
             'Complete the setup to create your first prompt.'}
         </p>
@@ -580,7 +431,7 @@ Please respond to their questions professionally.</pre>
 
         <div class="completion-options">
           <label class="checkbox-label">
-            <input type="checkbox" id="wizardDontShowAgain" />
+            <input type="checkbox" id="onboardingDontShowAgain" />
             <span>Don't show this wizard again</span>
           </label>
         </div>
@@ -600,85 +451,9 @@ Please respond to their questions professionally.</pre>
   }
 
   /**
-   * Render navigation buttons
-   */
-  renderNavigation() {
-    const isFirstStep = this.currentStep === 1;
-    const isLastStep = this.currentStep === this.totalSteps;
-    const isStep4 = this.currentStep === 4;
-
-    let buttons = '';
-
-    // Previous button (not on first step)
-    if (!isFirstStep) {
-      buttons += `
-        <button class="btn-secondary" id="onboardingPrev">
-          <i class="fas fa-arrow-left"></i>
-          Previous
-        </button>
-      `;
-    }
-
-    // Skip button (not on last step)
-    if (!isLastStep) {
-      buttons += `
-        <button class="btn-secondary" id="onboardingSkipBtn">
-          Skip Tutorial
-        </button>
-      `;
-    }
-
-    // Next/Create/Finish button
-    if (isLastStep) {
-      buttons += `
-        <button class="btn-primary" id="onboardingFinish">
-          <i class="fas fa-check"></i>
-          Finish
-        </button>
-      `;
-    } else if (isStep4) {
-      buttons += `
-        <button class="btn-primary" id="onboardingNext">
-          Continue
-          <i class="fas fa-arrow-right"></i>
-        </button>
-      `;
-    } else {
-      buttons += `
-        <button class="btn-primary" id="onboardingNext">
-          Next
-          <i class="fas fa-arrow-right"></i>
-        </button>
-      `;
-    }
-
-    return buttons;
-  }
-
-  /**
-   * Attach event listeners for current step
+   * Attach step-specific event listeners
    */
   attachStepListeners() {
-    // Navigation buttons
-    const prevBtn = document.getElementById('onboardingPrev');
-    const nextBtn = document.getElementById('onboardingNext');
-    const skipBtn = document.getElementById('onboardingSkipBtn');
-    const finishBtn = document.getElementById('onboardingFinish');
-
-    if (prevBtn) {
-      prevBtn.addEventListener('click', () => this.handlePrevious());
-    }
-    if (nextBtn) {
-      nextBtn.addEventListener('click', () => this.handleNext());
-    }
-    if (skipBtn) {
-      skipBtn.addEventListener('click', () => this.handleSkip());
-    }
-    if (finishBtn) {
-      finishBtn.addEventListener('click', () => this.handleFinish());
-    }
-
-    // Step-specific listeners
     if (this.currentStep === 2) {
       this.attachStep2Listeners();
     } else if (this.currentStep === 4) {
@@ -699,12 +474,12 @@ Please respond to their questions professionally.</pre>
 
     if (aboutField) {
       aboutField.addEventListener('input', (e) => {
-        this.profileData.about = e.target.value;
+        this.data.profileData.about = e.target.value;
       });
     }
     if (instructionsField) {
       instructionsField.addEventListener('input', (e) => {
-        this.profileData.customInstructions = e.target.value;
+        this.data.profileData.customInstructions = e.target.value;
       });
     }
   }
@@ -719,17 +494,17 @@ Please respond to their questions professionally.</pre>
 
     if (nameField) {
       nameField.addEventListener('input', (e) => {
-        this.promptData.name = e.target.value;
+        this.data.promptData.name = e.target.value;
       });
     }
     if (descField) {
       descField.addEventListener('input', (e) => {
-        this.promptData.description = e.target.value;
+        this.data.promptData.description = e.target.value;
       });
     }
     if (promptField) {
       promptField.addEventListener('input', (e) => {
-        this.promptData.systemPrompt = e.target.value;
+        this.data.promptData.systemPrompt = e.target.value;
       });
     }
   }
@@ -744,21 +519,21 @@ Please respond to their questions professionally.</pre>
 
     if (activeCheckbox) {
       activeCheckbox.addEventListener('change', (e) => {
-        this.promptData.isActive = e.target.checked;
+        this.data.promptData.isActive = e.target.checked;
       });
     }
 
     if (weightSlider && weightNum) {
       weightSlider.addEventListener('input', (e) => {
         const value = parseInt(e.target.value);
-        this.promptData.trafficWeight = value;
+        this.data.promptData.trafficWeight = value;
         weightNum.value = value;
       });
 
       weightNum.addEventListener('input', (e) => {
         const value = parseInt(e.target.value);
         if (value >= 1 && value <= 100) {
-          this.promptData.trafficWeight = value;
+          this.data.promptData.trafficWeight = value;
           weightSlider.value = value;
         }
       });
@@ -793,85 +568,59 @@ Please respond to their questions professionally.</pre>
   }
 
   /**
-   * Handle Previous button
+   * Validate step before proceeding
    */
-  handlePrevious() {
-    if (this.currentStep > 1) {
-      this.currentStep--;
-      this.renderStep();
-    }
-  }
+  async validateStep(stepNumber) {
+    if (stepNumber === 4) {
+      const name = this.data.promptData.name.trim();
+      const systemPrompt = this.data.promptData.systemPrompt.trim();
 
-  /**
-   * Handle Next button
-   */
-  async handleNext() {
-    // Save profile on step 2 before proceeding
-    if (this.currentStep === 2) {
-      const success = await this.saveProfile();
-      if (!success) {
-        return; // Stay on step 2 if save failed
+      // Clear previous errors
+      const errorDiv = document.getElementById('wizardError');
+      if (errorDiv) {
+        errorDiv.style.display = 'none';
       }
-    }
 
-    // Validate and create prompt on step 4
-    if (this.currentStep === 4) {
-      if (!this.validateStep4()) {
-        return;
+      // Validate name
+      if (!name) {
+        this.showError('Prompt name is required');
+        return false;
       }
-    }
 
-    // Create prompt on step 6 (after activation settings)
-    if (this.currentStep === 6) {
-      const success = await this.createPrompt();
-      if (!success) {
-        return; // Stay on step 6 if creation failed
+      if (!/^[a-z0-9_]+$/.test(name)) {
+        this.showError('Prompt name must be lowercase with underscores (a-z, 0-9, _)');
+        return false;
       }
-    }
 
-    if (this.currentStep < this.totalSteps) {
-      this.currentStep++;
-      this.renderStep();
-    }
-  }
+      // Validate system prompt
+      if (!systemPrompt) {
+        this.showError('System prompt is required');
+        return false;
+      }
 
-  /**
-   * Validate Step 4 (prompt creation form validation)
-   */
-  validateStep4() {
-    const name = this.promptData.name.trim();
-    const systemPrompt = this.promptData.systemPrompt.trim();
-    const errorDiv = document.getElementById('wizardError');
-    const errorText = document.getElementById('wizardErrorText');
-
-    // Clear previous errors
-    if (errorDiv) {
-      errorDiv.style.display = 'none';
-    }
-
-    // Validate name
-    if (!name) {
-      this.showError('Prompt name is required');
-      return false;
-    }
-
-    if (!/^[a-z0-9_]+$/.test(name)) {
-      this.showError('Prompt name must be lowercase with underscores (a-z, 0-9, _)');
-      return false;
-    }
-
-    // Validate system prompt
-    if (!systemPrompt) {
-      this.showError('System prompt is required');
-      return false;
-    }
-
-    if (systemPrompt.length < 10) {
-      this.showError('System prompt must be at least 10 characters');
-      return false;
+      if (systemPrompt.length < 10) {
+        this.showError('System prompt must be at least 10 characters');
+        return false;
+      }
     }
 
     return true;
+  }
+
+  /**
+   * Process step data before moving to next
+   */
+  async processStep(stepNumber) {
+    switch (stepNumber) {
+      case 2:
+        // Save profile on step 2
+        return await this.saveProfile();
+      case 6:
+        // Create prompt on step 6 (after activation settings)
+        return await this.createPrompt();
+      default:
+        return true;
+    }
   }
 
   /**
@@ -894,27 +643,22 @@ Please respond to their questions professionally.</pre>
    * Create the prompt via API
    */
   async createPrompt() {
-    const nextBtn = document.getElementById('onboardingNext');
-
     try {
       // Show loading state
-      if (nextBtn) {
-        nextBtn.disabled = true;
-        nextBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating...';
-      }
+      this.setButtonLoading('onboardingNextBtn', true, 'Creating...');
 
       // Call API to create prompt
       await this.api.create({
-        name: this.promptData.name.trim(),
-        description: this.promptData.description.trim(),
-        systemPrompt: this.promptData.systemPrompt.trim(),
-        isActive: this.promptData.isActive,
-        trafficWeight: this.promptData.trafficWeight
+        name: this.data.promptData.name.trim(),
+        description: this.data.promptData.description.trim(),
+        systemPrompt: this.data.promptData.systemPrompt.trim(),
+        isActive: this.data.promptData.isActive,
+        trafficWeight: this.data.promptData.trafficWeight
       });
 
       // Success - show toast notification
       if (this.toast) {
-        this.toast.success(`Prompt "${this.promptData.name}" created successfully!`);
+        this.toast.success(`Prompt "${this.data.promptData.name}" created successfully!`);
       }
 
       return true;
@@ -931,10 +675,7 @@ Please respond to their questions professionally.</pre>
 
     } finally {
       // Restore button state
-      if (nextBtn) {
-        nextBtn.disabled = false;
-        nextBtn.innerHTML = 'Next <i class="fas fa-arrow-right"></i>';
-      }
+      this.setButtonLoading('onboardingNextBtn', false);
     }
   }
 
@@ -942,14 +683,9 @@ Please respond to their questions professionally.</pre>
    * Save user profile via API
    */
   async saveProfile() {
-    const nextBtn = document.getElementById('onboardingNext');
-
     try {
       // Show loading state
-      if (nextBtn) {
-        nextBtn.disabled = true;
-        nextBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
-      }
+      this.setButtonLoading('onboardingNextBtn', true, 'Saving...');
 
       // Call API to save profile
       const response = await fetch('/api/profile', {
@@ -957,9 +693,9 @@ Please respond to their questions professionally.</pre>
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          about: this.profileData.about.trim(),
+          about: this.data.profileData.about.trim(),
           preferences: {
-            customInstructions: this.profileData.customInstructions.trim()
+            customInstructions: this.data.profileData.customInstructions.trim()
           }
         })
       });
@@ -991,42 +727,18 @@ Please respond to their questions professionally.</pre>
 
     } finally {
       // Reset button state
-      if (nextBtn) {
-        nextBtn.disabled = false;
-        nextBtn.innerHTML = 'Next <i class="fas fa-arrow-right"></i>';
-      }
+      this.setButtonLoading('onboardingNextBtn', false);
     }
   }
 
   /**
-   * Handle Skip button
+   * Final actions on wizard completion
    */
-  handleSkip() {
-    const confirmed = confirm(
-      'Are you sure you want to skip the tutorial?\n\n' +
-      'You can always access it again by clicking "Show Onboarding" in the header menu.'
-    );
-
-    if (confirmed) {
-      this.close();
-    }
-  }
-
-  /**
-   * Handle Finish button
-   */
-  handleFinish() {
-    // Check if user wants to hide wizard permanently
-    const dontShowAgain = document.getElementById('wizardDontShowAgain');
-    if (dontShowAgain && dontShowAgain.checked) {
-      this.markCompleted();
-    }
-
-    this.close();
-
+  async onFinish() {
     // Reload prompts list to show newly created prompt
     if (window.location.href.includes('prompts.html')) {
-      window.location.reload();
+      this.toast.success('Onboarding complete! Reloading prompts...');
+      setTimeout(() => window.location.reload(), 500);
     }
   }
 }
