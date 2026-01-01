@@ -11,742 +11,25 @@
         rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        /* ========================================
-           OPERATIONS CENTER - SINGLE PAGE LAYOUT
-           ======================================== */
-        
-        .ops-page {
-            min-height: 100vh;
-            padding: 20px 30px;
-            max-width: 1600px;
-            margin: 0 auto;
-            display: block; /* Override flex from .page */
-        }
-
-        .ops-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 24px;
-            padding-bottom: 20px;
-            border-bottom: 1px solid var(--panel-border);
-        }
-
-        .ops-header h1 {
-            font-size: 28px;
-            margin: 0;
-            color: var(--text);
-        }
-
-        .ops-header .eyebrow {
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            color: var(--accent);
-            margin-bottom: 4px;
-        }
-
-        .ops-header .lede {
-            color: var(--muted);
-            font-size: 14px;
-            margin-top: 8px;
-            max-width: 500px;
-        }
-
-        /* Health Bar - Compact Top Strip */
-        .health-strip {
-            display: flex;
-            gap: 24px;
-            align-items: center;
-            padding: 14px 24px;
-            background: linear-gradient(135deg, rgba(124,240,255,0.03) 0%, rgba(255,255,255,0.02) 100%);
-            border: 1px solid var(--panel-border);
-            border-radius: 12px;
-            margin-bottom: 24px;
-        }
-
-        .health-strip-title {
-            font-weight: 600;
-            color: var(--text);
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding-right: 24px;
-            border-right: 1px solid var(--panel-border);
-            font-size: 13px;
-        }
-
-        .health-strip-title i {
-            color: var(--accent);
-        }
-
-        .health-strip-item {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 13px;
-            color: var(--muted);
-        }
-
-        .health-strip-item .dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: #64748b;
-            transition: all 0.3s;
-        }
-
-        .health-strip-item .dot.online {
-            background: #4ade80;
-            box-shadow: 0 0 10px rgba(74, 222, 128, 0.6);
-        }
-
-        .health-strip-item .dot.offline {
-            background: #f87171;
-            box-shadow: 0 0 10px rgba(248, 113, 113, 0.6);
-        }
-
-        /* Metrics Grid */
-        .metrics-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 16px;
-            margin-bottom: 24px;
-        }
-
-        .metric-card {
-            background: rgba(0,0,0,0.25);
-            border-radius: 10px;
-            padding: 16px 18px;
-        }
-
-        .metric-card .metric-label {
-            font-size: 10px;
-            color: var(--muted);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 8px;
-        }
-
-        .metric-card .metric-value {
-            font-size: 22px;
-            font-weight: 700;
-            color: var(--text);
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .metric-card .metric-bar {
-            height: 3px;
-            background: rgba(255,255,255,0.1);
-            border-radius: 2px;
-            margin-top: 12px;
-            overflow: hidden;
-        }
-
-        .metric-card .metric-fill {
-            height: 100%;
-            background: var(--accent);
-            transition: width 0.3s;
-        }
-
-        .metric-card .metric-detail {
-            font-size: 11px;
-            color: var(--muted);
-            margin-top: 8px;
-        }
-
-        .status-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            display: inline-block;
-            flex-shrink: 0;
-        }
-
-        .status-dot.healthy { background: #4ade80; box-shadow: 0 0 6px rgba(74,222,128,0.5); }
-        .status-dot.warning { background: #fbbf24; box-shadow: 0 0 6px rgba(251,191,36,0.5); }
-        .status-dot.error { background: #f87171; box-shadow: 0 0 6px rgba(248,113,113,0.5); }
-
-        /* Three Column Grid Layout */
-        .ops-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr 340px;
-            gap: 20px;
-        }
-
-        /* Section Cards */
-        .section-card {
-            background: rgba(255,255,255,0.02);
-            border: 1px solid var(--panel-border);
-            border-radius: 12px;
-            overflow: hidden;
-        }
-
-        .section-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 16px 20px;
-            border-bottom: 1px solid var(--panel-border);
-            background: rgba(255,255,255,0.01);
-        }
-
-        .section-header h2 {
-            font-size: 14px;
-            font-weight: 600;
-            margin: 0;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            color: var(--text);
-        }
-
-        .section-header h2 i {
-            color: var(--accent);
-            font-size: 13px;
-        }
-
-        .section-body {
-            padding: 16px 20px;
-        }
-
-        /* Events List - Clean Design */
-        .events-list {
-            max-height: 420px;
-            overflow-y: auto;
-        }
-
-        .event-row {
-            display: flex;
-            gap: 12px;
-            padding: 12px 0;
-            border-bottom: 1px solid rgba(255,255,255,0.04);
-        }
-
-        .event-row:last-child {
-            border-bottom: none;
-        }
-
-        .event-indicator {
-            width: 3px;
-            border-radius: 2px;
-            flex-shrink: 0;
-        }
-
-        .event-indicator.error { background: #f87171; }
-        .event-indicator.success { background: #4ade80; }
-        .event-indicator.info { background: #38bdf8; }
-        .event-indicator.warn { background: #fbbf24; }
-
-        .event-content {
-            flex: 1;
-            min-width: 0;
-        }
-
-        .event-message {
-            font-size: 13px;
-            color: var(--text);
-            font-weight: 500;
-            line-height: 1.4;
-        }
-
-        .event-time {
-            font-size: 11px;
-            color: var(--muted);
-            margin-top: 4px;
-        }
-
-        /* n8n Webhook Panel */
-        .webhook-form {
-            display: flex;
-            flex-direction: column;
-            gap: 14px;
-        }
-
-        .field-group {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-        }
-
-        .field-group label {
-            font-size: 11px;
-            color: var(--muted);
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-
-        .field-help {
-            color: var(--accent);
-            cursor: help;
-            font-size: 12px;
-        }
-
-        .field-hint {
-            font-size: 11px;
-            color: var(--muted);
-            margin-top: -2px;
-        }
-
-        .workflow-description {
-            font-size: 12px;
-            color: var(--text);
-            opacity: 0.7;
-            padding: 8px 10px;
-            background: rgba(255,255,255,0.05);
-            border-radius: 6px;
-            margin-top: 4px;
-        }
-
-        .help-banner {
-            background: linear-gradient(135deg, rgba(59,130,246,0.15), rgba(139,92,246,0.15));
-            border: 1px solid rgba(59,130,246,0.3);
-            border-radius: 10px;
-            padding: 16px;
-            margin-bottom: 16px;
-        }
-
-        .help-content {
-            color: var(--text);
-        }
-
-        .help-content strong {
-            display: block;
-            margin-bottom: 10px;
-            color: var(--accent);
-        }
-
-        .help-content p {
-            margin: 8px 0;
-            font-size: 13px;
-            line-height: 1.5;
-        }
-
-        .help-content ul {
-            margin: 12px 0;
-            padding-left: 20px;
-            font-size: 12px;
-        }
-
-        .help-content ul li {
-            margin: 6px 0;
-        }
-
-        .help-note {
-            background: rgba(255,255,255,0.05);
-            padding: 8px 12px;
-            border-radius: 6px;
-            margin-top: 12px;
-            font-size: 12px;
-        }
-
-        .help-note a {
-            color: var(--accent);
-            text-decoration: none;
-        }
-
-        .help-note a:hover {
-            text-decoration: underline;
-        }
-
-        .payload-actions {
-            display: flex;
-            gap: 8px;
-            margin-top: 6px;
-        }
-
-        .btn-xs {
-            padding: 4px 10px;
-            font-size: 11px;
-            background: rgba(255,255,255,0.1);
-            border: 1px solid var(--panel-border);
-            border-radius: 6px;
-            color: var(--text);
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .btn-xs:hover {
-            background: rgba(255,255,255,0.15);
-            border-color: var(--accent);
-        }
-
-        .btn-xs i {
-            margin-right: 4px;
-        }
-
-        .webhook-form select,
-        .webhook-form textarea,
-        .webhook-form input {
-            background: rgba(0,0,0,0.3);
-            border: 1px solid var(--panel-border);
-            border-radius: 8px;
-            padding: 10px 14px;
-            color: var(--text);
-            font-size: 13px;
-            width: 100%;
-            transition: border-color 0.2s;
-        }
-
-        .webhook-form select:focus,
-        .webhook-form textarea:focus,
-        .webhook-form input:focus {
-            outline: none;
-            border-color: var(--accent);
-        }
-
-        .webhook-form textarea {
-            font-family: 'Monaco', 'Consolas', monospace;
-            font-size: 12px;
-            resize: vertical;
-            min-height: 90px;
-        }
-
-        .webhook-result {
-            background: rgba(0,0,0,0.4);
-            border-radius: 8px;
-            padding: 12px;
-            font-family: monospace;
-            font-size: 11px;
-            max-height: 150px;
-            overflow-y: auto;
-            display: none;
-            border: 1px solid var(--panel-border);
-            transition: max-height 0.3s ease;
-            white-space: pre-wrap; /* Preserve formatting */
-        }
-
-        .webhook-result.visible {
-            display: block;
-        }
-
-        .webhook-result.expanded {
-            max-height: 600px;
-        }
-
-        .result-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-top: 12px;
-            margin-bottom: 4px;
-            display: none;
-        }
-        .result-header.visible { display: flex; }
-        .result-label { font-size: 11px; color: var(--muted); font-weight: 600; text-transform: uppercase; }
-
-        /* Metrics Grid */
-        .metrics-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 12px;
-        }
-
-        .metric-card {
-            background: rgba(0,0,0,0.25);
-            border-radius: 10px;
-            padding: 14px 16px;
-        }
-
-        .metric-card .metric-label {
-            font-size: 10px;
-            color: var(--muted);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 6px;
-        }
-
-        .metric-card .metric-value {
-            font-size: 18px;
-            font-weight: 700;
-            color: var(--text);
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .metric-card .metric-bar {
-            height: 3px;
-            background: rgba(255,255,255,0.1);
-            border-radius: 2px;
-            margin-top: 10px;
-            overflow: hidden;
-        }
-
-        .metric-card .metric-fill {
-            height: 100%;
-            background: var(--accent);
-            transition: width 0.3s;
-        }
-
-        .metric-card .metric-detail {
-            font-size: 11px;
-            color: var(--muted);
-            margin-top: 6px;
-        }
-
-        /* Collections List */
-        .collections-list {
-            max-height: 200px;
-            overflow-y: auto;
-        }
-
-        /* Scans List */
-        .scans-list {
-            max-height: 200px;
-            overflow-y: auto;
-        }
-
-        .scan-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 10px 0;
-            border-bottom: 1px solid rgba(255,255,255,0.04);
-            font-size: 13px;
-        }
-
-        .scan-item:last-child {
-            border-bottom: none;
-        }
-
-        .scan-info {
-            display: flex;
-            flex-direction: column;
-            gap: 2px;
-        }
-
-        .scan-info .id {
-            color: var(--text);
-            font-family: monospace;
-            font-size: 11px;
-        }
-
-        .scan-info .status {
-            font-size: 10px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .scan-info .status.running { color: #fbbf24; }
-        .scan-info .status.complete { color: #4ade80; }
-        .scan-info .status.stopped { color: #f87171; }
-
-        .scan-actions {
-            display: flex;
-            gap: 6px;
-        }
-
-        .btn-xs {
-            padding: 4px 8px;
-            font-size: 10px;
-            border-radius: 4px;
-            border: 1px solid var(--panel-border);
-            background: rgba(255,255,255,0.05);
-            color: var(--muted);
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .btn-xs:hover {
-            background: rgba(255,255,255,0.1);
-            color: var(--text);
-        }
-
-        .btn-xs.danger:hover {
-            background: rgba(248,113,113,0.2);
-            color: #f87171;
-            border-color: rgba(248,113,113,0.3);
-        }
-
-        .collection-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 10px 0;
-            border-bottom: 1px solid rgba(255,255,255,0.04);
-            font-size: 13px;
-        }
-
-        .collection-item:last-child {
-            border-bottom: none;
-        }
-
-        .collection-info .name {
-            color: var(--text);
-            font-weight: 500;
-        }
-
-        .collection-info .db {
-            font-size: 10px;
-            color: var(--muted);
-        }
-
-        .collection-item .count {
-            background: var(--accent);
-            color: #0f172a;
-            padding: 3px 10px;
-            border-radius: 99px;
-            font-size: 11px;
-            font-weight: 700;
-        }
-
-        /* Status Indicators */
-        .status-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            display: inline-block;
-        }
-
-        .status-dot.healthy { background: #4ade80; box-shadow: 0 0 6px rgba(74,222,128,0.5); }
-        .status-dot.warning { background: #fbbf24; box-shadow: 0 0 6px rgba(251,191,36,0.5); }
-        .status-dot.error { background: #f87171; box-shadow: 0 0 6px rgba(248,113,113,0.5); }
-
-        /* Tooltip System */
-        [data-tooltip] {
-            position: relative;
-            cursor: help;
-        }
-
-        [data-tooltip]:hover::after {
-            content: attr(data-tooltip);
-            position: absolute;
-            bottom: 100%;
-            left: 50%;
-            transform: translateX(-50%);
-            margin-bottom: 8px;
-            padding: 8px 12px;
-            background: rgba(15, 23, 42, 0.98);
-            color: var(--text);
-            font-size: 12px;
-            line-height: 1.4;
-            border-radius: 6px;
-            border: 1px solid var(--panel-border);
-            white-space: normal;
-            max-width: 280px;
-            width: max-content;
-            z-index: 1000;
-            pointer-events: none;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-            animation: tooltipFadeIn 0.2s ease-out;
-        }
-
-        [data-tooltip]:hover::before {
-            content: '';
-            position: absolute;
-            bottom: 100%;
-            left: 50%;
-            transform: translateX(-50%);
-            margin-bottom: 2px;
-            border: 6px solid transparent;
-            border-top-color: var(--panel-border);
-            z-index: 1001;
-            pointer-events: none;
-            animation: tooltipFadeIn 0.2s ease-out;
-        }
-
-        @keyframes tooltipFadeIn {
-            from { opacity: 0; transform: translateX(-50%) translateY(4px); }
-            to { opacity: 1; transform: translateX(-50%) translateY(0); }
-        }
-
-        /* Button Styles */
-        .btn-sm {
-            padding: 8px 14px;
-            font-size: 12px;
-            border-radius: 8px;
-            border: 1px solid var(--panel-border);
-            background: transparent;
-            color: var(--muted);
-            cursor: pointer;
-            transition: all 0.2s;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-        }
-
-        .btn-sm:hover {
-            background: rgba(255,255,255,0.05);
-            color: var(--text);
-        }
-
-        .btn-primary {
-            background: var(--accent);
-            color: #0f172a;
-            border: none;
-            font-weight: 600;
-        }
-
-        .btn-primary:hover {
-            opacity: 0.9;
-        }
-
-        /* Responsive */
-        @media (max-width: 1200px) {
-            .ops-grid {
-                grid-template-columns: 1fr 1fr;
-            }
-            .ops-grid > .section-card:nth-child(3) {
-                grid-column: span 2;
-            }
-        }
-
-        @media (max-width: 800px) {
-            .ops-page {
-                padding: 16px;
-            }
-            .ops-grid {
-                grid-template-columns: 1fr;
-            }
-            .ops-grid > .section-card:nth-child(3) {
-                grid-column: span 1;
-            }
-            .metrics-grid {
-                grid-template-columns: repeat(2, 1fr);
-            }
-            .health-strip {
-                flex-wrap: wrap;
-            }
-            .health-strip .uptime-info {
-                width: 100%;
-                margin-left: 0;
-                margin-top: 8px;
-                justify-content: center;
-            }
-            .health-strip {
-                flex-wrap: wrap;
-                gap: 12px;
-            }
-            .health-strip-title {
-                width: 100%;
-                border-right: none;
-                border-bottom: 1px solid var(--panel-border);
-                padding-bottom: 12px;
-                margin-bottom: 4px;
-            }
-        }
-    </style>
 </head>
 
 <body>
+    <nav class="top-nav">
+        <a href="index.html"><i class="fas fa-comments"></i> Chat</a>
+        <a href="dashboard.html" class="active"><i class="fas fa-tachometer-alt"></i> Operations</a>
+        <a href="n8n-monitor.html"><i class="fas fa-network-wired"></i> n8n Monitor</a>
+        <a href="analytics.html"><i class="fas fa-chart-line"></i> Analytics</a>
+    </nav>
     <div class="bg-grid"></div>
-    <div class="page ops-page">
+    <div class="page ops-page" style="padding-top: 80px;">
         
         <!-- Header -->
         <header class="ops-header">
             <div>
-                <div class="eyebrow">AgentX • Unified Operations</div>
-                <h1>Operations Center</h1>
+                <div class="eyebrow">AgentX • Operations</div>
+                <h1><i class="fas fa-tachometer-alt"></i><span class="title-separator"></span>Operations Center</h1>
                 <p class="lede">Monitor health, trigger workflows, and track system metrics — all in one view.</p>
             </div>
-            <nav class="agentx-nav"></nav>
         </header>
 
         <!-- Health Strip -->
@@ -821,21 +104,74 @@
         <!-- Main Grid: 3 Sections -->
         <div class="ops-grid">
             
-            <!-- Section 1: System Events -->
+
+            <!-- Section 3: System Metrics + Collections -->
             <div class="section-card">
                 <div class="section-header">
-                    <h2><i class="fas fa-stream"></i> Recent Events</h2>
-                    <button class="btn-sm" id="refreshEventsBtn"><i class="fas fa-sync-alt"></i></button>
+                    <h2><i class="fas fa-chart-bar"></i> Metrics</h2>
+                    <button class="btn-sm" id="refreshMetricsBtn"><i class="fas fa-sync-alt"></i></button>
                 </div>
                 <div class="section-body">
-                    <div class="events-list" id="system-events-list">
-                        <div class="event-row">
-                            <div class="event-content">
-                                <div class="event-message" style="color: var(--muted);">Loading events...</div>
+                    <div class="metrics-grid">
+                        <div class="metric-card" data-tooltip="Percentage of embedding cache hits vs misses. Higher is better - means fewer expensive API calls to the embedding service.">
+                            <div class="metric-label">Cache</div>
+                            <div class="metric-value">
+                                <span class="status-dot healthy" id="cacheStatus"></span>
+                                <span id="cacheHitRate">0%</span>
                             </div>
+                            <div class="metric-bar"><div class="metric-fill" id="cacheBar" style="width: 0%"></div></div>
+                            <div class="metric-detail"><span id="cacheHits">0</span> hits / <span id="cacheMisses">0</span> miss</div>
+                        </div>
+                        <div class="metric-card" data-tooltip="Active database connections out of maximum pool size. Monitor to detect connection leaks or pool exhaustion.">
+                            <div class="metric-label">Connections</div>
+                            <div class="metric-value">
+                                <span class="status-dot healthy" id="connStatus"></span>
+                                <span id="connActive">0</span>/<span id="connMax">0</span>
+                            </div>
+                            <div class="metric-bar"><div class="metric-fill" id="connBar" style="width: 0%"></div></div>
+                            <div class="metric-detail"><span id="connAvail">0</span> available</div>
+                        </div>
+                        <div class="metric-card" data-tooltip="Node.js heap memory usage. Shows V8 JavaScript heap allocation. Warning at >80%, critical at >90%.">
+                            <div class="metric-label">Heap</div>
+                            <div class="metric-value">
+                                <span class="status-dot healthy" id="sysStatus"></span>
+                                <span id="heapUsed">0 MB</span>
+                            </div>
+                            <div class="metric-bar"><div class="metric-fill" id="sysBar" style="width: 0%"></div></div>
+                            <div class="metric-detail">of <span id="heapTotal">0 MB</span></div>
+                        </div>
+                        <div class="metric-card" data-tooltip="Node.js version and platform information for the running AgentX server process.">
+                            <div class="metric-label">Node</div>
+                            <div class="metric-value" id="sysNode" style="font-size: 14px;">v18+</div>
+                            <div class="metric-detail" id="sysPlatform">Linux</div>
                         </div>
                     </div>
                 </div>
+
+                <!-- Collections Sub-section -->
+                <div class="section-header" style="margin-top: 0; border-top: 1px solid var(--panel-border);">
+                    <h2><i class="fas fa-database"></i> Collections</h2>
+                </div>
+                <div class="section-body">
+                    <div class="collections-list" id="collections-list">
+                        <div class="collection-item">
+                            <span style="color: var(--muted);">Loading...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- DataAPI Scans Sub-section -->
+                <div class="section-header" style="margin-top: 0; border-top: 1px solid var(--panel-border);">
+                    <h2><i class="fas fa-hdd"></i> DataAPI Scans</h2>
+                    <button class="btn-sm" id="refreshScansBtn" title="Refresh Scans"><i class="fas fa-sync-alt"></i></button>
+                </div>
+                <div class="section-body">
+                    <div class="scans-list" id="scans-list" style="max-height: 200px; overflow-y: auto;">
+                        <div class="scan-item"><span style="color: var(--muted);">Loading...</span></div>
+                    </div>
+                </div>
+
+
             </div>
 
             <!-- Section 2: n8n Webhook Trigger -->
@@ -907,73 +243,6 @@
                         <div class="webhook-result" id="triggerResult"></div>
                     </div>
                 </div>
-            </div>
-
-            <!-- Section 3: System Metrics + Collections -->
-            <div class="section-card">
-                <div class="section-header">
-                    <h2><i class="fas fa-chart-bar"></i> Metrics</h2>
-                    <button class="btn-sm" id="refreshMetricsBtn"><i class="fas fa-sync-alt"></i></button>
-                </div>
-                <div class="section-body">
-                    <div class="metrics-grid">
-                        <div class="metric-card" data-tooltip="Percentage of embedding cache hits vs misses. Higher is better - means fewer expensive API calls to the embedding service.">
-                            <div class="metric-label">Cache</div>
-                            <div class="metric-value">
-                                <span class="status-dot healthy" id="cacheStatus"></span>
-                                <span id="cacheHitRate">0%</span>
-                            </div>
-                            <div class="metric-bar"><div class="metric-fill" id="cacheBar" style="width: 0%"></div></div>
-                            <div class="metric-detail"><span id="cacheHits">0</span> hits / <span id="cacheMisses">0</span> miss</div>
-                        </div>
-                        <div class="metric-card" data-tooltip="Active database connections out of maximum pool size. Monitor to detect connection leaks or pool exhaustion.">
-                            <div class="metric-label">Connections</div>
-                            <div class="metric-value">
-                                <span class="status-dot healthy" id="connStatus"></span>
-                                <span id="connActive">0</span>/<span id="connMax">0</span>
-                            </div>
-                            <div class="metric-bar"><div class="metric-fill" id="connBar" style="width: 0%"></div></div>
-                            <div class="metric-detail"><span id="connAvail">0</span> available</div>
-                        </div>
-                        <div class="metric-card" data-tooltip="Node.js heap memory usage. Shows V8 JavaScript heap allocation. Warning at >80%, critical at >90%.">
-                            <div class="metric-label">Heap</div>
-                            <div class="metric-value">
-                                <span class="status-dot healthy" id="sysStatus"></span>
-                                <span id="heapUsed">0 MB</span>
-                            </div>
-                            <div class="metric-bar"><div class="metric-fill" id="sysBar" style="width: 0%"></div></div>
-                            <div class="metric-detail">of <span id="heapTotal">0 MB</span></div>
-                        </div>
-                        <div class="metric-card" data-tooltip="Node.js version and platform information for the running AgentX server process.">
-                            <div class="metric-label">Node</div>
-                            <div class="metric-value" id="sysNode" style="font-size: 14px;">v18+</div>
-                            <div class="metric-detail" id="sysPlatform">Linux</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Collections Sub-section -->
-                <div class="section-header" style="margin-top: 0; border-top: 1px solid var(--panel-border);">
-                    <h2><i class="fas fa-database"></i> Collections</h2>
-                </div>
-                <div class="section-body">
-                    <div class="collections-list" id="collections-list">
-                        <div class="collection-item">
-                            <span style="color: var(--muted);">Loading...</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- DataAPI Scans Sub-section -->
-                <div class="section-header" style="margin-top: 0; border-top: 1px solid var(--panel-border);">
-                    <h2><i class="fas fa-hdd"></i> DataAPI Scans</h2>
-                    <button class="btn-sm" id="refreshScansBtn" title="Refresh Scans"><i class="fas fa-sync-alt"></i></button>
-                </div>
-                <div class="section-body">
-                    <div class="scans-list" id="scans-list" style="max-height: 200px; overflow-y: auto;">
-                        <div class="scan-item"><span style="color: var(--muted);">Loading...</span></div>
-                    </div>
-                </div>
 
                 <!-- RAG Ingestion Sub-section -->
                 <div class="section-header" style="margin-top: 0; border-top: 1px solid var(--panel-border);">
@@ -988,6 +257,23 @@
                         <i class="fas fa-file-import"></i> Trigger Ingestion
                     </button>
                     <div id="ragResult" style="margin-top: 8px; font-size: 11px; color: var(--muted); display: none;"></div>
+                </div>
+            </div>
+
+            <!-- Section 3: System Events -->
+            <div class="section-card" style="grid-column: 1 / -1;">
+                <div class="section-header">
+                    <h2><i class="fas fa-stream"></i> Recent Events</h2>
+                    <button class="btn-sm" id="refreshEventsBtn"><i class="fas fa-sync-alt"></i></button>
+                </div>
+                <div class="section-body">
+                    <div class="events-list" id="system-events-list">
+                        <div class="event-row">
+                            <div class="event-content">
+                                <div class="event-message" style="color: var(--muted);">Loading events...</div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -1007,10 +293,6 @@
     </div>
 
     <script type="module" src="/js/dashboard.js"></script>
-    <script type="module">
-        import { injectNav } from '/js/components/nav.js';
-        injectNav('dashboard');
-    </script>
 </body>
 
 </html>

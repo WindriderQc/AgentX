@@ -244,7 +244,7 @@ router.post('/search', async (req, res) => {
  * List all documents in the RAG store (for debugging).
  * NOT in contract but useful for development.
  */
-router.get('/documents', (req, res) => {
+router.get('/documents', async (req, res) => {
   try {
     const { source, tags } = req.query;
     const filters = {};
@@ -252,8 +252,8 @@ router.get('/documents', (req, res) => {
     if (source) filters.source = source;
     if (tags) filters.tags = tags.split(',');
 
-    const documents = ragStore.listDocuments(filters);
-    const stats = ragStore.getStats();
+    const documents = await ragStore.listDocuments(filters);
+    const stats = await ragStore.getStats();
 
     res.json({
       stats,
@@ -275,10 +275,10 @@ router.get('/documents', (req, res) => {
  * Delete a document from the RAG store (for debugging).
  * NOT in contract but useful for development.
  */
-router.delete('/documents/:documentId', (req, res) => {
+router.delete('/documents/:documentId', async (req, res) => {
   try {
     const { documentId } = req.params;
-    const deleted = ragStore.deleteDocument(documentId);
+    const deleted = await ragStore.deleteDocument(documentId);
 
     if (!deleted) {
       return res.status(404).json({

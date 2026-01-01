@@ -41,8 +41,8 @@ app.use(cors({
   credentials: true
 }));
 app.use(cookieParser());
-app.use(express.json({ limit: '2mb' }));
-app.use(express.urlencoded({ extended: true, limit: '2mb' }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Sanitize MongoDB queries (prevent NoSQL injection)
 app.use(mongoSanitize({
@@ -240,6 +240,15 @@ app.use(errorLogger);
 
 // Global error handler
 app.use((err, req, res, next) => {
+  // Handle PayloadTooLargeError specifically
+  if (err.type === 'entity.too.large') {
+    return res.status(413).json({
+      status: 'error',
+      message: 'Payload too large. The document exceeds the maximum allowed size (50MB).',
+      code: 'PAYLOAD_TOO_LARGE'
+    });
+  }
+
   const statusCode = err.statusCode || 500;
   res.status(statusCode).json({
     status: 'error',

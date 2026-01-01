@@ -110,6 +110,17 @@ class RagStore {
   }
 
   /**
+   * List all ingested documents
+   * @returns {Promise<Array<{documentId: string, title: string, source: string, chunkCount: number}>>}
+   */
+  async listDocuments() {
+    if (this.vectorStore.listDocuments) {
+      return this.vectorStore.listDocuments();
+    }
+    return [];
+  }
+
+  /**
    * Search for similar chunks using semantic search
    * @param {string} query - Search query
    * @param {Object} options - Search options (topK, minScore, filters)
