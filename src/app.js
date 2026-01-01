@@ -107,9 +107,15 @@ app.use(requestLogger);
 // API ROUTES (must come BEFORE static files)
 // ============================================
 
-// Auth routes
+// Apply rate limiters
+const { apiLimiter, chatLimiter, strictLimiter, authLimiter } = require('./middleware/rateLimiter');
+
+// Apply general API rate limiter to all /api routes (except specific ones)
+app.use('/api/', apiLimiter);
+
+// Auth routes (with stricter limit for brute force protection)
 const authRoutes = require('../routes/auth');
-app.use('/api/auth', authRoutes);
+app.use('/api/auth', authLimiter, authRoutes);
 
 // V3: Mount RAG routes
 const ragRoutes = require('../routes/rag');
@@ -170,6 +176,11 @@ app.use('/api/conversations', historyRoutes);
 // Mount Main API routes (Chat, Feedback, Ollama)
 // This is still 'api.js' but stripped of other concerns
 const apiRoutes = require('../routes/api');
+// Apply chat-specific rate limiter to chat endpoint
+app.use('/api/chat', chatLimiter);
+// Apply strict limiter to expensive RAG operations
+app.use('/api/rag/ingest', strictLimiter);
+app.use('/api/prompts/:name/analyze-failures', strictLimiter);
 app.use('/api', apiRoutes);
 
 // ============================================

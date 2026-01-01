@@ -324,4 +324,102 @@ function renderTemplate(template, variables) {
     return rendered;
 }
 
+/**
+ * POST /api/prompts/:name/analyze-failures
+ * Analyze negative feedback conversations and suggest improvements
+ * Body: { version?: number, limit?: number }
+ */
+router.post('/:name/analyze-failures', optionalAuth, async (req, res) => {
+    const Conversation = require('../models/Conversation');
+    const { analyzeFailurePatterns, callOllamaForAnalysis } = require('../src/helpers/promptAnalysis');
+    
+    try {
+        const { name } = req.params;
+        const { version, limit = 20 } = req.body;
+        
+        // Find the prompt
+        let prompt;
+        if (version) {
+            prompt = await PromptConfig.findOne({ name, version: parseInt(version) });
+        } else {
+            prompt = await PromptConfig.getActive(name);
+        }
+        
+        if (!prompt) {
+            return res.status(404).json({ 
+                status: 'error', 
+                message: 'Prompt not found' 
+            });
+        }
+        
+        logger.info('Analyzing prompt failures', { name, version: prompt.version, limit });
+        
+        // Fetch conversations with negative feedback
+        const conversations = await Conversation.find({
+            promptName: name,
+            promptVersion: prompt.version,
+            'messages.feedback.rating': -1
+        })
+        .sort({ createdAt: -1 })
+        .limit(parseInt(limit))
+        .lean();
+        
+        if (conversations.length === 0) {
+            return res.json({
+                status: 'success',
+                data: {
+                    message: 'No negative feedback found for this prompt version',
+                    conversations: 0,
+                    analysis: null
+                }
+            });
+        }
+        
+        // Analyze failure patterns
+        const patternAnalysis = analyzeFailurePatterns(conversations);
+        
+        // Get sample conversations for LLM analysis (max 5)
+        const sampleConversations = conversations.slice(0, 5);
+        
+        // Call Ollama for deeper analysis
+        const ollamaHost = process.env.OLLAMA_HOST || 'http://localhost:11434';
+        const llmAnalysis = await callOllamaForAnalysis(
+            prompt,
+            patternAnalysis,
+            sampleConversations,
+            ollamaHost
+        );
+        
+        logger.info('Failure analysis complete', { 
+            name, 
+            version: prompt.version, 
+            conversationsAnalyzed: conversations.length,
+            patternsFound: patternAnalysis.patterns.length
+        });
+        
+        res.json({
+            status: 'success',
+            data: {
+                prompt: {
+                    name: prompt.name,
+                    version: prompt.version,
+                    systemPrompt: prompt.systemPrompt
+                },
+                conversations: conversations.length,
+                patternAnalysis,
+                llmAnalysis: llmAnalysis.success ? llmAnalysis.analysis : null,
+                llmError: llmAnalysis.success ? null : llmAnalysis.error,
+                rawLlmResponse: llmAnalysis.raw_response
+            }
+        });
+        
+    } catch (err) {
+        logger.error('Analyze failures error', { error: err.message, stack: err.stack });
+        res.status(500).json({ 
+            status: 'error', 
+            message: err.message 
+        });
+    }
+});
+
 module.exports = router;

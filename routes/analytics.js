@@ -7,7 +7,7 @@
 const express = require('express');
 const router = express.Router();
 const Conversation = require('../models/Conversation');
-const { requireAuth } = require('../src/middleware/auth');
+const { optionalAuth } = require('../src/middleware/auth');
 const logger = require('../config/logger');
 
 /**
@@ -19,7 +19,7 @@ const logger = require('../config/logger');
  *   - groupBy (optional: 'model' | 'promptVersion' | 'day')
  * Response: { totalConversations, totalMessages, breakdown: [...] }
  */
-router.get('/usage', requireAuth, async (req, res) => {
+router.get('/usage', optionalAuth, async (req, res) => {
   try {
     const { from, to, groupBy } = req.query;
     // In requireAuth middleware, user is attached to res.locals.user
@@ -129,7 +129,7 @@ router.get('/usage', requireAuth, async (req, res) => {
  *   - groupBy (optional: 'promptVersion' | 'model')
  * Response: { totalFeedback, positive, negative, positiveRate, breakdown: [...] }
  */
-router.get('/feedback', requireAuth, async (req, res) => {
+router.get('/feedback', optionalAuth, async (req, res) => {
   try {
     const { from, to, groupBy } = req.query;
     
@@ -268,7 +268,7 @@ router.get('/feedback', requireAuth, async (req, res) => {
  *   - to (ISO date, default: now)
  * Response: { ragUsageRate, ragPositiveRate, noRagPositiveRate, ... }
  */
-router.get('/rag-stats', requireAuth, async (req, res) => {
+router.get('/rag-stats', optionalAuth, async (req, res) => {
   try {
     const { from, to } = req.query;
     
@@ -358,19 +358,23 @@ router.get('/rag-stats', requireAuth, async (req, res) => {
  *   - groupBy (optional: 'model', default: 'model')
  * Response: { totalTokens, avgDuration, breakdown: [...] }
  */
-router.get('/stats', requireAuth, async (req, res) => {
+router.get('/stats', optionalAuth, async (req, res) => {
   try {
     const { from, to, groupBy = 'model' } = req.query;
-    const userId = res.locals.user.userId;
+    const userId = res.locals.user?.userId;
 
     // Parse date range
     const toDate = to ? new Date(to) : new Date();
     const fromDate = from ? new Date(from) : new Date(toDate.getTime() - 7 * 24 * 60 * 60 * 1000);
 
     const dateFilter = {
-      createdAt: { $gte: fromDate, $lte: toDate },
-      userId: userId // Ensure user isolation
+      createdAt: { $gte: fromDate, $lte: toDate }
     };
+
+    // Optional user isolation (only if authenticated)
+    if (userId) {
+      dateFilter.userId = userId;
+    }
 
     // Grouping key selection
     let groupKey = '$model'; // Default to model
@@ -461,10 +465,10 @@ router.get('/stats', requireAuth, async (req, res) => {
  *   - to (ISO date, default: now)
  *   - threshold (number, default: 0.7 - flag prompts below this)
  */
-router.get('/feedback/summary', requireAuth, async (req, res) => {
+router.get('/feedback/summary', optionalAuth, async (req, res) => {
   try {
     const { from, to, threshold = 0.7 } = req.query;
-    const userId = res.locals.user.userId;
+    const userId = res.locals.user?.userId;
     const minPositiveRate = parseFloat(threshold);
 
     // Default to 30 days for summary
@@ -472,9 +476,13 @@ router.get('/feedback/summary', requireAuth, async (req, res) => {
     const fromDate = from ? new Date(from) : new Date(toDate.getTime() - 30 * 24 * 60 * 60 * 1000);
 
     const dateFilter = {
-      createdAt: { $gte: fromDate, $lte: toDate },
-      userId: userId
+      createdAt: { $gte: fromDate, $lte: toDate }
     };
+
+    // Optional user isolation (only if authenticated)
+    if (userId) {
+      dateFilter.userId = userId;
+    }
 
     // Overall feedback metrics
     const overallAgg = await Conversation.aggregate([
@@ -598,7 +606,7 @@ router.get('/feedback/summary', requireAuth, async (req, res) => {
  *   - model (string, optional) - Filter by specific model
  * Response: { prompts: [{ name, version, overall, byModel: [...] }] }
  */
-router.get('/prompt-metrics', requireAuth, async (req, res) => {
+router.get('/prompt-metrics', optionalAuth, async (req, res) => {
   try {
     const { days = 7, model: filterModel } = req.query;
 
@@ -721,7 +729,7 @@ router.get('/prompt-metrics', requireAuth, async (req, res) => {
  *   - days: number of days for current period (default: 7)
  *   - model: filter by specific model (optional)
  */
-router.get('/trending', requireAuth, async (req, res) => {
+router.get('/trending', optionalAuth, async (req, res) => {
   try {
     const { days = 7, model: filterModel } = req.query;
     const daysNum = parseInt(days);

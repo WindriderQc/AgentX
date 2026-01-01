@@ -12,6 +12,9 @@ import { Toast } from './components/shared/Toast.js';
 import { PerformanceMetricsDashboard } from './components/PerformanceMetricsDashboard.js';
 import { OnboardingWizard } from './components/OnboardingWizard.js';
 import { PromptVersionCompare } from './components/PromptVersionCompare.js';
+import { PromptHealthMonitor } from './components/PromptHealthMonitor.js';
+import { ConversationReviewModal } from './components/ConversationReviewModal.js';
+import { PromptImprovementWizard } from './components/PromptImprovementWizard.js';
 
 // Global state
 const state = {
@@ -38,6 +41,9 @@ let templateTester;
 let onboardingWizard;
 let metricsDashboard;
 let versionCompare;
+let healthMonitor;
+let conversationReviewModal;
+let improvementWizard;
 let api;
 let toast;
 
@@ -99,6 +105,15 @@ function initializeComponents() {
 
   // Initialize version comparison
   versionCompare = new PromptVersionCompare(api, toast);
+
+  // Initialize prompt health monitor
+  healthMonitor = new PromptHealthMonitor('promptHealthAlert', toast);
+
+  // Initialize conversation review modal
+  conversationReviewModal = new ConversationReviewModal(toast);
+
+  // Initialize prompt improvement wizard
+  improvementWizard = new PromptImprovementWizard(api, toast);
 
   // Attach component event handlers
   promptListView.on('edit', handleEdit);
@@ -185,6 +200,18 @@ function attachEventListeners() {
   // Compare Versions button
   document.getElementById('compareVersionsBtn').addEventListener('click', () => {
     showVersionCompareSelector();
+  });
+
+  // Listen for review conversations event from PromptHealthMonitor
+  document.addEventListener('review-prompt-conversations', (e) => {
+    const { promptName, promptVersion } = e.detail;
+    conversationReviewModal.open(promptName, promptVersion);
+  });
+
+  // Listen for improve prompt event (from health monitor or conversation review)
+  document.addEventListener('improve-prompt', (e) => {
+    const { promptName, promptVersion } = e.detail;
+    improvementWizard.open(promptName, promptVersion);
   });
 
   // Keyboard shortcuts
