@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM Benchmark - AgentX</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .benchmark-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .benchmark-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        .benchmark-header h1 {
+            margin: 0 0 10px 0;
+            font-size: 2.5em;
+        }
+        .benchmark-header p {
+            margin: 0;
+            opacity: 0.9;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            transition: transform 0.3s;
+        }
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+        .stat-label {
+            color: #666;
+            font-size: 0.9em;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+        }
+        .stat-value {
+            color: #333;
+            font-size: 2.5em;
+            font-weight: bold;
+        }
+        .stat-unit {
+            color: #999;
+            font-size: 0.5em;
+            margin-left: 5px;
+        }
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+        .chart-card {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        .chart-title {
+            font-size: 1.3em;
+            color: #333;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+        .test-form {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 2fr auto;
+            gap: 15px;
+            align-items: end;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+        .form-group label {
+            color: #666;
+            font-size: 0.9em;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+        .form-group input, .form-group select {
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 1em;
+            transition: border-color 0.3s;
+        }
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .btn-primary:hover {
+            transform: scale(1.05);
+        }
+        .btn-primary:active {
+            transform: scale(0.98);
+        }
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .status {
+            margin-top: 15px;
+            padding: 15px;
+            border-radius: 8px;
+            display: none;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .leaderboard {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        .leaderboard table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .leaderboard th, .leaderboard td {
+            padding: 15px;
+            text-align: left;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        .leaderboard th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #333;
+        }
+        .leaderboard tr:hover {
+            background: #f8f9fa;
+        }
+        .badge {
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+        .badge.gold { background: #ffd700; color: #333; }
+        .badge.silver { background: #c0c0c0; color: #333; }
+        .badge.bronze { background: #cd7f32; color: white; }
+        .host-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            background: #e0e0e0;
+            border-radius: 12px;
+            font-size: 0.8em;
+            margin-left: 10px;
+        }
+    </style>
+</head>
+<body>
+    <nav class="top-nav">
+        <a href="index.html"><i class="fas fa-comments"></i> Chat</a>
+        <a href="dashboard.html"><i class="fas fa-tachometer-alt"></i> Operations</a>
+        <a href="n8n-monitor.html"><i class="fas fa-network-wired"></i> n8n Monitor</a>
+        <a href="benchmark.html" class="active"><i class="fas fa-rocket"></i> Benchmark</a>
+        <a href="analytics.html"><i class="fas fa-chart-line"></i> Analytics</a>
+    </nav>
+    <div class="benchmark-container" style="padding-top: 80px;">
+        <div class="benchmark-header">
+            <h1>🚀 LLM Benchmark Dashboard</h1>
+            <p>Real-time performance metrics for Ollama models across configured hosts</p>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">Total Tests</div>
+                <div class="stat-value" id="totalTests">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Success Rate</div>
+                <div class="stat-value" id="successRate">0<span class="stat-unit">%</span></div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Avg Latency</div>
+                <div class="stat-value" id="avgLatency">0<span class="stat-unit">ms</span></div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Fastest Model</div>
+                <div class="stat-value" style="font-size: 1.5em;" id="fastestModel">-</div>
+            </div>
+        </div>
+
+        <div class="test-form">
+            <h2 style="margin-bottom: 20px;">Run New Test</h2>
+            <form id="testForm" class="form-grid">
+                <div class="form-group">
+                    <label for="model">Model</label>
+                    <input type="text" id="model" placeholder="llama2" required>
+                </div>
+                <div class="form-group">
+                    <label for="host">Ollama Host</label>
+                    <select id="host" required>
+                        <option value="">Loading...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="prompt">Prompt</label>
+                    <input type="text" id="prompt" placeholder="Write a hello world function" required>
+                </div>
+                <button type="submit" class="btn-primary" id="runBtn">Run Test</button>
+            </form>
+            <div id="status" class="status"></div>
+        </div>
+
+        <div class="charts-grid">
+            <div class="chart-card">
+                <div class="chart-title">Latency Comparison</div>
+                <canvas id="latencyChart"></canvas>
+            </div>
+            <div class="chart-card">
+                <div class="chart-title">Tokens per Second</div>
+                <canvas id="tokensChart"></canvas>
+            </div>
+        </div>
+
+        <div class="leaderboard">
+            <h2 style="margin-bottom: 20px;">🏆 Model Leaderboard</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Rank</th>
+                        <th>Model</th>
+                        <th>Avg Latency</th>
+                        <th>Tokens/sec</th>
+                        <th>Tests</th>
+                    </tr>
+                </thead>
+                <tbody id="leaderboard">
+                    <tr>
+                        <td colspan="5" style="text-align: center; color: #999;">No tests run yet</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const BENCHMARK_API = 'http://localhost:3081';
+        let latencyChart, tokensChart;
+        let ollamaHosts = [];
+
+        // Fetch Ollama hosts from AgentX config
+        async function loadOllamaHosts() {
+            try {
+                const res = await fetch('/api/system/health');
+                const data = await res.json();
+
+                // Build host list from environment
+                ollamaHosts = [];
+                if (data.ollama && data.ollama.host) {
+                    ollamaHosts.push({ name: 'Primary', url: data.ollama.host });
+                }
+
+                // Add secondary hosts if available
+                const secondaryHost = 'http://192.168.2.12:11434';
+                if (secondaryHost) {
+                    ollamaHosts.push({ name: 'Secondary', url: secondaryHost });
+                }
+
+                // Populate select
+                const select = document.getElementById('host');
+                select.innerHTML = ollamaHosts.map(h =>
+                    `<option value="${h.url}">${h.name} (${h.url})</option>`
+                ).join('');
+
+                // Set default
+                if (ollamaHosts.length > 0) {
+                    select.value = ollamaHosts[0].url;
+                }
+            } catch (err) {
+                console.error('Failed to load Ollama hosts:', err);
+                document.getElementById('host').innerHTML =
+                    '<option value="http://localhost:11434">Default (http://localhost:11434)</option>';
+            }
+        }
+
+        // Initialize charts
+        function initCharts() {
+            const latencyCtx = document.getElementById('latencyChart').getContext('2d');
+            const tokensCtx = document.getElementById('tokensChart').getContext('2d');
+
+            latencyChart = new Chart(latencyCtx, {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Average Latency (ms)',
+                        data: [],
+                        backgroundColor: 'rgba(102, 126, 234, 0.8)',
+                        borderColor: 'rgba(102, 126, 234, 1)',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+
+            tokensChart = new Chart(tokensCtx, {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Tokens per Second',
+                        data: [],
+                        backgroundColor: 'rgba(118, 75, 162, 0.8)',
+                        borderColor: 'rgba(118, 75, 162, 1)',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+        }
+
+        // Load dashboard data
+        async function loadDashboard() {
+            try {
+                const res = await fetch(`${BENCHMARK_API}/dashboard`);
+                const data = await res.json();
+
+                // Update stats
+                document.getElementById('totalTests').textContent = data.overview.total_tests;
+                document.getElementById('successRate').innerHTML =
+                    data.overview.success_rate.replace('%', '<span class="stat-unit">%</span>');
+
+                if (data.model_stats.length > 0) {
+                    const fastest = data.model_stats[0];
+                    document.getElementById('avgLatency').innerHTML =
+                        `${fastest.avg_latency}<span class="stat-unit">ms</span>`;
+                    document.getElementById('fastestModel').textContent = fastest.model;
+
+                    // Update charts
+                    latencyChart.data.labels = data.model_stats.map(m => m.model);
+                    latencyChart.data.datasets[0].data = data.model_stats.map(m => m.avg_latency);
+                    latencyChart.update();
+
+                    tokensChart.data.labels = data.model_stats.map(m => m.model);
+                    tokensChart.data.datasets[0].data = data.model_stats.map(m => parseFloat(m.avg_tokens_per_sec));
+                    tokensChart.update();
+
+                    // Update leaderboard
+                    const tbody = document.getElementById('leaderboard');
+                    tbody.innerHTML = data.model_stats.map((model, idx) => {
+                        let badge = '';
+                        if (idx === 0) badge = '<span class="badge gold">🥇 1st</span>';
+                        else if (idx === 1) badge = '<span class="badge silver">🥈 2nd</span>';
+                        else if (idx === 2) badge = '<span class="badge bronze">🥉 3rd</span>';
+                        else badge = `<span>${idx + 1}</span>`;
+
+                        return `
+                            <tr>
+                                <td>${badge}</td>
+                                <td><strong>${model.model}</strong></td>
+                                <td>${model.avg_latency} ms</td>
+                                <td>${model.avg_tokens_per_sec}</td>
+                                <td>${model.tests}</td>
+                            </tr>
+                        `;
+                    }).join('');
+                }
+            } catch (err) {
+                console.error('Failed to load dashboard:', err);
+            }
+        }
+
+        // Run test
+        document.getElementById('testForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const btn = document.getElementById('runBtn');
+            const status = document.getElementById('status');
+
+            btn.disabled = true;
+            btn.textContent = 'Running...';
+            status.style.display = 'none';
+
+            try {
+                const res = await fetch(`${BENCHMARK_API}/test`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        model: document.getElementById('model').value,
+                        host: document.getElementById('host').value,
+                        prompt: document.getElementById('prompt').value
+                    })
+                });
+
+                const data = await res.json();
+
+                if (data.success) {
+                    status.className = 'status success';
+                    status.textContent = `✓ Test completed in ${data.latency}ms (${data.tokens_per_sec} tokens/s)`;
+                } else {
+                    status.className = 'status error';
+                    status.textContent = `✗ Test failed: ${data.error}`;
+                }
+
+                status.style.display = 'block';
+                loadDashboard();
+            } catch (err) {
+                status.className = 'status error';
+                status.textContent = `✗ Error: ${err.message}`;
+                status.style.display = 'block';
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Run Test';
+            }
+        });
+
+        // Initialize
+        loadOllamaHosts();
+        initCharts();
+        loadDashboard();
+        setInterval(loadDashboard, 5000); // Refresh every 5s
+    </script>
+</body>
+</html>
