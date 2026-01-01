@@ -684,6 +684,11 @@ document.addEventListener('DOMContentLoaded', () => {
           loadConversation(state.conversationId, true);
       }
 
+      // Update setup checklist after successful message send
+      if (window.checkSetupProgress) {
+          setTimeout(() => window.checkSetupProgress(), 500);
+      }
+
     } catch (err) {
       console.error(err);
       appendMessage(
@@ -810,6 +815,14 @@ document.addEventListener('DOMContentLoaded', () => {
           });
           elements.profileModal.classList.add('hidden');
           setFeedback('Profile saved.', 'success');
+
+          // Update profile setup checks
+          if (window.checkProfileSetup) {
+              window.checkProfileSetup();
+          }
+          if (window.checkSetupProgress) {
+              window.checkSetupProgress();
+          }
       } catch (err) {
           console.error('Failed to save profile', err);
           setFeedback('Failed to save profile.', 'error');
@@ -1186,6 +1199,10 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.ragToggle.addEventListener('change', () => {
       persistSettings();
       updateConfigSummary();
+      // Update checklist when RAG is toggled (may complete RAG task)
+      if (window.checkSetupProgress && elements.ragToggle.checked) {
+          setTimeout(() => window.checkSetupProgress(), 500);
+      }
     });
     
     if (elements.statsToggle) elements.statsToggle.addEventListener('change', persistSettings);

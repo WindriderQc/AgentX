@@ -10,6 +10,190 @@
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <style>
+    /* Alert Styles */
+    .alert {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      margin: 12px 16px;
+      border-radius: 8px;
+      background: rgba(124, 240, 255, 0.1);
+      border: 1px solid rgba(124, 240, 255, 0.3);
+      backdrop-filter: blur(10px);
+      animation: slideDown 0.3s ease;
+    }
+
+    .alert-info {
+      background: rgba(124, 240, 255, 0.1);
+      border-color: rgba(124, 240, 255, 0.3);
+      color: var(--accent);
+    }
+
+    .alert i.fa-info-circle {
+      font-size: 20px;
+      flex-shrink: 0;
+    }
+
+    .alert-content {
+      flex: 1;
+    }
+
+    .alert-content p {
+      margin: 0;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .alert-content a {
+      color: var(--accent);
+      text-decoration: underline;
+      font-weight: 600;
+    }
+
+    .alert-content a:hover {
+      color: var(--text);
+    }
+
+    .alert-dismiss {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 24px;
+      cursor: pointer;
+      padding: 0;
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+      transition: all 0.2s;
+      flex-shrink: 0;
+    }
+
+    .alert-dismiss:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--text);
+    }
+
+    /* Setup Checklist Styles */
+    .setup-checklist {
+      margin: 12px 16px;
+      padding: 16px;
+      background: rgba(238, 176, 255, 0.08);
+      border: 1px solid rgba(238, 176, 255, 0.3);
+      border-radius: 12px;
+      backdrop-filter: blur(10px);
+      animation: slideDown 0.3s ease;
+    }
+
+    .checklist-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .checklist-header h4 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--accent-2);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .checklist-dismiss {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 24px;
+      cursor: pointer;
+      padding: 0;
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+      transition: all 0.2s;
+    }
+
+    .checklist-dismiss:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--text);
+    }
+
+    .checklist-items {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .checklist-items li {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+      color: var(--muted);
+      transition: color 0.2s;
+    }
+
+    .checklist-items li i {
+      font-size: 16px;
+      width: 20px;
+      flex-shrink: 0;
+    }
+
+    .checklist-items li.done {
+      color: var(--accent);
+    }
+
+    .checklist-items li.done i {
+      color: var(--accent);
+    }
+
+    .checklist-items li a {
+      color: var(--accent-2);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .checklist-items li a:hover {
+      text-decoration: underline;
+    }
+
+    @keyframes slideDown {
+      from {
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* Responsive adjustments */
+    @media (max-width: 768px) {
+      .alert,
+      .setup-checklist {
+        margin: 8px;
+        padding: 10px 12px;
+      }
+
+      .alert-content p,
+      .checklist-items li {
+        font-size: 13px;
+      }
+    }
+  </style>
 </head>
 <body>
   <nav class="top-nav">
@@ -47,6 +231,9 @@
 
         <div style="display: flex; gap: 10px; margin-top: 10px; align-items: center;">
              <button id="toggleHistoryBtn" class="ghost small">Show history</button>
+             <button id="showChatTutorialBtn" class="ghost small" title="Show Tutorial">
+               <i class="fas fa-graduation-cap"></i> Tutorial
+             </button>
              <button id="profileBtn" class="ghost small">User Profile</button>
              <button id="loginBtn" class="ghost small" style="display: none;">Login</button>
              <div id="userMenu" class="user-menu" style="display: none;">
@@ -84,6 +271,29 @@
             </div>
             <button class="ghost small" id="toggleLogBtn">Show session log</button>
           </div>
+        </div>
+
+        <!-- Profile Prompt Alert -->
+        <div class="alert alert-info" id="profilePrompt" style="display: none;">
+          <i class="fas fa-info-circle"></i>
+          <div class="alert-content">
+            <p>Enhance your experience! <a href="/profile.html">Set up your profile</a> to give the AI context about you.</p>
+          </div>
+          <button class="alert-dismiss" onclick="dismissProfilePrompt()" title="Dismiss">×</button>
+        </div>
+
+        <!-- Setup Checklist -->
+        <div class="setup-checklist" id="setupChecklist" style="display: none;">
+          <div class="checklist-header">
+            <h4><i class="fas fa-rocket"></i> Getting Started</h4>
+            <button class="checklist-dismiss" onclick="dismissChecklist()" title="Dismiss">×</button>
+          </div>
+          <ul class="checklist-items">
+            <li class="done"><i class="fas fa-check-circle"></i> <span>Account created</span></li>
+            <li id="profileCheck"><i class="far fa-circle"></i> <a href="/profile.html">Complete your profile</a></li>
+            <li id="firstChatCheck"><i class="far fa-circle"></i> <span>Send your first message</span></li>
+            <li id="ragCheck"><i class="far fa-circle"></i> <span>Try RAG search (toggle in config)</span></li>
+          </ul>
         </div>
 
         <div class="chat-window" id="chatWindow">
@@ -327,6 +537,188 @@
     </div>
   </div>
 
+  <script type="module">
+    // Import ChatOnboardingWizard component
+    import { ChatOnboardingWizard } from '/js/components/ChatOnboardingWizard.js';
+
+    // Initialize chat onboarding wizard (make globally accessible)
+    window.chatOnboardingWizard = null;
+
+    // Check if user needs chat onboarding
+    function checkChatOnboarding() {
+      const hasSeenOnboarding = localStorage.getItem('agentx_chat_onboarding_seen') === 'true';
+
+      // Check if user has conversation history (using localStorage as proxy)
+      const hasConversations = localStorage.getItem('agentx_last_conversation_id') !== null;
+
+      // Show wizard if: first visit AND no chat history
+      if (!hasSeenOnboarding && !hasConversations) {
+        localStorage.setItem('agentx_chat_onboarding_seen', 'true');
+        setTimeout(() => {
+          if (window.chatOnboardingWizard) {
+            window.chatOnboardingWizard.open();
+          }
+        }, 1000); // Wait 1 second for page to settle
+      }
+    }
+
+    // Initialize wizard when DOM is ready
+    document.addEventListener('DOMContentLoaded', () => {
+      // Initialize wizard (assuming toast is available globally from chat.js)
+      setTimeout(() => {
+        const toast = window.toast || {
+          success: (msg) => console.log('Success:', msg),
+          error: (msg) => console.error('Error:', msg)
+        };
+
+        window.chatOnboardingWizard = new ChatOnboardingWizard(toast);
+
+        // Manual trigger button
+        const tutorialBtn = document.getElementById('showChatTutorialBtn');
+        if (tutorialBtn) {
+          tutorialBtn.addEventListener('click', () => {
+            window.chatOnboardingWizard.open();
+          });
+        }
+
+        // Check if we should auto-trigger onboarding
+        checkChatOnboarding();
+      }, 500); // Wait for chat.js to load and initialize toast
+    });
+  </script>
+  <script>
+    // Phase 3 Navigation Improvements
+
+    // 1. Profile Prompt Alert Functions
+    function dismissProfilePrompt() {
+      const alert = document.getElementById('profilePrompt');
+      if (alert) {
+        alert.style.display = 'none';
+        localStorage.setItem('agentx_profile_prompt_dismissed', 'true');
+      }
+    }
+
+    async function checkProfileSetup() {
+      // Don't show if already dismissed
+      if (localStorage.getItem('agentx_profile_prompt_dismissed') === 'true') {
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/profile');
+        const { data } = await res.json();
+
+        // Show alert if profile is empty
+        if (!data.about || data.about.trim() === '') {
+          const alert = document.getElementById('profilePrompt');
+          if (alert) {
+            alert.style.display = 'flex';
+          }
+        }
+      } catch (err) {
+        console.log('Could not check profile setup:', err);
+      }
+    }
+
+    // 2. Setup Checklist Functions
+    function dismissChecklist() {
+      const checklist = document.getElementById('setupChecklist');
+      if (checklist) {
+        checklist.style.display = 'none';
+        localStorage.setItem('agentx_checklist_dismissed', 'true');
+      }
+    }
+
+    function updateChecklistItem(itemId, isDone) {
+      const item = document.getElementById(itemId);
+      if (item) {
+        if (isDone) {
+          item.classList.add('done');
+          item.innerHTML = '<i class="fas fa-check-circle"></i> ' +
+            (item.querySelector('a') ? item.querySelector('a').outerHTML : '<span>' + item.textContent + '</span>');
+        } else {
+          item.classList.remove('done');
+        }
+      }
+    }
+
+    async function checkSetupProgress() {
+      // Don't show if already dismissed
+      if (localStorage.getItem('agentx_checklist_dismissed') === 'true') {
+        return;
+      }
+
+      const progress = {
+        profile: false,
+        firstChat: false,
+        ragUsed: false
+      };
+
+      try {
+        // Check profile completion
+        const profileRes = await fetch('/api/profile');
+        const { data: profileData } = await profileRes.json();
+        progress.profile = profileData.about && profileData.about.trim() !== '';
+
+        // Check if user has sent messages (via conversation history)
+        const historyRes = await fetch('/api/history');
+        const historyData = await historyRes.json();
+        progress.firstChat = historyData.data && historyData.data.length > 0;
+
+        // Check if RAG has been used (look for conversations with RAG enabled)
+        if (progress.firstChat && historyData.data.length > 0) {
+          progress.ragUsed = historyData.data.some(conv =>
+            conv.useRag === true || (conv.ragSources && conv.ragSources.length > 0)
+          );
+        }
+
+        // Update checklist items
+        updateChecklistItem('profileCheck', progress.profile);
+        updateChecklistItem('firstChatCheck', progress.firstChat);
+        updateChecklistItem('ragCheck', progress.ragUsed);
+
+        // Show checklist if not all complete
+        const allComplete = progress.profile && progress.firstChat && progress.ragUsed;
+        if (!allComplete) {
+          const checklist = document.getElementById('setupChecklist');
+          if (checklist) {
+            checklist.style.display = 'block';
+          }
+        } else {
+          // Auto-dismiss if all complete
+          localStorage.setItem('agentx_checklist_dismissed', 'true');
+        }
+
+      } catch (err) {
+        console.log('Could not check setup progress:', err);
+      }
+    }
+
+    // 3. Make functions globally accessible for chat.js integration
+    window.dismissProfilePrompt = dismissProfilePrompt;
+    window.dismissChecklist = dismissChecklist;
+    window.updateChecklistItem = updateChecklistItem;
+    window.checkSetupProgress = checkSetupProgress;
+    window.checkProfileSetup = checkProfileSetup;
+
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', () => {
+      // Wait a bit for auth and profile to load
+      setTimeout(() => {
+        checkProfileSetup();
+        checkSetupProgress();
+      }, 1000);
+    });
+
+    // Re-check when user saves profile (listen for storage events from profile page)
+    window.addEventListener('storage', (e) => {
+      if (e.key === 'agentx_profile_updated') {
+        checkProfileSetup();
+        checkSetupProgress();
+        localStorage.removeItem('agentx_profile_updated');
+      }
+    });
+  </script>
   <script src="/js/chat.js"></script>
 </body>
 </html>

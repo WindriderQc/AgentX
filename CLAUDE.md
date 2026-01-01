@@ -609,10 +609,10 @@ This section tracks the current implementation status and areas requiring develo
 - ✅ **Core Services:** 11 services (chatService, ragStore, embeddings, modelRouter, toolService, etc.)
 - ✅ **API Routes:** 14 route files covering 40+ endpoints
 - ✅ **Data Models:** 5 Mongoose schemas (Conversation, PromptConfig, UserProfile, etc.)
-- ✅ **Frontend:** 6 HTML pages, 19 JavaScript modules
-- ✅ **Test Coverage:** 13 test files (2,235 lines) covering integration, services, helpers, models
-- ✅ **Documentation:** 60+ markdown files (17,393 lines total)
-- ✅ **n8n Workflows:** 9 workflow JSONs with deployment automation
+- ✅ **Frontend:** 10 HTML pages, 33+ JavaScript modules (12 components)
+- ✅ **Test Coverage:** 17 test files (2,684 lines) including Phase 3 E2E tests
+- ✅ **Documentation:** 86+ markdown files (35,791+ lines in /docs)
+- ✅ **n8n Workflows:** 10 workflow JSONs (9 functional + 1 empty backup)
 
 **Architecture Verified:**
 - Service-Oriented Architecture (Routes → Services → Models → DB/Ollama)
@@ -672,18 +672,21 @@ This section tracks the current implementation status and areas requiring develo
 - **Need:** Real-time monitoring, advanced visualizations, cost tracking, expanded dashboard
 - **n8n Integration:** Prompt improvement workflows documented but need production testing
 
-**Security & Rate Limiting - PARTIALLY IMPLEMENTED:**
+**Security & Rate Limiting - LARGELY IMPLEMENTED (Phase 3 Complete):**
 - **Dependencies:** Installed (helmet, express-rate-limit, express-mongo-sanitize)
 - **Status:**
   - ✅ **express-mongo-sanitize**: ACTIVE at `/src/app.js:48-57` (replaces malicious chars, logs events)
-  - ⚠️ **helmet**: INSTALLED but DISABLED (line 26: "removed for local network compatibility")
-  - ❌ **express-rate-limit**: NOT CONFIGURED (no usage in codebase)
+  - ⚠️ **helmet**: INSTALLED but DISABLED (intentional for local network compatibility)
+  - ✅ **express-rate-limit**: FULLY CONFIGURED with 4-tier system
+    - `/src/middleware/rateLimiter.js` (135 lines)
+    - Four rate limiters: apiLimiter (100 req/15min), chatLimiter (20 req/min), strictLimiter (10 req/min), authLimiter (5 attempts/15min)
+    - Active in `/src/app.js:111-183` on all API routes
+    - Integration test: `tests/integration/rate-limiting.test.js`
   - ✅ Custom security headers set manually (X-Content-Type-Options, X-Frame-Options, X-XSS-Protection)
-- **Critical Gaps:**
-  - Rate limiting per user/IP
+- **Remaining Gaps:**
   - API key validation beyond basic header check
-  - Helmet re-evaluation for production
-- **Files:** `/src/app.js:4-57`, `/src/middleware/auth.js` (129 lines)
+  - Helmet re-evaluation for production deployment
+- **Files:** `/src/app.js`, `/src/middleware/auth.js` (129 lines), `/src/middleware/rateLimiter.js` (135 lines)
 
 **AgentC Directory - PLANNING PHASE:**
 - **Location:** `/AgentC/` with 9 n8n workflow JSON files
@@ -709,53 +712,89 @@ This section tracks the current implementation status and areas requiring develo
 
 ### 🔴 Critical Architecture Review Needed
 
-**Prompt/Profile User Guidance System - HIGH PRIORITY:**
+**✅ Prompt Management System - PRODUCTION READY (Phase 3 Complete):**
 
-**Problem Statement:**
-- Chat interface uses `default_chat` prompt with basic hardcoded message
-- No user guidance on setup or customization
-- No self-improvement loop via feedback metrics
-- Multiple use cases not properly analyzed:
-  - Prompts for n8n workflows
-  - Prompts for direct AgentX + Ollama use
-  - User profiles vs system prompts (unclear separation)
-  - Feedback-driven improvement flow
+**Status:** Fully implemented with 10,082 lines of UI code across 10 sophisticated components
 
-**What Needs to Happen:**
-1. **Architecture Analysis:**
-   - Step back and reflect on current prompt/profile architecture
-   - Define clear separation: user profiles vs system prompts vs personas
-   - Map use cases: n8n automation, direct chat, specialized agents
-   - Design user guidance flow (onboarding, setup wizard?)
+**Features Implemented:**
+- **Full CRUD Interface** - `/public/prompts.html` (8.8KB) with sophisticated component architecture
+- **Monaco Editor Integration** - `PromptEditorModal.js` (537 lines) - Professional code editor for prompt editing
+- **A/B Testing Panel** - `ABTestConfigPanel.js` (549 lines) - Traffic weight configuration and test management
+- **Version Comparison** - `PromptVersionCompare.js` (604 lines) - Side-by-side diff visualization with syntax highlighting
+- **Performance Metrics Dashboard** - `PerformanceMetricsDashboard.js` (1,037 lines) - Chart.js visualizations of prompt effectiveness
+- **Health Monitoring** - `PromptHealthMonitor.js` (264 lines) - Real-time alert banners for low performers (<70% threshold)
+- **Improvement Wizard** - `PromptImprovementWizard.js` (628 lines) - 5-step guided optimization flow with LLM analysis
+- **Conversation Review** - `ConversationReviewModal.js` (514 lines) - Review negative feedback conversations for specific prompts
+- **Onboarding Tutorial** - `OnboardingWizard.js` (1,032 lines) - 7-step first-time user guide with profile setup integration
+- **Template Testing** - `TemplateTester.js` (513 lines) - Live variable substitution and preview with Handlebars syntax
+- **Import/Export** - JSON-based prompt library management for sharing and backup
 
-2. **Enforcement of Capabilities:**
-   - Proper initialization sequence with user guidance
-   - UI for prompt selection/customization
-   - Profile setup wizard for new users
-   - Integration with feedback system
+**Backend API Support:**
+- `/routes/prompts.js` (432 lines) - 7 comprehensive endpoints:
+  - `GET /api/prompts` - List all prompts grouped by name with versions
+  - `GET /api/prompts/:name` - Get specific prompt versions
+  - `POST /api/prompts` - Create new prompt/version
+  - `PUT /api/prompts/:id` - Update prompt metadata
+  - `DELETE /api/prompts/:id` - Delete inactive prompts
+  - `POST /api/prompts/render` - Render templates with Handlebars syntax
+  - `POST /api/prompts/:name/analyze-failures` - LLM-powered failure analysis
 
-3. **Feedback-Driven Improvement:**
-   - Connect existing feedback collection to prompt optimization
-   - Visualize prompt performance metrics in UI
-   - Guide users on when/how to improve prompts
-   - Implement n8n prompt improvement workflows
+**Self-Improvement Loop (Complete):**
+- Analytics dashboard tracks positive/negative rates per prompt
+- Health monitor flags low performers in real-time
+- Conversation review shows failing interactions with context
+- Improvement wizard analyzes patterns and suggests changes
+- A/B testing validates improvements before full rollout
+- n8n workflows automate prompt optimization (documented in `/docs/reports/n8n-prompt-improvement-v4.md`)
 
-4. **Implementation Tasks:**
-   - Design UI for prompt management (currently no frontend exists)
-   - Create user onboarding flow
-   - Integrate analytics dashboard
-   - Test n8n workflows in production
-   - Document best practices for prompt engineering
+**Architecture:**
+- Service-Oriented pattern: Routes → Services → Models → DB
+- Prompt versioning with traffic-weighted A/B selection
+- Snapshot pattern: Conversations store prompt metadata for historical analysis
+- MongoDB indexes optimize analytics queries
 
-**Current Files to Review:**
-- `/config/db-mongodb.js` - Default prompt initialization
-- `/src/services/chatService.js` - Prompt selection logic
-- `/routes/prompts.js` - CRUD API (backend complete)
-- `/models/PromptConfig.js` - A/B testing logic
-- `/docs/reports/n8n-prompt-improvement-v4.md` - Workflow specs
-- Frontend prompt management UI - **DOES NOT EXIST**
+**Current Gap:** Onboarding wizard exists only on prompts page, not on main chat interface (index.html) - See next section
 
-**Recommendation:** Use EnterPlanMode when starting work on this to properly architect the solution before implementation.
+**🚧 Chat Interface First-Run Experience - MISSING:**
+
+**Problem:** Users landing on `index.html` (chat interface) have no guided setup:
+- No welcome wizard explaining features (RAG, memory, multi-model support)
+- No prompt to configure user profile before first chat
+- No guidance on model selection or prompt configuration
+- Users must discover advanced features via top navigation bar
+- Profile modal exists but isn't surfaced proactively
+
+**What Exists:**
+- ✅ Profile modal embedded in chat interface (accessible via header button)
+- ✅ Prompt selection dropdown in config panel (populated from `/api/prompts`)
+- ✅ Model configuration panel with advanced settings (collapsible)
+- ✅ OnboardingWizard pattern proven on prompts page (1,032 lines, fully reusable architecture)
+- ✅ Toast notification system for user feedback
+
+**What's Missing:**
+- ❌ Chat-specific onboarding wizard (`ChatOnboardingWizard.js` component)
+- ❌ Auto-trigger logic for first-time users (localStorage-based)
+- ❌ Progressive feature disclosure (step-by-step introduction to RAG, memory, prompts)
+- ❌ Integration between profile setup and first conversation experience
+- ❌ Setup checklist or progress tracking for new users
+
+**Proposed Solution:** 5-step wizard adapted from existing OnboardingWizard pattern
+1. **Welcome** - Explain AgentX chat features (RAG, user memory, multi-model, smart prompts)
+2. **Profile Setup** - Collect "About You" and custom instructions (reuse existing Step 2 logic)
+3. **Choose Your Setup** - Select system prompt from `/api/prompts` and default Ollama model
+4. **RAG Introduction** - Educate on document search toggle and when to use it
+5. **Completion** - Show next steps, link to advanced features, "Don't show again" checkbox
+
+**Implementation Effort:** Low (2-3 hours)
+- Copy OnboardingWizard.js structure
+- Adapt 5 step templates for chat focus
+- Change localStorage keys (`agentx_chat_onboarding_*`)
+- Add trigger logic to index.html
+- Test auto-trigger and manual re-open
+
+**Files to Create/Modify:**
+- New: `/public/js/components/ChatOnboardingWizard.js` (~800-1000 lines)
+- Modify: `/public/index.html` (add tutorial button, import component, trigger logic)
 
 ### 📋 Development Workflow Conventions (Not Yet Established)
 
