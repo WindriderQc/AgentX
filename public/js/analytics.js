@@ -29,6 +29,21 @@ const elements = {
   ragNewest: document.getElementById('ragNewest'),
   ragEmpty: document.getElementById('ragEmpty'),
 
+  // Cost Tracking Elements
+  totalCost: document.getElementById('totalCost'),
+  costPerConversation: document.getElementById('costPerConversation'),
+  costPer1kTokens: document.getElementById('costPer1kTokens'),
+  tokensPerDollar: document.getElementById('tokensPerDollar'),
+  costTrendGroupSelect: document.getElementById('costTrendGroupSelect'),
+  costTrendEmpty: document.getElementById('costTrendEmpty'),
+  efficiencyRefreshBtn: document.getElementById('efficiencyRefreshBtn'),
+  efficiencyTableBody: document.getElementById('efficiencyTableBody'),
+  efficiencyEmpty: document.getElementById('efficiencyEmpty'),
+  costBreakdownPie: document.getElementById('costBreakdownPie'),
+  costBreakdownDonut: document.getElementById('costBreakdownDonut'),
+  costBreakdownStats: document.getElementById('costBreakdownStats'),
+  costBreakdownEmpty: document.getElementById('costBreakdownEmpty'),
+
   // System Metrics Elements
   // clearCacheBtn: document.getElementById('clearCacheBtn'), // Removed in single-page view
   timestamp: document.getElementById('sysTimestamp'), // Updated ID
@@ -78,6 +93,8 @@ const charts = {
   usage: null,
   feedback: null,
   rag: null,
+  costTrend: null,
+  costBreakdown: null,
 };
 
 let systemInterval = null;
@@ -370,6 +387,373 @@ async function refreshProduct() {
 }
 
 /* -------------------------------------------------------------------------- */
+/*                          Cost Tracking Logic                               */
+/* -------------------------------------------------------------------------- */
+
+async function loadCosts(days, groupBy = null, breakdown = null) {
+  const query = buildRangeQuery(days);
+  const params = new URLSearchParams(query);
+  if (groupBy) params.append('groupBy', groupBy);
+  if (breakdown) params.append('breakdown', breakdown);
+
+  try {
+    const response = await fetchJSON(`/api/analytics/costs?${params.toString()}`);
+    return response.data;
+  } catch (err) {
+    console.error('Cost data load failed:', err);
+    return null;
+  }
+}
+
+async function refreshCostStats() {
+  const days = elements.periodSelect.value;
+
+  try {
+    const data = await loadCosts(days);
+
+    if (!data) {
+      elements.totalCost.textContent = '—';
+      elements.costPerConversation.textContent = '—';
+      elements.costPer1kTokens.textContent = '—';
+      elements.tokensPerDollar.textContent = '—';
+      return;
+    }
+
+    elements.totalCost.textContent = data.totalCost !== undefined ? `$${data.totalCost.toFixed(2)}` : '—';
+    elements.costPerConversation.textContent = data.avgCostPerConversation !== undefined ? `$${data.avgCostPerConversation.toFixed(3)}` : '—';
+    elements.costPer1kTokens.textContent = data.costPer1kTokens !== undefined ? `$${data.costPer1kTokens.toFixed(4)}` : '—';
+    elements.tokensPerDollar.textContent = data.tokensPerDollar !== undefined ? Math.round(data.tokensPerDollar).toLocaleString() : '—';
+  } catch (err) {
+    console.error('Cost stats refresh error:', err);
+  }
+}
+
+async function refreshCostTrend() {
+  const days = elements.periodSelect.value;
+  const groupBy = elements.costTrendGroupSelect.value;
+
+  try {
+    const data = await loadCosts(days, groupBy);
+
+    if (!data || !data.trends || data.trends.length === 0) {
+      if (charts.costTrend) charts.costTrend.destroy();
+      document.getElementById('costTrendChart').style.display = 'none';
+      elements.costTrendEmpty.style.display = 'block';
+      return;
+    }
+
+    document.getElementById('costTrendChart').style.display = 'block';
+    elements.costTrendEmpty.style.display = 'none';
+
+    // Extract labels based on groupBy
+    let labels = data.trends.map(item => {
+      if (groupBy === 'day') return item.date;
+      if (groupBy === 'model') return item.model || 'Unknown';
+      if (groupBy === 'promptVersion') return `${item.promptName || 'Prompt'} v${item.promptVersion || '?'}`;
+      return '';
+    });
+
+    const costData = data.trends.map(item => item.cost || 0);
+    const conversationData = data.trends.map(item => item.conversations || 0);
+
+    // Recreate chart
+    if (charts.costTrend) charts.costTrend.destroy();
+
+    const ctx = document.getElementById('costTrendChart').getContext('2d');
+    charts.costTrend = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'Cost (USD)',
+            data: costData,
+            borderColor: '#7cf0ff',
+            backgroundColor: 'rgba(124, 240, 255, 0.05)',
+            borderWidth: 2,
+            fill: true,
+            tension: 0.4,
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            pointBackgroundColor: '#7cf0ff',
+            pointBorderColor: 'rgba(12, 15, 26, 0.8)',
+            pointBorderWidth: 2,
+            yAxisID: 'y'
+          },
+          {
+            label: 'Conversations',
+            data: conversationData,
+            borderColor: '#eeb0ff',
+            backgroundColor: 'rgba(238, 176, 255, 0.05)',
+            borderWidth: 2,
+            fill: false,
+            tension: 0.4,
+            pointRadius: 3,
+            pointBackgroundColor: '#eeb0ff',
+            yAxisID: 'y1'
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        interaction: {
+          mode: 'index',
+          intersect: false
+        },
+        plugins: {
+          legend: {
+            labels: {
+              color: '#e8edf5',
+              font: { family: 'Space Grotesk', size: 12 },
+              padding: 16
+            },
+            display: true,
+            position: 'top'
+          },
+          tooltip: {
+            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+            titleColor: '#7cf0ff',
+            bodyColor: '#e8edf5',
+            borderColor: 'rgba(255, 255, 255, 0.1)',
+            borderWidth: 1,
+            padding: 10,
+            displayColors: true,
+            callbacks: {
+              label: function(context) {
+                if (context.dataset.yAxisID === 'y') {
+                  return context.dataset.label + ': $' + context.parsed.y.toFixed(2);
+                }
+                return context.dataset.label + ': ' + context.parsed.y + ' conversations';
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid: {
+              color: 'rgba(255, 255, 255, 0.03)'
+            },
+            ticks: {
+              color: '#93a0b5',
+              font: { size: 11 }
+            }
+          },
+          y: {
+            type: 'linear',
+            position: 'left',
+            title: {
+              display: true,
+              text: 'Cost (USD)',
+              color: '#7cf0ff',
+              font: { weight: 'bold', size: 12 }
+            },
+            grid: {
+              color: 'rgba(255, 255, 255, 0.03)'
+            },
+            ticks: {
+              color: '#93a0b5',
+              font: { size: 11 },
+              callback: function(value) {
+                return '$' + value.toFixed(2);
+              }
+            }
+          },
+          y1: {
+            type: 'linear',
+            position: 'right',
+            title: {
+              display: true,
+              text: 'Conversations',
+              color: '#eeb0ff',
+              font: { weight: 'bold', size: 12 }
+            },
+            grid: {
+              drawOnChartArea: false
+            },
+            ticks: {
+              color: '#93a0b5',
+              font: { size: 11 }
+            }
+          }
+        }
+      }
+    });
+  } catch (err) {
+    console.error('Cost trend refresh error:', err);
+  }
+}
+
+async function refreshEfficiencyTable() {
+  const days = elements.periodSelect.value;
+
+  try {
+    const data = await loadCosts(days, null, 'model');
+
+    if (!data || !data.efficiency || data.efficiency.length === 0) {
+      elements.efficiencyEmpty.style.display = 'block';
+      elements.efficiencyTableBody.innerHTML = '<tr><td colspan="7" style="padding: 16px; text-align: center; color: var(--muted);">No data</td></tr>';
+      return;
+    }
+
+    elements.efficiencyEmpty.style.display = 'none';
+
+    // Sort by efficiency (ascending cost per 1k tokens)
+    const sorted = data.efficiency.sort((a, b) => a.costPer1kTokens - b.costPer1kTokens);
+
+    // Create rows
+    elements.efficiencyTableBody.innerHTML = sorted.map((row, idx) => {
+      const efficiencyLabel = idx === 0 ? 'Best ★' :
+                              idx === sorted.length - 1 ? 'Least Efficient' :
+                              `${idx + 1}/${sorted.length}`;
+      const efficiencyColor = idx === 0 ? '#4ade80' :
+                              idx === sorted.length - 1 ? '#f87171' :
+                              '#fbbf24';
+      const efficiencyBg = idx === 0 ? 'rgba(76, 222, 128, 0.2)' :
+                           idx === sorted.length - 1 ? 'rgba(248, 113, 113, 0.2)' :
+                           'rgba(251, 191, 36, 0.2)';
+
+      return `
+        <tr style="border-bottom: 1px solid var(--panel-border); transition: background 0.2s;">
+          <td style="padding: 8px; color: var(--text); font-weight: 500;">
+            <i class="fas fa-cube" style="color: var(--accent); margin-right: 6px; font-size: 11px;"></i>
+            ${row.model || 'Unknown'}
+          </td>
+          <td style="padding: 8px; text-align: right; color: var(--accent);">
+            <strong>$${(row.totalCost || 0).toFixed(2)}</strong>
+          </td>
+          <td style="padding: 8px; text-align: right; color: var(--text);">
+            ${formatNumber(row.totalTokens || 0)}
+          </td>
+          <td style="padding: 8px; text-align: right; color: var(--text);">
+            $${(row.costPer1kTokens || 0).toFixed(4)}
+          </td>
+          <td style="padding: 8px; text-align: right; color: #4ade80;">
+            <strong>${Math.round(row.tokensPerDollar || 0).toLocaleString()}</strong>
+          </td>
+          <td style="padding: 8px; text-align: right; color: var(--text);">
+            $${(row.avgCostPerConversation || 0).toFixed(3)}
+          </td>
+          <td style="padding: 8px; text-align: center;">
+            <span style="background: ${efficiencyBg}; color: ${efficiencyColor}; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600;">
+              ${efficiencyLabel}
+            </span>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  } catch (err) {
+    console.error('Efficiency table refresh error:', err);
+    elements.efficiencyTableBody.innerHTML = '<tr><td colspan="7" style="padding: 16px; text-align: center; color: #f87171;">Error loading data</td></tr>';
+  }
+}
+
+async function refreshCostBreakdown() {
+  const days = elements.periodSelect.value;
+
+  try {
+    const data = await loadCosts(days, null, 'model');
+
+    if (!data || !data.breakdown || data.breakdown.length === 0) {
+      if (charts.costBreakdown) charts.costBreakdown.destroy();
+      elements.costBreakdownEmpty.style.display = 'block';
+      return;
+    }
+
+    elements.costBreakdownEmpty.style.display = 'none';
+
+    // Generate colors
+    const colors = [
+      'rgba(124, 240, 255, 0.8)',
+      'rgba(238, 176, 255, 0.8)',
+      'rgba(74, 222, 128, 0.8)',
+      'rgba(251, 191, 36, 0.8)',
+      'rgba(59, 130, 246, 0.8)',
+      'rgba(168, 85, 247, 0.8)',
+      'rgba(236, 72, 153, 0.8)',
+      'rgba(249, 115, 22, 0.8)'
+    ];
+
+    // Create chart
+    if (charts.costBreakdown) charts.costBreakdown.destroy();
+
+    const isDonut = elements.costBreakdownDonut.checked;
+
+    const ctx = document.getElementById('costBreakdownChart').getContext('2d');
+    charts.costBreakdown = new Chart(ctx, {
+      type: isDonut ? 'doughnut' : 'pie',
+      data: {
+        labels: data.breakdown.map(b => b.model || 'Unknown'),
+        datasets: [{
+          data: data.breakdown.map(b => b.cost || 0),
+          backgroundColor: data.breakdown.map((_, i) => colors[i % colors.length]),
+          borderColor: 'rgba(12, 15, 26, 0.8)',
+          borderWidth: 2,
+          hoverOffset: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: {
+          legend: {
+            display: false
+          },
+          tooltip: {
+            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+            titleColor: '#7cf0ff',
+            bodyColor: '#e8edf5',
+            borderColor: 'rgba(255, 255, 255, 0.1)',
+            borderWidth: 1,
+            padding: 10,
+            callbacks: {
+              label: function(context) {
+                const value = context.parsed;
+                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0';
+                return `$${value.toFixed(2)} (${percentage}%)`;
+              }
+            }
+          }
+        }
+      }
+    });
+
+    // Populate stats panel
+    elements.costBreakdownStats.innerHTML = data.breakdown
+      .sort((a, b) => (b.cost || 0) - (a.cost || 0))
+      .map((item, idx) => {
+        const color = colors[idx % colors.length];
+        const percentage = item.percentage || 0;
+
+        return `
+          <div style="padding: 12px; background: rgba(255, 255, 255, 0.02); border-left: 3px solid ${color}; border-radius: 4px;">
+            <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
+              <strong style="color: var(--text);">${item.model || 'Unknown'}</strong>
+              <span style="color: var(--accent); font-weight: 600;">$${(item.cost || 0).toFixed(2)}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+              <div style="flex: 1;">
+                <div style="height: 4px; background: rgba(255, 255, 255, 0.1); border-radius: 2px; overflow: hidden;">
+                  <div style="height: 100%; width: ${percentage}%; background: ${color}; transition: width 0.3s;"></div>
+                </div>
+              </div>
+              <span style="font-size: 11px; color: var(--muted); white-space: nowrap;">
+                ${percentage.toFixed(1)}%
+              </span>
+            </div>
+            <div style="font-size: 11px; color: var(--muted); margin-top: 6px; display: flex; justify-content: space-between;">
+              <span>${item.conversations || 0} conversations</span>
+              <span>${formatNumber(item.tokens || 0)} tokens</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+  } catch (err) {
+    console.error('Cost breakdown refresh error:', err);
+  }
+}
+
+/* -------------------------------------------------------------------------- */
 /*                            System Metrics Logic                            */
 /* -------------------------------------------------------------------------- */
 
@@ -610,18 +994,35 @@ async function refreshRagMetrics() {
 async function refreshAll() {
     elements.refreshBtn.innerHTML = '<i class="fas fa-sync-alt fa-spin"></i> Refreshing...';
     elements.refreshBtn.disabled = true;
-    
+
     try {
         await Promise.all([
             refreshProduct(),
             refreshSystem(),
-            refreshRagMetrics()
+            refreshRagMetrics(),
+            refreshCostStats(),
+            refreshCostTrend(),
+            refreshEfficiencyTable(),
+            refreshCostBreakdown()
         ]);
     } catch (e) {
         console.error('Refresh failed:', e);
     } finally {
         elements.refreshBtn.innerHTML = '<i class="fas fa-sync-alt"></i> Refresh';
         elements.refreshBtn.disabled = false;
+    }
+}
+
+async function refreshAllCostTracking() {
+    try {
+        await Promise.all([
+            refreshCostStats(),
+            refreshCostTrend(),
+            refreshEfficiencyTable(),
+            refreshCostBreakdown()
+        ]);
+    } catch (e) {
+        console.error('Cost tracking refresh failed:', e);
     }
 }
 
@@ -653,13 +1054,41 @@ document.addEventListener('DOMContentLoaded', async () => {
       ragHelpPanel.style.display = isVisible ? 'none' : 'block';
     });
   }
-  if (elements.periodSelect) elements.periodSelect.addEventListener('change', refreshProduct);
+  if (elements.periodSelect) {
+    elements.periodSelect.addEventListener('change', () => {
+      refreshProduct();
+      refreshAllCostTracking();
+    });
+  }
   if (elements.usageGroupSelect) elements.usageGroupSelect.addEventListener('change', refreshProduct);
   if (elements.feedbackGroupSelect) elements.feedbackGroupSelect.addEventListener('change', refreshProduct);
-  
+
+  // Cost Tracking Event Listeners
+  if (elements.costTrendGroupSelect) {
+    elements.costTrendGroupSelect.addEventListener('change', refreshCostTrend);
+  }
+  if (elements.efficiencyRefreshBtn) {
+    elements.efficiencyRefreshBtn.addEventListener('click', async () => {
+      elements.efficiencyRefreshBtn.innerHTML = '<i class="fas fa-sync-alt fa-spin"></i> Refreshing...';
+      elements.efficiencyRefreshBtn.disabled = true;
+      try {
+        await refreshEfficiencyTable();
+      } finally {
+        elements.efficiencyRefreshBtn.innerHTML = '<i class="fas fa-sync-alt"></i> Refresh';
+        elements.efficiencyRefreshBtn.disabled = false;
+      }
+    });
+  }
+  if (elements.costBreakdownPie) {
+    elements.costBreakdownPie.addEventListener('change', refreshCostBreakdown);
+  }
+  if (elements.costBreakdownDonut) {
+    elements.costBreakdownDonut.addEventListener('change', refreshCostBreakdown);
+  }
+
   // Initial Load
   refreshAll();
-  
+
   // Poll system metrics
   systemInterval = setInterval(refreshSystem, 5000);
 });

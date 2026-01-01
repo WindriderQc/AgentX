@@ -106,6 +106,30 @@
             <span id="sysTimestamp"></span>
         </div>
 
+        <!-- Cost Stats Cards -->
+        <div class="cost-stats-row stats-row">
+            <div class="stat-card" data-tooltip="Total spending across all conversations in the selected period">
+                <div class="label">Total Cost</div>
+                <div class="value" id="totalCost">—</div>
+                <div class="sub">Period spend</div>
+            </div>
+            <div class="stat-card" data-tooltip="Average cost per conversation (total cost ÷ conversations)">
+                <div class="label">Cost/Conversation</div>
+                <div class="value" id="costPerConversation">—</div>
+                <div class="sub">Average spend</div>
+            </div>
+            <div class="stat-card" data-tooltip="Cost per thousand tokens (total cost ÷ total tokens × 1000)">
+                <div class="label">Cost/1K Tokens</div>
+                <div class="value" id="costPer1kTokens">—</div>
+                <div class="sub">Efficiency metric</div>
+            </div>
+            <div class="stat-card" data-tooltip="Number of tokens generated per dollar spent (total tokens ÷ total cost)">
+                <div class="label">Tokens/Dollar</div>
+                <div class="value" id="tokensPerDollar">—</div>
+                <div class="sub">Value metric</div>
+            </div>
+        </div>
+
         <!-- Usage + Feedback Charts -->
         <div class="analytics-grid">
             <div class="section-card">
@@ -172,6 +196,113 @@
                         <canvas id="feedbackChart"></canvas>
                     </div>
                     <div class="chart-empty" id="feedbackEmpty">No feedback captured in this window.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Cost Trends Chart -->
+        <div class="analytics-grid full">
+            <div class="section-card">
+                <div class="section-header">
+                    <h2><i class="fas fa-chart-line"></i> Cost Trends</h2>
+                    <select id="costTrendGroupSelect" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 10px; color: var(--text); font-size: 12px;">
+                        <option value="day">By Day</option>
+                        <option value="model">By Model</option>
+                        <option value="promptVersion">By Prompt</option>
+                    </select>
+                </div>
+                <div class="section-body">
+                    <div class="chart-container">
+                        <canvas id="costTrendChart"></canvas>
+                    </div>
+                    <div class="chart-empty" id="costTrendEmpty" style="display: none;">No cost data for this period.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Cost Efficiency Table -->
+        <div class="analytics-grid full">
+            <div class="section-card">
+                <div class="section-header">
+                    <h2><i class="fas fa-table"></i> Cost Efficiency by Model</h2>
+                    <div style="display: flex; gap: 8px;">
+                        <button id="efficiencyRefreshBtn" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 12px; color: var(--text); font-size: 12px; cursor: pointer;">
+                            <i class="fas fa-sync-alt"></i> Refresh
+                        </button>
+                    </div>
+                </div>
+                <div class="section-body">
+                    <div style="overflow-x: auto;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                            <thead style="background: rgba(0,0,0,0.2); position: sticky; top: 0;">
+                                <tr>
+                                    <th style="padding: 8px; text-align: left; border-bottom: 1px solid var(--panel-border); font-weight: 600; color: var(--text);">Model</th>
+                                    <th style="padding: 8px; text-align: right; border-bottom: 1px solid var(--panel-border); font-weight: 600; color: var(--text);" data-tooltip="Total USD spent on this model">
+                                        Total Cost
+                                    </th>
+                                    <th style="padding: 8px; text-align: right; border-bottom: 1px solid var(--panel-border); font-weight: 600; color: var(--text);" data-tooltip="Total tokens (prompt + completion) used">
+                                        Tokens
+                                    </th>
+                                    <th style="padding: 8px; text-align: right; border-bottom: 1px solid var(--panel-border); font-weight: 600; color: var(--text);" data-tooltip="USD per thousand tokens used">
+                                        $/1K Tokens
+                                    </th>
+                                    <th style="padding: 8px; text-align: right; border-bottom: 1px solid var(--panel-border); font-weight: 600; color: var(--text);" data-tooltip="Number of tokens per dollar spent">
+                                        Tokens/$
+                                    </th>
+                                    <th style="padding: 8px; text-align: right; border-bottom: 1px solid var(--panel-border); font-weight: 600; color: var(--text);" data-tooltip="Average cost per conversation">
+                                        Avg Cost/Conv
+                                    </th>
+                                    <th style="padding: 8px; text-align: center; border-bottom: 1px solid var(--panel-border); font-weight: 600; color: var(--text);" data-tooltip="Cost efficiency indicator: higher is better">
+                                        Efficiency
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody id="efficiencyTableBody">
+                                <tr>
+                                    <td colspan="7" style="padding: 16px; text-align: center; color: var(--muted);">
+                                        Loading...
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="chart-empty" id="efficiencyEmpty" style="display: none;">
+                        No cost efficiency data available.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Cost Breakdown Chart -->
+        <div class="analytics-grid full">
+            <div class="section-card">
+                <div class="section-header">
+                    <h2><i class="fas fa-chart-pie"></i> Cost Distribution by Model</h2>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <label style="font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                            <input type="radio" name="costBreakdownType" id="costBreakdownPie" checked style="cursor: pointer;">
+                            Pie Chart
+                        </label>
+                        <label style="font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                            <input type="radio" name="costBreakdownType" id="costBreakdownDonut" style="cursor: pointer;">
+                            Donut
+                        </label>
+                    </div>
+                </div>
+                <div class="section-body">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start;">
+                        <div style="position: relative;">
+                            <div class="chart-container" style="position: relative; height: 300px;">
+                                <canvas id="costBreakdownChart"></canvas>
+                            </div>
+                        </div>
+                        <div id="costBreakdownStats" style="display: flex; flex-direction: column; gap: 8px;">
+                            <!-- Stats populated by JS -->
+                        </div>
+                    </div>
+                    <div class="chart-empty" id="costBreakdownEmpty" style="display: none;">
+                        No cost breakdown data available.
+                    </div>
                 </div>
             </div>
         </div>

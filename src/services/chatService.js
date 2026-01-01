@@ -6,6 +6,7 @@ const { sanitizeOptions, resolveTarget } = require('../utils');
 const { tryHandleToolCommand } = require('./toolService');
 const { executeTool, parseToolCalls } = require('./toolExecutor');
 const { routeRequest, getTargetForModel } = require('./modelRouter');
+const { calculateMessageCost, calculateConversationCost } = require('./costCalculator');
 const logger = require('../../config/logger');
 const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
 
@@ -329,6 +330,22 @@ const handleChatRequest = async ({
                 assistantMsg.stats = stats;
                 assistantMsg.stats.parameters = options;
                 assistantMsg.stats.meta = { model: effectiveModel };
+
+                // V5: Calculate and store cost
+                try {
+                    const cost = await calculateMessageCost(effectiveModel, stats);
+                    assistantMsg.cost = cost;
+                    logger.debug('Message cost calculated', {
+                        model: effectiveModel,
+                        totalCost: cost.totalCost,
+                        source: cost.pricingSource?.source
+                    });
+                } catch (err) {
+                    logger.error('Cost calculation failed', {
+                        model: effectiveModel,
+                        error: err.message
+                    });
+                }
             }
 
             conversation.messages.push(assistantMsg);
@@ -344,6 +361,22 @@ const handleChatRequest = async ({
         conversation.promptConfigId = activePrompt._id;
         conversation.promptName = activePrompt.name;
         conversation.promptVersion = activePrompt.version;
+
+        // V5: Update conversation total cost
+        try {
+            const totalCost = calculateConversationCost(conversation.messages);
+            conversation.totalCost = totalCost;
+            logger.debug('Conversation cost updated', {
+                conversationId: conversation._id,
+                totalCost: totalCost.sum,
+                messageCount: conversation.messages.length
+            });
+        } catch (err) {
+            logger.error('Conversation cost calculation failed', {
+                conversationId: conversation._id,
+                error: err.message
+            });
+        }
 
         await conversation.save();
     } catch (err) {

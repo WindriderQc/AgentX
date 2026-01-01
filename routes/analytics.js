@@ -51,14 +51,23 @@ router.get('/usage', optionalAuth, async (req, res) => {
         { $group: {
             _id: '$model',
             conversations: { $sum: 1 },
-            messages: { $sum: { $size: '$messages' } }
+            messages: { $sum: { $size: '$messages' } },
+            totalCost: { $sum: { $ifNull: ['$totalCost.sum', 0] } }
           }
         },
         { $project: {
             _id: 0,
             model: '$_id',
             conversations: 1,
-            messages: 1
+            messages: 1,
+            totalCost: 1,
+            avgCostPerConversation: {
+              $cond: [
+                { $gt: ['$conversations', 0] },
+                { $divide: ['$totalCost', '$conversations'] },
+                0
+              ]
+            }
           }
         },
         { $sort: { conversations: -1 } }
@@ -69,7 +78,8 @@ router.get('/usage', optionalAuth, async (req, res) => {
         { $group: {
             _id: { name: '$promptName', version: '$promptVersion' },
             conversations: { $sum: 1 },
-            messages: { $sum: { $size: '$messages' } }
+            messages: { $sum: { $size: '$messages' } },
+            totalCost: { $sum: { $ifNull: ['$totalCost.sum', 0] } }
           }
         },
         { $project: {
@@ -77,7 +87,15 @@ router.get('/usage', optionalAuth, async (req, res) => {
             promptName: '$_id.name',
             promptVersion: '$_id.version',
             conversations: 1,
-            messages: 1
+            messages: 1,
+            totalCost: 1,
+            avgCostPerConversation: {
+              $cond: [
+                { $gt: ['$conversations', 0] },
+                { $divide: ['$totalCost', '$conversations'] },
+                0
+              ]
+            }
           }
         },
         { $sort: { promptVersion: -1 } }
@@ -90,14 +108,23 @@ router.get('/usage', optionalAuth, async (req, res) => {
               $dateToString: { format: '%Y-%m-%d', date: '$createdAt' }
             },
             conversations: { $sum: 1 },
-            messages: { $sum: { $size: '$messages' } }
+            messages: { $sum: { $size: '$messages' } },
+            totalCost: { $sum: { $ifNull: ['$totalCost.sum', 0] } }
           }
         },
         { $project: {
             _id: 0,
             date: '$_id',
             conversations: 1,
-            messages: 1
+            messages: 1,
+            totalCost: 1,
+            avgCostPerConversation: {
+              $cond: [
+                { $gt: ['$conversations', 0] },
+                { $divide: ['$totalCost', '$conversations'] },
+                0
+              ]
+            }
           }
         },
         { $sort: { date: 1 } }
@@ -109,6 +136,7 @@ router.get('/usage', optionalAuth, async (req, res) => {
       data: {
         from: fromDate.toISOString(),
         to: toDate.toISOString(),
+        currency: process.env.COST_CURRENCY || 'USD',
         totalConversations,
         totalMessages,
         breakdown
@@ -398,7 +426,11 @@ router.get('/stats', optionalAuth, async (req, res) => {
           totalCompletionTokens: { $sum: '$messages.stats.usage.completionTokens' },
           totalTokens: { $sum: '$messages.stats.usage.totalTokens' },
           totalDuration: { $sum: '$messages.stats.performance.totalDuration' }, // nanoseconds
-          avgTokensPerSecond: { $avg: '$messages.stats.performance.tokensPerSecond' }
+          avgTokensPerSecond: { $avg: '$messages.stats.performance.tokensPerSecond' },
+          // Cost aggregation
+          totalCost: { $sum: { $ifNull: ['$messages.cost.totalCost', 0] } },
+          promptTokenCost: { $sum: { $ifNull: ['$messages.cost.promptTokenCost', 0] } },
+          completionTokenCost: { $sum: { $ifNull: ['$messages.cost.completionTokenCost', 0] } }
         }
       },
       { $project: {
@@ -421,8 +453,25 @@ router.get('/stats', optionalAuth, async (req, res) => {
             },
             avgTokensPerSecond: '$avgTokensPerSecond'
           },
-          // Cost estimation placeholder (can be expanded with a real price map)
-          estimatedCost: { $literal: 0 }
+          cost: {
+            totalCost: '$totalCost',
+            promptTokenCost: '$promptTokenCost',
+            completionTokenCost: '$completionTokenCost',
+            avgCostPerMessage: {
+              $cond: [
+                { $gt: ['$messageCount', 0] },
+                { $divide: ['$totalCost', '$messageCount'] },
+                0
+              ]
+            },
+            costPerThousandTokens: {
+              $cond: [
+                { $gt: ['$totalTokens', 0] },
+                { $divide: ['$totalCost', { $divide: ['$totalTokens', 1000] }] },
+                0
+              ]
+            }
+          }
         }
       },
       { $sort: { 'usage.totalTokens': -1 } }
@@ -435,23 +484,191 @@ router.get('/stats', optionalAuth, async (req, res) => {
       acc.totalTokens += curr.usage.totalTokens;
       acc.durationSec += curr.performance.totalDurationSec;
       acc.messages += curr.messageCount;
+      acc.totalCost += curr.cost.totalCost;
       return acc;
-    }, { promptTokens: 0, completionTokens: 0, totalTokens: 0, durationSec: 0, messages: 0 });
+    }, { promptTokens: 0, completionTokens: 0, totalTokens: 0, durationSec: 0, messages: 0, totalCost: 0 });
 
     res.json({
       status: 'success',
       data: {
         from: fromDate.toISOString(),
         to: toDate.toISOString(),
+        currency: process.env.COST_CURRENCY || 'USD',
         totals: {
             ...totals,
-            avgDurationSec: totals.messages > 0 ? totals.durationSec / totals.messages : 0
+            avgDurationSec: totals.messages > 0 ? totals.durationSec / totals.messages : 0,
+            avgCostPerMessage: totals.messages > 0 ? totals.totalCost / totals.messages : 0,
+            costPerThousandTokens: totals.totalTokens > 0 ? totals.totalCost / (totals.totalTokens / 1000) : 0
         },
         breakdown: statsAgg
       }
     });
   } catch (err) {
     logger.error('Analytics stats error', { error: err.message, stack: err.stack });
+    res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
+/**
+ * GET /api/analytics/costs
+ * Dedicated cost analytics endpoint with flexible grouping
+ * Query params:
+ *   - from (ISO date, default: 7 days ago)
+ *   - to (ISO date, default: now)
+ *   - groupBy (optional: 'model' | 'day' | 'promptVersion', default: 'model')
+ *   - minCost (number, default: 0) - Filter out entries below this cost
+ * Response: { summary: {...}, breakdown: [...] }
+ */
+router.get('/costs', optionalAuth, async (req, res) => {
+  try {
+    const { from, to, groupBy = 'model', minCost = 0 } = req.query;
+
+    // Parse date range
+    const toDate = to ? new Date(to) : new Date();
+    const fromDate = from ? new Date(from) : new Date(toDate.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+    const dateFilter = { createdAt: { $gte: fromDate, $lte: toDate } };
+
+    // Determine grouping key
+    let groupKey;
+    if (groupBy === 'day') {
+      groupKey = { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } };
+    } else if (groupBy === 'promptVersion') {
+      groupKey = { name: '$promptName', version: '$promptVersion' };
+    } else {
+      groupKey = '$model';
+    }
+
+    // Aggregate cost data
+    const costAgg = await Conversation.aggregate([
+      { $match: dateFilter },
+      { $unwind: '$messages' },
+      { $match: {
+          'messages.cost.totalCost': { $exists: true, $gt: 0 },
+          'messages.role': 'assistant'
+        }
+      },
+      { $group: {
+          _id: groupKey,
+          messageCount: { $sum: 1 },
+          conversationCount: { $addToSet: '$_id' },
+          totalPromptTokens: { $sum: { $ifNull: ['$messages.stats.usage.promptTokens', 0] } },
+          totalCompletionTokens: { $sum: { $ifNull: ['$messages.stats.usage.completionTokens', 0] } },
+          totalTokens: { $sum: { $ifNull: ['$messages.stats.usage.totalTokens', 0] } },
+          totalCost: { $sum: '$messages.cost.totalCost' },
+          promptTokenCost: { $sum: { $ifNull: ['$messages.cost.promptTokenCost', 0] } },
+          completionTokenCost: { $sum: { $ifNull: ['$messages.cost.completionTokenCost', 0] } }
+        }
+      },
+      { $project: {
+          _id: 0,
+          key: '$_id',
+          messageCount: 1,
+          conversationCount: { $size: '$conversationCount' },
+          tokens: {
+            prompt: '$totalPromptTokens',
+            completion: '$totalCompletionTokens',
+            total: '$totalTokens'
+          },
+          cost: {
+            total: '$totalCost',
+            prompt: '$promptTokenCost',
+            completion: '$completionTokenCost',
+            avgPerMessage: {
+              $cond: [
+                { $gt: ['$messageCount', 0] },
+                { $divide: ['$totalCost', '$messageCount'] },
+                0
+              ]
+            },
+            avgPerConversation: {
+              $cond: [
+                { $gt: [{ $size: '$conversationCount' }, 0] },
+                { $divide: ['$totalCost', { $size: '$conversationCount' }] },
+                0
+              ]
+            },
+            per1kTokens: {
+              $cond: [
+                { $gt: ['$totalTokens', 0] },
+                { $divide: ['$totalCost', { $divide: ['$totalTokens', 1000] }] },
+                0
+              ]
+            }
+          }
+        }
+      },
+      { $match: { 'cost.total': { $gte: parseFloat(minCost) } } },
+      { $sort: { 'cost.total': -1 } }
+    ]);
+
+    // Calculate summary statistics
+    const summary = costAgg.reduce((acc, curr) => {
+      acc.totalCost += curr.cost.total;
+      acc.totalMessages += curr.messageCount;
+      acc.totalConversations += curr.conversationCount;
+      acc.totalTokens += curr.tokens.total;
+      acc.promptTokenCost += curr.cost.prompt;
+      acc.completionTokenCost += curr.cost.completion;
+      return acc;
+    }, {
+      totalCost: 0,
+      totalMessages: 0,
+      totalConversations: 0,
+      totalTokens: 0,
+      promptTokenCost: 0,
+      completionTokenCost: 0
+    });
+
+    // Calculate averages
+    summary.avgCostPerMessage = summary.totalMessages > 0
+      ? summary.totalCost / summary.totalMessages
+      : 0;
+    summary.avgCostPerConversation = summary.totalConversations > 0
+      ? summary.totalCost / summary.totalConversations
+      : 0;
+    summary.costPer1kTokens = summary.totalTokens > 0
+      ? summary.totalCost / (summary.totalTokens / 1000)
+      : 0;
+
+    // Format all cost values to 6 decimal places
+    const formatCost = (cost) => parseFloat((cost || 0).toFixed(6));
+
+    summary.totalCost = formatCost(summary.totalCost);
+    summary.promptTokenCost = formatCost(summary.promptTokenCost);
+    summary.completionTokenCost = formatCost(summary.completionTokenCost);
+    summary.avgCostPerMessage = formatCost(summary.avgCostPerMessage);
+    summary.avgCostPerConversation = formatCost(summary.avgCostPerConversation);
+    summary.costPer1kTokens = formatCost(summary.costPer1kTokens);
+
+    // Format breakdown items
+    const formattedBreakdown = costAgg.map(item => ({
+      ...item,
+      cost: {
+        ...item.cost,
+        total: formatCost(item.cost.total),
+        prompt: formatCost(item.cost.prompt),
+        completion: formatCost(item.cost.completion),
+        avgPerMessage: formatCost(item.cost.avgPerMessage),
+        avgPerConversation: formatCost(item.cost.avgPerConversation),
+        per1kTokens: formatCost(item.cost.per1kTokens)
+      }
+    }));
+
+    res.json({
+      status: 'success',
+      data: {
+        from: fromDate.toISOString(),
+        to: toDate.toISOString(),
+        currency: process.env.COST_CURRENCY || 'USD',
+        groupBy,
+        minCost: parseFloat(minCost),
+        summary,
+        breakdown: formattedBreakdown
+      }
+    });
+  } catch (err) {
+    logger.error('Analytics costs error', { error: err.message, stack: err.stack });
     res.status(500).json({ status: 'error', message: err.message });
   }
 });
