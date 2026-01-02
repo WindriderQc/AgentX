@@ -23,7 +23,9 @@ router.get('/', optionalAuth, async (req, res) => {
             if (!grouped[p.name]) grouped[p.name] = [];
             grouped[p.name].push({
                 _id: p._id,
+                name: p.name,
                 version: p.version,
+                systemPrompt: p.systemPrompt,
                 isActive: p.isActive,
                 trafficWeight: p.trafficWeight,
                 description: p.description,
