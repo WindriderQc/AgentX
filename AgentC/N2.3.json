@@ -186,7 +186,8 @@
           "id": "PIrrA2wpOppzVodi",
           "name": "Header Auth account"
         }
-      }
+      },
+      "continueOnFail": true
     },
     {
       "parameters": {
