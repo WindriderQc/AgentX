@@ -1,6 +1,4 @@
 const request = require('supertest');
-const mongoose = require('mongoose');
-const { MongoMemoryServer } = require('mongodb-memory-server');
 
 jest.mock('../../src/helpers/promptAnalysis', () => ({
   analyzeFailurePatterns: jest.fn(() => ({
@@ -23,19 +21,16 @@ jest.mock('../../src/helpers/promptAnalysis', () => ({
 }));
 
 const { app } = require('../../src/app');
+const { connectTestDb, disconnectTestDb, clearTestDb } = require('../helpers/testDb');
 const Conversation = require('../../models/Conversation');
 const PromptConfig = require('../../models/PromptConfig');
 
-let mongoServer;
-
 beforeAll(async () => {
-  mongoServer = await MongoMemoryServer.create();
-  await mongoose.connect(mongoServer.getUri());
+  await connectTestDb();
 });
 
 afterAll(async () => {
-  await mongoose.disconnect();
-  await mongoServer.stop();
+  await disconnectTestDb();
 });
 
 afterEach(async () => {
