@@ -133,12 +133,20 @@ All webhooks follow this pattern:
 https://n8n.specialblend.icu/webhook/{webhook-name}
 ```
 
-Example:
-```bash
-curl -X POST https://n8n.specialblend.icu/webhook/sbqc-n3-1-model-monitor \
-  -H "Content-Type: application/json" \
-  -d '{"test":"manual trigger"}'
-```
+#### Available Webhook Endpoints
+
+| Workflow | Method | Webhook URL | Test Command |
+|----------|--------|-------------|--------------|
+| **N1.1** System Health Check | POST | `https://n8n.specialblend.icu/webhook/sbqc-n1-1-health-check` | `curl -X POST https://n8n.specialblend.icu/webhook/sbqc-n1-1-health-check -H "Content-Type: application/json" -d '{"test":"manual"}'` |
+| **N1.3** Ops Diagnostic | POST | `https://n8n.specialblend.icu/webhook/sbqc-ops-diagnostic` | `curl -X POST https://n8n.specialblend.icu/webhook/sbqc-ops-diagnostic -H "Content-Type: application/json" -d '{"reason":"test"}'` |
+| **N2.1** NAS Scan | POST | `https://n8n.specialblend.icu/webhook/sbqc-n2-1-nas-scan` | `curl -X POST https://n8n.specialblend.icu/webhook/sbqc-n2-1-nas-scan` |
+| **N2.2** NAS Full Scan | POST | `https://n8n.specialblend.icu/webhook/sbqc-n2-2-nas-full-scan` | `curl -X POST https://n8n.specialblend.icu/webhook/sbqc-n2-2-nas-full-scan` |
+| **N2.3** RAG Ingest | POST | `https://n8n.specialblend.icu/webhook/sbqc-n2-3-rag-ingest` | `curl -X POST https://n8n.specialblend.icu/webhook/sbqc-n2-3-rag-ingest -H "Content-Type: application/json" -d '{"source":"manual"}'` |
+| **N3.1** Model Monitor | GET | `https://n8n.specialblend.icu/webhook/sbqc-n3-1-model-monitor` | `curl https://n8n.specialblend.icu/webhook/sbqc-n3-1-model-monitor` |
+| **N3.2** AI Query | POST | `https://n8n.specialblend.icu/webhook/sbqc-ai-query` | `curl -X POST https://n8n.specialblend.icu/webhook/sbqc-ai-query -H "Content-Type: application/json" -d '{"query":"test"}'` |
+| **N5.1** Feedback Analysis | POST | `https://n8n.specialblend.icu/webhook/sbqc-n5-1-feedback-analysis` | `curl -X POST https://n8n.specialblend.icu/webhook/sbqc-n5-1-feedback-analysis` |
+
+**Note:** N3.1 uses GET method, all others use POST.
 
 ---
 
