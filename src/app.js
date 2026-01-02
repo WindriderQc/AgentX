@@ -41,6 +41,11 @@ app.use(cors({
   credentials: true
 }));
 app.use(cookieParser());
+
+// Janitor Proxy (DataAPI) - Must be before body parser
+const janitorRoutes = require('../routes/janitor');
+app.use('/api/janitor', janitorRoutes);
+
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
