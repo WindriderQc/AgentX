@@ -90,12 +90,26 @@ export class ChatOnboardingWizard extends BaseOnboardingWizard {
    * Step 3: Choose Your Setup
    */
   async renderStep3() {
-    // Fetch prompts and models if not already loaded
-    if (this.data.availablePrompts.length === 0) {
-      this.data.availablePrompts = await this.fetchPrompts();
-    }
-    if (this.data.availableModels.length === 0) {
-      this.data.availableModels = await this.fetchModels();
+    // Check if data is loaded
+    const promptsLoaded = this.data.availablePrompts.length > 0;
+    const modelsLoaded = this.data.availableModels.length > 0;
+
+    if (!promptsLoaded || !modelsLoaded) {
+      // Trigger load in background
+      this.loadStep3Data();
+      
+      return `
+        <div class="onboarding-step">
+          <div class="step-icon"><i class="fas fa-sliders-h"></i></div>
+          <h3>Choose Your Setup</h3>
+          <p class="step-description">Select your preferred system prompt and model.</p>
+          
+          <div class="loading-placeholder" style="text-align: center; padding: 40px 20px; color: var(--muted);">
+            <i class="fas fa-spinner fa-spin fa-2x"></i>
+            <p style="margin-top: 15px;">Loading available options...</p>
+          </div>
+        </div>
+      `;
     }
 
     return `
@@ -131,6 +145,37 @@ export class ChatOnboardingWizard extends BaseOnboardingWizard {
         </div>
       </div>
     `;
+  }
+
+  /**
+   * Helper to load data for Step 3
+   */
+  async loadStep3Data() {
+    try {
+      const [prompts, models] = await Promise.all([
+        this.fetchPrompts(),
+        this.fetchModels()
+      ]);
+      
+      this.data.availablePrompts = prompts;
+      this.data.availableModels = models;
+      
+      // Re-render if still on step 3
+      if (this.currentStep === 3) {
+        this.renderStep();
+      }
+    } catch (error) {
+      console.error('Error loading step 3 data:', error);
+      if (this.toast) this.toast.error('Failed to load options. Using defaults.');
+      
+      // Set defaults to avoid stuck loading state
+      this.data.availablePrompts = [{ name: 'default_chat', latestVersion: 1, description: 'Default system prompt' }];
+      this.data.availableModels = [];
+      
+      if (this.currentStep === 3) {
+        this.renderStep();
+      }
+    }
   }
 
   /**

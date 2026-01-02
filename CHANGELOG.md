@@ -5,6 +5,35 @@ All notable changes to AgentX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.4] - 2026-01-02
+
+### Added
+- **CONTRIBUTING.md:** Comprehensive development standards guide (~500 lines)
+  - Getting started, development tools, testing standards
+  - Code review checklist, documentation requirements
+  - Architecture patterns with examples (SOA, RAG, error handling)
+  - Common pitfalls section (7 documented issues with solutions)
+  - Pull request process, git conventions (Conventional Commits)
+  - Breaking changes protocol
+- **PR Template:** GitHub pull request template at `.github/PULL_REQUEST_TEMPLATE.md`
+- **Git Hooks:** Pre-commit hook setup script at `scripts/setup-git-hooks.sh`
+  - Automatically runs `npm test` before commits
+  - Prevents broken code from being committed
+
+### Improved
+- **CLAUDE.md:** Updated documentation section to reference CONTRIBUTING.md
+- **CLAUDE.md:** Changed "Development Workflow Conventions" from "Not Yet Established" to "✅ ESTABLISHED"
+- **Documentation:** Added WORK_DISPATCH_STATUS.md tracking Grand Manitou session progress
+
+## [1.3.3] - 2026-01-02
+
+### Improved
+- **Chat Onboarding UX:** Added loading state to Step 3 of ChatOnboardingWizard to prevent UI freeze during API fetches
+- **Documentation:** Updated `docs/testing/CHAT_ONBOARDING_TEST_PLAN.md` with enhanced manual test checklist and risk matrix
+- **QA:** Added `docs/QA_CHAT_ONBOARDING_REPORT.md` summarizing code review and risk assessment
+- **CI/CD Documentation:** Documented the self-hosted GitHub Actions runner and automated deployment pipeline in `docs/SBQC-Stack-Final/05-DEPLOYMENT.md`
+- **Audit:** Created `CI_CD_AUDIT_REPORT.md` detailing the current CI/CD architecture and runner status
+
 ## [1.3.2] - 2026-01-01
 
 ### Added

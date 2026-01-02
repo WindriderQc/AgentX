@@ -2,7 +2,8 @@
 
 **Component:** `ChatOnboardingWizard.js`
 **Integration:** `/public/index.html`
-**Date:** 2026-01-01
+**Date:** 2026-01-02
+**Status:** Ready for Manual QA
 
 ---
 
@@ -14,6 +15,9 @@
    localStorage.removeItem('agentx_chat_onboarding_seen');
    localStorage.removeItem('agentx_chat_onboarding_completed');
    localStorage.removeItem('agentx_last_conversation_id');
+   localStorage.removeItem('agentx_default_prompt');
+   localStorage.removeItem('agentx_default_model');
+   localStorage.removeItem('agentx_default_use_rag');
    ```
 
 2. **Access:** http://localhost:3080
@@ -21,382 +25,182 @@
 
 ---
 
-## Test Cases
+## Test Cases (Detailed)
 
 ### TC1: Auto-Trigger on First Visit
-
-**Pre-conditions:**
-- localStorage cleared (no `agentx_chat_onboarding_seen` flag)
-- No conversation history (`agentx_last_conversation_id` not set)
-
+**Pre-conditions:** localStorage cleared, no conversation history.
 **Steps:**
 1. Open http://localhost:3080
 2. Wait 1 second
-
 **Expected:**
-- ✅ Chat onboarding wizard should automatically appear
+- ✅ Chat onboarding wizard automatically appears
 - ✅ Modal overlay visible with backdrop blur
 - ✅ Progress bar shows "Step 1 of 5"
-- ✅ Welcome screen content displays correctly
 - ✅ localStorage `agentx_chat_onboarding_seen` is set to 'true'
 
----
-
 ### TC2: Manual Trigger via Button
-
-**Pre-conditions:**
-- Already completed onboarding (or any state)
-
+**Pre-conditions:** Any state.
 **Steps:**
-1. Open http://localhost:3080
-2. Click "Tutorial" button in header (graduation cap icon)
-
+1. Click "Tutorial" button in header (graduation cap icon)
 **Expected:**
 - ✅ Wizard opens regardless of completion status
 - ✅ Starts at Step 1 (Welcome)
-- ✅ All steps render correctly
-
----
 
 ### TC3: Step Navigation (Forward)
-
-**Steps:**
-1. Open wizard (auto or manual)
-2. Click "Next" button on each step
-
-**Expected for each step:**
-
-**Step 1 → 2:**
-- ✅ Transitions to Profile Setup step
-- ✅ Progress bar updates to 2/5
-- ✅ Textarea fields pre-populated with any existing data
-- ✅ "Previous" button now enabled
-
-**Step 2 → 3:**
-- ✅ Shows loading spinner briefly
-- ✅ Fetches prompts from `/api/prompts`
-- ✅ Fetches models from Ollama `/api/tags`
-- ✅ Dropdowns populated with data
-- ✅ `default_chat` selected by default
-
-**Step 3 → 4:**
-- ✅ RAG Introduction step displays
-- ✅ Checkbox state preserved
-
-**Step 4 → 5:**
-- ✅ Completion step shows
-- ✅ "Next" button changes to "Finish"
-
----
+**Steps:** Click "Next" button on each step.
+**Expected:**
+- **Step 1 → 2:** Transitions to Profile Setup.
+- **Step 2 → 3:** Shows loading spinner (if API slow), fetches prompts/models.
+- **Step 3 → 4:** RAG Introduction displays.
+- **Step 4 → 5:** Completion step, "Next" becomes "Finish".
 
 ### TC4: Step Navigation (Backward)
-
-**Steps:**
-1. Navigate to Step 3
-2. Click "Previous" button repeatedly
-
+**Steps:** Navigate to Step 3, click "Previous".
 **Expected:**
-- ✅ Each click moves back one step
+- ✅ Moves back one step
 - ✅ Form data preserved across back/forward
-- ✅ Progress bar updates correctly
-- ✅ "Previous" disabled on Step 1
-
----
 
 ### TC5: Profile Save (Step 2)
-
-**Steps:**
-1. Navigate to Step 2
-2. Enter text in both textareas:
-   - About You: "I'm a developer"
-   - Custom Instructions: "Be concise"
-3. Click "Next"
-
+**Steps:** Enter text in "About" and "Custom Instructions", click "Next".
 **Expected:**
-- ✅ Button shows loading state: "Saving..."
-- ✅ POST request to `/api/profile` with correct payload
-- ✅ Success toast: "Profile saved successfully!"
-- ✅ Advances to Step 3 after successful save
-- ✅ If save fails, stays on Step 2 with error toast
-
-**Verify in browser console:**
-```javascript
-fetch('/api/profile', { credentials: 'include' })
-  .then(r => r.json())
-  .then(console.log);
-// Should show saved profile data
-```
-
----
+- ✅ Button shows "Saving..."
+- ✅ POST request to `/api/profile` succeeds
+- ✅ Success toast appears
+- ✅ Advances to Step 3
 
 ### TC6: Prompt/Model Selection (Step 3)
-
-**Steps:**
-1. Navigate to Step 3
-2. Change prompt dropdown value
-3. Change model dropdown value
-4. Click "Next"
-
+**Steps:** Change prompt and model dropdowns, click "Next".
 **Expected:**
 - ✅ Selections stored in wizard state
-- ✅ On completion, preferences applied to localStorage:
-   - `agentx_default_prompt`
-   - `agentx_default_model`
-   - `agentx_default_use_rag`
-
----
+- ✅ Applied to localStorage on completion
 
 ### TC7: RAG Toggle (Step 4)
-
-**Steps:**
-1. Navigate to Step 4
-2. Toggle RAG checkbox ON
-3. Complete wizard
-
+**Steps:** Toggle RAG checkbox ON, complete wizard.
 **Expected:**
-- ✅ Checkbox state saved
 - ✅ localStorage `agentx_default_use_rag` = 'true'
 
----
-
 ### TC8: Completion - "Don't Show Again"
-
-**Steps:**
-1. Navigate to Step 5
-2. Check "Don't show this tutorial again"
-3. Click "Finish"
-
+**Steps:** Check "Don't show again", click "Finish".
 **Expected:**
 - ✅ Wizard closes
-- ✅ Success toast: "Welcome to AgentX! Start chatting below."
 - ✅ localStorage `agentx_chat_onboarding_completed` = 'true'
-- ✅ On page refresh, wizard does NOT auto-trigger
-
----
+- ✅ Does NOT auto-trigger on refresh
 
 ### TC9: Completion - Without "Don't Show Again"
-
-**Steps:**
-1. Navigate to Step 5
-2. Leave checkbox UNCHECKED
-3. Click "Finish"
-
+**Steps:** Leave checkbox UNCHECKED, click "Finish".
 **Expected:**
 - ✅ Wizard closes
 - ✅ localStorage `agentx_chat_onboarding_completed` NOT set
-- ✅ On page refresh with no conversation, wizard WILL auto-trigger again
-
----
+- ✅ WILL auto-trigger on refresh (if no conversation history)
 
 ### TC10: Skip Button
-
-**Steps:**
-1. Open wizard
-2. Click X (close) button in header
-
+**Steps:** Click X (close) button.
 **Expected:**
-- ✅ Confirmation dialog: "Are you sure you want to skip..."
-- ✅ If confirmed, wizard closes
-- ✅ If cancelled, wizard remains open
-
----
+- ✅ Confirmation dialog appears
+- ✅ Closes if confirmed
 
 ### TC11: Preferences Application
-
-**Steps:**
-1. Complete wizard with custom selections:
-   - Prompt: "custom_prompt"
-   - Model: "llama3.2"
-   - RAG: enabled
-2. Check chat interface
-
+**Steps:** Complete wizard with custom selections.
 **Expected:**
-- ✅ Prompt dropdown reflects selected value
-- ✅ Model dropdown reflects selected value
-- ✅ RAG toggle enabled
+- ✅ Chat interface dropdowns reflect selections immediately
 - ✅ Values persist across page refresh
 
----
-
 ### TC12: No Auto-Trigger After Conversation
-
-**Pre-conditions:**
-- Clear localStorage
-- Create a conversation (send one message)
-
-**Steps:**
-1. Refresh page
-2. Wait 1 second
-
+**Pre-conditions:** Clear localStorage, create a conversation.
+**Steps:** Refresh page.
 **Expected:**
-- ✅ Wizard does NOT auto-trigger (user has history)
-- ✅ Manual button still works
-
----
+- ✅ Wizard does NOT auto-trigger
 
 ### TC13: API Error Handling - Profile Save
-
-**Steps:**
-1. Stop MongoDB or break `/api/profile` endpoint
-2. Navigate to Step 2
-3. Enter profile data
-4. Click "Next"
-
+**Steps:** Block `/api/profile`, try to save Step 2.
 **Expected:**
-- ✅ Error toast appears with message
-- ✅ Stays on Step 2 (doesn't advance)
-- ✅ Button returns to "Next" state (not loading)
-- ✅ Can retry after fixing issue
-
----
+- ✅ Error toast appears
+- ✅ Stays on Step 2
+- ✅ Button resets from loading state
 
 ### TC14: API Error Handling - Prompt Fetch
-
-**Steps:**
-1. Break `/api/prompts` endpoint
-2. Navigate to Step 3
-
+**Steps:** Block `/api/prompts`, navigate to Step 3.
 **Expected:**
-- ✅ Fallback to default_chat prompt
-- ✅ Dropdown shows at least one option
-- ✅ No JavaScript errors in console
-
----
+- ✅ Fallback to default options
+- ✅ No crash
 
 ### TC15: Responsive Design
-
-**Steps:**
-1. Open wizard
-2. Resize browser to mobile (375px width)
-3. Navigate through all steps
-
+**Steps:** Resize to mobile (375px).
 **Expected:**
-- ✅ Modal fits viewport
-- ✅ Text is readable
-- ✅ Buttons don't overlap
-- ✅ Scrollable if content overflows
-
----
+- ✅ Modal fits viewport, scrollable if needed
 
 ### TC16: Accessibility
-
-**Steps:**
-1. Open wizard
-2. Use Tab key to navigate
-3. Use Enter/Space to activate buttons
-
+**Steps:** Navigate using Tab/Enter.
 **Expected:**
-- ✅ Focus visible on interactive elements
-- ✅ Can navigate entire wizard via keyboard
-- ✅ Modal traps focus (can't tab outside)
-- ✅ Esc key closes wizard (optional enhancement)
+- ✅ Focus visible, keyboard navigable
 
 ---
 
-## API Endpoints Verification
+## Enhanced Manual Test Checklist (Quick Run)
 
-Ensure these endpoints work:
+Use this checklist for rapid validation cycles.
 
-1. **GET `/api/prompts`**
-   ```bash
-   curl http://localhost:3080/api/prompts
-   # Should return grouped prompts
-   ```
+### 1. First-Time User Flow (Clean State)
+- [ ] **Pre-condition:** Clear Local Storage.
+- [ ] **Auto-Trigger:** Verify wizard appears on load.
+- [ ] **Step 1:** Verify content.
+- [ ] **Step 2 (Profile):** Enter data, click Next. Verify "Saving..." and success toast.
+- [ ] **Step 3 (Setup):** Verify dropdowns populate. Select non-defaults.
+- [ ] **Step 4 (RAG):** Toggle ON.
+- [ ] **Step 5 (Finish):** Check "Don't show again", click Finish.
+- [ ] **Post-Condition:** Refresh page. Wizard should **NOT** appear.
 
-2. **POST `/api/profile`**
-   ```bash
-   curl -X POST http://localhost:3080/api/profile \
-     -H "Content-Type: application/json" \
-     -d '{"about":"test","preferences":{"customInstructions":"test"}}'
-   # Should save profile
-   ```
+### 2. Manual Trigger & Navigation
+- [ ] **Trigger:** Click "Tutorial" icon.
+- [ ] **Navigation:** Go to Step 3, then Back to Step 2. Verify data preserved.
+- [ ] **Skip:** Click "X", confirm dialog.
 
-3. **GET Ollama models**
-   ```bash
-   curl http://localhost:11434/api/tags
-   # Should return list of models
-   ```
+### 3. Persistence & Integration
+- [ ] **Preferences:** Verify Chat UI matches wizard selections (Model, Prompt, RAG).
+- [ ] **Profile:** Verify data saved to backend.
 
----
-
-## Browser Console Checks
-
-### No Errors
-Run through wizard and check console for:
-- ✅ No JavaScript errors
-- ✅ No 404s for components
-- ✅ No CORS errors
-
-### localStorage State
-After completion:
-```javascript
-console.log({
-  seen: localStorage.getItem('agentx_chat_onboarding_seen'),
-  completed: localStorage.getItem('agentx_chat_onboarding_completed'),
-  prompt: localStorage.getItem('agentx_default_prompt'),
-  model: localStorage.getItem('agentx_default_model'),
-  rag: localStorage.getItem('agentx_default_use_rag')
-});
-```
+### 4. Edge Cases & Resilience
+- [ ] **API Failure (Profile):** Block network, verify error toast and non-blocking UI.
+- [ ] **API Failure (Models):** Block network, verify graceful fallback.
+- [ ] **Mobile:** Verify layout on small screen.
 
 ---
 
-## Known Limitations
+## Test Automation Gap Analysis
 
-1. **Toast Dependency:** Wizard assumes `window.toast` exists. Fallback to console if not.
-2. **Model Fetch:** Relies on Ollama host from localStorage. Defaults to localhost:11434.
-3. **Conversation Detection:** Uses `agentx_last_conversation_id` localStorage key. If chat.js uses different key, update logic.
+| Feature Area | Automated Coverage | Manual Only (Gap) | Risk Level |
+| :--- | :---: | :---: | :---: |
+| **Component Rendering** | ✅ Covered | - | Low |
+| **Step Navigation** | ✅ Covered | - | Low |
+| **API Integration** | ❌ Partial | **Full E2E:** Verifying real backend saves | Medium |
+| **Visual Layout** | ❌ None | **Responsiveness:** Mobile view, overflow | Low |
+| **Browser Persistence** | ✅ Covered | - | Low |
+| **Error States** | ❌ None | **Network Failures:** Toast appearances, UI recovery | Medium |
 
 ---
 
-## Test Completion Checklist
+## Risk Matrix
 
-- [ ] TC1: Auto-trigger works
-- [ ] TC2: Manual trigger works
-- [ ] TC3: Forward navigation works
-- [ ] TC4: Backward navigation works
-- [ ] TC5: Profile save works
-- [ ] TC6: Prompt/model selection works
-- [ ] TC7: RAG toggle works
-- [ ] TC8: "Don't show again" works
-- [ ] TC9: Without "don't show" works
-- [ ] TC10: Skip works
-- [ ] TC11: Preferences applied
-- [ ] TC12: No trigger after conversation
-- [ ] TC13: Profile error handled
-- [ ] TC14: Prompt fetch error handled
-- [ ] TC15: Responsive on mobile
-- [ ] TC16: Keyboard accessible
-- [ ] All API endpoints functional
-- [ ] No console errors
+| Risk Scenario | Likelihood | Impact | Mitigation |
+| :--- | :---: | :---: | :--- |
+| **API Latency/Timeout** | Medium | Medium | Wizard has loading states; Step 3 pre-fetching recommended. |
+| **Profile Save Failure** | Low | Low | User can skip or retry; doesn't block app usage. |
+| **LocalStorage Full/Disabled** | Very Low | Low | Wizard might reappear on refresh; annoying but not critical. |
+| **Model List Empty** | Low | Medium | Fallback to empty list handled; user can still configure manually. |
 
 ---
 
 ## Bug Report Template
 
-If issues found:
-
 **Bug ID:** CHAT-OB-XXX
 **Severity:** Critical / High / Medium / Low
 **Component:** ChatOnboardingWizard.js
 **Step:** [Which step?]
-**Browser:** [Chrome 120 / Firefox 121 / Safari 17]
+**Browser:** [Chrome / Firefox / Safari]
 
 **Steps to Reproduce:**
 1.
 2.
-3.
 
 **Expected:**
 **Actual:**
-**Console Errors:**
-**Screenshot:**
-
----
-
-## Performance Benchmarks
-
-- ✅ Wizard opens in < 100ms
-- ✅ Step transition < 50ms
-- ✅ API calls complete in < 2s
-- ✅ No memory leaks (check DevTools Memory tab)

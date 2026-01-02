@@ -801,18 +801,26 @@ This section tracks the current implementation status and areas requiring develo
 
 **Current Gap:** Manual QA in browser needed to verify end-to-end flow
 
-### 📋 Development Workflow Conventions (Not Yet Established)
+### 📋 Development Workflow Conventions ✅ ESTABLISHED
 
-**Current State:** No formal conventions
+**Status:** Formalized in [CONTRIBUTING.md](CONTRIBUTING.md)
 
-**Needs:**
-- Testing conventions (when to run which tests)
-- Documentation update process during multi-agent work
-- Plan revision and progress tracking standards
-- Code review checklist
-- Breaking change communication protocol
+**Key Conventions Documented:**
+- **Testing Standards:** Pre-commit requirements, when to write tests, coverage expectations
+- **Code Review Checklist:** Architecture, security, logging, testing, documentation
+- **Git Conventions:** Commit message format (Conventional Commits), branch management, PR process
+- **Documentation Updates:** When and how to update CLAUDE.md, API reference, changelog
+- **Breaking Changes:** Protocol for schema changes, API versioning, environment variables
+- **Common Pitfalls:** 7 documented pitfalls with solutions (vector store, hardcoding, secrets, etc.)
 
-**Minimum:** Always run `npm test` before commits
+**Pre-commit Hook Available:**
+```bash
+# Run this once to install git hooks
+./scripts/setup-git-hooks.sh
+# Automatically runs 'npm test' before each commit
+```
+
+**Pull Request Template:** Available at `.github/PULL_REQUEST_TEMPLATE.md`
 
 **Established Patterns (from recent work):**
 - **Wizard Consolidation Pattern** - When multiple components share similar logic:
@@ -863,13 +871,18 @@ This section tracks the current implementation status and areas requiring develo
 
 ## Documentation
 
-**Start Here (this file):**
-- **"Current State & Development TODOs"** section above - Implementation status and priority tasks
+**Start Here:**
+- **[CLAUDE.md](CLAUDE.md)** (this file) - Comprehensive project guide for AI agents
+  - "Current State & Development TODOs" section - Implementation status and priority tasks
+  - Commands, architecture patterns, critical conventions
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Development standards and workflow guide for contributors
+  - Getting started, testing standards, code review checklist
+  - Pull request process, git conventions, common pitfalls
 
 **Primary Documentation:**
 - `/docs/SBQC-Stack-Final/00-OVERVIEW.md` - System architecture overview
 - `/docs/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md` - Complete API documentation (40+ endpoints)
-- `/docs/SBQC-Stack-Final/05-DEPLOYMENT.md` - Environment variables & deployment guide
+- `/docs/SBQC-Stack-Final/05-DEPLOYMENT.md` - Environment variables & deployment guide (includes CI/CD)
 - `/docs/architecture/backend-overview.md` - Implementation details
 - `/specs/V3_RAG_ARCHITECTURE.md` - RAG system design
 - `/specs/V4_ANALYTICS_ARCHITECTURE.md` - Analytics and improvement loops

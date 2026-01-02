@@ -3,6 +3,7 @@ const { app } = require('../../src/app');
 const { connectTestDb, disconnectTestDb, clearTestDb } = require('../helpers/testDb');
 const Conversation = require('../../models/Conversation');
 const UserProfile = require('../../models/UserProfile');
+const Feedback = require('../../models/Feedback');
 
 beforeAll(async () => {
   await connectTestDb();
@@ -15,6 +16,7 @@ afterAll(async () => {
 afterEach(async () => {
   await Conversation.deleteMany({});
   await UserProfile.deleteMany({});
+  await Feedback.deleteMany({});
 });
 
 describe('Phase 3 API Endpoints', () => {

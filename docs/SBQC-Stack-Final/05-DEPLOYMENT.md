@@ -624,3 +624,40 @@ Export workflows via n8n UI or API and store in git.
 ### Configuration
 
 Keep all `.env` files in a secure backup location (encrypted).
+
+---
+
+## 13. Automated Deployment (CI/CD)
+
+This project uses GitHub Actions for continuous integration and deployment. A self-hosted runner is installed on the production server to handle deployments automatically.
+
+### Workflow
+1.  **Trigger**: Push to `main` branch.
+2.  **Tests**: Runs `npm test` on GitHub's cloud runners.
+3.  **Deploy**: If tests pass, the self-hosted runner updates the code and reloads PM2.
+
+### Self-Hosted Runner
+- **Location**: `/home/yb/codes/AgentX/actions-runner/`
+- **Service Status**: Check with `ps aux | grep Runner`
+- **Logs**: `/home/yb/codes/AgentX/actions-runner/_diag/`
+
+### Runner Maintenance
+If the runner goes offline:
+1.  Navigate to the runner directory:
+    ```bash
+    cd /home/yb/codes/AgentX/actions-runner
+    ```
+2.  Check status:
+    ```bash
+    ./svc.sh status
+    ```
+3.  Restart service:
+    ```bash
+    ./svc.sh stop
+    ./svc.sh start
+    ```
+
+### Required GitHub Secrets
+Ensure these secrets are set in the GitHub Repository Settings:
+- `AGENTX_DEPLOY_PATH`: Absolute path to the project (e.g., `/home/yb/codes/AgentX`)
+
