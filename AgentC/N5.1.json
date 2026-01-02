@@ -201,10 +201,11 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [1900, 100],
+      "continueOnFail": true,
       "credentials": {
         "httpHeaderAuth": {
-          "id": "DataAPI API Key",
-          "name": "DataAPI API Key"
+          "id": "PIrrA2wpOppzVodi",
+          "name": "Header Auth account"
         }
       }
     },

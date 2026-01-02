@@ -142,8 +142,8 @@
       "continueOnFail": true,
       "credentials": {
         "httpHeaderAuth": {
-          "id": "DataAPI API Key",
-          "name": "DataAPI API Key"
+          "id": "PIrrA2wpOppzVodi",
+          "name": "Header Auth account"
         }
       }
     }
