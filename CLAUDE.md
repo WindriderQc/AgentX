@@ -603,15 +603,15 @@ beforeAll(async () => {
 
 This section tracks the current implementation status and areas requiring development attention.
 
-### 📊 Codebase Metrics (as of 2026-01-01)
+### 📊 Codebase Metrics (as of 2026-01-02)
 
 **Implementation Status:**
-- ✅ **Core Services:** 11 services (chatService, ragStore, embeddings, modelRouter, toolService, etc.)
-- ✅ **API Routes:** 14 route files covering 40+ endpoints
-- ✅ **Data Models:** 5 Mongoose schemas (Conversation, PromptConfig, UserProfile, etc.)
+- ✅ **Core Services:** 12 services (chatService, costCalculator, ragStore, embeddings, modelRouter, toolService, etc.)
+- ✅ **API Routes:** 15 route files covering 45+ endpoints (includes janitor proxy, cost analytics)
+- ✅ **Data Models:** 6 Mongoose schemas (Conversation, ModelPricingConfig, PromptConfig, UserProfile, etc.)
 - ✅ **Frontend:** 10 HTML pages, 34+ JavaScript modules (13 components including BaseOnboardingWizard)
-- ✅ **Test Coverage:** 17 test files (2,684 lines) including Phase 3 E2E tests
-- ✅ **Documentation:** 86+ markdown files (35,791+ lines in /docs)
+- ✅ **Test Coverage:** 18 test files (~3,100 lines) including Phase 3 E2E tests + cost calculator tests
+- ✅ **Documentation:** 98+ markdown files (~45,600+ lines in /docs) - includes complete V5 cost tracking documentation
 - ✅ **n8n Workflows:** 10 workflow JSONs (9 functional + 1 empty backup)
 
 **Architecture Verified:**
@@ -660,16 +660,21 @@ This section tracks the current implementation status and areas requiring develo
 
 ### 🚧 Partially Implemented / Needs Work
 
-**Analytics & Metrics (V4) - FUNCTIONAL BUT NEEDS EXPANSION:**
-- **Status:** 5 analytics endpoints implemented (563 lines in `/routes/analytics.js`)
+**Analytics & Metrics (V5) - PRODUCTION READY WITH COST TRACKING:**
+- **Status:** 9 analytics endpoints implemented (~1,100 lines in `/routes/analytics.js`)
 - **Implemented:**
-  - `GET /api/analytics/usage` - Conversation/message counts with grouping
+  - `GET /api/analytics/usage` - Conversation/message counts with grouping + cost data
   - `GET /api/analytics/feedback` - Positive/negative rates with breakdown
   - `GET /api/analytics/rag-stats` - RAG usage vs non-RAG performance
-  - `GET /api/analytics/stats` - Token usage, performance metrics
+  - `GET /api/analytics/stats` - Token usage, performance metrics + cost metrics
   - `GET /api/analytics/feedback/summary` - A/B comparison, low performers
-  - Frontend: `/public/analytics.html` (18,779 bytes) - Basic visualization
-- **Need:** Real-time monitoring, advanced visualizations, cost tracking, expanded dashboard
+  - `GET /api/analytics/costs` - **NEW** Dedicated cost analytics endpoint
+  - Frontend: `/public/analytics.html` - Full dashboard with 4 cost tracking components
+    - Cost stats cards (Total Cost, Cost/Conv, Cost/1K Tokens, Tokens/$)
+    - Cost trend chart (dual-axis line chart with Chart.js)
+    - Cost efficiency table (7-column sortable with badges)
+    - Cost breakdown chart (pie/donut toggle with stats sidebar)
+- **V5 Cost Tracking (Complete):** Per-token pricing, three-tier fallback, in-memory caching, ModelPricingConfig model
 - **n8n Integration:** Prompt improvement workflows documented but need production testing
 
 **Security & Rate Limiting - LARGELY IMPLEMENTED (Phase 3 Complete):**
