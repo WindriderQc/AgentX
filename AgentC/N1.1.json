@@ -5,15 +5,8 @@
       "parameters": {
         "method": "POST",
         "url": "http://192.168.2.33:3003/integrations/events/n8n",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "x-api-key",
-              "value": "41c15baab2ddbca5a83cfac2612fc22afa8fcd0b1a725ac14ef33eef87a8a146"
-            }
-          ]
-        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ { \"workflow_id\": \"SBQC-N1.1-health-check\", \"event_type\": \"health_heartbeat\", \"data\": $json } }}",
@@ -29,6 +22,12 @@
         1360,
         528
       ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "PIrrA2wpOppzVodi",
+          "name": "Header Auth account"
+        }
+      },
       "continueOnFail": true
     },
     {
@@ -91,15 +90,8 @@
       "parameters": {
         "method": "POST",
         "url": "http://192.168.2.33:3003/integrations/events/n8n",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "x-api-key",
-              "value": "41c15baab2ddbca5a83cfac2612fc22afa8fcd0b1a725ac14ef33eef87a8a146"
-            }
-          ]
-        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ { \"workflow_id\": \"SBQC-N1.1-health-check\", \"event_type\": \"health_alert\", \"data\": $json } }}",
@@ -115,6 +107,12 @@
         1360,
         144
       ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "PIrrA2wpOppzVodi",
+          "name": "Header Auth account"
+        }
+      },
       "continueOnFail": true
     },
     {
