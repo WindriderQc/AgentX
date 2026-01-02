@@ -13,16 +13,34 @@ const logger = require('../../config/logger');
 const fs = require('fs');
 const path = require('path');
 const FormData = require('form-data');
-const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
+
+// Use dynamic import wrapped in a function that can be mocked
+let fetchImpl = null;
+async function getFetch() {
+    if (!fetchImpl) {
+        fetchImpl = (await import('node-fetch')).default;
+    }
+    return fetchImpl;
+}
+
+// Wrapper function for fetch calls (allows test mocking)
+async function fetch(...args) {
+    const fetchFn = await getFetch();
+    return fetchFn(...args);
+}
 
 // Configuration
 const WHISPER_LOCAL_URL = process.env.WHISPER_URL || 'http://192.168.2.99:8000';  // faster-whisper-server
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY || null;
 const OPENAI_WHISPER_URL = 'https://api.openai.com/v1/audio/transcriptions';
 
 // TTS Configuration
 const TTS_PROVIDER = process.env.TTS_PROVIDER || 'browser';  // browser, openai, local
 const TTS_LOCAL_URL = process.env.TTS_URL || 'http://192.168.2.99:5002';  // Coqui/Piper
+
+// Helper to get API key dynamically (allows tests to override)
+function getOpenAIKey() {
+    return process.env.OPENAI_API_KEY || null;
+}
 
 /**
  * Transcribe audio to text using Whisper
@@ -34,20 +52,20 @@ const TTS_LOCAL_URL = process.env.TTS_URL || 'http://192.168.2.99:5002';  // Coq
  */
 async function transcribe(audioBuffer, options = {}) {
     const { language = 'en', provider = 'local' } = options;
-    
+
     // Try local first, fall back to OpenAI
-    if (provider === 'local' || !OPENAI_API_KEY) {
+    if (provider === 'local' || !getOpenAIKey()) {
         try {
             return await transcribeLocal(audioBuffer, language);
         } catch (err) {
             logger.warn('Local Whisper failed, trying OpenAI fallback', { error: err.message });
-            if (OPENAI_API_KEY) {
+            if (getOpenAIKey()) {
                 return await transcribeOpenAI(audioBuffer, language);
             }
             throw err;
         }
     }
-    
+
     return await transcribeOpenAI(audioBuffer, language);
 }
 
@@ -104,12 +122,13 @@ async function transcribeLocal(audioBuffer, language = 'en') {
  * Transcribe using OpenAI Whisper API
  */
 async function transcribeOpenAI(audioBuffer, language = 'en') {
-    if (!OPENAI_API_KEY) {
+    const apiKey = getOpenAIKey();
+    if (!apiKey) {
         throw new Error('OpenAI API key not configured');
     }
-    
+
     const startTime = Date.now();
-    
+
     const formData = new FormData();
     formData.append('file', audioBuffer, {
         filename: 'audio.wav',
@@ -118,12 +137,12 @@ async function transcribeOpenAI(audioBuffer, language = 'en') {
     formData.append('model', 'whisper-1');
     formData.append('language', language);
     formData.append('response_format', 'json');
-    
+
     try {
         const response = await fetch(OPENAI_WHISPER_URL, {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${OPENAI_API_KEY}`,
+                'Authorization': `Bearer ${apiKey}`,
                 ...formData.getHeaders()
             },
             body: formData
@@ -188,18 +207,19 @@ async function synthesize(text, options = {}) {
  * Generate speech using OpenAI TTS
  */
 async function synthesizeOpenAI(text, voice = 'alloy') {
-    if (!OPENAI_API_KEY) {
+    const apiKey = getOpenAIKey();
+    if (!apiKey) {
         throw new Error('OpenAI API key not configured');
     }
-    
+
     const validVoices = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'];
     const selectedVoice = validVoices.includes(voice) ? voice : 'alloy';
-    
+
     try {
         const response = await fetch('https://api.openai.com/v1/audio/speech', {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${OPENAI_API_KEY}`,
+                'Authorization': `Bearer ${apiKey}`,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
@@ -268,8 +288,8 @@ async function synthesizeLocal(text, voice = 'default') {
  */
 async function checkHealth() {
     const health = {
-        stt: { local: false, openai: !!OPENAI_API_KEY },
-        tts: { browser: true, openai: !!OPENAI_API_KEY, local: false }
+        stt: { local: false, openai: !!getOpenAIKey() },
+        tts: { browser: true, openai: !!getOpenAIKey(), local: false }
     };
     
     // Check local Whisper
@@ -292,6 +312,16 @@ async function checkHealth() {
     return health;
 }
 
+// Test helper to inject mock fetch
+function __setMockFetch(mockFn) {
+    fetchImpl = mockFn;
+}
+
+// Test helper to reset fetch
+function __resetFetch() {
+    fetchImpl = null;
+}
+
 module.exports = {
     transcribe,
     transcribeLocal,
@@ -301,5 +331,7 @@ module.exports = {
     synthesizeLocal,
     checkHealth,
     WHISPER_LOCAL_URL,
-    TTS_PROVIDER
+    TTS_PROVIDER,
+    __setMockFetch,  // For testing only
+    __resetFetch     // For testing only
 };

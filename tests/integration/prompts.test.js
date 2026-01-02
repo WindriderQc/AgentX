@@ -25,8 +25,7 @@ describe('Prompts API', () => {
         it('should create a new prompt', async () => {
             const promptData = {
                 name: 'test_prompt_1',
-                systemPrompt: 'You are a helpful assistant for testing.',
-                version: 1
+                systemPrompt: 'You are a helpful assistant for testing.'
             };
 
             const res = await request(app)
@@ -34,33 +33,17 @@ describe('Prompts API', () => {
                 .send(promptData)
                 .expect(201);
 
-            expect(res.body.success).toBe(true);
-            expect(res.body.prompt.name).toBe('test_prompt_1');
-            expect(res.body.prompt.version).toBe(1);
+            expect(res.body.status).toBe('success');
+            expect(res.body.data.name).toBe('test_prompt_1');
+            expect(res.body.data.version).toBe(1);
 
-            testPrompt = res.body.prompt;
+            testPrompt = res.body.data;
         });
 
-        it('should reject duplicate name+version combo', async () => {
+        it('should auto-increment version for same name', async () => {
             const promptData = {
                 name: 'test_prompt_1',
-                systemPrompt: 'Duplicate',
-                version: 1
-            };
-
-            const res = await request(app)
-                .post('/api/prompts')
-                .send(promptData)
-                .expect(400);
-
-            expect(res.body.error).toBeDefined();
-        });
-
-        it('should allow same name with different version', async () => {
-            const promptData = {
-                name: 'test_prompt_1',
-                systemPrompt: 'Version 2 prompt',
-                version: 2
+                systemPrompt: 'Version 2 prompt'
             };
 
             const res = await request(app)
@@ -68,7 +51,22 @@ describe('Prompts API', () => {
                 .send(promptData)
                 .expect(201);
 
-            expect(res.body.prompt.version).toBe(2);
+            expect(res.body.status).toBe('success');
+            expect(res.body.data.version).toBe(2);
+        });
+
+        it('should create another version for same name', async () => {
+            const promptData = {
+                name: 'test_prompt_1',
+                systemPrompt: 'Version 3 prompt'
+            };
+
+            const res = await request(app)
+                .post('/api/prompts')
+                .send(promptData)
+                .expect(201);
+
+            expect(res.body.data.version).toBe(3);
         });
     });
 
@@ -78,9 +76,9 @@ describe('Prompts API', () => {
                 .get('/api/prompts')
                 .expect(200);
 
-            expect(res.body.success).toBe(true);
-            expect(Array.isArray(res.body.prompts)).toBe(true);
-            expect(res.body.prompts.length).toBeGreaterThan(0);
+            expect(res.body.status).toBe('success');
+            expect(typeof res.body.data).toBe('object');
+            expect(Object.keys(res.body.data).length).toBeGreaterThan(0);
         });
     });
 
@@ -90,8 +88,9 @@ describe('Prompts API', () => {
                 .get('/api/prompts/test_prompt_1')
                 .expect(200);
 
-            expect(res.body.success).toBe(true);
-            expect(res.body.prompt.name).toBe('test_prompt_1');
+            expect(res.body.status).toBe('success');
+            expect(Array.isArray(res.body.data)).toBe(true);
+            expect(res.body.data[0].name).toBe('test_prompt_1');
         });
 
         it('should return 404 for non-existent prompt', async () => {
@@ -99,29 +98,32 @@ describe('Prompts API', () => {
                 .get('/api/prompts/non_existent_prompt')
                 .expect(404);
 
-            expect(res.body.error).toBeDefined();
+            expect(res.body.status).toBe('error');
+            expect(res.body.message).toBeDefined();
         });
     });
 
     describe('PUT /api/prompts/:id', () => {
-        it('should update prompt', async () => {
+        it('should update prompt metadata', async () => {
             const res = await request(app)
                 .put(`/api/prompts/${testPrompt._id}`)
-                .send({ systemPrompt: 'Updated system prompt' })
+                .send({ description: 'Updated description', isActive: true })
                 .expect(200);
 
-            expect(res.body.success).toBe(true);
-            expect(res.body.prompt.systemPrompt).toBe('Updated system prompt');
+            expect(res.body.status).toBe('success');
+            expect(res.body.data.description).toBe('Updated description');
+            expect(res.body.data.isActive).toBe(true);
         });
 
         it('should return 404 for invalid ID', async () => {
             const fakeId = new mongoose.Types.ObjectId();
             const res = await request(app)
                 .put(`/api/prompts/${fakeId}`)
-                .send({ systemPrompt: 'Test' })
+                .send({ description: 'Test' })
                 .expect(404);
 
-            expect(res.body.error).toBeDefined();
+            expect(res.body.status).toBe('error');
+            expect(res.body.message).toBeDefined();
         });
     });
 
@@ -159,8 +161,8 @@ describe('Prompts API', () => {
                 })
                 .expect(200);
 
-            expect(res.body.success).toBe(true);
-            expect(res.body.updated).toBe(2);
+            expect(res.body.status).toBe('success');
+            expect(res.body.data.versions.length).toBe(2);
         });
 
         it('should reject weights not summing to 100', async () => {
@@ -174,7 +176,8 @@ describe('Prompts API', () => {
                 })
                 .expect(400);
 
-            expect(res.body.error).toContain('100');
+            expect(res.body.status).toBe('error');
+            expect(res.body.message).toContain('100');
         });
     });
 
@@ -184,14 +187,15 @@ describe('Prompts API', () => {
             const prompt = await PromptConfig.create({
                 name: 'test_delete_prompt',
                 systemPrompt: 'To be deleted',
-                version: 1
+                version: 1,
+                isActive: false
             });
 
             const res = await request(app)
                 .delete(`/api/prompts/${prompt._id}`)
                 .expect(200);
 
-            expect(res.body.success).toBe(true);
+            expect(res.body.status).toBe('success');
             expect(res.body.message).toContain('deleted');
         });
     });
@@ -250,15 +254,17 @@ describe('PromptConfig Model', () => {
         });
 
         it('should increment positive feedback', async () => {
-            await PromptConfig.recordFeedback(testPrompt._id, 'positive');
-            
+            const prompt = await PromptConfig.findById(testPrompt._id);
+            await prompt.recordFeedback(true);
+
             const updated = await PromptConfig.findById(testPrompt._id);
             expect(updated.stats.positiveCount).toBe(1);
         });
 
         it('should increment negative feedback', async () => {
-            await PromptConfig.recordFeedback(testPrompt._id, 'negative');
-            
+            const prompt = await PromptConfig.findById(testPrompt._id);
+            await prompt.recordFeedback(false);
+
             const updated = await PromptConfig.findById(testPrompt._id);
             expect(updated.stats.negativeCount).toBe(1);
         });

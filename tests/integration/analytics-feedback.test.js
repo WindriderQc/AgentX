@@ -48,6 +48,7 @@ describe('Analytics Feedback API', () => {
                 model: 'qwen2.5:7b-instruct-q4_0',
                 promptVersion: 'control',
                 promptName: 'test_analytics_prompt',
+                userId: 'api-client',
                 createdAt: new Date(now - Math.random() * 7 * 24 * 60 * 60 * 1000)
             });
         }
@@ -61,6 +62,7 @@ describe('Analytics Feedback API', () => {
                 model: 'qwen2.5:7b-instruct-q4_0',
                 promptVersion: 'control',
                 promptName: 'test_analytics_prompt',
+                userId: 'api-client',
                 createdAt: new Date(now - Math.random() * 7 * 24 * 60 * 60 * 1000)
             });
         }
@@ -74,6 +76,7 @@ describe('Analytics Feedback API', () => {
                 model: 'qwen2.5:7b-instruct-q4_0',
                 promptVersion: 'variant',
                 promptName: 'test_analytics_prompt',
+                userId: 'api-client',
                 createdAt: new Date(now - Math.random() * 7 * 24 * 60 * 60 * 1000)
             });
         }
@@ -87,6 +90,7 @@ describe('Analytics Feedback API', () => {
                 model: 'qwen2.5:7b-instruct-q4_0',
                 promptVersion: 'variant',
                 promptName: 'test_analytics_prompt',
+                userId: 'api-client',
                 createdAt: new Date(now - Math.random() * 7 * 24 * 60 * 60 * 1000)
             });
         }
@@ -105,10 +109,10 @@ describe('Analytics Feedback API', () => {
                 .get('/api/analytics/feedback/summary')
                 .expect(200);
 
-            expect(res.body.success).toBe(true);
-            expect(res.body.overall).toBeDefined();
-            expect(res.body.overall.totalFeedback).toBeGreaterThan(0);
-            expect(res.body.overall.positiveRate).toBeDefined();
+            expect(res.body.status).toBe('success');
+            expect(res.body.data.overall).toBeDefined();
+            expect(res.body.data.overall.totalFeedback).toBeGreaterThan(0);
+            expect(res.body.data.overall.positiveRate).toBeDefined();
         });
 
         it('should return feedback by model', async () => {
@@ -116,8 +120,8 @@ describe('Analytics Feedback API', () => {
                 .get('/api/analytics/feedback/summary')
                 .expect(200);
 
-            expect(res.body.byModel).toBeDefined();
-            expect(Array.isArray(res.body.byModel)).toBe(true);
+            expect(res.body.data.byModel).toBeDefined();
+            expect(Array.isArray(res.body.data.byModel)).toBe(true);
         });
 
         it('should return feedback by prompt version', async () => {
@@ -125,8 +129,8 @@ describe('Analytics Feedback API', () => {
                 .get('/api/analytics/feedback/summary')
                 .expect(200);
 
-            expect(res.body.byPromptVersion).toBeDefined();
-            expect(Array.isArray(res.body.byPromptVersion)).toBe(true);
+            expect(res.body.data.byPromptVersion).toBeDefined();
+            expect(Array.isArray(res.body.data.byPromptVersion)).toBe(true);
         });
 
         it('should identify low performing prompts', async () => {
@@ -145,8 +149,8 @@ describe('Analytics Feedback API', () => {
                 .query({ threshold: 0.9 }) // 90% threshold
                 .expect(200);
 
-            expect(res.body.lowPerformingPrompts).toBeDefined();
-            expect(Array.isArray(res.body.lowPerformingPrompts)).toBe(true);
+            expect(res.body.data.lowPerformingPrompts).toBeDefined();
+            expect(Array.isArray(res.body.data.lowPerformingPrompts)).toBe(true);
         });
 
         it('should filter by date range', async () => {
@@ -158,7 +162,7 @@ describe('Analytics Feedback API', () => {
                 .query({ startDate, endDate })
                 .expect(200);
 
-            expect(res.body.success).toBe(true);
+            expect(res.body.status).toBe('success');
             expect(res.body.dateRange).toBeDefined();
         });
     });
@@ -169,8 +173,8 @@ describe('Analytics Feedback API', () => {
                 .get('/api/analytics/feedback/summary')
                 .expect(200);
 
-            expect(res.body.abComparisons).toBeDefined();
-            expect(Array.isArray(res.body.abComparisons)).toBe(true);
+            expect(res.body.data.abComparisons).toBeDefined();
+            expect(Array.isArray(res.body.data.abComparisons)).toBe(true);
         });
 
         it('should include statistical significance estimate', async () => {
@@ -179,8 +183,8 @@ describe('Analytics Feedback API', () => {
                 .query({ promptName: 'test_analytics_prompt' })
                 .expect(200);
 
-            if (res.body.abComparisons && res.body.abComparisons.length > 0) {
-                const comparison = res.body.abComparisons[0];
+            if (res.body.data.abComparisons && res.body.data.abComparisons.length > 0) {
+                const comparison = res.body.data.abComparisons[0];
                 expect(comparison.control).toBeDefined();
                 expect(comparison.variants).toBeDefined();
                 expect(comparison.improvement).toBeDefined();
@@ -193,8 +197,8 @@ describe('Analytics Feedback API', () => {
                 .query({ promptName: 'test_analytics_prompt' })
                 .expect(200);
 
-            if (res.body.abComparisons && res.body.abComparisons.length > 0) {
-                const comparison = res.body.abComparisons[0];
+            if (res.body.data.abComparisons && res.body.data.abComparisons.length > 0) {
+                const comparison = res.body.data.abComparisons[0];
                 // Variant has 80% positive vs control 70%
                 // Expected improvement: (0.8 - 0.7) / 0.7 * 100 ≈ 14.3%
                 if (comparison.improvement) {
@@ -210,7 +214,7 @@ describe('Analytics Feedback API', () => {
                 .get('/api/analytics/feedback/summary')
                 .expect(200);
 
-            const qwenModel = res.body.byModel.find(m => 
+            const qwenModel = res.body.data.byModel.find(m => 
                 m._id && m._id.includes('qwen')
             );
             
@@ -228,8 +232,8 @@ describe('Analytics Feedback API', () => {
 
             // Overall test data: 150 positive, 50 negative = 75% positive rate
             // Allow for some variance due to other test data
-            expect(res.body.overall.positiveRate).toBeGreaterThan(0);
-            expect(res.body.overall.positiveRate).toBeLessThanOrEqual(1);
+            expect(res.body.data.overall.positiveRate).toBeGreaterThan(0);
+            expect(res.body.data.overall.positiveRate).toBeLessThanOrEqual(1);
         });
     });
 });
@@ -248,7 +252,7 @@ describe('Feedback Recording', () => {
                 })
                 .expect(201);
 
-            expect(res.body.success).toBe(true);
+            expect(res.body.status).toBe('success');
         });
 
         it('should record negative feedback with comment', async () => {
@@ -264,7 +268,7 @@ describe('Feedback Recording', () => {
                 })
                 .expect(201);
 
-            expect(res.body.success).toBe(true);
+            expect(res.body.status).toBe('success');
         });
 
         it('should reject invalid rating', async () => {

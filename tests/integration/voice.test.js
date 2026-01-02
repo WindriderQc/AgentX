@@ -4,11 +4,8 @@
  */
 
 const request = require('supertest');
-const { app } = require('../../src/app');
-const path = require('path');
-const fs = require('fs');
 
-// Mock the voice service
+// Mock the voice service BEFORE loading app
 jest.mock('../../src/services/voiceService', () => ({
     checkHealth: jest.fn(),
     transcribe: jest.fn(),
@@ -19,7 +16,17 @@ jest.mock('../../src/services/voiceService', () => ({
     }
 }));
 
+// Mock chatService to avoid Ollama calls
+jest.mock('../../src/services/chatService', () => ({
+    handleChatRequest: jest.fn()
+}));
+
+const { app } = require('../../src/app');
+const path = require('path');
+const fs = require('fs');
+
 const voiceService = require('../../src/services/voiceService');
+const chatService = require('../../src/services/chatService');
 
 describe('Voice API', () => {
     beforeEach(() => {
@@ -43,8 +50,9 @@ describe('Voice API', () => {
                 .get('/api/voice/health')
                 .expect(200);
 
-            expect(res.body.stt).toBeDefined();
-            expect(res.body.tts).toBeDefined();
+            expect(res.body.status).toBe('success');
+            expect(res.body.data.stt).toBeDefined();
+            expect(res.body.data.tts).toBeDefined();
             expect(voiceService.checkHealth).toHaveBeenCalled();
         });
 
@@ -55,7 +63,8 @@ describe('Voice API', () => {
                 .get('/api/voice/health')
                 .expect(500);
 
-            expect(res.body.error).toBeDefined();
+            expect(res.body.status).toBe('error');
+            expect(res.body.message).toBeDefined();
         });
     });
 
@@ -63,7 +72,7 @@ describe('Voice API', () => {
         it('should transcribe audio successfully', async () => {
             voiceService.transcribe.mockResolvedValue({
                 text: 'Hello world',
-                source: 'local',
+                provider: 'local',
                 duration: 1.5,
                 language: 'en'
             });
@@ -76,9 +85,9 @@ describe('Voice API', () => {
                 .attach('audio', fakeAudio, 'test.wav')
                 .expect(200);
 
-            expect(res.body.success).toBe(true);
-            expect(res.body.text).toBe('Hello world');
-            expect(res.body.source).toBe('local');
+            expect(res.body.status).toBe('success');
+            expect(res.body.data.text).toBe('Hello world');
+            expect(res.body.data.provider).toBe('local');
         });
 
         it('should handle missing audio file', async () => {
@@ -86,7 +95,8 @@ describe('Voice API', () => {
                 .post('/api/voice/transcribe')
                 .expect(400);
 
-            expect(res.body.error).toContain('audio');
+            expect(res.body.status).toBe('error');
+            expect(res.body.message).toContain('audio');
         });
 
         it('should handle transcription errors', async () => {
@@ -99,7 +109,8 @@ describe('Voice API', () => {
                 .attach('audio', fakeAudio, 'test.wav')
                 .expect(500);
 
-            expect(res.body.error).toBeDefined();
+            expect(res.body.status).toBe('error');
+            expect(res.body.message).toBeDefined();
         });
     });
 
@@ -126,23 +137,29 @@ describe('Voice API', () => {
                 .send({})
                 .expect(400);
 
-            expect(res.body.error).toContain('text');
+            expect(res.body.status).toBe('error');
+            expect(res.body.message).toContain('Text is required');
         });
 
         it('should accept voice parameter', async () => {
             const mockAudioBuffer = Buffer.from('synthesized audio');
             voiceService.synthesize.mockResolvedValue({
                 audio: mockAudioBuffer,
-                source: 'openai',
+                format: 'mp3',
+                provider: 'openai',
                 voice: 'nova'
             });
 
             const res = await request(app)
                 .post('/api/voice/synthesize')
-                .send({ text: 'Hello', voice: 'nova' })
+                .send({ text: 'Hello', voice: 'nova', provider: 'openai' })
                 .expect(200);
 
-            expect(voiceService.synthesize).toHaveBeenCalledWith('Hello', { voice: 'nova' });
+            // The route adds provider: 'browser' as default
+            expect(voiceService.synthesize).toHaveBeenCalledWith('Hello', {
+                voice: 'nova',
+                provider: 'openai'
+            });
         });
     });
 
@@ -151,7 +168,17 @@ describe('Voice API', () => {
             // Mock transcription
             voiceService.transcribe.mockResolvedValue({
                 text: 'What is the weather today?',
-                source: 'local'
+                provider: 'local',
+                duration: 500
+            });
+
+            // Mock chat response
+            chatService.handleChatRequest.mockResolvedValue({
+                response: 'The weather is sunny today!',
+                conversationId: 'conv-123',
+                messageId: 'msg-456',
+                model: 'qwen2.5:7b-instruct-q4_0',
+                ragUsed: false
             });
 
             const fakeAudio = Buffer.from('fake audio data');
@@ -162,20 +189,30 @@ describe('Voice API', () => {
                 .field('conversationId', 'test-conv-123')
                 .expect(200);
 
-            expect(res.body.success).toBe(true);
-            expect(res.body.transcription).toBe('What is the weather today?');
-            expect(res.body.response).toBeDefined();
+            expect(res.body.status).toBe('success');
+            expect(res.body.data.transcription).toBe('What is the weather today?');
+            expect(res.body.data.response).toBe('The weather is sunny today!');
         });
 
         it('should return TTS audio when requested', async () => {
             voiceService.transcribe.mockResolvedValue({
                 text: 'Hello',
-                source: 'local'
+                provider: 'local',
+                duration: 300
+            });
+
+            chatService.handleChatRequest.mockResolvedValue({
+                response: 'Hello! How can I help you?',
+                conversationId: 'conv-789',
+                messageId: 'msg-999',
+                model: 'qwen2.5:7b-instruct-q4_0',
+                ragUsed: false
             });
 
             voiceService.synthesize.mockResolvedValue({
                 audio: Buffer.from('response audio'),
-                source: 'openai'
+                format: 'mp3',
+                provider: 'openai'
             });
 
             const fakeAudio = Buffer.from('fake audio data');
@@ -183,10 +220,12 @@ describe('Voice API', () => {
             const res = await request(app)
                 .post('/api/voice/chat')
                 .attach('audio', fakeAudio, 'input.wav')
-                .field('returnAudio', 'true')
+                .field('tts', 'true')
+                .field('ttsProvider', 'openai')
                 .expect(200);
 
-            expect(res.body.audioResponse).toBeDefined();
+            // When TTS is enabled and audio is returned, response is the audio buffer
+            expect(res.headers['content-type']).toMatch(/audio/);
         });
     });
 });

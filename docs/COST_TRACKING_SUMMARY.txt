@@ -1,0 +1,400 @@
+================================================================================
+COST TRACKING UI COMPONENTS - DESIGN SPECIFICATION SUMMARY
+================================================================================
+
+Date: 2026-01-01
+Status: Design Phase (Ready for Implementation)
+
+================================================================================
+DELIVERABLES (3 DESIGN DOCUMENTS)
+================================================================================
+
+1. COST_TRACKING_UI_DESIGN.md (MAIN SPECIFICATION)
+   - 500+ lines of comprehensive design specification
+   - 4 components with complete specifications:
+     * Component 1: Cost Stats Cards
+     * Component 2: Cost Trend Chart
+     * Component 3: Cost Efficiency Table
+     * Component 4: Cost Breakdown Chart
+   - API endpoint specification
+   - Data formats
+   - Chart.js configurations
+   - HTML structures
+   - JavaScript integration points
+   - Integration checklist
+   - Visual layout diagram
+
+2. COST_TRACKING_COMPONENT_DETAILS.md (DETAILED SPECS)
+   - 600+ lines of component-level details
+   - Visual mockups for each component
+   - Data flow diagrams
+   - Component properties and configurations
+   - Row/column specifications
+   - Color palette assignments
+   - Interaction behaviors
+   - Accessibility considerations
+   - Browser compatibility
+   - Testing strategies
+
+3. COST_TRACKING_QUICK_REF.md (DEVELOPER REFERENCE)
+   - 300+ lines of quick reference guide
+   - HTML-only code snippets (copy-paste ready)
+   - JavaScript integration code (pseudo-code)
+   - API response examples
+   - Event wiring code
+   - Color palette code
+   - File modification checklist
+   - Key implementation points
+
+================================================================================
+4 COMPONENTS DESIGNED
+================================================================================
+
+COMPONENT 1: COST STATS CARDS
+├─ Purpose: Quick metrics overview
+├─ Location: Below existing Quick Stats section
+├─ Metrics: Total Cost, Cost/Conv, $/1K Tokens, Tokens/$
+├─ Layout: 4 columns, responsive grid
+├─ Styling: Reuse .stat-card class (no new CSS)
+└─ Data Source: /api/analytics/costs (base query)
+
+COMPONENT 2: COST TREND CHART
+├─ Purpose: Time-based cost patterns
+├─ Location: New grid row (full width)
+├─ Type: Dual-axis line chart (Cost + Conversations)
+├─ GroupBy: day, model, promptVersion
+├─ Colors: Cyan (cost), Purple (conversations)
+├─ Library: Chart.js 4.4.4
+└─ Data Source: /api/analytics/costs?groupBy=day|model|promptVersion
+
+COMPONENT 3: COST EFFICIENCY TABLE
+├─ Purpose: Model cost comparison & ranking
+├─ Location: New grid row (full width)
+├─ Columns: Model, Total Cost, Tokens, $/1K, Tokens/$, Avg Cost/Conv, Efficiency
+├─ Ranking: 1=Most efficient (lowest $/1K), N=Least efficient
+├─ Colors: Green badges (Best), Blue (Good), Yellow (Fair), Red (Least)
+├─ Sorting: By $/1K tokens ascending (default)
+└─ Data Source: /api/analytics/costs?breakdown=model
+
+COMPONENT 4: COST BREAKDOWN CHART
+├─ Purpose: Cost distribution by model
+├─ Location: New grid row (full width)
+├─ Type: Pie or Donut chart (toggle)
+├─ Sidebar: Stats cards with progress bars
+├─ Colors: 8-color auto-cycling palette
+├─ Library: Chart.js 4.4.4
+└─ Data Source: /api/analytics/costs?breakdown=model
+
+================================================================================
+API ENDPOINT REQUIRED
+================================================================================
+
+GET /api/analytics/costs
+
+Query Parameters:
+  - from: ISO 8601 date (default: 7 days ago)
+  - to: ISO 8601 date (default: now)
+  - groupBy: 'day' | 'model' | 'promptVersion' (optional)
+  - breakdown: 'model' (optional, for efficiency metrics)
+  - model: Filter by specific model (optional)
+
+Authentication:
+  - Session auth OR x-api-key header
+
+Response (Base):
+  {
+    status: 'success',
+    data: {
+      from, to,
+      totalCost, totalTokens, conversations,
+      avgCostPerConversation, costPer1kTokens, tokensPer Dollar,
+      costTrend: { previousPeriod, delta, percentChange }
+    }
+  }
+
+Response (With groupBy=day|model|promptVersion):
+  {
+    status: 'success',
+    data: {
+      ...base...,
+      trends: [{ date/model/prompt, cost, tokens, conversations, ... }]
+    }
+  }
+
+Response (With breakdown=model):
+  {
+    status: 'success',
+    data: {
+      ...base...,
+      efficiency: [{ model, totalCost, totalTokens, costPer1kTokens, ... }],
+      breakdown: [{ model, cost, percentage, conversations, tokens }]
+    }
+  }
+
+Cost Calculation Logic Needed:
+  - Cost per model: (promptTokens * promptRate + completionTokens * completionRate) / 1000
+  - Requires: Cost config model with pricing tiers by model
+  - Data Source: Existing Conversation.stats.usage (already captured)
+  - Current Placeholder: lines 425 in /routes/analytics.js
+
+================================================================================
+DESIGN SYSTEM INTEGRATION
+================================================================================
+
+CSS Variables (Existing, Reused):
+  - --accent: #7cf0ff (Cyan, primary metrics)
+  - --accent-2: #eeb0ff (Purple, secondary metrics)
+  - --text: #e8edf5 (Primary text)
+  - --muted: #93a0b5 (Secondary text)
+  - --panel: rgba(18, 23, 38, 0.78) (Card backgrounds)
+  - --panel-border: rgba(255, 255, 255, 0.06) (Borders)
+  - --bg: #0c0f1a (Page background)
+
+Additional Colors (No CSS vars, inline):
+  - Success (Green): #4ade80
+  - Warning (Yellow): #fbbf24
+  - Error (Red): #f87171
+  - Info (Blue): #3b82f6
+  - Violet: #a855f7
+  - Pink: #ec4899
+  - Orange: #f97316
+
+CSS Classes Reused:
+  - .stats-row (container for stat cards)
+  - .stat-card (individual card styling)
+  - .section-card (panel container)
+  - .section-header (header with title/controls)
+  - .section-body (content area)
+  - .chart-container (canvas wrapper)
+  - .chart-empty (empty state message)
+
+No New CSS Classes Needed.
+
+================================================================================
+FILE MODIFICATIONS REQUIRED
+================================================================================
+
+1. /public/analytics.html
+   └─ Add HTML elements for 4 components (insert at specified locations)
+   
+2. /public/js/analytics.js
+   ├─ Add elements object entries (4 components × ~3-5 fields each)
+   ├─ Add charts object entries (2 chart components)
+   ├─ Add 4 refresh functions:
+   │  ├─ refreshCostStats()
+   │  ├─ refreshCostTrend()
+   │  ├─ refreshEfficiencyTable()
+   │  └─ refreshCostBreakdown()
+   └─ Add event listeners (period change, groupBy change, manual refresh)
+
+3. /routes/analytics.js (NEW)
+   └─ Implement GET /api/analytics/costs endpoint
+      ├─ Base query logic (totalCost, totalTokens, etc.)
+      ├─ groupBy=day variant
+      ├─ groupBy=model variant
+      ├─ groupBy=promptVersion variant
+      └─ breakdown=model variant
+
+4. /src/services/costService.js (NEW)
+   └─ Cost calculation service
+      ├─ Cost config model (pricing tiers)
+      ├─ Cost calculation function
+      └─ Aggregation helpers
+
+================================================================================
+IMPLEMENTATION PHASES
+================================================================================
+
+Phase 1: Backend (Cost Endpoint)
+  [ ] Create cost config model with pricing tiers
+  [ ] Implement /api/analytics/costs endpoint
+  [ ] Add database indexes for performance
+  [ ] Test with sample data
+
+Phase 2: Frontend - Cost Stats Cards
+  [ ] Add HTML elements
+  [ ] Add JS elements object entries
+  [ ] Implement refreshCostStats() function
+  [ ] Wire up event listeners
+  [ ] Test with mock API
+
+Phase 3: Frontend - Cost Trend Chart
+  [ ] Add HTML elements
+  [ ] Add Chart.js configuration
+  [ ] Implement refreshCostTrend() function
+  [ ] Test all groupBy variants
+  [ ] Verify dual-axis rendering
+
+Phase 4: Frontend - Cost Efficiency Table
+  [ ] Add HTML table structure
+  [ ] Implement refreshEfficiencyTable() function
+  [ ] Add badge color logic
+  [ ] Test responsive behavior
+  [ ] Verify sorting
+
+Phase 5: Frontend - Cost Breakdown Chart
+  [ ] Add HTML elements
+  [ ] Add Chart.js configuration
+  [ ] Implement refreshCostBreakdown() function
+  [ ] Create stats sidebar rendering
+  [ ] Test pie/donut toggle
+
+Phase 6: Testing & Polish
+  [ ] Integration tests for all endpoints
+  [ ] Visual regression tests
+  [ ] Responsive design tests
+  [ ] Performance optimization
+  [ ] Documentation updates
+
+================================================================================
+KEY DESIGN DECISIONS
+================================================================================
+
+1. REUSE EXISTING PATTERNS
+   - All components follow existing AgentX design patterns
+   - Stat cards use existing .stat-card class
+   - Charts use existing Chart.js implementation
+   - No new CSS classes required
+
+2. DUAL-AXIS CHART
+   - Cost Trend chart shows both USD spend AND conversation count
+   - Helps identify if more conversations = proportional cost increase
+   - Left axis (Y): Cost USD, Right axis (Y1): Conversation count
+
+3. MODEL RANKING
+   - Efficiency Table sorts by $/1K tokens ascending
+   - Lower cost per token = better efficiency
+   - Visual badges indicate rank (Best ★, 2/4, 3/4, Least Efficient)
+
+4. PIE VS DONUT TOGGLE
+   - Cost Breakdown supports both pie and donut chart types
+   - Toggle via checkbox for user preference
+   - Donut can show center label with total cost
+
+5. SIDEBAR STATS
+   - Cost Breakdown pairs chart with stats sidebar
+   - Each model shows progress bar (width = cost %)
+   - Responsive: stacks vertically on mobile
+
+6. DUAL METRICS
+   - Cost Stats Cards show both absolute ($/cost) and relative (tokens/$) metrics
+   - Helps identify both spending trends and value trends
+
+7. RESPONSIVE LAYOUT
+   - Stats cards: 4 columns on desktop, 2x2 on tablet, 1x4 on mobile
+   - Tables: Horizontal scroll on mobile (no truncation)
+   - Charts: Responsive via Chart.js (maintains aspect ratio)
+
+================================================================================
+PERFORMANCE CONSIDERATIONS
+================================================================================
+
+Data Aggregation:
+  - Cost calculations involve multiple MongoDB aggregations
+  - Consider caching daily cost summaries (expensive operations)
+  - Use indexes on: model, createdAt, promptName
+
+Chart Rendering:
+  - Multiple Chart.js instances on single page
+  - Always destroy() before re-creating (memory leak prevention)
+  - Consider lazy-loading if page becomes sluggish
+
+Table Rendering:
+  - Efficiency table with 100+ models possible
+  - Implement pagination if >20 models (future enhancement)
+  - Virtual scrolling for very large datasets (future enhancement)
+
+API Calls:
+  - Batch requests where possible
+  - Show loading indicators during fetch
+  - Cache responses with sensible TTL
+
+Performance Targets:
+  - Page load: <2 seconds
+  - Chart render: <500ms
+  - Table render (100 models): <200ms
+  - API response: <1 second
+  - Memory per chart: <5MB
+  - Total page memory: <20MB
+
+================================================================================
+ACCESSIBILITY
+================================================================================
+
+Screen Readers:
+  - Semantic HTML with proper roles
+  - aria-label on canvas elements
+  - Table headers with scope="col"
+
+Keyboard Navigation:
+  - Tab through stat cards
+  - Arrow keys in select dropdowns
+  - Table keyboard navigation (future)
+
+Color Contrast:
+  - WCAG AA compliant (4.5:1 minimum)
+  - Status indicators use icons + color (not color alone)
+  - Colorblind-friendly palette
+
+================================================================================
+BROWSER SUPPORT
+================================================================================
+
+Minimum Versions:
+  - Chrome 90+
+  - Firefox 88+
+  - Safari 14+
+  - Edge 90+
+  - Mobile Chrome (latest)
+  - Mobile Safari 14+
+
+Chart.js: 4.4.4 (already loaded)
+No polyfills required for modern browsers
+
+================================================================================
+FUTURE ENHANCEMENTS
+================================================================================
+
+- Cost forecasting (predict next period based on historical data)
+- Budget alerts (notify when spending exceeds threshold)
+- Cost optimization suggestions (recommend cheaper models)
+- Cost attribution by user or conversation type
+- CSV/JSON export of cost reports
+- Cost comparison for A/B testing
+- Real-time cost monitoring (WebSocket updates)
+- Cost anomaly detection (flag unusual spikes)
+- Cost trends vs feedback correlation
+- Per-prompt cost analysis
+
+================================================================================
+NOTES FOR DEVELOPERS
+================================================================================
+
+1. Chart Memory: Always destroy() before recreate()
+2. API Errors: Check res.data.breakdown (not just res.data)
+3. Empty States: Show "No data" when array is empty
+4. Date Format: Use ISO 8601 consistently
+5. Color Usage: Use CSS variables, not hardcoded hex
+6. Responsive: Test at 768px, 1024px, 1440px
+7. Tooltip Format: $ for currency, commas for numbers
+8. Trend Direction: Lower $/token = better (don't reverse)
+9. Sorting: By cost/1k ascending (best first)
+10. Progress Bar: Width = percentage (not pixels)
+
+================================================================================
+REFERENCE DOCUMENTS
+================================================================================
+
+Main Specification:
+  /docs/COST_TRACKING_UI_DESIGN.md (500+ lines)
+
+Detailed Component Specs:
+  /docs/COST_TRACKING_COMPONENT_DETAILS.md (600+ lines)
+
+Quick Reference Guide:
+  /docs/COST_TRACKING_QUICK_REF.md (300+ lines)
+
+This Summary:
+  /docs/COST_TRACKING_SUMMARY.txt
+
+================================================================================

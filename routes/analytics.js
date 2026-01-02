@@ -7,6 +7,7 @@
 const express = require('express');
 const router = express.Router();
 const Conversation = require('../models/Conversation');
+const Feedback = require('../models/Feedback');
 const { optionalAuth } = require('../src/middleware/auth');
 const logger = require('../config/logger');
 
@@ -680,17 +681,20 @@ router.get('/costs', optionalAuth, async (req, res) => {
  * Query params:
  *   - from (ISO date, default: 30 days)
  *   - to (ISO date, default: now)
+ *   - startDate (ISO date, alias for from)
+ *   - endDate (ISO date, alias for to)
  *   - threshold (number, default: 0.7 - flag prompts below this)
+ *   - promptName (string, optional) - filter by specific prompt name
  */
 router.get('/feedback/summary', optionalAuth, async (req, res) => {
   try {
-    const { from, to, threshold = 0.7 } = req.query;
+    const { from, to, startDate, endDate, threshold = 0.7, promptName } = req.query;
     const userId = res.locals.user?.userId;
     const minPositiveRate = parseFloat(threshold);
 
-    // Default to 30 days for summary
-    const toDate = to ? new Date(to) : new Date();
-    const fromDate = from ? new Date(from) : new Date(toDate.getTime() - 30 * 24 * 60 * 60 * 1000);
+    // Default to 30 days for summary, support both from/to and startDate/endDate
+    const toDate = to || endDate ? new Date(to || endDate) : new Date();
+    const fromDate = from || startDate ? new Date(from || startDate) : new Date(toDate.getTime() - 30 * 24 * 60 * 60 * 1000);
 
     const dateFilter = {
       createdAt: { $gte: fromDate, $lte: toDate }
@@ -701,16 +705,19 @@ router.get('/feedback/summary', optionalAuth, async (req, res) => {
       dateFilter.userId = userId;
     }
 
-    // Overall feedback metrics
-    const overallAgg = await Conversation.aggregate([
+    // Optional prompt name filter
+    if (promptName) {
+      dateFilter.promptName = promptName;
+    }
+
+    // Overall feedback metrics - query from Feedback model
+    const overallAgg = await Feedback.aggregate([
       { $match: dateFilter },
-      { $unwind: '$messages' },
-      { $match: { 'messages.feedback.rating': { $in: [1, -1] } } },
       { $group: {
           _id: null,
           totalFeedback: { $sum: 1 },
-          positive: { $sum: { $cond: [{ $eq: ['$messages.feedback.rating', 1] }, 1, 0] } },
-          negative: { $sum: { $cond: [{ $eq: ['$messages.feedback.rating', -1] }, 1, 0] } }
+          positive: { $sum: { $cond: [{ $eq: ['$rating', 'positive'] }, 1, 0] } },
+          negative: { $sum: { $cond: [{ $eq: ['$rating', 'negative'] }, 1, 0] } }
         }
       }
     ]);
@@ -722,39 +729,35 @@ router.get('/feedback/summary', optionalAuth, async (req, res) => {
       positiveRate: overallAgg[0] ? overallAgg[0].positive / overallAgg[0].totalFeedback : 0
     };
 
-    // By model
-    const byModel = await Conversation.aggregate([
+    // By model - query from Feedback model
+    const byModel = await Feedback.aggregate([
       { $match: dateFilter },
-      { $unwind: '$messages' },
-      { $match: { 'messages.feedback.rating': { $in: [1, -1] } } },
       { $group: {
           _id: '$model',
-          positive: { $sum: { $cond: [{ $eq: ['$messages.feedback.rating', 1] }, 1, 0] } },
-          negative: { $sum: { $cond: [{ $eq: ['$messages.feedback.rating', -1] }, 1, 0] } }
+          positive: { $sum: { $cond: [{ $eq: ['$rating', 'positive'] }, 1, 0] } },
+          negative: { $sum: { $cond: [{ $eq: ['$rating', 'negative'] }, 1, 0] } }
         }
       },
       { $project: {
-          _id: 0,
+          _id: 1,
           model: '$_id',
           positive: 1,
           negative: 1,
           total: { $add: ['$positive', '$negative'] },
-          rate: { $cond: [{ $gt: [{ $add: ['$positive', '$negative'] }, 0] }, 
+          rate: { $cond: [{ $gt: [{ $add: ['$positive', '$negative'] }, 0] },
                           { $divide: ['$positive', { $add: ['$positive', '$negative'] }] }, 0] }
         }
       },
       { $sort: { total: -1 } }
     ]);
 
-    // By prompt version
-    const byPromptVersion = await Conversation.aggregate([
+    // By prompt version - query from Feedback model
+    const byPromptVersion = await Feedback.aggregate([
       { $match: dateFilter },
-      { $unwind: '$messages' },
-      { $match: { 'messages.feedback.rating': { $in: [1, -1] } } },
       { $group: {
           _id: { name: '$promptName', version: '$promptVersion' },
-          positive: { $sum: { $cond: [{ $eq: ['$messages.feedback.rating', 1] }, 1, 0] } },
-          negative: { $sum: { $cond: [{ $eq: ['$messages.feedback.rating', -1] }, 1, 0] } }
+          positive: { $sum: { $cond: [{ $eq: ['$rating', 'positive'] }, 1, 0] } },
+          negative: { $sum: { $cond: [{ $eq: ['$rating', 'negative'] }, 1, 0] } }
         }
       },
       { $project: {
@@ -764,7 +767,7 @@ router.get('/feedback/summary', optionalAuth, async (req, res) => {
           positive: 1,
           negative: 1,
           total: { $add: ['$positive', '$negative'] },
-          rate: { $cond: [{ $gt: [{ $add: ['$positive', '$negative'] }, 0] }, 
+          rate: { $cond: [{ $gt: [{ $add: ['$positive', '$negative'] }, 0] },
                           { $divide: ['$positive', { $add: ['$positive', '$negative'] }] }, 0] }
         }
       },
@@ -785,12 +788,26 @@ router.get('/feedback/summary', optionalAuth, async (req, res) => {
       .filter(([name, versions]) => versions.length > 1)
       .map(([name, versions]) => {
         const sorted = versions.sort((a, b) => b.rate - a.rate);
+
+        // Find control and variants
+        const control = sorted.find(v => v.promptVersion === 'control') || sorted[sorted.length - 1];
+        const variants = sorted.filter(v => v.promptVersion !== control.promptVersion);
+
+        // Calculate improvement
+        const bestVariant = variants[0];
+        const improvement = control && bestVariant && control.rate > 0
+          ? ((bestVariant.rate - control.rate) / control.rate) * 100
+          : null;
+
         return {
           promptName: name,
+          control: control,
+          variants: variants,
+          improvement: improvement,
           bestVersion: sorted[0],
           versions: sorted,
-          recommendation: sorted[0].rate > minPositiveRate 
-            ? `Keep version ${sorted[0].promptVersion}` 
+          recommendation: sorted[0].rate > minPositiveRate
+            ? `Keep version ${sorted[0].promptVersion}`
             : 'All versions underperforming - needs prompt revision'
         };
       });
@@ -800,6 +817,10 @@ router.get('/feedback/summary', optionalAuth, async (req, res) => {
       data: {
         from: fromDate.toISOString(),
         to: toDate.toISOString(),
+        dateRange: {
+          start: fromDate.toISOString(),
+          end: toDate.toISOString()
+        },
         threshold: minPositiveRate,
         overall,
         byModel,
@@ -810,6 +831,73 @@ router.get('/feedback/summary', optionalAuth, async (req, res) => {
     });
   } catch (err) {
     logger.error('Analytics feedback summary error', { error: err.message });
+    res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
+/**
+ * POST /api/analytics/feedback
+ * Records feedback for a message in a conversation
+ * Body params:
+ *   - conversationId (required)
+ *   - messageId (required)
+ *   - rating (required: 'positive' | 'negative' | 'neutral')
+ *   - comment (optional)
+ *   - model (optional)
+ *   - promptVersion (optional)
+ *   - promptName (optional)
+ */
+router.post('/feedback', optionalAuth, async (req, res) => {
+  try {
+    const { conversationId, messageId, rating, comment, model, promptVersion, promptName } = req.body;
+
+    // Validate required fields
+    if (!conversationId || !messageId || !rating) {
+      return res.status(400).json({
+        error: 'Missing required fields: conversationId, messageId, and rating are required'
+      });
+    }
+
+    // Validate rating value
+    if (!['positive', 'negative', 'neutral'].includes(rating)) {
+      return res.status(400).json({
+        error: 'Invalid rating. Must be one of: positive, negative, neutral'
+      });
+    }
+
+    // Create feedback record
+    const feedback = new Feedback({
+      conversationId,
+      messageId,
+      rating,
+      comment,
+      model,
+      promptVersion,
+      promptName,
+      userId: res.locals.user?.userId
+    });
+
+    await feedback.save();
+
+    logger.info('Feedback recorded', {
+      conversationId,
+      messageId,
+      rating,
+      userId: res.locals.user?.userId
+    });
+
+    res.status(201).json({
+      success: true,
+      feedback: {
+        id: feedback._id,
+        conversationId: feedback.conversationId,
+        messageId: feedback.messageId,
+        rating: feedback.rating,
+        createdAt: feedback.createdAt
+      }
+    });
+  } catch (err) {
+    logger.error('Feedback recording error', { error: err.message });
     res.status(500).json({ status: 'error', message: err.message });
   }
 });
