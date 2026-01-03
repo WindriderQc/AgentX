@@ -70,7 +70,7 @@
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{\n  message: $json.message,\n  model: $json.model,\n  useRag: $json.useRag,\n  autoRoute: $json.autoRoute,\n  persona: $json.persona,\n  conversationId: $json.conversationId,\n  taskType: $json.taskType\n}}",
+        "jsonBody": "={{ { message: $json.message, model: $json.model, useRag: $json.useRag, autoRoute: $json.autoRoute, persona: $json.persona, conversationId: $json.conversationId, taskType: $json.taskType } }}",
         "options": {
           "timeout": 120000,
           "response": {
@@ -97,7 +97,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const response = $input.first().json;\n\n// Format success response\nconst result = {\n  success: true,\n  response: response.body?.response || response.response || response.message || 'No response',\n  model: response.body?.model || response.model || 'unknown',\n  conversationId: response.body?.conversationId || null,\n  ragUsed: response.body?.ragUsed || false,\n  tokens: response.body?.tokens || null,\n  latency: response.body?.latency || null,\n  timestamp: new Date().toISOString()\n};\n\nreturn [{ json: result }];"
+        "jsCode": "const response = $input.first().json;\n\n// Extract data from AgentX response\nconst data = response.body?.data || response.data || response.body || response;\n\n// Format success response\nconst result = {\n  success: true,\n  response: data.response || 'No response',\n  model: data.model || response.body?.model || 'unknown',\n  conversationId: data.conversationId || null,\n  ragUsed: data.ragUsed || false,\n  tokens: data.stats?.usage || data.tokens || null,\n  latency: data.stats?.performance?.totalDuration || data.latency || null,\n  timestamp: new Date().toISOString()\n};\n\nreturn [{ json: result }];"
       },
       "id": "FormatSuccess",
       "name": "Format Success Response",
