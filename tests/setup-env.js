@@ -14,13 +14,16 @@ process.env.NODE_ENV = 'test';
 
 // Connect to MongoDB before all tests
 beforeAll(async () => {
-  // Prefer in-memory MongoDB to avoid external dependency during tests
-  if (!process.env.MONGODB_URI) {
+  // Use in-memory MongoDB for deterministic, isolated tests.
+  // Opt out only if explicitly requested.
+  const useExternalMongo = process.env.TEST_USE_EXTERNAL_MONGO === 'true';
+  if (!useExternalMongo) {
     mongoServer = await MongoMemoryServer.create({
       binary: { version: '7.0.5' },
       instance: { dbName: 'agentx_test' }
     });
-    process.env.MONGODB_URI = mongoServer.getUri();
+    // mongodb-memory-server may return a URI without a db path; explicitly set it.
+    process.env.MONGODB_URI = mongoServer.getUri('agentx_test');
   }
 
   // Only connect if not already connected

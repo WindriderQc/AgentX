@@ -51,7 +51,7 @@ describe('MetricsCleanup Service', () => {
       const oldDate = new Date(Date.now() - 100 * 24 * 60 * 60 * 1000); // 100 days ago
       const recentDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // 30 days ago
 
-      await MetricsSnapshot.collection.insertMany([
+      await MetricsSnapshot.insertMany([
         {
           componentId: 'test-1',
           type: 'performance',
@@ -84,7 +84,7 @@ describe('MetricsCleanup Service', () => {
       const oldDate = new Date(Date.now() - 200 * 24 * 60 * 60 * 1000); // 200 days ago
       const recentDate = new Date(Date.now() - 100 * 24 * 60 * 60 * 1000); // 100 days ago
 
-      await MetricsSnapshot.collection.insertMany([
+      await MetricsSnapshot.insertMany([
         {
           componentId: 'test-1',
           type: 'performance',
@@ -114,7 +114,7 @@ describe('MetricsCleanup Service', () => {
       const oldDate = new Date(Date.now() - 400 * 24 * 60 * 60 * 1000); // 400 days ago
       const recentDate = new Date(Date.now() - 200 * 24 * 60 * 60 * 1000); // 200 days ago
 
-      await MetricsSnapshot.collection.insertMany([
+      await MetricsSnapshot.insertMany([
         {
           componentId: 'test-1',
           type: 'performance',
@@ -143,7 +143,7 @@ describe('MetricsCleanup Service', () => {
     it('should keep monthly aggregates indefinitely', async () => {
       const veryOldDate = new Date(Date.now() - 1000 * 24 * 60 * 60 * 1000); // 1000 days ago
 
-      await MetricsSnapshot.collection.insertOne({
+      await MetricsSnapshot.create({
         componentId: 'test-1',
         type: 'performance',
         value: 100,
@@ -188,7 +188,7 @@ describe('MetricsCleanup Service', () => {
     it('should delete metrics for a specific component', async () => {
       const oldDate = new Date(Date.now() - 100 * 24 * 60 * 60 * 1000);
 
-      await MetricsSnapshot.collection.insertMany([
+      await MetricsSnapshot.insertMany([
         {
           componentId: 'component-1',
           type: 'performance',
@@ -221,7 +221,7 @@ describe('MetricsCleanup Service', () => {
     it('should delete metrics by type', async () => {
       const oldDate = new Date(Date.now() - 100 * 24 * 60 * 60 * 1000);
 
-      await MetricsSnapshot.collection.insertMany([
+      await MetricsSnapshot.insertMany([
         {
           componentId: 'test-1',
           type: 'performance',
@@ -253,7 +253,7 @@ describe('MetricsCleanup Service', () => {
   describe('getStorageStats()', () => {
     it('should return storage statistics by granularity', async () => {
       const now = new Date();
-      await MetricsSnapshot.collection.insertMany([
+      await MetricsSnapshot.insertMany([
         {
           componentId: 'test-1',
           type: 'performance',
@@ -290,7 +290,7 @@ describe('MetricsCleanup Service', () => {
     it('should preview what will be deleted', async () => {
       const oldDate = new Date(Date.now() - 100 * 24 * 60 * 60 * 1000);
 
-      await MetricsSnapshot.collection.insertMany([
+      await MetricsSnapshot.insertMany([
         {
           componentId: 'test-1',
           type: 'performance',
@@ -370,7 +370,7 @@ describe('MetricsCleanup Service', () => {
     it('should execute cleanup immediately', async () => {
       const oldDate = new Date(Date.now() - 100 * 24 * 60 * 60 * 1000);
 
-      await MetricsSnapshot.collection.insertOne({
+      await MetricsSnapshot.create({
         componentId: 'test-1',
         type: 'performance',
         value: 100,

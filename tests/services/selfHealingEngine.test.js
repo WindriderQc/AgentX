@@ -181,11 +181,11 @@ describe('SelfHealingEngine', () => {
     test('should evaluate metric-based conditions', async () => {
       // Create test metrics that breach threshold
       await MetricsSnapshot.create({
-        metadata: { componentType: "test", componentId: "test", source: "jest" },
-        component: 'agentx',
-        metricType: 'performance',
+        componentId: 'agentx',
+        type: 'performance',
         value: 6000,
-        timestamp: new Date(Date.now() - 2 * 60 * 1000)
+        timestamp: new Date(Date.now() - 2 * 60 * 1000),
+        metadata: { source: "jest" }
       });
 
       const rule = engine.getRules()[0];
@@ -705,11 +705,11 @@ describe('SelfHealingEngine', () => {
 
       // Create metrics that trigger both rules
       await MetricsSnapshot.create({
-        metadata: { componentType: "test", componentId: "test", source: "jest" },
-        component: 'test',
-        metricType: 'usage',
-        value: 150,
-        timestamp: new Date()
+        componentId: 'test',
+        type: 'usage',
+        value: 0.95,
+        timestamp: new Date(),
+        metadata: { source: "jest" }
       });
 
       const results = await engine.evaluateAndExecute();
@@ -753,11 +753,11 @@ describe('SelfHealingEngine', () => {
       jest.spyOn(Alert, 'create').mockResolvedValue({ _id: 'mock' });
 
       await MetricsSnapshot.create({
-        metadata: { componentType: "test", componentId: "test", source: "jest" },
-        component: 'test',
-        metricType: 'usage',
+        componentId: 'test',
+        type: 'usage',
         value: 100,
-        timestamp: new Date()
+        timestamp: new Date(),
+        metadata: { source: "jest" }
       });
 
       const results = await engine.evaluateAndExecute();
@@ -817,11 +817,11 @@ describe('SelfHealingEngine', () => {
       jest.spyOn(Alert, 'create').mockResolvedValue({ _id: 'mock' });
 
       await MetricsSnapshot.create({
-        metadata: { componentType: "test", componentId: "test", source: "jest" },
-        component: 'test',
-        metricType: 'usage',
+        componentId: 'test',
+        type: 'usage',
         value: 100,
-        timestamp: new Date()
+        timestamp: new Date(),
+        metadata: { source: "jest" }
       });
 
       const results = await engine.evaluateAndExecute();
@@ -930,11 +930,11 @@ describe('SelfHealingEngine', () => {
 
       // Create metrics for second evaluation
       await MetricsSnapshot.create({
-        metadata: { componentType: "test", componentId: "test", source: "jest" },
-        component: 'test',
-        metricType: 'usage',
+        componentId: 'test',
+        type: 'usage',
         value: 150,
-        timestamp: new Date()
+        timestamp: new Date(),
+        metadata: { source: "jest" }
       });
 
       const tempPath = path.join(__dirname, 'temp-no-retry.json');
