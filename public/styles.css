@@ -2602,3 +2602,279 @@ button:active {
     width: 100%;
   }
 }
+
+/* Health Dashboard Styles */
+.health-dashboard {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius);
+  padding: 24px;
+  margin: 24px;
+  box-shadow: var(--shadow);
+}
+
+.health-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.health-header h2 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.health-header h2 i {
+  color: var(--accent);
+}
+
+.btn-sm {
+  padding: 8px 16px;
+  font-size: 0.875rem;
+}
+
+.health-summary {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 32px;
+  margin-bottom: 32px;
+  align-items: center;
+}
+
+.health-status {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 24px;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 12px;
+  border: 1px solid var(--panel-border);
+}
+
+.health-status i {
+  font-size: 3rem;
+}
+
+.health-status.healthy i {
+  color: #10b981;
+}
+
+.health-status.degraded i {
+  color: #f59e0b;
+}
+
+.health-status.unhealthy i {
+  color: #ef4444;
+}
+
+.status-label {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.status-time {
+  font-size: 0.875rem;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.health-percentage {
+  text-align: center;
+}
+
+.percentage-circle {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  margin: 0 auto 12px;
+}
+
+.percentage-circle svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(0deg);
+}
+
+.percentage-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.percentage-label {
+  font-size: 0.875rem;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.health-components {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 16px;
+}
+
+.component-card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.component-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.component-header h3 {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.component-message {
+  color: var(--muted);
+  font-size: 0.875rem;
+  margin-bottom: 16px;
+}
+
+.component-details {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--panel-border);
+}
+
+.workflow-status-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.workflow-status-item {
+  display: grid;
+  grid-template-columns: 60px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 6px;
+  font-size: 0.875rem;
+}
+
+.workflow-status-item .wf-id {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.workflow-status-item .wf-name {
+  color: var(--muted);
+}
+
+.workflow-status-item .wf-status {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.workflow-status-item .wf-status.active {
+  background: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+}
+
+.webhook-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.webhook-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 6px;
+  font-size: 0.875rem;
+}
+
+.http-method {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.http-method.get {
+  background: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+}
+
+.http-method.post {
+  background: rgba(59, 130, 246, 0.1);
+  color: #3b82f6;
+}
+
+.endpoint-info {
+  font-size: 0.875rem;
+}
+
+.endpoint-info code {
+  background: rgba(255, 255, 255, 0.05);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-family: 'Courier New', monospace;
+  color: var(--accent);
+}
+
+.health-error {
+  text-align: center;
+  padding: 48px 24px;
+  color: var(--muted);
+}
+
+.health-error i {
+  font-size: 3rem;
+  color: #ef4444;
+  margin-bottom: 16px;
+}
+
+.loading {
+  text-align: center;
+  padding: 48px 24px;
+  color: var(--muted);
+}
+
+.loading i {
+  font-size: 2rem;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 1024px) {
+  .health-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .health-components {
+    grid-template-columns: 1fr;
+  }
+}

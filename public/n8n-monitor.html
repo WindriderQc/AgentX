@@ -20,7 +20,21 @@
             <h1><i class="fas fa-network-wired"></i><span class="title-separator"></span>n8n Workflow Monitor</h1>
             <p class="lede">Test and monitor SBQC n8n workflows. Trigger webhooks, view execution history, and monitor real-time events.</p>
         </div>
-        
+
+        <div class="health-dashboard">
+            <div class="health-header">
+                <h2><i class="fas fa-heartbeat"></i> System Health</h2>
+                <button class="btn btn-secondary btn-sm" onclick="refreshHealth()">
+                    <i class="fas fa-sync"></i> Refresh
+                </button>
+            </div>
+            <div id="health-container">
+                <div class="loading">
+                    <i class="fas fa-spinner fa-spin"></i> Loading health data...
+                </div>
+            </div>
+        </div>
+
         <div class="monitor-grid">
             <div class="workflow-list">
                 <h2>Workflows</h2>
@@ -63,6 +77,8 @@
     
     <script>
         const WORKFLOWS = [
+            { id: 'N0.0', name: 'Deployment Test', webhook: 'test-deployment', type: 'GET' },
+            { id: 'N0.1', name: 'Health Dashboard', webhook: 'sbqc-health', type: 'GET' },
             { id: 'N1.1', name: 'System Health Monitor', webhook: 'sbqc-n1-1-system-health', type: 'GET' },
             { id: 'N1.3', name: 'Ops Diagnostic', webhook: 'sbqc-n1-3-ops-diagnostic', type: 'GET' },
             { id: 'N2.1', name: 'NAS Scan', webhook: 'sbqc-n2-1-nas-scan', type: 'POST' },
@@ -70,7 +86,7 @@
             { id: 'N2.3', name: 'RAG Ingest', webhook: 'sbqc-n2-3-rag-ingest', type: 'POST' },
             { id: 'N3.1', name: 'Model Health & Latency Monitor', webhook: 'sbqc-n3-1-model-monitor', type: 'GET' },
             { id: 'N3.2', name: 'External AI Trigger Gateway', webhook: 'sbqc-ai-query', type: 'POST' },
-            { id: 'N5.1', name: 'Feedback Analysis', webhook: 'sbqc-n5-1-feedback-analysis', type: 'POST' }
+            { id: 'N5.1', name: 'Feedback Analysis', webhook: 'sbqc-n5-1-feedback-analysis', type: 'GET' }
         ];
         
         const N8N_BASE = 'https://n8n.specialblend.icu';
@@ -80,7 +96,128 @@
         let currentWorkflow = null;
         let events = [];
         let eventRefreshInterval = null;
-        
+        let healthRefreshInterval = null;
+        let healthData = null;
+
+        // Health Dashboard Functions
+        async function refreshHealth() {
+            try {
+                const response = await fetch(`${N8N_BASE}/webhook/sbqc-health`);
+                healthData = await response.json();
+                renderHealth();
+            } catch (err) {
+                console.error('Failed to load health data:', err);
+                document.getElementById('health-container').innerHTML = `
+                    <div class="health-error">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <p>Failed to load health data</p>
+                    </div>
+                `;
+            }
+        }
+
+        function renderHealth() {
+            if (!healthData) return;
+
+            const overallStatus = healthData.overall_status;
+            const healthPercentage = healthData.summary.health_percentage;
+            const checks = healthData.checks || [];
+
+            const statusColor = overallStatus === 'healthy' ? '#10b981' :
+                               overallStatus === 'degraded' ? '#f59e0b' : '#ef4444';
+            const statusIcon = overallStatus === 'healthy' ? 'check-circle' :
+                              overallStatus === 'degraded' ? 'exclamation-triangle' : 'times-circle';
+
+            document.getElementById('health-container').innerHTML = `
+                <div class="health-summary">
+                    <div class="health-status ${overallStatus}">
+                        <i class="fas fa-${statusIcon}"></i>
+                        <div>
+                            <div class="status-label">${overallStatus.toUpperCase()}</div>
+                            <div class="status-time">Last checked: ${new Date(healthData.timestamp).toLocaleTimeString()}</div>
+                        </div>
+                    </div>
+                    <div class="health-percentage">
+                        <div class="percentage-circle">
+                            <svg viewBox="0 0 100 100">
+                                <circle cx="50" cy="50" r="45" fill="none" stroke="#1f2937" stroke-width="10"/>
+                                <circle cx="50" cy="50" r="45" fill="none" stroke="${statusColor}" stroke-width="10"
+                                        stroke-dasharray="${healthPercentage * 2.827} 282.7"
+                                        stroke-linecap="round" transform="rotate(-90 50 50)"/>
+                            </svg>
+                            <div class="percentage-text">${healthPercentage}%</div>
+                        </div>
+                        <div class="percentage-label">System Health</div>
+                    </div>
+                </div>
+
+                <div class="health-components">
+                    ${checks.map(check => {
+                        const isPass = check.status === 'pass';
+                        const icon = isPass ? 'check-circle' : 'times-circle';
+                        const color = isPass ? 'success' : 'error';
+
+                        return `
+                            <div class="component-card">
+                                <div class="component-header">
+                                    <h3>${formatComponentName(check.component)}</h3>
+                                    <span class="status-badge ${color}">
+                                        <i class="fas fa-${icon}"></i> ${check.status.toUpperCase()}
+                                    </span>
+                                </div>
+                                <div class="component-message">${check.message}</div>
+                                ${check.details ? `
+                                    <div class="component-details">
+                                        ${renderComponentDetails(check)}
+                                    </div>
+                                ` : ''}
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            `;
+        }
+
+        function formatComponentName(name) {
+            const names = {
+                'n8n_workflows': 'n8n Workflows',
+                'agentx_api': 'AgentX API',
+                'dataapi': 'DataAPI',
+                'webhooks': 'Webhook Registry'
+            };
+            return names[name] || name;
+        }
+
+        function renderComponentDetails(check) {
+            if (check.component === 'n8n_workflows' && Array.isArray(check.details)) {
+                return `
+                    <div class="workflow-status-grid">
+                        ${check.details.map(wf => `
+                            <div class="workflow-status-item">
+                                <span class="wf-id">${wf.id}</span>
+                                <span class="wf-name">${wf.name}</span>
+                                <span class="wf-status ${wf.status}">${wf.type}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            } else if (check.component === 'webhooks' && check.endpoints) {
+                return `
+                    <div class="webhook-list">
+                        ${check.endpoints.map(ep => `
+                            <div class="webhook-item">
+                                <span class="http-method ${ep.method.toLowerCase()}">${ep.method}</span>
+                                <code>${ep.path}</code>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            } else if (check.endpoint) {
+                return `<div class="endpoint-info"><code>${check.endpoint}</code></div>`;
+            }
+            return '';
+        }
+
         async function deployWorkflows(deployAll) {
             const btn = event.target;
             const logEl = document.getElementById('deploy-log');
@@ -353,9 +490,13 @@
         function openN8nEditor() {
             window.open('https://n8n.specialblend.icu', '_blank');
         }
-        
+
         // Initialize
         renderWorkflowList();
+        refreshHealth();
+
+        // Auto-refresh health every 30 seconds
+        healthRefreshInterval = setInterval(refreshHealth, 30000);
     </script>
 </body>
 </html>
