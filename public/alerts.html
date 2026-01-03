@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alerts Dashboard - AgentX</title>
+    
+    <!-- MDBootstrap 5 CSS -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/mdb-ui-kit/6.4.0/mdb.min.css" rel="stylesheet">
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        body {
+            background-color: #f5f5f5;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        .navbar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        .alert-card {
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: transform 0.2s;
+        }
+        
+        .alert-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        }
+        
+        .card {
+            border-radius: 8px;
+            border: none;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .page-header {
+            background: white;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .loading-spinner {
+            display: none;
+            text-align: center;
+            padding: 2rem;
+        }
+        
+        .loading-spinner.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">
+                <i class="fas fa-robot"></i> AgentX
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <i class="fas fa-bars"></i>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/dashboard.html">
+                            <i class="fas fa-tachometer-alt"></i> Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/alerts.html">
+                            <i class="fas fa-bell"></i> Alerts
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/metrics.html">
+                            <i class="fas fa-chart-line"></i> Metrics
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container-fluid py-4">
+        <!-- Page Header -->
+        <div class="page-header">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h2 class="mb-1">
+                        <i class="fas fa-bell text-primary"></i> Alerts Dashboard
+                    </h2>
+                    <p class="text-muted mb-0">Real-time alert monitoring and management</p>
+                </div>
+                <div>
+                    <a href="/alert-analytics.html" class="btn btn-info" style="margin-right: 10px;">
+                        <i class="fas fa-chart-line"></i> Analytics
+                    </a>
+                    <button class="btn btn-primary" onclick="window.alertsDashboard.loadAlerts()">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Statistics Banner -->
+        <div id="alerts-stats" class="mb-4">
+            <!-- Statistics will be rendered here -->
+        </div>
+
+        <!-- Filters -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title mb-3">
+                    <i class="fas fa-filter"></i> Filters & Actions
+                </h5>
+                <div id="alerts-filters">
+                    <!-- Filters will be rendered here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Alerts List -->
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title mb-3">
+                    <i class="fas fa-list"></i> Alerts
+                </h5>
+                
+                <!-- Loading Spinner -->
+                <div class="loading-spinner" id="loading-spinner">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Loading alerts...</p>
+                </div>
+                
+                <!-- Alerts Container -->
+                <div id="alerts-container">
+                    <!-- Alerts will be rendered here -->
+                </div>
+                
+                <!-- Pagination -->
+                <div id="alerts-pagination" class="mt-4">
+                    <!-- Pagination will be rendered here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container (from toast.js) -->
+    <div id="toastContainer"></div>
+
+    <!-- MDBootstrap JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mdb-ui-kit/6.4.0/mdb.min.js"></script>
+    
+    <!-- Toast Notifications -->
+    <script src="/js/toast.js"></script>
+    
+    <!-- Alerts Dashboard Module -->
+    <script type="module">
+        import AlertsDashboard from './js/alerts-dashboard.js';
+        
+        // Initialize dashboard when DOM is ready
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                // Show loading spinner
+                document.getElementById('loading-spinner').classList.add('active');
+                
+                // Create dashboard instance
+                const dashboard = new AlertsDashboard({
+                    containerId: 'alerts-container',
+                    statsContainerId: 'alerts-stats',
+                    filtersContainerId: 'alerts-filters',
+                    refreshInterval: 30000, // 30 seconds
+                    perPage: 20
+                });
+                
+                // Expose to window for onclick handlers
+                window.alertsDashboard = dashboard;
+                
+                // Initialize
+                await dashboard.init();
+                
+                // Render filters UI
+                dashboard.renderFilters();
+                
+                // Hide loading spinner
+                document.getElementById('loading-spinner').classList.remove('active');
+                
+                console.log('Alerts Dashboard loaded successfully');
+                
+            } catch (error) {
+                console.error('Failed to initialize Alerts Dashboard:', error);
+                document.getElementById('loading-spinner').innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        Failed to load dashboard: ${error.message}
+                    </div>
+                `;
+            }
+        });
+        
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (window.alertsDashboard) {
+                window.alertsDashboard.destroy();
+            }
+        });
+    </script>
+</body>
+</html>

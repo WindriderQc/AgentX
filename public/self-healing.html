@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Self-Healing Dashboard - AgentX</title>
+
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        body {
+            background-color: #0a0e27;
+            color: #e8edf5;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+
+        .navbar {
+            background-color: #121726 !important;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .container-fluid {
+            max-width: 1600px;
+        }
+
+        .card {
+            background-color: #121726;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            color: #e8edf5;
+        }
+
+        .card-header {
+            background-color: rgba(255, 255, 255, 0.02);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .bg-dark {
+            background-color: #0a0e27 !important;
+        }
+
+        .bg-light {
+            background-color: rgba(255, 255, 255, 0.05) !important;
+            color: #e8edf5 !important;
+        }
+
+        .border {
+            border-color: rgba(255, 255, 255, 0.1) !important;
+        }
+
+        .text-muted {
+            color: #8892a6 !important;
+        }
+
+        .alert {
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .alert-info {
+            background-color: rgba(13, 202, 240, 0.1);
+            color: #0dcaf0;
+        }
+
+        .alert-warning {
+            background-color: rgba(255, 193, 7, 0.1);
+            color: #ffc107;
+        }
+
+        .btn-outline-primary,
+        .btn-outline-success,
+        .btn-outline-info,
+        .btn-outline-secondary,
+        .btn-outline-dark {
+            border-color: rgba(255, 255, 255, 0.2);
+            color: #e8edf5;
+        }
+
+        .btn-outline-primary:hover {
+            background-color: #0d6efd;
+            border-color: #0d6efd;
+            color: white;
+        }
+
+        .btn-outline-success:hover {
+            background-color: #198754;
+            border-color: #198754;
+            color: white;
+        }
+
+        .btn-outline-info:hover {
+            background-color: #0dcaf0;
+            border-color: #0dcaf0;
+            color: #0a0e27;
+        }
+
+        .form-check-input {
+            background-color: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .form-check-input:checked {
+            background-color: #198754;
+            border-color: #198754;
+        }
+
+        .opacity-50 {
+            opacity: 0.5;
+        }
+
+        .modal-content {
+            background-color: #121726;
+            color: #e8edf5;
+        }
+
+        .modal-header {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .modal-footer {
+            border-top: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .form-control,
+        .form-select {
+            background-color: rgba(255, 255, 255, 0.05);
+            border-color: rgba(255, 255, 255, 0.1);
+            color: #e8edf5;
+        }
+
+        .form-control:focus,
+        .form-select:focus {
+            background-color: rgba(255, 255, 255, 0.08);
+            border-color: rgba(255, 255, 255, 0.2);
+            color: #e8edf5;
+            box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+        }
+
+        .list-group-item {
+            background-color: rgba(255, 255, 255, 0.02);
+            border-color: rgba(255, 255, 255, 0.06);
+            color: #e8edf5;
+        }
+
+        pre {
+            background-color: #0a0e27 !important;
+            color: #e8edf5 !important;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">
+                <i class="fas fa-robot"></i> AgentX
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/dashboard.html">
+                            <i class="fas fa-chart-line"></i> Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/alerts.html">
+                            <i class="fas fa-bell"></i> Alerts
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/self-healing.html">
+                            <i class="fas fa-medkit"></i> Self-Healing
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container-fluid mt-4">
+        <!-- Page Header -->
+        <div class="row mb-4">
+            <div class="col">
+                <h2>
+                    <i class="fas fa-medkit"></i> Self-Healing Dashboard
+                </h2>
+                <p class="text-muted">Monitor and manage automated remediation rules</p>
+            </div>
+        </div>
+
+        <!-- Engine Status -->
+        <div id="self-healing-stats"></div>
+
+        <!-- Rules Section -->
+        <div class="row mb-4">
+            <div class="col-lg-8">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-list"></i> Self-Healing Rules
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="self-healing-container"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- History Section -->
+            <div class="col-lg-4">
+                <div id="self-healing-history"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap 5 JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Toast Notifications -->
+    <script src="/js/toast.js"></script>
+
+    <!-- Self-Healing Dashboard -->
+    <script type="module">
+        import SelfHealingDashboard from './js/self-healing-dashboard.js';
+
+        // Initialize dashboard when page loads
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Create dashboard instance
+            window.selfHealingDashboard = new SelfHealingDashboard({
+                containerId: 'self-healing-container',
+                statsContainerId: 'self-healing-stats',
+                historyContainerId: 'self-healing-history',
+                refreshInterval: 30000 // 30 seconds
+            });
+
+            // Initialize
+            try {
+                await window.selfHealingDashboard.init();
+                console.log('Self-Healing Dashboard loaded successfully');
+            } catch (error) {
+                console.error('Failed to initialize dashboard:', error);
+                if (window.toast) {
+                    window.toast.error('Failed to load dashboard');
+                }
+            }
+        });
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (window.selfHealingDashboard) {
+                window.selfHealingDashboard.destroy();
+            }
+        });
+    </script>
+</body>
+</html>

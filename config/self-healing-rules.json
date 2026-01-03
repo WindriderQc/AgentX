@@ -1,0 +1,363 @@
+[
+  {
+    "name": "model_slow_response_failover",
+    "enabled": true,
+    "description": "Failover to backup Ollama host when primary response time exceeds threshold",
+    "detectionQuery": {
+      "metric": "avg_response_time",
+      "aggregation": "avg",
+      "threshold": 5000,
+      "comparison": "greater_than",
+      "window": "5m",
+      "componentType": "ollama",
+      "componentPattern": "ollama-*"
+    },
+    "remediation": {
+      "strategy": "model_failover",
+      "action": "switch_to_backup_host",
+      "description": "Route traffic to secondary Ollama host when primary is slow",
+      "automated": true,
+      "requiresApproval": false,
+      "cooldown": "15m",
+      "priority": 1
+    },
+    "notifications": {
+      "onTrigger": ["slack", "dataapi_log"],
+      "onSuccess": ["dataapi_log"],
+      "onFailure": ["slack", "email"]
+    },
+    "tags": ["performance", "availability", "ollama"]
+  },
+  {
+    "name": "prompt_low_quality_rollback",
+    "enabled": true,
+    "description": "Rollback to previous prompt version when quality drops significantly",
+    "detectionQuery": {
+      "metric": "positive_rate",
+      "aggregation": "avg",
+      "threshold": 0.6,
+      "comparison": "less_than",
+      "window": "1h",
+      "componentType": "agentx",
+      "componentPattern": "prompt:*"
+    },
+    "remediation": {
+      "strategy": "prompt_rollback",
+      "action": "rollback_to_previous_version",
+      "description": "Rollback prompt to previous version with better quality metrics",
+      "automated": true,
+      "requiresApproval": false,
+      "cooldown": "1h",
+      "priority": 2
+    },
+    "notifications": {
+      "onTrigger": ["slack", "dataapi_log"],
+      "onSuccess": ["slack", "dataapi_log"],
+      "onFailure": ["slack", "email"]
+    },
+    "conditions": {
+      "minOccurrences": 3
+    },
+    "tags": ["quality", "prompts", "feedback"]
+  },
+  {
+    "name": "agentx_down_restart",
+    "enabled": true,
+    "description": "Restart AgentX service when health check fails",
+    "detectionQuery": {
+      "metric": "health_status",
+      "aggregation": "count",
+      "threshold": 1,
+      "comparison": "greater_than",
+      "window": "5m",
+      "componentType": "agentx",
+      "componentPattern": "agentx-*"
+    },
+    "remediation": {
+      "strategy": "service_restart",
+      "action": "pm2_restart_agentx",
+      "description": "Restart AgentX service via PM2",
+      "automated": false,
+      "requiresApproval": true,
+      "cooldown": "30m",
+      "priority": 1
+    },
+    "notifications": {
+      "onTrigger": ["slack", "email", "dataapi_log"],
+      "onSuccess": ["slack", "dataapi_log"],
+      "onFailure": ["slack", "email"]
+    },
+    "tags": ["availability", "critical", "service"]
+  },
+  {
+    "name": "high_error_rate_alert",
+    "enabled": true,
+    "description": "Alert when error rate exceeds acceptable threshold",
+    "detectionQuery": {
+      "metric": "error_rate",
+      "aggregation": "avg",
+      "threshold": 0.05,
+      "comparison": "greater_than",
+      "window": "15m",
+      "componentType": "agentx",
+      "componentPattern": "agentx-*"
+    },
+    "remediation": {
+      "strategy": "alert_only",
+      "action": "send_alert",
+      "description": "Send alert to operations team for investigation",
+      "automated": true,
+      "requiresApproval": false,
+      "cooldown": "30m",
+      "priority": 3
+    },
+    "notifications": {
+      "onTrigger": ["slack", "email", "dataapi_log"],
+      "onSuccess": ["dataapi_log"],
+      "onFailure": ["slack"]
+    },
+    "tags": ["reliability", "errors", "monitoring"]
+  },
+  {
+    "name": "cost_spike_throttle",
+    "enabled": true,
+    "description": "Throttle requests when daily cost exceeds budget",
+    "detectionQuery": {
+      "metric": "daily_cost",
+      "aggregation": "sum",
+      "threshold": 50,
+      "comparison": "greater_than",
+      "window": "24h",
+      "componentType": "ollama",
+      "componentPattern": "*"
+    },
+    "remediation": {
+      "strategy": "throttle_requests",
+      "action": "enable_rate_limiting",
+      "description": "Enable aggressive rate limiting to control costs",
+      "automated": false,
+      "requiresApproval": true,
+      "cooldown": "24h",
+      "priority": 2
+    },
+    "notifications": {
+      "onTrigger": ["slack", "email", "dataapi_log"],
+      "onSuccess": ["slack", "dataapi_log"],
+      "onFailure": ["slack", "email"]
+    },
+    "conditions": {
+      "timeOfDay": {
+        "start": "00:00",
+        "end": "23:59"
+      },
+      "minOccurrences": 1
+    },
+    "tags": ["cost", "budget", "optimization"]
+  },
+  {
+    "name": "rag_ingestion_failure_alert",
+    "enabled": true,
+    "description": "Alert when RAG document ingestion fails",
+    "detectionQuery": {
+      "metric": "ingestion_error_count",
+      "aggregation": "sum",
+      "threshold": 3,
+      "comparison": "greater_than",
+      "window": "1h",
+      "componentType": "qdrant",
+      "componentPattern": "qdrant-*"
+    },
+    "remediation": {
+      "strategy": "alert_only",
+      "action": "send_alert",
+      "description": "Alert team about RAG ingestion failures",
+      "automated": true,
+      "requiresApproval": false,
+      "cooldown": "1h",
+      "priority": 4
+    },
+    "notifications": {
+      "onTrigger": ["slack", "dataapi_log"],
+      "onSuccess": ["dataapi_log"],
+      "onFailure": ["slack"]
+    },
+    "tags": ["rag", "ingestion", "reliability"]
+  },
+  {
+    "name": "ollama_memory_high_scale_up",
+    "enabled": false,
+    "description": "Scale up Ollama resources when memory usage is high",
+    "detectionQuery": {
+      "metric": "memory_percentage",
+      "aggregation": "avg",
+      "threshold": 85,
+      "comparison": "greater_than",
+      "window": "10m",
+      "componentType": "ollama",
+      "componentPattern": "ollama-*"
+    },
+    "remediation": {
+      "strategy": "scale_up",
+      "action": "increase_memory_limit",
+      "description": "Increase memory allocation for Ollama containers",
+      "automated": false,
+      "requiresApproval": true,
+      "cooldown": "6h",
+      "priority": 3
+    },
+    "notifications": {
+      "onTrigger": ["slack", "dataapi_log"],
+      "onSuccess": ["slack", "dataapi_log"],
+      "onFailure": ["slack", "email"]
+    },
+    "tags": ["resource", "scaling", "ollama"]
+  },
+  {
+    "name": "n8n_workflow_execution_failure",
+    "enabled": true,
+    "description": "Alert when n8n workflow execution fails repeatedly",
+    "detectionQuery": {
+      "metric": "workflow_failure_count",
+      "aggregation": "sum",
+      "threshold": 5,
+      "comparison": "greater_than",
+      "window": "30m",
+      "componentType": "n8n",
+      "componentPattern": "*"
+    },
+    "remediation": {
+      "strategy": "alert_only",
+      "action": "send_alert",
+      "description": "Alert team about n8n workflow failures",
+      "automated": true,
+      "requiresApproval": false,
+      "cooldown": "30m",
+      "priority": 3
+    },
+    "notifications": {
+      "onTrigger": ["slack", "dataapi_log"],
+      "onSuccess": ["dataapi_log"],
+      "onFailure": ["slack"]
+    },
+    "tags": ["n8n", "workflow", "reliability"]
+  },
+  {
+    "name": "mongodb_connection_degraded",
+    "enabled": true,
+    "description": "Alert when MongoDB connection pool is exhausted",
+    "detectionQuery": {
+      "metric": "connection_pool_usage",
+      "aggregation": "avg",
+      "threshold": 90,
+      "comparison": "greater_than",
+      "window": "5m",
+      "componentType": "mongodb",
+      "componentPattern": "mongodb-*"
+    },
+    "remediation": {
+      "strategy": "alert_only",
+      "action": "send_alert",
+      "description": "Alert about MongoDB connection pool exhaustion",
+      "automated": true,
+      "requiresApproval": false,
+      "cooldown": "15m",
+      "priority": 2
+    },
+    "notifications": {
+      "onTrigger": ["slack", "email", "dataapi_log"],
+      "onSuccess": ["dataapi_log"],
+      "onFailure": ["slack"]
+    },
+    "tags": ["mongodb", "database", "performance"]
+  },
+  {
+    "name": "system_disk_usage_high",
+    "enabled": true,
+    "description": "Alert when system disk usage exceeds threshold",
+    "detectionQuery": {
+      "metric": "disk_usage_percentage",
+      "aggregation": "avg",
+      "threshold": 85,
+      "comparison": "greater_than",
+      "window": "10m",
+      "componentType": "system",
+      "componentPattern": "*"
+    },
+    "remediation": {
+      "strategy": "alert_only",
+      "action": "send_alert",
+      "description": "Alert about high disk usage requiring cleanup",
+      "automated": true,
+      "requiresApproval": false,
+      "cooldown": "1h",
+      "priority": 3
+    },
+    "notifications": {
+      "onTrigger": ["slack", "email", "dataapi_log"],
+      "onSuccess": ["dataapi_log"],
+      "onFailure": ["slack"]
+    },
+    "tags": ["system", "disk", "capacity"]
+  },
+  {
+    "name": "conversation_quality_degrading",
+    "enabled": true,
+    "description": "Alert when conversation quality trends downward",
+    "detectionQuery": {
+      "metric": "quality_score",
+      "aggregation": "avg",
+      "threshold": 0.7,
+      "comparison": "less_than",
+      "window": "2h",
+      "componentType": "agentx",
+      "componentPattern": "conversation:*"
+    },
+    "remediation": {
+      "strategy": "alert_only",
+      "action": "send_alert",
+      "description": "Alert about declining conversation quality for review",
+      "automated": true,
+      "requiresApproval": false,
+      "cooldown": "2h",
+      "priority": 4
+    },
+    "notifications": {
+      "onTrigger": ["slack", "dataapi_log"],
+      "onSuccess": ["dataapi_log"],
+      "onFailure": ["slack"]
+    },
+    "conditions": {
+      "minOccurrences": 10
+    },
+    "tags": ["quality", "conversation", "monitoring"]
+  },
+  {
+    "name": "ollama_token_throughput_low",
+    "enabled": true,
+    "description": "Failover to faster model when token throughput drops",
+    "detectionQuery": {
+      "metric": "tokens_per_second",
+      "aggregation": "avg",
+      "threshold": 50,
+      "comparison": "less_than",
+      "window": "5m",
+      "componentType": "ollama",
+      "componentPattern": "ollama-*"
+    },
+    "remediation": {
+      "strategy": "model_failover",
+      "action": "switch_to_faster_model",
+      "description": "Switch to a smaller, faster model when performance degrades",
+      "automated": false,
+      "requiresApproval": true,
+      "cooldown": "15m",
+      "priority": 2
+    },
+    "notifications": {
+      "onTrigger": ["slack", "dataapi_log"],
+      "onSuccess": ["slack", "dataapi_log"],
+      "onFailure": ["slack", "email"]
+    },
+    "tags": ["performance", "ollama", "throughput"]
+  }
+]

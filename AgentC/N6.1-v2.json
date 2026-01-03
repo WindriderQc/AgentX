@@ -1,0 +1,261 @@
+{
+  "name": "SBQC - N6.1 Workflow Architect (Simplified)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "sbqc-workflow-architect",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "a1b2c3d4-webhook",
+      "name": "Webhook (/workflow-architect)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-600, 0],
+      "webhookId": "sbqc-n61-workflow-architect"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\n\n// Extract description from webhook body\nconst description = input.body?.description || input.description;\n\nif (!description) {\n  return [{\n    json: {\n      error: true,\n      status: 400,\n      message: 'Missing required field: description',\n      usage: {\n        endpoint: '/webhook/sbqc-workflow-architect',\n        method: 'POST',\n        body: {\n          description: 'Your natural language workflow description',\n          templates: 'Optional: Array of template workflows',\n          context: 'Optional: Additional context object',\n          options: {\n            validate: 'true (default) - Validate before deployment',\n            deploy: 'false (default) - Auto-deploy to n8n',\n            activate: 'false (default) - Auto-activate after deployment'\n          }\n        }\n      }\n    }\n  }];\n}\n\n// Build request for AgentX API\nconst request = {\n  description: description,\n  templates: input.body?.templates || input.templates || [],\n  context: input.body?.context || input.context || {},\n  options: {\n    validate: input.body?.options?.validate !== false,\n    deploy: input.body?.options?.deploy === true,\n    activate: input.body?.options?.activate === true\n  }\n};\n\nreturn [{\n  json: {\n    request,\n    metadata: {\n      source: 'n8n-webhook',\n      triggeredAt: new Date().toISOString(),\n      clientIp: input.headers?.['x-forwarded-for'] || 'unknown'\n    },\n    error: false\n  }\n}];"
+      },
+      "id": "b2c3d4e5-validate",
+      "name": "Validate & Prepare Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-350, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "error-check",
+              "leftValue": "={{ $json.error }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      },
+      "id": "c3d4e5f6-check",
+      "name": "Check Validation",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [-100, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://192.168.2.33:3080/api/workflow/generate",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.request }}",
+        "options": {
+          "timeout": 120000,
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "id": "d4e5f6g7-generate",
+      "name": "Call AgentX Workflow API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [200, -100],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "PIrrA2wpOppzVodi",
+          "name": "Header Auth account"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst metadata = $('Validate & Prepare Request').first().json.metadata;\n\n// Check if API call was successful\nif (response.statusCode && response.statusCode !== 200) {\n  return [{\n    json: {\n      success: false,\n      error: 'API request failed',\n      statusCode: response.statusCode,\n      message: response.body?.message || 'Unknown error',\n      details: response.body,\n      timestamp: new Date().toISOString()\n    }\n  }];\n}\n\nconst data = response.body?.data || response.data || {};\n\n// Extract workflow details\nconst workflow = data.workflow || {};\nconst validation = data.validation || {};\nconst deployment = data.deployment || {};\nconst suggestions = data.suggestions || [];\nconst workflowMetadata = data.metadata || {};\n\n// Extract webhook URLs from workflow if present\nconst webhookNodes = workflow.nodes?.filter(n => n.type === 'n8n-nodes-base.webhook') || [];\nconst webhookUrls = webhookNodes.map(node => {\n  const path = node.parameters?.path || 'unknown';\n  return {\n    path: path,\n    url: `https://n8n.specialblend.icu/webhook/${path}`,\n    method: node.parameters?.httpMethod || 'POST',\n    webhookId: node.parameters?.webhookId || node.webhookId || 'unknown'\n  };\n});\n\n// Build comprehensive response\nconst result = {\n  success: true,\n  workflow: {\n    name: workflow.name,\n    nodeCount: workflow.nodes?.length || 0,\n    connectionCount: Object.keys(workflow.connections || {}).length,\n    webhookCount: webhookNodes.length,\n    webhooks: webhookUrls,\n    tags: workflow.tags || []\n  },\n  validation: {\n    valid: validation.overall?.valid || false,\n    score: validation.overall?.score || 0,\n    errors: validation.allErrors?.length || 0,\n    warnings: validation.allWarnings?.length || 0,\n    details: validation.overall?.valid ? null : validation.allErrors\n  },\n  deployment: deployment.success ? {\n    deployed: true,\n    workflowId: deployment.workflowId,\n    activated: deployment.output?.cleanOutput?.includes('activated') || false,\n    message: deployment.output?.cleanOutput || 'Deployed successfully'\n  } : deployment.workflowId ? {\n    deployed: false,\n    error: deployment.error || 'Deployment failed',\n    details: deployment\n  } : null,\n  suggestions: suggestions,\n  generation: {\n    aiModel: workflowMetadata.aiModel,\n    generationTime: workflowMetadata.generationTime,\n    examplesUsed: workflowMetadata.examplesUsed,\n    promptTokens: workflowMetadata.promptTokens\n  },\n  metadata: {\n    ...metadata,\n    processedAt: new Date().toISOString()\n  },\n  rawWorkflow: workflow,\n  actions: {\n    viewInN8n: deployment.workflowId ? `https://n8n.specialblend.icu/workflow/${deployment.workflowId}` : null,\n    testWebhook: webhookUrls[0]?.url || null,\n    apiValidate: 'POST http://192.168.2.33:3080/api/workflow/validate',\n    apiDeploy: 'POST http://192.168.2.33:3080/api/workflow/deploy'\n  }\n};\n\nreturn [{ json: result }];"
+      },
+      "id": "e5f6g7h8-format",
+      "name": "Format Success Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, -100]
+    },
+    {
+      "parameters": {
+        "jsCode": "const error = $input.first().json;\n\nreturn [{\n  json: {\n    success: false,\n    error: error.message || 'Invalid request',\n    status: error.status || 400,\n    usage: error.usage || null,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "f6g7h8i9-error",
+      "name": "Format Error Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [200, 100]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "id": "g7h8i9j0-merge",
+      "name": "Merge Responses",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [800, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "X-Powered-By",
+                "value": "SBQC-Workflow-Architect"
+              },
+              {
+                "name": "X-Workflow-Version",
+                "value": "N6.1-v2"
+              }
+            ]
+          }
+        }
+      },
+      "id": "h8i9j0k1-respond",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1100, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://192.168.2.33:3003/integrations/events/n8n",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  workflow_id: 'SBQC-N6.1',\n  event_type: 'workflow_generation',\n  data: {\n    success: $json.success || false,\n    workflowName: $json.workflow?.name || 'unknown',\n    deployed: $json.deployment?.deployed || false,\n    activated: $json.deployment?.activated || false,\n    validationScore: $json.validation?.score || 0,\n    nodeCount: $json.workflow?.nodeCount || 0,\n    webhookCount: $json.workflow?.webhookCount || 0,\n    generationTime: $json.generation?.generationTime || 0,\n    aiModel: $json.generation?.aiModel || 'unknown',\n    error: $json.error || null,\n    timestamp: new Date().toISOString()\n  }\n} }}",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "id": "i9j0k1l2-log",
+      "name": "Log to DataAPI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1400, 0],
+      "continueOnFail": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "PIrrA2wpOppzVodi",
+          "name": "Header Auth account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook (/workflow-architect)": {
+      "main": [[{
+        "node": "Validate & Prepare Request",
+        "type": "main",
+        "index": 0
+      }]]
+    },
+    "Validate & Prepare Request": {
+      "main": [[{
+        "node": "Check Validation",
+        "type": "main",
+        "index": 0
+      }]]
+    },
+    "Check Validation": {
+      "main": [
+        [{
+          "node": "Call AgentX Workflow API",
+          "type": "main",
+          "index": 0
+        }],
+        [{
+          "node": "Format Error Response",
+          "type": "main",
+          "index": 0
+        }]
+      ]
+    },
+    "Call AgentX Workflow API": {
+      "main": [[{
+        "node": "Format Success Response",
+        "type": "main",
+        "index": 0
+      }]]
+    },
+    "Format Success Response": {
+      "main": [[{
+        "node": "Merge Responses",
+        "type": "main",
+        "index": 0
+      }]]
+    },
+    "Format Error Response": {
+      "main": [[{
+        "node": "Merge Responses",
+        "type": "main",
+        "index": 1
+      }]]
+    },
+    "Merge Responses": {
+      "main": [[{
+        "node": "Respond to Webhook",
+        "type": "main",
+        "index": 0
+      }]]
+    },
+    "Respond to Webhook": {
+      "main": [[{
+        "node": "Log to DataAPI",
+        "type": "main",
+        "index": 0
+      }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": [
+    {
+      "name": "SBQC",
+      "id": "sbqc"
+    },
+    {
+      "name": "Priority-6",
+      "id": "p6"
+    },
+    {
+      "name": "Workflow-Generation",
+      "id": "workflow-gen"
+    },
+    {
+      "name": "AI-Architect",
+      "id": "architect"
+    }
+  ]
+}

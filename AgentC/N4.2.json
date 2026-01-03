@@ -1,0 +1,374 @@
+{
+  "name": "N4.2 Metrics Aggregation",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "5 * * * *"
+            }
+          ]
+        }
+      },
+      "id": "3a5e8c1f-4b2d-4a1e-9f3c-7d6e5a4b3c2d",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        250,
+        300
+      ],
+      "webhookId": "metrics-aggregation-hourly"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3080/api/metrics/aggregate",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"granularity\": \"hourly\",\n  \"components\": [\"agentx\", \"dataapi\", \"ollama-main\", \"ollama-secondary\"],\n  \"metricTypes\": [\"health\", \"performance\", \"cost\", \"resource\", \"quality\", \"usage\"]\n}",
+        "options": {
+          "timeout": 30000,
+          "redirect": {
+            "redirect": {
+              "followRedirects": true,
+              "maxRedirects": 5
+            }
+          }
+        }
+      },
+      "id": "7b9d3e2a-8c4f-4b1e-af2d-6e5c7d8a9b1c",
+      "name": "Aggregate Metrics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        450,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "agentx-api-key",
+          "name": "AgentX API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "d1e2f3a4-b5c6-7d8e-9f0a-1b2c3d4e5f6a",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "success",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "4c8d2e1a-9b3f-4a2e-bf1d-5e6c8d9a1b2c",
+      "name": "Check Aggregation Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.1,
+      "position": [
+        650,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract aggregation statistics\nconst data = $input.first().json;\n\nconst stats = {\n  status: data.status,\n  recordsAggregated: data.data?.recordsAggregated || 0,\n  timeTaken: data.data?.timeTaken || 0,\n  components: data.data?.components || [],\n  granularity: data.data?.granularity || 'hourly',\n  timestamp: new Date().toISOString()\n};\n\n// Log to console\nconsole.log('✅ Metrics Aggregation Successful');\nconsole.log(`Records Aggregated: ${stats.recordsAggregated}`);\nconsole.log(`Time Taken: ${stats.timeTaken}ms`);\nconsole.log(`Components: ${stats.components.join(', ')}`);\nconsole.log(`Timestamp: ${stats.timestamp}`);\n\n// Return stats for further processing\nreturn [{\n  json: {\n    success: true,\n    ...stats,\n    message: `Successfully aggregated ${stats.recordsAggregated} records in ${stats.timeTaken}ms`\n  }\n}];"
+      },
+      "id": "9e1c2d3a-4b5f-6a7e-8c9d-0e1f2a3b4c5d",
+      "name": "Log Success",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        850,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3080/api/alerts",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"ruleId\": \"metrics_aggregation_failure\",\n  \"severity\": \"warning\",\n  \"title\": \"Metrics Aggregation Failed\",\n  \"message\": \"Hourly aggregation failed: {{ $json.message || 'Unknown error' }}\",\n  \"component\": \"metricsCollector\",\n  \"channels\": [\"slack\"],\n  \"metadata\": {\n    \"errorDetails\": \"{{ $json.error || $json.message || 'No error details available' }}\",\n    \"timestamp\": \"{{ $now }}\",\n    \"requestedGranularity\": \"hourly\",\n    \"requestedComponents\": [\"agentx\", \"dataapi\", \"ollama-main\", \"ollama-secondary\"]\n  }\n}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "2f3a4b5c-6d7e-8f9a-0b1c-2d3e4f5a6b7c",
+      "name": "Alert on Failure",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        850,
+        400
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "agentx-api-key",
+          "name": "AgentX API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// Data Quality Check Function\n// Verifies that sufficient metrics were collected in the last hour\n\nconst aggregationData = $input.first().json;\nconst recordsAggregated = aggregationData.recordsAggregated || 0;\nconst components = aggregationData.components || [];\n\n// Expected minimum records per component per hour\n// Assuming health checks every 5 minutes = 12 checks per hour per component\nconst EXPECTED_MIN_RECORDS_PER_COMPONENT = 12;\nconst TOTAL_COMPONENTS = 4; // agentx, dataapi, ollama-main, ollama-secondary\nconst EXPECTED_MIN_TOTAL = EXPECTED_MIN_RECORDS_PER_COMPONENT * TOTAL_COMPONENTS;\n\n// Calculate actual records per component (if available)\nconst recordsPerComponent = recordsAggregated / TOTAL_COMPONENTS;\n\n// Quality check results\nconst qualityCheck = {\n  passed: recordsAggregated >= EXPECTED_MIN_TOTAL,\n  recordsAggregated: recordsAggregated,\n  expectedMinimum: EXPECTED_MIN_TOTAL,\n  recordsPerComponent: Math.round(recordsPerComponent),\n  expectedPerComponent: EXPECTED_MIN_RECORDS_PER_COMPONENT,\n  componentsChecked: TOTAL_COMPONENTS,\n  timestamp: new Date().toISOString(),\n  severity: 'info'\n};\n\n// Determine severity based on deficit\nif (!qualityCheck.passed) {\n  const deficit = EXPECTED_MIN_TOTAL - recordsAggregated;\n  const deficitPercent = (deficit / EXPECTED_MIN_TOTAL) * 100;\n  \n  if (deficitPercent > 50) {\n    qualityCheck.severity = 'critical';\n    qualityCheck.message = `Critical: Only ${recordsAggregated} records aggregated (${deficitPercent.toFixed(1)}% below expected)`;\n  } else if (deficitPercent > 25) {\n    qualityCheck.severity = 'warning';\n    qualityCheck.message = `Warning: ${recordsAggregated} records aggregated (${deficitPercent.toFixed(1)}% below expected)`;\n  } else {\n    qualityCheck.severity = 'low';\n    qualityCheck.message = `Low concern: ${recordsAggregated} records aggregated (${deficitPercent.toFixed(1)}% below expected)`;\n  }\n  \n  console.log('⚠️  Data Quality Check Failed');\n  console.log(qualityCheck.message);\n  console.log(`Expected: ${EXPECTED_MIN_TOTAL}, Got: ${recordsAggregated}`);\n} else {\n  qualityCheck.message = `Data quality check passed: ${recordsAggregated} records aggregated`;\n  console.log('✅ Data Quality Check Passed');\n  console.log(`Records: ${recordsAggregated} (${recordsPerComponent.toFixed(1)} per component)`);\n}\n\nreturn [{\n  json: qualityCheck\n}];"
+      },
+      "id": "8d9e0f1a-2b3c-4d5e-6f7a-8b9c0d1e2f3a",
+      "name": "Data Quality Check",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1050,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
+              "leftValue": "={{ $json.passed }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "5f6a7b8c-9d0e-1f2a-3b4c-5d6e7f8a9b0c",
+      "name": "Quality Check Failed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.1,
+      "position": [
+        1250,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3080/api/alerts",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"ruleId\": \"metrics_quality_check_failure\",\n  \"severity\": \"{{ $json.severity }}\",\n  \"title\": \"Metrics Data Quality Issue\",\n  \"message\": \"{{ $json.message }}\",\n  \"component\": \"metricsCollector\",\n  \"channels\": [\"slack\"],\n  \"metadata\": {\n    \"recordsAggregated\": \"{{ $json.recordsAggregated }}\",\n    \"expectedMinimum\": \"{{ $json.expectedMinimum }}\",\n    \"recordsPerComponent\": \"{{ $json.recordsPerComponent }}\",\n    \"expectedPerComponent\": \"{{ $json.expectedPerComponent }}\",\n    \"timestamp\": \"{{ $json.timestamp }}\",\n    \"checkType\": \"hourly_aggregation_quality\"\n  }\n}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "6a7b8c9d-0e1f-2a3b-4c5d-6e7f8a9b0c1d",
+      "name": "Alert Quality Issue",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1450,
+        100
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "agentx-api-key",
+          "name": "AgentX API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Final summary log\nconst qualityData = $input.first().json;\n\nconsole.log('\\n=== Metrics Aggregation Workflow Complete ===');\nconsole.log(`Status: Quality check passed`);\nconsole.log(`Records: ${qualityData.recordsAggregated}`);\nconsole.log(`Per Component: ${qualityData.recordsPerComponent}`);\nconsole.log(`Timestamp: ${qualityData.timestamp}`);\nconsole.log('==========================================\\n');\n\nreturn [{\n  json: {\n    workflowComplete: true,\n    status: 'success',\n    qualityCheckPassed: true,\n    summary: qualityData\n  }\n}];"
+      },
+      "id": "7b8c9d0e-1f2a-3b4c-5d6e-7f8a9b0c1d2e",
+      "name": "Log Quality Pass",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1450,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Log failure alert sent\nconst failureData = $input.first().json;\n\nconsole.log('\\n=== Metrics Aggregation Workflow Complete ===');\nconsole.log(`Status: FAILED`);\nconsole.log(`Reason: Aggregation request failed`);\nconsole.log(`Alert Sent: Yes`);\nconsole.log(`Alert Status: ${failureData.status || 'unknown'}`);\nconsole.log('==========================================\\n');\n\nreturn [{\n  json: {\n    workflowComplete: true,\n    status: 'failed',\n    alertSent: true,\n    alertResponse: failureData\n  }\n}];"
+      },
+      "id": "8c9d0e1f-2a3b-4c5d-6e7f-8a9b0c1d2e3f",
+      "name": "Log Failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1050,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Log quality issue alert sent\nconst alertData = $input.first().json;\n\nconsole.log('\\n=== Metrics Aggregation Workflow Complete ===');\nconsole.log(`Status: Success with quality issues`);\nconsole.log(`Quality Alert Sent: Yes`);\nconsole.log(`Alert Severity: ${alertData.data?.severity || 'unknown'}`);\nconsole.log('==========================================\\n');\n\nreturn [{\n  json: {\n    workflowComplete: true,\n    status: 'success_with_quality_issues',\n    qualityAlertSent: true,\n    alertResponse: alertData\n  }\n}];"
+      },
+      "id": "9d0e1f2a-3b4c-5d6e-7f8a-9b0c1d2e3f4a",
+      "name": "Log Quality Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1650,
+        100
+      ]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Metrics": {
+      "main": [
+        [
+          {
+            "node": "Check Aggregation Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Aggregation Success": {
+      "main": [
+        [
+          {
+            "node": "Log Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Alert on Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Success": {
+      "main": [
+        [
+          {
+            "node": "Data Quality Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert on Failure": {
+      "main": [
+        [
+          {
+            "node": "Log Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Data Quality Check": {
+      "main": [
+        [
+          {
+            "node": "Quality Check Failed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Quality Check Failed?": {
+      "main": [
+        [
+          {
+            "node": "Alert Quality Issue",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Quality Pass",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert Quality Issue": {
+      "main": [
+        [
+          {
+            "node": "Log Quality Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "createdAt": "2026-01-02T00:00:00.000Z",
+      "updatedAt": "2026-01-02T00:00:00.000Z",
+      "id": "metrics-automation",
+      "name": "Metrics Automation"
+    },
+    {
+      "createdAt": "2026-01-02T00:00:00.000Z",
+      "updatedAt": "2026-01-02T00:00:00.000Z",
+      "id": "scheduled-task",
+      "name": "Scheduled Task"
+    }
+  ],
+  "triggerCount": 1,
+  "updatedAt": "2026-01-02T00:00:00.000Z",
+  "versionId": "1"
+}

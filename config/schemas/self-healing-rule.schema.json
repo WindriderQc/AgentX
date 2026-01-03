@@ -1,0 +1,184 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://agentx.specialblend.icu/schemas/self-healing-rule.schema.json",
+  "title": "Self-Healing Rule",
+  "description": "Schema for AgentX self-healing automation rules",
+  "type": "object",
+  "required": ["name", "enabled", "detectionQuery", "remediation"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Unique identifier for the rule",
+      "pattern": "^[a-z0-9_]+$"
+    },
+    "enabled": {
+      "type": "boolean",
+      "description": "Whether this rule is active"
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable description of what this rule does"
+    },
+    "detectionQuery": {
+      "type": "object",
+      "required": ["metric", "threshold", "comparison"],
+      "properties": {
+        "metric": {
+          "type": "string",
+          "description": "Name of the metric to monitor",
+          "examples": ["avg_response_time", "positive_rate", "error_count"]
+        },
+        "aggregation": {
+          "type": "string",
+          "enum": ["avg", "sum", "min", "max", "count", "p50", "p95", "p99"],
+          "default": "avg"
+        },
+        "threshold": {
+          "type": "number",
+          "description": "Threshold value that triggers the rule"
+        },
+        "comparison": {
+          "type": "string",
+          "enum": ["greater_than", "less_than", "equals", "not_equals"],
+          "description": "How to compare the metric value to the threshold"
+        },
+        "window": {
+          "type": "string",
+          "pattern": "^\\d+[smh]$",
+          "description": "Time window for aggregation (e.g., '5m', '1h')",
+          "examples": ["5m", "15m", "1h", "24h"]
+        },
+        "componentType": {
+          "type": "string",
+          "enum": ["agentx", "dataapi", "ollama", "n8n", "qdrant", "mongodb", "system"]
+        },
+        "componentPattern": {
+          "type": "string",
+          "description": "Pattern to match component IDs (supports wildcards)",
+          "examples": ["ollama-*", "agentx-prod"]
+        }
+      }
+    },
+    "remediation": {
+      "type": "object",
+      "required": ["strategy", "action"],
+      "properties": {
+        "strategy": {
+          "type": "string",
+          "enum": [
+            "model_failover",
+            "prompt_rollback",
+            "service_restart",
+            "scale_up",
+            "scale_down",
+            "alert_only",
+            "throttle_requests"
+          ],
+          "description": "High-level remediation strategy"
+        },
+        "action": {
+          "type": "string",
+          "description": "Specific action to take (used by remediation engine)"
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable explanation of the remediation"
+        },
+        "automated": {
+          "type": "boolean",
+          "description": "Whether to execute automatically without approval",
+          "default": false
+        },
+        "requiresApproval": {
+          "type": "boolean",
+          "description": "Whether manual approval is required before execution",
+          "default": true
+        },
+        "cooldown": {
+          "type": "string",
+          "pattern": "^\\d+[smh]$",
+          "description": "Minimum time between executions to prevent thrashing",
+          "examples": ["5m", "15m", "1h"]
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10,
+          "description": "Priority for conflict resolution (1=highest)",
+          "default": 5
+        }
+      }
+    },
+    "notifications": {
+      "type": "object",
+      "properties": {
+        "onTrigger": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["slack", "email", "webhook", "dataapi_log"]
+          },
+          "description": "Channels to notify when rule triggers"
+        },
+        "onSuccess": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["slack", "email", "webhook", "dataapi_log"]
+          },
+          "description": "Channels to notify on successful remediation"
+        },
+        "onFailure": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["slack", "email", "webhook", "dataapi_log"]
+          },
+          "description": "Channels to notify on failed remediation"
+        }
+      }
+    },
+    "conditions": {
+      "type": "object",
+      "description": "Additional conditions that must be met",
+      "properties": {
+        "timeOfDay": {
+          "type": "object",
+          "properties": {
+            "start": {
+              "type": "string",
+              "pattern": "^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$"
+            },
+            "end": {
+              "type": "string",
+              "pattern": "^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$"
+            }
+          }
+        },
+        "daysOfWeek": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+          }
+        },
+        "minOccurrences": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Minimum number of times condition must be met before triggering"
+        }
+      }
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Tags for categorizing and filtering rules"
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Additional metadata for the rule"
+    }
+  }
+}

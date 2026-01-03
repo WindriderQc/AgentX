@@ -1,0 +1,573 @@
+{
+  "name": "SBQC - N4.1 Alert Dispatcher",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "sbqc-n4-1-alert-dispatch",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [180, 300],
+      "webhookId": "sbqc-n4-1-alert-dispatch"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "alert-id",
+              "name": "alertId",
+              "value": "={{ $json.body.alertId }}",
+              "type": "string"
+            },
+            {
+              "id": "severity",
+              "name": "severity",
+              "value": "={{ $json.body.severity }}",
+              "type": "string"
+            },
+            {
+              "id": "title",
+              "name": "title",
+              "value": "={{ $json.body.title }}",
+              "type": "string"
+            },
+            {
+              "id": "message",
+              "name": "message",
+              "value": "={{ $json.body.message }}",
+              "type": "string"
+            },
+            {
+              "id": "channels",
+              "name": "channels",
+              "value": "={{ $json.body.channels }}",
+              "type": "array"
+            },
+            {
+              "id": "context",
+              "name": "context",
+              "value": "={{ $json.body.context }}",
+              "type": "object"
+            },
+            {
+              "id": "rule-name",
+              "name": "ruleName",
+              "value": "={{ $json.body.ruleName || 'Unknown Rule' }}",
+              "type": "string"
+            },
+            {
+              "id": "timestamp",
+              "name": "timestamp",
+              "value": "={{ $json.body.createdAt || $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "extract-alert-data",
+      "name": "Extract Alert Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [380, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": ""
+          },
+          "conditions": [
+            {
+              "id": "check-slack",
+              "leftValue": "={{ $json.channels }}",
+              "rightValue": "slack",
+              "operator": {
+                "type": "array",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combiner": "and"
+        }
+      },
+      "id": "should-send-slack",
+      "name": "Should Send Slack?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.1,
+      "position": [580, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": ""
+          },
+          "conditions": [
+            {
+              "id": "check-email",
+              "leftValue": "={{ $json.channels }}",
+              "rightValue": "email",
+              "operator": {
+                "type": "array",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combiner": "and"
+        }
+      },
+      "id": "should-send-email",
+      "name": "Should Send Email?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.1,
+      "position": [580, 500]
+    },
+    {
+      "parameters": {
+        "content": "## 🚨 {{ $json.severity.toUpperCase() }} Alert\n\n**{{ $json.title }}**\n\n{{ $json.message }}\n\n---\n\n**Rule:** {{ $json.ruleName }}\n**Time:** {{ $json.timestamp }}\n{{ $json.context.component ? '**Component:** ' + $json.context.component : '' }}\n{{ $json.context.metric ? '**Metric:** ' + $json.context.metric : '' }}\n{{ $json.context.currentValue ? '**Current Value:** ' + $json.context.currentValue : '' }}\n{{ $json.context.threshold ? '**Threshold:** ' + $json.context.threshold : '' }}",
+        "options": {}
+      },
+      "id": "format-slack-message",
+      "name": "Format Slack Message",
+      "type": "n8n-nodes-base.markdown",
+      "typeVersion": 1.1,
+      "position": [780, 200]
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C06L2JKGXLQ",
+          "mode": "id"
+        },
+        "text": "={{ $json.data }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": false
+        },
+        "blocksUi": {
+          "blocksValues": [
+            {
+              "type": "section",
+              "sectionId": "alert-header",
+              "text": {
+                "textType": "mrkdwn",
+                "text": "={{ $json.severity === 'critical' ? ':rotating_light:' : $json.severity === 'warning' ? ':warning:' : ':information_source:' }} *{{ $json.severity.toUpperCase() }}* - {{ $json.title }}"
+              }
+            },
+            {
+              "type": "section",
+              "sectionId": "alert-body",
+              "text": {
+                "textType": "mrkdwn",
+                "text": "={{ $json.message }}"
+              }
+            },
+            {
+              "type": "section",
+              "sectionId": "alert-details",
+              "fieldsUi": {
+                "fieldsValues": [
+                  {
+                    "text": "*Rule:*\n{{ $json.ruleName }}",
+                    "textType": "mrkdwn"
+                  },
+                  {
+                    "text": "*Time:*\n{{ $json.timestamp }}",
+                    "textType": "mrkdwn"
+                  },
+                  {
+                    "text": "={{ $json.context.component ? '*Component:*\\n' + $json.context.component : '' }}",
+                    "textType": "mrkdwn"
+                  },
+                  {
+                    "text": "={{ $json.context.metric ? '*Metric:*\\n' + $json.context.metric : '' }}",
+                    "textType": "mrkdwn"
+                  }
+                ]
+              }
+            },
+            {
+              "type": "context",
+              "contextId": "alert-footer",
+              "elementsUi": {
+                "elementsValues": [
+                  {
+                    "text": "Alert ID: {{ $json.alertId }}",
+                    "textType": "mrkdwn"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "id": "send-slack",
+      "name": "Send to Slack",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [980, 200],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-credentials-id",
+          "name": "Slack API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://localhost:3080/api/alerts/{{ $json.alertId }}/delivery-status",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"channel\": \"slack\",\n  \"status\": \"sent\",\n  \"timestamp\": $now.toISO(),\n  \"messageId\": $json.ts || null\n} }}",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "id": "update-slack-delivery-success",
+      "name": "Update Slack Delivery Success",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1180, 200],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "agentx-api-key-id",
+          "name": "AgentX API Key"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://localhost:3080/api/alerts/{{ $json.alertId }}/delivery-status",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"channel\": \"slack\",\n  \"status\": \"error\",\n  \"timestamp\": $now.toISO(),\n  \"error\": $json.error?.message || 'Unknown error'\n} }}",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "id": "update-slack-delivery-error",
+      "name": "Update Slack Delivery Error",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1180, 100],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "agentx-api-key-id",
+          "name": "AgentX API Key"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "fromEmail": "alerts@sbqc.local",
+        "toEmail": "={{ $json.context.notifyEmail || 'admin@sbqc.local' }}",
+        "subject": "={{ '[' + $json.severity.toUpperCase() + '] ' + $json.title }}",
+        "emailType": "html",
+        "message": "=<!DOCTYPE html>\n<html>\n<head>\n  <style>\n    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }\n    .alert-container { max-width: 600px; margin: 0 auto; padding: 20px; }\n    .alert-header { padding: 15px; border-radius: 5px 5px 0 0; color: white; }\n    .alert-critical { background-color: #dc3545; }\n    .alert-warning { background-color: #ffc107; color: #000; }\n    .alert-info { background-color: #17a2b8; }\n    .alert-body { padding: 20px; border: 1px solid #ddd; border-top: none; }\n    .alert-details { margin-top: 20px; padding: 15px; background-color: #f8f9fa; border-radius: 5px; }\n    .detail-row { margin: 5px 0; }\n    .detail-label { font-weight: bold; }\n    .alert-footer { margin-top: 20px; padding-top: 15px; border-top: 1px solid #ddd; font-size: 12px; color: #666; }\n  </style>\n</head>\n<body>\n  <div class=\"alert-container\">\n    <div class=\"alert-header alert-{{ $json.severity }}\">\n      <h2>{{ $json.severity === 'critical' ? '🚨' : $json.severity === 'warning' ? '⚠️' : 'ℹ️' }} {{ $json.severity.toUpperCase() }} Alert</h2>\n    </div>\n    <div class=\"alert-body\">\n      <h3>{{ $json.title }}</h3>\n      <p>{{ $json.message }}</p>\n      <div class=\"alert-details\">\n        <div class=\"detail-row\"><span class=\"detail-label\">Rule:</span> {{ $json.ruleName }}</div>\n        <div class=\"detail-row\"><span class=\"detail-label\">Time:</span> {{ $json.timestamp }}</div>\n        {{ $json.context.component ? '<div class=\"detail-row\"><span class=\"detail-label\">Component:</span> ' + $json.context.component + '</div>' : '' }}\n        {{ $json.context.metric ? '<div class=\"detail-row\"><span class=\"detail-label\">Metric:</span> ' + $json.context.metric + '</div>' : '' }}\n        {{ $json.context.currentValue ? '<div class=\"detail-row\"><span class=\"detail-label\">Current Value:</span> ' + $json.context.currentValue + '</div>' : '' }}\n        {{ $json.context.threshold ? '<div class=\"detail-row\"><span class=\"detail-label\">Threshold:</span> ' + $json.context.threshold + '</div>' : '' }}\n      </div>\n    </div>\n    <div class=\"alert-footer\">\n      <p>Alert ID: {{ $json.alertId }}</p>\n      <p>This is an automated alert from the SBQC AgentX monitoring system.</p>\n    </div>\n  </div>\n</body>\n</html>",
+        "options": {}
+      },
+      "id": "send-email",
+      "name": "Send Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [980, 400],
+      "credentials": {
+        "smtp": {
+          "id": "smtp-credentials-id",
+          "name": "SMTP Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://localhost:3080/api/alerts/{{ $json.alertId }}/delivery-status",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"channel\": \"email\",\n  \"status\": \"sent\",\n  \"timestamp\": $now.toISO()\n} }}",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "id": "update-email-delivery-success",
+      "name": "Update Email Delivery Success",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1180, 400],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "agentx-api-key-id",
+          "name": "AgentX API Key"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://localhost:3080/api/alerts/{{ $json.alertId }}/delivery-status",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"channel\": \"email\",\n  \"status\": \"error\",\n  \"timestamp\": $now.toISO(),\n  \"error\": $json.error?.message || 'Unknown error'\n} }}",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "id": "update-email-delivery-error",
+      "name": "Update Email Delivery Error",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1180, 500],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "agentx-api-key-id",
+          "name": "AgentX API Key"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {},
+      "id": "skip-slack",
+      "name": "Skip Slack",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [780, 300]
+    },
+    {
+      "parameters": {},
+      "id": "skip-email",
+      "name": "Skip Email",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [780, 600]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "id": "merge-results",
+      "name": "Merge Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [1380, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\n  \"status\": \"success\",\n  \"message\": \"Alert dispatched\",\n  \"alertId\": $json.alertId,\n  \"channelsAttempted\": $json.channels\n} }}",
+        "options": {}
+      },
+      "id": "webhook-response",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1580, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract Alert Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Alert Data": {
+      "main": [
+        [
+          {
+            "node": "Should Send Slack?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Should Send Email?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Send Slack?": {
+      "main": [
+        [
+          {
+            "node": "Format Slack Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Skip Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Send Email?": {
+      "main": [
+        [
+          {
+            "node": "Send Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Skip Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Slack Message": {
+      "main": [
+        [
+          {
+            "node": "Send to Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send to Slack": {
+      "main": [
+        [
+          {
+            "node": "Update Slack Delivery Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Slack Delivery Success": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Slack Delivery Error": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email": {
+      "main": [
+        [
+          {
+            "node": "Update Email Delivery Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Email Delivery Success": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Update Email Delivery Error": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Skip Slack": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip Email": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Results": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2026-01-02T23:45:00.000Z",
+  "versionId": "1"
+}

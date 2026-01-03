@@ -1,0 +1,1047 @@
+{
+  "version": "1.0.0",
+  "description": "SBQC Architect Workflow Template Library - Reusable n8n workflow patterns for rapid development",
+  "metadata": {
+    "created": "2026-01-02",
+    "author": "SBQC Team",
+    "purpose": "Provide standard workflow patterns that can be adapted for different use cases"
+  },
+  "usage_notes": [
+    "Each template includes complete node configurations with parameter examples",
+    "Position coordinates are set for clean visual layout (adjustable)",
+    "Code nodes include comments explaining what to customize",
+    "All templates use best practices: continueOnFail, error handling, logging",
+    "Replace placeholder values with your specific endpoints, credentials, and logic"
+  ],
+  "templates": {
+    "1_basic_webhook": {
+      "name": "Basic Webhook Workflow",
+      "description": "Simple webhook trigger that processes input and responds",
+      "use_cases": [
+        "API endpoints",
+        "Simple data transformations",
+        "Status checks",
+        "Quick integrations"
+      ],
+      "workflow": {
+        "name": "Template - Basic Webhook",
+        "nodes": [
+          {
+            "parameters": {
+              "httpMethod": "POST",
+              "path": "my-webhook-endpoint",
+              "responseMode": "responseNode",
+              "options": {}
+            },
+            "id": "webhook-trigger",
+            "name": "Webhook Trigger",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 2,
+            "position": [250, 300],
+            "webhookId": "template-basic-webhook",
+            "notes": "CUSTOMIZE: Change 'path' and 'httpMethod' to match your needs. GET for simple queries, POST for data submission."
+          },
+          {
+            "parameters": {
+              "jsCode": "// CUSTOMIZE THIS CODE NODE\n// This is where you process the incoming webhook data\n\nconst input = $input.first().json;\n\n// Example: Extract data from webhook body\nconst requestData = input.body || input;\n\n// CUSTOMIZE: Add your business logic here\n// Example validations, transformations, calculations, etc.\n\nconst result = {\n  status: 'success',\n  message: 'Request processed successfully',\n  timestamp: new Date().toISOString(),\n  data: {\n    // CUSTOMIZE: Return your processed data\n    received: requestData,\n    processed: true\n  }\n};\n\nreturn [{ json: result }];"
+            },
+            "id": "process-data",
+            "name": "Process Request",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [500, 300],
+            "notes": "CUSTOMIZE: Replace the code with your specific processing logic"
+          },
+          {
+            "parameters": {
+              "respondWith": "json",
+              "responseBody": "={{ $json }}",
+              "options": {}
+            },
+            "id": "respond-webhook",
+            "name": "Respond to Webhook",
+            "type": "n8n-nodes-base.respondToWebhook",
+            "typeVersion": 1.1,
+            "position": [750, 300],
+            "notes": "Sends the processed data back as JSON response"
+          }
+        ],
+        "connections": {
+          "Webhook Trigger": {
+            "main": [[{
+              "node": "Process Request",
+              "type": "main",
+              "index": 0
+            }]]
+          },
+          "Process Request": {
+            "main": [[{
+              "node": "Respond to Webhook",
+              "type": "main",
+              "index": 0
+            }]]
+          }
+        },
+        "settings": {
+          "executionOrder": "v1"
+        },
+        "staticData": null,
+        "meta": {
+          "templateCredsSetupCompleted": true
+        },
+        "tags": [
+          { "name": "template", "id": "template" },
+          { "name": "webhook", "id": "webhook" }
+        ]
+      }
+    },
+    "2_scheduled_job": {
+      "name": "Scheduled Job Pattern",
+      "description": "Scheduled trigger that fetches data, processes it, and logs to DataAPI",
+      "use_cases": [
+        "Regular health checks",
+        "Periodic data syncs",
+        "Scheduled reports",
+        "Automated maintenance tasks"
+      ],
+      "workflow": {
+        "name": "Template - Scheduled Job",
+        "nodes": [
+          {
+            "parameters": {
+              "rule": {
+                "interval": [
+                  {
+                    "field": "hours",
+                    "hoursInterval": 1
+                  }
+                ]
+              }
+            },
+            "id": "schedule-trigger",
+            "name": "Schedule Trigger",
+            "type": "n8n-nodes-base.scheduleTrigger",
+            "typeVersion": 1.1,
+            "position": [250, 300],
+            "notes": "CUSTOMIZE: Change interval (minutes, hours, days, weeks, months, cronExpression)"
+          },
+          {
+            "parameters": {
+              "method": "GET",
+              "url": "http://example.com/api/data",
+              "authentication": "genericCredentialType",
+              "genericAuthType": "httpHeaderAuth",
+              "options": {
+                "timeout": 10000
+              }
+            },
+            "id": "fetch-data",
+            "name": "Fetch Data",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [500, 300],
+            "credentials": {
+              "httpHeaderAuth": {
+                "id": "YOUR_CREDENTIAL_ID",
+                "name": "Header Auth account"
+              }
+            },
+            "continueOnFail": true,
+            "notes": "CUSTOMIZE: Change URL, method, authentication. continueOnFail=true allows workflow to continue on API errors."
+          },
+          {
+            "parameters": {
+              "jsCode": "// CUSTOMIZE THIS CODE NODE\n// Process the fetched data before logging\n\nconst response = $input.first().json;\n\n// Check if request failed\nif (response.error) {\n  return [{\n    json: {\n      status: 'error',\n      message: 'Failed to fetch data',\n      error: response.error,\n      timestamp: new Date().toISOString()\n    }\n  }];\n}\n\n// CUSTOMIZE: Process your data here\nconst processedData = {\n  status: 'success',\n  timestamp: new Date().toISOString(),\n  // CUSTOMIZE: Add your data processing logic\n  data: response,\n  summary: {\n    // Example: Calculate statistics, filter data, etc.\n    itemCount: Array.isArray(response) ? response.length : 1\n  }\n};\n\nreturn [{ json: processedData }];"
+            },
+            "id": "process-data",
+            "name": "Process Data",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [750, 300],
+            "notes": "CUSTOMIZE: Add your data processing and transformation logic"
+          },
+          {
+            "parameters": {
+              "method": "POST",
+              "url": "http://192.168.2.33:3003/integrations/events/n8n",
+              "authentication": "genericCredentialType",
+              "genericAuthType": "httpHeaderAuth",
+              "sendBody": true,
+              "specifyBody": "json",
+              "jsonBody": "={{ {\n  workflow_id: \"YOUR_WORKFLOW_ID\",\n  event_type: \"scheduled_job_completed\",\n  data: $json\n} }}",
+              "options": {
+                "timeout": 5000
+              }
+            },
+            "id": "log-to-dataapi",
+            "name": "Log to DataAPI",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [1000, 300],
+            "credentials": {
+              "httpHeaderAuth": {
+                "id": "YOUR_CREDENTIAL_ID",
+                "name": "Header Auth account"
+              }
+            },
+            "continueOnFail": true,
+            "notes": "CUSTOMIZE: Change workflow_id and event_type. Logs execution to DataAPI integration sink."
+          }
+        ],
+        "connections": {
+          "Schedule Trigger": {
+            "main": [[{
+              "node": "Fetch Data",
+              "type": "main",
+              "index": 0
+            }]]
+          },
+          "Fetch Data": {
+            "main": [[{
+              "node": "Process Data",
+              "type": "main",
+              "index": 0
+            }]]
+          },
+          "Process Data": {
+            "main": [[{
+              "node": "Log to DataAPI",
+              "type": "main",
+              "index": 0
+            }]]
+          }
+        },
+        "settings": {
+          "executionOrder": "v1"
+        },
+        "staticData": null,
+        "meta": {
+          "templateCredsSetupCompleted": true
+        },
+        "tags": [
+          { "name": "template", "id": "template" },
+          { "name": "scheduled", "id": "scheduled" }
+        ]
+      }
+    },
+    "3_conditional_flow": {
+      "name": "Conditional Flow Pattern",
+      "description": "Webhook with validation and conditional branching (success/fail paths)",
+      "use_cases": [
+        "Input validation workflows",
+        "Approval processes",
+        "Quality checks",
+        "Multi-path business logic"
+      ],
+      "workflow": {
+        "name": "Template - Conditional Flow",
+        "nodes": [
+          {
+            "parameters": {
+              "httpMethod": "POST",
+              "path": "conditional-workflow",
+              "responseMode": "responseNode",
+              "options": {}
+            },
+            "id": "webhook-trigger",
+            "name": "Webhook Trigger",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 2,
+            "position": [250, 300],
+            "webhookId": "template-conditional",
+            "notes": "CUSTOMIZE: Set your webhook path and method"
+          },
+          {
+            "parameters": {
+              "jsCode": "// CUSTOMIZE THIS VALIDATION LOGIC\n// Validate incoming request and set error flag if validation fails\n\nconst input = $input.first().json;\nconst requestData = input.body || input;\n\n// CUSTOMIZE: Add your validation rules\nconst errors = [];\n\nif (!requestData.requiredField) {\n  errors.push('Missing required field: requiredField');\n}\n\nif (requestData.email && !requestData.email.includes('@')) {\n  errors.push('Invalid email format');\n}\n\n// Add more validation rules as needed\n\nif (errors.length > 0) {\n  return [{\n    json: {\n      valid: false,\n      error: true,\n      errors: errors,\n      message: 'Validation failed',\n      timestamp: new Date().toISOString()\n    }\n  }];\n}\n\n// Validation passed\nreturn [{\n  json: {\n    valid: true,\n    error: false,\n    data: requestData,\n    message: 'Validation passed',\n    timestamp: new Date().toISOString()\n  }\n}];"
+            },
+            "id": "validate-input",
+            "name": "Validate Input",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [500, 300],
+            "notes": "CUSTOMIZE: Add your validation logic and rules"
+          },
+          {
+            "parameters": {
+              "conditions": {
+                "options": {
+                  "leftValue": "",
+                  "caseSensitive": true,
+                  "typeValidation": "strict"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "valid-check",
+                    "leftValue": "={{ $json.valid }}",
+                    "rightValue": true,
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              }
+            },
+            "id": "check-valid",
+            "name": "IF Valid",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 2,
+            "position": [750, 300],
+            "notes": "Routes to success path (top) or error path (bottom)"
+          },
+          {
+            "parameters": {
+              "jsCode": "// SUCCESS PATH\n// CUSTOMIZE: Process valid data\n\nconst input = $input.first().json;\n\n// CUSTOMIZE: Add your success processing logic\nconst result = {\n  success: true,\n  message: 'Request processed successfully',\n  data: input.data,\n  processedAt: new Date().toISOString()\n};\n\nreturn [{ json: result }];"
+            },
+            "id": "process-success",
+            "name": "Process Success Path",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [1000, 200],
+            "notes": "CUSTOMIZE: Add logic for successful validation path"
+          },
+          {
+            "parameters": {
+              "jsCode": "// ERROR PATH\n// CUSTOMIZE: Handle validation errors\n\nconst input = $input.first().json;\n\n// CUSTOMIZE: Format error response\nconst result = {\n  success: false,\n  message: input.message || 'Validation failed',\n  errors: input.errors || ['Unknown error'],\n  timestamp: new Date().toISOString()\n};\n\nreturn [{ json: result }];"
+            },
+            "id": "process-error",
+            "name": "Process Error Path",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [1000, 400],
+            "notes": "CUSTOMIZE: Add logic for failed validation path"
+          },
+          {
+            "parameters": {},
+            "id": "merge-paths",
+            "name": "Merge Paths",
+            "type": "n8n-nodes-base.merge",
+            "typeVersion": 3,
+            "position": [1250, 300],
+            "notes": "Merges success and error paths back together"
+          },
+          {
+            "parameters": {
+              "respondWith": "json",
+              "responseBody": "={{ $json }}",
+              "options": {}
+            },
+            "id": "respond-webhook",
+            "name": "Respond to Webhook",
+            "type": "n8n-nodes-base.respondToWebhook",
+            "typeVersion": 1.1,
+            "position": [1500, 300],
+            "notes": "Sends response back to webhook caller"
+          }
+        ],
+        "connections": {
+          "Webhook Trigger": {
+            "main": [[{
+              "node": "Validate Input",
+              "type": "main",
+              "index": 0
+            }]]
+          },
+          "Validate Input": {
+            "main": [[{
+              "node": "IF Valid",
+              "type": "main",
+              "index": 0
+            }]]
+          },
+          "IF Valid": {
+            "main": [
+              [{
+                "node": "Process Success Path",
+                "type": "main",
+                "index": 0
+              }],
+              [{
+                "node": "Process Error Path",
+                "type": "main",
+                "index": 0
+              }]
+            ]
+          },
+          "Process Success Path": {
+            "main": [[{
+              "node": "Merge Paths",
+              "type": "main",
+              "index": 0
+            }]]
+          },
+          "Process Error Path": {
+            "main": [[{
+              "node": "Merge Paths",
+              "type": "main",
+              "index": 1
+            }]]
+          },
+          "Merge Paths": {
+            "main": [[{
+              "node": "Respond to Webhook",
+              "type": "main",
+              "index": 0
+            }]]
+          }
+        },
+        "settings": {
+          "executionOrder": "v1"
+        },
+        "staticData": null,
+        "meta": {
+          "templateCredsSetupCompleted": true
+        },
+        "tags": [
+          { "name": "template", "id": "template" },
+          { "name": "conditional", "id": "conditional" }
+        ]
+      }
+    },
+    "4_multi_step_api": {
+      "name": "Multi-step API Pattern",
+      "description": "Calls multiple APIs in sequence, processes results, and merges data",
+      "use_cases": [
+        "Data enrichment workflows",
+        "Multi-service orchestration",
+        "Parallel API calls with result merging",
+        "Complex data aggregation"
+      ],
+      "workflow": {
+        "name": "Template - Multi-step API",
+        "nodes": [
+          {
+            "parameters": {
+              "httpMethod": "POST",
+              "path": "multi-api-workflow",
+              "responseMode": "responseNode",
+              "options": {}
+            },
+            "id": "webhook-trigger",
+            "name": "Webhook Trigger",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 2,
+            "position": [250, 400],
+            "webhookId": "template-multi-api",
+            "notes": "CUSTOMIZE: Set your webhook configuration"
+          },
+          {
+            "parameters": {
+              "jsCode": "// CUSTOMIZE: Extract parameters for API calls\n\nconst input = $input.first().json;\nconst requestData = input.body || input;\n\n// CUSTOMIZE: Prepare data for API calls\nconst params = {\n  id: requestData.id || 'default',\n  query: requestData.query || '',\n  timestamp: new Date().toISOString(),\n  // Add more parameters as needed\n};\n\nreturn [{ json: params }];"
+            },
+            "id": "prepare-params",
+            "name": "Prepare Parameters",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [500, 400],
+            "notes": "CUSTOMIZE: Extract and prepare parameters for API calls"
+          },
+          {
+            "parameters": {
+              "method": "GET",
+              "url": "http://api1.example.com/data/={{ $json.id }}",
+              "authentication": "genericCredentialType",
+              "genericAuthType": "httpHeaderAuth",
+              "options": {
+                "timeout": 10000
+              }
+            },
+            "id": "call-api-1",
+            "name": "Call API 1",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [750, 300],
+            "credentials": {
+              "httpHeaderAuth": {
+                "id": "YOUR_CREDENTIAL_ID",
+                "name": "Header Auth account"
+              }
+            },
+            "continueOnFail": true,
+            "notes": "CUSTOMIZE: First API call - configure URL, method, auth, params"
+          },
+          {
+            "parameters": {
+              "method": "POST",
+              "url": "http://api2.example.com/process",
+              "authentication": "genericCredentialType",
+              "genericAuthType": "httpHeaderAuth",
+              "sendBody": true,
+              "specifyBody": "json",
+              "jsonBody": "={{ { query: $json.query, timestamp: $json.timestamp } }}",
+              "options": {
+                "timeout": 10000
+              }
+            },
+            "id": "call-api-2",
+            "name": "Call API 2",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [750, 500],
+            "credentials": {
+              "httpHeaderAuth": {
+                "id": "YOUR_CREDENTIAL_ID",
+                "name": "Header Auth account"
+              }
+            },
+            "continueOnFail": true,
+            "notes": "CUSTOMIZE: Second API call - configure URL, method, auth, body"
+          },
+          {
+            "parameters": {
+              "jsCode": "// CUSTOMIZE: Process data from API 1\n\nconst response = $input.first().json;\n\n// Handle errors\nif (response.error) {\n  return [{\n    json: {\n      source: 'api1',\n      status: 'error',\n      error: response.error,\n      data: null\n    }\n  }];\n}\n\n// CUSTOMIZE: Process successful response\nconst processed = {\n  source: 'api1',\n  status: 'success',\n  data: {\n    // CUSTOMIZE: Extract relevant data\n    items: response.items || [],\n    count: response.count || 0,\n    // Add more fields as needed\n  },\n  timestamp: new Date().toISOString()\n};\n\nreturn [{ json: processed }];"
+            },
+            "id": "process-api1",
+            "name": "Process API 1 Response",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [1000, 300],
+            "notes": "CUSTOMIZE: Process and transform API 1 response"
+          },
+          {
+            "parameters": {
+              "jsCode": "// CUSTOMIZE: Process data from API 2\n\nconst response = $input.first().json;\n\n// Handle errors\nif (response.error) {\n  return [{\n    json: {\n      source: 'api2',\n      status: 'error',\n      error: response.error,\n      data: null\n    }\n  }];\n}\n\n// CUSTOMIZE: Process successful response\nconst processed = {\n  source: 'api2',\n  status: 'success',\n  data: {\n    // CUSTOMIZE: Extract relevant data\n    results: response.results || [],\n    score: response.score || 0,\n    // Add more fields as needed\n  },\n  timestamp: new Date().toISOString()\n};\n\nreturn [{ json: processed }];"
+            },
+            "id": "process-api2",
+            "name": "Process API 2 Response",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [1000, 500],
+            "notes": "CUSTOMIZE: Process and transform API 2 response"
+          },
+          {
+            "parameters": {
+              "mode": "combine",
+              "combineBy": "combineAll",
+              "options": {}
+            },
+            "id": "merge-results",
+            "name": "Merge API Results",
+            "type": "n8n-nodes-base.merge",
+            "typeVersion": 3,
+            "position": [1250, 400],
+            "notes": "Combines results from both API calls"
+          },
+          {
+            "parameters": {
+              "jsCode": "// CUSTOMIZE: Merge and format final response\n\nconst inputs = $input.all();\n\n// Extract data from both APIs\nconst api1Data = inputs[0]?.json || { status: 'missing' };\nconst api2Data = inputs[1]?.json || { status: 'missing' };\n\n// CUSTOMIZE: Combine data from multiple sources\nconst finalResult = {\n  success: api1Data.status === 'success' && api2Data.status === 'success',\n  timestamp: new Date().toISOString(),\n  sources: {\n    api1: {\n      status: api1Data.status,\n      data: api1Data.data,\n      error: api1Data.error || null\n    },\n    api2: {\n      status: api2Data.status,\n      data: api2Data.data,\n      error: api2Data.error || null\n    }\n  },\n  // CUSTOMIZE: Add aggregated/computed fields\n  summary: {\n    totalItems: (api1Data.data?.count || 0) + (api2Data.data?.results?.length || 0),\n    // Add more summary fields\n  }\n};\n\nreturn [{ json: finalResult }];"
+            },
+            "id": "format-response",
+            "name": "Format Final Response",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [1500, 400],
+            "notes": "CUSTOMIZE: Merge data from multiple APIs and format final response"
+          },
+          {
+            "parameters": {
+              "respondWith": "json",
+              "responseBody": "={{ $json }}",
+              "options": {}
+            },
+            "id": "respond-webhook",
+            "name": "Respond to Webhook",
+            "type": "n8n-nodes-base.respondToWebhook",
+            "typeVersion": 1.1,
+            "position": [1750, 400],
+            "notes": "Sends merged response back to caller"
+          }
+        ],
+        "connections": {
+          "Webhook Trigger": {
+            "main": [[{
+              "node": "Prepare Parameters",
+              "type": "main",
+              "index": 0
+            }]]
+          },
+          "Prepare Parameters": {
+            "main": [[
+              {
+                "node": "Call API 1",
+                "type": "main",
+                "index": 0
+              },
+              {
+                "node": "Call API 2",
+                "type": "main",
+                "index": 0
+              }
+            ]]
+          },
+          "Call API 1": {
+            "main": [[{
+              "node": "Process API 1 Response",
+              "type": "main",
+              "index": 0
+            }]]
+          },
+          "Call API 2": {
+            "main": [[{
+              "node": "Process API 2 Response",
+              "type": "main",
+              "index": 0
+            }]]
+          },
+          "Process API 1 Response": {
+            "main": [[{
+              "node": "Merge API Results",
+              "type": "main",
+              "index": 0
+            }]]
+          },
+          "Process API 2 Response": {
+            "main": [[{
+              "node": "Merge API Results",
+              "type": "main",
+              "index": 1
+            }]]
+          },
+          "Merge API Results": {
+            "main": [[{
+              "node": "Format Final Response",
+              "type": "main",
+              "index": 0
+            }]]
+          },
+          "Format Final Response": {
+            "main": [[{
+              "node": "Respond to Webhook",
+              "type": "main",
+              "index": 0
+            }]]
+          }
+        },
+        "settings": {
+          "executionOrder": "v1"
+        },
+        "staticData": null,
+        "meta": {
+          "templateCredsSetupCompleted": true
+        },
+        "tags": [
+          { "name": "template", "id": "template" },
+          { "name": "multi-api", "id": "multi-api" }
+        ]
+      }
+    },
+    "5_error_handling": {
+      "name": "Error Handling Pattern",
+      "description": "Comprehensive error handling with try-catch, logging, and graceful degradation",
+      "use_cases": [
+        "Production workflows requiring robust error handling",
+        "External API calls that may fail",
+        "Critical workflows that must log errors",
+        "Workflows needing retry logic"
+      ],
+      "workflow": {
+        "name": "Template - Error Handling",
+        "nodes": [
+          {
+            "parameters": {
+              "httpMethod": "POST",
+              "path": "error-handling-workflow",
+              "responseMode": "responseNode",
+              "options": {}
+            },
+            "id": "webhook-trigger",
+            "name": "Webhook Trigger",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 2,
+            "position": [250, 400],
+            "webhookId": "template-error-handling",
+            "notes": "CUSTOMIZE: Set your webhook configuration"
+          },
+          {
+            "parameters": {
+              "jsCode": "// Initialize workflow context\n// This node sets up tracking for the entire workflow\n\nconst input = $input.first().json;\nconst requestData = input.body || input;\n\n// Create workflow context\nconst context = {\n  workflowId: 'YOUR_WORKFLOW_ID',\n  executionId: $execution.id,\n  startTime: new Date().toISOString(),\n  requestData: requestData,\n  errors: [],\n  warnings: [],\n  success: true\n};\n\nreturn [{ json: context }];"
+            },
+            "id": "init-context",
+            "name": "Initialize Context",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [500, 400],
+            "notes": "Sets up workflow context for error tracking"
+          },
+          {
+            "parameters": {
+              "method": "POST",
+              "url": "http://api.example.com/risky-operation",
+              "authentication": "genericCredentialType",
+              "genericAuthType": "httpHeaderAuth",
+              "sendBody": true,
+              "specifyBody": "json",
+              "jsonBody": "={{ $json.requestData }}",
+              "options": {
+                "timeout": 10000,
+                "retry": {
+                  "retry": {
+                    "maxRetries": 3,
+                    "retryOnStatusCodes": [
+                      {
+                        "code": 500,
+                        "max": 500
+                      },
+                      {
+                        "code": 502,
+                        "max": 504
+                      }
+                    ],
+                    "retryInterval": 1000
+                  }
+                }
+              }
+            },
+            "id": "risky-operation",
+            "name": "Risky API Call",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [750, 400],
+            "credentials": {
+              "httpHeaderAuth": {
+                "id": "YOUR_CREDENTIAL_ID",
+                "name": "Header Auth account"
+              }
+            },
+            "continueOnFail": true,
+            "notes": "CUSTOMIZE: API call that might fail. continueOnFail=true prevents workflow from stopping. Retry logic attempts 3 times on 5xx errors."
+          },
+          {
+            "parameters": {
+              "jsCode": "// Check if the API call succeeded or failed\n// This node determines which path to take\n\nconst response = $input.first().json;\n\n// Check for error\nif (response.error) {\n  return [{\n    json: {\n      hasError: true,\n      errorType: 'api_call_failed',\n      errorMessage: response.error.message || 'API call failed',\n      errorDetails: response.error,\n      statusCode: response.statusCode,\n      timestamp: new Date().toISOString()\n    }\n  }];\n}\n\n// Success - no error\nreturn [{\n  json: {\n    hasError: false,\n    data: response,\n    timestamp: new Date().toISOString()\n  }\n}];"
+            },
+            "id": "check-error",
+            "name": "Check for Error",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [1000, 400],
+            "notes": "Evaluates response and sets error flag"
+          },
+          {
+            "parameters": {
+              "conditions": {
+                "options": {
+                  "leftValue": "",
+                  "caseSensitive": true,
+                  "typeValidation": "strict"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "error-check",
+                    "leftValue": "={{ $json.hasError }}",
+                    "rightValue": false,
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              }
+            },
+            "id": "if-success",
+            "name": "IF Success",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 2,
+            "position": [1250, 400],
+            "notes": "Routes to success path (top) or error path (bottom)"
+          },
+          {
+            "parameters": {
+              "jsCode": "// SUCCESS PATH\n// Process successful response\n\nconst response = $input.first().json;\n\nconst result = {\n  status: 'success',\n  message: 'Operation completed successfully',\n  data: response.data,\n  timestamp: new Date().toISOString()\n};\n\nreturn [{ json: result }];"
+            },
+            "id": "handle-success",
+            "name": "Handle Success",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [1500, 300],
+            "notes": "CUSTOMIZE: Process successful response"
+          },
+          {
+            "parameters": {
+              "jsCode": "// ERROR PATH\n// Format error for logging and response\n\nconst errorData = $input.first().json;\n\n// CUSTOMIZE: Determine if error is recoverable\nconst isRecoverable = errorData.statusCode >= 500 && errorData.statusCode < 600;\n\nconst result = {\n  status: 'error',\n  recoverable: isRecoverable,\n  error: {\n    type: errorData.errorType,\n    message: errorData.errorMessage,\n    details: errorData.errorDetails,\n    statusCode: errorData.statusCode\n  },\n  // CUSTOMIZE: Add fallback data or default response\n  fallbackData: {\n    message: 'Operation failed, using default values',\n    defaultValue: null\n  },\n  timestamp: new Date().toISOString()\n};\n\nreturn [{ json: result }];"
+            },
+            "id": "handle-error",
+            "name": "Handle Error",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [1500, 500],
+            "notes": "CUSTOMIZE: Format error and provide fallback data"
+          },
+          {
+            "parameters": {
+              "method": "POST",
+              "url": "http://192.168.2.33:3003/integrations/events/n8n",
+              "authentication": "genericCredentialType",
+              "genericAuthType": "httpHeaderAuth",
+              "sendBody": true,
+              "specifyBody": "json",
+              "jsonBody": "={{ {\n  workflow_id: \"YOUR_WORKFLOW_ID\",\n  event_type: \"workflow_error\",\n  severity: $json.recoverable ? \"warning\" : \"error\",\n  data: $json\n} }}",
+              "options": {
+                "timeout": 5000
+              }
+            },
+            "id": "log-error",
+            "name": "Log Error to DataAPI",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [1750, 500],
+            "credentials": {
+              "httpHeaderAuth": {
+                "id": "YOUR_CREDENTIAL_ID",
+                "name": "Header Auth account"
+              }
+            },
+            "continueOnFail": true,
+            "notes": "CUSTOMIZE: Logs errors to DataAPI. Even if this fails, workflow continues due to continueOnFail."
+          },
+          {
+            "parameters": {
+              "mode": "combine",
+              "combineBy": "combineAll",
+              "options": {}
+            },
+            "id": "merge-paths",
+            "name": "Merge Paths",
+            "type": "n8n-nodes-base.merge",
+            "typeVersion": 3,
+            "position": [2000, 400],
+            "notes": "Merges success and error paths"
+          },
+          {
+            "parameters": {
+              "jsCode": "// Format final response\n// Ensures consistent response format regardless of success/failure\n\nconst result = $input.first().json;\n\nconst response = {\n  success: result.status === 'success',\n  status: result.status,\n  message: result.message || result.error?.message || 'Operation completed',\n  data: result.data || result.fallbackData || null,\n  error: result.error || null,\n  timestamp: new Date().toISOString(),\n  executionId: $execution.id\n};\n\nreturn [{ json: response }];"
+            },
+            "id": "format-response",
+            "name": "Format Final Response",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [2250, 400],
+            "notes": "Ensures consistent response format"
+          },
+          {
+            "parameters": {
+              "respondWith": "json",
+              "responseBody": "={{ $json }}",
+              "options": {
+                "responseCode": "={{ $json.success ? 200 : 500 }}"
+              }
+            },
+            "id": "respond-webhook",
+            "name": "Respond to Webhook",
+            "type": "n8n-nodes-base.respondToWebhook",
+            "typeVersion": 1.1,
+            "position": [2500, 400],
+            "notes": "Returns appropriate HTTP status code based on success/failure"
+          },
+          {
+            "parameters": {
+              "method": "POST",
+              "url": "http://192.168.2.33:3003/integrations/events/n8n",
+              "authentication": "genericCredentialType",
+              "genericAuthType": "httpHeaderAuth",
+              "sendBody": true,
+              "specifyBody": "json",
+              "jsonBody": "={{ {\n  workflow_id: \"YOUR_WORKFLOW_ID\",\n  event_type: \"workflow_completed\",\n  data: {\n    success: $json.success,\n    executionId: $json.executionId,\n    timestamp: $json.timestamp\n  }\n} }}",
+              "options": {
+                "timeout": 5000
+              }
+            },
+            "id": "log-completion",
+            "name": "Log Completion",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [2750, 400],
+            "credentials": {
+              "httpHeaderAuth": {
+                "id": "YOUR_CREDENTIAL_ID",
+                "name": "Header Auth account"
+              }
+            },
+            "continueOnFail": true,
+            "notes": "CUSTOMIZE: Logs workflow completion to DataAPI for monitoring"
+          }
+        ],
+        "connections": {
+          "Webhook Trigger": {
+            "main": [[{
+              "node": "Initialize Context",
+              "type": "main",
+              "index": 0
+            }]]
+          },
+          "Initialize Context": {
+            "main": [[{
+              "node": "Risky API Call",
+              "type": "main",
+              "index": 0
+            }]]
+          },
+          "Risky API Call": {
+            "main": [[{
+              "node": "Check for Error",
+              "type": "main",
+              "index": 0
+            }]]
+          },
+          "Check for Error": {
+            "main": [[{
+              "node": "IF Success",
+              "type": "main",
+              "index": 0
+            }]]
+          },
+          "IF Success": {
+            "main": [
+              [{
+                "node": "Handle Success",
+                "type": "main",
+                "index": 0
+              }],
+              [{
+                "node": "Handle Error",
+                "type": "main",
+                "index": 0
+              }]
+            ]
+          },
+          "Handle Success": {
+            "main": [[{
+              "node": "Merge Paths",
+              "type": "main",
+              "index": 0
+            }]]
+          },
+          "Handle Error": {
+            "main": [[{
+              "node": "Log Error to DataAPI",
+              "type": "main",
+              "index": 0
+            }]]
+          },
+          "Log Error to DataAPI": {
+            "main": [[{
+              "node": "Merge Paths",
+              "type": "main",
+              "index": 1
+            }]]
+          },
+          "Merge Paths": {
+            "main": [[{
+              "node": "Format Final Response",
+              "type": "main",
+              "index": 0
+            }]]
+          },
+          "Format Final Response": {
+            "main": [[{
+              "node": "Respond to Webhook",
+              "type": "main",
+              "index": 0
+            }]]
+          },
+          "Respond to Webhook": {
+            "main": [[{
+              "node": "Log Completion",
+              "type": "main",
+              "index": 0
+            }]]
+          }
+        },
+        "settings": {
+          "executionOrder": "v1"
+        },
+        "staticData": null,
+        "meta": {
+          "templateCredsSetupCompleted": true
+        },
+        "tags": [
+          { "name": "template", "id": "template" },
+          { "name": "error-handling", "id": "error-handling" }
+        ]
+      }
+    }
+  },
+  "customization_guide": {
+    "common_replacements": {
+      "workflow_id": "Replace YOUR_WORKFLOW_ID with your unique workflow identifier (e.g., N1.1, N3.2)",
+      "webhook_path": "Replace webhook path with your desired endpoint name",
+      "api_urls": "Replace example API URLs with your actual service endpoints",
+      "credential_id": "Replace YOUR_CREDENTIAL_ID with your n8n credential ID from Settings > Credentials",
+      "dataapi_url": "Default is http://192.168.2.33:3003 - update if your DataAPI is elsewhere"
+    },
+    "best_practices": {
+      "continueOnFail": "Always set continueOnFail: true on HTTP nodes that might fail to prevent workflow stopping",
+      "error_logging": "Log all errors to DataAPI integration sink for monitoring and debugging",
+      "timeouts": "Set appropriate timeouts on all HTTP requests (5000-30000ms typical)",
+      "validation": "Validate all incoming data before processing",
+      "merge_patterns": "Use $input.first() for single inputs, $input.all() for merged inputs",
+      "authentication": "Use n8n credentials instead of hardcoded API keys",
+      "response_format": "Always return consistent JSON response format with success/error indicators"
+    },
+    "node_reference_guide": {
+      "access_current_node": "Use $json to access current node's data",
+      "access_previous_node": "Use $node['Node Name'].json (only works without merges)",
+      "access_with_merge": "Use $input.first().json or $input.all()[index].json when multiple inputs are merged",
+      "access_workflow_data": "Use $workflow for workflow metadata, $execution for execution ID"
+    },
+    "debugging_tips": {
+      "test_individual_nodes": "Use 'Test step' in n8n UI to test individual nodes",
+      "check_continueOnFail": "Nodes with continueOnFail will show warnings icon on failure but workflow continues",
+      "inspect_data": "Click between nodes to see data passed between them",
+      "use_no_op": "Add NoOp nodes as placeholders during development"
+    }
+  },
+  "example_use_cases_by_template": {
+    "basic_webhook": [
+      "Simple status endpoint",
+      "Configuration query endpoint",
+      "Quick data transformation API",
+      "Health check endpoints"
+    ],
+    "scheduled_job": [
+      "System health monitoring (every 5 minutes)",
+      "Daily backup triggers",
+      "Weekly report generation",
+      "Periodic data synchronization"
+    ],
+    "conditional_flow": [
+      "User registration with validation",
+      "Order processing with approval workflow",
+      "Content moderation with quality checks",
+      "Multi-stage approval processes"
+    ],
+    "multi_step_api": [
+      "User profile enrichment (fetch from multiple sources)",
+      "Price comparison across multiple vendors",
+      "Data aggregation from distributed services",
+      "Complex data processing pipelines"
+    ],
+    "error_handling": [
+      "Production API gateways",
+      "Critical data sync operations",
+      "External service integrations",
+      "Any workflow requiring robust error handling"
+    ]
+  },
+  "deployment_instructions": {
+    "import_to_n8n": [
+      "1. Copy the workflow JSON from the template",
+      "2. In n8n UI, go to Workflows > Import from File/URL",
+      "3. Paste the JSON and click Import",
+      "4. Customize all fields marked with CUSTOMIZE comments",
+      "5. Set up credentials in Settings > Credentials",
+      "6. Update all YOUR_CREDENTIAL_ID references",
+      "7. Test the workflow using 'Test workflow' button",
+      "8. Activate the workflow"
+    ],
+    "using_deployment_script": [
+      "1. Save your customized workflow JSON to AgentC/ directory",
+      "2. Run: ./scripts/deploy-n8n-workflows.sh your-workflow.json",
+      "3. Verify deployment in n8n UI",
+      "4. Test the webhook or trigger"
+    ]
+  }
+}

@@ -1,0 +1,491 @@
+{
+  "name": "SBQC - N6.1 Workflow Architect",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "sbqc-workflow-architect",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "WebhookTrigger",
+      "name": "Webhook (/workflow-architect)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -600,
+        0
+      ],
+      "webhookId": "sbqc-n61-workflow-architect"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\n\n// Validate required fields\nif (!input.body || !input.body.description) {\n  return [{\n    json: {\n      error: true,\n      status: 400,\n      message: 'Missing required field: description'\n    }\n  }];\n}\n\nconst request = {\n  description: input.body.description,\n  autoActivate: input.body.autoActivate !== false,\n  metadata: {\n    source: 'n8n-gateway',\n    triggeredAt: new Date().toISOString(),\n    clientIp: input.headers?.['x-forwarded-for'] || 'unknown'\n  },\n  error: false\n};\n\nreturn [{ json: request }];"
+      },
+      "id": "ValidateRequest",
+      "name": "Validate Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -350,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "error-check",
+              "leftValue": "={{ $json.error }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      },
+      "id": "CheckValidation",
+      "name": "Check Validation",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -100,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const request = $input.first().json;\n\n// Load workflow templates and patterns\nconst workflowTemplates = {\n  webhook_basic: {\n    description: 'Basic webhook that receives data and responds',\n    structure: {\n      trigger: 'webhook (POST)',\n      nodes: ['validate', 'process', 'respond']\n    }\n  },\n  ai_query: {\n    description: 'Webhook that calls AgentX for AI processing',\n    structure: {\n      trigger: 'webhook (POST)',\n      nodes: ['validate', 'prepare_prompt', 'call_agentx', 'format_response', 'respond']\n    }\n  },\n  scheduled_task: {\n    description: 'Scheduled task with data processing',\n    structure: {\n      trigger: 'schedule (cron)',\n      nodes: ['fetch_data', 'process', 'log_results']\n    }\n  },\n  api_orchestration: {\n    description: 'Multiple API calls with data aggregation',\n    structure: {\n      trigger: 'webhook or schedule',\n      nodes: ['parallel_requests', 'merge', 'aggregate', 'respond']\n    }\n  }\n};\n\nconst sbqcConventions = {\n  naming: 'Workflows should be named: SBQC - N#.# Description',\n  webhookIds: 'Use format: sbqc-n##-description (lowercase, no spaces)',\n  httpMethod: 'Webhooks must specify httpMethod: POST or GET',\n  responseMode: 'Use responseNode for API endpoints, onReceived for fire-and-forget',\n  connections: 'Connections MUST use node names, NOT node IDs',\n  errorHandling: 'Set continueOnFail: true on HTTP nodes and logging nodes',\n  logging: 'Always log to DataAPI: POST http://192.168.2.33:3003/integrations/events/n8n',\n  tags: 'Include tags: SBQC, Priority-#, feature-specific tags'\n};\n\nconst requiredStructure = {\n  name: 'string - workflow display name',\n  nodes: 'array - list of node objects with id, name, type, parameters, position',\n  connections: 'object - defines flow between nodes using node names as keys',\n  settings: '{executionOrder: \"v1\"}',\n  tags: 'array - [{name: string, id: string}]'\n};\n\nconst commonNodeTypes = {\n  'n8n-nodes-base.webhook': 'Webhook trigger (requires webhookId, httpMethod, path)',\n  'n8n-nodes-base.scheduleTrigger': 'Schedule trigger (cron expression)',\n  'n8n-nodes-base.code': 'JavaScript code execution',\n  'n8n-nodes-base.httpRequest': 'HTTP request to external API',\n  'n8n-nodes-base.if': 'Conditional branching',\n  'n8n-nodes-base.merge': 'Merge multiple data streams',\n  'n8n-nodes-base.respondToWebhook': 'Send response to webhook caller'\n};\n\nconst exampleWorkflow = {\n  name: 'SBQC - N0.0 Example Workflow',\n  nodes: [\n    {\n      parameters: {\n        httpMethod: 'POST',\n        path: 'example',\n        responseMode: 'responseNode',\n        options: {}\n      },\n      id: 'WebhookNode',\n      name: 'Webhook Trigger',\n      type: 'n8n-nodes-base.webhook',\n      typeVersion: 2,\n      position: [-400, 0],\n      webhookId: 'sbqc-example'\n    },\n    {\n      parameters: {\n        jsCode: 'return [{json: {processed: true}}];'\n      },\n      id: 'ProcessNode',\n      name: 'Process Data',\n      type: 'n8n-nodes-base.code',\n      typeVersion: 2,\n      position: [-100, 0]\n    },\n    {\n      parameters: {\n        respondWith: 'json',\n        responseBody: '={{ $json }}',\n        options: {}\n      },\n      id: 'RespondNode',\n      name: 'Respond to Webhook',\n      type: 'n8n-nodes-base.respondToWebhook',\n      typeVersion: 1.1,\n      position: [200, 0]\n    }\n  ],\n  connections: {\n    'Webhook Trigger': {\n      main: [[\n        {node: 'Process Data', type: 'main', index: 0}\n      ]]\n    },\n    'Process Data': {\n      main: [[\n        {node: 'Respond to Webhook', type: 'main', index: 0}\n      ]]\n    }\n  },\n  settings: {executionOrder: 'v1'},\n  tags: [{name: 'SBQC', id: 'sbqc'}]\n};\n\n// Build comprehensive prompt for AgentX\nconst prompt = `You are an n8n workflow architect. Generate a complete, valid n8n workflow JSON based on the following request.\n\n## USER REQUEST\n${request.description}\n\n## WORKFLOW TEMPLATES\n${JSON.stringify(workflowTemplates, null, 2)}\n\n## SBQC NAMING CONVENTIONS\n${JSON.stringify(sbqcConventions, null, 2)}\n\n## REQUIRED JSON STRUCTURE\n${JSON.stringify(requiredStructure, null, 2)}\n\n## COMMON NODE TYPES\n${JSON.stringify(commonNodeTypes, null, 2)}\n\n## EXAMPLE WORKFLOW\n${JSON.stringify(exampleWorkflow, null, 2)}\n\n## CRITICAL REQUIREMENTS\n1. Connections MUST use node names (from the \"name\" field), NOT node IDs\n2. Every webhook node MUST include webhookId and httpMethod in parameters\n3. Node positions should be spaced 250-300 pixels apart horizontally\n4. Use responseMode: \"responseNode\" if the workflow needs to return data\n5. Include proper error handling with IF nodes and error branches\n6. Add DataAPI logging node at the end with continueOnFail: true\n7. Include SBQC tags\n\n## YOUR TASK\nGenerate a complete n8n workflow JSON that:\n1. Implements the user's request\n2. Follows SBQC conventions\n3. Has proper structure and connections\n4. Includes error handling\n5. Has DataAPI logging\n\nReturn ONLY the raw JSON workflow object. Do not include markdown formatting, code blocks, or explanations. The response must be valid JSON that can be directly parsed.`;\n\nreturn [{\n  json: {\n    prompt,\n    originalRequest: request,\n    templatesProvided: Object.keys(workflowTemplates).length\n  }\n}];"
+      },
+      "id": "PrepareContext",
+      "name": "Prepare Context & Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        150,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://192.168.2.33:3080/api/chat",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  message: $json.prompt,\n  model: 'qwen2.5:7b-instruct-q4_0',\n  useRag: false,\n  persona: 'sbqc_workflow_architect'\n} }}",
+        "options": {
+          "timeout": 120000,
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "id": "CallAgentX",
+      "name": "Call AgentX (Workflow Architect)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        450,
+        -100
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "PIrrA2wpOppzVodi",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst agentxData = response.body?.data || response.data || response.body || response;\n\nlet workflowJson;\ntry {\n  // Extract the AI response\n  const aiResponse = agentxData.response || agentxData.message || JSON.stringify(agentxData);\n  \n  // Try to parse as JSON directly\n  if (typeof aiResponse === 'string') {\n    // Remove markdown code blocks if present\n    let cleaned = aiResponse.trim();\n    cleaned = cleaned.replace(/^```json\\s*/i, '').replace(/^```\\s*/, '').replace(/```\\s*$/, '');\n    cleaned = cleaned.trim();\n    \n    workflowJson = JSON.parse(cleaned);\n  } else {\n    workflowJson = aiResponse;\n  }\n  \n  // Validate structure\n  const errors = [];\n  \n  if (!workflowJson.name) errors.push('Missing workflow name');\n  if (!Array.isArray(workflowJson.nodes)) errors.push('Missing or invalid nodes array');\n  if (typeof workflowJson.connections !== 'object') errors.push('Missing or invalid connections object');\n  \n  // Validate webhook nodes have required fields\n  const webhookNodes = workflowJson.nodes?.filter(n => n.type === 'n8n-nodes-base.webhook') || [];\n  webhookNodes.forEach((node, idx) => {\n    if (!node.webhookId) errors.push(`Webhook node ${idx} missing webhookId`);\n    if (!node.parameters?.httpMethod) errors.push(`Webhook node ${idx} missing httpMethod`);\n  });\n  \n  // Validate connections reference existing nodes\n  if (workflowJson.connections && workflowJson.nodes) {\n    const nodeNames = workflowJson.nodes.map(n => n.name);\n    \n    Object.keys(workflowJson.connections).forEach(sourceNode => {\n      if (!nodeNames.includes(sourceNode)) {\n        errors.push(`Connection source \"${sourceNode}\" not found in nodes`);\n      }\n      \n      const outputs = workflowJson.connections[sourceNode];\n      if (outputs.main) {\n        outputs.main.forEach((outputBranch, branchIdx) => {\n          outputBranch.forEach((conn, connIdx) => {\n            if (!nodeNames.includes(conn.node)) {\n              errors.push(`Connection target \"${conn.node}\" not found in nodes`);\n            }\n          });\n        });\n      }\n    });\n  }\n  \n  if (errors.length > 0) {\n    return [{\n      json: {\n        valid: false,\n        errors,\n        rawResponse: aiResponse,\n        parsedWorkflow: workflowJson\n      }\n    }];\n  }\n  \n  return [{\n    json: {\n      valid: true,\n      workflow: workflowJson,\n      stats: {\n        nodeCount: workflowJson.nodes?.length || 0,\n        connectionCount: Object.keys(workflowJson.connections || {}).length,\n        hasWebhook: webhookNodes.length > 0,\n        webhookCount: webhookNodes.length\n      }\n    }\n  }];\n  \n} catch (error) {\n  return [{\n    json: {\n      valid: false,\n      errors: [`JSON parse error: ${error.message}`],\n      rawResponse: agentxData\n    }\n  }];\n}"
+      },
+      "id": "ParseValidate",
+      "name": "Parse & Validate Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        750,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "valid-check",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      },
+      "id": "CheckValid",
+      "name": "Is Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1050,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\nconst path = require('path');\nconst validated = $input.first().json;\nconst workflow = validated.workflow;\n\n// Generate filename from workflow name\nconst workflowName = workflow.name.replace(/^SBQC\\s*-\\s*/i, '').trim();\nconst filename = workflowName.replace(/[^a-zA-Z0-9.-]/g, '-').toLowerCase() + '.json';\nconst tempDir = '/tmp/n8n-workflows';\nconst filePath = path.join(tempDir, filename);\n\n// Ensure temp directory exists\nif (!fs.existsSync(tempDir)) {\n  fs.mkdirSync(tempDir, { recursive: true });\n}\n\n// Write workflow JSON to file\nfs.writeFileSync(filePath, JSON.stringify(workflow, null, 2), 'utf8');\n\nreturn [{\n  json: {\n    success: true,\n    filePath,\n    filename,\n    workflow,\n    workflowName: workflow.name\n  }\n}];"
+      },
+      "id": "SaveWorkflow",
+      "name": "Save Workflow File",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1350,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://n8n.specialblend.icu/api/v1/workflows",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.workflow }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "id": "DeployWorkflow",
+      "name": "Deploy to n8n",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1650,
+        -200
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "PIrrA2wpOppzVodi",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const deployResponse = $input.first().json;\nconst saveData = $('Save Workflow File').first().json;\nconst originalRequest = $('Prepare Context & Prompt').first().json.originalRequest;\n\nconst deployed = deployResponse.body?.data || deployResponse.body || deployResponse;\nconst workflowId = deployed.id || 'unknown';\nconst statusCode = deployResponse.statusCode || 200;\n\n// Extract webhook URLs if present\nconst webhookNodes = saveData.workflow.nodes.filter(n => n.type === 'n8n-nodes-base.webhook');\nconst webhookUrls = webhookNodes.map(node => {\n  const path = node.parameters?.path || 'unknown';\n  return `https://n8n.specialblend.icu/webhook/${path}`;\n});\n\nconst result = {\n  success: true,\n  workflowName: saveData.workflowName,\n  workflowId,\n  deployed: statusCode >= 200 && statusCode < 300,\n  statusCode,\n  filePath: saveData.filePath,\n  webhookUrls,\n  autoActivate: originalRequest.autoActivate,\n  stats: {\n    nodeCount: saveData.workflow.nodes?.length || 0,\n    webhookCount: webhookNodes.length\n  },\n  deploymentLog: {\n    timestamp: new Date().toISOString(),\n    method: 'POST',\n    endpoint: 'https://n8n.specialblend.icu/api/v1/workflows',\n    response: deployed\n  },\n  generatedWorkflow: saveData.workflow,\n  note: 'Workflow deployed in INACTIVE state. Activate it in n8n UI or via API.'\n};\n\nreturn [{ json: result }];"
+      },
+      "id": "FormatSuccess",
+      "name": "Format Success Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1950,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const validated = $input.first().json;\n\nreturn [{\n  json: {\n    success: false,\n    error: 'Workflow validation failed',\n    validationErrors: validated.errors || [],\n    rawResponse: validated.rawResponse || null,\n    parsedWorkflow: validated.parsedWorkflow || null,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "FormatValidationError",
+      "name": "Format Validation Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1350,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const error = $input.first().json;\n\nreturn [{\n  json: {\n    success: false,\n    error: error.message || 'Invalid request',\n    status: error.status || 400,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "FormatRequestError",
+      "name": "Format Request Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        150,
+        200
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "MergeResponses",
+      "name": "Merge All Responses",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        2250,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "RespondToWebhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2550,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://192.168.2.33:3003/integrations/events/n8n",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  workflow_id: 'N6.1',\n  event_type: 'workflow_generation',\n  data: {\n    success: $json.success || false,\n    workflowName: $json.workflowName || 'unknown',\n    workflowId: $json.workflowId || null,\n    deployed: $json.deployed || false,\n    error: $json.error || null,\n    timestamp: $json.timestamp || new Date().toISOString()\n  }\n} }}",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "id": "LogToDataAPI",
+      "name": "Log to DataAPI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2850,
+        0
+      ],
+      "continueOnFail": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "PIrrA2wpOppzVodi",
+          "name": "Header Auth account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook (/workflow-architect)": {
+      "main": [
+        [
+          {
+            "node": "Validate Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Request": {
+      "main": [
+        [
+          {
+            "node": "Check Validation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Validation": {
+      "main": [
+        [
+          {
+            "node": "Prepare Context & Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format Request Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Context & Prompt": {
+      "main": [
+        [
+          {
+            "node": "Call AgentX (Workflow Architect)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call AgentX (Workflow Architect)": {
+      "main": [
+        [
+          {
+            "node": "Parse & Validate Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse & Validate Response": {
+      "main": [
+        [
+          {
+            "node": "Is Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Valid?": {
+      "main": [
+        [
+          {
+            "node": "Save Workflow File",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format Validation Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Workflow File": {
+      "main": [
+        [
+          {
+            "node": "Deploy to n8n",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deploy to n8n": {
+      "main": [
+        [
+          {
+            "node": "Format Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Success Response": {
+      "main": [
+        [
+          {
+            "node": "Merge All Responses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Validation Error": {
+      "main": [
+        [
+          {
+            "node": "Merge All Responses",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Format Request Error": {
+      "main": [
+        [
+          {
+            "node": "Merge All Responses",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Merge All Responses": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond to Webhook": {
+      "main": [
+        [
+          {
+            "node": "Log to DataAPI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": [
+    {
+      "name": "SBQC",
+      "id": "sbqc"
+    },
+    {
+      "name": "Priority-6",
+      "id": "p6"
+    },
+    {
+      "name": "Workflow-Generation",
+      "id": "workflow-gen"
+    },
+    {
+      "name": "AI-Architect",
+      "id": "architect"
+    }
+  ]
+}

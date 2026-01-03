@@ -1,0 +1,182 @@
+================================================================================
+                SBQC WORKFLOW TEMPLATES LIBRARY v1.0.0
+================================================================================
+
+Location: /home/yb/codes/AgentX/AgentC/templates/
+Created:  2026-01-02
+Purpose:  Reusable n8n workflow patterns for SBQC Architect AI
+
+================================================================================
+                              DIRECTORY CONTENTS
+================================================================================
+
+File                                Size    Lines   Purpose
+-----------------------------------+---------+-------+-------------------------
+workflow-templates.json             42 KB    1,047   Core template library
+README.md                          8.5 KB      351   Complete documentation
+USAGE_EXAMPLES.md                   14 KB      448   Practical examples
+AI_ARCHITECT_QUICK_REFERENCE.md     10 KB      401   AI quick reference
+INDEX.md                           9.5 KB      386   Directory overview
+validate-templates.sh               3.0 KB      164   Validation script
+-----------------------------------+---------+-------+-------------------------
+TOTAL                               104 KB    2,797
+
+================================================================================
+                            5 WORKFLOW TEMPLATES
+================================================================================
+
+1. BASIC WEBHOOK (3 nodes)
+   Webhook → Process → Respond
+   Use for: Simple APIs, status checks, quick transformations
+
+2. SCHEDULED JOB (4 nodes)
+   Schedule → Fetch → Process → Log
+   Use for: Health checks, periodic syncs, scheduled reports
+
+3. CONDITIONAL FLOW (7 nodes)
+   Webhook → Validate → IF → Success/Error → Merge → Respond
+   Use for: Validation workflows, approval processes, quality checks
+
+4. MULTI-STEP API (9 nodes)
+   Webhook → Prepare → API1+API2 (parallel) → Process → Merge → Respond
+   Use for: Data enrichment, multi-service orchestration, aggregation
+
+5. ERROR HANDLING (12 nodes)
+   Webhook → Context → Risky Op → Check → IF → Success/Error → Log → Respond
+   Use for: Production APIs, critical workflows, robust error handling
+
+================================================================================
+                              KEY FEATURES
+================================================================================
+
+✓ Production-ready templates based on real SBQC workflows
+✓ Complete node configurations with working parameters
+✓ Inline "CUSTOMIZE" comments for easy adaptation
+✓ Error handling with continueOnFail on all HTTP nodes
+✓ Integrated DataAPI logging for monitoring
+✓ Clean visual layouts with grid-aligned positions
+✓ Comprehensive documentation and examples
+✓ Validation script for template verification
+
+================================================================================
+                             QUICK START GUIDE
+================================================================================
+
+For AI Architect:
+1. Read: workflow-templates.json
+2. Select template based on requirements
+3. Customize: workflow_id, credentials, URLs, logic
+4. Deploy: ./scripts/deploy-n8n-workflows.sh
+
+For Developers:
+1. Browse: jq '.templates | keys' workflow-templates.json
+2. Extract: jq '.templates["1_basic_webhook"].workflow' > my-workflow.json
+3. Customize all "CUSTOMIZE" markers
+4. Validate: jq empty my-workflow.json
+5. Deploy: ./scripts/deploy-n8n-workflows.sh my-workflow.json
+
+================================================================================
+                        TEMPLATE SELECTION GUIDE
+================================================================================
+
+User Request Contains...             → Use Template      → Complexity
+------------------------------------+------------------+---------------
+"webhook", "endpoint", "API"         → basic_webhook    → Low (3 nodes)
+"schedule", "every", "daily"         → scheduled_job    → Low (4 nodes)
+"validate", "check if", "approval"   → conditional_flow → Med (7 nodes)
+"fetch multiple", "combine"          → multi_step_api   → High (9 nodes)
+"production", "must not fail"        → error_handling   → High (12 nodes)
+
+================================================================================
+                         REQUIRED CUSTOMIZATIONS
+================================================================================
+
+Every template requires:
+1. Workflow ID: "N{X}.{Y}"
+2. Workflow Name: "SBQC - N{X}.{Y} Descriptive Name"
+3. Webhook Path: "unique-kebab-case-path" (if applicable)
+4. Credentials: "PIrrA2wpOppzVodi" (standard SBQC credential)
+5. API Endpoints: Replace example URLs with real endpoints
+6. Business Logic: Customize code nodes (search for "CUSTOMIZE")
+
+================================================================================
+                         STANDARD SBQC ENDPOINTS
+================================================================================
+
+AgentX Chat:      http://192.168.2.33:3080/api/chat
+DataAPI Logging:  http://192.168.2.33:3003/integrations/events/n8n
+DataAPI Health:   http://192.168.2.33:3003/health
+AgentX Health:    http://192.168.2.33:3080/health
+Ollama UGFrank:   http://192.168.2.99:11434/api/tags (monitoring only)
+Ollama UGBrutal:  http://192.168.2.12:11434/api/tags (monitoring only)
+
+================================================================================
+                              VALIDATION
+================================================================================
+
+Run: ./validate-templates.sh
+
+Expected output:
+  ✓ Valid JSON
+  ✓ Version: 1.0.0
+  ✓ Templates found: 5
+  All templates are valid!
+
+================================================================================
+                         PRODUCTION EXAMPLES
+================================================================================
+
+Workflow          Template Used               Customizations
+-----------------+---------------------------+----------------------------------
+N0.0 Deploy Test  basic_webhook              Returns deployment status
+N0.1 Health Dash  basic_webhook              Aggregates system health
+N1.1 Health Check scheduled_job +            Parallel checks every 5 min
+                  multi_step_api
+N3.2 AI Gateway   conditional_flow +         Validates requests, calls AgentX
+                  error_handling
+N2.3 RAG Ingest   scheduled_job              Weekly document processing
+
+================================================================================
+                            DOCUMENTATION
+================================================================================
+
+Quick start:      README.md
+Examples:         USAGE_EXAMPLES.md
+AI reference:     AI_ARCHITECT_QUICK_REFERENCE.md
+Directory guide:  INDEX.md
+This overview:    OVERVIEW.txt
+
+================================================================================
+                         TROUBLESHOOTING
+================================================================================
+
+Issue                           Solution
+-------------------------------+-----------------------------------------------
+Template won't import           jq empty workflow.json
+Credentials not found           Use ID: PIrrA2wpOppzVodi
+Webhook returns 404             Verify workflow is active, check path
+Node reference errors           Use $input.first() instead of $node
+Workflow stops on error         Set continueOnFail: true on HTTP nodes
+
+================================================================================
+                            RESOURCES
+================================================================================
+
+Templates:        /home/yb/codes/AgentX/AgentC/templates/workflow-templates.json
+Production:       /home/yb/codes/AgentX/AgentC/N*.json
+Deploy script:    /home/yb/codes/AgentX/scripts/deploy-n8n-workflows.sh
+n8n UI:           http://192.168.2.199:5678
+Public URL:       https://n8n.specialblend.icu
+n8n Docs:         https://docs.n8n.io/
+
+================================================================================
+                           VERSION HISTORY
+================================================================================
+
+v1.0.0 (2026-01-02) - Initial Release
+  - 5 production-ready templates
+  - Complete documentation suite
+  - Validation tools
+  - Based on SBQC production workflows (N0.0-N5.1)
+
+================================================================================
