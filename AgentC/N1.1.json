@@ -19,7 +19,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1360,
+        1600,
         528
       ],
       "credentials": {
@@ -295,6 +295,69 @@
         16,
         240
       ]
+    },
+    {
+      "parameters": {
+        "jsCode": "function isHttpOk(obj) {\n  if (!obj || typeof obj !== 'object') return false;\n  if (obj.error) return false;\n  return true;\n}\n\nfunction safeGet(nodeName) {\n  try {\n    const items = $items(nodeName);\n    return items && items[0] ? items[0].json : null;\n  } catch (e) {\n    return null;\n  }\n}\n\nfunction extractStatusCode(data) {\n  if (typeof data?.statusCode === 'number') return data.statusCode;\n  if (typeof data?.status === 'number') return data.status;\n  if (typeof data?.code === 'number') return data.code;\n  if (data?.error) {\n    if (typeof data.error.statusCode === 'number') return data.error.statusCode;\n    if (typeof data.error.code === 'number') return data.error.code;\n  }\n  return null;\n}\n\nfunction extractResponseTime(data) {\n  const rt = data?.timings?.response ?? data?.elapsedTime ?? data?.responseTime;\n  return typeof rt === 'number' ? rt : null;\n}\n\nfunction isApiOk(data) {\n  return isHttpOk(data) && (data?.status === 'ok' || data?.status === 'success' || data?.ok === true);\n}\n\nfunction isOllamaOk(data) {\n  return isHttpOk(data) && (Array.isArray(data?.models) || typeof data?.models === 'object');\n}\n\nconst staticData = $getWorkflowStaticData('global');\nconst previous = staticData.lastStates || {};\nconst timestamp = new Date().toISOString();\nconst agentxUrl = $json.agentx_url || 'http://localhost:3080';\n\nconst components = [\n  { key: 'dataapi', node: 'DataAPI Health', component: 'dataapi', okCheck: isApiOk },\n  { key: 'agentx', node: 'AgentX Health', component: 'agentx', okCheck: isApiOk },\n  { key: 'ollama99', node: 'Ollama 99 Tags', component: 'ollama_99', okCheck: isOllamaOk },\n  { key: 'ollama12', node: 'Ollama 12 Tags', component: 'ollama_12', okCheck: isOllamaOk }\n];\n\nconst results = [];\nconst updatedStates = {};\n\nfor (const entry of components) {\n  const nodeData = safeGet(entry.node);\n  const statusCode = extractStatusCode(nodeData);\n  const responseTime = extractResponseTime(nodeData);\n  const isOk = entry.okCheck(nodeData);\n  const slow = responseTime !== null && responseTime > 2000;\n  const value = (!isOk || slow) ? 1 : 0;\n  const previousValue = previous[entry.key]?.value;\n  updatedStates[entry.key] = { value, statusCode, responseTime };\n\n  const changed = previousValue === undefined ? true : previousValue !== value;\n  if (changed) {\n    results.push({\n      json: {\n        component: entry.component,\n        metric: 'health_status',\n        value,\n        metadata: {\n          responseTime,\n          statusCode,\n          timestamp\n        },\n        agentx_url: agentxUrl\n      }\n    });\n  }\n}\n\nstaticData.lastStates = updatedStates;\n\nreturn results;"
+      },
+      "id": "1f9d87c4-ecbb-4bf0-9c89-13d5fd77922d",
+      "name": "Prepare Alert Evaluation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1184,
+        528
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$json[\"agentx_url\"]}}/api/alerts/evaluate",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"component\": $json.component, \"metric\": $json.metric, \"value\": $json.value, \"metadata\": $json.metadata } }}",
+        "headerParametersUi": {
+          "parameter": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "id": "fd54b668-16ff-42a5-9e04-d1b8bda1991f",
+      "name": "Evaluate Alert Rules",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1408,
+        528
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "PIrrA2wpOppzVodi",
+          "name": "Header Auth account"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nfor (const item of items) {\n  const payload = item.json?.body ?? item.json;\n  const statusCode = payload?.statusCode ?? item.json?.statusCode ?? item.json?.error?.statusCode;\n  if (item.json?.error || (typeof statusCode === 'number' && statusCode >= 400)) {\n    console.error('Alert evaluation request failed', item.json);\n  }\n}\n\nreturn items;"
+      },
+      "id": "91e85460-1f26-41e0-b9ba-8a1eb4c09cc9",
+      "name": "Log Alert Eval Failures",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        528
+      ]
     }
   ],
   "pinData": {},
@@ -360,6 +423,11 @@
           },
           {
             "node": "IF Degraded",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prepare Alert Evaluation",
             "type": "main",
             "index": 0
           }
@@ -452,6 +520,28 @@
           },
           {
             "node": "Ollama 12 Tags",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Alert Evaluation": {
+      "main": [
+        [
+          {
+            "node": "Evaluate Alert Rules",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluate Alert Rules": {
+      "main": [
+        [
+          {
+            "node": "Log Alert Eval Failures",
             "type": "main",
             "index": 0
           }
