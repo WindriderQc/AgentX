@@ -1616,11 +1616,28 @@ Respond ONLY with JSON in this exact format:
                             const qualityScore = r.quality_score !== undefined && r.quality_score !== null ? r.quality_score : '-';
                             const qualityClass = qualityScore >= 7 ? 'quality-high' : qualityScore >= 4 ? 'quality-mid' : (qualityScore !== '-' ? 'quality-low' : '');
                             
+                            // Helper to format host URL
+                            const formatHost = (url) => {
+                                if (!url) return 'Unknown';
+                                if (url.includes('192.168.2.99')) return 'Primary (99)';
+                                if (url.includes('192.168.2.12')) return 'Secondary (12)';
+                                return 'Custom';
+                            };
+
+                            const hostInfo = r.host ? `<div style="font-size: 0.75em; color: var(--muted); margin-top: 2px;">Exec: ${formatHost(r.host)}</div>` : '';
+                            const judgeInfo = r.judge_host ? `<div style="font-size: 0.75em; color: var(--muted);">Judge: ${formatHost(r.judge_host)}</div>` : '';
+
                             return `
                                 <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
-                                    <td style="padding: 8px 12px;">${r.model}</td>
+                                    <td style="padding: 8px 12px;">
+                                        ${r.model}
+                                        ${hostInfo}
+                                    </td>
                                     <td style="padding: 8px 12px;">${r.prompt_name}</td>
-                                    <td style="padding: 8px 12px; text-align: center;" class="${qualityClass}">${qualityScore}</td>
+                                    <td style="padding: 8px 12px; text-align: center;" class="${qualityClass}">
+                                        ${qualityScore}
+                                        ${judgeInfo}
+                                    </td>
                                     <td style="padding: 8px 12px; text-align: center;">
                                         <button class="btn-secondary btn-sm" onclick="showJudgeDetails(${idx})">
                                             <i class="fas fa-eye"></i> Details

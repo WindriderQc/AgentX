@@ -649,6 +649,7 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                     const result = {
                         model,
                         host: hostUrl,
+                        judge_host: enableQualityScoring ? judgeHostUrl : null,
                         prompt: prompt.prompt,
                         prompt_level: prompt.level,
                         prompt_category: prompt.category,
@@ -675,6 +676,8 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                             $push: { 
                                 results: { 
                                     model, 
+                                    host: hostUrl,
+                                    judge_host: enableQualityScoring ? judgeHostUrl : null,
                                     prompt_name: prompt.name, 
                                     success: true, 
                                     latency,
