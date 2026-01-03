@@ -12,25 +12,25 @@
  */
 
 const request = require('supertest');
-const express = require('express');
 const MetricsSnapshot = require('../../models/MetricsSnapshot');
-const metricsCollector = require('../../src/services/metricsCollector');
+require('../../src/services/metricsCollector');
 
 // Mock the optionalAuth middleware before requiring routes
 jest.mock('../../src/middleware/auth', () => ({
-  optionalAuth: (req, res, next) => {
+  attachUser: (_req, res, next) => {
+    res.locals.user = { userId: 'test-user-123', name: 'Test User' };
+    next();
+  },
+  requireAuth: (_req, _res, next) => next(),
+  requireAdmin: (_req, _res, next) => next(),
+  apiKeyAuth: (_req, _res, next) => next(),
+  optionalAuth: (_req, res, next) => {
     res.locals.user = { userId: 'test-user-123', name: 'Test User' };
     next();
   }
 }));
 
-// Create test app
-const app = express();
-app.use(express.json());
-
-// Mount metrics routes
-const metricsRoutes = require('../../routes/metrics');
-app.use('/api/metrics', metricsRoutes);
+const app = require('../../src/app').app;
 
 describe('Metrics API Routes', () => {
   beforeEach(async () => {

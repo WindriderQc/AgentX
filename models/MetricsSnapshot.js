@@ -9,8 +9,7 @@ const expireAfterSeconds = Number.isFinite(retentionDays) && retentionDays > 0
 const MetricsSnapshotSchema = new mongoose.Schema({
   timestamp: {
     type: Date,
-    required: true,
-    index: true
+    required: true
   },
   type: {
     type: String,

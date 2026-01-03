@@ -53,22 +53,18 @@ describe('MetricsCleanup Service', () => {
 
       await MetricsSnapshot.create([
         {
-          componentType: 'agentx',
           componentId: 'test-1',
-          metricType: 'performance',
-          metricName: 'response_time',
+          type: 'performance',
           value: 100,
-          granularity: 'raw',
-          createdAt: oldDate
+          timestamp: oldDate,
+          metadata: { granularity: 'raw', metricName: 'response_time' }
         },
         {
-          componentType: 'agentx',
           componentId: 'test-2',
-          metricType: 'performance',
-          metricName: 'response_time',
+          type: 'performance',
           value: 150,
-          granularity: 'raw',
-          createdAt: recentDate
+          timestamp: recentDate,
+          metadata: { granularity: 'raw', metricName: 'response_time' }
         }
       ]);
 
@@ -78,7 +74,7 @@ describe('MetricsCleanup Service', () => {
       expect(stats.granularityStats.raw.deleted).toBe(1);
 
       // Verify old metric is deleted and recent one remains
-      const remaining = await MetricsSnapshot.find({ granularity: 'raw' });
+      const remaining = await MetricsSnapshot.find({ 'metadata.granularity': 'raw' });
       expect(remaining).toHaveLength(1);
       expect(remaining[0].componentId).toBe('test-2');
     });
@@ -89,22 +85,18 @@ describe('MetricsCleanup Service', () => {
 
       await MetricsSnapshot.create([
         {
-          componentType: 'agentx',
           componentId: 'test-1',
-          metricType: 'performance',
-          metricName: 'response_time',
+          type: 'performance',
           value: 100,
-          granularity: '1h',
-          createdAt: oldDate
+          timestamp: oldDate,
+          metadata: { granularity: '1h', metricName: 'response_time' }
         },
         {
-          componentType: 'agentx',
           componentId: 'test-2',
-          metricType: 'performance',
-          metricName: 'response_time',
+          type: 'performance',
           value: 150,
-          granularity: '1h',
-          createdAt: recentDate
+          timestamp: recentDate,
+          metadata: { granularity: '1h', metricName: 'response_time' }
         }
       ]);
 
@@ -113,7 +105,7 @@ describe('MetricsCleanup Service', () => {
       expect(stats.granularityStats['1h'].deleted).toBe(1);
 
       // Verify only recent metric remains
-      const remaining = await MetricsSnapshot.find({ granularity: '1h' });
+      const remaining = await MetricsSnapshot.find({ 'metadata.granularity': '1h' });
       expect(remaining).toHaveLength(1);
       expect(remaining[0].componentId).toBe('test-2');
     });
@@ -124,22 +116,18 @@ describe('MetricsCleanup Service', () => {
 
       await MetricsSnapshot.create([
         {
-          componentType: 'agentx',
           componentId: 'test-1',
-          metricType: 'performance',
-          metricName: 'response_time',
+          type: 'performance',
           value: 100,
-          granularity: '1d',
-          createdAt: oldDate
+          timestamp: oldDate,
+          metadata: { granularity: '1d', metricName: 'response_time' }
         },
         {
-          componentType: 'agentx',
           componentId: 'test-2',
-          metricType: 'performance',
-          metricName: 'response_time',
+          type: 'performance',
           value: 150,
-          granularity: '1d',
-          createdAt: recentDate
+          timestamp: recentDate,
+          metadata: { granularity: '1d', metricName: 'response_time' }
         }
       ]);
 
@@ -148,7 +136,7 @@ describe('MetricsCleanup Service', () => {
       expect(stats.granularityStats['1d'].deleted).toBe(1);
 
       // Verify only recent metric remains
-      const remaining = await MetricsSnapshot.find({ granularity: '1d' });
+      const remaining = await MetricsSnapshot.find({ 'metadata.granularity': '1d' });
       expect(remaining).toHaveLength(1);
       expect(remaining[0].componentId).toBe('test-2');
     });
@@ -157,13 +145,11 @@ describe('MetricsCleanup Service', () => {
       const veryOldDate = new Date(Date.now() - 1000 * 24 * 60 * 60 * 1000); // 1000 days ago
 
       await MetricsSnapshot.create({
-        componentType: 'agentx',
         componentId: 'test-1',
-        metricType: 'performance',
-        metricName: 'response_time',
+        type: 'performance',
         value: 100,
-        granularity: '30d',
-        createdAt: veryOldDate
+        timestamp: veryOldDate,
+        metadata: { granularity: '30d', metricName: 'response_time' }
       });
 
       const stats = await metricsCleanup.cleanupMetrics();
@@ -171,7 +157,7 @@ describe('MetricsCleanup Service', () => {
       expect(stats.granularityStats['30d'].skipped).toBe(true);
 
       // Verify metric is still there
-      const remaining = await MetricsSnapshot.find({ granularity: '30d' });
+      const remaining = await MetricsSnapshot.find({ 'metadata.granularity': '30d' });
       expect(remaining).toHaveLength(1);
     });
 
@@ -205,20 +191,18 @@ describe('MetricsCleanup Service', () => {
 
       await MetricsSnapshot.create([
         {
-          componentType: 'agentx',
           componentId: 'component-1',
-          metricType: 'performance',
-          metricName: 'response_time',
+          type: 'performance',
           value: 100,
-          createdAt: oldDate
+          timestamp: oldDate,
+          metadata: { metricName: 'response_time' }
         },
         {
-          componentType: 'agentx',
           componentId: 'component-2',
-          metricType: 'performance',
-          metricName: 'response_time',
+          type: 'performance',
           value: 150,
-          createdAt: oldDate
+          timestamp: oldDate,
+          metadata: { metricName: 'response_time' }
         }
       ]);
 
@@ -240,20 +224,18 @@ describe('MetricsCleanup Service', () => {
 
       await MetricsSnapshot.create([
         {
-          componentType: 'agentx',
           componentId: 'test-1',
-          metricType: 'performance',
-          metricName: 'response_time',
+          type: 'performance',
           value: 100,
-          createdAt: oldDate
+          timestamp: oldDate,
+          metadata: { metricName: 'response_time' }
         },
         {
-          componentType: 'agentx',
           componentId: 'test-2',
-          metricType: 'health',
-          metricName: 'health_status',
-          value: 'healthy',
-          createdAt: oldDate
+          type: 'health',
+          value: 1,
+          timestamp: oldDate,
+          metadata: { metricName: 'health_status' }
         }
       ]);
 
@@ -265,36 +247,34 @@ describe('MetricsCleanup Service', () => {
       // Verify health metrics still exist
       const remaining = await MetricsSnapshot.find({});
       expect(remaining).toHaveLength(1);
-      expect(remaining[0].metricType).toBe('health');
+      expect(remaining[0].type).toBe('health');
     });
   });
 
   describe('getStorageStats()', () => {
     it('should return storage statistics by granularity', async () => {
+      const now = new Date();
       await MetricsSnapshot.create([
         {
-          componentType: 'agentx',
           componentId: 'test-1',
-          metricType: 'performance',
-          metricName: 'response_time',
+          type: 'performance',
           value: 100,
-          granularity: 'raw'
+          timestamp: now,
+          metadata: { granularity: 'raw', metricName: 'response_time' }
         },
         {
-          componentType: 'agentx',
           componentId: 'test-2',
-          metricType: 'performance',
-          metricName: 'response_time',
+          type: 'performance',
           value: 150,
-          granularity: 'raw'
+          timestamp: now,
+          metadata: { granularity: 'raw', metricName: 'response_time' }
         },
         {
-          componentType: 'agentx',
           componentId: 'test-3',
-          metricType: 'performance',
-          metricName: 'response_time',
+          type: 'performance',
           value: 200,
-          granularity: '1h'
+          timestamp: now,
+          metadata: { granularity: '1h', metricName: 'response_time' }
         }
       ]);
 
@@ -313,22 +293,18 @@ describe('MetricsCleanup Service', () => {
 
       await MetricsSnapshot.create([
         {
-          componentType: 'agentx',
           componentId: 'test-1',
-          metricType: 'performance',
-          metricName: 'response_time',
+          type: 'performance',
           value: 100,
-          granularity: 'raw',
-          createdAt: oldDate
+          timestamp: oldDate,
+          metadata: { granularity: 'raw', metricName: 'response_time' }
         },
         {
-          componentType: 'agentx',
           componentId: 'test-2',
-          metricType: 'performance',
-          metricName: 'response_time',
+          type: 'performance',
           value: 150,
-          granularity: 'raw',
-          createdAt: new Date()
+          timestamp: new Date(),
+          metadata: { granularity: 'raw', metricName: 'response_time' }
         }
       ]);
 
@@ -396,13 +372,11 @@ describe('MetricsCleanup Service', () => {
       const oldDate = new Date(Date.now() - 100 * 24 * 60 * 60 * 1000);
 
       await MetricsSnapshot.create({
-        componentType: 'agentx',
         componentId: 'test-1',
-        metricType: 'performance',
-        metricName: 'response_time',
+        type: 'performance',
         value: 100,
-        granularity: 'raw',
-        createdAt: oldDate
+        timestamp: oldDate,
+        metadata: { granularity: 'raw', metricName: 'response_time' }
       });
 
       const stats = await metricsCleanup.forceCleanup();

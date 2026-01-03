@@ -227,9 +227,14 @@ class MetricsCleanup {
 
     logger.debug(`Cleaning up ${granularity} metrics older than ${cutoffDate.toISOString()}`);
 
+    const granularityQuery =
+      granularity === 'raw'
+        ? { $or: [{ 'metadata.granularity': { $exists: false } }, { 'metadata.granularity': 'raw' }] }
+        : { 'metadata.granularity': granularity };
+
     const result = await MetricsSnapshot.deleteMany({
-      granularity: granularity,
-      createdAt: { $lt: cutoffDate }
+      ...granularityQuery,
+      timestamp: { $lt: cutoffDate }
     });
 
     return {
@@ -254,7 +259,7 @@ class MetricsCleanup {
 
       const result = await MetricsSnapshot.deleteMany({
         componentId,
-        createdAt: { $lt: cutoffDate }
+        timestamp: { $lt: cutoffDate }
       });
 
       const stats = {
@@ -289,8 +294,8 @@ class MetricsCleanup {
       logger.info('Cleaning up metrics by type', { metricType, retentionDays });
 
       const result = await MetricsSnapshot.deleteMany({
-        metricType,
-        createdAt: { $lt: cutoffDate }
+        type: metricType,
+        timestamp: { $lt: cutoffDate }
       });
 
       const stats = {
@@ -321,10 +326,10 @@ class MetricsCleanup {
       const stats = await MetricsSnapshot.aggregate([
         {
           $group: {
-            _id: '$granularity',
+            _id: { $ifNull: ['$metadata.granularity', 'raw'] },
             count: { $sum: 1 },
-            oldestMetric: { $min: '$createdAt' },
-            newestMetric: { $max: '$createdAt' }
+            oldestMetric: { $min: '$timestamp' },
+            newestMetric: { $max: '$timestamp' }
           }
         },
         {
@@ -389,8 +394,10 @@ class MetricsCleanup {
         const cutoffDate = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
 
         const count = await MetricsSnapshot.countDocuments({
-          granularity,
-          createdAt: { $lt: cutoffDate }
+          ...(granularity === 'raw'
+            ? { $or: [{ 'metadata.granularity': { $exists: false } }, { 'metadata.granularity': 'raw' }] }
+            : { 'metadata.granularity': granularity }),
+          timestamp: { $lt: cutoffDate }
         });
 
         preview.byGranularity[granularity] = {
