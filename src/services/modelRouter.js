@@ -9,10 +9,68 @@
 const logger = require('../../config/logger');
 const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
 
+class ModelHealthTracker {
+    constructor() {
+        this.healthCache = new Map(); // modelKey -> { avgResponseTime, lastChecked, status }
+        this.cacheTTL = 60000; // 1 minute
+    }
+
+    async checkModelHealth(host, model) {
+        const key = `${host}:${model}`;
+        const cached = this.healthCache.get(key);
+
+        if (cached && Date.now() - cached.lastChecked < this.cacheTTL) {
+            return cached;
+        }
+
+        try {
+            const start = Date.now();
+            const response = await fetch(`${host}/api/generate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model,
+                    prompt: 'Test',
+                    stream: false
+                }),
+                signal: AbortSignal.timeout(5000) // 5 second timeout
+            });
+
+            const responseTime = Date.now() - start;
+
+            const health = {
+                status: response.ok ? 'healthy' : 'unhealthy',
+                avgResponseTime: responseTime,
+                lastChecked: Date.now()
+            };
+
+            this.healthCache.set(key, health);
+            return health;
+
+        } catch (err) {
+            const health = {
+                status: 'unhealthy',
+                avgResponseTime: null,
+                lastChecked: Date.now(),
+                error: err.message
+            };
+
+            this.healthCache.set(key, health);
+            return health;
+        }
+    }
+
+    clearCache() {
+        this.healthCache.clear();
+    }
+}
+
+const healthTracker = new ModelHealthTracker();
+
 // Host configuration
 const HOSTS = {
     primary: process.env.OLLAMA_HOST || 'http://192.168.2.99:11434',
-    secondary: process.env.OLLAMA_HOST_2 || 'http://192.168.2.12:11434'
+    secondary: process.env.OLLAMA_HOST_SECONDARY || process.env.OLLAMA_HOST_2 || 'http://192.168.2.12:11434'
 };
 
 // Model → Host mapping
@@ -116,6 +174,19 @@ function getModelForTask(taskType) {
     };
 }
 
+function getPrimaryHostForTask(taskType) {
+    const task = getModelForTask(taskType);
+    return task.url;
+}
+
+function getBackupHost(primaryHost) {
+    const hosts = {
+        [process.env.OLLAMA_HOST]: process.env.OLLAMA_HOST_SECONDARY,
+        [process.env.OLLAMA_HOST_SECONDARY]: process.env.OLLAMA_HOST
+    };
+    return hosts[primaryHost] || process.env.OLLAMA_HOST;
+}
+
 /**
  * Classify a query using the front-door model (Qwen)
  * @param {string} message - User message to classify
@@ -173,6 +244,71 @@ async function classifyQuery(message, timeout = 10000) {
     }
 }
 
+async function classifyAndRoute(message, options = {}) {
+    const { preferredModel, preferredHost, taskType } = options;
+
+    const classification = taskType || (message ? await classifyQuery(message) : 'general_chat');
+
+    let targetHost = preferredHost || getPrimaryHostForTask(classification);
+    let targetModel = preferredModel || getModelForTask(classification).model;
+
+    const primaryHealth = await healthTracker.checkModelHealth(targetHost, targetModel);
+
+    const needsFailover = (
+        primaryHealth.status === 'unhealthy' ||
+        (primaryHealth.avgResponseTime && primaryHealth.avgResponseTime > 5000)
+    );
+
+    if (needsFailover) {
+        logger.warn('Primary model unhealthy, failing over', {
+            primary: { host: targetHost, model: targetModel },
+            health: primaryHealth
+        });
+
+        const backupHost = getBackupHost(targetHost);
+        const backupHealth = await healthTracker.checkModelHealth(backupHost, targetModel);
+
+        if (backupHealth.status === 'healthy') {
+            const { RemediationAction } = require('../../models/RemediationAction');
+            await RemediationAction.create({
+                issueType: 'model_degradation',
+                severity: 'medium',
+                context: {
+                    component: `${targetHost}:${targetModel}`,
+                    metric: 'response_time',
+                    threshold: 5000,
+                    currentValue: primaryHealth.avgResponseTime
+                },
+                strategy: 'model_failover',
+                action: `Switched from ${targetHost} to ${backupHost}`,
+                automatedExecution: true,
+                status: 'succeeded'
+            });
+
+            targetHost = backupHost;
+
+            const alertService = require('./alertService').getAlertService();
+            await alertService.triggerAlert('model_failover', 'warning', {
+                title: 'Model Failover Triggered',
+                message: `Primary model at ${targetHost} is slow (${primaryHealth.avgResponseTime}ms). Switched to ${backupHost}.`,
+                primary: targetHost,
+                backup: backupHost,
+                responseTime: primaryHealth.avgResponseTime
+            });
+        } else {
+            logger.error('Backup host also unhealthy', { backupHost, backupHealth });
+        }
+    }
+
+    return {
+        host: targetHost,
+        model: targetModel,
+        failedOver: needsFailover,
+        health: primaryHealth,
+        taskType: classification
+    };
+}
+
 /**
  * Smart routing: classify query and determine best model/host
  * @param {string} message - User message
@@ -207,14 +343,20 @@ async function routeRequest(message, options = {}) {
     }
     
     // If auto-routing enabled, classify the query
-    if (autoRoute && message) {
-        const classification = await classifyQuery(message);
-        const recommendation = getModelForTask(classification);
+    if ((autoRoute && message) || taskType) {
+        const routing = await classifyAndRoute(message, {
+            preferredModel,
+            preferredHost: taskType ? getPrimaryHostForTask(taskType) : undefined,
+            taskType
+        });
+
         return {
-            model: recommendation.model,
-            target: recommendation.url,
-            taskType: classification,
-            routed: true
+            model: routing.model,
+            target: routing.host,
+            taskType: routing.taskType,
+            routed: true,
+            failedOver: routing.failedOver,
+            health: routing.health
         };
     }
     
@@ -291,14 +433,41 @@ async function getRoutingStatus() {
     };
 }
 
+async function getModelHealth(host, model) {
+    return await healthTracker.checkModelHealth(host, model);
+}
+
+async function getAllModelsHealth() {
+    const hosts = [process.env.OLLAMA_HOST, process.env.OLLAMA_HOST_SECONDARY].filter(Boolean);
+    const models = ['qwen2.5:7b', 'qwen2.5:14b', 'deepseek-r1:7b']; // Common models
+
+    const healthChecks = [];
+    for (const host of hosts) {
+        for (const model of models) {
+            healthChecks.push(
+                getModelHealth(host, model).then(health => ({
+                    host,
+                    model,
+                    ...health
+                }))
+            );
+        }
+    }
+
+    return await Promise.all(healthChecks);
+}
+
 module.exports = {
     getTargetForModel,
     getModelForTask,
     classifyQuery,
+    classifyAndRoute,
     routeRequest,
     checkHostHealth,
     getRoutingStatus,
     HOSTS,
     MODEL_ROUTING,
-    TASK_MODELS
+    TASK_MODELS,
+    getModelHealth,
+    getAllModelsHealth
 };

@@ -1,5 +1,8 @@
 # AgentX v1.3.1
 
+[![AgentX CI Pipeline](https://github.com/WindriderQc/AgentX/actions/workflows/ci.yml/badge.svg)](https://github.com/WindriderQc/AgentX/actions/workflows/ci.yml)
+[![AgentX CD Pipeline](https://github.com/WindriderQc/AgentX/actions/workflows/cd.yml/badge.svg)](https://github.com/WindriderQc/AgentX/actions/workflows/cd.yml)
+
 **Production-ready local AI assistant with RAG, conversation memory, and continuous improvement capabilities.**
 
 ---
