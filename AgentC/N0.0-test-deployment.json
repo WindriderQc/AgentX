@@ -17,36 +17,12 @@
     },
     {
       "parameters": {
-        "values": {
-          "string": [
-            {
-              "name": "status",
-              "value": "success"
-            },
-            {
-              "name": "workflow",
-              "value": "N0.0 - Deployment Test"
-            },
-            {
-              "name": "version",
-              "value": "1.0.0"
-            },
-            {
-              "name": "deployed_at",
-              "value": "={{ $now.toISO() }}"
-            },
-            {
-              "name": "message",
-              "value": "Deployment script is working! Webhook triggered successfully."
-            }
-          ]
-        },
-        "options": {}
+        "jsCode": "return [{\n  json: {\n    status: 'success',\n    workflow: 'N0.0 - Deployment Test',\n    version: '2.0.0',\n    deployed_at: new Date().toISOString(),\n    message: 'Deployment test successful! All workflows operational.',\n    environment: {\n      n8n: 'http://192.168.2.199:5678',\n      dataapi: 'http://192.168.2.33:3003',\n      agentx: 'http://192.168.2.33:3080'\n    },\n    workflows: {\n      production: [\n        { id: 'N1.1', name: 'System Health Check', status: 'active', schedule: '*/5 * * * *' },\n        { id: 'N2.1', name: 'NAS File Scanner', status: 'active', schedule: '0 2 * * *' },\n        { id: 'N2.2', name: 'NAS Full Scan', status: 'active', schedule: '0 1 * * 0' },\n        { id: 'N2.3', name: 'RAG Document Ingestion', status: 'active', schedule: '0 3 * * 0' },\n        { id: 'N3.1', name: 'Model Health Monitor', status: 'active', schedule: '*/10 * * * *' },\n        { id: 'N3.2', name: 'External AI Gateway', status: 'active', schedule: 'webhook' },\n        { id: 'N5.1', name: 'Feedback Analysis', status: 'active', schedule: '0 3 * * 0' }\n      ],\n      latest_fixes: [\n        'N1.1: API key security fix + continueOnFail',\n        'N2.3: continueOnFail on logging',\n        'N3.1: continueOnFail on logging + node reference fix',\n        'N3.2: credential uniformization',\n        'N5.1: continueOnFail + credential uniformization'\n      ]\n    },\n    test_timestamp: new Date().toISOString(),\n    commit: 'eeebff7'\n  }\n}];"
       },
       "id": "set-response",
-      "name": "Set Response",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3,
+      "name": "Build Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [470, 300]
     },
     {
@@ -98,6 +74,6 @@
     }
   ],
   "triggerCount": 0,
-  "updatedAt": "2026-01-01T00:00:00.000Z",
-  "versionId": "1"
+  "updatedAt": "2026-01-02T22:00:00.000Z",
+  "versionId": "2"
 }
