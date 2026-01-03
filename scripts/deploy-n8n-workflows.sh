@@ -17,7 +17,7 @@ if [ -f "$PROJECT_ROOT/.env" ]; then
 fi
 
 # Configuration
-N8N_URL="${N8N_URL:-http://192.168.2.199:5678}"
+N8N_URL="${N8N_URL:-https://n8n.specialblend.icu}"
 N8N_API_KEY="${N8N_API_KEY:-}"
 WORKFLOWS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../AgentC" && pwd)"
 COLORED_OUTPUT=true
@@ -123,26 +123,38 @@ deploy_workflow() {
     local existing_id=$(get_workflow_id "$wf_name")
     
     if [ -n "$existing_id" ]; then
-        # Update existing workflow
-        log_info "Found existing workflow (ID: $existing_id), updating..."
-        
-        # Keep only essential fields for updating: name, nodes, connections, settings
+        # Delete and recreate workflow (PUT doesn't preserve connections properly)
+        log_info "Found existing workflow (ID: $existing_id), replacing..."
+
+        # Delete the old workflow
+        delete_response=$(curl -s -w "\n%{http_code}" -X DELETE \
+            -H "X-N8N-API-KEY: $N8N_API_KEY" \
+            "$N8N_URL/api/v1/workflows/$existing_id" 2>/dev/null || echo -e "\n000")
+
+        delete_code=$(echo "$delete_response" | tail -n 1)
+        if [ "$delete_code" != "200" ]; then
+            log_error "Failed to delete old workflow (HTTP $delete_code)"
+            return 1
+        fi
+
+        # Create new workflow (same code as below)
         local cleaned_json=$(jq '{name, nodes, connections, settings}' "$workflow_file")
 
-        response=$(curl -s -w "\n%{http_code}" -X PUT \
+        response=$(curl -s -w "\n%{http_code}" -X POST \
             -H "Content-Type: application/json" \
             -H "X-N8N-API-KEY: $N8N_API_KEY" \
             -d "$cleaned_json" \
-            "$N8N_URL/api/v1/workflows/$existing_id" 2>/dev/null || echo -e "\n000")
-        
+            "$N8N_URL/api/v1/workflows" 2>/dev/null || echo -e "\n000")
+
         http_code=$(echo "$response" | tail -n 1)
         body=$(echo "$response" | head -n -1)
-        
-        if [ "$http_code" = "200" ]; then
-            log_success "Updated workflow: $wf_name (ID: $existing_id)"
+
+        if [ "$http_code" = "200" ] || [ "$http_code" = "201" ]; then
+            new_id=$(echo "$body" | jq -r '.data.id // .id' 2>/dev/null || echo "unknown")
+            log_success "Replaced workflow: $wf_name (New ID: $new_id)"
             return 0
         else
-            log_error "Failed to update workflow (HTTP $http_code)"
+            log_error "Failed to recreate workflow (HTTP $http_code)"
             echo "$body" | jq '.' 2>/dev/null || echo "$body"
             return 1
         fi
