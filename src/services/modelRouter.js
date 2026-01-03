@@ -11,6 +11,7 @@
 
 const logger = require('../../config/logger');
 const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
+const { RemediationAction } = require('../../models/RemediationAction');
 
 class ModelHealthTracker {
     constructor() {
@@ -323,7 +324,6 @@ async function classifyAndRoute(message, options = {}) {
         const backupHealth = await healthTracker.checkModelHealth(backupHost, targetModel);
 
         if (backupHealth.status === 'healthy') {
-            const { RemediationAction } = require('../../models/RemediationAction');
             await RemediationAction.create({
                 issueType: 'model_degradation',
                 severity: 'medium',
@@ -353,7 +353,6 @@ async function classifyAndRoute(message, options = {}) {
         } else {
             logger.error('Backup host also unhealthy', { backupHost, backupHealth });
 
-            const { RemediationAction } = require('../../models/RemediationAction');
             await RemediationAction.create({
                 issueType: 'model_degradation',
                 severity: 'high',
