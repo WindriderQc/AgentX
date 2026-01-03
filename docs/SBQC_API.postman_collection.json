@@ -1,0 +1,794 @@
+{
+	"info": {
+		"_postman_id": "sbqc-api-collection-v2",
+		"name": "SBQC API - Complete Test Suite",
+		"description": "Complete Postman collection for testing all SBQC (System Brain Query Control) webhook endpoints.\n\n**Base URL:** https://n8n.specialblend.icu\n\n**Environment Variables:**\n- `base_url`: The base URL for all SBQC endpoints (default: https://n8n.specialblend.icu)\n\n**Version:** 2.2.0\n\n**Documentation:** See API.md for detailed endpoint documentation.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "sbqc-api"
+	},
+	"item": [
+		{
+			"name": "AI Gateway",
+			"description": "Endpoints for interacting with the AgentX AI system through the AI Gateway (N3.2).",
+			"item": [
+				{
+					"name": "Basic Query - No RAG",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"// Test: Response status is 200",
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"// Test: Response time is reasonable (< 60s)",
+									"pm.test(\"Response time is less than 60s\", function () {",
+									"    pm.expect(pm.response.responseTime).to.be.below(60000);",
+									"});",
+									"",
+									"// Test: Response is JSON",
+									"pm.test(\"Response is JSON\", function () {",
+									"    pm.response.to.be.json;",
+									"});",
+									"",
+									"// Parse response",
+									"const jsonData = pm.response.json();",
+									"",
+									"// Test: Response has success field set to true",
+									"pm.test(\"Response indicates success\", function () {",
+									"    pm.expect(jsonData).to.have.property('success');",
+									"    pm.expect(jsonData.success).to.be.true;",
+									"});",
+									"",
+									"// Test: Response contains expected fields",
+									"pm.test(\"Response contains required fields\", function () {",
+									"    pm.expect(jsonData).to.have.property('response');",
+									"    pm.expect(jsonData).to.have.property('model');",
+									"    pm.expect(jsonData).to.have.property('conversationId');",
+									"    pm.expect(jsonData).to.have.property('ragUsed');",
+									"    pm.expect(jsonData).to.have.property('tokens');",
+									"    pm.expect(jsonData).to.have.property('latency');",
+									"    pm.expect(jsonData).to.have.property('timestamp');",
+									"});",
+									"",
+									"// Test: Response text is not empty",
+									"pm.test(\"Response text is not empty\", function () {",
+									"    pm.expect(jsonData.response).to.be.a('string');",
+									"    pm.expect(jsonData.response.length).to.be.above(0);",
+									"});",
+									"",
+									"// Test: RAG was not used (as requested)",
+									"pm.test(\"RAG was not used\", function () {",
+									"    pm.expect(jsonData.ragUsed).to.be.false;",
+									"});",
+									"",
+									"// Test: Token statistics are present",
+									"pm.test(\"Token statistics are valid\", function () {",
+									"    pm.expect(jsonData.tokens).to.have.property('promptTokens');",
+									"    pm.expect(jsonData.tokens).to.have.property('completionTokens');",
+									"    pm.expect(jsonData.tokens).to.have.property('totalTokens');",
+									"    pm.expect(jsonData.tokens.promptTokens).to.be.a('number');",
+									"    pm.expect(jsonData.tokens.completionTokens).to.be.a('number');",
+									"    pm.expect(jsonData.tokens.totalTokens).to.be.a('number');",
+									"});",
+									"",
+									"// Test: ConversationId is valid",
+									"pm.test(\"ConversationId is valid string\", function () {",
+									"    pm.expect(jsonData.conversationId).to.be.a('string');",
+									"    pm.expect(jsonData.conversationId.length).to.be.above(10);",
+									"});",
+									"",
+									"// Store conversationId for follow-up requests",
+									"pm.environment.set(\"conversationId\", jsonData.conversationId);"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"message\": \"What is the capital of France?\",\n  \"model\": \"qwen2.5:7b-instruct-q4_0\",\n  \"useRag\": false\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/webhook/sbqc-ai-query",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"webhook",
+								"sbqc-ai-query"
+							]
+						},
+						"description": "Basic AI query without RAG enabled. Tests simple question-answering capability."
+					},
+					"response": []
+				},
+				{
+					"name": "Query with RAG Enabled",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response time is acceptable\", function () {",
+									"    pm.expect(pm.response.responseTime).to.be.below(60000);",
+									"});",
+									"",
+									"const jsonData = pm.response.json();",
+									"",
+									"pm.test(\"Request succeeded\", function () {",
+									"    pm.expect(jsonData.success).to.be.true;",
+									"});",
+									"",
+									"pm.test(\"RAG was enabled\", function () {",
+									"    pm.expect(jsonData.ragUsed).to.be.true;",
+									"});",
+									"",
+									"pm.test(\"Response contains contextual information\", function () {",
+									"    pm.expect(jsonData.response).to.be.a('string');",
+									"    pm.expect(jsonData.response.length).to.be.above(0);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"message\": \"What are the best practices for SBQC API usage?\",\n  \"model\": \"qwen2.5:7b-instruct-q4_0\",\n  \"useRag\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/webhook/sbqc-ai-query",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"webhook",
+								"sbqc-ai-query"
+							]
+						},
+						"description": "AI query with RAG (Retrieval-Augmented Generation) enabled to search document store for relevant context."
+					},
+					"response": []
+				},
+				{
+					"name": "Conversation Follow-up",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"const jsonData = pm.response.json();",
+									"",
+									"pm.test(\"Request succeeded\", function () {",
+									"    pm.expect(jsonData.success).to.be.true;",
+									"});",
+									"",
+									"pm.test(\"ConversationId matches previous request\", function () {",
+									"    const previousId = pm.environment.get(\"conversationId\");",
+									"    pm.expect(jsonData.conversationId).to.equal(previousId);",
+									"});",
+									"",
+									"pm.test(\"Response shows contextual awareness\", function () {",
+									"    pm.expect(jsonData.response).to.be.a('string');",
+									"    pm.expect(jsonData.response.length).to.be.above(0);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						},
+						{
+							"listen": "prerequest",
+							"script": {
+								"exec": [
+									"// Ensure conversationId is set from previous request",
+									"const conversationId = pm.environment.get(\"conversationId\");",
+									"if (!conversationId) {",
+									"    console.log(\"Warning: conversationId not found. Run 'Basic Query - No RAG' first.\");",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"message\": \"What about other famous landmarks there?\",\n  \"conversationId\": \"{{conversationId}}\",\n  \"useRag\": false\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/webhook/sbqc-ai-query",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"webhook",
+								"sbqc-ai-query"
+							]
+						},
+						"description": "Follow-up query using conversationId from previous request to maintain context."
+					},
+					"response": []
+				},
+				{
+					"name": "Auto-Route Task (Code)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"const jsonData = pm.response.json();",
+									"",
+									"pm.test(\"Request succeeded\", function () {",
+									"    pm.expect(jsonData.success).to.be.true;",
+									"});",
+									"",
+									"pm.test(\"Model was auto-routed\", function () {",
+									"    pm.expect(jsonData.model).to.be.a('string');",
+									"    console.log(\"Model selected:\", jsonData.model);",
+									"});",
+									"",
+									"pm.test(\"Response contains code\", function () {",
+									"    pm.expect(jsonData.response).to.be.a('string');",
+									"    // Check for common code indicators",
+									"    const hasCode = jsonData.response.includes('function') || ",
+									"                    jsonData.response.includes('const') || ",
+									"                    jsonData.response.includes('def') ||",
+									"                    jsonData.response.includes('{');",
+									"    pm.expect(hasCode).to.be.true;",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"message\": \"Write a JavaScript function to calculate factorial\",\n  \"autoRoute\": true,\n  \"taskType\": \"code\",\n  \"useRag\": false\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/webhook/sbqc-ai-query",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"webhook",
+								"sbqc-ai-query"
+							]
+						},
+						"description": "Test auto-routing with taskType hint. AgentX should select the most appropriate model for code generation."
+					},
+					"response": []
+				},
+				{
+					"name": "Query with Custom Persona",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"const jsonData = pm.response.json();",
+									"",
+									"pm.test(\"Request succeeded\", function () {",
+									"    pm.expect(jsonData.success).to.be.true;",
+									"});",
+									"",
+									"pm.test(\"Response reflects persona\", function () {",
+									"    pm.expect(jsonData.response).to.be.a('string');",
+									"    pm.expect(jsonData.response.length).to.be.above(0);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"message\": \"Explain quantum computing\",\n  \"model\": \"qwen2.5:7b-instruct-q4_0\",\n  \"persona\": \"technical_expert\",\n  \"useRag\": false\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/webhook/sbqc-ai-query",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"webhook",
+								"sbqc-ai-query"
+							]
+						},
+						"description": "Test query with custom persona/prompt template applied."
+					},
+					"response": []
+				},
+				{
+					"name": "Error - Missing Message",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"",
+									"const jsonData = pm.response.json();",
+									"",
+									"pm.test(\"Response indicates failure\", function () {",
+									"    pm.expect(jsonData.success).to.be.false;",
+									"});",
+									"",
+									"pm.test(\"Error message is present\", function () {",
+									"    pm.expect(jsonData).to.have.property('error');",
+									"    pm.expect(jsonData.error).to.include('message');",
+									"});",
+									"",
+									"pm.test(\"Status field indicates 400\", function () {",
+									"    pm.expect(jsonData.status).to.equal(400);",
+									"});",
+									"",
+									"pm.test(\"Timestamp is present\", function () {",
+									"    pm.expect(jsonData).to.have.property('timestamp');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"model\": \"qwen2.5:7b-instruct-q4_0\",\n  \"useRag\": false\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/webhook/sbqc-ai-query",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"webhook",
+								"sbqc-ai-query"
+							]
+						},
+						"description": "Test error handling when required 'message' field is missing."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Health Checks",
+			"description": "Health check endpoints for monitoring SBQC system status.",
+			"item": [
+				{
+					"name": "N0.0 - Deployment Test",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response time is fast (< 5s)\", function () {",
+									"    pm.expect(pm.response.responseTime).to.be.below(5000);",
+									"});",
+									"",
+									"pm.test(\"Response is JSON\", function () {",
+									"    pm.response.to.be.json;",
+									"});",
+									"",
+									"const jsonData = pm.response.json();",
+									"",
+									"pm.test(\"Deployment status is success\", function () {",
+									"    pm.expect(jsonData.status).to.equal('success');",
+									"});",
+									"",
+									"pm.test(\"Workflow information is present\", function () {",
+									"    pm.expect(jsonData).to.have.property('workflow');",
+									"    pm.expect(jsonData.workflow).to.equal('N0.0 - Deployment Test');",
+									"});",
+									"",
+									"pm.test(\"Version is present\", function () {",
+									"    pm.expect(jsonData).to.have.property('version');",
+									"    pm.expect(jsonData.version).to.match(/^\\d+\\.\\d+\\.\\d+$/);",
+									"});",
+									"",
+									"pm.test(\"Deployed timestamp is valid\", function () {",
+									"    pm.expect(jsonData).to.have.property('deployed_at');",
+									"    const timestamp = new Date(jsonData.deployed_at);",
+									"    pm.expect(timestamp.toString()).to.not.equal('Invalid Date');",
+									"});",
+									"",
+									"pm.test(\"Environment configuration exists\", function () {",
+									"    pm.expect(jsonData).to.have.property('environment');",
+									"    pm.expect(jsonData.environment).to.have.property('n8n');",
+									"    pm.expect(jsonData.environment).to.have.property('dataapi');",
+									"    pm.expect(jsonData.environment).to.have.property('agentx');",
+									"});",
+									"",
+									"pm.test(\"Workflows list is present\", function () {",
+									"    pm.expect(jsonData).to.have.property('workflows');",
+									"    pm.expect(jsonData.workflows).to.have.property('production');",
+									"    pm.expect(jsonData.workflows.production).to.be.an('array');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/webhook/test-deployment",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"webhook",
+								"test-deployment"
+							]
+						},
+						"description": "Verify deployment is working and get system configuration information."
+					},
+					"response": []
+				},
+				{
+					"name": "N0.1 - SBQC Health Dashboard",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response time is acceptable (< 10s)\", function () {",
+									"    pm.expect(pm.response.responseTime).to.be.below(10000);",
+									"});",
+									"",
+									"const jsonData = pm.response.json();",
+									"",
+									"pm.test(\"Health check structure is valid\", function () {",
+									"    pm.expect(jsonData).to.have.property('timestamp');",
+									"    pm.expect(jsonData).to.have.property('version');",
+									"    pm.expect(jsonData).to.have.property('overall_status');",
+									"    pm.expect(jsonData).to.have.property('checks');",
+									"    pm.expect(jsonData).to.have.property('summary');",
+									"});",
+									"",
+									"pm.test(\"Overall status is healthy\", function () {",
+									"    pm.expect(jsonData.overall_status).to.equal('healthy');",
+									"});",
+									"",
+									"pm.test(\"Checks array is not empty\", function () {",
+									"    pm.expect(jsonData.checks).to.be.an('array');",
+									"    pm.expect(jsonData.checks.length).to.be.above(0);",
+									"});",
+									"",
+									"pm.test(\"All health checks passed\", function () {",
+									"    jsonData.checks.forEach(function(check) {",
+									"        pm.expect(check).to.have.property('component');",
+									"        pm.expect(check).to.have.property('status');",
+									"        pm.expect(check).to.have.property('message');",
+									"        if (jsonData.overall_status === 'healthy') {",
+									"            pm.expect(check.status).to.equal('pass');",
+									"        }",
+									"    });",
+									"});",
+									"",
+									"pm.test(\"Summary statistics are valid\", function () {",
+									"    pm.expect(jsonData.summary).to.have.property('total_checks');",
+									"    pm.expect(jsonData.summary).to.have.property('passed');",
+									"    pm.expect(jsonData.summary).to.have.property('failed');",
+									"    pm.expect(jsonData.summary).to.have.property('health_percentage');",
+									"    pm.expect(jsonData.summary.total_checks).to.be.a('number');",
+									"    pm.expect(jsonData.summary.health_percentage).to.be.at.least(0);",
+									"    pm.expect(jsonData.summary.health_percentage).to.be.at.most(100);",
+									"});",
+									"",
+									"pm.test(\"Health percentage is 100% for healthy status\", function () {",
+									"    if (jsonData.overall_status === 'healthy') {",
+									"        pm.expect(jsonData.summary.health_percentage).to.equal(100);",
+									"        pm.expect(jsonData.summary.failed).to.equal(0);",
+									"    }",
+									"});",
+									"",
+									"// Store health status for monitoring",
+									"pm.environment.set(\"last_health_check\", jsonData.overall_status);",
+									"pm.environment.set(\"health_percentage\", jsonData.summary.health_percentage);"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/webhook/sbqc-health",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"webhook",
+								"sbqc-health"
+							]
+						},
+						"description": "Comprehensive health check for all SBQC components including n8n workflows, AgentX API, DataAPI, and Qdrant."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Monitoring",
+			"description": "Monitoring and analysis endpoints for system maintenance.",
+			"item": [
+				{
+					"name": "N5.1 - Trigger Feedback Analysis",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response is immediate (< 2s)\", function () {",
+									"    pm.expect(pm.response.responseTime).to.be.below(2000);",
+									"});",
+									"",
+									"pm.test(\"Response is JSON\", function () {",
+									"    pm.response.to.be.json;",
+									"});",
+									"",
+									"const jsonData = pm.response.json();",
+									"",
+									"pm.test(\"Workflow started message is present\", function () {",
+									"    pm.expect(jsonData).to.have.property('message');",
+									"    pm.expect(jsonData.message).to.include('started');",
+									"});",
+									"",
+									"console.log(\"Note: Feedback analysis runs in background (60-120s). Check DataAPI logs for results.\");"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/webhook/sbqc-n5-1-feedback-analysis",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"webhook",
+								"sbqc-n5-1-feedback-analysis"
+							]
+						},
+						"description": "Manually trigger feedback analysis workflow. Normally runs on weekly schedule. This is a long-running workflow (60-120s) that processes in the background. Response is immediate, but processing continues asynchronously."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "End-to-End Tests",
+			"description": "Complete workflow tests to verify system integration.",
+			"item": [
+				{
+					"name": "Full Conversation Flow",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"// This is a meta-test that verifies the entire conversation flow",
+									"pm.test(\"All conversation steps completed\", function () {",
+									"    const conversationId = pm.environment.get(\"conversationId\");",
+									"    pm.expect(conversationId).to.exist;",
+									"    pm.expect(conversationId).to.be.a('string');",
+									"    pm.expect(conversationId.length).to.be.above(10);",
+									"});",
+									"",
+									"console.log(\"To test full conversation flow:\");",
+									"console.log(\"1. Run 'Basic Query - No RAG'\");",
+									"console.log(\"2. Run 'Conversation Follow-up'\");",
+									"console.log(\"3. Verify context is maintained across requests\");"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/webhook/sbqc-health",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"webhook",
+								"sbqc-health"
+							]
+						},
+						"description": "Placeholder for end-to-end conversation flow test. Run 'Basic Query - No RAG' followed by 'Conversation Follow-up' to test full conversation context."
+					},
+					"response": []
+				},
+				{
+					"name": "System Health Check",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"All health endpoints are accessible\", function () {",
+									"    const healthStatus = pm.environment.get(\"last_health_check\");",
+									"    pm.expect(healthStatus).to.exist;",
+									"});",
+									"",
+									"console.log(\"To perform complete system health check:\");",
+									"console.log(\"1. Run 'N0.0 - Deployment Test'\");",
+									"console.log(\"2. Run 'N0.1 - SBQC Health Dashboard'\");",
+									"console.log(\"3. Verify all components report healthy status\");"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/webhook/test-deployment",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"webhook",
+								"test-deployment"
+							]
+						},
+						"description": "Placeholder for complete system health check. Run all health check endpoints to verify system status."
+					},
+					"response": []
+				}
+			]
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// Global pre-request script",
+					"console.log(\"Request to:\", pm.request.url.toString());",
+					"console.log(\"Method:\", pm.request.method);",
+					"",
+					"// Set default base_url if not already set",
+					"if (!pm.environment.get(\"base_url\")) {",
+					"    pm.environment.set(\"base_url\", \"https://n8n.specialblend.icu\");",
+					"    console.log(\"Set default base_url to: https://n8n.specialblend.icu\");",
+					"}"
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// Global test script",
+					"// Log response details for debugging",
+					"console.log(\"Response Status:\", pm.response.code);",
+					"console.log(\"Response Time:\", pm.response.responseTime + \"ms\");",
+					"",
+					"// Check for common error patterns",
+					"if (pm.response.code >= 500) {",
+					"    console.error(\"Server error detected. Check n8n workflow logs.\");",
+					"} else if (pm.response.code === 404) {",
+					"    console.error(\"Endpoint not found. Verify webhook is registered and workflow is active.\");",
+					"} else if (pm.response.code === 503) {",
+					"    console.error(\"Service unavailable. Check AgentX or DataAPI connectivity.\");",
+					"}"
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "https://n8n.specialblend.icu",
+			"type": "string"
+		},
+		{
+			"key": "conversationId",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "last_health_check",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "health_percentage",
+			"value": "",
+			"type": "string"
+		}
+	]
+}

@@ -12,6 +12,55 @@ const fs = require('fs').promises;
 const path = require('path');
 const { ObjectId } = mongoose.Types;
 const { scoreResponse, calculateCompositeScore, JUDGE_CONFIG, SCORING_CONFIGS } = require('../src/services/qualityScorer');
+const { HOSTS, MODEL_ROUTING } = require('../src/services/modelRouter');
+
+// Simple Concurrency Queue for managing parallel tasks (like judging)
+class ConcurrencyQueue {
+    constructor(concurrency) {
+        this.concurrency = concurrency;
+        this.running = 0;
+        this.queue = [];
+        this.activePromises = [];
+    }
+
+    add(task) {
+        return new Promise((resolve, reject) => {
+            this.queue.push({ task, resolve, reject });
+            this.process();
+        });
+    }
+
+    async process() {
+        if (this.running >= this.concurrency || this.queue.length === 0) return;
+
+        this.running++;
+        const { task, resolve, reject } = this.queue.shift();
+
+        const promise = (async () => {
+            try {
+                const result = await task();
+                resolve(result);
+            } catch (err) {
+                reject(err);
+            } finally {
+                this.running--;
+                // Remove from active promises
+                const idx = this.activePromises.indexOf(promise);
+                if (idx > -1) this.activePromises.splice(idx, 1);
+                this.process();
+            }
+        })();
+
+        this.activePromises.push(promise);
+    }
+
+    // Wait for all tasks to complete
+    async drain() {
+        while (this.queue.length > 0 || this.running > 0) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+    }
+}
 
 // Get MongoDB collections using Mongoose connection
 function getCollection() {
@@ -537,140 +586,202 @@ router.post('/batch', async (req, res) => {
 });
 
 /**
- * Execute batch tests sequentially
+ * Execute batch tests with parallel host execution
  */
-async function executeBatch(batchId, host, models, prompts, options = {}) {
+async function executeBatch(batchId, defaultHost, models, prompts, options = {}) {
     const batchCollection = getBatchCollection();
     const resultsCollection = getCollection();
-    const enableQualityScoring = options.quality_scoring !== false; // Default enabled
+    const enableQualityScoring = options.quality_scoring !== false;
     const judgeConfig = options.judge_config || {};
 
+    // Group models by host
+    const modelsByHost = {};
+    
     for (const model of models) {
-        for (const prompt of prompts) {
-            try {
-                const start = Date.now();
-                const response = await fetch(`${host}/api/generate`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ model, prompt: prompt.prompt, stream: false }),
-                    timeout: 60000 // 60s timeout for complex prompts
-                });
-
-                const data = await response.json();
-                const latency = Date.now() - start;
-                const tokens = Math.ceil((data.response || '').length / 4);
-                const tokens_per_sec = tokens > 0 ? (tokens / (latency / 1000)).toFixed(2) : 0;
-
-                // Quality scoring (if enabled and not the judge model itself)
-                let qualityData = {};
-                if (enableQualityScoring && model !== (judgeConfig.model || JUDGE_CONFIG.model)) {
-                    try {
-                        const scores = await scoreResponse({
-                            response: data.response || '',
-                            prompt: prompt,
-                            judgeConfig
-                        });
-                        
-                        const composite = calculateCompositeScore({
-                            latency,
-                            tokens_per_sec,
-                            quality_score: scores.quality_score
-                        });
-                        
-                        qualityData = {
-                            quality_score: scores.quality_score,
-                            quality_breakdown: scores.breakdown,
-                            quality_explanation: scores.explanation,
-                            scoring_method: scores.scoring_method,
-                            scoring_type: prompt.scoring_type,
-                            composite_score: composite.composite_score,
-                            normalized_scores: composite.normalized
-                        };
-                    } catch (scoreErr) {
-                        logger.warn('Quality scoring failed', { model, prompt: prompt.name, error: scoreErr.message });
-                        qualityData = { quality_score: null, scoring_error: scoreErr.message };
-                    }
-                }
-
-                const result = {
-                    model,
-                    host,
-                    prompt: prompt.prompt,
-                    prompt_level: prompt.level,
-                    prompt_category: prompt.category,
-                    prompt_name: prompt.name,
-                    expected_answer: prompt.expected_answer,
-                    latency,
-                    tokens,
-                    tokens_per_sec,
-                    response: data.response || '',
-                    success: true,
-                    batch_id: batchId,
-                    timestamp: new Date(),
-                    ...qualityData
-                };
-
-                await resultsCollection.insertOne(result);
-                await batchCollection.updateOne(
-                    { _id: new ObjectId(batchId) },
-                    {
-                        $inc: { completed: 1 },
-                        $push: { 
-                            results: { 
-                                model, 
-                                prompt_name: prompt.name, 
-                                success: true, 
-                                latency,
-                                quality_score: qualityData.quality_score,
-                                composite_score: qualityData.composite_score
-                            } 
-                        }
-                    }
-                );
-
-                logger.info('Batch test completed', { batchId, model, prompt: prompt.name, latency });
-
-            } catch (err) {
-                const result = {
-                    model,
-                    host,
-                    prompt: prompt.prompt,
-                    prompt_level: prompt.level,
-                    prompt_category: prompt.category,
-                    prompt_name: prompt.name,
-                    error: err.message,
-                    success: false,
-                    batch_id: batchId,
-                    timestamp: new Date()
-                };
-
-                await resultsCollection.insertOne(result);
-                await batchCollection.updateOne(
-                    { _id: new ObjectId(batchId) },
-                    {
-                        $inc: { completed: 1, failed: 1 },
-                        $push: { results: { model, prompt_name: prompt.name, success: false, error: err.message } }
-                    }
-                );
-
-                logger.error('Batch test failed', { batchId, model, prompt: prompt.name, error: err.message });
-            }
+        // Determine host for this model
+        let targetHost = defaultHost;
+        
+        // Check if model has a specific host assignment
+        if (MODEL_ROUTING[model]) {
+            targetHost = HOSTS[MODEL_ROUTING[model]];
         }
+        
+        if (!modelsByHost[targetHost]) {
+            modelsByHost[targetHost] = [];
+        }
+        modelsByHost[targetHost].push(model);
     }
 
-    // Mark batch as complete
-    await batchCollection.updateOne(
-        { _id: new ObjectId(batchId) },
-        {
-            $set: {
-                status: 'completed',
-                completed_at: new Date()
+    // Create execution promises for each host
+    const hostPromises = Object.entries(modelsByHost).map(async ([hostUrl, hostModels]) => {
+        // Determine judge host (opposite of execution host) to optimize performance
+        let judgeHostUrl = HOSTS.primary; 
+        if (hostUrl === HOSTS.primary) {
+            judgeHostUrl = HOSTS.secondary;
+        } else if (hostUrl === HOSTS.secondary) {
+            judgeHostUrl = HOSTS.primary;
+        }
+
+        for (const model of hostModels) {
+            for (const prompt of prompts) {
+                // Check if batch was stopped
+                const currentBatch = await batchCollection.findOne({ _id: new ObjectId(batchId) });
+                if (currentBatch && currentBatch.status === 'stopped') {
+                    logger.info('Batch execution stopped by user', { batchId });
+                    return; // Stop processing this host
+                }
+
+                try {
+                    const start = Date.now();
+                    const response = await fetch(`${hostUrl}/api/generate`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ model, prompt: prompt.prompt, stream: false }),
+                        timeout: 60000 // 60s timeout for complex prompts
+                    });
+
+                    const data = await response.json();
+                    const latency = Date.now() - start;
+                    const tokens = Math.ceil((data.response || '').length / 4);
+                    const tokens_per_sec = tokens > 0 ? (tokens / (latency / 1000)).toFixed(2) : 0;
+
+                    // Initial result without quality score
+                    const result = {
+                        model,
+                        host: hostUrl,
+                        prompt: prompt.prompt,
+                        prompt_level: prompt.level,
+                        prompt_category: prompt.category,
+                        prompt_name: prompt.name,
+                        expected_answer: prompt.expected_answer,
+                        latency,
+                        tokens,
+                        tokens_per_sec,
+                        response: data.response || '',
+                        success: true,
+                        batch_id: batchId,
+                        timestamp: new Date(),
+                        quality_score: null // Will be updated if scoring is enabled
+                    };
+
+                    const insertResult = await resultsCollection.insertOne(result);
+                    const resultId = insertResult.insertedId;
+
+                    // Update batch progress
+                    await batchCollection.updateOne(
+                        { _id: new ObjectId(batchId) },
+                        {
+                            $inc: { completed: 1 },
+                            $push: { 
+                                results: { 
+                                    model, 
+                                    prompt_name: prompt.name, 
+                                    success: true, 
+                                    latency,
+                                    response_preview: (data.response || '').substring(0, 100) + '...'
+                                } 
+                            }
+                        }
+                    );
+
+                    // Queue quality scoring if enabled
+                    if (enableQualityScoring && model !== (judgeConfig.model || JUDGE_CONFIG.model)) {
+                        judgeQueue.enqueue(async () => {
+                            try {
+                                const scores = await scoreResponse({
+                                    response: data.response || '',
+                                    prompt: prompt,
+                                    judgeConfig: {
+                                        ...judgeConfig,
+                                        host: judgeHostUrl
+                                    }
+                                });
+                                
+                                const composite = calculateCompositeScore({
+                                    latency,
+                                    tokens_per_sec,
+                                    quality_score: scores.quality_score
+                                });
+                                
+                                // Update the specific result with scores
+                                await resultsCollection.updateOne(
+                                    { _id: resultId },
+                                    { 
+                                        $set: {
+                                            quality_score: scores.quality_score,
+                                            quality_breakdown: scores.breakdown,
+                                            quality_explanation: scores.explanation,
+                                            judge_prompt: scores.judge_prompt,
+                                            scoring_method: scores.scoring_method,
+                                            scoring_type: prompt.scoring_type,
+                                            composite_score: composite.composite_score,
+                                            normalized_scores: composite.normalized
+                                        }
+                                    }
+                                );
+                            } catch (scoreErr) {
+                                logger.warn('Quality scoring failed', { model, prompt: prompt.name, error: scoreErr.message });
+                            }
+                        });
+                    }
+
+                    logger.info('Batch test completed', { batchId, model, prompt: prompt.name, latency });
+
+                } catch (err) {
+                    const result = {
+                        model,
+                        host: hostUrl,
+                        prompt: prompt.prompt,
+                        prompt_level: prompt.level,
+                        prompt_category: prompt.category,
+                        prompt_name: prompt.name,
+                        error: err.message,
+                        success: false,
+                        batch_id: batchId,
+                        timestamp: new Date()
+                    };
+
+                    await resultsCollection.insertOne(result);
+                    await batchCollection.updateOne(
+                        { _id: new ObjectId(batchId) },
+                        {
+                            $inc: { completed: 1 },
+                            $push: { 
+                                results: { 
+                                    model, 
+                                    prompt_name: prompt.name, 
+                                    success: false, 
+                                    error: err.message 
+                                } 
+                            }
+                        }
+                    );
+                    logger.error('Batch test failed', { batchId, model, prompt: prompt.name, error: err.message });
+                }
             }
         }
-    );
+    });
 
-    logger.info('Batch execution completed', { batchId });
+    // Wait for all host executions to complete
+    await Promise.all(hostPromises);
+
+    // Wait for any remaining judge tasks
+    // Note: We don't strictly need to wait for judging to finish to mark batch as "completed" in terms of generation,
+    // but it's nice to know when everything is done. 
+    // However, for UI responsiveness, we might want to mark as completed_at now.
+    
+    await batchCollection.updateOne(
+        { _id: new ObjectId(batchId) },
+        { 
+            $set: { 
+                completed_at: new Date(),
+                status: 'completed'
+            } 
+        }
+    );
 }
+
+
 
 /**
  * GET /api/benchmark/batch/:id

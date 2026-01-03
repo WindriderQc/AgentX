@@ -623,9 +623,14 @@
     <div class="bg-grid"></div>
     <div class="benchmark-container" style="padding-top: 80px;">
         <div class="benchmark-header">
-            <div class="eyebrow">AgentX • Performance</div>
-            <h1><i class="fas fa-rocket"></i>Benchmark <button id="helpBtn" class="btn-icon" title="How it works" style="font-size: 0.6em; vertical-align: middle; margin-left: 10px;"><i class="fas fa-question-circle"></i></button></h1>
-            <p>Real-time performance metrics for Ollama models across configured hosts</p>
+            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div>
+                    <div class="eyebrow">AgentX • Performance</div>
+                    <h1><i class="fas fa-rocket"></i>Benchmark</h1>
+                    <p>Real-time performance metrics for Ollama models across configured hosts</p>
+                </div>
+                <button id="helpBtn" class="btn-secondary" style="margin-top: 10px;"><i class="fas fa-book"></i> Methodology & Guide</button>
+            </div>
         </div>
 
         <div class="stats-grid">
@@ -731,6 +736,9 @@
 
                 <div class="batch-controls">
                     <button class="btn-primary" id="runBatchBtn">Start Batch Test</button>
+                    <button class="btn-secondary" id="stopBatchBtn" style="display: none; background: rgba(231, 76, 60, 0.2); border-color: rgba(231, 76, 60, 0.5); color: #e74c3c;">
+                        <i class="fas fa-stop"></i> Stop
+                    </button>
                     <span id="batchInfo" style="color: #666;"></span>
                 </div>
 
@@ -740,6 +748,24 @@
                 </div>
 
                 <div id="batchStatus" class="status"></div>
+
+                <!-- Batch Results Table -->
+                <div id="batchResultsContainer" style="display: none; margin-top: 20px;">
+                    <h3 style="font-size: 1.1em; margin-bottom: 12px; color: var(--text);">Batch Results</h3>
+                    <div style="max-height: 300px; overflow-y: auto; border: 1px solid var(--panel-border); border-radius: 6px;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 0.9em;">
+                            <thead style="background: rgba(0,0,0,0.2); position: sticky; top: 0;">
+                                <tr>
+                                    <th style="padding: 8px 12px; text-align: left;">Model</th>
+                                    <th style="padding: 8px 12px; text-align: left;">Prompt</th>
+                                    <th style="padding: 8px 12px; text-align: center;">Quality</th>
+                                    <th style="padding: 8px 12px; text-align: center;">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="batchResultsBody"></tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -853,10 +879,40 @@
                 <div class="form-group">
                     <label for="judgeTemp">Judge Temperature: <span id="judgeTempVal">0.1</span></label>
                     <input type="range" id="judgeTemp" min="0" max="1" step="0.1" value="0.1">
+                    <small class="form-text text-muted">Lower temperature (0.1) ensures consistent and deterministic grading.</small>
                 </div>
                 <div class="form-group">
                     <label for="judgeTimeout">Judge Timeout (ms)</label>
                     <input type="number" id="judgeTimeout" value="30000" step="1000">
+                </div>
+
+                <div style="margin-top: 20px; border-top: 1px solid var(--panel-border); padding-top: 15px;">
+                    <label style="cursor: pointer; display: flex; align-items: center; gap: 8px; color: var(--accent); font-weight: 600;" onclick="const el = document.getElementById('customPromptsSection'); el.style.display = el.style.display === 'none' ? 'block' : 'none';">
+                        <i class="fas fa-chevron-right"></i> Advanced: Custom Judge Prompts
+                    </label>
+                    <div id="customPromptsSection" style="display: none; margin-top: 15px;">
+                        <div class="form-group">
+                            <label>Reasoning Prompt</label>
+                            <textarea id="promptReasoning" class="form-control" rows="6" style="font-family: monospace; font-size: 0.85em;"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Code Prompt</label>
+                            <textarea id="promptCode" class="form-control" rows="6" style="font-family: monospace; font-size: 0.85em;"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Factual Prompt</label>
+                            <textarea id="promptFactual" class="form-control" rows="6" style="font-family: monospace; font-size: 0.85em;"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Math Prompt</label>
+                            <textarea id="promptMath" class="form-control" rows="6" style="font-family: monospace; font-size: 0.85em;"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Creative Prompt</label>
+                            <textarea id="promptCreative" class="form-control" rows="6" style="font-family: monospace; font-size: 0.85em;"></textarea>
+                        </div>
+                        <small class="text-muted" style="display: block; margin-top: 8px;">Use {{task}}, {{expected}}, and {{response}} as placeholders.</small>
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">
@@ -867,31 +923,176 @@
     </div>
 
     <div id="helpModal" class="modal">
-        <div class="modal-content">
+        <div class="modal-content" style="max-width: 800px;">
             <div class="modal-header">
-                <h2><i class="fas fa-info-circle"></i> How it Works</h2>
+                <h2><i class="fas fa-book-open" style="color: var(--accent);"></i> Methodology & Scoring Guide</h2>
                 <span class="close">&times;</span>
             </div>
             <div class="modal-body">
-                <h3><i class="fas fa-star"></i> Quality Scoring</h3>
-                <p>We use an "LLM-as-a-Judge" approach. A capable model (the Judge) evaluates the responses from other models based on specific criteria.</p>
-                
-                <h4>Scoring Criteria:</h4>
-                <ul>
-                    <li><strong>Reasoning:</strong> Accuracy, Logic, Clarity</li>
-                    <li><strong>Code:</strong> Correctness, Clarity, Efficiency</li>
-                    <li><strong>Factual:</strong> Accuracy, Completeness, Clarity</li>
-                    <li><strong>Math:</strong> Answer, Method, Presentation</li>
-                    <li><strong>Creative:</strong> Creativity, Coherence, Relevance</li>
-                </ul>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 32px;">
+                    <div>
+                        <h3 style="color: var(--text); font-size: 1.1em; margin-bottom: 16px; border-bottom: 1px solid var(--panel-border); padding-bottom: 8px;">
+                            <i class="fas fa-star" style="color: #2ecc71;"></i> Quality Scoring (LLM-as-Judge)
+                        </h3>
+                        <p style="color: var(--muted); line-height: 1.6; font-size: 0.95em;">
+                            We use a capable "Judge" model to evaluate responses from other models. The judge scores each response on a 0-10 scale based on specific criteria tailored to the prompt type:
+                        </p>
+                        <ul style="color: var(--muted); font-size: 0.9em; line-height: 1.6; margin-top: 12px;">
+                            <li><strong>Reasoning:</strong> Evaluates accuracy, logical flow, and clarity.</li>
+                            <li><strong>Code:</strong> Checks for correctness, code clarity, and efficiency.</li>
+                            <li><strong>Factual:</strong> Verifies accuracy, completeness, and presentation.</li>
+                            <li><strong>Math:</strong> Checks the final answer, solution method, and steps.</li>
+                            <li><strong>Creative:</strong> Assesses creativity, coherence, and relevance.</li>
+                        </ul>
+                    </div>
 
-                <h3><i class="fas fa-chart-line"></i> Composite Score</h3>
-                <p>The Composite Score is a balanced metric (0-10) that combines:</p>
-                <ul>
-                    <li><strong>Quality (50%):</strong> The score from the Judge.</li>
-                    <li><strong>Latency (30%):</strong> How fast the model starts responding.</li>
-                    <li><strong>Speed (20%):</strong> Tokens per second generation speed.</li>
-                </ul>
+                    <div>
+                        <h3 style="color: var(--text); font-size: 1.1em; margin-bottom: 16px; border-bottom: 1px solid var(--panel-border); padding-bottom: 8px;">
+                            <i class="fas fa-balance-scale" style="color: #f1c40f;"></i> Composite Score Calculation
+                        </h3>
+                        <p style="color: var(--muted); line-height: 1.6; font-size: 0.95em;">
+                            The Composite Score provides a single balanced metric (0-10) to rank models overall. It is calculated using a weighted formula:
+                        </p>
+                        <div style="background: rgba(0,0,0,0.2); padding: 16px; border-radius: 8px; margin-top: 12px;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                                <span style="color: #2ecc71; font-weight: 600;">50% Quality</span>
+                                <span style="color: var(--muted);">Judge's score</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                                <span style="color: #3498db; font-weight: 600;">30% Latency</span>
+                                <span style="color: var(--muted);">Response start time</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: #9b59b6; font-weight: 600;">20% Speed</span>
+                                <span style="color: var(--muted);">Tokens per second</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-top: 32px; border-top: 1px solid var(--panel-border); padding-top: 24px;">
+                    <h3 style="color: var(--text); font-size: 1.1em; margin-bottom: 16px;">
+                        <i class="fas fa-terminal" style="color: var(--accent);"></i> Judge Prompts Reference
+                    </h3>
+                    <p style="color: var(--muted); font-size: 0.9em; margin-bottom: 16px;">
+                        These are the exact system prompts used by the Judge model to evaluate responses.
+                    </p>
+                    
+                    <div class="judge-prompts-list">
+                        <!-- Reasoning -->
+                        <details style="background: rgba(0,0,0,0.2); border-radius: 6px; margin-bottom: 8px;">
+                            <summary style="padding: 12px; cursor: pointer; font-weight: 600; color: var(--text);">Reasoning Prompt</summary>
+                            <div style="padding: 12px; border-top: 1px solid var(--panel-border); font-family: monospace; font-size: 0.85em; color: var(--muted); white-space: pre-wrap;">You are a reasoning quality evaluator. Analyze the logical reasoning in this response.
+
+CRITERIA TO EVALUATE:
+1. Accuracy (0-10): Is the conclusion/answer correct?
+2. Logic (0-10): Is the reasoning process sound and valid?
+3. Clarity (0-10): Is the explanation clear and understandable?
+
+TASK: {{task}}
+EXPECTED: {{expected}}
+RESPONSE TO EVALUATE:
+{{response}}
+
+Respond ONLY with JSON in this exact format:
+{"accuracy": X, "logic": X, "clarity": X, "overall": X, "explanation": "brief reason"}</div>
+                        </details>
+
+                        <!-- Code -->
+                        <details style="background: rgba(0,0,0,0.2); border-radius: 6px; margin-bottom: 8px;">
+                            <summary style="padding: 12px; cursor: pointer; font-weight: 600; color: var(--text);">Code Prompt</summary>
+                            <div style="padding: 12px; border-top: 1px solid var(--panel-border); font-family: monospace; font-size: 0.85em; color: var(--muted); white-space: pre-wrap;">You are a code quality evaluator. Analyze the given code response and score it.
+
+CRITERIA TO EVALUATE:
+1. Correctness (0-10): Does the code work and produce correct output?
+2. Clarity (0-10): Is the code readable and well-structured?
+3. Efficiency (0-10): Is it reasonably efficient for the task?
+
+TASK: {{task}}
+EXPECTED: {{expected}}
+RESPONSE TO EVALUATE:
+{{response}}
+
+Respond ONLY with JSON in this exact format:
+{"correctness": X, "clarity": X, "efficiency": X, "overall": X, "explanation": "brief reason"}</div>
+                        </details>
+
+                        <!-- Factual -->
+                        <details style="background: rgba(0,0,0,0.2); border-radius: 6px; margin-bottom: 8px;">
+                            <summary style="padding: 12px; cursor: pointer; font-weight: 600; color: var(--text);">Factual Prompt</summary>
+                            <div style="padding: 12px; border-top: 1px solid var(--panel-border); font-family: monospace; font-size: 0.85em; color: var(--muted); white-space: pre-wrap;">You are a factual accuracy evaluator. Check if this response is factually correct.
+
+CRITERIA TO EVALUATE:
+1. Accuracy (0-10): Is the information factually correct?
+2. Completeness (0-10): Does it answer the question fully?
+3. Clarity (0-10): Is it presented clearly?
+
+TASK: {{task}}
+EXPECTED: {{expected}}
+RESPONSE TO EVALUATE:
+{{response}}
+
+Respond ONLY with JSON in this exact format:
+{"accuracy": X, "completeness": X, "clarity": X, "overall": X, "explanation": "brief reason"}</div>
+                        </details>
+
+                        <!-- Math -->
+                        <details style="background: rgba(0,0,0,0.2); border-radius: 6px; margin-bottom: 8px;">
+                            <summary style="padding: 12px; cursor: pointer; font-weight: 600; color: var(--text);">Math Prompt</summary>
+                            <div style="padding: 12px; border-top: 1px solid var(--panel-border); font-family: monospace; font-size: 0.85em; color: var(--muted); white-space: pre-wrap;">You are a math evaluator. Check if the mathematical answer and work is correct.
+
+CRITERIA TO EVALUATE:
+1. Answer (0-10): Is the final answer correct?
+2. Method (0-10): Is the solution method/work correct?
+3. Presentation (0-10): Is it clearly presented?
+
+TASK: {{task}}
+EXPECTED: {{expected}}
+RESPONSE TO EVALUATE:
+{{response}}
+
+Respond ONLY with JSON in this exact format:
+{"answer": X, "method": X, "presentation": X, "overall": X, "explanation": "brief reason"}</div>
+                        </details>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-primary close-btn">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="judgeDetailsModal" class="modal">
+        <div class="modal-content" style="max-width: 800px;">
+            <div class="modal-header">
+                <h2><i class="fas fa-gavel"></i> Judge Evaluation Details</h2>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Prompt Name</label>
+                    <div id="detailPromptName" style="font-weight: bold; color: var(--accent);"></div>
+                </div>
+                <div class="form-group">
+                    <label>Model Response (Preview)</label>
+                    <div id="detailResponse" style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 6px; font-family: monospace; white-space: pre-wrap; max-height: 200px; overflow-y: auto;"></div>
+                </div>
+                <div class="form-group">
+                    <label>Judge Prompt (Input to Judge)</label>
+                    <div id="detailJudgePrompt" style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 6px; font-family: monospace; white-space: pre-wrap; max-height: 200px; overflow-y: auto; font-size: 0.9em; color: var(--muted);"></div>
+                </div>
+                <div class="form-group">
+                    <label>Judge's Explanation</label>
+                    <div id="detailExplanation" style="background: rgba(46, 204, 113, 0.1); padding: 12px; border-radius: 6px; border-left: 4px solid #2ecc71; white-space: pre-wrap;"></div>
+                </div>
+                <div class="form-group">
+                    <label>Scores</label>
+                    <div style="display: flex; gap: 20px;">
+                        <div>Quality: <span id="detailQualityScore" style="font-weight: bold;"></span></div>
+                        <div>Composite: <span id="detailCompositeScore" style="font-weight: bold;"></span></div>
+                    </div>
+                </div>
             </div>
             <div class="modal-footer">
                 <button class="btn-primary close-btn">Close</button>
@@ -1068,7 +1269,14 @@
                     currentJudgeConfig = {
                         model: document.getElementById('judgeModel').value,
                         temperature: parseFloat(document.getElementById('judgeTemp').value),
-                        timeout: parseInt(document.getElementById('judgeTimeout').value)
+                        timeout: parseInt(document.getElementById('judgeTimeout').value),
+                        prompts: {
+                            reasoning: document.getElementById('promptReasoning').value,
+                            code: document.getElementById('promptCode').value,
+                            factual: document.getElementById('promptFactual').value,
+                            math: document.getElementById('promptMath').value,
+                            creative: document.getElementById('promptCreative').value
+                        }
                     };
                     settingsModal.style.display = 'none';
                 };
@@ -1081,6 +1289,7 @@
                 const json = await res.json();
                 if (json.status === 'success') {
                     const config = json.data.judge_config;
+                    const scoringConfigs = json.data.scoring_configs;
                     
                     // Populate Judge Model Dropdown (using all available models from current host)
                     const hostUrl = document.getElementById('host').value;
@@ -1108,6 +1317,16 @@
                         
                         // Initialize current config
                         currentJudgeConfig = { ...config };
+                    }
+
+                    // Populate Prompts (either from current config or default)
+                    const prompts = currentJudgeConfig.prompts || {};
+                    if (scoringConfigs) {
+                        document.getElementById('promptReasoning').value = prompts.reasoning || scoringConfigs.reasoning.prompt;
+                        document.getElementById('promptCode').value = prompts.code || scoringConfigs.code.prompt;
+                        document.getElementById('promptFactual').value = prompts.factual || scoringConfigs.factual.prompt;
+                        document.getElementById('promptMath').value = prompts.math || scoringConfigs.math.prompt;
+                        document.getElementById('promptCreative').value = prompts.creative || scoringConfigs.creative.prompt;
                     }
                 }
             } catch (err) {
@@ -1234,6 +1453,33 @@
         let currentBatchId = null;
         let batchPollInterval = null;
 
+        function resetBatchUI() {
+            const btn = document.getElementById('runBatchBtn');
+            const stopBtn = document.getElementById('stopBatchBtn');
+            const progressBar = document.getElementById('progressBar');
+            const status = document.getElementById('batchStatus');
+            
+            btn.disabled = false;
+            btn.textContent = 'Start Batch Test';
+            stopBtn.style.display = 'none';
+            
+            progressBar.classList.remove('active');
+            status.style.display = 'none';
+            
+            if (batchPollInterval) {
+                clearInterval(batchPollInterval);
+                batchPollInterval = null;
+            }
+            currentBatchId = null;
+            localStorage.removeItem('currentBatchId');
+        }
+
+        document.getElementById('stopBatchBtn').addEventListener('click', () => {
+            if (confirm('Stop current batch? This will clear the local session.')) {
+                resetBatchUI();
+            }
+        });
+
         document.getElementById('runBatchBtn').addEventListener('click', async () => {
             const selectedLevels = [1, 2, 3, 4, 5].filter(l =>
                 document.getElementById(`level${l}`).checked
@@ -1254,15 +1500,23 @@
             }
 
             const btn = document.getElementById('runBatchBtn');
+            const stopBtn = document.getElementById('stopBatchBtn');
             const status = document.getElementById('batchStatus');
             const progressBar = document.getElementById('progressBar');
 
             btn.disabled = true;
             btn.textContent = 'Starting...';
+            stopBtn.style.display = 'inline-block';
+            
             status.style.display = 'none';
             progressBar.classList.add('active');
             document.getElementById('progressFill').style.width = '0%';
             document.getElementById('progressText').textContent = '0%';
+            
+            // Clear previous results
+            document.getElementById('batchResultsContainer').style.display = 'none';
+            document.getElementById('batchResultsBody').innerHTML = '';
+            window.currentBatchResults = [];
 
             try {
                 const res = await fetch(`${BENCHMARK_API}/batch`, {
@@ -1293,11 +1547,24 @@
                 status.className = 'status error';
                 status.textContent = `✗ Error: ${err.message}`;
                 status.style.display = 'block';
-                btn.disabled = false;
-                btn.textContent = 'Start Batch Test';
-                progressBar.classList.remove('active');
+                resetBatchUI();
             }
         });
+
+        function showJudgeDetails(index) {
+            const result = window.currentBatchResults[index];
+            if (!result) return;
+
+            document.getElementById('detailPromptName').textContent = result.prompt_name;
+            document.getElementById('detailResponse').textContent = result.response_preview || 'No preview available';
+            document.getElementById('detailJudgePrompt').textContent = result.judge_prompt || 'Judge prompt not available (older test or skipped)';
+            document.getElementById('detailExplanation').textContent = result.quality_explanation || 'No explanation available (Quality scoring might be disabled or failed)';
+            
+            document.getElementById('detailQualityScore').textContent = result.quality_score !== undefined ? result.quality_score : '-';
+            document.getElementById('detailCompositeScore').textContent = result.composite_score !== undefined ? result.composite_score : '-';
+
+            document.getElementById('judgeDetailsModal').style.display = 'block';
+        }
 
         async function pollBatchProgress() {
             if (!currentBatchId) return;
@@ -1336,6 +1603,35 @@
                     status.style.display = 'none';
                 }
 
+                // Update Results Table
+                if (batch.results && batch.results.length > 0) {
+                    const container = document.getElementById('batchResultsContainer');
+                    const tbody = document.getElementById('batchResultsBody');
+                    container.style.display = 'block';
+                    
+                    // Only update if new results came in (simple check by length)
+                    if (tbody.children.length !== batch.results.length) {
+                        window.currentBatchResults = batch.results;
+                        tbody.innerHTML = batch.results.map((r, idx) => {
+                            const qualityScore = r.quality_score !== undefined && r.quality_score !== null ? r.quality_score : '-';
+                            const qualityClass = qualityScore >= 7 ? 'quality-high' : qualityScore >= 4 ? 'quality-mid' : (qualityScore !== '-' ? 'quality-low' : '');
+                            
+                            return `
+                                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                                    <td style="padding: 8px 12px;">${r.model}</td>
+                                    <td style="padding: 8px 12px;">${r.prompt_name}</td>
+                                    <td style="padding: 8px 12px; text-align: center;" class="${qualityClass}">${qualityScore}</td>
+                                    <td style="padding: 8px 12px; text-align: center;">
+                                        <button class="btn-secondary btn-sm" onclick="showJudgeDetails(${idx})">
+                                            <i class="fas fa-eye"></i> Details
+                                        </button>
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('');
+                    }
+                }
+
                 if (batch.status === 'completed') {
                     clearInterval(batchPollInterval);
                     batchPollInterval = null;
@@ -1347,8 +1643,10 @@
                     status.style.display = 'block';
 
                     const btn = document.getElementById('runBatchBtn');
+                    const stopBtn = document.getElementById('stopBatchBtn');
                     btn.disabled = false;
                     btn.textContent = 'Start Batch Test';
+                    stopBtn.style.display = 'none';
 
                     // Refresh dashboard
                     loadDashboard();
@@ -1357,14 +1655,7 @@
                 console.error('Failed to poll batch progress:', err);
                 // If 404 (batch not found), clear local storage
                 if (err.message.includes('404')) {
-                    localStorage.removeItem('currentBatchId');
-                    clearInterval(batchPollInterval);
-                    batchPollInterval = null;
-                    
-                    const btn = document.getElementById('runBatchBtn');
-                    btn.disabled = false;
-                    btn.textContent = 'Start Batch Test';
-                    document.getElementById('progressBar').classList.remove('active');
+                    resetBatchUI();
                 }
             }
         }
@@ -1631,11 +1922,13 @@
                 currentBatchId = savedBatchId;
                 
                 const btn = document.getElementById('runBatchBtn');
+                const stopBtn = document.getElementById('stopBatchBtn');
                 const progressBar = document.getElementById('progressBar');
                 const status = document.getElementById('batchStatus');
                 
                 btn.disabled = true;
                 btn.textContent = 'Resuming...';
+                stopBtn.style.display = 'inline-block';
                 progressBar.classList.add('active');
                 
                 // Initialize progress bar visual state

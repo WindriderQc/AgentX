@@ -1,0 +1,630 @@
+openapi: 3.0.3
+info:
+  title: SBQC N3.2 AI Gateway API
+  description: |
+    The SBQC (System Brain Query Control) API provides webhook endpoints for interacting with the AgentX AI system through n8n workflow automation.
+
+    ## Features
+    - AI conversation with multiple model support
+    - RAG (Retrieval-Augmented Generation) capabilities
+    - Conversation continuity with conversation IDs
+    - Automatic model routing based on task type
+    - Health monitoring and system status checks
+    - Comprehensive token usage and latency metrics
+
+    ## Best Practices
+    - Set client timeouts to 60+ seconds for AI queries
+    - Reuse conversationId for multi-turn conversations
+    - Enable RAG for context-aware responses
+    - Monitor health endpoints regularly
+
+    ## Rate Limiting
+    **Recommended limits for production:**
+    - N3.2 AI Gateway: 60 requests per minute per IP
+    - Health endpoints: 600 requests per minute
+    - Feedback analysis: 10 requests per hour
+
+    **Note:** No rate limiting currently enforced in development.
+  version: 2.2.0
+  contact:
+    name: SBQC API Support
+    url: https://n8n.specialblend.icu
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://n8n.specialblend.icu
+    description: Production server
+
+tags:
+  - name: AI Gateway
+    description: Main AI conversation endpoints
+  - name: Health & Monitoring
+    description: System health and deployment status
+  - name: Analysis
+    description: Feedback and analysis workflows
+
+security: []
+
+paths:
+  /webhook/sbqc-ai-query:
+    post:
+      tags:
+        - AI Gateway
+      summary: N3.2 - External AI Gateway
+      description: |
+        The main entry point for AI conversations. Provides a clean, validated interface to AgentX.
+
+        **Features:**
+        - Multi-model support with automatic routing
+        - RAG-enabled context retrieval
+        - Conversation continuity
+        - Detailed token usage and performance metrics
+
+        **Response Times:** 2-30 seconds depending on model and task complexity.
+      operationId: aiQuery
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AIQueryRequest'
+            examples:
+              basicQuery:
+                summary: Basic AI query
+                value:
+                  message: "What is the capital of France?"
+                  useRag: false
+              conversationContinuation:
+                summary: Continue conversation
+                value:
+                  message: "What's that times 3?"
+                  conversationId: "69587676b64e8e4f3fd291e7"
+              ragEnabledQuery:
+                summary: RAG-enabled query
+                value:
+                  message: "What are the best practices for API design?"
+                  useRag: true
+                  persona: "technical_assistant"
+              codingTask:
+                summary: Coding task with auto-routing
+                value:
+                  message: "Write a Python function to calculate fibonacci numbers"
+                  autoRoute: true
+                  taskType: "code"
+              specificModel:
+                summary: Query with specific model
+                value:
+                  message: "Explain quantum computing in simple terms"
+                  model: "qwen2.5:7b-instruct-q4_0"
+                  autoRoute: false
+      responses:
+        '200':
+          description: Successful AI response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AIQueryResponse'
+              examples:
+                successfulResponse:
+                  summary: Successful AI response
+                  value:
+                    success: true
+                    response: "The capital of France is Paris."
+                    model: "qwen2.5:7b-instruct-q4_0"
+                    conversationId: "69587676b64e8e4f3fd291e7"
+                    ragUsed: false
+                    tokens:
+                      promptTokens: 26
+                      completionTokens: 11
+                      totalTokens: 37
+                    latency: 327352649
+                    timestamp: "2026-01-03T01:52:54.426Z"
+                ragEnabledResponse:
+                  summary: Response with RAG
+                  value:
+                    success: true
+                    response: "Based on the retrieved documentation, API design best practices include: RESTful principles, proper versioning, comprehensive error handling, and clear documentation."
+                    model: "qwen2.5:7b-instruct-q4_0"
+                    conversationId: "69587676b64e8e4f3fd291e8"
+                    ragUsed: true
+                    tokens:
+                      promptTokens: 156
+                      completionTokens: 48
+                      totalTokens: 204
+                    latency: 1523456789
+                    timestamp: "2026-01-03T01:53:24.126Z"
+        '400':
+          description: Bad Request - Invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missingMessage:
+                  summary: Missing required field
+                  value:
+                    success: false
+                    error: "Missing required field: message"
+                    status: 400
+                    timestamp: "2026-01-03T01:52:54.426Z"
+                invalidModel:
+                  summary: Invalid model specified
+                  value:
+                    success: false
+                    error: "Invalid model specified"
+                    status: 400
+                    timestamp: "2026-01-03T01:52:54.426Z"
+        '404':
+          description: Not Found - Webhook not registered or workflow inactive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error: "Webhook not found or workflow inactive"
+                status: 404
+                timestamp: "2026-01-03T01:52:54.426Z"
+        '500':
+          description: Internal Server Error - Workflow execution failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error: "Workflow execution failed"
+                status: 500
+                timestamp: "2026-01-03T01:52:54.426Z"
+        '503':
+          description: Service Unavailable - AgentX or DataAPI unreachable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error: "AgentX API unreachable"
+                status: 503
+                timestamp: "2026-01-03T01:52:54.426Z"
+
+  /webhook/test-deployment:
+    get:
+      tags:
+        - Health & Monitoring
+      summary: N0.0 - Deployment Test
+      description: Health check endpoint to verify deployment is working and get system configuration information.
+      operationId: testDeployment
+      responses:
+        '200':
+          description: Deployment test successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentTestResponse'
+              example:
+                status: "success"
+                workflow: "N0.0 - Deployment Test"
+                version: "2.2.0"
+                deployed_at: "2026-01-03T02:00:00.000Z"
+                message: "Deployment test successful! All workflows operational."
+                environment:
+                  n8n: "http://192.168.2.199:5678"
+                  dataapi: "http://192.168.2.33:3003"
+                  agentx: "http://192.168.2.33:3080"
+                workflows:
+                  production:
+                    - id: "N1.1"
+                      name: "System Health Check"
+                      status: "active"
+                      schedule: "*/5 * * * *"
+        '500':
+          description: Deployment test failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /webhook/sbqc-health:
+    get:
+      tags:
+        - Health & Monitoring
+      summary: N0.1 - Health Dashboard
+      description: |
+        Comprehensive health check for all SBQC components including n8n workflows, AgentX API, and DataAPI.
+
+        **Recommended polling interval:** Every 60 seconds
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Health check results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheckResponse'
+              example:
+                timestamp: "2026-01-03T02:31:02.858Z"
+                version: "1.0.0"
+                overall_status: "healthy"
+                checks:
+                  - component: "n8n_workflows"
+                    status: "pass"
+                    message: "9 workflows expected"
+                    details: []
+                  - component: "agentx_api"
+                    status: "pass"
+                    message: "AgentX API reachable"
+                    endpoint: "http://192.168.2.33:3080"
+                  - component: "dataapi"
+                    status: "pass"
+                    message: "DataAPI reachable"
+                    endpoint: "http://192.168.2.33:3003"
+                summary:
+                  total_checks: 4
+                  passed: 4
+                  failed: 0
+                  health_percentage: 100
+
+  /webhook/sbqc-n5-1-feedback-analysis:
+    get:
+      tags:
+        - Analysis
+      summary: N5.1 - Feedback Analysis
+      description: |
+        Trigger manual feedback analysis (normally runs weekly on schedule).
+
+        **Note:** This is a long-running workflow (60-120 seconds). The endpoint returns immediately while processing continues in the background. Results are logged to DataAPI and the admin is notified if issues are found.
+      operationId: triggerFeedbackAnalysis
+      responses:
+        '200':
+          description: Workflow started successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowTriggerResponse'
+              example:
+                message: "Workflow was started"
+        '500':
+          description: Failed to start workflow
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    AIQueryRequest:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          description: The question or prompt for the AI
+          minLength: 1
+          example: "What is the capital of France?"
+        model:
+          type: string
+          description: Which AI model to use
+          default: "qwen2.5:7b-instruct-q4_0"
+          example: "qwen2.5:7b-instruct-q4_0"
+        useRag:
+          type: boolean
+          description: Enable RAG (Retrieval-Augmented Generation) for context-aware responses
+          default: true
+          example: true
+        persona:
+          type: string
+          nullable: true
+          description: Which persona/prompt template to use
+          default: null
+          example: "technical_assistant"
+        conversationId:
+          type: string
+          nullable: true
+          description: Continue an existing conversation by providing the ID from a previous response
+          default: null
+          example: "69587676b64e8e4f3fd291e7"
+        autoRoute:
+          type: boolean
+          description: Let AgentX automatically choose the best model based on the task
+          default: true
+          example: true
+        taskType:
+          type: string
+          nullable: true
+          description: Task type hint for routing (e.g., "code", "chat", "analysis")
+          default: null
+          enum:
+            - code
+            - chat
+            - analysis
+            - creative
+            - technical
+          example: "code"
+
+    AIQueryResponse:
+      type: object
+      required:
+        - success
+        - response
+        - model
+        - conversationId
+        - ragUsed
+        - tokens
+        - latency
+        - timestamp
+      properties:
+        success:
+          type: boolean
+          description: Whether the request succeeded
+          example: true
+        response:
+          type: string
+          description: The AI's response text
+          example: "The capital of France is Paris."
+        model:
+          type: string
+          description: Which model was used to generate the response
+          example: "qwen2.5:7b-instruct-q4_0"
+        conversationId:
+          type: string
+          description: ID for continuing the conversation in future requests
+          example: "69587676b64e8e4f3fd291e7"
+        ragUsed:
+          type: boolean
+          description: Whether RAG (Retrieval-Augmented Generation) was activated for this response
+          example: false
+        tokens:
+          $ref: '#/components/schemas/TokenUsage'
+        latency:
+          type: integer
+          format: int64
+          description: Response time in nanoseconds
+          example: 327352649
+        timestamp:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp of the response
+          example: "2026-01-03T01:52:54.426Z"
+
+    TokenUsage:
+      type: object
+      required:
+        - promptTokens
+        - completionTokens
+        - totalTokens
+      properties:
+        promptTokens:
+          type: integer
+          description: Number of tokens in the prompt/input
+          example: 26
+        completionTokens:
+          type: integer
+          description: Number of tokens in the response/completion
+          example: 11
+        totalTokens:
+          type: integer
+          description: Total tokens used (promptTokens + completionTokens)
+          example: 37
+
+    ErrorResponse:
+      type: object
+      required:
+        - success
+        - error
+        - status
+        - timestamp
+      properties:
+        success:
+          type: boolean
+          description: Always false for error responses
+          example: false
+        error:
+          type: string
+          description: Human-readable error message
+          example: "Missing required field: message"
+        status:
+          type: integer
+          description: HTTP status code
+          example: 400
+        timestamp:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp of the error
+          example: "2026-01-03T01:52:54.426Z"
+
+    DeploymentTestResponse:
+      type: object
+      required:
+        - status
+        - workflow
+        - version
+        - deployed_at
+        - message
+        - environment
+        - workflows
+      properties:
+        status:
+          type: string
+          enum:
+            - success
+            - failed
+          description: Overall deployment status
+          example: "success"
+        workflow:
+          type: string
+          description: Workflow name
+          example: "N0.0 - Deployment Test"
+        version:
+          type: string
+          description: SBQC version
+          example: "2.2.0"
+        deployed_at:
+          type: string
+          format: date-time
+          description: Deployment timestamp
+          example: "2026-01-03T02:00:00.000Z"
+        message:
+          type: string
+          description: Deployment status message
+          example: "Deployment test successful! All workflows operational."
+        environment:
+          type: object
+          description: Environment configuration
+          properties:
+            n8n:
+              type: string
+              description: n8n instance URL
+              example: "http://192.168.2.199:5678"
+            dataapi:
+              type: string
+              description: DataAPI endpoint URL
+              example: "http://192.168.2.33:3003"
+            agentx:
+              type: string
+              description: AgentX endpoint URL
+              example: "http://192.168.2.33:3080"
+        workflows:
+          type: object
+          description: Workflow status information
+          properties:
+            production:
+              type: array
+              description: List of production workflows
+              items:
+                $ref: '#/components/schemas/WorkflowInfo'
+
+    WorkflowInfo:
+      type: object
+      required:
+        - id
+        - name
+        - status
+      properties:
+        id:
+          type: string
+          description: Workflow ID
+          example: "N1.1"
+        name:
+          type: string
+          description: Workflow name
+          example: "System Health Check"
+        status:
+          type: string
+          enum:
+            - active
+            - inactive
+            - error
+          description: Workflow status
+          example: "active"
+        schedule:
+          type: string
+          description: Cron schedule (if scheduled)
+          example: "*/5 * * * *"
+
+    HealthCheckResponse:
+      type: object
+      required:
+        - timestamp
+        - version
+        - overall_status
+        - checks
+        - summary
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          description: Health check timestamp
+          example: "2026-01-03T02:31:02.858Z"
+        version:
+          type: string
+          description: Health check version
+          example: "1.0.0"
+        overall_status:
+          type: string
+          enum:
+            - healthy
+            - degraded
+            - unhealthy
+          description: Overall system health status
+          example: "healthy"
+        checks:
+          type: array
+          description: Individual component health checks
+          items:
+            $ref: '#/components/schemas/HealthCheck'
+        summary:
+          $ref: '#/components/schemas/HealthSummary'
+
+    HealthCheck:
+      type: object
+      required:
+        - component
+        - status
+        - message
+      properties:
+        component:
+          type: string
+          description: Component name
+          example: "agentx_api"
+        status:
+          type: string
+          enum:
+            - pass
+            - fail
+            - warn
+          description: Health check status
+          example: "pass"
+        message:
+          type: string
+          description: Status message
+          example: "AgentX API reachable"
+        endpoint:
+          type: string
+          description: Endpoint URL (if applicable)
+          example: "http://192.168.2.33:3080"
+        details:
+          type: array
+          description: Additional details about the check
+          items:
+            type: object
+
+    HealthSummary:
+      type: object
+      required:
+        - total_checks
+        - passed
+        - failed
+        - health_percentage
+      properties:
+        total_checks:
+          type: integer
+          description: Total number of health checks performed
+          example: 4
+        passed:
+          type: integer
+          description: Number of checks that passed
+          example: 4
+        failed:
+          type: integer
+          description: Number of checks that failed
+          example: 0
+        health_percentage:
+          type: number
+          format: float
+          description: Overall health percentage
+          minimum: 0
+          maximum: 100
+          example: 100
+
+    WorkflowTriggerResponse:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          description: Workflow trigger status message
+          example: "Workflow was started"

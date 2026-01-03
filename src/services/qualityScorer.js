@@ -246,7 +246,12 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
     
     // Use LLM-as-judge for complex evaluation
     const scoringType = prompt.scoring_type || 'reasoning';
-    const config = SCORING_CONFIGS[scoringType] || SCORING_CONFIGS.reasoning;
+    let config = SCORING_CONFIGS[scoringType] || SCORING_CONFIGS.reasoning;
+    
+    // Allow overriding prompt from judgeConfig
+    if (judgeConfig.prompts && judgeConfig.prompts[scoringType]) {
+        config = { ...config, prompt: judgeConfig.prompts[scoringType] };
+    }
     
     const evalPrompt = config.prompt
         .replace('{{task}}', prompt.prompt || prompt)
@@ -285,7 +290,8 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
         breakdown: scores,
         explanation: scores.explanation || '',
         judge_model: judgeConfig.model || JUDGE_CONFIG.model,
-        scoring_time_ms: Date.now() - startTime
+        scoring_time_ms: Date.now() - startTime,
+        judge_prompt: evalPrompt
     };
 }
 
