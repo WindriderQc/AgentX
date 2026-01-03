@@ -141,7 +141,7 @@ SMTP_USER=your-email@gmail.com
 SMTP_PASS=app-password
 ALERT_EMAIL_FROM=AgentX Alerts <alerts@yourdomain.com>
 ALERT_EMAIL_TO=team@yourdomain.com
-SLACK_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+SLACK_WEBHOOK_URL=<your_slack_webhook_url>
 
 EXAMPLE USAGE:
 ```javascript

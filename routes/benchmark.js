@@ -354,7 +354,6 @@ router.get('/dashboard', async (req, res) => {
                 avg_tokens_per_sec: m.avg_tokens_per_sec ? m.avg_tokens_per_sec.toFixed(2) : '0',
                 avg_quality: hasQuality ? m.avg_quality.toFixed(1) : null,
                 avg_composite: hasComposite ? m.avg_composite.toFixed(1) : null,
-            quick_pattern: r.quick_pattern,
                 quality_tests: m.quality_tests || 0,
                 tests: m.count
             };
@@ -546,6 +545,52 @@ router.post('/batch', async (req, res) => {
         }
 
         // Create batch record
+        // Compute a simple plan for UI display (exec host(s), judge host(s), counts)
+        const modelsByHost = {};
+        for (const model of models) {
+            let targetHost = host;
+            if (MODEL_ROUTING[model]) {
+                targetHost = HOSTS[MODEL_ROUTING[model]];
+            }
+            if (!modelsByHost[targetHost]) modelsByHost[targetHost] = [];
+            modelsByHost[targetHost].push(model);
+        }
+
+        const execHosts = Object.entries(modelsByHost).map(([exec_host, hostModels]) => {
+            let judge_host = HOSTS.primary;
+            if (exec_host === HOSTS.primary) judge_host = HOSTS.secondary;
+            else if (exec_host === HOSTS.secondary) judge_host = HOSTS.primary;
+
+            return {
+                exec_host,
+                judge_host: quality_scoring ? judge_host : null,
+                models: hostModels,
+                tests: hostModels.length * selectedPrompts.length
+            };
+        });
+
+        const categoryCounts = {};
+        for (const p of selectedPrompts) {
+            const cat = p.category || 'uncategorized';
+            categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
+        }
+
+        const categories = Object.entries(categoryCounts)
+            .map(([category, prompt_count]) => ({
+                category,
+                prompt_count,
+                tests: prompt_count * models.length
+            }))
+            .sort((a, b) => b.tests - a.tests);
+
+        const plan = {
+            exec_hosts: execHosts,
+            judge_model: (judge_config && judge_config.model) ? judge_config.model : null,
+            total_models: models.length,
+            total_prompts: selectedPrompts.length,
+            categories
+        };
+
         const batch = {
             host,
             models,
@@ -554,6 +599,7 @@ router.post('/batch', async (req, res) => {
             judge_config,
             run_name: run_name || `Batch ${new Date().toLocaleString()}`,
             total_tests: models.length * selectedPrompts.length,
+            plan,
             completed: 0,
             failed: 0,
             status: 'running',
@@ -577,6 +623,7 @@ router.post('/batch', async (req, res) => {
                 batch_id: batchId,
                 total_tests: batch.total_tests,
                 quality_scoring,
+                plan,
                 message: `Batch test started${quality_scoring ? ' with quality scoring' : ''}`
             }
         });
@@ -663,7 +710,8 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                         success: true,
                         batch_id: batchId,
                         timestamp: new Date(),
-                        quality_score: null // Will be updated if scoring is enabled
+                        quality_score: null, // Will be updated if scoring is enabled
+                        scoring_method: enableQualityScoring ? 'pending' : 'disabled'
                     };
 
                     const insertResult = await resultsCollection.insertOne(result);
@@ -688,8 +736,8 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                         }
                     );
 
-                    // Queue quality scoring if enabled
-                    if (enableQualityScoring && model !== (judgeConfig.model || JUDGE_CONFIG.model)) {
+                    // Queue quality scoring if enabled (judge even if model == judge model)
+                    if (enableQualityScoring) {
                         judgeQueue.enqueue(async () => {
                             try {
                                 const scores = await scoreResponse({
@@ -727,6 +775,10 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                                 );
                             } catch (scoreErr) {
                                 logger.warn('Quality scoring failed', { model, prompt: prompt.name, error: scoreErr.message });
+                                await resultsCollection.updateOne(
+                                    { _id: resultId },
+                                    { $set: { scoring_method: 'llm_failed', quality_explanation: scoreErr.message, judge_model: judgeConfig.model || JUDGE_CONFIG.model } }
+                                );
                             }
                         });
                     }
@@ -808,7 +860,7 @@ router.get('/batch/:id', async (req, res) => {
         }
 
         const progress = batch.total_tests > 0
-            ? Math.round((batch.completed / batch.total_tests) * 100)
+            ? Math.min(Math.round((batch.completed / batch.total_tests) * 100), 100)
             : 0;
 
         // Hydrate results from benchmark_results to include latest judge data
@@ -818,6 +870,7 @@ router.get('/batch/:id', async (req, res) => {
             .toArray();
 
         const formattedResults = results.map((r) => ({
+            id: r._id ? r._id.toString() : null,
             model: r.model,
             host: r.host,
             judge_host: r.judge_host || null,

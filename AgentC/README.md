@@ -15,8 +15,24 @@ This directory contains all n8n workflow definitions for the SBQC Stack automati
 | AI Query | N3.2.json | 📋 Pending | `sbqc-ai-query` |
 | Feedback Analysis | N5.1.json | 📋 Pending | `sbqc-n5-1-feedback-analysis` |
 
-**n8n Instance:** http://192.168.2.199:5678  
+**n8n Instance:** http://192.168.2.199:5678
 **Public URL:** https://n8n.specialblend.icu
+
+---
+
+## Agent Personas 🤖
+
+Workflows in this directory follow the **Agent Persona Pattern** - each workflow embodies a specific role with clear responsibilities:
+
+- 🧹 **Janitor** (N1.x) - System health monitoring and maintenance
+- 📚 **Curator** (N2.x) - Content and data quality management
+- 🔍 **Auditor** (N3.x) - Performance and cost tracking
+- 🛡️ **Guardian** (N4.x) - Security and anomaly detection
+- 📊 **Analyst** (N5.x) - Feedback analysis and improvement loops
+
+**See [AGENT_PERSONAS.md](AGENT_PERSONAS.md) for complete pattern documentation.**
+
+**Template:** Use [WORKFLOW_TEMPLATE.json](WORKFLOW_TEMPLATE.json) to create new agent workflows.
 
 ---
 

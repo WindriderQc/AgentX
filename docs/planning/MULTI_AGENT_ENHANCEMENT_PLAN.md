@@ -164,7 +164,7 @@ ALERT_EMAIL_FROM=AgentX Alerts <alerts@yourdomain.com>
 ALERT_EMAIL_TO=team@yourdomain.com
 
 # Slack
-SLACK_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+SLACK_WEBHOOK_URL=<your_slack_webhook_url>
 SLACK_CHANNEL=#agentx-alerts
 
 # Webhooks (PagerDuty, custom)

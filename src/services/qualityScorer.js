@@ -333,7 +333,6 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
         judge_prompt: evalPrompt
     };
 }
-}
 
 /**
  * Calculate composite score combining speed and quality

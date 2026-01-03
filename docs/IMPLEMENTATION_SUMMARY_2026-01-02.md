@@ -132,7 +132,7 @@ ALERT_EMAIL_FROM=alerts@agentx.local
 ALERT_EMAIL_TO=admin@example.com,ops@example.com
 
 # Slack Configuration
-SLACK_WEBHOOK_URL=https://hooks.slack.com/services/XXX/YYY/ZZZ
+SLACK_WEBHOOK_URL=<your_slack_webhook_url>
 
 # Generic Webhook
 ALERT_WEBHOOK_URL=https://api.example.com/alerts

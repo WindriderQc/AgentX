@@ -305,7 +305,6 @@ npm test tests/services/alertService.test.js
   - Test data from actual config/self-healing-rules.json
   - Follows AlertService test patterns
   - **Coverage target: >80%**
-  - **Status:** ⚠️ 9 of 27 tests passing - needs MetricsSnapshot mock data format fixes
 
 ---
 

@@ -1,0 +1,426 @@
+{
+  "name": "SBQC - N{X}.{Y} {Persona Name} ({schedule})",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -200,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "agent-workflow-name",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook (Manual)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -200,
+        380
+      ],
+      "webhookId": "agent-workflow-name"
+    },
+    {
+      "parameters": {},
+      "id": "merge-triggers",
+      "name": "Merge Triggers",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        20,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:3080/health",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "id": "health-check-example",
+      "name": "Health Check Example",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        320,
+        180
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "PIrrA2wpOppzVodi",
+          "name": "Header Auth account"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Transform raw HTTP response to metrics format\nconst source = $input.first().json || {};\n\n// Extract status code from various possible locations\nconst statusCandidates = [\n  source.statusCode,\n  source.status,\n  source.code,\n  source?.error?.statusCode,\n  source?.error?.code\n];\nconst statusCode = statusCandidates\n  .map((v) => Number(v))\n  .find((v) => Number.isFinite(v)) ?? 0;\n\n// Extract response time\nconst responseTime = source.responseTime ?? source.elapsedTime ?? source.duration ?? source.time ?? 0;\n\n// Determine if check passed\nconst ok = source && !source.error && (source.status === 'ok' || source.status === 'success' || source.ok === true);\n\n// Return standardized metrics payload\nreturn [{\n  json: {\n    component: 'example_component',\n    value: ok ? 1 : 0,\n    responseTime,\n    metadata: {\n      statusCode,\n      endpoint: '/health',\n      checkedAt: new Date().toISOString()\n    },\n    tags: ['health-check', 'automated']\n  }\n}];"
+      },
+      "id": "transform-to-metrics",
+      "name": "Transform to Metrics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3080/api/metrics/health",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "id": "record-metrics",
+      "name": "Record Metrics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        180
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "PIrrA2wpOppzVodi",
+          "name": "Header Auth account"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Aggregate results from all health checks\nfunction isHttpOk(obj) {\n  if (!obj || typeof obj !== 'object') return false;\n  if (obj.error) return false;\n  return true;\n}\n\nfunction safeGet(nodeName) {\n  try {\n    const items = $items(nodeName);\n    return items && items[0] ? items[0].json : null;\n  } catch (e) {\n    return null;\n  }\n}\n\n// Get results from all health check nodes\nconst example = safeGet('Health Check Example');\n\n// Check if each component is healthy\nconst exampleOk = isHttpOk(example) && (example.status === 'ok' || example.status === 'success' || example.ok === true);\n\n// Calculate overall status\nconst results = {\n  timestamp: new Date().toISOString(),\n  overall: exampleOk ? 'healthy' : 'degraded',\n  alert: !exampleOk,\n  components: {\n    example: {\n      status: exampleOk ? 'ok' : 'error',\n      detail: exampleOk ? example : (example && example.error ? example.error : example)\n    }\n  }\n};\n\nreturn [{ json: results }];"
+      },
+      "id": "aggregate-status",
+      "name": "Aggregate Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        976,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.alert}}",
+              "value2": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "if-degraded",
+      "name": "IF Degraded",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1136,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3080/api/alerts",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"title\": \"Agent Workflow Alert\",\n  \"severity\": \"critical\",\n  \"message\": \"One or more components are degraded\",\n  \"source\": \"n8n-monitor\",\n  \"context\": {\n    \"component\": \"system\",\n    \"detail\": $json\n  }\n} }}",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "id": "create-alert",
+      "name": "Create Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1360,
+        144
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "PIrrA2wpOppzVodi",
+          "name": "Header Auth account"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {},
+      "id": "healthy-noop",
+      "name": "Healthy (No-op)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1344,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3080/api/metrics/health",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"component\": \"workflow-heartbeat\",\n  \"value\": $json.overall === 'healthy' ? 1 : 0,\n  \"metadata\": {\n    \"workflow\": \"agent-template\",\n    \"detail\": $json\n  },\n  \"tags\": [\"heartbeat\", \"aggregate\"]\n} }}",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "id": "log-heartbeat",
+      "name": "Log Heartbeat",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1600,
+        528
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "PIrrA2wpOppzVodi",
+          "name": "Header Auth account"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Stateful alert evaluation\n// Only trigger alerts on state changes (healthy → unhealthy)\nfunction isHttpOk(obj) {\n  if (!obj || typeof obj !== 'object') return false;\n  if (obj.error) return false;\n  return true;\n}\n\nfunction safeGet(nodeName) {\n  try {\n    const items = $items(nodeName);\n    return items && items[0] ? items[0].json : null;\n  } catch (e) {\n    return null;\n  }\n}\n\nfunction extractStatusCode(data) {\n  if (typeof data?.statusCode === 'number') return data.statusCode;\n  if (typeof data?.status === 'number') return data.status;\n  if (typeof data?.code === 'number') return data.code;\n  if (data?.error) {\n    if (typeof data.error.statusCode === 'number') return data.error.statusCode;\n    if (typeof data.error.code === 'number') return data.error.code;\n  }\n  return null;\n}\n\nfunction extractResponseTime(data) {\n  const rt = data?.timings?.response ?? data?.elapsedTime ?? data?.responseTime;\n  return typeof rt === 'number' ? rt : null;\n}\n\nfunction isApiOk(data) {\n  return isHttpOk(data) && (data?.status === 'ok' || data?.status === 'success' || data?.ok === true);\n}\n\nconst staticData = $getWorkflowStaticData('global');\nconst previous = staticData.lastStates || {};\nconst timestamp = new Date().toISOString();\nconst agentxUrl = $json.agentx_url || 'http://localhost:3080';\n\nconst components = [\n  { key: 'example', node: 'Health Check Example', component: 'example_component', okCheck: isApiOk }\n];\n\nconst results = [];\nconst updatedStates = {};\n\nfor (const entry of components) {\n  const nodeData = safeGet(entry.node);\n  const statusCode = extractStatusCode(nodeData);\n  const responseTime = extractResponseTime(nodeData);\n  const isOk = entry.okCheck(nodeData);\n  const slow = responseTime !== null && responseTime > 2000;\n  const value = (!isOk || slow) ? 1 : 0;\n  const previousValue = previous[entry.key]?.value;\n  updatedStates[entry.key] = { value, statusCode, responseTime };\n\n  // Only alert on state changes\n  const changed = previousValue === undefined ? true : previousValue !== value;\n  if (changed) {\n    results.push({\n      json: {\n        component: entry.component,\n        metric: 'health_status',\n        value,\n        metadata: {\n          responseTime,\n          statusCode,\n          timestamp\n        },\n        agentx_url: agentxUrl\n      }\n    });\n  }\n}\n\nstaticData.lastStates = updatedStates;\n\nreturn results;"
+      },
+      "id": "prepare-alert-evaluation",
+      "name": "Prepare Alert Evaluation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1184,
+        528
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$json[\"agentx_url\"]}}/api/alerts/evaluate",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"component\": $json.component, \"metric\": $json.metric, \"value\": $json.value, \"metadata\": $json.metadata } }}",
+        "headerParametersUi": {
+          "parameter": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "id": "evaluate-alert-rules",
+      "name": "Evaluate Alert Rules",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1408,
+        528
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "PIrrA2wpOppzVodi",
+          "name": "Header Auth account"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nfor (const item of items) {\n  const payload = item.json?.body ?? item.json;\n  const statusCode = payload?.statusCode ?? item.json?.statusCode ?? item.json?.error?.statusCode;\n  if (item.json?.error || (typeof statusCode === 'number' && statusCode >= 400)) {\n    console.error('Alert evaluation request failed', item.json);\n  }\n}\n\nreturn items;"
+      },
+      "id": "log-alert-eval-failures",
+      "name": "Log Alert Eval Failures",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        528
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Merge Triggers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook (Manual)": {
+      "main": [
+        [
+          {
+            "node": "Merge Triggers",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Triggers": {
+      "main": [
+        [
+          {
+            "node": "Health Check Example",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Health Check Example": {
+      "main": [
+        [
+          {
+            "node": "Transform to Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transform to Metrics": {
+      "main": [
+        [
+          {
+            "node": "Record Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record Metrics": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Status": {
+      "main": [
+        [
+          {
+            "node": "IF Degraded",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Log Heartbeat",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prepare Alert Evaluation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Degraded": {
+      "main": [
+        [
+          {
+            "node": "Create Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Healthy (No-op)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Alert Evaluation": {
+      "main": [
+        [
+          {
+            "node": "Evaluate Alert Rules",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluate Alert Rules": {
+      "main": [
+        [
+          {
+            "node": "Log Alert Eval Failures",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "template-v1",
+  "meta": {
+    "instanceId": "template"
+  },
+  "id": "TEMPLATE",
+  "tags": []
+}

@@ -561,7 +561,7 @@
             border: 1px solid var(--panel-border);
             border-radius: 16px;
             overflow: hidden;
-            margin: 20px 0;
+            margin: 20px 8px;
             display: none;
             position: relative;
         }
@@ -739,7 +739,7 @@
                     <button class="btn-secondary" id="stopBatchBtn" style="display: none; background: rgba(231, 76, 60, 0.2); border-color: rgba(231, 76, 60, 0.5); color: #e74c3c;">
                         <i class="fas fa-stop"></i> Stop
                     </button>
-                    <span id="batchInfo" style="color: #666;"></span>
+                    <span id="batchInfo" style="color: #666; display: block; line-height: 1.4;"></span>
                 </div>
 
                 <div class="progress-bar" id="progressBar">
@@ -1079,6 +1079,11 @@ Respond ONLY with JSON in this exact format:
                     <div id="detailScoringMethod"></div>
                 </div>
                 <div class="form-group">
+                    <label>Judging Steps</label>
+                    <div id="detailJudgeSteps" style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 6px;"></div>
+                    <div id="detailJudgeMeta" style="margin-top: 8px; color: var(--muted); font-size: 0.85em;"></div>
+                </div>
+                <div class="form-group">
                     <label>Model Response (Preview)</label>
                     <div id="detailResponse" style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 6px; font-family: monospace; white-space: pre-wrap; max-height: 200px; overflow-y: auto;"></div>
                 </div>
@@ -1099,6 +1104,7 @@ Respond ONLY with JSON in this exact format:
                 </div>
             </div>
             <div class="modal-footer">
+                <button class="btn-secondary" id="refreshJudgeDetailsBtn">Refresh</button>
                 <button class="btn-primary close-btn">Close</button>
             </div>
         </div>
@@ -1259,6 +1265,16 @@ Respond ONLY with JSON in this exact format:
                 if (event.target == helpModal) helpModal.style.display = 'none';
             };
 
+            const refreshBtn = document.getElementById('refreshJudgeDetailsBtn');
+            if (refreshBtn) {
+                refreshBtn.onclick = async () => {
+                    if (!window.currentJudgeDetailId) return;
+                    await pollBatchProgress();
+                    // Re-open using stable id (keeps step-by-step view in sync)
+                    showJudgeDetails(window.currentJudgeDetailId);
+                };
+            }
+
             // Judge Temp Slider
             const tempSlider = document.getElementById('judgeTemp');
             const tempVal = document.getElementById('judgeTempVal');
@@ -1285,6 +1301,44 @@ Respond ONLY with JSON in this exact format:
                     settingsModal.style.display = 'none';
                 };
             }
+        }
+
+        function formatHostLabel(url) {
+            if (!url) return 'Unknown';
+            if (url.includes('192.168.2.99')) return 'Primary (99)';
+            if (url.includes('192.168.2.12')) return 'Secondary (12)';
+            return 'Custom';
+        }
+
+        function renderBatchPlan(plan, fallbackHostUrl, qualityScoringEnabled) {
+            if (!plan) {
+                const judgeModel = currentJudgeConfig.model ? `Judge model: ${currentJudgeConfig.model}` : 'Judge model: (default)';
+                const exec = fallbackHostUrl ? `Exec host: ${formatHostLabel(fallbackHostUrl)}` : 'Exec host: (unknown)';
+                const judgePolicy = qualityScoringEnabled ? 'Judge host: opposite of exec host (per model routing)' : 'Judging disabled';
+                return `${exec} • ${judgeModel} • ${judgePolicy}`;
+            }
+
+            const judgeModel = plan.judge_model || currentJudgeConfig.model || '(default)';
+            const lines = [];
+            lines.push(`Judge model: ${judgeModel}${qualityScoringEnabled ? '' : ' (disabled)'}`);
+
+            if (Array.isArray(plan.exec_hosts) && plan.exec_hosts.length > 0) {
+                for (const h of plan.exec_hosts) {
+                    const execLabel = formatHostLabel(h.exec_host);
+                    const judgeLabel = qualityScoringEnabled ? formatHostLabel(h.judge_host) : 'Disabled';
+                    const modelCount = Array.isArray(h.models) ? h.models.length : 0;
+                    lines.push(`${execLabel} → Judge ${judgeLabel}: ${modelCount} model(s), ${h.tests} tests`);
+                }
+            }
+
+            if (Array.isArray(plan.categories) && plan.categories.length > 0) {
+                const catLines = plan.categories.map(c => `${c.category}: ${c.tests} tests (${c.prompt_count} prompt(s) × ${plan.total_models} model(s))`);
+                lines.push('');
+                lines.push('Counts by category:');
+                lines.push(...catLines);
+            }
+
+            return lines.join('<br>');
         }
 
         async function loadJudgeConfig() {
@@ -1476,6 +1530,9 @@ Respond ONLY with JSON in this exact format:
             }
             currentBatchId = null;
             localStorage.removeItem('currentBatchId');
+
+            const batchInfo = document.getElementById('batchInfo');
+            if (batchInfo) batchInfo.innerHTML = '';
         }
 
         document.getElementById('stopBatchBtn').addEventListener('click', () => {
@@ -1507,6 +1564,7 @@ Respond ONLY with JSON in this exact format:
             const stopBtn = document.getElementById('stopBatchBtn');
             const status = document.getElementById('batchStatus');
             const progressBar = document.getElementById('progressBar');
+            const batchInfo = document.getElementById('batchInfo');
 
             btn.disabled = true;
             btn.textContent = 'Starting...';
@@ -1521,6 +1579,8 @@ Respond ONLY with JSON in this exact format:
             document.getElementById('batchResultsContainer').style.display = 'none';
             document.getElementById('batchResultsBody').innerHTML = '';
             window.currentBatchResults = [];
+            window.currentJudgeDetailId = null;
+            if (batchInfo) batchInfo.innerHTML = '';
 
             try {
                 const res = await fetch(`${BENCHMARK_API}/batch`, {
@@ -1542,6 +1602,10 @@ Respond ONLY with JSON in this exact format:
                     localStorage.setItem('currentBatchId', currentBatchId);
                     btn.textContent = qualityScoring ? 'Running (with quality)...' : 'Running...';
 
+                    if (batchInfo) {
+                        batchInfo.innerHTML = renderBatchPlan(json.data.plan, host, qualityScoring);
+                    }
+
                     // Poll for progress
                     batchPollInterval = setInterval(pollBatchProgress, 2000);
                 } else {
@@ -1556,7 +1620,14 @@ Respond ONLY with JSON in this exact format:
         });
 
         function showJudgeDetails(index) {
-            const result = window.currentBatchResults[index];
+            let result = null;
+            if (typeof index === 'string') {
+                result = (window.currentBatchResults || []).find(r => r && r.id === index);
+                window.currentJudgeDetailId = index;
+            } else {
+                result = window.currentBatchResults[index];
+                window.currentJudgeDetailId = result && result.id ? result.id : null;
+            }
             if (!result) return;
 
             // Prompt name
@@ -1587,6 +1658,14 @@ Respond ONLY with JSON in this exact format:
                 methodBadge = '<span style="background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%); color: white; padding: 4px 12px; border-radius: 12px; font-size: 0.85em; font-weight: 600; display: inline-block; margin-bottom: 8px;">❌ Judge Failed</span>';
                 judgePromptText = result.judge_prompt || 'Judge prompt attempted but failed';
                 explanationText = result.quality_explanation || result.error || 'Judge model encountered an error. Quality score could not be determined.';
+            } else if (scoringMethod === 'pending') {
+                methodBadge = '<span style="background: linear-gradient(135deg, #f1c40f 0%, #f39c12 100%); color: #1a1a1a; padding: 4px 12px; border-radius: 12px; font-size: 0.85em; font-weight: 700; display: inline-block; margin-bottom: 8px;">⏳ Scoring Pending</span>';
+                judgePromptText = 'Quality scoring is pending. Please wait for judge results.';
+                explanationText = 'Scoring has not completed yet.';
+            } else if (scoringMethod === 'disabled') {
+                methodBadge = '<span style="background: rgba(255,255,255,0.1); color: var(--muted); padding: 4px 12px; border-radius: 12px; font-size: 0.85em; font-weight: 600; display: inline-block; margin-bottom: 8px;">🚫 Quality Scoring Disabled</span>';
+                judgePromptText = 'Quality scoring was disabled for this run.';
+                explanationText = 'No judge prompt or explanation available because scoring was disabled.';
             } else {
                 methodBadge = '<span style="background: rgba(255,255,255,0.1); color: var(--muted); padding: 4px 12px; border-radius: 12px; font-size: 0.85em; font-weight: 600; display: inline-block; margin-bottom: 8px;">❓ Unknown Method</span>';
                 judgePromptText = 'Scoring method unknown or not recorded';
@@ -1603,6 +1682,41 @@ Respond ONLY with JSON in this exact format:
             const compositeScore = result.composite_score !== undefined && result.composite_score !== null ? result.composite_score : 'N/A';
             document.getElementById('detailQualityScore').textContent = qualityScore;
             document.getElementById('detailCompositeScore').textContent = compositeScore;
+
+            // Step-by-step judging view
+            const method = (result.scoring_method || 'unknown').toLowerCase();
+            const steps = [];
+            steps.push({ label: 'Generated response', state: 'done' });
+
+            if (method === 'disabled') {
+                steps.push({ label: 'Judging disabled', state: 'done' });
+            } else if (method === 'pending') {
+                steps.push({ label: 'Queued for judging', state: 'done' });
+                steps.push({ label: 'Scoring in progress', state: 'current' });
+            } else if (method === 'quick_scored') {
+                steps.push({ label: 'Queued for judging', state: 'done' });
+                steps.push({ label: 'Quick scoring complete', state: 'done' });
+            } else if (method === 'llm_judged') {
+                steps.push({ label: 'Queued for judging', state: 'done' });
+                steps.push({ label: 'LLM judging complete', state: 'done' });
+            } else if (method === 'llm_failed') {
+                steps.push({ label: 'Queued for judging', state: 'done' });
+                steps.push({ label: 'LLM judging failed', state: 'failed' });
+            } else {
+                steps.push({ label: 'Judging state unknown', state: 'current' });
+            }
+
+            const stepHtml = steps.map(s => {
+                const color = s.state === 'done' ? 'var(--accent)' : (s.state === 'failed' ? '#e74c3c' : 'var(--muted)');
+                const icon = s.state === 'done' ? '<i class="fas fa-check"></i>' : (s.state === 'failed' ? '<i class="fas fa-times"></i>' : '<i class="fas fa-ellipsis-h"></i>');
+                return `<div style="display:flex; gap:10px; align-items:center; margin: 6px 0; color:${color};">${icon}<span>${s.label}</span></div>`;
+            }).join('');
+            document.getElementById('detailJudgeSteps').innerHTML = stepHtml;
+
+            const updatedAt = result.timestamp ? new Date(result.timestamp).toLocaleString() : 'unknown';
+            const judgeHost = result.judge_host ? formatHostLabel(result.judge_host) : 'N/A';
+            const judgeModel = result.judge_model || currentJudgeConfig.model || 'N/A';
+            document.getElementById('detailJudgeMeta').innerHTML = `Updated: ${updatedAt} • Judge host: ${judgeHost} • Judge model: ${judgeModel}`;
 
             document.getElementById('judgeDetailsModal').style.display = 'block';
         }
@@ -1635,8 +1749,16 @@ Respond ONLY with JSON in this exact format:
 
                 // Restore progress bar color if it was greyed out
                 document.getElementById('progressFill').style.background = ''; 
-                document.getElementById('progressFill').style.width = `${batch.progress}%`;
-                document.getElementById('progressText').textContent = `${batch.progress}% (${batch.completed}/${batch.total_tests})`;
+                const clampedProgress = Math.min(Number(batch.progress) || 0, 100);
+                document.getElementById('progressFill').style.width = `${clampedProgress}%`;
+                document.getElementById('progressFill').style.borderRadius = clampedProgress >= 99 ? '16px' : '16px 0 0 16px';
+                document.getElementById('progressText').textContent = `${clampedProgress}% (${batch.completed}/${batch.total_tests})`;
+
+                // Show plan info during run/resume
+                const batchInfo = document.getElementById('batchInfo');
+                if (batchInfo && batchInfo.innerHTML.trim() === '' && (batch.plan || batch.judge_config || batch.host)) {
+                    batchInfo.innerHTML = renderBatchPlan(batch.plan, batch.host, batch.quality_scoring !== false);
+                }
                 
                 // Update status text if resuming
                 const status = document.getElementById('batchStatus');
@@ -1654,17 +1776,10 @@ Respond ONLY with JSON in this exact format:
                     tbody.innerHTML = batch.results.map((r, idx) => {
                         const qualityScore = r.quality_score !== undefined && r.quality_score !== null ? r.quality_score : '-';
                         const qualityClass = qualityScore >= 7 ? 'quality-high' : qualityScore >= 4 ? 'quality-mid' : (qualityScore !== '-' ? 'quality-low' : '');
-                        
-                        // Helper to format host URL
-                        const formatHost = (url) => {
-                            if (!url) return 'Unknown';
-                            if (url.includes('192.168.2.99')) return 'Primary (99)';
-                            if (url.includes('192.168.2.12')) return 'Secondary (12)';
-                            return 'Custom';
-                        };
 
-                        const hostInfo = r.host ? `<div style="font-size: 0.75em; color: var(--muted); margin-top: 2px;">Exec: ${formatHost(r.host)}</div>` : '';
-                        const judgeInfo = r.judge_host ? `<div style="font-size: 0.75em; color: var(--muted);">Judge: ${formatHost(r.judge_host)}</div>` : '';
+                        const hostInfo = r.host ? `<div style="font-size: 0.75em; color: var(--muted); margin-top: 2px;">Exec: ${formatHostLabel(r.host)}</div>` : '';
+                        const judgeInfo = r.judge_host ? `<div style="font-size: 0.75em; color: var(--muted);">Judge: ${formatHostLabel(r.judge_host)}</div>` : '';
+                        const judgeStatus = r.scoring_method ? `<div style="font-size: 0.75em; color: var(--muted);">Status: ${r.scoring_method}</div>` : '';
 
                         return `
                             <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
@@ -1676,9 +1791,10 @@ Respond ONLY with JSON in this exact format:
                                 <td style="padding: 8px 12px; text-align: center;" class="${qualityClass}">
                                     ${qualityScore}
                                     ${judgeInfo}
+                                    ${judgeStatus}
                                 </td>
                                 <td style="padding: 8px 12px; text-align: center;">
-                                    <button class="btn-secondary btn-sm" onclick="showJudgeDetails(${idx})">
+                                    <button class="btn-secondary btn-sm" onclick="showJudgeDetails('${r.id || idx}')">
                                         <i class="fas fa-eye"></i> Details
                                     </button>
                                 </td>

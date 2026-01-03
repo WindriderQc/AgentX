@@ -4,12 +4,12 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://192.168.2.33:3003/integrations/events/n8n",
+        "url": "http://localhost:3080/api/metrics/health",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ { \"workflow_id\": \"SBQC-N1.1-health-check\", \"event_type\": \"health_heartbeat\", \"data\": $json } }}",
+        "jsonBody": "={{ {\n  \"component\": \"system-health-check\",\n  \"value\": $json.overall === 'healthy' ? 1 : 0,\n  \"metadata\": {\n    \"workflow\": \"SBQC-N1.1\",\n    \"detail\": $json\n  },\n  \"tags\": [\"heartbeat\", \"aggregate\"]\n} }}",
         "options": {
           "timeout": 5000
         }
@@ -89,12 +89,12 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://192.168.2.33:3003/integrations/events/n8n",
+        "url": "http://localhost:3080/api/alerts",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ { \"workflow_id\": \"SBQC-N1.1-health-check\", \"event_type\": \"health_alert\", \"data\": $json } }}",
+        "jsonBody": "={{ {\n  \"title\": \"System Health Check Failed\",\n  \"severity\": \"critical\",\n  \"message\": \"One or more components are degraded\",\n  \"source\": \"n8n-monitor\",\n  \"context\": {\n    \"component\": \"system\",\n    \"detail\": $json\n  }\n} }}",
         "options": {
           "timeout": 5000
         }

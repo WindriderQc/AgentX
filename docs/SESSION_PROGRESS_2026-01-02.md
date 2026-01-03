@@ -297,7 +297,7 @@ ALERT_EMAIL_FROM=alerts@agentx.local
 ALERT_EMAIL_TO=admin@example.com
 
 # Slack (optional - n8n handles it)
-SLACK_WEBHOOK_URL=https://hooks.slack.com/services/XXX/YYY/ZZZ
+SLACK_WEBHOOK_URL=<your_slack_webhook_url>
 
 # DataAPI Integration
 DATAAPI_BASE_URL=http://localhost:3003
