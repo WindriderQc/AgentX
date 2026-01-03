@@ -4,10 +4,14 @@
  * 
  * Primary: UGFrank (192.168.2.99) - Fast 7B models, front-door
  * Secondary: UGBrutal (192.168.2.12) - Heavy 70B+ models, specialists
+ * 
+ * Requirements:
+ * - Node.js >= 17.3.0 (for AbortSignal.timeout() support)
  */
 
 const logger = require('../../config/logger');
 const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
+const { RemediationAction } = require('../../models/RemediationAction');
 
 class ModelHealthTracker {
     constructor() {
@@ -25,21 +29,23 @@ class ModelHealthTracker {
 
         try {
             const start = Date.now();
-            const response = await fetch(`${host}/api/generate`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    model,
-                    prompt: 'Test',
-                    stream: false
-                }),
+            // Use /api/tags for lighter health check instead of /api/generate
+            const response = await fetch(`${host}/api/tags`, {
+                method: 'GET',
                 signal: AbortSignal.timeout(5000) // 5 second timeout
             });
 
             const responseTime = Date.now() - start;
+            
+            // Check if the specific model exists in the response
+            let modelExists = false;
+            if (response.ok) {
+                const data = await response.json();
+                modelExists = data.models && data.models.some(m => m.name === model || m.model === model);
+            }
 
             const health = {
-                status: response.ok ? 'healthy' : 'unhealthy',
+                status: response.ok && modelExists ? 'healthy' : 'unhealthy',
                 avgResponseTime: responseTime,
                 lastChecked: Date.now()
             };
@@ -175,16 +181,61 @@ function getModelForTask(taskType) {
 }
 
 function getPrimaryHostForTask(taskType) {
-    const task = getModelForTask(taskType);
-    return task.url;
+    try {
+        const task = getModelForTask(taskType);
+
+        if (task && typeof task.url === 'string' && task.url.trim() !== '') {
+            return task.url;
+        }
+
+        logger.warn(`getPrimaryHostForTask: Invalid task configuration for type "${taskType}", falling back to primary host.`);
+    } catch (err) {
+        logger.error('getPrimaryHostForTask: Error determining host for task', err);
+    }
+
+    if (HOSTS && typeof HOSTS.primary === 'string' && HOSTS.primary.trim() !== '') {
+        return HOSTS.primary;
+    }
+
+    return process.env.OLLAMA_HOST;
 }
 
 function getBackupHost(primaryHost) {
-    const hosts = {
-        [process.env.OLLAMA_HOST]: process.env.OLLAMA_HOST_SECONDARY,
-        [process.env.OLLAMA_HOST_SECONDARY]: process.env.OLLAMA_HOST
-    };
-    return hosts[primaryHost] || process.env.OLLAMA_HOST;
+    const primaryEnv = process.env.OLLAMA_HOST;
+    const secondaryEnv = process.env.OLLAMA_HOST_SECONDARY;
+
+    // If both primary and secondary env hosts are defined, explicitly swap between them.
+    if (primaryEnv && secondaryEnv) {
+        if (primaryHost === primaryEnv) {
+            return secondaryEnv;
+        }
+        if (primaryHost === secondaryEnv) {
+            return primaryEnv;
+        }
+        // If primaryHost doesn't match either, prefer the secondary env host as backup.
+        return secondaryEnv;
+    }
+
+    // If only one env host is defined, and it's not already the primaryHost,
+    // use it as the backup.
+    if (primaryEnv && primaryHost !== primaryEnv) {
+        return primaryEnv;
+    }
+    if (secondaryEnv && primaryHost !== secondaryEnv) {
+        return secondaryEnv;
+    }
+
+    // Fall back to configured HOSTS if available.
+    if (HOSTS && HOSTS.secondary) {
+        return HOSTS.secondary;
+    }
+    if (HOSTS && HOSTS.primary) {
+        return HOSTS.primary;
+    }
+
+    // Last resort: return the given primaryHost to avoid returning undefined.
+    logger.warn('Could not determine backup host, returning primary host', { primaryHost });
+    return primaryHost;
 }
 
 /**
@@ -251,6 +302,8 @@ async function classifyAndRoute(message, options = {}) {
 
     let targetHost = preferredHost || getPrimaryHostForTask(classification);
     let targetModel = preferredModel || getModelForTask(classification).model;
+    
+    const originalHost = targetHost; // Store original host for alert message
 
     const primaryHealth = await healthTracker.checkModelHealth(targetHost, targetModel);
 
@@ -258,6 +311,8 @@ async function classifyAndRoute(message, options = {}) {
         primaryHealth.status === 'unhealthy' ||
         (primaryHealth.avgResponseTime && primaryHealth.avgResponseTime > 5000)
     );
+
+    let failoverSucceeded = false;
 
     if (needsFailover) {
         logger.warn('Primary model unhealthy, failing over', {
@@ -269,41 +324,58 @@ async function classifyAndRoute(message, options = {}) {
         const backupHealth = await healthTracker.checkModelHealth(backupHost, targetModel);
 
         if (backupHealth.status === 'healthy') {
-            const { RemediationAction } = require('../../models/RemediationAction');
             await RemediationAction.create({
                 issueType: 'model_degradation',
                 severity: 'medium',
                 context: {
-                    component: `${targetHost}:${targetModel}`,
+                    component: `${originalHost}:${targetModel}`,
                     metric: 'response_time',
                     threshold: 5000,
                     currentValue: primaryHealth.avgResponseTime
                 },
                 strategy: 'model_failover',
-                action: `Switched from ${targetHost} to ${backupHost}`,
+                action: `Switched from ${originalHost} to ${backupHost}`,
                 automatedExecution: true,
                 status: 'succeeded'
             });
 
             targetHost = backupHost;
+            failoverSucceeded = true;
 
             const alertService = require('./alertService').getAlertService();
             await alertService.triggerAlert('model_failover', 'warning', {
                 title: 'Model Failover Triggered',
-                message: `Primary model at ${targetHost} is slow (${primaryHealth.avgResponseTime}ms). Switched to ${backupHost}.`,
-                primary: targetHost,
+                message: `Primary model at ${originalHost} is slow (${primaryHealth.avgResponseTime}ms). Switched to ${backupHost}.`,
+                primary: originalHost,
                 backup: backupHost,
                 responseTime: primaryHealth.avgResponseTime
             });
         } else {
             logger.error('Backup host also unhealthy', { backupHost, backupHealth });
+
+            await RemediationAction.create({
+                issueType: 'model_degradation',
+                severity: 'high',
+                context: {
+                    component: `${originalHost}:${targetModel}`,
+                    metric: 'response_time',
+                    threshold: 5000,
+                    currentValue: primaryHealth.avgResponseTime,
+                    backupHost,
+                    backupHealth
+                },
+                strategy: 'model_failover',
+                action: `Failed to switch from ${originalHost} to ${backupHost} - both primary and backup hosts are unhealthy`,
+                automatedExecution: true,
+                status: 'failed'
+            });
         }
     }
 
     return {
         host: targetHost,
         model: targetModel,
-        failedOver: needsFailover,
+        failedOver: failoverSucceeded,
         health: primaryHealth,
         taskType: classification
     };
@@ -433,13 +505,62 @@ async function getRoutingStatus() {
     };
 }
 
+/**
+ * Derive the list of models to health-check from configuration and env vars.
+ * Falls back to a small set of common models for backward compatibility.
+ */
+function getConfiguredModelsForHealth() {
+    const modelSet = new Set();
+
+    // Derive from TASK_MODELS (may map tasks -> model or array of models)
+    if (typeof TASK_MODELS === 'object' && TASK_MODELS !== null) {
+        Object.values(TASK_MODELS).forEach(value => {
+            if (Array.isArray(value)) {
+                value.forEach(model => {
+                    if (typeof model === 'string' && model.trim()) {
+                        modelSet.add(model.trim());
+                    }
+                });
+            } else if (typeof value === 'object' && value !== null && typeof value.model === 'string' && value.model.trim()) {
+                modelSet.add(value.model.trim());
+            } else if (typeof value === 'string' && value.trim()) {
+                modelSet.add(value.trim());
+            }
+        });
+    }
+
+    // Derive from MODEL_ROUTING (keys may be model names)
+    if (typeof MODEL_ROUTING === 'object' && MODEL_ROUTING !== null) {
+        Object.keys(MODEL_ROUTING).forEach(key => {
+            if (typeof key === 'string' && key.trim()) {
+                modelSet.add(key.trim());
+            }
+        });
+    }
+
+    // Optional explicit override via env var (comma-separated list)
+    if (typeof process.env.HEALTHCHECK_MODELS === 'string' && process.env.HEALTHCHECK_MODELS.trim()) {
+        process.env.HEALTHCHECK_MODELS.split(',')
+            .map(m => m.trim())
+            .filter(Boolean)
+            .forEach(m => modelSet.add(m));
+    }
+
+    // Fallback to previously hardcoded common models if nothing was derived
+    if (modelSet.size === 0) {
+        ['qwen2.5:7b', 'qwen2.5:14b', 'deepseek-r1:7b'].forEach(m => modelSet.add(m));
+    }
+
+    return Array.from(modelSet);
+}
+
 async function getModelHealth(host, model) {
     return await healthTracker.checkModelHealth(host, model);
 }
 
 async function getAllModelsHealth() {
     const hosts = [process.env.OLLAMA_HOST, process.env.OLLAMA_HOST_SECONDARY].filter(Boolean);
-    const models = ['qwen2.5:7b', 'qwen2.5:14b', 'deepseek-r1:7b']; // Common models
+    const models = getConfiguredModelsForHealth();
 
     const healthChecks = [];
     for (const host of hosts) {
