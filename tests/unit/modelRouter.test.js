@@ -39,9 +39,12 @@ describe('ModelRouter failover logic', () => {
 
     test('routes to primary when healthy', async () => {
         dateSpy.mockImplementation(() => 1000);
-        fetch.mockImplementation(() => Promise.resolve({ ok: true }));
+        fetch.mockImplementation(() => Promise.resolve({
+            ok: true,
+            json: async () => ({ models: [{ name: 'qwen2.5:7b-instruct-q4_0' }] })
+        }));
 
-        const result = await classifyAndRoute('hello', { taskType: 'quick_chat' });
+        const result = await classifyAndRoute('hello', { taskType: 'quick_chat', preferredHost: primaryHost });
 
         expect(result.failedOver).toBe(false);
         expect(result.host).toBe(primaryHost);
@@ -58,16 +61,13 @@ describe('ModelRouter failover logic', () => {
         });
 
         fetch.mockImplementation((url) => {
-            if (url.startsWith(primaryHost)) {
-                return Promise.resolve({ ok: true });
-            }
-            if (url.startsWith(secondaryHost)) {
-                return Promise.resolve({ ok: true });
-            }
-            return Promise.resolve({ ok: true });
+            return Promise.resolve({
+                ok: true,
+                json: async () => ({ models: [{ name: 'qwen2.5:7b-instruct-q4_0' }] })
+            });
         });
 
-        const result = await classifyAndRoute('need code', { taskType: 'quick_chat' });
+        const result = await classifyAndRoute('need code', { taskType: 'quick_chat', preferredHost: primaryHost });
 
         expect(result.failedOver).toBe(true);
         expect(result.host).toBe(secondaryHost);
@@ -93,7 +93,10 @@ describe('ModelRouter failover logic', () => {
             return timestamps.shift();
         });
 
-        fetch.mockResolvedValue({ ok: true });
+        fetch.mockResolvedValue({
+            ok: true,
+            json: async () => ({ models: [{ name: 'qwen2.5:7b' }] })
+        });
 
         const health1 = await getModelHealth(primaryHost, 'qwen2.5:7b');
         const health2 = await getModelHealth(primaryHost, 'qwen2.5:7b');
