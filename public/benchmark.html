@@ -1,12 +1,14 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AgentX • Benchmark</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <link rel="stylesheet" href="/styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -16,9 +18,11 @@
             margin: 0 auto;
             padding: 20px;
         }
+
         .benchmark-header {
             margin-bottom: 32px;
         }
+
         .benchmark-header .eyebrow {
             color: var(--accent);
             letter-spacing: 0.2em;
@@ -26,6 +30,7 @@
             text-transform: uppercase;
             margin-bottom: 8px;
         }
+
         .benchmark-header h1 {
             margin: 6px 0 12px;
             font-size: 42px;
@@ -34,22 +39,26 @@
             align-items: center;
             gap: 16px;
         }
+
         .benchmark-header h1 i {
             color: var(--accent);
             font-size: 36px;
         }
+
         .benchmark-header p {
             margin: 0;
             color: var(--muted);
             line-height: 1.5;
             max-width: 720px;
         }
+
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
             gap: 16px;
             margin-bottom: 32px;
         }
+
         .stat-card {
             background: var(--panel);
             backdrop-filter: blur(10px);
@@ -59,11 +68,13 @@
             box-shadow: var(--shadow);
             transition: all 0.3s ease;
         }
+
         .stat-card:hover {
             transform: translateY(-3px);
             border-color: rgba(124, 240, 255, 0.3);
             box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(124, 240, 255, 0.2);
         }
+
         .stat-label {
             color: var(--muted);
             font-size: 12px;
@@ -72,23 +83,27 @@
             margin-bottom: 12px;
             font-weight: 500;
         }
+
         .stat-value {
             color: var(--text);
             font-size: 2.5em;
             font-weight: 700;
             letter-spacing: -0.02em;
         }
+
         .stat-unit {
             color: var(--muted);
             font-size: 0.5em;
             margin-left: 5px;
         }
+
         .charts-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
             gap: 20px;
             margin-bottom: 32px;
         }
+
         .chart-card {
             background: var(--panel);
             backdrop-filter: blur(10px);
@@ -97,6 +112,7 @@
             border-radius: var(--radius);
             box-shadow: var(--shadow);
         }
+
         .chart-title {
             font-size: 1.1em;
             color: var(--text);
@@ -107,10 +123,12 @@
             align-items: center;
             gap: 10px;
         }
+
         .chart-title i {
             color: var(--accent);
             font-size: 0.9em;
         }
+
         .host-selector {
             background: var(--panel);
             backdrop-filter: blur(10px);
@@ -123,6 +141,7 @@
             align-items: center;
             gap: 16px;
         }
+
         .host-selector label {
             color: var(--muted);
             font-size: 0.85em;
@@ -131,6 +150,7 @@
             letter-spacing: 0.05em;
             white-space: nowrap;
         }
+
         .host-selector select {
             flex: 1;
             padding: 10px 14px;
@@ -142,18 +162,21 @@
             font-weight: 500;
             transition: all 0.2s ease;
         }
+
         .host-selector select:focus {
             outline: none;
             border-color: var(--accent);
             background: rgba(0, 0, 0, 0.4);
             box-shadow: 0 0 0 3px rgba(124, 240, 255, 0.1);
         }
+
         .benchmark-forms-wrapper {
             display: grid;
             grid-template-columns: 1fr 1.5fr;
             gap: 20px;
             margin-bottom: 32px;
         }
+
         .test-form {
             background: var(--panel);
             backdrop-filter: blur(10px);
@@ -162,6 +185,7 @@
             border-radius: var(--radius);
             box-shadow: var(--shadow);
         }
+
         .test-form h2 {
             color: var(--text);
             font-weight: 600;
@@ -169,22 +193,27 @@
             margin-bottom: 20px;
             letter-spacing: -0.02em;
         }
+
         .form-grid {
             display: grid;
             grid-template-columns: 1fr;
             gap: 12px;
         }
+
         .form-group {
             display: flex;
             flex-direction: column;
         }
+
         .form-group label {
             color: var(--text);
             font-size: 0.85em;
             margin-bottom: 6px;
             font-weight: 500;
         }
-        .form-group input, .form-group select {
+
+        .form-group input,
+        .form-group select {
             padding: 10px 12px;
             border: 1px solid var(--panel-border);
             background: rgba(0, 0, 0, 0.3);
@@ -194,15 +223,19 @@
             font-weight: 400;
             transition: all 0.2s ease;
         }
-        .form-group input:focus, .form-group select:focus {
+
+        .form-group input:focus,
+        .form-group select:focus {
             outline: none;
             border-color: var(--accent);
             background: rgba(0, 0, 0, 0.4);
             box-shadow: 0 0 0 3px rgba(124, 240, 255, 0.1);
         }
+
         .form-actions {
             margin-top: 8px;
         }
+
         .btn-primary {
             background: linear-gradient(135deg, var(--accent) 0%, rgba(124, 240, 255, 0.7) 100%);
             color: var(--bg);
@@ -215,19 +248,23 @@
             transition: all 0.2s ease;
             box-shadow: 0 4px 12px rgba(124, 240, 255, 0.3);
         }
+
         .btn-primary:hover {
             transform: translateY(-2px);
             box-shadow: 0 8px 20px rgba(124, 240, 255, 0.4);
         }
+
         .btn-primary:active {
             transform: translateY(0);
         }
+
         .btn-primary:disabled {
             opacity: 0.4;
             cursor: not-allowed;
             transform: none;
             box-shadow: none;
         }
+
         .status {
             margin-top: 15px;
             padding: 14px 18px;
@@ -235,16 +272,19 @@
             display: none;
             font-size: 0.9em;
         }
+
         .status.success {
             background: rgba(124, 240, 255, 0.15);
             color: var(--accent);
             border: 1px solid rgba(124, 240, 255, 0.3);
         }
+
         .status.error {
             background: rgba(238, 176, 255, 0.15);
             color: var(--accent-2);
             border: 1px solid rgba(238, 176, 255, 0.3);
         }
+
         .leaderboard {
             background: var(--panel);
             backdrop-filter: blur(10px);
@@ -253,20 +293,25 @@
             border-radius: var(--radius);
             box-shadow: var(--shadow);
         }
+
         .leaderboard h2 {
             color: var(--text);
             font-weight: 600;
             letter-spacing: -0.02em;
         }
+
         .leaderboard table {
             width: 100%;
             border-collapse: collapse;
         }
-        .leaderboard th, .leaderboard td {
+
+        .leaderboard th,
+        .leaderboard td {
             padding: 16px;
             text-align: left;
             border-bottom: 1px solid var(--panel-border);
         }
+
         .leaderboard th {
             background: rgba(0, 0, 0, 0.3);
             font-weight: 600;
@@ -275,12 +320,15 @@
             text-transform: uppercase;
             letter-spacing: 0.05em;
         }
+
         .leaderboard td {
             color: var(--text);
         }
+
         .leaderboard tr:hover {
             background: rgba(124, 240, 255, 0.05);
         }
+
         .badge {
             display: inline-block;
             padding: 6px 14px;
@@ -288,32 +336,47 @@
             font-size: 0.85em;
             font-weight: 600;
         }
-        .badge.gold { 
+
+        .badge.gold {
             background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
             color: #1a1a1a;
             box-shadow: 0 2px 8px rgba(255, 215, 0, 0.3);
         }
-        .badge.silver { 
+
+        .badge.silver {
             background: linear-gradient(135deg, #e0e0e0 0%, #f5f5f5 100%);
             color: #1a1a1a;
             box-shadow: 0 2px 8px rgba(192, 192, 192, 0.3);
         }
-        .badge.bronze { 
+
+        .badge.bronze {
             background: linear-gradient(135deg, #cd7f32 0%, #e8a864 100%);
             color: white;
             box-shadow: 0 2px 8px rgba(205, 127, 50, 0.3);
         }
+
         /* Quality score color indicators */
-        .quality-high { color: #2ecc71; font-weight: 600; }
-        .quality-mid { color: #f1c40f; font-weight: 600; }
-        .quality-low { color: #e74c3c; font-weight: 600; }
-        
+        .quality-high {
+            color: #2ecc71;
+            font-weight: 600;
+        }
+
+        .quality-mid {
+            color: #f1c40f;
+            font-weight: 600;
+        }
+
+        .quality-low {
+            color: #e74c3c;
+            font-weight: 600;
+        }
+
         /* Best overall indicator */
         .best-overall {
             background: linear-gradient(135deg, rgba(46, 204, 113, 0.15) 0%, rgba(102, 126, 234, 0.15) 100%);
             border-left: 3px solid #2ecc71;
         }
-        
+
         /* Tooltip styles */
         .help-icon {
             display: inline-flex;
@@ -329,15 +392,18 @@
             margin-left: 4px;
             position: relative;
         }
+
         .help-icon:hover {
             background: var(--accent);
             color: #fff;
         }
+
         .tooltip-wrapper {
             position: relative;
             display: inline-flex;
             align-items: center;
         }
+
         .tooltip-content {
             display: none;
             position: absolute;
@@ -353,6 +419,7 @@
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
             margin-bottom: 8px;
         }
+
         .tooltip-content::after {
             content: '';
             position: absolute;
@@ -362,21 +429,25 @@
             border: 8px solid transparent;
             border-top-color: #1a1a2e;
         }
-        .help-icon:hover + .tooltip-content,
+
+        .help-icon:hover+.tooltip-content,
         .tooltip-content:hover {
             display: block;
         }
+
         .tooltip-title {
             font-weight: 600;
             color: var(--accent);
             margin-bottom: 6px;
             font-size: 13px;
         }
+
         .tooltip-text {
             color: #ccc;
             font-size: 12px;
             line-height: 1.5;
         }
+
         .tooltip-formula {
             background: rgba(0, 0, 0, 0.3);
             padding: 8px 10px;
@@ -386,7 +457,7 @@
             color: #2ecc71;
             margin-top: 8px;
         }
-        
+
         .host-badge {
             display: inline-block;
             padding: 4px 10px;
@@ -397,6 +468,7 @@
             margin-left: 10px;
             color: var(--muted);
         }
+
         .batch-section {
             background: var(--panel);
             backdrop-filter: blur(10px);
@@ -405,6 +477,7 @@
             border-radius: var(--radius);
             box-shadow: var(--shadow);
         }
+
         .batch-section h2 {
             color: var(--text);
             font-weight: 600;
@@ -416,7 +489,8 @@
             border-bottom: 1px solid var(--panel-border);
             border-radius: var(--radius) var(--radius) 0 0;
         }
-        .batch-section > p {
+
+        .batch-section>p {
             color: var(--muted);
             margin-bottom: 24px;
             padding: 0 28px;
@@ -424,6 +498,7 @@
             line-height: 1.5;
             margin-top: 20px;
         }
+
         .batch-section h3 {
             color: var(--muted);
             margin-bottom: 12px;
@@ -433,18 +508,20 @@
             text-transform: uppercase;
             letter-spacing: 0.1em;
         }
-        .batch-section > div {
+
+        .batch-section>div {
             padding: 0 28px 28px 28px;
         }
-            font-size: 1.1em;
-            font-weight: 600;
-        }
+
+
+
         .level-grid {
             display: flex;
             flex-wrap: wrap;
             gap: 8px;
             margin-bottom: 18px;
         }
+
         .level-checkbox {
             display: flex;
             align-items: center;
@@ -457,11 +534,13 @@
             background: rgba(255, 255, 255, 0.03);
             flex: 0 0 auto;
         }
+
         .level-checkbox:hover {
             border-color: var(--accent);
             background: rgba(124, 240, 255, 0.08);
             transform: translateY(-1px);
         }
+
         .level-checkbox input {
             margin: 0;
             width: 14px;
@@ -469,10 +548,12 @@
             cursor: pointer;
             accent-color: var(--accent);
         }
-        .level-checkbox input:checked + label {
+
+        .level-checkbox input:checked+label {
             color: var(--accent);
             font-weight: 600;
         }
+
         .level-checkbox label {
             cursor: pointer;
             font-weight: 500;
@@ -484,14 +565,17 @@
             gap: 4px;
             white-space: nowrap;
         }
+
         .level-checkbox label small {
             color: var(--muted);
             font-weight: 400;
             font-size: 0.9em;
         }
+
         .model-selection {
             margin-bottom: 18px;
         }
+
         .select-all-wrapper {
             margin-bottom: 12px;
             padding: 10px 14px;
@@ -499,6 +583,7 @@
             border-radius: 8px;
             border: 1px solid rgba(124, 240, 255, 0.2);
         }
+
         .select-all-wrapper label {
             cursor: pointer;
             color: var(--accent);
@@ -508,18 +593,21 @@
             align-items: center;
             gap: 8px;
         }
+
         .select-all-wrapper input {
             accent-color: var(--accent);
             width: 16px;
             height: 16px;
             cursor: pointer;
         }
+
         .model-grid {
             display: flex;
             flex-wrap: wrap;
             gap: 8px;
             margin-top: 12px;
         }
+
         .model-checkbox {
             display: flex;
             align-items: center;
@@ -533,10 +621,12 @@
             background: rgba(255, 255, 255, 0.03);
             flex: 0 0 auto;
         }
+
         .model-checkbox:hover {
             border-color: var(--accent);
             background: rgba(124, 240, 255, 0.08);
         }
+
         .model-checkbox input {
             margin: 0;
             cursor: pointer;
@@ -544,16 +634,19 @@
             width: 14px;
             height: 14px;
         }
-        .model-checkbox input:checked + label {
+
+        .model-checkbox input:checked+label {
             color: var(--accent);
             font-weight: 600;
         }
+
         .model-checkbox label {
             margin: 0;
             cursor: pointer;
             color: var(--text);
             font-weight: 400;
         }
+
         .progress-bar {
             width: calc(100% - 16px);
             height: 32px;
@@ -566,9 +659,11 @@
             position: relative;
             box-sizing: border-box;
         }
+
         .progress-bar.active {
             display: block;
         }
+
         .progress-fill {
             position: absolute;
             top: 0;
@@ -579,6 +674,7 @@
             min-width: 2%;
             border-radius: 16px 0 0 16px;
         }
+
         .progress-text {
             position: absolute;
             top: 0;
@@ -591,21 +687,24 @@
             color: #fff;
             font-weight: 600;
             font-size: 0.9em;
-            text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
             pointer-events: none;
             z-index: 1;
         }
+
         .batch-controls {
             display: flex;
             gap: 15px;
             align-items: center;
             margin-top: 20px;
         }
+
         .batch-controls span {
             color: var(--muted);
             font-weight: 400;
             font-size: 0.9em;
         }
+
         .batch-history {
             background: var(--panel);
             backdrop-filter: blur(10px);
@@ -617,6 +716,7 @@
         }
     </style>
 </head>
+
 <body>
     <div id="nav-container"></div>
     <script src="/js/components/nav.js"></script>
@@ -630,7 +730,8 @@
                     <h1><i class="fas fa-rocket"></i>Benchmark</h1>
                     <p>Real-time performance metrics for Ollama models across configured hosts</p>
                 </div>
-                <button id="helpBtn" class="btn-secondary" style="margin-top: 10px;"><i class="fas fa-book"></i> Methodology & Guide</button>
+                <button id="helpBtn" class="btn-secondary" style="margin-top: 10px;"><i class="fas fa-book"></i>
+                    Methodology & Guide</button>
             </div>
         </div>
 
@@ -711,15 +812,19 @@
                     </div>
                 </div>
 
-                <div style="margin-bottom: 24px; padding: 16px; background: rgba(46, 204, 113, 0.1); border: 1px solid rgba(46, 204, 113, 0.3); border-radius: 8px;">
+                <div
+                    style="margin-bottom: 24px; padding: 16px; background: rgba(46, 204, 113, 0.1); border: 1px solid rgba(46, 204, 113, 0.3); border-radius: 8px;">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
                             <input type="checkbox" id="qualityScoring" checked style="width: 18px; height: 18px;">
-                            <span style="font-weight: 600;"><i class="fas fa-star" style="color: #2ecc71;"></i> Enable Quality Scoring</span>
+                            <span style="font-weight: 600;"><i class="fas fa-star" style="color: #2ecc71;"></i> Enable
+                                Quality Scoring</span>
                         </label>
-                        <button id="settingsBtn" class="btn-secondary btn-sm"><i class="fas fa-cog"></i> Configure Judge</button>
+                        <button id="settingsBtn" class="btn-secondary btn-sm"><i class="fas fa-cog"></i> Configure
+                            Judge</button>
                     </div>
-                    <small style="color: #999; display: block; margin-top: 6px; margin-left: 28px;">Uses LLM-as-judge to evaluate response quality</small>
+                    <small style="color: #999; display: block; margin-top: 6px; margin-left: 28px;">Uses LLM-as-judge to
+                        evaluate response quality</small>
                 </div>
 
                 <div class="model-selection">
@@ -737,7 +842,8 @@
 
                 <div class="batch-controls">
                     <button class="btn-primary" id="runBatchBtn">Start Batch Test</button>
-                    <button class="btn-secondary" id="stopBatchBtn" style="display: none; background: rgba(231, 76, 60, 0.2); border-color: rgba(231, 76, 60, 0.5); color: #e74c3c;">
+                    <button class="btn-secondary" id="stopBatchBtn"
+                        style="display: none; background: rgba(231, 76, 60, 0.2); border-color: rgba(231, 76, 60, 0.5); color: #e74c3c;">
                         <i class="fas fa-stop"></i> Stop
                     </button>
                     <span id="batchInfo" style="color: #666; display: block; line-height: 1.4;"></span>
@@ -753,7 +859,8 @@
                 <!-- Batch Results Table -->
                 <div id="batchResultsContainer" style="display: none; margin-top: 20px;">
                     <h3 style="font-size: 1.1em; margin-bottom: 12px; color: var(--text);">Batch Results</h3>
-                    <div style="max-height: 300px; overflow-y: auto; border: 1px solid var(--panel-border); border-radius: 6px;">
+                    <div
+                        style="max-height: 300px; overflow-y: auto; border: 1px solid var(--panel-border); border-radius: 6px;">
                         <table style="width: 100%; border-collapse: collapse; font-size: 0.9em;">
                             <thead style="background: rgba(0,0,0,0.2); position: sticky; top: 0;">
                                 <tr>
@@ -790,14 +897,18 @@
         </div>
 
         <div class="leaderboard">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+            <div
+                style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
                 <div>
-                    <h2 style="display: flex; align-items: center; gap: 10px; margin: 0;"><i class="fas fa-trophy" style="color: var(--accent);"></i> Model Leaderboard</h2>
-                    <span id="bestOverallText" style="font-size: 13px; color: #888; margin-top: 4px; display: block;"></span>
+                    <h2 style="display: flex; align-items: center; gap: 10px; margin: 0;"><i class="fas fa-trophy"
+                            style="color: var(--accent);"></i> Model Leaderboard</h2>
+                    <span id="bestOverallText"
+                        style="font-size: 13px; color: #888; margin-top: 4px; display: block;"></span>
                 </div>
                 <div class="sort-controls" style="display: flex; gap: 8px; align-items: center;">
                     <label style="color: #666; font-size: 13px;">Sort:</label>
-                    <select id="sortBy" style="padding: 6px 12px; border-radius: 6px; background: var(--card-bg); border: 1px solid rgba(255,255,255,0.1); color: #fff; font-size: 13px;">
+                    <select id="sortBy"
+                        style="padding: 6px 12px; border-radius: 6px; background: var(--card-bg); border: 1px solid rgba(255,255,255,0.1); color: #fff; font-size: 13px;">
                         <option value="composite" selected>Composite ⭐</option>
                         <option value="quality">Quality</option>
                         <option value="latency">Latency</option>
@@ -856,7 +967,9 @@
                                 <span class="help-icon">?</span>
                                 <span class="tooltip-content">
                                     <div class="tooltip-title">Sample Size</div>
-                                    <div class="tooltip-text">Number of benchmark test results included for this model (used to compute averages). Informational only — it does not affect ranking.</div>
+                                    <div class="tooltip-text">Number of benchmark test results included for this model
+                                        (used to compute averages). Informational only — it does not affect ranking.
+                                    </div>
                                 </span>
                             </span>
                         </th>
@@ -889,7 +1002,8 @@
                 <div class="form-group">
                     <label for="judgeTemp">Judge Temperature: <span id="judgeTempVal">0.1</span></label>
                     <input type="range" id="judgeTemp" min="0" max="1" step="0.1" value="0.1">
-                    <small class="form-text text-muted">Lower temperature (0.1) ensures consistent and deterministic grading.</small>
+                    <small class="form-text text-muted">Lower temperature (0.1) ensures consistent and deterministic
+                        grading.</small>
                 </div>
                 <div class="form-group">
                     <label for="judgeTimeout">Judge Timeout (ms)</label>
@@ -901,35 +1015,44 @@
                         <input type="checkbox" id="judgeSameHost" style="width: 16px; height: 16px;" />
                         Use judge on same host as execution
                     </label>
-                    <small class="form-text text-muted">Default is off (judge runs on the configured judge host for the model/exec host).</small>
+                    <small class="form-text text-muted">Default is off (judge runs on the configured judge host for the
+                        model/exec host).</small>
                 </div>
 
                 <div style="margin-top: 20px; border-top: 1px solid var(--panel-border); padding-top: 15px;">
-                    <label style="cursor: pointer; display: flex; align-items: center; gap: 8px; color: var(--accent); font-weight: 600;" onclick="const el = document.getElementById('customPromptsSection'); el.style.display = el.style.display === 'none' ? 'block' : 'none';">
+                    <label
+                        style="cursor: pointer; display: flex; align-items: center; gap: 8px; color: var(--accent); font-weight: 600;"
+                        onclick="const el = document.getElementById('customPromptsSection'); el.style.display = el.style.display === 'none' ? 'block' : 'none';">
                         <i class="fas fa-chevron-right"></i> Advanced: Custom Judge Prompts
                     </label>
                     <div id="customPromptsSection" style="display: none; margin-top: 15px;">
                         <div class="form-group">
                             <label>Reasoning Prompt</label>
-                            <textarea id="promptReasoning" class="form-control" rows="6" style="font-family: monospace; font-size: 0.85em;"></textarea>
+                            <textarea id="promptReasoning" class="form-control" rows="6"
+                                style="font-family: monospace; font-size: 0.85em;"></textarea>
                         </div>
                         <div class="form-group">
                             <label>Code Prompt</label>
-                            <textarea id="promptCode" class="form-control" rows="6" style="font-family: monospace; font-size: 0.85em;"></textarea>
+                            <textarea id="promptCode" class="form-control" rows="6"
+                                style="font-family: monospace; font-size: 0.85em;"></textarea>
                         </div>
                         <div class="form-group">
                             <label>Factual Prompt</label>
-                            <textarea id="promptFactual" class="form-control" rows="6" style="font-family: monospace; font-size: 0.85em;"></textarea>
+                            <textarea id="promptFactual" class="form-control" rows="6"
+                                style="font-family: monospace; font-size: 0.85em;"></textarea>
                         </div>
                         <div class="form-group">
                             <label>Math Prompt</label>
-                            <textarea id="promptMath" class="form-control" rows="6" style="font-family: monospace; font-size: 0.85em;"></textarea>
+                            <textarea id="promptMath" class="form-control" rows="6"
+                                style="font-family: monospace; font-size: 0.85em;"></textarea>
                         </div>
                         <div class="form-group">
                             <label>Creative Prompt</label>
-                            <textarea id="promptCreative" class="form-control" rows="6" style="font-family: monospace; font-size: 0.85em;"></textarea>
+                            <textarea id="promptCreative" class="form-control" rows="6"
+                                style="font-family: monospace; font-size: 0.85em;"></textarea>
                         </div>
-                        <small class="text-muted" style="display: block; margin-top: 8px;">Use {{task}}, {{expected}}, and {{response}} as placeholders.</small>
+                        <small class="text-muted" style="display: block; margin-top: 8px;">Use {{task}}, {{expected}},
+                            and {{response}} as placeholders.</small>
                     </div>
                 </div>
             </div>
@@ -949,11 +1072,13 @@
             <div class="modal-body">
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 32px;">
                     <div>
-                        <h3 style="color: var(--text); font-size: 1.1em; margin-bottom: 16px; border-bottom: 1px solid var(--panel-border); padding-bottom: 8px;">
+                        <h3
+                            style="color: var(--text); font-size: 1.1em; margin-bottom: 16px; border-bottom: 1px solid var(--panel-border); padding-bottom: 8px;">
                             <i class="fas fa-star" style="color: #2ecc71;"></i> Quality Scoring (LLM-as-Judge)
                         </h3>
                         <p style="color: var(--muted); line-height: 1.6; font-size: 0.95em;">
-                            We use a capable "Judge" model to evaluate responses from other models. The judge scores each response on a 0-10 scale based on specific criteria tailored to the prompt type:
+                            We use a capable "Judge" model to evaluate responses from other models. The judge scores
+                            each response on a 0-10 scale based on specific criteria tailored to the prompt type:
                         </p>
                         <ul style="color: var(--muted); font-size: 0.9em; line-height: 1.6; margin-top: 12px;">
                             <li><strong>Reasoning:</strong> Evaluates accuracy, logical flow, and clarity.</li>
@@ -965,11 +1090,13 @@
                     </div>
 
                     <div>
-                        <h3 style="color: var(--text); font-size: 1.1em; margin-bottom: 16px; border-bottom: 1px solid var(--panel-border); padding-bottom: 8px;">
+                        <h3
+                            style="color: var(--text); font-size: 1.1em; margin-bottom: 16px; border-bottom: 1px solid var(--panel-border); padding-bottom: 8px;">
                             <i class="fas fa-balance-scale" style="color: #f1c40f;"></i> Composite Score Calculation
                         </h3>
                         <p style="color: var(--muted); line-height: 1.6; font-size: 0.95em;">
-                            The Composite Score provides a single balanced metric (0-10) to rank models overall. It is calculated using a weighted formula:
+                            The Composite Score provides a single balanced metric (0-10) to rank models overall. It is
+                            calculated using a weighted formula:
                         </p>
                         <div style="background: rgba(0,0,0,0.2); padding: 16px; border-radius: 8px; margin-top: 12px;">
                             <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
@@ -995,82 +1122,98 @@
                     <p style="color: var(--muted); font-size: 0.9em; margin-bottom: 16px;">
                         These are the exact system prompts used by the Judge model to evaluate responses.
                     </p>
-                    
+
                     <div class="judge-prompts-list">
                         <!-- Reasoning -->
                         <details style="background: rgba(0,0,0,0.2); border-radius: 6px; margin-bottom: 8px;">
-                            <summary style="padding: 12px; cursor: pointer; font-weight: 600; color: var(--text);">Reasoning Prompt</summary>
-                            <div style="padding: 12px; border-top: 1px solid var(--panel-border); font-family: monospace; font-size: 0.85em; color: var(--muted); white-space: pre-wrap;">You are a reasoning quality evaluator. Analyze the logical reasoning in this response.
+                            <summary style="padding: 12px; cursor: pointer; font-weight: 600; color: var(--text);">
+                                Reasoning Prompt</summary>
+                            <div
+                                style="padding: 12px; border-top: 1px solid var(--panel-border); font-family: monospace; font-size: 0.85em; color: var(--muted); white-space: pre-wrap;">
+                                You are a reasoning quality evaluator. Analyze the logical reasoning in this response.
 
-CRITERIA TO EVALUATE:
-1. Accuracy (0-10): Is the conclusion/answer correct?
-2. Logic (0-10): Is the reasoning process sound and valid?
-3. Clarity (0-10): Is the explanation clear and understandable?
+                                CRITERIA TO EVALUATE:
+                                1. Accuracy (0-10): Is the conclusion/answer correct?
+                                2. Logic (0-10): Is the reasoning process sound and valid?
+                                3. Clarity (0-10): Is the explanation clear and understandable?
 
-TASK: {{task}}
-EXPECTED: {{expected}}
-RESPONSE TO EVALUATE:
-{{response}}
+                                TASK: {{task}}
+                                EXPECTED: {{expected}}
+                                RESPONSE TO EVALUATE:
+                                {{response}}
 
-Respond ONLY with JSON in this exact format:
-{"accuracy": X, "logic": X, "clarity": X, "overall": X, "explanation": "brief reason"}</div>
+                                Respond ONLY with JSON in this exact format:
+                                {"accuracy": X, "logic": X, "clarity": X, "overall": X, "explanation": "brief reason"}
+                            </div>
                         </details>
 
                         <!-- Code -->
                         <details style="background: rgba(0,0,0,0.2); border-radius: 6px; margin-bottom: 8px;">
-                            <summary style="padding: 12px; cursor: pointer; font-weight: 600; color: var(--text);">Code Prompt</summary>
-                            <div style="padding: 12px; border-top: 1px solid var(--panel-border); font-family: monospace; font-size: 0.85em; color: var(--muted); white-space: pre-wrap;">You are a code quality evaluator. Analyze the given code response and score it.
+                            <summary style="padding: 12px; cursor: pointer; font-weight: 600; color: var(--text);">Code
+                                Prompt</summary>
+                            <div
+                                style="padding: 12px; border-top: 1px solid var(--panel-border); font-family: monospace; font-size: 0.85em; color: var(--muted); white-space: pre-wrap;">
+                                You are a code quality evaluator. Analyze the given code response and score it.
 
-CRITERIA TO EVALUATE:
-1. Correctness (0-10): Does the code work and produce correct output?
-2. Clarity (0-10): Is the code readable and well-structured?
-3. Efficiency (0-10): Is it reasonably efficient for the task?
+                                CRITERIA TO EVALUATE:
+                                1. Correctness (0-10): Does the code work and produce correct output?
+                                2. Clarity (0-10): Is the code readable and well-structured?
+                                3. Efficiency (0-10): Is it reasonably efficient for the task?
 
-TASK: {{task}}
-EXPECTED: {{expected}}
-RESPONSE TO EVALUATE:
-{{response}}
+                                TASK: {{task}}
+                                EXPECTED: {{expected}}
+                                RESPONSE TO EVALUATE:
+                                {{response}}
 
-Respond ONLY with JSON in this exact format:
-{"correctness": X, "clarity": X, "efficiency": X, "overall": X, "explanation": "brief reason"}</div>
+                                Respond ONLY with JSON in this exact format:
+                                {"correctness": X, "clarity": X, "efficiency": X, "overall": X, "explanation": "brief
+                                reason"}</div>
                         </details>
 
                         <!-- Factual -->
                         <details style="background: rgba(0,0,0,0.2); border-radius: 6px; margin-bottom: 8px;">
-                            <summary style="padding: 12px; cursor: pointer; font-weight: 600; color: var(--text);">Factual Prompt</summary>
-                            <div style="padding: 12px; border-top: 1px solid var(--panel-border); font-family: monospace; font-size: 0.85em; color: var(--muted); white-space: pre-wrap;">You are a factual accuracy evaluator. Check if this response is factually correct.
+                            <summary style="padding: 12px; cursor: pointer; font-weight: 600; color: var(--text);">
+                                Factual Prompt</summary>
+                            <div
+                                style="padding: 12px; border-top: 1px solid var(--panel-border); font-family: monospace; font-size: 0.85em; color: var(--muted); white-space: pre-wrap;">
+                                You are a factual accuracy evaluator. Check if this response is factually correct.
 
-CRITERIA TO EVALUATE:
-1. Accuracy (0-10): Is the information factually correct?
-2. Completeness (0-10): Does it answer the question fully?
-3. Clarity (0-10): Is it presented clearly?
+                                CRITERIA TO EVALUATE:
+                                1. Accuracy (0-10): Is the information factually correct?
+                                2. Completeness (0-10): Does it answer the question fully?
+                                3. Clarity (0-10): Is it presented clearly?
 
-TASK: {{task}}
-EXPECTED: {{expected}}
-RESPONSE TO EVALUATE:
-{{response}}
+                                TASK: {{task}}
+                                EXPECTED: {{expected}}
+                                RESPONSE TO EVALUATE:
+                                {{response}}
 
-Respond ONLY with JSON in this exact format:
-{"accuracy": X, "completeness": X, "clarity": X, "overall": X, "explanation": "brief reason"}</div>
+                                Respond ONLY with JSON in this exact format:
+                                {"accuracy": X, "completeness": X, "clarity": X, "overall": X, "explanation": "brief
+                                reason"}</div>
                         </details>
 
                         <!-- Math -->
                         <details style="background: rgba(0,0,0,0.2); border-radius: 6px; margin-bottom: 8px;">
-                            <summary style="padding: 12px; cursor: pointer; font-weight: 600; color: var(--text);">Math Prompt</summary>
-                            <div style="padding: 12px; border-top: 1px solid var(--panel-border); font-family: monospace; font-size: 0.85em; color: var(--muted); white-space: pre-wrap;">You are a math evaluator. Check if the mathematical answer and work is correct.
+                            <summary style="padding: 12px; cursor: pointer; font-weight: 600; color: var(--text);">Math
+                                Prompt</summary>
+                            <div
+                                style="padding: 12px; border-top: 1px solid var(--panel-border); font-family: monospace; font-size: 0.85em; color: var(--muted); white-space: pre-wrap;">
+                                You are a math evaluator. Check if the mathematical answer and work is correct.
 
-CRITERIA TO EVALUATE:
-1. Answer (0-10): Is the final answer correct?
-2. Method (0-10): Is the solution method/work correct?
-3. Presentation (0-10): Is it clearly presented?
+                                CRITERIA TO EVALUATE:
+                                1. Answer (0-10): Is the final answer correct?
+                                2. Method (0-10): Is the solution method/work correct?
+                                3. Presentation (0-10): Is it clearly presented?
 
-TASK: {{task}}
-EXPECTED: {{expected}}
-RESPONSE TO EVALUATE:
-{{response}}
+                                TASK: {{task}}
+                                EXPECTED: {{expected}}
+                                RESPONSE TO EVALUATE:
+                                {{response}}
 
-Respond ONLY with JSON in this exact format:
-{"answer": X, "method": X, "presentation": X, "overall": X, "explanation": "brief reason"}</div>
+                                Respond ONLY with JSON in this exact format:
+                                {"answer": X, "method": X, "presentation": X, "overall": X, "explanation": "brief
+                                reason"}</div>
                         </details>
                     </div>
                 </div>
@@ -1098,20 +1241,27 @@ Respond ONLY with JSON in this exact format:
                 </div>
                 <div class="form-group">
                     <label>Judging Steps</label>
-                    <div id="detailJudgeSteps" style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 6px;"></div>
+                    <div id="detailJudgeSteps" style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 6px;">
+                    </div>
                     <div id="detailJudgeMeta" style="margin-top: 8px; color: var(--muted); font-size: 0.85em;"></div>
                 </div>
                 <div class="form-group">
                     <label>Model Response (Preview)</label>
-                    <div id="detailResponse" style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 6px; font-family: monospace; white-space: pre-wrap; max-height: 200px; overflow-y: auto;"></div>
+                    <div id="detailResponse"
+                        style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 6px; font-family: monospace; white-space: pre-wrap; max-height: 200px; overflow-y: auto;">
+                    </div>
                 </div>
                 <div class="form-group">
                     <label>Judge Prompt (Input to Judge)</label>
-                    <div id="detailJudgePrompt" style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 6px; font-family: monospace; white-space: pre-wrap; max-height: 200px; overflow-y: auto; font-size: 0.9em; color: var(--muted);"></div>
+                    <div id="detailJudgePrompt"
+                        style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 6px; font-family: monospace; white-space: pre-wrap; max-height: 200px; overflow-y: auto; font-size: 0.9em; color: var(--muted);">
+                    </div>
                 </div>
                 <div class="form-group">
                     <label>Judge's Explanation</label>
-                    <div id="detailExplanation" style="background: rgba(46, 204, 113, 0.1); padding: 12px; border-radius: 6px; border-left: 4px solid #2ecc71; white-space: pre-wrap;"></div>
+                    <div id="detailExplanation"
+                        style="background: rgba(46, 204, 113, 0.1); padding: 12px; border-radius: 6px; border-left: 4px solid #2ecc71; white-space: pre-wrap;">
+                    </div>
                 </div>
                 <div class="form-group">
                     <label>Scores</label>
@@ -1119,6 +1269,7 @@ Respond ONLY with JSON in this exact format:
                         <div>Quality: <span id="detailQualityScore" style="font-weight: bold;"></span></div>
                         <div>Composite: <span id="detailCompositeScore" style="font-weight: bold;"></span></div>
                     </div>
+                    <div id="detailCompositeBreakdown" style="margin-top: 12px;"></div>
                 </div>
             </div>
             <div class="modal-footer">
@@ -1141,6 +1292,7 @@ Respond ONLY with JSON in this exact format:
             background-color: rgba(0, 0, 0, 0.6);
             backdrop-filter: blur(5px);
         }
+
         .modal-content {
             background-color: var(--panel);
             margin: 10% auto;
@@ -1152,10 +1304,19 @@ Respond ONLY with JSON in this exact format:
             box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
             animation: modalSlideIn 0.3s ease;
         }
+
         @keyframes modalSlideIn {
-            from { transform: translateY(-20px); opacity: 0; }
-            to { transform: translateY(0); opacity: 1; }
+            from {
+                transform: translateY(-20px);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
         }
+
         .modal-header {
             padding: 20px 24px;
             border-bottom: 1px solid var(--panel-border);
@@ -1163,6 +1324,7 @@ Respond ONLY with JSON in this exact format:
             justify-content: space-between;
             align-items: center;
         }
+
         .modal-header h2 {
             margin: 0;
             font-size: 1.5em;
@@ -1170,6 +1332,7 @@ Respond ONLY with JSON in this exact format:
             align-items: center;
             gap: 10px;
         }
+
         .close {
             color: var(--muted);
             font-size: 28px;
@@ -1177,14 +1340,17 @@ Respond ONLY with JSON in this exact format:
             cursor: pointer;
             transition: color 0.2s;
         }
+
         .close:hover {
             color: var(--text);
         }
+
         .modal-body {
             padding: 24px;
             max-height: 60vh;
             overflow-y: auto;
         }
+
         .modal-footer {
             padding: 16px 24px;
             border-top: 1px solid var(--panel-border);
@@ -1192,23 +1358,28 @@ Respond ONLY with JSON in this exact format:
             justify-content: flex-end;
             gap: 12px;
         }
+
         .modal-body h3 {
             margin-top: 0;
             color: var(--accent);
             font-size: 1.2em;
             margin-bottom: 12px;
         }
+
         .modal-body h4 {
             margin: 16px 0 8px;
             color: var(--text);
         }
+
         .modal-body ul {
             padding-left: 20px;
             color: var(--muted);
         }
+
         .modal-body li {
             margin-bottom: 6px;
         }
+
         .form-control {
             width: 100%;
             padding: 10px;
@@ -1218,6 +1389,7 @@ Respond ONLY with JSON in this exact format:
             color: var(--text);
             margin-top: 6px;
         }
+
         .btn-icon {
             background: none;
             border: none;
@@ -1226,13 +1398,16 @@ Respond ONLY with JSON in this exact format:
             cursor: pointer;
             transition: color 0.2s;
         }
+
         .btn-icon:hover {
             color: var(--accent);
         }
+
         .btn-sm {
             padding: 6px 12px;
             font-size: 0.85em;
         }
+
         .btn-secondary {
             background: rgba(255, 255, 255, 0.1);
             color: var(--text);
@@ -1241,6 +1416,7 @@ Respond ONLY with JSON in this exact format:
             cursor: pointer;
             transition: all 0.2s;
         }
+
         .btn-secondary:hover {
             background: rgba(255, 255, 255, 0.15);
         }
@@ -1267,13 +1443,13 @@ Respond ONLY with JSON in this exact format:
                     settingsModal.style.display = 'block';
                 };
             }
-            
+
             if (helpBtn) {
                 helpBtn.onclick = () => helpModal.style.display = 'block';
             }
 
             closeBtns.forEach(btn => {
-                btn.onclick = function() {
+                btn.onclick = function () {
                     this.closest('.modal').style.display = 'none';
                 }
             });
@@ -1375,17 +1551,17 @@ Respond ONLY with JSON in this exact format:
                 if (json.status === 'success') {
                     const config = json.data.judge_config;
                     const scoringConfigs = json.data.scoring_configs;
-                    
+
                     // Populate Judge Model Dropdown (using all available models from current host)
                     const hostUrl = document.getElementById('host').value;
                     const host = ollamaHosts.find(h => h.url === hostUrl);
                     const judgeSelect = document.getElementById('judgeModel');
-                    
+
                     if (host && host.models && judgeSelect) {
                         // If current config model is not in list, add it or select default
                         const currentModel = currentJudgeConfig.model || config.model;
-                        
-                        judgeSelect.innerHTML = host.models.map(m => 
+
+                        judgeSelect.innerHTML = host.models.map(m =>
                             `<option value="${m}" ${m === currentModel ? 'selected' : ''}>${m}</option>`
                         ).join('');
                     }
@@ -1403,7 +1579,7 @@ Respond ONLY with JSON in this exact format:
                         if (document.getElementById('judgeSameHost')) {
                             document.getElementById('judgeSameHost').checked = !!config.judge_same_host;
                         }
-                        
+
                         // Initialize current config
                         currentJudgeConfig = { ...config };
                     }
@@ -1552,14 +1728,14 @@ Respond ONLY with JSON in this exact format:
             const stopBtn = document.getElementById('stopBatchBtn');
             const progressBar = document.getElementById('progressBar');
             const status = document.getElementById('batchStatus');
-            
+
             btn.disabled = false;
             btn.textContent = 'Start Batch Test';
             stopBtn.style.display = 'none';
-            
+
             progressBar.classList.remove('active');
             status.style.display = 'none';
-            
+
             if (batchPollInterval) {
                 clearInterval(batchPollInterval);
                 batchPollInterval = null;
@@ -1605,12 +1781,12 @@ Respond ONLY with JSON in this exact format:
             btn.disabled = true;
             btn.textContent = 'Starting...';
             stopBtn.style.display = 'inline-block';
-            
+
             status.style.display = 'none';
             progressBar.classList.add('active');
             document.getElementById('progressFill').style.width = '0%';
             document.getElementById('progressText').textContent = '0%';
-            
+
             // Clear previous results
             document.getElementById('batchResultsContainer').style.display = 'none';
             document.getElementById('batchResultsBody').innerHTML = '';
@@ -1668,14 +1844,14 @@ Respond ONLY with JSON in this exact format:
 
             // Prompt name
             document.getElementById('detailPromptName').textContent = result.prompt_name;
-            
+
             // Response preview
             document.getElementById('detailResponse').textContent = result.response_preview || 'No preview available';
 
             // Scoring method and judge model info
             const scoringMethod = result.scoring_method || 'unknown';
             const judgeModel = result.judge_model || 'Not specified';
-            
+
             let methodBadge = '';
             let judgePromptText = '';
             let explanationText = '';
@@ -1712,12 +1888,54 @@ Respond ONLY with JSON in this exact format:
             document.getElementById('detailScoringMethod').innerHTML = methodBadge;
             document.getElementById('detailJudgePrompt').textContent = judgePromptText;
             document.getElementById('detailExplanation').textContent = explanationText;
-            
+
             // Scores
             const qualityScore = result.quality_score !== undefined && result.quality_score !== null ? result.quality_score : 'N/A';
             const compositeScore = result.composite_score !== undefined && result.composite_score !== null ? result.composite_score : 'N/A';
             document.getElementById('detailQualityScore').textContent = qualityScore;
             document.getElementById('detailCompositeScore').textContent = compositeScore;
+
+            // Composite Breakdown
+            const breakdownContainer = document.getElementById('detailCompositeBreakdown');
+            if (result.normalized_scores && result.composite_score !== undefined && breakdownContainer) {
+                const n = result.normalized_scores;
+                breakdownContainer.innerHTML = `
+                 <div style="font-size: 0.9em; color: var(--muted); background: rgba(0,0,0,0.2); padding: 12px; border-radius: 6px; border: 1px solid var(--panel-border);">
+                    <div style="margin-bottom: 8px; font-weight: 600; color: var(--text); display:flex; justify-content:space-between;">
+                        <span>Composite Score Calculation</span>
+                        <i class="fas fa-calculator" style="color:var(--accent);"></i>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 80px 1fr 90px; gap: 8px; align-items: center; font-size: 0.9em;">
+                        
+                        <div style="color: #2ecc71; font-weight:500;">Quality</div>
+                        <div style="height: 6px; background: rgba(255,255,255,0.05); border-radius: 3px; overflow:hidden;">
+                            <div style="width: ${n.quality * 10}%; height: 100%; background: #2ecc71;"></div>
+                        </div>
+                        <div style="text-align:right;">${n.quality} <span style="color:#666;">× 50%</span></div>
+                        
+                        <div style="color: #3498db; font-weight:500;">Latency</div>
+                        <div style="height: 6px; background: rgba(255,255,255,0.05); border-radius: 3px; overflow:hidden;">
+                            <div style="width: ${n.latency * 10}%; height: 100%; background: #3498db;"></div>
+                        </div>
+                        <div style="text-align:right;">${n.latency} <span style="color:#666;">× 30%</span></div>
+                        
+                        <div style="color: #9b59b6; font-weight:500;">Speed</div>
+                        <div style="height: 6px; background: rgba(255,255,255,0.05); border-radius: 3px; overflow:hidden;">
+                            <div style="width: ${n.speed * 10}%; height: 100%; background: #9b59b6;"></div>
+                        </div>
+                        <div style="text-align:right;">${n.speed} <span style="color:#666;">× 20%</span></div>
+                        
+                        <div style="grid-column: 1 / -1; height: 1px; background: rgba(255,255,255,0.1); margin: 4px 0;"></div>
+                        
+                        <div style="grid-column: 1 / 2; color: var(--text); font-weight:bold;">Total</div>
+                        <div style="grid-column: 2 / 3;"></div>
+                        <div style="grid-column: 3 / 4; text-align:right; font-weight:bold; color: var(--accent);">${compositeScore}</div>
+                    </div>
+                 </div>
+                 `;
+            } else if (breakdownContainer) {
+                breakdownContainer.innerHTML = '';
+            }
 
             // Step-by-step judging view
             const method = (result.scoring_method || 'unknown').toLowerCase();
@@ -1762,7 +1980,7 @@ Respond ONLY with JSON in this exact format:
 
             try {
                 const res = await fetch(`${BENCHMARK_API}/batch/${currentBatchId}`);
-                
+
                 if (res.status === 429) {
                     console.warn('Rate limited polling batch progress, skipping...');
                     const status = document.getElementById('batchStatus');
@@ -1784,7 +2002,7 @@ Respond ONLY with JSON in this exact format:
                 }
 
                 // Restore progress bar color if it was greyed out
-                document.getElementById('progressFill').style.background = ''; 
+                document.getElementById('progressFill').style.background = '';
                 const clampedProgress = Math.min(Number(batch.progress) || 0, 100);
                 document.getElementById('progressFill').style.width = `${clampedProgress}%`;
                 document.getElementById('progressFill').style.borderRadius = clampedProgress >= 99 ? '16px' : '16px 0 0 16px';
@@ -1801,7 +2019,7 @@ Respond ONLY with JSON in this exact format:
                 if (batchInfo && batchInfo.innerHTML.trim() === '' && (batch.plan || batch.judge_config || batch.host)) {
                     batchInfo.innerHTML = renderBatchPlan(batch.plan, batch.host, batch.quality_scoring !== false);
                 }
-                
+
                 // Update status text if resuming
                 const status = document.getElementById('batchStatus');
                 if (status.textContent === 'Resuming session...') {
@@ -1820,7 +2038,7 @@ Respond ONLY with JSON in this exact format:
                     const container = document.getElementById('batchResultsContainer');
                     const tbody = document.getElementById('batchResultsBody');
                     container.style.display = 'block';
-                    
+
                     window.currentBatchResults = batch.results;
                     tbody.innerHTML = batch.results.map((r, idx) => {
                         const qualityScore = r.quality_score !== undefined && r.quality_score !== null ? r.quality_score : '-';
@@ -1972,7 +2190,7 @@ Respond ONLY with JSON in this exact format:
         async function loadDashboard() {
             try {
                 const res = await fetch(`${BENCHMARK_API}/dashboard?sort=${currentSortBy}`);
-                
+
                 if (res.status === 429) {
                     console.warn('Rate limited loading dashboard, skipping...');
                     return;
@@ -2023,11 +2241,11 @@ Respond ONLY with JSON in this exact format:
                     const modelsWithComposite = data.model_stats.filter(m => m.avg_composite && parseFloat(m.avg_composite) > 0);
                     let bestOverallModel = null;
                     if (modelsWithComposite.length > 0) {
-                        bestOverallModel = modelsWithComposite.reduce((best, current) => 
+                        bestOverallModel = modelsWithComposite.reduce((best, current) =>
                             parseFloat(current.avg_composite) > parseFloat(best.avg_composite) ? current : best
                         );
                     }
-                    
+
                     // Update best overall text
                     const bestOverallText = document.getElementById('bestOverallText');
                     if (bestOverallText) {
@@ -2052,7 +2270,7 @@ Respond ONLY with JSON in this exact format:
                         const qualityDisplay = !isNaN(qualityVal) ? model.avg_quality : '-';
                         const compositeDisplay = !isNaN(compositeVal) ? model.avg_composite : '-';
                         const qualityClass = qualityVal >= 7 ? 'quality-high' : qualityVal >= 4 ? 'quality-mid' : (qualityVal > 0 ? 'quality-low' : '');
-                        
+
                         // Highlight best overall model
                         const isBestOverall = bestOverallModel && model.model === bestOverallModel.model;
                         const rowClass = isBestOverall ? 'best-overall' : '';
@@ -2143,26 +2361,26 @@ Respond ONLY with JSON in this exact format:
             if (savedBatchId) {
                 console.log('Resuming batch:', savedBatchId);
                 currentBatchId = savedBatchId;
-                
+
                 const btn = document.getElementById('runBatchBtn');
                 const stopBtn = document.getElementById('stopBatchBtn');
                 const progressBar = document.getElementById('progressBar');
                 const status = document.getElementById('batchStatus');
-                
+
                 btn.disabled = true;
                 btn.textContent = 'Resuming...';
                 stopBtn.style.display = 'inline-block';
                 progressBar.classList.add('active');
-                
+
                 // Initialize progress bar visual state
                 document.getElementById('progressFill').style.width = '100%'; // Show full width but indeterminate or waiting
                 document.getElementById('progressFill').style.background = 'linear-gradient(90deg, var(--muted) 0%, var(--panel-border) 100%)'; // Grey out until update
                 document.getElementById('progressText').textContent = 'Connecting...';
-                
+
                 status.style.display = 'block';
                 status.className = 'status';
                 status.textContent = 'Resuming session...';
-                
+
                 // Start polling immediately
                 pollBatchProgress();
                 batchPollInterval = setInterval(pollBatchProgress, 2000);
@@ -2174,4 +2392,5 @@ Respond ONLY with JSON in this exact format:
         setInterval(loadDashboard, 10000); // Refresh every 10s
     </script>
 </body>
+
 </html>

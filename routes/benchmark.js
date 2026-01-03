@@ -302,37 +302,43 @@ router.get('/dashboard', async (req, res) => {
                         _id: '$model',
                         avg_latency: { $avg: '$latency' },
                         avg_tokens_per_sec: { $avg: { $toDouble: '$tokens_per_sec' } },
-                        avg_quality: { 
-                            $avg: { 
+                        avg_quality: {
+                            $avg: {
                                 $cond: [
-                                    { $and: [
-                                        { $ne: ['$quality_score', null] },
-                                        { $ne: [{ $type: '$quality_score' }, 'missing'] }
-                                    ]},
+                                    {
+                                        $and: [
+                                            { $ne: ['$quality_score', null] },
+                                            { $ne: [{ $type: '$quality_score' }, 'missing'] }
+                                        ]
+                                    },
                                     '$quality_score',
                                     null
                                 ]
                             }
                         },
-                        avg_composite: { 
-                            $avg: { 
+                        avg_composite: {
+                            $avg: {
                                 $cond: [
-                                    { $and: [
-                                        { $ne: ['$composite_score', null] },
-                                        { $ne: [{ $type: '$composite_score' }, 'missing'] }
-                                    ]},
+                                    {
+                                        $and: [
+                                            { $ne: ['$composite_score', null] },
+                                            { $ne: [{ $type: '$composite_score' }, 'missing'] }
+                                        ]
+                                    },
                                     '$composite_score',
                                     null
                                 ]
                             }
                         },
-                        quality_tests: { 
-                            $sum: { 
+                        quality_tests: {
+                            $sum: {
                                 $cond: [
-                                    { $and: [
-                                        { $ne: ['$quality_score', null] },
-                                        { $ne: [{ $type: '$quality_score' }, 'missing'] }
-                                    ]},
+                                    {
+                                        $and: [
+                                            { $ne: ['$quality_score', null] },
+                                            { $ne: [{ $type: '$quality_score' }, 'missing'] }
+                                        ]
+                                    },
                                     1,
                                     0
                                 ]
@@ -350,7 +356,7 @@ router.get('/dashboard', async (req, res) => {
             // Handle null/undefined quality scores
             const hasQuality = m.avg_quality != null && !isNaN(m.avg_quality);
             const hasComposite = m.avg_composite != null && !isNaN(m.avg_composite);
-            
+
             return {
                 model: m._id,
                 avg_latency: Math.round(m.avg_latency || 0),
@@ -682,16 +688,16 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
 
     // Group models by host
     const modelsByHost = {};
-    
+
     for (const model of models) {
         // Determine host for this model
         let targetHost = defaultHost;
-        
+
         // Check if model has a specific host assignment
         if (MODEL_ROUTING[model]) {
             targetHost = HOSTS[MODEL_ROUTING[model]];
         }
-        
+
         if (!modelsByHost[targetHost]) {
             modelsByHost[targetHost] = [];
         }
@@ -764,16 +770,16 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                         { _id: new ObjectId(batchId) },
                         {
                             $inc: { completed: 1 },
-                            $push: { 
-                                results: { 
-                                    model, 
+                            $push: {
+                                results: {
+                                    model,
                                     host: hostUrl,
                                     judge_host: enableQualityScoring ? judgeHostUrl : null,
-                                    prompt_name: prompt.name, 
-                                    success: true, 
+                                    prompt_name: prompt.name,
+                                    success: true,
                                     latency,
                                     response_preview: (data.response || '').substring(0, 100) + '...'
-                                } 
+                                }
                             }
                         }
                     );
@@ -856,13 +862,13 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                         { _id: new ObjectId(batchId) },
                         {
                             $inc: { completed: 1 },
-                            $push: { 
-                                results: { 
-                                    model, 
-                                    prompt_name: prompt.name, 
-                                    success: false, 
-                                    error: err.message 
-                                } 
+                            $push: {
+                                results: {
+                                    model,
+                                    prompt_name: prompt.name,
+                                    success: false,
+                                    error: err.message
+                                }
                             }
                         }
                     );
@@ -969,30 +975,31 @@ router.get('/batch/:id', async (req, res) => {
                 : (batch.quality_scoring !== false ? (r.success ? 'pending' : 'disabled') : 'disabled');
 
             return ({
-            id: r._id ? r._id.toString() : null,
-            model: r.model,
-            host: r.host,
-            judge_host: inferredJudgeHost,
-            prompt_name: r.prompt_name,
-            prompt_level: r.prompt_level,
-            prompt_category: r.prompt_category,
-            expected_answer: r.expected_answer,
-            latency: r.latency,
-            tokens_per_sec: r.tokens_per_sec,
-            quality_score: r.quality_score,
-            quality_explanation: r.quality_explanation,
-            judge_prompt: r.judge_prompt,
-            judge_model: inferredJudgeModel,
-            scoring_method: inferredScoringMethod,
-            quick_pattern: r.quick_pattern,
-            composite_score: r.composite_score,
-            success: r.success,
-            error: r.error,
-            response_preview: r.response
-                ? `${r.response.substring(0, 100)}...`
-                : (r.response_preview || ''),
-            timestamp: r.timestamp
-        });
+                id: r._id ? r._id.toString() : null,
+                model: r.model,
+                host: r.host,
+                judge_host: inferredJudgeHost,
+                prompt_name: r.prompt_name,
+                prompt_level: r.prompt_level,
+                prompt_category: r.prompt_category,
+                expected_answer: r.expected_answer,
+                latency: r.latency,
+                tokens_per_sec: r.tokens_per_sec,
+                quality_score: r.quality_score,
+                quality_explanation: r.quality_explanation,
+                judge_prompt: r.judge_prompt,
+                judge_model: inferredJudgeModel,
+                scoring_method: inferredScoringMethod,
+                quick_pattern: r.quick_pattern,
+                composite_score: r.composite_score,
+                normalized_scores: r.normalized_scores,
+                success: r.success,
+                error: r.error,
+                response_preview: r.response
+                    ? `${r.response.substring(0, 100)}...`
+                    : (r.response_preview || ''),
+                timestamp: r.timestamp
+            });
         });
 
         res.json({
@@ -1044,10 +1051,10 @@ router.get('/quality-breakdown', async (req, res) => {
     try {
         const resultsCollection = getCollection();
         const { model } = req.query;
-        
-        const matchStage = { 
-            success: true, 
-            quality_score: { $ne: null } 
+
+        const matchStage = {
+            success: true,
+            quality_score: { $ne: null }
         };
         if (model) matchStage.model = model;
 
@@ -1065,7 +1072,7 @@ router.get('/quality-breakdown', async (req, res) => {
                 },
                 { $sort: { '_id.model': 1, avg_quality: -1 } }
             ]).toArray(),
-            
+
             // Breakdown by level (1-5)
             resultsCollection.aggregate([
                 { $match: matchStage },
@@ -1079,7 +1086,7 @@ router.get('/quality-breakdown', async (req, res) => {
                 },
                 { $sort: { '_id.model': 1, '_id.level': 1 } }
             ]).toArray(),
-            
+
             // Overall by model
             resultsCollection.aggregate([
                 { $match: matchStage },
