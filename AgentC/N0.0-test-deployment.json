@@ -12,7 +12,10 @@
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
-      "position": [250, 300],
+      "position": [
+        250,
+        300
+      ],
       "webhookId": "sbqc-test-deployment"
     },
     {
@@ -23,7 +26,10 @@
       "name": "Build Response",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [470, 300]
+      "position": [
+        470,
+        300
+      ]
     },
     {
       "parameters": {
@@ -35,7 +41,10 @@
       "name": "Respond to Webhook",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [690, 300]
+      "position": [
+        690,
+        300
+      ]
     }
   ],
   "connections": {
@@ -62,18 +71,15 @@
       ]
     }
   },
-  "pinData": {},
   "settings": {
     "executionOrder": "v1"
   },
   "staticData": null,
+  "meta": null,
   "tags": [
     {
       "name": "testing",
       "id": "test-tag"
     }
-  ],
-  "triggerCount": 0,
-  "updatedAt": "2026-01-02T22:00:00.000Z",
-  "versionId": "2"
+  ]
 }

@@ -11,7 +11,10 @@
       "name": "Webhook (/ai-query)",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [-400, 0]
+      "position": [
+        -400,
+        0
+      ]
     },
     {
       "parameters": {
@@ -21,7 +24,10 @@
       "name": "Validate & Prepare Request",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-150, 0]
+      "position": [
+        -150,
+        0
+      ]
     },
     {
       "parameters": {
@@ -49,7 +55,10 @@
       "name": "Check for Errors",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [100, 0]
+      "position": [
+        100,
+        0
+      ]
     },
     {
       "parameters": {
@@ -73,7 +82,10 @@
       "name": "Call AgentX Chat",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [350, -50],
+      "position": [
+        350,
+        -50
+      ],
       "credentials": {
         "httpHeaderAuth": {
           "id": "PIrrA2wpOppzVodi",
@@ -89,7 +101,10 @@
       "name": "Format Success Response",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [600, -50]
+      "position": [
+        600,
+        -50
+      ]
     },
     {
       "parameters": {
@@ -99,7 +114,10 @@
       "name": "Format Error Response",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [350, 150]
+      "position": [
+        350,
+        150
+      ]
     },
     {
       "parameters": {},
@@ -107,7 +125,10 @@
       "name": "Merge Responses",
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3,
-      "position": [850, 50]
+      "position": [
+        850,
+        50
+      ]
     },
     {
       "parameters": {
@@ -119,7 +140,10 @@
       "name": "Respond to Webhook",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [1100, 50]
+      "position": [
+        1100,
+        50
+      ]
     },
     {
       "parameters": {
@@ -138,7 +162,10 @@
       "name": "Log to DataAPI",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1350, 50],
+      "position": [
+        1350,
+        50
+      ],
       "continueOnFail": true,
       "credentials": {
         "httpHeaderAuth": {
@@ -149,95 +176,95 @@
     }
   ],
   "connections": {
-    "WebhookTrigger": {
+    "Webhook (/ai-query)": {
       "main": [
         [
           {
-            "node": "ValidateRequest",
+            "node": "Validate & Prepare Request",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "ValidateRequest": {
+    "Validate & Prepare Request": {
       "main": [
         [
           {
-            "node": "CheckError",
+            "node": "Check for Errors",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "CheckError": {
+    "Check for Errors": {
       "main": [
         [
           {
-            "node": "CallAgentX",
+            "node": "Call AgentX Chat",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "FormatError",
+            "node": "Format Error Response",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "CallAgentX": {
+    "Call AgentX Chat": {
       "main": [
         [
           {
-            "node": "FormatSuccess",
+            "node": "Format Success Response",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "FormatSuccess": {
+    "Format Success Response": {
       "main": [
         [
           {
-            "node": "MergeResponses",
+            "node": "Merge Responses",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "FormatError": {
+    "Format Error Response": {
       "main": [
         [
           {
-            "node": "MergeResponses",
+            "node": "Merge Responses",
             "type": "main",
             "index": 1
           }
         ]
       ]
     },
-    "MergeResponses": {
+    "Merge Responses": {
       "main": [
         [
           {
-            "node": "RespondToWebhook",
+            "node": "Respond to Webhook",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "RespondToWebhook": {
+    "Respond to Webhook": {
       "main": [
         [
           {
-            "node": "LogRequest",
+            "node": "Log to DataAPI",
             "type": "main",
             "index": 0
           }
@@ -249,6 +276,9 @@
     "executionOrder": "v1"
   },
   "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
   "tags": [
     {
       "name": "SBQC",
@@ -262,8 +292,5 @@
       "name": "AI-Gateway",
       "id": "ai"
     }
-  ],
-  "meta": {
-    "templateCredsSetupCompleted": true
-  }
+  ]
 }

@@ -16,7 +16,10 @@
       "name": "Schedule (Weekly Sun 3AM)",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [-600, 0]
+      "position": [
+        -600,
+        0
+      ]
     },
     {
       "parameters": {
@@ -27,7 +30,10 @@
       "name": "Webhook (Manual)",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [-600, 200],
+      "position": [
+        -600,
+        200
+      ],
       "disabled": false
     },
     {
@@ -36,7 +42,10 @@
       "name": "Merge Triggers",
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3,
-      "position": [-350, 100]
+      "position": [
+        -350,
+        100
+      ]
     },
     {
       "parameters": {
@@ -52,7 +61,10 @@
       "name": "Get Feedback Summary",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [-100, 100],
+      "position": [
+        -100,
+        100
+      ],
       "credentials": {
         "httpHeaderAuth": {
           "id": "PIrrA2wpOppzVodi",
@@ -68,7 +80,10 @@
       "name": "Analyze Feedback Data",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [150, 100]
+      "position": [
+        150,
+        100
+      ]
     },
     {
       "parameters": {
@@ -96,7 +111,10 @@
       "name": "Has Issues?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [400, 100]
+      "position": [
+        400,
+        100
+      ]
     },
     {
       "parameters": {
@@ -112,7 +130,10 @@
       "name": "Get Negative Feedback Examples",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [650, 0],
+      "position": [
+        650,
+        0
+      ],
       "credentials": {
         "httpHeaderAuth": {
           "id": "PIrrA2wpOppzVodi",
@@ -128,7 +149,10 @@
       "name": "Prepare AI Analysis Prompt",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [900, 0]
+      "position": [
+        900,
+        0
+      ]
     },
     {
       "parameters": {
@@ -147,7 +171,10 @@
       "name": "Get AI Recommendations",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1150, 0],
+      "position": [
+        1150,
+        0
+      ],
       "credentials": {
         "httpHeaderAuth": {
           "id": "PIrrA2wpOppzVodi",
@@ -163,7 +190,10 @@
       "name": "Build Analysis Report",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1400, 0]
+      "position": [
+        1400,
+        0
+      ]
     },
     {
       "parameters": {
@@ -173,7 +203,10 @@
       "name": "No Issues Report",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [650, 200]
+      "position": [
+        650,
+        200
+      ]
     },
     {
       "parameters": {},
@@ -181,7 +214,10 @@
       "name": "Merge Reports",
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3,
-      "position": [1650, 100]
+      "position": [
+        1650,
+        100
+      ]
     },
     {
       "parameters": {
@@ -200,7 +236,10 @@
       "name": "Log Report (DataAPI)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1900, 100],
+      "position": [
+        1900,
+        100
+      ],
       "continueOnFail": true,
       "credentials": {
         "httpHeaderAuth": {
@@ -235,7 +274,10 @@
       "name": "Needs Human Review?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [2150, 100]
+      "position": [
+        2150,
+        100
+      ]
     },
     {
       "parameters": {
@@ -245,7 +287,10 @@
       "name": "Notify Admin (Placeholder)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2400, 50],
+      "position": [
+        2400,
+        50
+      ],
       "notesInFlow": true,
       "notes": "Replace with Slack/Email/Discord notification"
     }
@@ -418,6 +463,9 @@
     "executionOrder": "v1"
   },
   "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
   "tags": [
     {
       "name": "SBQC",
@@ -435,8 +483,5 @@
       "name": "Self-Improving",
       "id": "loop"
     }
-  ],
-  "meta": {
-    "templateCredsSetupCompleted": true
-  }
+  ]
 }
