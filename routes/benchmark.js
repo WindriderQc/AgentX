@@ -11,7 +11,7 @@ const logger = require('../config/logger');
 const fs = require('fs').promises;
 const path = require('path');
 const { ObjectId } = mongoose.Types;
-const { scoreResponse, calculateCompositeScore, JUDGE_CONFIG } = require('../src/services/qualityScorer');
+const { scoreResponse, calculateCompositeScore, JUDGE_CONFIG, SCORING_CONFIGS } = require('../src/services/qualityScorer');
 
 // Get MongoDB collections using Mongoose connection
 function getCollection() {
@@ -45,6 +45,20 @@ async function seedPrompts() {
         logger.info('Seeded benchmark prompts', { count: prompts.length });
     }
 }
+
+/**
+ * GET /api/benchmark/config
+ * Get benchmark configuration including judge settings
+ */
+router.get('/config', (req, res) => {
+    res.json({
+        status: 'success',
+        data: {
+            judge_config: JUDGE_CONFIG,
+            scoring_configs: SCORING_CONFIGS
+        }
+    });
+});
 
 /**
  * POST /api/benchmark/test
@@ -452,10 +466,10 @@ router.get('/prompts', async (req, res) => {
 /**
  * POST /api/benchmark/batch
  * Start a batch benchmark test with optional quality scoring
- * Body: { host, models: ['model1', 'model2'], levels: [1, 2, 3], quality_scoring: true }
+ * Body: { host, models: ['model1', 'model2'], levels: [1, 2, 3], quality_scoring: true, judge_config: {...} }
  */
 router.post('/batch', async (req, res) => {
-    const { host, models, levels, run_name, quality_scoring = true } = req.body;
+    const { host, models, levels, run_name, quality_scoring = true, judge_config } = req.body;
 
     if (!host || !models || !Array.isArray(models) || !levels || !Array.isArray(levels)) {
         return res.status(400).json({
@@ -487,6 +501,7 @@ router.post('/batch', async (req, res) => {
             models,
             levels,
             quality_scoring,
+            judge_config,
             run_name: run_name || `Batch ${new Date().toLocaleString()}`,
             total_tests: models.length * selectedPrompts.length,
             completed: 0,
@@ -502,7 +517,7 @@ router.post('/batch', async (req, res) => {
         const batchId = insertResult.insertedId.toString();
 
         // Start batch execution in background with quality scoring option
-        executeBatch(batchId, host, models, selectedPrompts, { quality_scoring }).catch(err => {
+        executeBatch(batchId, host, models, selectedPrompts, { quality_scoring, judge_config }).catch(err => {
             logger.error('Batch execution failed', { batchId, error: err.message });
         });
 
@@ -528,6 +543,7 @@ async function executeBatch(batchId, host, models, prompts, options = {}) {
     const batchCollection = getBatchCollection();
     const resultsCollection = getCollection();
     const enableQualityScoring = options.quality_scoring !== false; // Default enabled
+    const judgeConfig = options.judge_config || {};
 
     for (const model of models) {
         for (const prompt of prompts) {
@@ -547,11 +563,12 @@ async function executeBatch(batchId, host, models, prompts, options = {}) {
 
                 // Quality scoring (if enabled and not the judge model itself)
                 let qualityData = {};
-                if (enableQualityScoring && model !== JUDGE_CONFIG.model) {
+                if (enableQualityScoring && model !== (judgeConfig.model || JUDGE_CONFIG.model)) {
                     try {
                         const scores = await scoreResponse({
                             response: data.response || '',
-                            prompt: prompt
+                            prompt: prompt,
+                            judgeConfig
                         });
                         
                         const composite = calculateCompositeScore({

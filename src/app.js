@@ -113,7 +113,7 @@ app.use(requestLogger);
 // ============================================
 
 // Apply rate limiters
-const { apiLimiter, chatLimiter, strictLimiter, authLimiter } = require('./middleware/rateLimiter');
+const { apiLimiter, benchmarkLimiter, chatLimiter, strictLimiter, authLimiter } = require('./middleware/rateLimiter');
 
 // Apply general API rate limiter to all /api routes (except specific ones)
 app.use('/api/', apiLimiter);
@@ -158,7 +158,7 @@ app.use('/api/prompts', promptRoutes);
 
 // Benchmark routes (LLM performance testing)
 const benchmarkRoutes = require('../routes/benchmark');
-app.use('/api/benchmark', benchmarkRoutes);
+app.use('/api/benchmark', benchmarkLimiter, benchmarkRoutes);
 
 // Ollama hosts routes (configuration and models)
 const ollamaHostsRoutes = require('../routes/ollama-hosts');

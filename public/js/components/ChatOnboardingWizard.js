@@ -193,11 +193,12 @@ export class ChatOnboardingWizard extends BaseOnboardingWizard {
           <p>RAG stands for Retrieval-Augmented Generation. When enabled, the AI searches your document library before answering.</p>
         </div>
 
-        <div class="form-group">
-          <label class="checkbox-label">
+        <div class="form-group" style="display: flex; align-items: center; gap: 12px; margin-top: 1.5rem;">
+          <label class="switch">
             <input type="checkbox" id="chatOnboardingEnableRag" ${this.data.chatPreferences.useRag ? 'checked' : ''}>
-            Enable RAG by default
+            <span class="slider"></span>
           </label>
+          <span style="font-weight: 500;">Enable RAG by default</span>
         </div>
       </div>
     `;
@@ -223,10 +224,13 @@ export class ChatOnboardingWizard extends BaseOnboardingWizard {
           </ul>
         </div>
 
-        <label class="checkbox-label">
-          <input type="checkbox" id="chatOnboardingDontShowAgain">
-          Don't show this tutorial again
-        </label>
+        <div class="form-group" style="display: flex; align-items: center; gap: 12px; margin-top: 1rem;">
+          <label class="switch">
+            <input type="checkbox" id="chatOnboardingDontShowAgain">
+            <span class="slider"></span>
+          </label>
+          <span style="font-weight: 500;">Don't show this tutorial again</span>
+        </div>
       </div>
     `;
   }

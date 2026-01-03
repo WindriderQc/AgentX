@@ -617,20 +617,14 @@
     </style>
 </head>
 <body>
-    <nav class="top-nav">
-        <a href="index.html"><i class="fas fa-comments"></i> Chat</a>
-        <a href="dashboard.html"><i class="fas fa-tachometer-alt"></i> Operations</a>
-        <a href="n8n-monitor.html"><i class="fas fa-network-wired"></i> n8n Monitor</a>
-        <a href="benchmark.html" class="active"><i class="fas fa-rocket"></i> Benchmark</a>
-        <a href="analytics.html"><i class="fas fa-chart-line"></i> Analytics</a>
-        <a href="prompts.html"><i class="fas fa-code"></i> Prompts</a>
-        <a href="profile.html"><i class="fas fa-user-circle"></i> Profile</a>
-    </nav>
+    <div id="nav-container"></div>
+    <script src="/js/components/nav.js"></script>
+    <script>injectNav('benchmark');</script>
     <div class="bg-grid"></div>
     <div class="benchmark-container" style="padding-top: 80px;">
         <div class="benchmark-header">
             <div class="eyebrow">AgentX • Performance</div>
-            <h1><i class="fas fa-rocket"></i>Benchmark</h1>
+            <h1><i class="fas fa-rocket"></i>Benchmark <button id="helpBtn" class="btn-icon" title="How it works" style="font-size: 0.6em; vertical-align: middle; margin-left: 10px;"><i class="fas fa-question-circle"></i></button></h1>
             <p>Real-time performance metrics for Ollama models across configured hosts</p>
         </div>
 
@@ -712,11 +706,14 @@
                 </div>
 
                 <div style="margin-bottom: 24px; padding: 16px; background: rgba(46, 204, 113, 0.1); border: 1px solid rgba(46, 204, 113, 0.3); border-radius: 8px;">
-                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-                        <input type="checkbox" id="qualityScoring" checked style="width: 18px; height: 18px;">
-                        <span style="font-weight: 600;"><i class="fas fa-star" style="color: #2ecc71;"></i> Enable Quality Scoring</span>
-                        <small style="color: #999; margin-left: auto;">Uses LLM-as-judge to evaluate response quality</small>
-                    </label>
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                            <input type="checkbox" id="qualityScoring" checked style="width: 18px; height: 18px;">
+                            <span style="font-weight: 600;"><i class="fas fa-star" style="color: #2ecc71;"></i> Enable Quality Scoring</span>
+                        </label>
+                        <button id="settingsBtn" class="btn-secondary btn-sm"><i class="fas fa-cog"></i> Configure Judge</button>
+                    </div>
+                    <small style="color: #999; display: block; margin-top: 6px; margin-left: 28px;">Uses LLM-as-judge to evaluate response quality</small>
                 </div>
 
                 <div class="model-selection">
@@ -838,16 +835,291 @@
         </div>
     </div>
 
+    <!-- Modals -->
+    <div id="settingsModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><i class="fas fa-cog"></i> Benchmark Settings</h2>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="judgeModel">Judge Model</label>
+                    <select id="judgeModel" class="form-control">
+                        <option value="">Loading...</option>
+                    </select>
+                    <small class="form-text text-muted">Model used to evaluate response quality.</small>
+                </div>
+                <div class="form-group">
+                    <label for="judgeTemp">Judge Temperature: <span id="judgeTempVal">0.1</span></label>
+                    <input type="range" id="judgeTemp" min="0" max="1" step="0.1" value="0.1">
+                </div>
+                <div class="form-group">
+                    <label for="judgeTimeout">Judge Timeout (ms)</label>
+                    <input type="number" id="judgeTimeout" value="30000" step="1000">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary close-btn">Cancel</button>
+                <button class="btn-primary" id="saveSettingsBtn">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="helpModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><i class="fas fa-info-circle"></i> How it Works</h2>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <h3><i class="fas fa-star"></i> Quality Scoring</h3>
+                <p>We use an "LLM-as-a-Judge" approach. A capable model (the Judge) evaluates the responses from other models based on specific criteria.</p>
+                
+                <h4>Scoring Criteria:</h4>
+                <ul>
+                    <li><strong>Reasoning:</strong> Accuracy, Logic, Clarity</li>
+                    <li><strong>Code:</strong> Correctness, Clarity, Efficiency</li>
+                    <li><strong>Factual:</strong> Accuracy, Completeness, Clarity</li>
+                    <li><strong>Math:</strong> Answer, Method, Presentation</li>
+                    <li><strong>Creative:</strong> Creativity, Coherence, Relevance</li>
+                </ul>
+
+                <h3><i class="fas fa-chart-line"></i> Composite Score</h3>
+                <p>The Composite Score is a balanced metric (0-10) that combines:</p>
+                <ul>
+                    <li><strong>Quality (50%):</strong> The score from the Judge.</li>
+                    <li><strong>Latency (30%):</strong> How fast the model starts responding.</li>
+                    <li><strong>Speed (20%):</strong> Tokens per second generation speed.</li>
+                </ul>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-primary close-btn">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(5px);
+        }
+        .modal-content {
+            background-color: var(--panel);
+            margin: 10% auto;
+            padding: 0;
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            width: 90%;
+            max-width: 600px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            animation: modalSlideIn 0.3s ease;
+        }
+        @keyframes modalSlideIn {
+            from { transform: translateY(-20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        .modal-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--panel-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .modal-header h2 {
+            margin: 0;
+            font-size: 1.5em;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .close {
+            color: var(--muted);
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        .close:hover {
+            color: var(--text);
+        }
+        .modal-body {
+            padding: 24px;
+            max-height: 60vh;
+            overflow-y: auto;
+        }
+        .modal-footer {
+            padding: 16px 24px;
+            border-top: 1px solid var(--panel-border);
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+        }
+        .modal-body h3 {
+            margin-top: 0;
+            color: var(--accent);
+            font-size: 1.2em;
+            margin-bottom: 12px;
+        }
+        .modal-body h4 {
+            margin: 16px 0 8px;
+            color: var(--text);
+        }
+        .modal-body ul {
+            padding-left: 20px;
+            color: var(--muted);
+        }
+        .modal-body li {
+            margin-bottom: 6px;
+        }
+        .form-control {
+            width: 100%;
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid var(--panel-border);
+            background: rgba(0, 0, 0, 0.2);
+            color: var(--text);
+            margin-top: 6px;
+        }
+        .btn-icon {
+            background: none;
+            border: none;
+            color: var(--muted);
+            font-size: 1.2em;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        .btn-icon:hover {
+            color: var(--accent);
+        }
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 0.85em;
+        }
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text);
+            border: 1px solid var(--panel-border);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+    </style>
+
     <script>
         const BENCHMARK_API = '/api/benchmark';
         let latencyChart, tokensChart, qualityChart, compositeChart;
         let ollamaHosts = [];
         let currentSortBy = 'composite';
+        let currentJudgeConfig = {};
+
+        // Modal Logic
+        function setupModals() {
+            const settingsModal = document.getElementById('settingsModal');
+            const helpModal = document.getElementById('helpModal');
+            const settingsBtn = document.getElementById('settingsBtn');
+            const helpBtn = document.getElementById('helpBtn');
+            const closeBtns = document.querySelectorAll('.close, .close-btn');
+
+            if (settingsBtn) {
+                settingsBtn.onclick = () => {
+                    loadJudgeConfig();
+                    settingsModal.style.display = 'block';
+                };
+            }
+            
+            if (helpBtn) {
+                helpBtn.onclick = () => helpModal.style.display = 'block';
+            }
+
+            closeBtns.forEach(btn => {
+                btn.onclick = function() {
+                    this.closest('.modal').style.display = 'none';
+                }
+            });
+
+            window.onclick = (event) => {
+                if (event.target == settingsModal) settingsModal.style.display = 'none';
+                if (event.target == helpModal) helpModal.style.display = 'none';
+            };
+
+            // Judge Temp Slider
+            const tempSlider = document.getElementById('judgeTemp');
+            const tempVal = document.getElementById('judgeTempVal');
+            if (tempSlider) {
+                tempSlider.oninput = () => tempVal.textContent = tempSlider.value;
+            }
+
+            // Save Settings
+            const saveBtn = document.getElementById('saveSettingsBtn');
+            if (saveBtn) {
+                saveBtn.onclick = () => {
+                    currentJudgeConfig = {
+                        model: document.getElementById('judgeModel').value,
+                        temperature: parseFloat(document.getElementById('judgeTemp').value),
+                        timeout: parseInt(document.getElementById('judgeTimeout').value)
+                    };
+                    settingsModal.style.display = 'none';
+                };
+            }
+        }
+
+        async function loadJudgeConfig() {
+            try {
+                const res = await fetch(`${BENCHMARK_API}/config`);
+                const json = await res.json();
+                if (json.status === 'success') {
+                    const config = json.data.judge_config;
+                    
+                    // Populate Judge Model Dropdown (using all available models from current host)
+                    const hostUrl = document.getElementById('host').value;
+                    const host = ollamaHosts.find(h => h.url === hostUrl);
+                    const judgeSelect = document.getElementById('judgeModel');
+                    
+                    if (host && host.models && judgeSelect) {
+                        // If current config model is not in list, add it or select default
+                        const currentModel = currentJudgeConfig.model || config.model;
+                        
+                        judgeSelect.innerHTML = host.models.map(m => 
+                            `<option value="${m}" ${m === currentModel ? 'selected' : ''}>${m}</option>`
+                        ).join('');
+                    }
+
+                    // Set other values if not already set by user
+                    if (Object.keys(currentJudgeConfig).length === 0) {
+                        if (document.getElementById('judgeTemp')) {
+                            document.getElementById('judgeTemp').value = config.temperature;
+                            document.getElementById('judgeTempVal').textContent = config.temperature;
+                        }
+                        if (document.getElementById('judgeTimeout')) {
+                            document.getElementById('judgeTimeout').value = config.timeout;
+                        }
+                        
+                        // Initialize current config
+                        currentJudgeConfig = { ...config };
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to load judge config:', err);
+            }
+        }
 
         // Fetch Ollama hosts from AgentX config
         async function loadOllamaHosts() {
             try {
                 const res = await fetch('/api/ollama-hosts');
+                if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
                 const json = await res.json();
                 const data = json.data || json;
 
@@ -1000,7 +1272,8 @@
                         host,
                         models: selectedModels,
                         levels: selectedLevels,
-                        quality_scoring: qualityScoring
+                        quality_scoring: qualityScoring,
+                        judge_config: currentJudgeConfig
                     })
                 });
 
@@ -1008,6 +1281,7 @@
 
                 if (json.status === 'success') {
                     currentBatchId = json.data.batch_id;
+                    localStorage.setItem('currentBatchId', currentBatchId);
                     btn.textContent = qualityScoring ? 'Running (with quality)...' : 'Running...';
 
                     // Poll for progress
@@ -1030,15 +1304,42 @@
 
             try {
                 const res = await fetch(`${BENCHMARK_API}/batch/${currentBatchId}`);
+                
+                if (res.status === 429) {
+                    console.warn('Rate limited polling batch progress, skipping...');
+                    const status = document.getElementById('batchStatus');
+                    if (status.style.display !== 'none') {
+                        status.textContent = 'Connection limited, retrying...';
+                    }
+                    return;
+                }
+
+                if (!res.ok) {
+                    throw new Error(`HTTP error! status: ${res.status}`);
+                }
+
                 const json = await res.json();
                 const batch = json.data;
 
+                if (!batch) {
+                    throw new Error('No batch data in response');
+                }
+
+                // Restore progress bar color if it was greyed out
+                document.getElementById('progressFill').style.background = ''; 
                 document.getElementById('progressFill').style.width = `${batch.progress}%`;
                 document.getElementById('progressText').textContent = `${batch.progress}% (${batch.completed}/${batch.total_tests})`;
+                
+                // Update status text if resuming
+                const status = document.getElementById('batchStatus');
+                if (status.textContent === 'Resuming session...') {
+                    status.style.display = 'none';
+                }
 
                 if (batch.status === 'completed') {
                     clearInterval(batchPollInterval);
                     batchPollInterval = null;
+                    localStorage.removeItem('currentBatchId');
 
                     const status = document.getElementById('batchStatus');
                     status.className = 'status success';
@@ -1054,6 +1355,17 @@
                 }
             } catch (err) {
                 console.error('Failed to poll batch progress:', err);
+                // If 404 (batch not found), clear local storage
+                if (err.message.includes('404')) {
+                    localStorage.removeItem('currentBatchId');
+                    clearInterval(batchPollInterval);
+                    batchPollInterval = null;
+                    
+                    const btn = document.getElementById('runBatchBtn');
+                    btn.disabled = false;
+                    btn.textContent = 'Start Batch Test';
+                    document.getElementById('progressBar').classList.remove('active');
+                }
             }
         }
 
@@ -1149,8 +1461,22 @@
         async function loadDashboard() {
             try {
                 const res = await fetch(`${BENCHMARK_API}/dashboard?sort=${currentSortBy}`);
+                
+                if (res.status === 429) {
+                    console.warn('Rate limited loading dashboard, skipping...');
+                    return;
+                }
+
+                if (!res.ok) {
+                    throw new Error(`HTTP error! status: ${res.status}`);
+                }
+
                 const json = await res.json();
                 const data = json.data || json; // Handle both wrapped and unwrapped responses
+
+                if (!data || !data.overview) {
+                    throw new Error('Invalid dashboard data structure');
+                }
 
                 // Update stats
                 document.getElementById('totalTests').textContent = data.overview.total_tests;
@@ -1297,9 +1623,38 @@
             if (firstHost) {
                 loadBatchModels(firstHost);
             }
+
+            // Check for active batch
+            const savedBatchId = localStorage.getItem('currentBatchId');
+            if (savedBatchId) {
+                console.log('Resuming batch:', savedBatchId);
+                currentBatchId = savedBatchId;
+                
+                const btn = document.getElementById('runBatchBtn');
+                const progressBar = document.getElementById('progressBar');
+                const status = document.getElementById('batchStatus');
+                
+                btn.disabled = true;
+                btn.textContent = 'Resuming...';
+                progressBar.classList.add('active');
+                
+                // Initialize progress bar visual state
+                document.getElementById('progressFill').style.width = '100%'; // Show full width but indeterminate or waiting
+                document.getElementById('progressFill').style.background = 'linear-gradient(90deg, var(--muted) 0%, var(--panel-border) 100%)'; // Grey out until update
+                document.getElementById('progressText').textContent = 'Connecting...';
+                
+                status.style.display = 'block';
+                status.className = 'status';
+                status.textContent = 'Resuming session...';
+                
+                // Start polling immediately
+                pollBatchProgress();
+                batchPollInterval = setInterval(pollBatchProgress, 2000);
+            }
         });
         initCharts();
         loadDashboard();
+        setupModals();
         setInterval(loadDashboard, 10000); // Refresh every 10s
     </script>
 </body>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AgentX • Prompt Management</title>
+    <title>AgentX • Persona Management</title>
 
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -103,14 +103,9 @@
 </head>
 <body>
     <!-- Top Navigation -->
-    <nav class="top-nav">
-        <a href="index.html"><i class="fas fa-comments"></i> Chat</a>
-        <a href="dashboard.html"><i class="fas fa-tachometer-alt"></i> Operations</a>
-        <a href="n8n-monitor.html"><i class="fas fa-network-wired"></i> n8n Monitor</a>
-        <a href="benchmark.html"><i class="fas fa-rocket"></i> Benchmark</a>
-        <a href="analytics.html"><i class="fas fa-chart-line"></i> Analytics</a>
-        <a href="prompts.html" class="active"><i class="fas fa-code"></i> Prompts</a>
-    </nav>
+    <div id="nav-container"></div>
+    <script src="/js/components/nav.js"></script>
+    <script>injectNav('personas');</script>
 
     <!-- Background Grid -->
     <div class="bg-grid"></div>
@@ -123,11 +118,11 @@
             <div>
                 <div class="eyebrow">AgentX • Configuration</div>
                 <h1>
-                    <i class="fas fa-code"></i>
+                    <i class="fas fa-users"></i>
                     <span class="title-separator"></span>
-                    Prompt Management
+                    Persona Management
                 </h1>
-                <p class="lede">Create, version, and A/B test system prompts with performance tracking.</p>
+                <p class="lede">Create and manage AI personas (sbqc_ops, datalake_janitor, default_chat). Configure behavior, version, and A/B test with performance tracking.</p>
             </div>
             <div class="header-controls">
                 <!-- Simple Mode Toggle -->
@@ -151,7 +146,7 @@
                     <i class="fas fa-graduation-cap"></i> Show Tutorial
                 </button>
                 <button id="createPromptBtn" class="btn-primary">
-                    <i class="fas fa-plus"></i> Create Prompt
+                    <i class="fas fa-plus"></i> Create Persona
                 </button>
             </div>
             <!-- Hidden file input for import -->

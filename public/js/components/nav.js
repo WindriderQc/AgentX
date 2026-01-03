@@ -1,71 +1,41 @@
 /**
  * Navigation Component
- * Injects the standard AgentX navigation bar into the header.
+ * Injects the standard AgentX navigation bar with all pages.
+ * Usage: injectNav('activePageId') where activePageId is one of:
+ * 'chat', 'operations', 'n8n', 'benchmark', 'analytics', 'rag', 'personas', 'profile'
  */
 
-export function injectNav(activePage = '') {
-    const navContainer = document.querySelector('.agentx-nav') || createNavContainer();
-
-    // Define navigation items
+function injectNav(activePageId = '') {
+    // Define all navigation items in order
     const navItems = [
-        { label: 'Chat', href: '/', id: 'chat' },
-        { label: 'Analytics', href: '/analytics.html', id: 'analytics' },
-        { label: 'Dashboard', href: '/dashboard.html', id: 'dashboard' }
+        { label: 'Chat', href: 'index.html', icon: 'fa-comments', id: 'chat' },
+        { label: 'Operations', href: 'dashboard.html', icon: 'fa-tachometer-alt', id: 'operations' },
+        { label: 'n8n Monitor', href: 'n8n-monitor.html', icon: 'fa-network-wired', id: 'n8n' },
+        { label: 'Benchmark', href: 'benchmark.html', icon: 'fa-rocket', id: 'benchmark' },
+        { label: 'Analytics', href: 'analytics.html', icon: 'fa-chart-line', id: 'analytics' },
+        { label: 'RAG', href: 'rag.html', icon: 'fa-database', id: 'rag' },
+        { label: 'Personas', href: 'personas.html', icon: 'fa-users', id: 'personas' },
+        { label: 'Profile', href: 'profile.html', icon: 'fa-user-circle', id: 'profile' }
     ];
 
-    let html = '';
+    // Build nav HTML
+    let navHTML = '<nav class="top-nav">\n';
+
     navItems.forEach(item => {
-        const isActive = activePage === item.id || window.location.pathname === item.href;
-        const activeClass = isActive ? 'active' : '';
-        html += `<a href="${item.href}" class="${activeClass}">${item.label}</a>`;
+        const activeClass = (activePageId === item.id) ? ' class="active"' : '';
+        navHTML += `    <a href="${item.href}"${activeClass}><i class="fas ${item.icon}"></i> ${item.label}</a>\n`;
     });
 
-    navContainer.innerHTML = html;
+    navHTML += '  </nav>';
 
-    // Ensure styles are present if not already loaded (basic fallback)
-    if (!document.getElementById('nav-styles')) {
-        const style = document.createElement('style');
-        style.id = 'nav-styles';
-        style.textContent = `
-            .agentx-nav {
-                display: flex;
-                gap: 1.5rem;
-                align-items: center;
-            }
-            .agentx-nav a {
-                color: #94a3b8;
-                text-decoration: none;
-                font-family: 'Space Grotesk', system-ui, sans-serif;
-                font-size: 0.95rem;
-                transition: color 0.2s ease;
-            }
-            .agentx-nav a:hover {
-                color: #e2e8f0;
-            }
-            .agentx-nav a.active {
-                color: #7cf0ff;
-                font-weight: 600;
-                text-shadow: 0 0 10px rgba(124, 240, 255, 0.3);
-            }
-        `;
-        document.head.appendChild(style);
+    // Find the nav container and inject
+    const navContainer = document.getElementById('nav-container');
+    if (navContainer) {
+        navContainer.innerHTML = navHTML;
+    } else {
+        console.error('nav.js: #nav-container element not found. Add <div id="nav-container"></div> to your HTML.');
     }
 }
 
-function createNavContainer() {
-    // If no .agentx-nav exists, try to find a suitable header to append to
-    const header = document.querySelector('header');
-    if (header) {
-        const nav = document.createElement('nav');
-        nav.className = 'agentx-nav';
-        // Try to insert after the title/brand
-        const brand = header.querySelector('div') || header.firstElementChild;
-        if (brand) {
-            brand.parentNode.insertBefore(nav, brand.nextSibling);
-        } else {
-            header.appendChild(nav);
-        }
-        return nav;
-    }
-    return null; // Should not happen if HTML structure is correct
-}
+// Make function available globally (not using ES6 modules since pages don't use module imports)
+window.injectNav = injectNav;

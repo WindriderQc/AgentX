@@ -5,6 +5,35 @@ All notable changes to AgentX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.5] - 2026-01-02
+
+### Added
+- **Personas Page:** Dedicated personas.html page for managing AI personas (sbqc_ops, datalake_janitor, default_chat)
+  - Renamed from prompts.html with updated terminology and iconography
+  - "Prompts" → "Personas" throughout UI for better user understanding
+  - Icon changed from fa-code to fa-users
+  - Enhanced description explaining persona concept
+- **Navigation Component:** Unified navigation across all pages via nav.js
+  - All 9 pages now use shared /js/components/nav.js component
+  - Single source of truth for navigation - eliminates duplication
+  - RAG link added to all pages (previously only on rag.html)
+  - Personas link added to all pages
+  - Consistent icon usage (fa-user-circle for Profile everywhere)
+- **Navigation Items (9 total):** Chat | Operations | n8n Monitor | Benchmark | Analytics | Prompts | RAG | Personas | Profile
+
+### Changed
+- **prompts.html:** Now redirects to personas.html (preserves bookmarks)
+- **Navigation:** All 8 HTML pages converted to use nav.js component
+  - index.html, dashboard.html, analytics.html, benchmark.html
+  - n8n-monitor.html, rag.html, profile.html, personas.html
+- **rag.html:** Fixed Profile icon (fa-user → fa-user-circle) for consistency
+
+### Fixed
+- **Navigation Inconsistencies:** Resolved across all pages
+  - prompts.html was missing Profile link entirely (CRITICAL FIX)
+  - rag.html had extra RAG link and wrong Profile icon
+  - Navigation manually duplicated across 8 pages (now centralized)
+
 ## [1.3.4] - 2026-01-02
 
 ### Added

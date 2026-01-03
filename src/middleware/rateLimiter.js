@@ -20,6 +20,7 @@ const apiLimiter = rateLimit({
   },
   standardHeaders: true, // Return rate limit info in `RateLimit-*` headers
   legacyHeaders: false, // Disable `X-RateLimit-*` headers
+  skip: (req) => req.originalUrl.startsWith('/api/benchmark'), // Skip benchmark routes (handled separately)
   handler: (req, res) => {
     logger.warn('Rate limit exceeded', {
       ip: req.ip,
@@ -32,6 +33,22 @@ const apiLimiter = rateLimit({
       retryAfter: req.rateLimit.resetTime
     });
   }
+});
+
+/**
+ * Benchmark rate limiter
+ * Higher limits for polling and batch testing
+ * 5000 requests per 15 minutes
+ */
+const benchmarkLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5000, // 5000 requests per window (allows ~5.5 request/sec avg)
+  message: {
+    status: 'error',
+    message: 'Benchmark rate limit exceeded'
+  },
+  standardHeaders: true,
+  legacyHeaders: false
 });
 
 /**
@@ -128,6 +145,7 @@ const authLimiter = rateLimit({
 
 module.exports = {
   apiLimiter,
+  benchmarkLimiter,
   chatLimiter,
   strictLimiter,
   authLimiter

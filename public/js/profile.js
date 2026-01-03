@@ -3,11 +3,24 @@
  * Handles user profile CRUD operations and preview
  */
 
-import { showToast } from './utils.js';
-
 // State
 let currentProfile = null;
 let availableModels = [];
+
+const PERSONA_TEMPLATES = {
+  developer: {
+    about: "I am a senior full-stack developer working on the AgentX project. I prefer technical accuracy over politeness. I am familiar with Node.js, Python, and system architecture. I value concise, code-heavy responses and don't need introductory fluff.",
+    instructions: "- Be concise and direct.\n- When providing code, always include file paths and brief comments explaining the 'why', not just the 'what'.\n- If a solution requires multiple steps, break them down into a numbered list.\n- Assume I have a high level of technical competence; do not over-explain basic concepts.\n- If you are unsure, state your assumptions clearly."
+  },
+  executive: {
+    about: "I am the project lead for the SBQC stack. I focus on system reliability, user experience, and strategic roadmap planning. I need to understand the implications of technical decisions without getting bogged down in the implementation details unless I ask.",
+    instructions: "- Focus on the \"big picture\" and business value.\n- Summarize technical details into actionable insights.\n- When proposing changes, always include a brief risk assessment (pros/cons).\n- Use bullet points for readability.\n- Maintain a professional and supportive tone."
+  },
+  creative: {
+    about: "I am a creative technologist looking to explore the capabilities of local AI. I enjoy brainstorming, role-playing scenarios, and iterating on ideas. I value creativity and out-of-the-box thinking.",
+    instructions: "- Be conversational and engaging.\n- Don't be afraid to suggest wild or unconventional ideas.\n- Ask clarifying questions to help refine my thinking.\n- Use analogies to explain complex concepts.\n- Feel free to use emojis and a more casual tone."
+  }
+};
 
 /**
  * Initialize page on load
@@ -42,7 +55,7 @@ async function loadProfile() {
     }
   } catch (error) {
     console.error('Failed to load profile:', error);
-    showToast(`Failed to load profile: ${error.message}`, 'error');
+    window.toast.error(`Failed to load profile: ${error.message}`);
   }
 }
 
@@ -51,7 +64,7 @@ async function loadProfile() {
  */
 async function loadModels() {
   try {
-    const response = await fetch('/api/models', {
+    const response = await fetch('/api/ollama/models', {
       credentials: 'include'
     });
 
@@ -119,10 +132,42 @@ function attachEventListeners() {
   // Reset button
   document.getElementById('resetProfileBtn').addEventListener('click', resetProfile);
 
+  // Apply Template button
+  document.getElementById('applyTemplateBtn').addEventListener('click', applyTemplate);
+
   // Update preview on input change
   ['profileAbout', 'profileInstructions'].forEach(id => {
     document.getElementById(id).addEventListener('input', updatePreview);
   });
+}
+
+/**
+ * Apply selected persona template
+ */
+function applyTemplate() {
+  const select = document.getElementById('personaTemplate');
+  const templateKey = select.value;
+  
+  if (!templateKey || !PERSONA_TEMPLATES[templateKey]) {
+    window.toast.info('Please select a template first');
+    return;
+  }
+
+  const template = PERSONA_TEMPLATES[templateKey];
+  
+  // Check if fields are not empty to warn user
+  const currentAbout = document.getElementById('profileAbout').value.trim();
+  const currentInstructions = document.getElementById('profileInstructions').value.trim();
+  
+  if ((currentAbout || currentInstructions) && !confirm('This will overwrite your current "About You" and "Custom Instructions". Continue?')) {
+    return;
+  }
+
+  document.getElementById('profileAbout').value = template.about;
+  document.getElementById('profileInstructions').value = template.instructions;
+  
+  updatePreview();
+  window.toast.success('Template applied! Don\'t forget to save.');
 }
 
 /**
@@ -163,14 +208,14 @@ async function saveProfile() {
 
     if (result.status === 'success') {
       currentProfile = result.data;
-      showToast('Profile saved successfully!', 'success');
+      window.toast.success('Profile saved successfully!');
       updatePreview();
     } else {
       throw new Error(result.message || 'Failed to save profile');
     }
   } catch (error) {
     console.error('Failed to save profile:', error);
-    showToast(`Failed to save profile: ${error.message}`, 'error');
+    window.toast.error(`Failed to save profile: ${error.message}`);
   } finally {
     // Restore button state
     saveBtn.disabled = false;
@@ -222,13 +267,13 @@ async function resetProfile() {
       currentProfile = result.data;
       populateForm(currentProfile);
       updatePreview();
-      showToast('Profile reset to defaults', 'success');
+      window.toast.success('Profile reset to defaults');
     } else {
       throw new Error(result.message || 'Failed to reset profile');
     }
   } catch (error) {
     console.error('Failed to reset profile:', error);
-    showToast(`Failed to reset profile: ${error.message}`, 'error');
+    window.toast.error(`Failed to reset profile: ${error.message}`);
   } finally {
     // Restore button state
     resetBtn.disabled = false;

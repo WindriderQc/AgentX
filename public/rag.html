@@ -224,16 +224,9 @@
 </head>
 <body>
   <!-- Top Navigation -->
-  <nav class="top-nav">
-    <a href="index.html"><i class="fas fa-comments"></i> Chat</a>
-    <a href="dashboard.html"><i class="fas fa-tachometer-alt"></i> Operations</a>
-    <a href="n8n-monitor.html"><i class="fas fa-network-wired"></i> n8n Monitor</a>
-    <a href="benchmark.html"><i class="fas fa-rocket"></i> Benchmark</a>
-    <a href="analytics.html"><i class="fas fa-chart-line"></i> Analytics</a>
-    <a href="prompts.html"><i class="fas fa-code"></i> Prompts</a>
-    <a href="rag.html" class="active"><i class="fas fa-database"></i> RAG</a>
-    <a href="profile.html"><i class="fas fa-user"></i> Profile</a>
-  </nav>
+  <div id="nav-container"></div>
+  <script src="/js/components/nav.js"></script>
+  <script>injectNav('rag');</script>
 
   <!-- Background Grid -->
   <div class="bg-grid"></div>
@@ -336,7 +329,8 @@
     function updateStats() {
       const totalDocs = documents.length;
       const totalChunks = documents.reduce((sum, doc) => sum + (doc.chunkCount || 0), 0);
-      const totalBytes = documents.reduce((sum, doc) => sum + (doc.text?.length || 0), 0);
+      // Use textLength if available (from API), otherwise fallback to text.length
+      const totalBytes = documents.reduce((sum, doc) => sum + (doc.textLength || doc.text?.length || 0), 0);
 
       document.getElementById('totalDocs').textContent = totalDocs;
       document.getElementById('totalChunks').textContent = totalChunks;

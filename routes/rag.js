@@ -265,9 +265,10 @@ router.get('/documents', async (req, res) => {
     const stats = await ragStore.getStats();
 
     res.json({
+      status: 'success',
+      data: documents,
       stats,
-      count: documents.length,
-      documents
+      count: documents.length
     });
   } catch (error) {
     logger.error('RAG documents error', { error: error.message, stack: error.stack });

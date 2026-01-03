@@ -63,13 +63,13 @@ fi
 # Check API connectivity
 check_n8n_api() {
     log_info "Checking n8n API connectivity at $N8N_URL..."
-    
+
     if [ -z "$N8N_API_KEY" ]; then
-        log_warning "N8N_API_KEY not set. Trying without authentication..."
-        response=$(curl -s -w "\n%{http_code}" "$N8N_URL/api/v1/workflows" || echo "000")
-    else
-        response=$(curl -s -w "\n%{http_code}" -H "X-N8N-API-KEY: $N8N_API_KEY" "$N8N_URL/api/v1/workflows" || echo "000")
+        log_error "N8N_API_KEY not set! Please set it in .env file or environment."
+        return 1
     fi
+
+    response=$(curl -s -w "\n%{http_code}" -H "X-N8N-API-KEY: $N8N_API_KEY" "$N8N_URL/api/v1/workflows" || echo "000")
     
     http_code=$(echo "$response" | tail -n 1)
     body=$(echo "$response" | head -n -1)
@@ -93,13 +93,8 @@ check_n8n_api() {
 # Get workflow ID by name
 get_workflow_id() {
     local workflow_name="$1"
-    
-    if [ -z "$N8N_API_KEY" ]; then
-        workflows=$(curl -s "$N8N_URL/api/v1/workflows" 2>/dev/null || echo '{"data":[]}')
-    else
-        workflows=$(curl -s -H "X-N8N-API-KEY: $N8N_API_KEY" "$N8N_URL/api/v1/workflows" 2>/dev/null || echo '{"data":[]}')
-    fi
-    
+
+    workflows=$(curl -s -H "X-N8N-API-KEY: $N8N_API_KEY" "$N8N_URL/api/v1/workflows" 2>/dev/null || echo '{"data":[]}')
     workflow_id=$(echo "$workflows" | jq -r ".data[] | select(.name == \"$workflow_name\") | .id" 2>/dev/null)
     echo "$workflow_id"
 }
@@ -131,21 +126,14 @@ deploy_workflow() {
         # Update existing workflow
         log_info "Found existing workflow (ID: $existing_id), updating..."
         
-        # Strip fields that n8n API doesn't accept (id, versionId, createdAt, updatedAt, etc.)
-        local cleaned_json=$(jq 'del(.id, .versionId, .createdAt, .updatedAt, .shared, .triggerCount, .versionCounter, .isArchived, .meta, .pinData, .tags, .staticData, .active) | .settings //= {}' "$workflow_file")
-        
-        if [ -z "$N8N_API_KEY" ]; then
-            response=$(curl -s -w "\n%{http_code}" -X PUT \
-                -H "Content-Type: application/json" \
-                -d "$cleaned_json" \
-                "$N8N_URL/api/v1/workflows/$existing_id" 2>/dev/null || echo -e "\n000")
-        else
-            response=$(curl -s -w "\n%{http_code}" -X PUT \
-                -H "Content-Type: application/json" \
-                -H "X-N8N-API-KEY: $N8N_API_KEY" \
-                -d "$cleaned_json" \
-                "$N8N_URL/api/v1/workflows/$existing_id" 2>/dev/null || echo -e "\n000")
-        fi
+        # Keep only essential fields for updating: name, nodes, connections, settings
+        local cleaned_json=$(jq '{name, nodes, connections, settings}' "$workflow_file")
+
+        response=$(curl -s -w "\n%{http_code}" -X PUT \
+            -H "Content-Type: application/json" \
+            -H "X-N8N-API-KEY: $N8N_API_KEY" \
+            -d "$cleaned_json" \
+            "$N8N_URL/api/v1/workflows/$existing_id" 2>/dev/null || echo -e "\n000")
         
         http_code=$(echo "$response" | tail -n 1)
         body=$(echo "$response" | head -n -1)
@@ -161,22 +149,15 @@ deploy_workflow() {
     else
         # Create new workflow
         log_info "Workflow not found, creating new..."
-        
-        # Clean JSON for creation too
-        local cleaned_json=$(jq 'del(.id, .versionId, .createdAt, .updatedAt, .shared, .triggerCount, .versionCounter, .isArchived, .meta, .pinData, .tags, .staticData, .active) | .settings //= {}' "$workflow_file")
-        
-        if [ -z "$N8N_API_KEY" ]; then
-            response=$(curl -s -w "\n%{http_code}" -X POST \
-                -H "Content-Type: application/json" \
-                -d "$cleaned_json" \
-                "$N8N_URL/api/v1/workflows" 2>/dev/null || echo -e "\n000")
-        else
-            response=$(curl -s -w "\n%{http_code}" -X POST \
-                -H "Content-Type: application/json" \
-                -H "X-N8N-API-KEY: $N8N_API_KEY" \
-                -d "$cleaned_json" \
-                "$N8N_URL/api/v1/workflows" 2>/dev/null || echo -e "\n000")
-        fi
+
+        # Keep only essential fields for creation: name, nodes, connections, settings
+        local cleaned_json=$(jq '{name, nodes, connections, settings}' "$workflow_file")
+
+        response=$(curl -s -w "\n%{http_code}" -X POST \
+            -H "Content-Type: application/json" \
+            -H "X-N8N-API-KEY: $N8N_API_KEY" \
+            -d "$cleaned_json" \
+            "$N8N_URL/api/v1/workflows" 2>/dev/null || echo -e "\n000")
         
         http_code=$(echo "$response" | tail -n 1)
         body=$(echo "$response" | head -n -1)

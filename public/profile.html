@@ -17,15 +17,9 @@
 </head>
 <body>
     <!-- Top Navigation -->
-    <nav class="top-nav">
-        <a href="index.html"><i class="fas fa-comments"></i> Chat</a>
-        <a href="dashboard.html"><i class="fas fa-tachometer-alt"></i> Operations</a>
-        <a href="n8n-monitor.html"><i class="fas fa-network-wired"></i> n8n Monitor</a>
-        <a href="benchmark.html"><i class="fas fa-rocket"></i> Benchmark</a>
-        <a href="analytics.html"><i class="fas fa-chart-line"></i> Analytics</a>
-        <a href="prompts.html"><i class="fas fa-code"></i> Prompts</a>
-        <a href="profile.html" class="active"><i class="fas fa-user-circle"></i> Profile</a>
-    </nav>
+    <div id="nav-container"></div>
+    <script src="/js/components/nav.js"></script>
+    <script>injectNav('profile');</script>
 
     <!-- Background Grid -->
     <div class="bg-grid"></div>
@@ -48,6 +42,25 @@
 
         <!-- Profile Form -->
         <div class="profile-container">
+            <!-- Quick Fill Templates -->
+            <div class="profile-section">
+                <h3><i class="fas fa-magic"></i> Quick Fill Templates</h3>
+                <p class="section-description">
+                    Select a persona to automatically fill the fields below. You can edit them afterwards.
+                </p>
+                <div class="template-controls" style="display: flex; gap: 10px; align-items: center;">
+                    <select id="personaTemplate" style="flex: 1; max-width: 400px;">
+                        <option value="">-- Select a Persona Template --</option>
+                        <option value="developer">The Developer (Technical & Concise)</option>
+                        <option value="executive">The Executive (Strategic & High-level)</option>
+                        <option value="creative">The Creative (Brainstorming Partner)</option>
+                    </select>
+                    <button id="applyTemplateBtn" class="btn-secondary" style="padding: 8px 16px;">
+                        <i class="fas fa-check"></i> Apply
+                    </button>
+                </div>
+            </div>
+
             <div class="profile-section">
                 <h3><i class="fas fa-user"></i> About You</h3>
                 <p class="section-description">
@@ -122,6 +135,7 @@
     <div id="toastContainer" class="toast-container"></div>
 
     <!-- Scripts -->
+    <script src="js/toast.js"></script>
     <script src="js/profile.js" type="module"></script>
 </body>
 </html>

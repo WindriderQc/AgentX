@@ -12,15 +12,9 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 </head>
 <body>
-    <nav class="top-nav">
-        <a href="index.html"><i class="fas fa-comments"></i> Chat</a>
-        <a href="dashboard.html"><i class="fas fa-tachometer-alt"></i> Operations</a>
-        <a href="n8n-monitor.html"><i class="fas fa-network-wired"></i> n8n Monitor</a>
-        <a href="benchmark.html"><i class="fas fa-rocket"></i> Benchmark</a>
-        <a href="analytics.html" class="active"><i class="fas fa-chart-line"></i> Analytics</a>
-        <a href="prompts.html"><i class="fas fa-code"></i> Prompts</a>
-        <a href="profile.html"><i class="fas fa-user-circle"></i> Profile</a>
-    </nav>
+    <div id="nav-container"></div>
+    <script src="/js/components/nav.js"></script>
+    <script>injectNav('analytics');</script>
     <div class="bg-grid"></div>
     <div class="analytics-page" style="padding-top: 80px;">
         

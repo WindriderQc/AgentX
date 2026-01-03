@@ -150,22 +150,24 @@ function quickScore(response, prompt) {
 /**
  * Call the judge model to evaluate a response
  * @param {string} evalPrompt - The evaluation prompt
+ * @param {Object} config - Optional configuration override
  * @returns {Promise<Object>} Parsed scores
  */
-async function callJudge(evalPrompt) {
+async function callJudge(evalPrompt, config = {}) {
+    const judgeConfig = { ...JUDGE_CONFIG, ...config };
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), JUDGE_CONFIG.timeout);
+    const timeoutId = setTimeout(() => controller.abort(), judgeConfig.timeout);
     
     try {
-        const response = await fetch(`${JUDGE_CONFIG.host}/api/generate`, {
+        const response = await fetch(`${judgeConfig.host}/api/generate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                model: JUDGE_CONFIG.model,
+                model: judgeConfig.model,
                 prompt: evalPrompt,
                 stream: false,
                 options: {
-                    temperature: JUDGE_CONFIG.temperature,
+                    temperature: judgeConfig.temperature,
                     num_predict: 200
                 }
             }),
@@ -211,9 +213,10 @@ async function callJudge(evalPrompt) {
  * @param {string} params.response - The model's response to evaluate
  * @param {Object} params.prompt - The prompt object with expected answer and criteria
  * @param {boolean} params.skipLLM - Skip LLM judge, use quick scoring only
+ * @param {Object} params.judgeConfig - Optional configuration for the judge model
  * @returns {Promise<Object>} Quality scores
  */
-async function scoreResponse({ response, prompt, skipLLM = false }) {
+async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = {} }) {
     const startTime = Date.now();
     
     // Try quick scoring first
@@ -250,7 +253,7 @@ async function scoreResponse({ response, prompt, skipLLM = false }) {
         .replace('{{expected}}', prompt.expected_answer || 'See criteria')
         .replace('{{response}}', response.substring(0, 2000)); // Limit response length
     
-    const judgeResult = await callJudge(evalPrompt);
+    const judgeResult = await callJudge(evalPrompt, judgeConfig);
     
     if (!judgeResult.success) {
         return {
@@ -281,7 +284,7 @@ async function scoreResponse({ response, prompt, skipLLM = false }) {
         scoring_type: scoringType,
         breakdown: scores,
         explanation: scores.explanation || '',
-        judge_model: JUDGE_CONFIG.model,
+        judge_model: judgeConfig.model || JUDGE_CONFIG.model,
         scoring_time_ms: Date.now() - startTime
     };
 }
@@ -383,5 +386,7 @@ module.exports = {
     batchScore,
     quickScore,
     SCORING_CONFIGS,
+    JUDGE_CONFIG
+};
     JUDGE_CONFIG
 };

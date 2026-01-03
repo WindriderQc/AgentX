@@ -8,7 +8,7 @@ Welcome to AgentX! This guide will help you contribute effectively to the projec
 
 1.  **Clone the repository**:
     ```bash
-    git clone <repository-url>
+    git clone https://github.com/WindriderQc/AgentX.git
     cd AgentX
     ```
 

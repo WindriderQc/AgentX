@@ -303,11 +303,13 @@ class QdrantVectorStore extends VectorStoreAdapter {
     }
 
     // Get all unique documentIds
+    // Note: This is a simplified implementation that fetches points to group them.
+    // For very large datasets, this should be replaced with a separate collection for document metadata.
     const response = await this.fetch(`${this.host}/collections/${this.collection}/points/scroll`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        limit: 1000,
+        limit: 10000, // Increased limit to capture more chunks
         with_payload: true,
         with_vector: false,
         ...(must.length > 0 && { filter: { must } })
@@ -322,6 +324,8 @@ class QdrantVectorStore extends VectorStoreAdapter {
     const docMap = new Map();
     for (const point of data.result.points) {
       const docId = point.payload.documentId;
+      const textLen = point.payload.text ? point.payload.text.length : 0;
+
       if (!docMap.has(docId)) {
         docMap.set(docId, {
           documentId: docId,
@@ -330,11 +334,14 @@ class QdrantVectorStore extends VectorStoreAdapter {
           title: point.payload.title,
           tags: point.payload.tags || [],
           chunkCount: 0,
+          textLength: 0, // Track total text length
           createdAt: point.payload.createdAt,
           updatedAt: point.payload.updatedAt
         });
       }
-      docMap.get(docId).chunkCount++;
+      const doc = docMap.get(docId);
+      doc.chunkCount++;
+      doc.textLength += textLen;
     }
 
     return Array.from(docMap.values());
