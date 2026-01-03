@@ -94,7 +94,7 @@
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ {\n  \"title\": \"System Health Check Failed\",\n  \"severity\": \"critical\",\n  \"message\": \"One or more components are degraded\",\n  \"source\": \"n8n-monitor\",\n  \"context\": {\n    \"component\": \"system\",\n    \"detail\": $json\n  }\n} }}",
+        "jsonBody": "={{ (() => {\n  const overall = $json?.overall || 'degraded';\n  const failing = Object.entries($json?.components || {})\n    .filter(([_, v]) => (v?.status || 'unknown') !== 'ok')\n    .map(([k]) => k);\n\n  const severity = overall === 'unhealthy' ? 'critical' : 'warning';\n  const channels = severity === 'critical' ? ['slack','email'] : ['slack'];\n\n  return {\n    eventType: 'system_health_not_healthy',\n    ruleId: 'sbqc.n1_1.health.not_healthy',\n    ruleName: 'SBQC N1.1 System Health Not Healthy',\n    severity,\n    title: `System Health: ${overall.toUpperCase()}`,\n    message: failing.length\n      ? `Health is ${overall}. Failing components: ${failing.join(', ')}`\n      : `Health is ${overall}.`,\n    source: 'n8n:SBQC-N1.1',\n    channels,\n    context: {\n      workflow: 'SBQC-N1.1',\n      overall,\n      failingComponents: failing,\n      detail: $json\n    },\n    metadata: {\n      eventType: 'system_health_not_healthy'\n    }\n  };\n})() }}",
         "options": {
           "timeout": 5000
         }

@@ -6,14 +6,28 @@ This directory contains all n8n workflow definitions for the SBQC Stack automati
 
 | Workflow | File | Status | Webhook |
 |----------|------|--------|---------|
+| **Test/Utility (N0.x)** |
+| Deployment Test | N0.0.json | ✅ Active | `test-deployment` |
+| Health Dashboard | N0.1.json | ✅ Active | `sbqc-health` |
+| **Janitor (N1.x)** |
 | System Health Check | N1.1.json | ✅ Active | `sbqc-n1-1-health-check` |
 | Ops Diagnostic | N1.3.json | ✅ Active | `sbqc-ops-diagnostic` |
+| **Curator (N2.x)** |
 | NAS Scan | N2.1.json | ✅ Active | `sbqc-n2-1-nas-scan` |
 | NAS Full Scan | N2.2.json | ✅ Active | `sbqc-n2-2-nas-full-scan` |
 | RAG Ingest | N2.3.json | ✅ Active | `sbqc-n2-3-rag-ingest` |
-| Model Monitor | N3.1.json | ⚠️ Fixed | `sbqc-n3-1-model-monitor` |
-| AI Query | N3.2.json | 📋 Pending | `sbqc-ai-query` |
-| Feedback Analysis | N5.1.json | 📋 Pending | `sbqc-n5-1-feedback-analysis` |
+| **Auditor (N3.x)** |
+| Model Monitor | N3.1.json | ✅ Active | `sbqc-n3-1-model-monitor` |
+| AI Query Performance | N3.2.json | ✅ Active | `sbqc-ai-query` |
+| **Guardian (N4.x)** |
+| Alert Dispatcher | N4.1.json | ✅ Active | `sbqc-n4-1-alert-dispatch` |
+| Metrics Aggregation | N4.2.json | ✅ Active | *(scheduled only)* |
+| Self-Healing Orchestrator | N4.4.json | ✅ Active | `sbqc-n4-4-self-healing-trigger` |
+| **Analyst (N5.x)** |
+| Feedback Analysis | N5.1.json | ✅ Active | `sbqc-n5-1-feedback-analysis` |
+| **Architect (N6.x)** |
+| Workflow Architect | N6.1.json | ✅ Active | `sbqc-workflow-architect` |
+| Workflow Architect (Simplified) | N6.1-v2.json | ✅ Active | `sbqc-workflow-architect` |
 
 **n8n Instance:** http://192.168.2.199:5678
 **Public URL:** https://n8n.specialblend.icu
@@ -24,11 +38,13 @@ This directory contains all n8n workflow definitions for the SBQC Stack automati
 
 Workflows in this directory follow the **Agent Persona Pattern** - each workflow embodies a specific role with clear responsibilities:
 
+- ⚙️ **Test/Utility** (N0.x) - Infrastructure testing and validation
 - 🧹 **Janitor** (N1.x) - System health monitoring and maintenance
 - 📚 **Curator** (N2.x) - Content and data quality management
 - 🔍 **Auditor** (N3.x) - Performance and cost tracking
-- 🛡️ **Guardian** (N4.x) - Security and anomaly detection
+- 🛡️ **Guardian** (N4.x) - Security, alerts, self-healing, and metrics aggregation
 - 📊 **Analyst** (N5.x) - Feedback analysis and improvement loops
+- 🏗️ **Architect** (N6.x) - Workflow generation and automation design
 
 **See [AGENT_PERSONAS.md](AGENT_PERSONAS.md) for complete pattern documentation.**
 
@@ -153,6 +169,8 @@ https://n8n.specialblend.icu/webhook/{webhook-name}
 
 | Workflow | Method | Webhook URL | Test Command |
 |----------|--------|-------------|--------------|
+| **N0.0** Deployment Test | GET | `https://n8n.specialblend.icu/webhook/test-deployment` | `curl https://n8n.specialblend.icu/webhook/test-deployment` |
+| **N0.1** Health Dashboard | GET | `https://n8n.specialblend.icu/webhook/sbqc-health` | `curl https://n8n.specialblend.icu/webhook/sbqc-health` |
 | **N1.1** System Health Check | POST | `https://n8n.specialblend.icu/webhook/sbqc-n1-1-health-check` | `curl -X POST https://n8n.specialblend.icu/webhook/sbqc-n1-1-health-check -H "Content-Type: application/json" -d '{"test":"manual"}'` |
 | **N1.3** Ops Diagnostic | POST | `https://n8n.specialblend.icu/webhook/sbqc-ops-diagnostic` | `curl -X POST https://n8n.specialblend.icu/webhook/sbqc-ops-diagnostic -H "Content-Type: application/json" -d '{"reason":"test"}'` |
 | **N2.1** NAS Scan | POST | `https://n8n.specialblend.icu/webhook/sbqc-n2-1-nas-scan` | `curl -X POST https://n8n.specialblend.icu/webhook/sbqc-n2-1-nas-scan` |
@@ -160,9 +178,12 @@ https://n8n.specialblend.icu/webhook/{webhook-name}
 | **N2.3** RAG Ingest | POST | `https://n8n.specialblend.icu/webhook/sbqc-n2-3-rag-ingest` | `curl -X POST https://n8n.specialblend.icu/webhook/sbqc-n2-3-rag-ingest -H "Content-Type: application/json" -d '{"source":"manual"}'` |
 | **N3.1** Model Monitor | GET | `https://n8n.specialblend.icu/webhook/sbqc-n3-1-model-monitor` | `curl https://n8n.specialblend.icu/webhook/sbqc-n3-1-model-monitor` |
 | **N3.2** AI Query | POST | `https://n8n.specialblend.icu/webhook/sbqc-ai-query` | `curl -X POST https://n8n.specialblend.icu/webhook/sbqc-ai-query -H "Content-Type: application/json" -d '{"query":"test"}'` |
+| **N4.1** Alert Dispatcher | POST | `https://n8n.specialblend.icu/webhook/sbqc-n4-1-alert-dispatch` | `curl -X POST https://n8n.specialblend.icu/webhook/sbqc-n4-1-alert-dispatch -H "Content-Type: application/json" -d '{"event":"test"}'` |
+| **N4.4** Self-Healing Trigger | POST | `https://n8n.specialblend.icu/webhook/sbqc-n4-4-self-healing-trigger` | `curl -X POST https://n8n.specialblend.icu/webhook/sbqc-n4-4-self-healing-trigger -H "Content-Type: application/json" -d '{"issue":"test"}'` |
 | **N5.1** Feedback Analysis | POST | `https://n8n.specialblend.icu/webhook/sbqc-n5-1-feedback-analysis` | `curl -X POST https://n8n.specialblend.icu/webhook/sbqc-n5-1-feedback-analysis` |
+| **N6.1** Workflow Architect | POST | `https://n8n.specialblend.icu/webhook/sbqc-workflow-architect` | `curl -X POST https://n8n.specialblend.icu/webhook/sbqc-workflow-architect -H "Content-Type: application/json" -d '{"task":"generate health check"}'` |
 
-**Note:** N3.1 uses GET method, all others use POST.
+**Note:** N0.0, N0.1, and N3.1 use GET method; all others use POST. N4.2 (Metrics Aggregation) runs on schedule only (no webhook).
 
 ---
 

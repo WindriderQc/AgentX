@@ -146,6 +146,35 @@
     },
     {
       "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3080/api/alerts",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ (() => {\n  const analysis = $('Analyze Feedback Data').first().json;\n  const positiveRate = Number(analysis?.overall?.positiveRate ?? 0);\n  const offenders = Array.isArray(analysis?.underperformers) ? analysis.underperformers : [];\n\n  const severity = (positiveRate > 0 && positiveRate < 60) || offenders.length >= 3 ? 'critical' : 'warning';\n  const channels = severity === 'critical' ? ['slack','email'] : ['slack'];\n\n  return {\n    eventType: 'prompt_performance_drop',\n    ruleId: 'sbqc.n5_1.prompt.performance_drop',\n    ruleName: 'SBQC N5.1 Prompt Performance Drop',\n    severity,\n    title: `Prompt performance drop detected (${positiveRate}% positive)`,\n    message: offenders.length\n      ? `Weekly feedback indicates underperforming prompts. Positive rate: ${positiveRate}%. Underperformers: ${offenders.slice(0, 5).map(o => o.promptVersion || o.name || 'unknown').join(', ')}`\n      : `Weekly feedback indicates performance issues. Positive rate: ${positiveRate}%.`,\n    source: 'n8n:SBQC-N5.1',\n    channels,\n    context: {\n      workflow: 'SBQC-N5.1',\n      positiveRate,\n      underperformers: offenders,\n      slowModels: analysis?.slowModels || [],\n      analyzedAt: analysis?.analyzedAt\n    },\n    metadata: {\n      eventType: 'prompt_performance_drop'\n    }\n  };\n})() }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "CreateAlertPromptPerf",
+      "name": "Create Alert (Prompt Performance)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        650,
+        120
+      ],
+      "continueOnFail": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "PIrrA2wpOppzVodi",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
         "jsCode": "const analysis = $('Analyze Feedback Data').first().json;\nconst negativeFeedback = $input.first().json.data || [];\n\n// Build analysis prompt for AI\nconst prompt = `You are an AI prompt optimization expert. Analyze the following feedback data and provide specific, actionable recommendations.\n\n## Current Performance\n- Overall positive rate: ${analysis.overall.positiveRate}%\n- Total feedback items: ${analysis.overall.total}\n\n## Underperforming Prompt Versions\n${JSON.stringify(analysis.underperformers, null, 2)}\n\n## Slow Models (>5s latency)\n${JSON.stringify(analysis.slowModels, null, 2)}\n\n## Sample Negative Feedback\n${negativeFeedback.slice(0, 10).map(f => `- \"${f.comment || 'No comment'}\" (prompt: ${f.promptVersion || 'default'})`).join('\\n')}\n\n## Your Task\nProvide:\n1. Root cause analysis (2-3 likely causes)\n2. Specific prompt modifications to try\n3. Suggested A/B test configuration\n4. Model routing recommendations if applicable\n\nFormat your response as structured JSON with keys: causes, promptSuggestions, abTestConfig, modelRecommendations`;\n\nreturn [{\n  json: {\n    prompt,\n    analysisData: analysis,\n    negativeSamples: negativeFeedback.length\n  }\n}];"
       },
       "id": "PrepareAIPrompt",
@@ -359,6 +388,11 @@
         [
           {
             "node": "Get Negative Feedback Examples",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Create Alert (Prompt Performance)",
             "type": "main",
             "index": 0
           }

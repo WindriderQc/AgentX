@@ -143,21 +143,34 @@ Every agent workflow follows this pattern:
 
 ---
 
-### 4. **Guardian** 🛡️ (Security & Anomaly Detector)
+### 4. **Guardian** 🛡️ (Security, Alerts & Self-Healing)
 
-**Role:** Protects system integrity and detects anomalous behavior
+**Role:** Protects system integrity, dispatches alerts, aggregates metrics, and orchestrates self-healing actions
 
 **Responsibilities:**
+- Dispatch alerts to multiple channels (email, Slack, webhook, DataAPI)
+- Evaluate alert rules and manage delivery status
+- Aggregate hourly metrics for time-series analysis
+- Orchestrate self-healing actions (model failover, prompt rollback, service restart)
 - Monitor authentication failures and rate limits
-- Detect unusual API usage patterns
-- Track security events (injection attempts, etc.)
-- Alert on suspicious activities
-- Enforce quotas and access controls
+- Detect unusual API usage patterns and security events
 
-**Schedule:** Real-time (webhook-driven) + Every 10 minutes
-**Planned Implementation:** `N4.1.json`
-**Metrics Type:** `security`
+**Schedule:**
+- N4.1 (Alert Dispatcher): Real-time (webhook-driven)
+- N4.2 (Metrics Aggregation): Hourly
+- N4.4 (Self-Healing): Real-time (webhook-driven) + Every 5 minutes
+
+**Current Implementations:**
+- `N4.1.json` - Alert Dispatcher
+- `N4.2.json` - Metrics Aggregation
+- `N4.4.json` - Self-Healing Orchestrator
+
+**Metrics Type:** `security`, `alerts`, `healing`
+
 **Components Monitored:**
+- `alert_delivery` - Alert dispatch success rates
+- `metrics_aggregation` - Hourly rollup health
+- `self_healing` - Auto-remediation actions
 - `auth_failures` - Failed login attempts
 - `rate_limit_hits` - Rate limiter triggers
 - `anomaly_detection` - ML-based anomaly scores
@@ -182,6 +195,44 @@ Every agent workflow follows this pattern:
 - `prompt_performance` - Per-prompt success rates
 - `feedback_trends` - User satisfaction over time
 - `conversation_quality` - Interaction quality scores
+
+---
+
+### 6. **Architect** 🏗️ (Workflow Generation & Automation Design)
+
+**Role:** Generates new n8n workflows and automates system design using AI-assisted workflow creation
+
+**Responsibilities:**
+- Generate n8n workflow JSON from natural language descriptions
+- Design multi-step automation sequences
+- Create new agent personas based on system needs
+- Optimize existing workflows for performance
+- Validate workflow structure and node connections
+- Deploy generated workflows to n8n instance
+
+**Schedule:** On-demand (webhook-triggered)
+
+**Current Implementations:**
+- `N6.1.json` - Workflow Architect (Full)
+- `N6.1-v2.json` - Workflow Architect (Simplified)
+
+**Metrics Type:** `automation`, `generation`
+
+**Components Monitored:**
+- `workflow_generation` - Success rate of workflow creation
+- `deployment_success` - Workflow deployment outcomes
+- `workflow_quality` - Generated workflow validation scores
+
+**Key Features:**
+- Uses Claude/LLM to generate workflow specifications
+- Validates JSON structure and n8n compatibility
+- Auto-deploys to n8n via API
+- Tracks generation history and success rates
+
+**Example Use Cases:**
+- "Generate a health check workflow for MongoDB"
+- "Create a backup workflow that runs daily"
+- "Design an alert workflow for disk space monitoring"
 
 ---
 
