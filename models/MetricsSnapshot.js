@@ -73,4 +73,36 @@ MetricsSnapshotSchema.statics.getSeries = async function(filter = {}, range = {}
   return this.find(query).sort({ timestamp: 1 }).lean();
 };
 
+MetricsSnapshotSchema.statics.upsertSnapshot = async function(payload = {}) {
+  const { timestamp, type, componentId, value, metadata = {} } = payload;
+  if (!timestamp || !type || !componentId || !Number.isFinite(value)) {
+    throw new Error('timestamp, type, componentId, and numeric value are required');
+  }
+
+  const query = {
+    timestamp: new Date(timestamp),
+    type,
+    componentId
+  };
+
+  return this.findOneAndUpdate(
+    query,
+    {
+      $set: {
+        value,
+        metadata: metadata || {}
+      }
+    },
+    { new: true, upsert: true, setDefaultsOnInsert: true }
+  );
+};
+
+MetricsSnapshotSchema.statics.getTimeSeries = async function(componentId, type, from, to) {
+  const docs = await this.getSeries(
+    { componentId, type },
+    { from, to }
+  );
+  return docs.map((doc) => ({ x: doc.timestamp, y: doc.value }));
+};
+
 module.exports = mongoose.model('MetricsSnapshot', MetricsSnapshotSchema);

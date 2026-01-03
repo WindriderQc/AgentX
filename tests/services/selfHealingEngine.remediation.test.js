@@ -109,7 +109,8 @@ describe('Self-Healing Engine - Remediation Actions', () => {
 
       const rule = {
         name: 'test_failover_rollback',
-        remediation: { strategy: 'model_failover', priority: 1 }
+        remediation: { strategy: 'model_failover', priority: 1 },
+        notifications: DEFAULT_NOTIFICATIONS
       };
 
       const context = {
@@ -157,7 +158,8 @@ describe('Self-Healing Engine - Remediation Actions', () => {
         remediation: {
           strategy: 'prompt_rollback',
           priority: 2
-        }
+        },
+        notifications: DEFAULT_NOTIFICATIONS
       };
 
       const context = {
@@ -200,7 +202,8 @@ describe('Self-Healing Engine - Remediation Actions', () => {
         detectionQuery: {
           componentPattern: 'prompt:only_one_version'
         },
-        remediation: { strategy: 'prompt_rollback', priority: 2 }
+        remediation: { strategy: 'prompt_rollback', priority: 2 },
+        notifications: DEFAULT_NOTIFICATIONS
       };
 
       const context = {
@@ -222,7 +225,8 @@ describe('Self-Healing Engine - Remediation Actions', () => {
         detectionQuery: {
           componentPattern: 'prompt:nonexistent'
         },
-        remediation: { strategy: 'prompt_rollback', priority: 2 }
+        remediation: { strategy: 'prompt_rollback', priority: 2 },
+        notifications: DEFAULT_NOTIFICATIONS
       };
 
       const context = {
@@ -247,7 +251,8 @@ describe('Self-Healing Engine - Remediation Actions', () => {
           strategy: 'service_restart',
           requiresApproval: true,
           priority: 1
-        }
+        },
+        notifications: DEFAULT_NOTIFICATIONS
       };
 
       const context = {
@@ -278,7 +283,8 @@ describe('Self-Healing Engine - Remediation Actions', () => {
           strategy: 'service_restart',
           requiresApproval: false,
           priority: 1
-        }
+        },
+        notifications: DEFAULT_NOTIFICATIONS
       };
 
       const context = {
@@ -311,7 +317,8 @@ describe('Self-Healing Engine - Remediation Actions', () => {
         remediation: {
           strategy: 'throttle_requests',
           priority: 2
-        }
+        },
+        notifications: DEFAULT_NOTIFICATIONS
       };
 
       const context = {
@@ -341,7 +348,8 @@ describe('Self-Healing Engine - Remediation Actions', () => {
       // Activate throttling first time
       const rule = {
         name: 'test_throttle_state',
-        remediation: { strategy: 'throttle_requests', priority: 2 }
+        remediation: { strategy: 'throttle_requests', priority: 2 },
+        notifications: DEFAULT_NOTIFICATIONS
       };
 
       const context = {
@@ -414,7 +422,8 @@ describe('Self-Healing Engine - Remediation Actions', () => {
           strategy: 'alert_only',
           cooldown: '15m',
           priority: 3
-        }
+        },
+        notifications: DEFAULT_NOTIFICATIONS
       };
 
       const metricsData = { value: 150, count: 1 };
@@ -460,7 +469,8 @@ describe('Self-Healing Engine - Remediation Actions', () => {
     test('should track remediation execution history', async () => {
       const rule = {
         name: 'test_history',
-        remediation: { strategy: 'alert_only', cooldown: '15m' }
+        remediation: { strategy: 'alert_only', cooldown: '15m' },
+        notifications: DEFAULT_NOTIFICATIONS
       };
 
       const context = { evaluation: { metrics: {} } };

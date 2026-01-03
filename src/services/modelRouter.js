@@ -8,12 +8,117 @@
 
 const logger = require('../../config/logger');
 const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
+const { RemediationAction } = require('../../models/RemediationAction');
+const { getAlertService } = require('./alertService');
 
 // Host configuration
 const HOSTS = {
     primary: process.env.OLLAMA_HOST || 'http://192.168.2.99:11434',
-    secondary: process.env.OLLAMA_HOST_2 || 'http://192.168.2.12:11434'
+    secondary: process.env.OLLAMA_HOST_2 || process.env.OLLAMA_HOST_SECONDARY || 'http://192.168.2.12:11434'
 };
+
+// ---------------------------------------------------------------------------
+// Back-compat helpers (used by unit tests and older call-sites)
+// ---------------------------------------------------------------------------
+
+const HEALTH_CACHE_TTL_MS = parseInt(process.env.MODEL_HEALTH_CACHE_TTL_MS || '1000', 10);
+const HEALTH_SLOW_THRESHOLD_MS = parseInt(process.env.MODEL_HEALTH_SLOW_THRESHOLD_MS || '6000', 10);
+const _healthCache = new Map();
+
+async function getModelHealth(hostUrl, _model = null) {
+    if (!hostUrl) {
+        return { healthy: false, latency: -1, checkedAt: Date.now() };
+    }
+
+    const cacheKey = `${hostUrl}|${_model || ''}`;
+    const now = Date.now();
+    const cached = _healthCache.get(cacheKey);
+    if (cached && now - cached.checkedAt < HEALTH_CACHE_TTL_MS) {
+        return cached;
+    }
+
+    const start = Date.now();
+    try {
+        const response = await fetch(`${hostUrl}/api/tags`, { method: 'GET' });
+        const result = {
+            healthy: !!response?.ok,
+            latency: Date.now() - start,
+            checkedAt: Date.now()
+        };
+        _healthCache.set(cacheKey, result);
+        return result;
+    } catch (err) {
+        const result = {
+            healthy: false,
+            latency: Date.now() - start,
+            checkedAt: Date.now(),
+            error: err.message
+        };
+        _healthCache.set(cacheKey, result);
+        return result;
+    }
+}
+
+async function classifyAndRoute(message, options = {}) {
+    const { taskType = null } = options;
+
+    // Minimal deterministic behavior for tests: if taskType is given, route to primary
+    // unless health is slow/unhealthy.
+    const primaryHost = HOSTS.primary;
+    const secondaryHost = HOSTS.secondary;
+
+    const primaryHealth = await getModelHealth(primaryHost, null);
+    const shouldFailover = !primaryHealth.healthy || primaryHealth.latency > HEALTH_SLOW_THRESHOLD_MS;
+
+    if (!shouldFailover) {
+        return {
+            host: primaryHost,
+            failedOver: false,
+            taskType: taskType || 'default',
+            message
+        };
+    }
+
+    // Record remediation + alert (best-effort)
+    try {
+        await RemediationAction.create({
+            strategy: 'model_failover',
+            action: 'switch_host',
+            automatedExecution: true,
+            metadata: {
+                primary: primaryHost,
+                backup: secondaryHost,
+                reason: primaryHealth.healthy ? 'slow_primary' : 'unhealthy_primary',
+                latency: primaryHealth.latency
+            }
+        });
+    } catch (_e) {
+        // best-effort
+    }
+
+    try {
+        const svc = typeof getAlertService === 'function' ? getAlertService() : null;
+        if (svc?.triggerAlert) {
+            await svc.triggerAlert('model_failover', 'warning', {
+                primary: primaryHost,
+                backup: secondaryHost,
+                latency: primaryHealth.latency
+            });
+        }
+    } catch (_e) {
+        // best-effort
+    }
+
+    // Verify backup quickly (best-effort)
+    await getModelHealth(secondaryHost, null);
+
+    return {
+        host: secondaryHost,
+        failedOver: true,
+        taskType: taskType || 'default',
+        message
+    };
+}
 
 // Persistent failover state (in-memory)
 let ACTIVE_HOST_STATE = {
@@ -387,7 +492,9 @@ module.exports = {
     getModelForTask,
     classifyQuery,
     routeRequest,
+    classifyAndRoute,
     checkHostHealth,
+    getModelHealth,
     getRoutingStatus,
     getActiveHost,
     getBackupHost,

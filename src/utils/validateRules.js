@@ -139,7 +139,7 @@ class RulesValidator {
     rules.forEach((rule, index) => {
       if (!rule.name) return;
 
-      if (names[rule.name]) {
+      if (Object.prototype.hasOwnProperty.call(names, rule.name)) {
         duplicates.push({
           name: rule.name,
           indices: [names[rule.name], index]

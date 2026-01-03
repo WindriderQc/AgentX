@@ -1,6 +1,6 @@
 const Alert = require('../../models/Alert');
 const MetricsSnapshot = require('../../models/MetricsSnapshot');
-const AlertService = require('./alertService');
+const alertService = require('./alertService');
 const ModelRouter = require('./modelRouter');
 const logger = require('../../config/logger');
 const fs = require('fs').promises;
@@ -608,22 +608,37 @@ class SelfHealingEngine {
   async _executeAlertOnly(rule, context) {
     logger.info('Alert-only action', { rule: rule.name });
 
-    // Create alert via AlertService
-    const alertService = new AlertService();
-    const alert = await alertService.createAlert({
+    const crypto = require('crypto');
+    const channels = Array.isArray(rule?.notifications?.onTrigger) ? rule.notifications.onTrigger : [];
+    const component = context?.evaluation?.metrics?.componentId || context?.evaluation?.metrics?.component || 'agentx';
+    const fingerprint = crypto
+      .createHash('md5')
+      .update(`${rule.name}|${component}|${rule.detectionQuery?.metric || ''}|alert_only`)
+      .digest('hex');
+
+    const alert = await Alert.create({
       ruleId: rule.name,
+      ruleName: rule.description || rule.name,
       severity: this._mapPriorityToSeverity(rule.remediation.priority),
-      title: rule.description,
+      title: rule.description || `Self-Healing: ${rule.name}`,
       message: `Self-healing rule triggered: ${rule.name}`,
-      component: context.evaluation?.metrics?.component || 'agentx',
-      metric: rule.detectionQuery.metric,
-      channels: rule.notifications.onTrigger,
+      context: {
+        component,
+        metric: rule.detectionQuery?.metric
+      },
+      channels,
+      fingerprint,
+      source: 'agentx',
       metadata: {
         ...context,
         ruleName: rule.name,
         strategy: rule.remediation.strategy
       }
     });
+
+    if (channels.length > 0) {
+      await alertService._sendNotifications(alert, channels);
+    }
 
     return {
       action: 'alert_only',
@@ -647,11 +662,11 @@ class SelfHealingEngine {
     // Build query
     const query = {
       timestamp: { $gte: startTime },
-      metricType: this._mapMetricToType(metric)
+      type: this._mapMetricToType(metric)
     };
 
     if (componentPattern && componentPattern !== '*') {
-      query.component = new RegExp(componentPattern.replace('*', '.*'));
+      query.componentId = new RegExp(componentPattern.replace('*', '.*'));
     }
 
     // Fetch and aggregate
@@ -688,7 +703,8 @@ class SelfHealingEngine {
     return {
       value,
       count: metrics.length,
-      component: metrics[0]?.component,
+      componentId: metrics[0]?.componentId,
+      component: metrics[0]?.componentId,
       timestamp: metrics[0]?.timestamp
     };
   }
@@ -770,25 +786,38 @@ class SelfHealingEngine {
    * Send notifications based on event type
    */
   async _sendNotifications(rule, eventType, context) {
-    const channels = rule.notifications[eventType];
+    const channels = rule?.notifications?.[eventType];
     if (!channels || channels.length === 0) return;
 
-    const alertService = new AlertService();
+    const crypto = require('crypto');
+    const component = context?.evaluation?.metrics?.componentId || context?.evaluation?.metrics?.component || 'selfHealingEngine';
+    const severity = eventType === 'onFailure'
+      ? 'error'
+      : (eventType === 'onTrigger' && rule?.remediation?.priority === 1)
+        ? 'critical'
+        : (eventType === 'onTrigger')
+          ? 'warning'
+          : 'info';
 
-    // Determine severity based on event type
-    let severity = 'info';
-    if (eventType === 'onFailure') severity = 'high';
-    if (eventType === 'onTrigger' && rule.remediation.priority === 1) severity = 'critical';
-
-    // Create alert for specified channels
     try {
-      await alertService.createAlert({
+      const fingerprint = crypto
+        .createHash('md5')
+        .update(`${rule.name}|${component}|${eventType}`)
+        .digest('hex');
+
+      const alert = await Alert.create({
         ruleId: rule.name,
+        ruleName: rule.description || rule.name,
         severity,
         title: `Self-Healing: ${rule.name} - ${eventType}`,
         message: this._formatNotificationMessage(rule, eventType, context),
-        component: context.evaluation?.metrics?.component || 'selfHealingEngine',
-        channels: channels.filter(c => c !== 'dataapi_log'), // Filter out log-only
+        context: {
+          component,
+          metric: rule?.detectionQuery?.metric
+        },
+        channels,
+        fingerprint,
+        source: 'agentx',
         metadata: {
           ...context,
           eventType,
@@ -796,6 +825,8 @@ class SelfHealingEngine {
           strategy: rule.remediation.strategy
         }
       });
+
+      await alertService._sendNotifications(alert, channels);
     } catch (error) {
       logger.error('Failed to send notification', {
         rule: rule.name,
@@ -870,9 +901,9 @@ class SelfHealingEngine {
    */
   _mapPriorityToSeverity(priority) {
     if (priority === 1) return 'critical';
-    if (priority === 2) return 'high';
-    if (priority === 3) return 'medium';
-    return 'low';
+    if (priority === 2) return 'error';
+    if (priority === 3) return 'warning';
+    return 'info';
   }
 
   /**

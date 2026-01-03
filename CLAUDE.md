@@ -64,7 +64,8 @@ Routes (validation) → Services (orchestration) → Models (data) → MongoDB/O
 - `chatService.js` - Core chat orchestration with RAG/memory integration
 - `ragStore.js` - Vector store singleton (in-memory or Qdrant)
 - `embeddings.js` - Embedding generation with LRU cache
-- `modelRouter.js` - Smart routing between multiple Ollama hosts
+- `modelRouter.js` - Smart routing between multiple Ollama hosts with persistent failover state
+- `selfHealingEngine.js` - Automated remediation system with 5 action strategies
 - `toolService.js` - Slash command parser for /dataapi tools
 - `dataapiClient.js` - Proxy client for DataAPI integration
 
@@ -196,6 +197,195 @@ HOSTS = {
 ```
 
 **Critical:** When `autoRoute=true` is passed to chat API, user's model selection is **OVERRIDDEN** by routing decision.
+
+### Persistent Failover State
+
+**Feature:** ModelRouter maintains in-memory failover state for self-healing integration
+
+**State Tracking:**
+```javascript
+ACTIVE_HOST_STATE = {
+  current: 'http://192.168.2.99:11434',  // Currently active host
+  failedOver: false,                      // Whether failover is active
+  failoverTimestamp: '2026-01-03T...',   // When failover occurred
+  reason: 'self_healing_failover',        // Reason for failover
+  failoverCount: 3                        // Total failovers this session
+}
+```
+
+**API Methods:**
+- `getActiveHost()` - Returns current host URL
+- `getBackupHost()` - Returns alternate host URL
+- `switchHost(url, reason)` - Performs failover with reason tracking
+- `getFailoverStatus()` - Returns full state object
+- `resetToPrimary(reason)` - Manually reset to primary host
+
+## Self-Healing System (Track 4)
+
+### Architecture Overview
+
+**Service:** `/src/services/selfHealingEngine.js` (883 lines)
+
+**Purpose:** Automatically detect operational issues via metrics and execute configurable remediation strategies to maintain system health without human intervention.
+
+### Five Remediation Strategies
+
+#### 1. Model Failover (`_executeModelFailover`)
+**Trigger:** Primary Ollama host slow (>5s) or unhealthy
+**Action:**
+- Switches to backup Ollama host
+- Verifies backup health before committing
+- Rolls back if backup also unhealthy
+- Updates ModelRouter persistent state
+
+**Configuration:**
+```json
+{
+  "name": "ollama_slow_response_failover",
+  "detectionQuery": {
+    "metric": "avg_response_time",
+    "threshold": 5000,
+    "comparison": "greater_than",
+    "window": "5m"
+  },
+  "remediation": {
+    "strategy": "model_failover",
+    "cooldown": "15m",
+    "requiresApproval": false
+  }
+}
+```
+
+#### 2. Prompt Rollback (`_executePromptRollback`)
+**Trigger:** Prompt quality drops (positive rate < 60%)
+**Action:**
+- Finds previous active PromptConfig version
+- Deactivates current, activates previous
+- Updates traffic weights (0% → 100%)
+- Returns rollback metadata
+
+**Use Case:** Automatically revert bad prompt deployments
+
+#### 3. Service Restart (`_executeServiceRestart`)
+**Trigger:** Service health check failures
+**Action:**
+- Executes PM2 reload (graceful, zero-downtime)
+- Maps component names to PM2 apps
+- Verifies restart success via process list
+- 5-second stabilization period
+
+**Safety:** Requires approval by default (`requiresApproval: true`)
+
+#### 4. Request Throttling (`_executeThrottle`)
+**Trigger:** High error rate (>10%) or system overload
+**Action:**
+- Reduces rate limits by 50% for 15 minutes
+- Stores state in `global._selfHealingThrottle`
+- Auto-restores after timeout
+- Returns adjusted limits
+
+**Purpose:** Shed load during degraded conditions
+
+#### 5. Alert-Only (`_executeAlertOnly`)
+**Trigger:** Any configurable threshold
+**Action:**
+- Creates Alert in database
+- Sends multi-channel notifications (Slack, email, webhook)
+- No remediation executed
+- Used for monitoring-only scenarios
+
+### Rule Configuration
+
+**File:** `/config/self-healing-rules.json` (12 rules)
+
+**Rule Structure:**
+```json
+{
+  "name": "unique_rule_id",
+  "enabled": true,
+  "description": "Human-readable description",
+  "detectionQuery": {
+    "metric": "metric_name",
+    "aggregation": "avg|sum|count|max",
+    "threshold": 100,
+    "comparison": "greater_than|less_than|equal",
+    "window": "5m|1h|24h",
+    "componentType": "ollama|agentx|prompt|rag",
+    "componentPattern": "component-*"
+  },
+  "conditions": {
+    "minOccurrences": 3
+  },
+  "remediation": {
+    "strategy": "model_failover|prompt_rollback|service_restart|throttle_requests|alert_only",
+    "action": "Action description",
+    "requiresApproval": false,
+    "cooldown": "15m",
+    "priority": 1
+  },
+  "notifications": {
+    "onTrigger": ["slack"],
+    "onSuccess": ["dataapi_log"],
+    "onFailure": ["slack", "email"]
+  }
+}
+```
+
+### Cooldown Enforcement
+
+**Purpose:** Prevent remediation thrashing
+
+**Mechanism:**
+- Tracks execution history with timestamps
+- Parses cooldown windows (e.g., "15m" → 900000ms)
+- Blocks re-execution until cooldown expires
+- Returns `cooldownRemaining` in evaluation
+
+**Example:** Model failover has 15-minute cooldown to prevent rapid host switching
+
+### Approval Workflow
+
+**Critical Actions:** Service restart requires approval
+
+**Flow:**
+1. Rule triggers → Returns `status: 'pending_approval'`
+2. Creates approval request in database
+3. Waits for human approval via API
+4. Executes if approved, cancels if rejected
+
+**API:** `POST /api/self-healing/actions/:id/approve`
+
+### Integration with n8n
+
+**Workflow:** N4.4 Self-Healing Orchestrator
+
+**Capabilities:**
+- Webhook-triggered remediation execution
+- Scheduled rule evaluation (every 5 minutes)
+- Metrics collection and alert creation
+- Integration with AgentX self-healing APIs
+
+**Trigger:**
+```bash
+curl -X POST https://n8n.specialblend.icu/webhook/sbqc-n4-4-self-healing-trigger \
+  -H "Content-Type: application/json" \
+  -d '{
+    "ruleName": "ollama_slow_response_failover",
+    "component": "ollama-99",
+    "remediationAction": "model_failover",
+    "requiresApproval": false
+  }'
+```
+
+### Key Features
+
+- **Automatic Detection:** Queries MetricsSnapshot for threshold violations
+- **Cooldown Period:** Prevents thrashing with configurable windows
+- **Approval Required:** Critical actions require human confirmation
+- **Multi-Channel Notifications:** Slack, email, webhook, DataAPI
+- **Execution History:** Tracks all remediation attempts
+- **Rule Management:** Enable/disable rules via API
+- **Dry-Run Mode:** Simulate remediations without execution
 
 ## Conversation Memory & Prompt Versioning
 
@@ -757,11 +947,21 @@ This section tracks the current implementation status and areas requiring develo
   - A/B testing with traffic-weighted selection
   - Version history and rollback functionality
   - Performance tracking (inferences, response time, tokens/sec, positive rate)
-- **Track 4: Self-Healing & Automation** ✅ **PARTIALLY COMPLETE**
-  - Self-healing engine implemented (`/src/services/selfHealingEngine.js`)
-  - N4.4 Self-Healing Orchestrator workflow deployed
-  - Automatic detection logic in place
-  - Remediation actions partially implemented
+- **Track 4: Self-Healing & Automation** ✅ **COMPLETE - PRODUCTION READY**
+  - Self-healing engine fully implemented (`/src/services/selfHealingEngine.js` - 883 lines)
+  - **All 5 remediation actions complete:**
+    - Model failover with health verification and rollback (lines 325-380)
+    - Prompt rollback with MongoDB integration (lines 385-453)
+    - Service restart with PM2 integration (lines 458-536)
+    - Request throttling with auto-restoration (lines 541-603)
+    - Alert-only action with multi-channel support (lines 608-648)
+  - Persistent failover state tracking in ModelRouter (lines 124-130, 310-383)
+  - 12 comprehensive self-healing rules configured (`/config/self-healing-rules.json` - 363 lines)
+  - N4.4 Self-Healing Orchestrator workflow deployed and functional
+  - Cooldown enforcement prevents remediation thrashing
+  - Approval workflow for critical actions (service restart)
+  - Integration tests created (`tests/services/selfHealingEngine.remediation.test.js` - 13 test cases)
+  - Complete documentation (`/docs/planning/TRACK_4_COMPLETION_SUMMARY.md` - 450 lines)
 - **Track 5: Advanced Testing & CI/CD** 🟡 **IN PROGRESS**
   - CI/CD pipeline documented and operational (GitHub Actions)
   - Workflow validation tests completed (6/6 workflows)
