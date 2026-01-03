@@ -116,8 +116,15 @@ Respond ONLY with JSON in this exact format:
 /**
  * Quick scoring for simple factual answers
  * Uses pattern matching before calling LLM judge
+ * Only triggers when prompt has expected_answer defined
  */
 function quickScore(response, prompt) {
+    // Only use quick scoring if we have an expected answer
+    const expectedAnswer = prompt.expected_answer || prompt.expected;
+    if (!expectedAnswer) {
+        return null; // Fall back to LLM judge
+    }
+    
     const resp = response.toLowerCase().trim();
     
     // Direct answer patterns for common factual questions
@@ -135,11 +142,13 @@ function quickScore(response, prompt) {
     
     for (const [pattern, check] of Object.entries(quickPatterns)) {
         if (promptLower.includes(pattern)) {
+            logger.info('Quick scoring match', { pattern, score: check.score, expected: check.answer });
             return {
                 quick: true,
                 score: check.score,
                 expected: check.answer,
-                matched: check.score === 10
+                matched: check.score === 10,
+                pattern
             };
         }
     }
@@ -219,14 +228,28 @@ async function callJudge(evalPrompt, config = {}) {
 async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = {} }) {
     const startTime = Date.now();
     
-    // Try quick scoring first
+    // Try quick scoring first (only if expected answer exists)
     const quickResult = quickScore(response, prompt);
     if (quickResult && quickResult.quick) {
+        const explanation = quickResult.matched
+            ? `Quick scoring matched expected answer "${quickResult.expected}" (pattern: ${quickResult.pattern}).`
+            : `Quick scoring did not match expected answer "${quickResult.expected}" (pattern: ${quickResult.pattern}).`;
+
+        logger.info('Quick scoring used', { 
+            pattern: quickResult.pattern, 
+            matched: quickResult.matched, 
+            score: quickResult.score,
+            prompt: prompt.name || prompt.prompt_name || 'unknown'
+        });
+
         return {
             quality_score: quickResult.score,
             scoring_method: 'quick',
             matched_expected: quickResult.matched,
             expected_answer: quickResult.expected,
+            quick_pattern: quickResult.pattern,
+            explanation,
+            judge_prompt: 'Quick scoring used (no judge model invoked).',
             scoring_time_ms: Date.now() - startTime,
             breakdown: {
                 accuracy: quickResult.score,
@@ -261,10 +284,18 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
     const judgeResult = await callJudge(evalPrompt, judgeConfig);
     
     if (!judgeResult.success) {
+        logger.warn('LLM judge failed', { 
+            error: judgeResult.error, 
+            prompt: prompt.name || prompt.prompt_name || 'unknown',
+            judge_model: judgeConfig.model || JUDGE_CONFIG.model
+        });
         return {
             quality_score: null,
             scoring_method: 'llm_failed',
             error: judgeResult.error,
+            explanation: `Judge model failed: ${judgeResult.error}`,
+            judge_prompt: evalPrompt,
+            judge_model: judgeConfig.model || JUDGE_CONFIG.model,
             scoring_time_ms: Date.now() - startTime
         };
     }
@@ -283,6 +314,14 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
         overallScore = Math.round(overallScore * 10) / 10;
     }
     
+    logger.info('LLM judge scoring completed', {
+        prompt: prompt.name || prompt.prompt_name || 'unknown',
+        score: overallScore,
+        judge_model: judgeConfig.model || JUDGE_CONFIG.model,
+        scoring_type: scoringType,
+        time_ms: Date.now() - startTime
+    });
+
     return {
         quality_score: overallScore,
         scoring_method: 'llm_judge',
@@ -293,6 +332,7 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
         scoring_time_ms: Date.now() - startTime,
         judge_prompt: evalPrompt
     };
+}
 }
 
 /**

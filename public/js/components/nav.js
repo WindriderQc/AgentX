@@ -2,7 +2,7 @@
  * Navigation Component
  * Injects the standard AgentX navigation bar with all pages.
  * Usage: injectNav('activePageId') where activePageId is one of:
- * 'chat', 'operations', 'n8n', 'benchmark', 'analytics', 'rag', 'personas', 'profile'
+ * 'chat', 'operations', 'alerts', 'n8n', 'benchmark', 'analytics', 'rag', 'personas', 'profile'
  */
 
 function injectNav(activePageId = '') {
@@ -10,6 +10,7 @@ function injectNav(activePageId = '') {
     const navItems = [
         { label: 'Chat', href: 'index.html', icon: 'fa-comments', id: 'chat' },
         { label: 'Operations', href: 'dashboard.html', icon: 'fa-tachometer-alt', id: 'operations' },
+        { label: 'Alerts', href: 'alerts.html', icon: 'fa-bell', id: 'alerts' },
         { label: 'n8n Monitor', href: 'n8n-monitor.html', icon: 'fa-network-wired', id: 'n8n' },
         { label: 'Benchmark', href: 'benchmark.html', icon: 'fa-rocket', id: 'benchmark' },
         { label: 'Analytics', href: 'analytics.html', icon: 'fa-chart-line', id: 'analytics' },

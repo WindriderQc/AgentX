@@ -3,6 +3,7 @@ const path = require('path');
 const connectDB = require('./config/db-mongodb');
 const logger = require('./config/logger');
 const { app, systemHealth } = require('./src/app');
+const SelfHealingEngine = require('./src/services/selfHealingEngine');
 
 const PORT = process.env.PORT || 3080;
 const HOST = process.env.HOST || 'localhost';
@@ -135,6 +136,16 @@ async function startServer() {
       error: err.message,
       host: OLLAMA_HOST 
     });
+  }
+
+  // Load self-healing rules
+  try {
+    const rulesLoaded = await SelfHealingEngine.loadRules();
+    console.log(`   ✓ Self-Healing: ${rulesLoaded} rules loaded`);
+    logger.info('Self-healing rules loaded', { count: rulesLoaded });
+  } catch (err) {
+    console.log(`   ⚠ Self-Healing: ${err.message}`);
+    logger.warn('Self-healing rules not loaded - automation disabled', { error: err.message });
   }
 
   // Start Express server

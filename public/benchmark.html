@@ -1075,6 +1075,10 @@ Respond ONLY with JSON in this exact format:
                     <div id="detailPromptName" style="font-weight: bold; color: var(--accent);"></div>
                 </div>
                 <div class="form-group">
+                    <label>Scoring Method</label>
+                    <div id="detailScoringMethod"></div>
+                </div>
+                <div class="form-group">
                     <label>Model Response (Preview)</label>
                     <div id="detailResponse" style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 6px; font-family: monospace; white-space: pre-wrap; max-height: 200px; overflow-y: auto;"></div>
                 </div>
@@ -1555,13 +1559,50 @@ Respond ONLY with JSON in this exact format:
             const result = window.currentBatchResults[index];
             if (!result) return;
 
+            // Prompt name
             document.getElementById('detailPromptName').textContent = result.prompt_name;
-            document.getElementById('detailResponse').textContent = result.response_preview || 'No preview available';
-            document.getElementById('detailJudgePrompt').textContent = result.judge_prompt || 'Judge prompt not available (older test or skipped)';
-            document.getElementById('detailExplanation').textContent = result.quality_explanation || 'No explanation available (Quality scoring might be disabled or failed)';
             
-            document.getElementById('detailQualityScore').textContent = result.quality_score !== undefined ? result.quality_score : '-';
-            document.getElementById('detailCompositeScore').textContent = result.composite_score !== undefined ? result.composite_score : '-';
+            // Response preview
+            document.getElementById('detailResponse').textContent = result.response_preview || 'No preview available';
+
+            // Scoring method and judge model info
+            const scoringMethod = result.scoring_method || 'unknown';
+            const judgeModel = result.judge_model || 'Not specified';
+            
+            let methodBadge = '';
+            let judgePromptText = '';
+            let explanationText = '';
+
+            if (scoringMethod === 'quick') {
+                methodBadge = '<span style="background: linear-gradient(135deg, #3498db 0%, #2ecc71 100%); color: white; padding: 4px 12px; border-radius: 12px; font-size: 0.85em; font-weight: 600; display: inline-block; margin-bottom: 8px;">⚡ Quick Pattern Match</span>';
+                judgePromptText = 'Quick scoring used (no judge model invoked).';
+                const expectedAnswer = result.expected_answer || 'expected answer unavailable';
+                const quickInfo = result.quick_pattern ? ` Pattern: "${result.quick_pattern}"` : '';
+                explanationText = result.quality_explanation || `Quick scoring compared response against expected answer "${expectedAnswer}".${quickInfo}`;
+            } else if (scoringMethod === 'llm_judge') {
+                methodBadge = `<span style="background: linear-gradient(135deg, #9b59b6 0%, #e74c3c 100%); color: white; padding: 4px 12px; border-radius: 12px; font-size: 0.85em; font-weight: 600; display: inline-block; margin-bottom: 8px;">🤖 LLM Judge</span> <span style="color: var(--muted); font-size: 0.85em; margin-left: 8px;">Model: ${judgeModel}</span>`;
+                judgePromptText = result.judge_prompt || 'Judge prompt not available';
+                explanationText = result.quality_explanation || 'No explanation available';
+            } else if (scoringMethod === 'llm_failed') {
+                methodBadge = '<span style="background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%); color: white; padding: 4px 12px; border-radius: 12px; font-size: 0.85em; font-weight: 600; display: inline-block; margin-bottom: 8px;">❌ Judge Failed</span>';
+                judgePromptText = result.judge_prompt || 'Judge prompt attempted but failed';
+                explanationText = result.quality_explanation || result.error || 'Judge model encountered an error. Quality score could not be determined.';
+            } else {
+                methodBadge = '<span style="background: rgba(255,255,255,0.1); color: var(--muted); padding: 4px 12px; border-radius: 12px; font-size: 0.85em; font-weight: 600; display: inline-block; margin-bottom: 8px;">❓ Unknown Method</span>';
+                judgePromptText = 'Scoring method unknown or not recorded';
+                explanationText = result.quality_explanation || 'No explanation available';
+            }
+
+            // Populate modal fields
+            document.getElementById('detailScoringMethod').innerHTML = methodBadge;
+            document.getElementById('detailJudgePrompt').textContent = judgePromptText;
+            document.getElementById('detailExplanation').textContent = explanationText;
+            
+            // Scores
+            const qualityScore = result.quality_score !== undefined && result.quality_score !== null ? result.quality_score : 'N/A';
+            const compositeScore = result.composite_score !== undefined && result.composite_score !== null ? result.composite_score : 'N/A';
+            document.getElementById('detailQualityScore').textContent = qualityScore;
+            document.getElementById('detailCompositeScore').textContent = compositeScore;
 
             document.getElementById('judgeDetailsModal').style.display = 'block';
         }
@@ -1609,44 +1650,41 @@ Respond ONLY with JSON in this exact format:
                     const tbody = document.getElementById('batchResultsBody');
                     container.style.display = 'block';
                     
-                    // Only update if new results came in (simple check by length)
-                    if (tbody.children.length !== batch.results.length) {
-                        window.currentBatchResults = batch.results;
-                        tbody.innerHTML = batch.results.map((r, idx) => {
-                            const qualityScore = r.quality_score !== undefined && r.quality_score !== null ? r.quality_score : '-';
-                            const qualityClass = qualityScore >= 7 ? 'quality-high' : qualityScore >= 4 ? 'quality-mid' : (qualityScore !== '-' ? 'quality-low' : '');
-                            
-                            // Helper to format host URL
-                            const formatHost = (url) => {
-                                if (!url) return 'Unknown';
-                                if (url.includes('192.168.2.99')) return 'Primary (99)';
-                                if (url.includes('192.168.2.12')) return 'Secondary (12)';
-                                return 'Custom';
-                            };
+                    window.currentBatchResults = batch.results;
+                    tbody.innerHTML = batch.results.map((r, idx) => {
+                        const qualityScore = r.quality_score !== undefined && r.quality_score !== null ? r.quality_score : '-';
+                        const qualityClass = qualityScore >= 7 ? 'quality-high' : qualityScore >= 4 ? 'quality-mid' : (qualityScore !== '-' ? 'quality-low' : '');
+                        
+                        // Helper to format host URL
+                        const formatHost = (url) => {
+                            if (!url) return 'Unknown';
+                            if (url.includes('192.168.2.99')) return 'Primary (99)';
+                            if (url.includes('192.168.2.12')) return 'Secondary (12)';
+                            return 'Custom';
+                        };
 
-                            const hostInfo = r.host ? `<div style="font-size: 0.75em; color: var(--muted); margin-top: 2px;">Exec: ${formatHost(r.host)}</div>` : '';
-                            const judgeInfo = r.judge_host ? `<div style="font-size: 0.75em; color: var(--muted);">Judge: ${formatHost(r.judge_host)}</div>` : '';
+                        const hostInfo = r.host ? `<div style="font-size: 0.75em; color: var(--muted); margin-top: 2px;">Exec: ${formatHost(r.host)}</div>` : '';
+                        const judgeInfo = r.judge_host ? `<div style="font-size: 0.75em; color: var(--muted);">Judge: ${formatHost(r.judge_host)}</div>` : '';
 
-                            return `
-                                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
-                                    <td style="padding: 8px 12px;">
-                                        ${r.model}
-                                        ${hostInfo}
-                                    </td>
-                                    <td style="padding: 8px 12px;">${r.prompt_name}</td>
-                                    <td style="padding: 8px 12px; text-align: center;" class="${qualityClass}">
-                                        ${qualityScore}
-                                        ${judgeInfo}
-                                    </td>
-                                    <td style="padding: 8px 12px; text-align: center;">
-                                        <button class="btn-secondary btn-sm" onclick="showJudgeDetails(${idx})">
-                                            <i class="fas fa-eye"></i> Details
-                                        </button>
-                                    </td>
-                                </tr>
-                            `;
-                        }).join('');
-                    }
+                        return `
+                            <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                                <td style="padding: 8px 12px;">
+                                    ${r.model}
+                                    ${hostInfo}
+                                </td>
+                                <td style="padding: 8px 12px;">${r.prompt_name}</td>
+                                <td style="padding: 8px 12px; text-align: center;" class="${qualityClass}">
+                                    ${qualityScore}
+                                    ${judgeInfo}
+                                </td>
+                                <td style="padding: 8px 12px; text-align: center;">
+                                    <button class="btn-secondary btn-sm" onclick="showJudgeDetails(${idx})">
+                                        <i class="fas fa-eye"></i> Details
+                                    </button>
+                                </td>
+                            </tr>
+                        `;
+                    }).join('');
                 }
 
                 if (batch.status === 'completed') {

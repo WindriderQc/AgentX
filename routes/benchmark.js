@@ -354,6 +354,7 @@ router.get('/dashboard', async (req, res) => {
                 avg_tokens_per_sec: m.avg_tokens_per_sec ? m.avg_tokens_per_sec.toFixed(2) : '0',
                 avg_quality: hasQuality ? m.avg_quality.toFixed(1) : null,
                 avg_composite: hasComposite ? m.avg_composite.toFixed(1) : null,
+            quick_pattern: r.quick_pattern,
                 quality_tests: m.quality_tests || 0,
                 tests: m.count
             };
@@ -715,8 +716,10 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                                             quality_breakdown: scores.breakdown,
                                             quality_explanation: scores.explanation,
                                             judge_prompt: scores.judge_prompt,
+                                            judge_model: scores.judge_model,
                                             scoring_method: scores.scoring_method,
                                             scoring_type: prompt.scoring_type,
+                                            quick_pattern: scores.quick_pattern,
                                             composite_score: composite.composite_score,
                                             normalized_scores: composite.normalized
                                         }
@@ -793,6 +796,7 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
 router.get('/batch/:id', async (req, res) => {
     try {
         const batchCollection = getBatchCollection();
+        const resultsCollection = getCollection();
 
         const batch = await batchCollection.findOne({ _id: new ObjectId(req.params.id) });
 
@@ -807,10 +811,42 @@ router.get('/batch/:id', async (req, res) => {
             ? Math.round((batch.completed / batch.total_tests) * 100)
             : 0;
 
+        // Hydrate results from benchmark_results to include latest judge data
+        const results = await resultsCollection
+            .find({ batch_id: req.params.id })
+            .sort({ timestamp: -1 })
+            .toArray();
+
+        const formattedResults = results.map((r) => ({
+            model: r.model,
+            host: r.host,
+            judge_host: r.judge_host || null,
+            prompt_name: r.prompt_name,
+            prompt_level: r.prompt_level,
+            prompt_category: r.prompt_category,
+            expected_answer: r.expected_answer,
+            latency: r.latency,
+            tokens_per_sec: r.tokens_per_sec,
+            quality_score: r.quality_score,
+            quality_explanation: r.quality_explanation,
+            judge_prompt: r.judge_prompt,
+            judge_model: r.judge_model,
+            scoring_method: r.scoring_method,
+            quick_pattern: r.quick_pattern,
+            composite_score: r.composite_score,
+            success: r.success,
+            error: r.error,
+            response_preview: r.response
+                ? `${r.response.substring(0, 100)}...`
+                : (r.response_preview || ''),
+            timestamp: r.timestamp
+        }));
+
         res.json({
             status: 'success',
             data: {
                 ...batch,
+                results: formattedResults,
                 progress,
                 success_rate: batch.completed > 0
                     ? (((batch.completed - batch.failed) / batch.completed) * 100).toFixed(1) + '%'

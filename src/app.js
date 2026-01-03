@@ -137,6 +137,14 @@ app.use('/api/dataset', datasetRoutes);
 const metricsRoutes = require('../routes/metrics');
 app.use('/api/metrics', metricsRoutes);
 
+// Alert routes (Track 1: Alerts & Notifications)
+const alertRoutes = require('../routes/alerts');
+app.use('/api/alerts', alertRoutes);
+
+// Self-Healing routes (Track 4: Self-Healing & Resilience)
+const selfHealingRoutes = require('../routes/self-healing');
+app.use('/api/self-healing', selfHealingRoutes);
+
 // n8n integration routes (API key authentication)
 const n8nRoutes = require('../routes/n8n');
 app.use('/api/n8n', n8nRoutes);
@@ -163,6 +171,10 @@ app.use('/api/benchmark', benchmarkLimiter, benchmarkRoutes);
 // Ollama hosts routes (configuration and models)
 const ollamaHostsRoutes = require('../routes/ollama-hosts');
 app.use('/api/ollama-hosts', ollamaHostsRoutes);
+
+// Workflow Generator routes (N6.1)
+const workflowGeneratorRoutes = require('../routes/workflowGenerator');
+app.use('/api/workflow', workflowGeneratorRoutes);
 
 // Dashboard routes
 const dashboardRoutes = require('../routes/dashboard');
