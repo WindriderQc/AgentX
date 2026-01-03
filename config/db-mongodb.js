@@ -18,6 +18,9 @@ const connectDB = async () => {
       poolSize: `${conn.connection.client.options.minPoolSize}-${conn.connection.client.options.maxPoolSize}`
     });
     
+    // Ensure time-series collection for metrics exists before other startup tasks
+    await ensureTimeSeriesCollections();
+
     // V4: Initialize default PromptConfig if none exist
     await ensureDefaultPromptConfig();
   } catch (err) {
@@ -59,6 +62,36 @@ async function ensureDefaultPromptConfig() {
     }
   } catch (err) {
     logger.error('[V4] Failed to initialize PromptConfig', { error: err.message });
+  }
+}
+
+/**
+ * Ensure time-series collections are created for historical metrics storage.
+ * MongoDB will handle auto-creation for regular collections via mongoose models,
+ * but time-series collections must be explicitly created with the correct options.
+ */
+async function ensureTimeSeriesCollections() {
+  try {
+    const db = mongoose.connection.db;
+    if (!db) {
+      throw new Error('MongoDB connection not initialized');
+    }
+
+    const collections = await db.listCollections({ name: 'metricssnapshots' }).toArray();
+    if (collections.length === 0) {
+      await db.createCollection('metricssnapshots', {
+        timeseries: {
+          timeField: 'timestamp',
+          metaField: 'metadata',
+          granularity: 'minutes'
+        },
+        expireAfterSeconds: 7776000 // 90 days
+      });
+
+      logger.info('✓ Created time-series collection: metricssnapshots');
+    }
+  } catch (err) {
+    logger.error('Failed to ensure time-series collections', { error: err.message });
   }
 }
 
