@@ -1,653 +1,422 @@
-# AgentX Global Development Plan
-## Updated: 2026-01-01
-
-This document provides a comprehensive roadmap for AgentX development, based on codebase analysis and architecture review.
+# AgentX Global Development Plan (REVISED)
+## Updated: 2026-01-01 | **FULL OPEN FIRST APPROACH** ✅ APPROVED
 
 ---
 
-## Executive Summary
+## 🎯 Development Philosophy
 
-**Current State:** AgentX is a **production-ready, well-architected local AI assistant** with:
-- ✅ Complete RAG system (V3) with dual vector store backends
-- ✅ Service-oriented architecture with 11 core services
-- ✅ 40+ API endpoints across 14 route files
-- ✅ Comprehensive testing (13 test files, 2,235 lines)
-- ✅ 17,393 lines of documentation across 60+ files
-- ✅ PM2 cluster mode deployment with CI/CD
+### Full Open First - Approved Strategy
 
-**Development Philosophy: Full Open First** ✅ APPROVED
-This plan prioritizes **functionality and user experience** before security hardening. The approach:
-1. **Phase 1 (Weeks 1-5):** Complete all user-facing features in an open, accessible system
-2. **Phase 2 (Week 6+):** Layer security controls once features are stable and validated by usage
+**Approach:** Build all features in an open, accessible system FIRST, then layer security controls once features are stable and validated.
 
 **Rationale:**
-- Faster time to full functionality
-- Earlier user feedback on features
-- Avoid premature optimization of security for internal/trusted network deployment
-- Security can be added incrementally without blocking feature development
-
-**Development Priorities (REVISED):**
-1. 🔴 **Priority 1:** Prompt Management UI (Weeks 1-2) - Complete user interface
-2. 🟡 **Priority 2:** Analytics Dashboard Expansion (Week 3) - Real-time metrics, cost tracking
-3. 🟢 **Priority 3:** AgentC Integration (Weeks 4-5) - MCP tools, n8n enhancements
-4. 🔵 **Priority 4:** Rate Limiting & Security (Week 6+) - Add protections after features stable
-
-**Overall Assessment:** System is 85% feature-complete. Remaining 15% focuses on user-facing functionality (prompt UI, analytics, agent tools). Security hardening deferred to Phase 2.
+- ✅ Faster time to full functionality
+- ✅ Earlier user feedback on features
+- ✅ Avoid premature optimization for trusted network deployment
+- ✅ Security can be added incrementally without blocking features
 
 ---
 
-## Development Priorities
+## 📅 Development Phases
 
-### 🔴 Priority 1: Prompt Management UI (WEEKS 1-2)
-**Status:** Backend complete, frontend missing
-**Impact:** HIGH - Users cannot customize prompts through interface
-**Effort:** 2 weeks (40-50 hours)
+### **Phase 1: Full Feature Implementation (Weeks 1-5)**
+*Build complete, open system with all user-facing features*
 
-#### Current State
-✅ **Backend (Complete):**
+### **Phase 2: Security Hardening (Week 6+)**
+*Layer security controls once system is stable*
+
+---
+
+## 🔴 Priority 1: Prompt Management UI (Weeks 1-2)
+
+### Overview
+- **Status:** Backend complete, frontend missing
+- **Impact:** HIGH - Users need UI to customize prompts
+- **Effort:** 2 weeks (40-50 hours)
+- **Phase:** 1 (Full Feature Implementation)
+
+### What's Complete ✅
 - `/routes/prompts.js` (328 lines) - 7 CRUD endpoints
-- `/models/PromptConfig.js` (103 lines) - Versioning, A/B testing, traffic weights
-- `getActive()` static method with weighted random selection
-- Template rendering with Handlebars-like syntax
+- `/models/PromptConfig.js` (103 lines) - Versioning, A/B testing
+- Template rendering API
+- Performance metrics integration
 
-❌ **Frontend (Missing):**
-- No HTML/JS files for prompt management
-- No visual A/B test configuration
-- No user onboarding flow
-- No prompt performance dashboard
+### What's Missing ❌
+- Prompt management HTML page
+- Prompt editor component (Monaco/CodeMirror)
+- A/B test configuration UI (traffic weight sliders)
+- Template variable tester
+- Performance metrics dashboard
+- User onboarding wizard
 
-#### Implementation Plan
+### Implementation Timeline
 
-**Phase 1.1: UI Design & Architecture (Days 1-2)**
-- [ ] Review existing frontend patterns in `/public/analytics.html` and `/public/dashboard.html`
-- [ ] Design mockups for prompt management interface (wireframes)
-- [ ] Define UI components:
-  - Prompt list/gallery view (all versions grouped by name)
-  - Prompt editor (Monaco or CodeMirror for systemPrompt editing)
-  - A/B test configuration panel (traffic weight sliders)
-  - Performance metrics cards (impressions, positive rate, feedback)
-  - Template variable tester (render preview)
-- [ ] Plan state management (vanilla JS vs lightweight framework)
+**Week 1 (Days 1-5):**
+- Days 1-2: UI design, mockups, component architecture
+- Days 3-5: Core CRUD functionality (list, create, edit, delete)
 
-**Phase 1.2: Core Prompt Management (Days 3-5)**
-- [ ] Create `/public/prompts.html` - Main prompt management page
-- [ ] Create `/public/js/prompts.js` - Core logic
-- [ ] Implement API client wrapper for prompt endpoints
-- [ ] Build prompt list view with grouping by `name`
-- [ ] Implement version history display
-- [ ] Add create prompt form (name, systemPrompt, description, author)
-- [ ] Add edit metadata modal (description, tags, only for inactive prompts)
-- [ ] Implement delete confirmation (only for inactive prompts)
+**Week 2 (Days 6-10):**
+- Days 6-7: A/B testing configuration UI
+- Day 8: Template rendering & testing UI
+- Days 9-10: Performance dashboard, onboarding wizard
 
-**Phase 1.3: A/B Testing Configuration (Days 6-7)**
-- [ ] Design traffic weight distribution UI (sliders with visual bar)
-- [ ] Implement `POST /api/prompts/:name/ab-test` integration
-- [ ] Add real-time validation (weights must sum to 100)
-- [ ] Show current active versions and their weights
-- [ ] Add "quick rollback" feature (deactivate all except one version)
+### Key Deliverables
+- [ ] `/public/prompts.html` - Main prompt management page
+- [ ] `/public/js/prompts.js` - Core UI logic
+- [ ] Prompt list with version history
+- [ ] Visual A/B test configuration (sliders, validation)
+- [ ] Template variable tester with preview
+- [ ] Per-prompt performance metrics
+- [ ] First-time user onboarding wizard
 
-**Phase 1.4: Template Rendering & Testing (Day 8)**
-- [ ] Build template variable tester UI
-- [ ] Implement `POST /api/prompts/render` integration
-- [ ] Add variable input form (dynamic based on detected placeholders)
-- [ ] Show rendered output preview
-- [ ] Add copy-to-clipboard functionality
-
-**Phase 1.5: Performance Dashboard Integration (Days 9-10)**
-- [ ] Connect to existing `/api/analytics/feedback/summary` endpoint
-- [ ] Display per-prompt metrics:
-  - Total impressions
-  - Positive rate (positiveCount / (positiveCount + negativeCount))
-  - Recent trend (last 7 days vs previous 7 days)
-- [ ] Add visual indicators for low performers (< 70% positive rate)
-- [ ] Link to analytics page for detailed breakdown
-
-**Phase 1.6: User Onboarding Flow (Days 11-12)**
-- [ ] Create first-time user wizard (modal on chat interface load)
-- [ ] Guide user through:
-  1. Select or create initial prompt
-  2. Test prompt with sample queries
-  3. Set user profile preferences
-- [ ] Add "skip for now" option with reminder banner
-- [ ] Store onboarding completion flag in UserProfile
-
-**Phase 1.7: Integration & Polish (Days 13-14)**
-- [ ] Add navigation link to prompts page from dashboard
-- [ ] Implement responsive design (mobile-friendly)
-- [ ] Add loading states and error handling
-- [ ] Write user documentation (`/docs/guides/prompt-management.md`)
-- [ ] Add help tooltips and inline guidance
-- [ ] Test with real users, gather feedback
-
-#### Acceptance Criteria
-- [ ] Users can view all prompt versions grouped by name
-- [ ] Users can create new prompt versions
-- [ ] Users can configure A/B tests with traffic weights
-- [ ] Users can preview template rendering
-- [ ] Users can see per-prompt performance metrics
-- [ ] New users receive onboarding guidance
-- [ ] UI is responsive and works on mobile devices
-- [ ] All frontend code has error handling and loading states
-
-#### Testing Strategy
-- [ ] Manual testing of all CRUD operations
-- [ ] A/B test weight validation edge cases (sum to 100)
-- [ ] Template rendering with various variable types
-- [ ] Cross-browser testing (Chrome, Firefox, Safari)
-- [ ] Mobile responsiveness testing
-- [ ] Integration test: Create → Edit → A/B Test → Delete workflow
+### Success Metrics
+- 90%+ users can create prompts successfully
+- 30%+ of prompts use A/B testing
+- 70%+ new users complete onboarding
+- User satisfaction: 4+ out of 5 stars
 
 ---
 
-### 🟡 Priority 2: Analytics Dashboard Expansion (WEEK 3)
-**Status:** 5 endpoints exist, dashboard needs enhancement
-**Impact:** MEDIUM-HIGH - Improves observability and decision-making
-**Effort:** 1 week (20-25 hours)
+## 🟡 Priority 2: Analytics Dashboard Expansion (Week 3)
 
-#### Current State
-✅ **Implemented:**
-- `express-mongo-sanitize`: ACTIVE at `/src/app.js:48-57`
-- Custom security headers (X-Content-Type-Options, X-Frame-Options, X-XSS-Protection)
-- API key authentication (`/src/middleware/auth.js`)
+### Overview
+- **Status:** 5 endpoints functional, need enhancement
+- **Impact:** MEDIUM-HIGH - Better observability
+- **Effort:** 1 week (20-25 hours)
+- **Phase:** 1 (Full Feature Implementation)
 
-⚠️ **Partially Implemented:**
-- `helmet`: INSTALLED but DISABLED (line 26: "removed for local network compatibility")
-
-❌ **Not Implemented:**
-- `express-rate-limit`: NOT CONFIGURED
-- Per-user rate limiting
-- Per-IP rate limiting
-- API endpoint-specific limits
-
-#### Implementation Plan
-
-**Phase 2.1: Rate Limiting Configuration (Days 1-2)**
-- [ ] Review production traffic patterns (if available)
-- [ ] Define rate limit tiers:
-  - **Anonymous/IP-based:** 10 requests/minute per IP
-  - **Authenticated users:** 60 requests/minute per user
-  - **API key clients (n8n):** 300 requests/minute
-  - **Admin users:** 1000 requests/minute
-- [ ] Create `/src/middleware/rateLimiter.js`
-- [ ] Implement rate limit store selection:
-  - Development: MemoryStore
-  - Production: MongoDB store (connect-mongo-rate-limit)
-- [ ] Configure global rate limiter
-- [ ] Configure endpoint-specific rate limiters:
-  - `/api/chat/*` - 20 req/min (expensive LLM calls)
-  - `/api/rag/ingest` - 10 req/min (expensive embedding operations)
-  - `/api/analytics/*` - 60 req/min (read-heavy, less expensive)
-
-**Phase 2.2: Advanced Rate Limiting (Day 3)**
-- [ ] Implement skip functions for whitelisted IPs
-- [ ] Add custom key generators (user ID vs IP vs API key)
-- [ ] Implement rate limit response headers (X-RateLimit-*)
-- [ ] Add rate limit exceeded logging
-- [ ] Create rate limit metrics for monitoring
-
-**Phase 2.3: Helmet Re-evaluation (Day 4)**
-- [ ] Test helmet with current frontend (check for CSP issues)
-- [ ] Configure helmet for local network compatibility:
-  ```javascript
-  helmet({
-    contentSecurityPolicy: false, // Or custom CSP if needed
-    crossOriginEmbedderPolicy: false // For local network
-  })
-  ```
-- [ ] Test in both development and production modes
-- [ ] Document helmet configuration in SECURITY_HARDENING.md
-
-**Phase 2.4: API Key Enhancement (Day 5)**
-- [ ] Implement API key rotation strategy
-- [ ] Create `/api/admin/api-keys` management endpoint
-- [ ] Add API key scopes/permissions (e.g., read-only, ingest-only, full-access)
-- [ ] Store API keys securely (hashed with bcrypt)
-- [ ] Add API key expiration dates
-- [ ] Implement API key usage tracking
-
-**Phase 2.5: Testing & Documentation (Days 6-7)**
-- [ ] Write integration tests for rate limiting:
-  - Test limit enforcement (exceed limits, verify 429 responses)
-  - Test different user tiers
-  - Test skip functions
-  - Test rate limit headers
-- [ ] Write security tests:
-  - NoSQL injection attempts (verify sanitization)
-  - XSS attempts (verify header protection)
-  - CSRF attempts (verify token validation)
-- [ ] Update `/docs/SECURITY_HARDENING.md` with new configurations
-- [ ] Document rate limit tiers and configuration
-- [ ] Create security incident response playbook
-
-#### Acceptance Criteria
-- [ ] Rate limiting active for all API endpoints
-- [ ] Different rate limits enforced per user tier
-- [ ] Rate limit headers included in responses
-- [ ] Helmet re-enabled with appropriate configuration
-- [ ] API key rotation strategy documented and implemented
-- [ ] Security tests pass with 100% coverage of attack vectors
-- [ ] Documentation updated with security best practices
-
-#### Testing Strategy
-- [ ] Integration tests for rate limiting (all tiers)
-- [ ] Load testing with Artillery to verify limits
-- [ ] Security audit using tools like OWASP ZAP
-- [ ] Penetration testing (manual or automated)
-- [ ] Test rate limit bypass attempts
-
----
-
-### 🟡 Priority 3: Analytics Dashboard Expansion (WEEK 4)
-**Status:** 5 endpoints exist, dashboard needs enhancement
-**Impact:** MEDIUM - Improves observability and decision-making
-**Effort:** 1 week (20-25 hours)
-
-#### Current State
-✅ **Implemented:**
-- `/routes/analytics.js` (563 lines) - 5 functional endpoints
+### What's Complete ✅
+- `/routes/analytics.js` (563 lines) - 5 endpoints:
+  - `GET /api/analytics/usage` - Conversation counts
+  - `GET /api/analytics/feedback` - Positive/negative rates
+  - `GET /api/analytics/rag-stats` - RAG metrics
+  - `GET /api/analytics/stats` - Token usage
+  - `GET /api/analytics/feedback/summary` - A/B comparison
 - `/public/analytics.html` (18,779 bytes) - Basic visualization
-- MongoDB aggregation pipelines for metrics
+- MongoDB aggregation pipelines
 
-#### Implementation Plan
+### What's Missing ❌
+- Real-time metrics streaming (Server-Sent Events)
+- Cost tracking with token pricing
+- Advanced visualizations (Chart.js/ApexCharts)
+- Model performance comparison table
+- CSV export functionality
+- Interactive filtering (date ranges)
 
-**Phase 3.1: Real-Time Metrics (Days 1-2)**
-- [ ] Implement Server-Sent Events (SSE) for live metrics
-- [ ] Create `/api/analytics/live` endpoint
-- [ ] Stream metrics every 5 seconds:
-  - Active conversations count
-  - Requests per minute (RPM)
-  - Average response time (last 5 min)
-  - Current model distribution
-- [ ] Update frontend to display live metrics cards
-- [ ] Add sparkline charts for trends
+### Implementation Timeline
 
-**Phase 3.2: Cost Tracking (Day 3)**
-- [ ] Define token pricing per model (configurable via env vars)
-- [ ] Calculate costs in analytics queries:
-  - Total tokens × price per 1M tokens
-  - Breakdown by model
-  - Breakdown by user (optional)
-- [ ] Add cost projections (current month, next month)
-- [ ] Create budget alerts (when exceeding threshold)
+**Week 3 (Days 11-15):**
+- Days 11-12: Real-time metrics with SSE
+- Day 13: Cost tracking implementation
+- Days 14-15: Advanced charts, CSV export, model comparison
 
-**Phase 3.3: Advanced Visualizations (Days 4-5)**
-- [ ] Integrate lightweight charting library (Chart.js or ApexCharts)
-- [ ] Add charts:
-  - **Time series:** Requests over time (hourly, daily, weekly)
-  - **Model comparison:** Performance metrics by model
-  - **A/B test results:** Prompt version comparison
-  - **RAG impact:** With RAG vs without RAG metrics
-  - **User engagement:** Active users over time
-- [ ] Add interactive filters (date range, model, prompt version)
-- [ ] Implement CSV export for all charts
-
-**Phase 3.4: Model Performance Comparison (Day 6)**
-- [ ] Create `/api/analytics/model-comparison` endpoint
-- [ ] Aggregate metrics per model:
-  - Average response time
-  - Average tokens per response
-  - Positive feedback rate
-  - Error rate
-- [ ] Build comparison table UI
-- [ ] Add sorting and filtering
-
-**Phase 3.5: Testing & Documentation (Day 7)**
-- [ ] Write integration tests for new endpoints
-- [ ] Test SSE connection stability (reconnection logic)
-- [ ] Document analytics API in `/docs/api/reference.md`
-- [ ] Create analytics user guide (`/docs/guides/analytics.md`)
-- [ ] Add dashboard tour for first-time users
-
-#### Acceptance Criteria
-- [ ] Real-time metrics stream via SSE
-- [ ] Cost tracking with projections and alerts
-- [ ] Interactive charts with filtering and export
+### Key Deliverables
+- [ ] `/routes/analytics-live.js` - SSE endpoint for real-time metrics
+- [ ] Real-time dashboard cards (active conversations, RPM, response time)
+- [ ] Cost tracking dashboard with projections
+- [ ] Interactive charts (time series, model comparison, A/B results)
+- [ ] CSV export for all analytics data
 - [ ] Model performance comparison table
-- [ ] All new endpoints tested and documented
+
+### Success Metrics
+- Real-time metrics latency <1 second
+- Dashboard load time <2 seconds
+- Analytics API response time <500ms (p95)
+- CSV export adoption 20%+ monthly
 
 ---
 
-### 🟢 Priority 4: AgentC Integration Strategy (WEEKS 5-6)
-**Status:** Workflows ready, MCP tools integration needed
-**Impact:** MEDIUM - Enables advanced automation and agent capabilities
-**Effort:** 2 weeks (30-40 hours)
+## 🟢 Priority 3: AgentC Integration & MCP Tools (Weeks 4-5)
 
-#### Current State
-✅ **Implemented:**
-- 9 n8n workflow JSONs version-controlled in `/AgentC/`
+### Overview
+- **Status:** n8n workflows ready, need MCP tools
+- **Impact:** MEDIUM - Advanced automation capabilities
+- **Effort:** 2 weeks (30-40 hours)
+- **Phase:** 1 (Full Feature Implementation)
+
+### What's Complete ✅
+- 9 n8n workflow JSONs in `/AgentC/`
 - Deployment script: `/scripts/deploy-n8n-workflows.sh`
-- n8n instance: http://192.168.2.199:5678
+- n8n instance operational (http://192.168.2.199:5678)
+- Webhook endpoints for n8n communication
 
-#### Implementation Plan
+### What's Missing ❌
+- MCP (Model Context Protocol) tool registry
+- Core MCP tools (FileSystem, Search, Calculator, DateTime)
+- Tool execution sandboxing
+- Cloud LLM routing (OpenAI, Anthropic, Google) - OPTIONAL
+- Workflow status tracking
+- Tool usage logging
 
-**Phase 4.1: MCP Tools Architecture (Days 1-3)**
-- [ ] Research Model Context Protocol (MCP) specification
-- [ ] Design MCP tool integration architecture:
-  - Tool registry pattern
-  - Tool discovery mechanism
-  - Tool execution sandboxing
-  - Tool result formatting
-- [ ] Define standard tool interface:
-  ```javascript
-  interface MCPTool {
-    name: string;
-    description: string;
-    parameters: ToolParameters;
-    execute(params: any): Promise<ToolResult>;
-  }
-  ```
-- [ ] Create `/src/services/mcpToolRegistry.js`
-- [ ] Document MCP tool development guide
+### Implementation Timeline
 
-**Phase 4.2: Core MCP Tools Implementation (Days 4-6)**
-- [ ] Implement foundational tools:
-  - **FileSystemTool:** Read/write files with permission checks
-  - **SearchTool:** Web search integration (DuckDuckGo API)
-  - **CalculatorTool:** Math evaluation with safe-eval
-  - **DateTimeTool:** Date/time operations and formatting
-  - **WeatherTool:** Weather API integration (if needed)
-- [ ] Create `/src/tools/` directory with tool implementations
-- [ ] Add tool execution to chatService.js (tool calling flow)
-- [ ] Implement tool result injection into conversation
+**Week 4 (Days 16-20):**
+- Days 16-17: MCP tool registry architecture
+- Days 18-20: Core MCP tools (FileSystem, Search, Calculator, DateTime, Weather)
 
-**Phase 4.3: n8n Workflow Integration (Days 7-9)**
-- [ ] Create n8n webhook endpoints for each workflow:
-  - `/api/n8n/health-check` (N1.1)
-  - `/api/n8n/ops-diagnostic` (N1.3)
-  - `/api/n8n/nas-scan` (N2.1, N2.2)
-  - `/api/n8n/rag-ingest` (N2.3)
-  - `/api/n8n/model-monitor` (N3.1)
-  - `/api/n8n/ai-query` (N3.2)
-  - `/api/n8n/feedback-analysis` (N5.1)
-- [ ] Implement bidirectional communication (AgentX ↔ n8n)
-- [ ] Add workflow status tracking (queued, running, completed, failed)
-- [ ] Create workflow execution logs
+**Week 5 (Days 21-25):**
+- Days 21-23: n8n workflow enhancements (status tracking, logging)
+- Days 24-25: Cloud LLM routing (OPTIONAL), testing, documentation
 
-**Phase 4.4: Cloud AI LLM Integration (Days 10-12)**
-- [ ] Design cloud LLM routing strategy:
-  - When to use cloud vs local (task complexity, latency requirements)
-  - Fallback mechanisms (cloud → local or vice versa)
-- [ ] Implement cloud LLM clients:
-  - **OpenAI:** GPT-4, GPT-4 Turbo
-  - **Anthropic:** Claude 3 Opus, Claude 3.5 Sonnet
-  - **Google:** Gemini Pro
-- [ ] Add cloud LLM routing to modelRouter.js
-- [ ] Implement cost tracking for cloud API calls
-- [ ] Add cloud usage quotas and alerts
+### Key Deliverables
+- [ ] `/src/services/mcpToolRegistry.js` - Tool registry
+- [ ] `/src/tools/FileSystemTool.js` - File operations with permissions
+- [ ] `/src/tools/SearchTool.js` - Web search (DuckDuckGo API)
+- [ ] `/src/tools/CalculatorTool.js` - Math evaluation
+- [ ] `/src/tools/DateTimeTool.js` - Date/time operations
+- [ ] `/routes/n8n/webhooks.js` - Enhanced n8n endpoints
+- [ ] `/src/services/cloudLLMRouter.js` - Cloud routing (OPTIONAL)
+- [ ] Tool execution logs and metrics
 
-**Phase 4.5: Testing & Documentation (Days 13-14)**
-- [ ] Write integration tests for MCP tools
-- [ ] Write integration tests for n8n workflows
-- [ ] Test cloud LLM routing and fallback
-- [ ] Document MCP tool development guide
-- [ ] Document n8n integration patterns
-- [ ] Create cloud LLM configuration guide
-- [ ] Update AgentC README with integration details
-
-#### Acceptance Criteria
-- [ ] MCP tool registry implemented with 5+ core tools
-- [ ] n8n workflows callable via API endpoints
-- [ ] Cloud LLM routing functional with fallback
-- [ ] All integrations tested and documented
-- [ ] Cost tracking includes cloud API usage
+### Success Metrics
+- MCP tool success rate >95%
+- n8n workflow uptime >99%
+- Cloud LLM routing accuracy >90% (if implemented)
+- Tool response time <2 seconds (p95)
 
 ---
 
-## Implementation Timeline
+## 🔵 Priority 4: Rate Limiting & Security (Week 6+)
 
-### Week 1-2: Prompt Management UI (Priority 1)
-**Focus:** User experience and prompt customization
+### Overview
+- **Status:** Dependencies installed, not configured
+- **Impact:** MEDIUM - Production hardening for public deployment
+- **Effort:** 1 week (20-25 hours)
+- **Phase:** 2 (Security Hardening - DEFERRED)
 
-| Day | Tasks | Owner | Status |
-|-----|-------|-------|--------|
-| 1-2 | UI design, architecture, mockups | TBD | ⚪ Not Started |
-| 3-5 | Core CRUD functionality | TBD | ⚪ Not Started |
-| 6-7 | A/B testing configuration | TBD | ⚪ Not Started |
-| 8 | Template rendering & testing | TBD | ⚪ Not Started |
-| 9-10 | Performance dashboard integration | TBD | ⚪ Not Started |
-| 11-12 | User onboarding flow | TBD | ⚪ Not Started |
-| 13-14 | Integration, polish, documentation | TBD | ⚪ Not Started |
+### Rationale for Deferral
+This priority is moved to **Phase 2** because:
+- System is for trusted network / internal use initially
+- Features need validation before restricting access
+- Security can be layered on top without refactoring
+- express-mongo-sanitize already active (NoSQL injection protection)
 
-### Week 3: Rate Limiting & Security (Priority 2)
-**Focus:** Production readiness and security hardening
+### What's Already Protected ✅
+- NoSQL injection: `express-mongo-sanitize` ACTIVE
+- Custom security headers (X-Content-Type-Options, X-Frame-Options, X-XSS-Protection)
+- API key authentication functional
+- Session-based auth with MongoDB store
 
-| Day | Tasks | Owner | Status |
-|-----|-------|-------|--------|
-| 1-2 | Rate limiting configuration | TBD | ⚪ Not Started |
-| 3 | Advanced rate limiting features | TBD | ⚪ Not Started |
-| 4 | Helmet re-evaluation | TBD | ⚪ Not Started |
-| 5 | API key enhancement | TBD | ⚪ Not Started |
-| 6-7 | Testing & documentation | TBD | ⚪ Not Started |
+### What's Deferred to Phase 2 ⏸️
+- Rate limiting per user/IP
+- API endpoint-specific limits
+- Helmet configuration (CSP, HSTS)
+- API key scopes/permissions
+- API key rotation strategy
+- Security testing (OWASP ZAP, penetration tests)
 
-### Week 4: Analytics Dashboard Expansion (Priority 3)
-**Focus:** Observability and insights
+### Implementation Timeline (Phase 2)
 
-| Day | Tasks | Owner | Status |
-|-----|-------|-------|--------|
-| 1-2 | Real-time metrics with SSE | TBD | ⚪ Not Started |
-| 3 | Cost tracking implementation | TBD | ⚪ Not Started |
-| 4-5 | Advanced visualizations | TBD | ⚪ Not Started |
-| 6 | Model performance comparison | TBD | ⚪ Not Started |
-| 7 | Testing & documentation | TBD | ⚪ Not Started |
+**Week 6+ (When ready for public deployment):**
+- Days 1-2: Rate limiting configuration
+- Day 3: Whitelist, monitoring, rate limit headers
+- Day 4: Helmet configuration for production
+- Day 5: API key enhancement (scopes, rotation)
+- Days 6-7: Security testing, documentation
 
-### Week 5-6: AgentC Integration (Priority 4)
-**Focus:** Advanced automation and agent capabilities
-
-| Day | Tasks | Owner | Status |
-|-----|-------|-------|--------|
-| 1-3 | MCP tools architecture | TBD | ⚪ Not Started |
-| 4-6 | Core MCP tools implementation | TBD | ⚪ Not Started |
-| 7-9 | n8n workflow integration | TBD | ⚪ Not Started |
-| 10-12 | Cloud AI LLM integration | TBD | ⚪ Not Started |
-| 13-14 | Testing & documentation | TBD | ⚪ Not Started |
-
----
-
-## Resource Requirements
-
-### Development Team
-- **Full-stack Developer** (Primary): 6 weeks full-time
-- **Frontend Specialist** (Weeks 1-2): 2 weeks full-time for prompt UI
-- **Security Engineer** (Week 3): 1 week part-time for security review
-- **DevOps Engineer** (Week 6): 3 days for deployment and monitoring setup
-
-### Infrastructure
-- **Development:**
-  - Local development environment (existing)
-  - MongoDB instance (existing)
-  - Ollama instances (existing)
-  - Qdrant instance (existing)
-
-- **Testing:**
-  - Staging environment (if not exists, need to provision)
-  - Load testing infrastructure (Artillery on separate machine)
-
-- **Production:**
-  - PM2 cluster (existing)
-  - Monitoring tools (need to add: Prometheus + Grafana OR simple Node.js monitoring)
-  - Backup strategy for MongoDB + Qdrant (need to implement)
-
-### Third-Party Services
-- **Optional Cloud LLM APIs:**
-  - OpenAI API account (if implementing cloud routing)
-  - Anthropic API account (if implementing cloud routing)
-  - Budget: $200-500/month for initial testing
-
-- **Monitoring (Optional):**
-  - Sentry for error tracking (free tier available)
-  - Uptime monitoring service (UptimeRobot free tier)
+### Key Deliverables (Phase 2)
+- [ ] `/src/middleware/rateLimiter.js` - Rate limiting middleware
+- [ ] MongoDB-backed rate limit store
+- [ ] Per-endpoint rate limits (chat: 20/min, ingest: 10/min)
+- [ ] Helmet configuration for production
+- [ ] API key management endpoints
+- [ ] Security test suite
+- [ ] Updated security documentation
 
 ---
 
-## Risk Assessment
+## 📊 Implementation Timeline Summary
 
-### High-Risk Items
-1. **Prompt UI Complexity** (Priority 1)
-   - Risk: UI/UX design may require iterations based on user feedback
-   - Mitigation: Start with MVP, gather feedback early, iterate in sprints
-   - Contingency: +3 days for redesign if needed
+### Phase 1: Full Feature Implementation (Weeks 1-5)
 
-2. **Rate Limiting Performance** (Priority 2)
-   - Risk: MongoDB-based rate limit store may introduce latency
-   - Mitigation: Benchmark with load tests, consider Redis if needed
-   - Contingency: Budget for Redis instance ($20-30/month)
+| Week | Priority | Focus | Deliverables |
+|------|----------|-------|--------------|
+| 1-2 | Priority 1 | Prompt Management UI | Prompt editor, A/B test config, metrics, onboarding |
+| 3 | Priority 2 | Analytics Expansion | Real-time metrics, cost tracking, charts, CSV export |
+| 4-5 | Priority 3 | AgentC Integration | MCP tools, n8n enhancements, cloud routing (optional) |
 
-3. **MCP Tools Security** (Priority 4)
-   - Risk: Tool execution may introduce security vulnerabilities
-   - Mitigation: Sandboxed execution, strict input validation, permission checks
-   - Contingency: Security audit by external expert ($500-1000)
+**End of Phase 1:** Fully functional system with all user-facing features
 
-### Medium-Risk Items
-1. **SSE Connection Stability** (Priority 3)
-   - Risk: Server-Sent Events may disconnect frequently
-   - Mitigation: Implement reconnection logic with exponential backoff
-   - Contingency: +1 day for robust reconnection implementation
+### Phase 2: Security Hardening (Week 6+)
 
-2. **Cloud LLM API Costs** (Priority 4)
-   - Risk: Unexpected costs from cloud LLM usage
-   - Mitigation: Hard quotas, usage alerts, cost tracking dashboard
-   - Contingency: Budget buffer of $200/month for overage
+| Week | Priority | Focus | Deliverables |
+|------|----------|-------|--------------|
+| 6+ | Priority 4 | Rate Limiting & Security | Rate limiters, Helmet, API key management, security tests |
+
+**End of Phase 2:** Production-hardened system ready for public deployment
 
 ---
 
-## Success Metrics
+## 🎯 Success Criteria
 
-### Priority 1: Prompt Management UI
-- [ ] 90%+ users can successfully create and configure prompts (user testing)
-- [ ] A/B test adoption rate: 30%+ of prompts use multiple versions
-- [ ] Onboarding completion rate: 70%+ of new users complete wizard
-- [ ] User satisfaction: 4+ out of 5 stars (feedback survey)
+### Phase 1 Completion (Week 5):
+- [ ] Users can manage prompts through UI
+- [ ] A/B testing adopted by 30%+ of prompts
+- [ ] Real-time analytics dashboard functional
+- [ ] Cost tracking showing projections
+- [ ] 5+ MCP tools operational
+- [ ] n8n workflows enhanced with status tracking
+- [ ] All features tested and documented
+- [ ] User satisfaction >4/5 stars
 
-### Priority 2: Rate Limiting & Security
-- [ ] 0 rate limit bypass incidents in production
-- [ ] Rate limit overhead: <50ms additional latency
-- [ ] Security scan (OWASP ZAP): 0 high-severity vulnerabilities
-- [ ] API key rotation compliance: 100% of keys rotated within 90 days
-
-### Priority 3: Analytics Dashboard
-- [ ] Real-time metrics latency: <1 second from event to display
-- [ ] Dashboard load time: <2 seconds
-- [ ] Analytics API response time: <500ms (p95)
-- [ ] CSV export adoption: 20%+ of users export data monthly
-
-### Priority 4: AgentC Integration
-- [ ] MCP tool success rate: >95% (successful executions / total attempts)
-- [ ] n8n workflow uptime: >99%
-- [ ] Cloud LLM routing accuracy: >90% (correct model selected)
-- [ ] Cloud LLM cost efficiency: <30% premium vs local execution
+### Phase 2 Completion (Week 6+):
+- [ ] Rate limiting active on all endpoints
+- [ ] 0 rate limit bypass incidents
+- [ ] Helmet configured and tested
+- [ ] API key rotation strategy documented
+- [ ] Security scan: 0 high-severity vulnerabilities
+- [ ] Load tests pass with rate limiting
 
 ---
 
-## Post-Implementation Plan
+## 🛠️ Resource Requirements
 
-### Week 7: Production Deployment
-- [ ] Deploy to staging environment
-- [ ] Run full test suite (integration + load + security)
-- [ ] Conduct user acceptance testing (UAT)
-- [ ] Deploy to production with blue-green strategy
-- [ ] Monitor for 48 hours post-deployment
-- [ ] Document deployment procedure
+### Phase 1 (Weeks 1-5)
+**Team:**
+- Full-stack Developer: 5 weeks full-time (200 hours)
+- Frontend Specialist (optional): Weeks 1-2 (80 hours)
 
-### Week 8: Monitoring & Optimization
-- [ ] Set up monitoring dashboards (Grafana or custom)
-- [ ] Configure alerts (error rates, latency, rate limits)
-- [ ] Analyze production metrics
-- [ ] Identify optimization opportunities
-- [ ] Create performance tuning backlog
+**Infrastructure:**
+- Existing (no additional cost)
 
-### Week 9+: Maintenance & Enhancement
-- [ ] Bug fixes from production feedback
-- [ ] User-requested features backlog
-- [ ] Regular security updates (monthly)
-- [ ] Performance optimization (quarterly)
-- [ ] Documentation updates (ongoing)
+**Total Effort:** 200-280 hours
+
+### Phase 2 (Week 6+)
+**Team:**
+- Backend Developer: 1 week full-time (40 hours)
+- Security Engineer (optional): 2 days review (16 hours)
+
+**Infrastructure:**
+- Redis for rate limiting (optional): $20-30/month
+- Monitoring tools (optional): Free tier
+
+**Total Effort:** 40-56 hours
 
 ---
 
-## Appendix A: File Structure Reference
+## ⚠️ Risk Assessment
 
-### New Files to Create
+### Phase 1 Risks
 
-**Priority 1: Prompt Management UI**
+**Low Risk:**
+- Prompt UI complexity → Mitigation: Start with MVP, iterate
+- SSE connection stability → Mitigation: Reconnection logic
+- MCP tools complexity → Mitigation: Start with 5 core tools, expand later
+
+**Very Low Risk:**
+- No security hardening during Phase 1 → Acceptable for trusted network deployment
+
+### Phase 2 Risks
+
+**Medium Risk:**
+- Rate limiting performance → Mitigation: MongoDB store, consider Redis if needed
+- Helmet CSP conflicts → Mitigation: Test thoroughly, adjust CSP directives
+
+---
+
+## 📦 Key Deliverables
+
+### Phase 1 (Weeks 1-5)
+
+**Frontend:**
 ```
-/public/prompts.html                          # Main prompt management page
-/public/js/prompts.js                         # Core prompt UI logic
-/public/js/components/promptEditor.js         # Prompt editor component
-/public/js/components/abTestConfig.js         # A/B test configuration
-/public/js/components/templateTester.js       # Template rendering tester
-/docs/guides/prompt-management.md             # User guide
+/public/prompts.html
+/public/js/prompts.js
+/public/js/components/PromptListView.js
+/public/js/components/PromptEditorModal.js
+/public/js/components/ABTestConfigPanel.js
+/public/js/components/TemplateTester.js
+/public/js/components/PerformanceMetrics.js
+/public/js/components/OnboardingWizard.js
+/public/js/analytics/liveMetrics.js
+/public/js/analytics/charts.js
+/public/js/analytics/costTracking.js
 ```
 
-**Priority 2: Rate Limiting & Security**
+**Backend:**
 ```
-/src/middleware/rateLimiter.js                # Rate limiting middleware
-/routes/admin/api-keys.js                     # API key management endpoints
-/tests/integration/security.test.js           # Security tests
-/docs/SECURITY_HARDENING.md (update)          # Updated security guide
-/docs/guides/rate-limiting.md                 # Rate limiting configuration guide
-```
-
-**Priority 3: Analytics Dashboard**
-```
-/routes/analytics-live.js                     # SSE endpoint for real-time metrics
-/public/js/analytics/liveMetrics.js           # Live metrics UI component
-/public/js/analytics/charts.js                # Chart rendering logic
-/public/js/analytics/costTracking.js          # Cost tracking UI
-/docs/guides/analytics.md                     # Analytics user guide
+/routes/analytics-live.js (SSE endpoint)
+/src/services/mcpToolRegistry.js
+/src/tools/FileSystemTool.js
+/src/tools/SearchTool.js
+/src/tools/CalculatorTool.js
+/src/tools/DateTimeTool.js
+/routes/n8n/webhooks.js (enhanced)
+/src/services/cloudLLMRouter.js (optional)
 ```
 
-**Priority 4: AgentC Integration**
+**Documentation:**
 ```
-/src/services/mcpToolRegistry.js              # MCP tool registry
-/src/tools/FileSystemTool.js                  # File system MCP tool
-/src/tools/SearchTool.js                      # Web search MCP tool
-/src/tools/CalculatorTool.js                  # Calculator MCP tool
-/routes/n8n/webhooks.js                       # n8n webhook endpoints
-/src/services/cloudLLMRouter.js               # Cloud LLM routing service
-/docs/guides/mcp-tool-development.md          # MCP tool development guide
-/docs/guides/cloud-llm-configuration.md       # Cloud LLM setup guide
+/docs/guides/prompt-management.md
+/docs/guides/analytics.md
+/docs/guides/mcp-tool-development.md
+```
+
+### Phase 2 (Week 6+)
+
+**Backend:**
+```
+/src/middleware/rateLimiter.js
+/routes/admin/api-keys.js
+/tests/integration/security.test.js
+```
+
+**Documentation:**
+```
+/docs/guides/rate-limiting.md
+/docs/SECURITY_HARDENING.md (updated)
 ```
 
 ---
 
-## Appendix B: Decision Log
+## 📋 Next Steps
 
-### 2026-01-01: Initial Plan Creation
-- **Decision:** Prioritize prompt management UI over analytics expansion
-- **Rationale:** User experience and customization is critical for adoption. Backend is complete, frontend is blocking users.
-- **Trade-off:** Delays analytics enhancements but unblocks 100% of users for prompt customization
+### Immediate (Today):
+1. ✅ Review and approve revised plan
+2. ✅ Confirm "full open first" approach
+3. [ ] Assign developer to Priority 1
+4. [ ] Set up project tracking
 
-### 2026-01-01: Rate Limiting Strategy
-- **Decision:** Use MongoDB for rate limit store in production
-- **Rationale:** Consistency with existing architecture, no new dependencies
-- **Trade-off:** Potential latency vs Redis, but simpler deployment
+### Week 1 (Days 1-5):
+1. [ ] Begin Priority 1, Phase 1.1: UI Design
+2. [ ] Review existing frontend patterns
+3. [ ] Create mockups for prompt management
+4. [ ] Start implementing core CRUD UI
+5. [ ] Daily standups to track progress
 
-### 2026-01-01: MCP Tools Scope
-- **Decision:** Start with 5 core tools, expand based on usage
-- **Rationale:** Validate integration architecture before scaling
-- **Trade-off:** Limited tool set initially, but lower risk
+### Week 3 (Day 11):
+1. [ ] Complete Priority 1 (Prompt UI)
+2. [ ] Begin Priority 2 (Analytics Expansion)
+3. [ ] Sprint retrospective
 
----
+### Week 5 (Day 25):
+1. [ ] Complete Priority 3 (AgentC Integration)
+2. [ ] Phase 1 completion review
+3. [ ] User acceptance testing
+4. [ ] Decide: Proceed to Phase 2 or iterate on features
 
-## Appendix C: Contact & Escalation
-
-### Project Stakeholders
-- **Product Owner:** TBD
-- **Technical Lead:** TBD
-- **DevOps Lead:** TBD
-
-### Escalation Path
-1. **Technical Issues:** Technical Lead → Architecture Review
-2. **Resource Constraints:** Product Owner → Reprioritization
-3. **Security Concerns:** Security Engineer → Immediate review + hold deployment
-
-### Communication Channels
-- **Daily Standups:** TBD
-- **Weekly Status Updates:** TBD
-- **Project Tracking:** GitHub Issues/Projects (or alternative)
+### Phase 2 (Week 6+):
+1. [ ] Evaluate: Is public deployment needed?
+2. [ ] If yes: Begin Priority 4 (Security Hardening)
+3. [ ] If no: Defer Phase 2, focus on feature enhancements
 
 ---
 
-**Document Version:** 1.0
+## 📞 Questions & Support
+
+For clarification on any aspect of this plan:
+
+**Architecture:** How do components fit together?
+**Implementation:** How should I build feature X?
+**Prioritization:** Should we adjust priorities based on feedback?
+**Resources:** Do we need additional team members?
+**Timeline:** Are estimates realistic for our team?
+
+I'm available to provide detailed guidance on any area!
+
+---
+
+**Document Version:** 2.0 (Revised for "Full Open First" approach)
 **Last Updated:** 2026-01-01
+**Approval Status:** ✅ APPROVED
 **Next Review:** After Week 2 (Priority 1 completion)
