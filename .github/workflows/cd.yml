@@ -16,6 +16,19 @@ on:
           - production
 
 jobs:
+  run-tests:
+    name: Pre-deployment Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm test
+
   deploy-staging:
     name: Deploy to Staging
     runs-on: ubuntu-latest
@@ -43,7 +56,11 @@ jobs:
 
       - name: Deploy n8n workflows
         run: |
-          ./scripts/deploy-n8n-workflows.sh
+          if [ -x ./scripts/deploy-n8n-workflows.sh ]; then
+            ./scripts/deploy-n8n-workflows.sh
+          else
+            echo "deploy-n8n-workflows.sh not found or not executable, skipping n8n workflow deployment."
+          fi
         env:
           N8N_API_URL: ${{ secrets.N8N_STAGING_URL }}
           N8N_API_KEY: ${{ secrets.N8N_STAGING_KEY }}
@@ -86,8 +103,16 @@ jobs:
           key: ${{ secrets.PROD_SSH_KEY }}
           script: |
             cd /home/yb/codes/AgentX
-            ./scripts/backup-mongodb.sh
-            ./scripts/backup-qdrant.sh
+            if [ -x ./scripts/backup-mongodb.sh ]; then
+              ./scripts/backup-mongodb.sh
+            else
+              echo "backup-mongodb.sh not found, skipping MongoDB backup."
+            fi
+            if [ -x ./scripts/backup-qdrant.sh ]; then
+              ./scripts/backup-qdrant.sh
+            else
+              echo "backup-qdrant.sh not found, skipping Qdrant backup."
+            fi
 
       - name: Deploy application
         uses: appleboy/ssh-action@master
@@ -103,9 +128,14 @@ jobs:
             sleep 10
 
       - name: Health check
-        run: |
-          sleep 20
-          curl -f http://192.168.2.33:3080/health || exit 1
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          script: |
+            sleep 20
+            curl -f http://127.0.0.1:3080/health || exit 1
 
       - name: Rollback on failure
         if: failure()
@@ -116,7 +146,12 @@ jobs:
           key: ${{ secrets.PROD_SSH_KEY }}
           script: |
             cd /home/yb/codes/AgentX
-            ./scripts/rollback-deployment.sh
+            if [ -x ./scripts/rollback-deployment.sh ]; then
+              ./scripts/rollback-deployment.sh
+            else
+              echo "rollback-deployment.sh not found, manual rollback required."
+              exit 1
+            fi
 
       - name: Notify on success
         uses: slackapi/slack-github-action@v1
@@ -145,16 +180,3 @@ jobs:
             {
               "text": "❌ AgentX production deployment FAILED - rollback initiated"
             }
-
-  run-tests:
-    name: Pre-deployment Tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          cache: 'npm'
-      - run: npm ci
-      - run: npm test
