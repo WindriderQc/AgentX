@@ -201,6 +201,48 @@
     },
     {
       "parameters": {
+        "jsCode": "const source = $input.first().json || {};\nconst statusCandidates = [\n  source.statusCode,\n  source.status,\n  source.code,\n  source?.error?.statusCode,\n  source?.error?.code\n];\nconst statusCode = statusCandidates\n  .map((v) => Number(v))\n  .find((v) => Number.isFinite(v)) ?? 0;\nconst responseTime = source.responseTime ?? source.elapsedTime ?? source.duration ?? source.time ?? 0;\nconst ok = source && !source.error && (Array.isArray(source.models) || typeof source.models === 'object');\n\nreturn [{\n  json: {\n    component: 'ollama-main',\n    value: ok ? 1 : 0,\n    responseTime,\n    metadata: {\n      statusCode,\n      endpoint: '/api/tags',\n      host: '192.168.2.99',\n      checkedAt: new Date().toISOString()\n    },\n    tags: ['health-check', 'automated']\n  }\n}];"
+      },
+      "id": "6b3beceb-b6c2-4d31-8268-49a80651d6d8",
+      "name": "Transform to Metrics: Ollama 99",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3080/api/metrics/health",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "id": "2a42f6f2-84d0-4083-a236-b394b007d9d0",
+      "name": "Record Metrics: Ollama 99",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        352
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "PIrrA2wpOppzVodi",
+          "name": "Header Auth account"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
         "url": "http://192.168.2.33:3080/health",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
@@ -226,6 +268,90 @@
     },
     {
       "parameters": {
+        "jsCode": "const source = $input.first().json || {};\nconst statusCandidates = [\n  source.statusCode,\n  source.status,\n  source.code,\n  source?.error?.statusCode,\n  source?.error?.code\n];\nconst statusCode = statusCandidates\n  .map((v) => Number(v))\n  .find((v) => Number.isFinite(v)) ?? 0;\nconst responseTime = source.responseTime ?? source.elapsedTime ?? source.duration ?? source.time ?? 0;\nconst ok = source && !source.error && (source.status === 'ok' || source.status === 'success' || source.ok === true);\n\nreturn [{\n  json: {\n    component: 'agentx',\n    value: ok ? 1 : 0,\n    responseTime,\n    metadata: {\n      statusCode,\n      endpoint: '/health',\n      checkedAt: new Date().toISOString()\n    },\n    tags: ['health-check', 'automated']\n  }\n}];"
+      },
+      "id": "8979c2f2-058c-438e-8b82-3ef614472b0c",
+      "name": "Transform to Metrics: AgentX",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        176
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3080/api/metrics/health",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "id": "f0355b72-0f5e-4ac4-8a76-9649392c25ac",
+      "name": "Record Metrics: AgentX",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        176
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "PIrrA2wpOppzVodi",
+          "name": "Header Auth account"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const source = $input.first().json || {};\nconst statusCandidates = [\n  source.statusCode,\n  source.status,\n  source.code,\n  source?.error?.statusCode,\n  source?.error?.code\n];\nconst statusCode = statusCandidates\n  .map((v) => Number(v))\n  .find((v) => Number.isFinite(v)) ?? 0;\nconst responseTime = source.responseTime ?? source.elapsedTime ?? source.duration ?? source.time ?? 0;\nconst ok = source && !source.error && (Array.isArray(source.models) || typeof source.models === 'object');\n\nreturn [{\n  json: {\n    component: 'ollama-main',\n    value: ok ? 1 : 0,\n    responseTime,\n    metadata: {\n      statusCode,\n      endpoint: '/api/tags',\n      host: '192.168.2.12',\n      checkedAt: new Date().toISOString()\n    },\n    tags: ['health-check', 'automated']\n  }\n}];"
+      },
+      "id": "ff4fd1b9-964c-4231-92dc-ef34abcf185a",
+      "name": "Transform to Metrics: Ollama 12",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        528
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3080/api/metrics/health",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "id": "cb5ccbcd-44ac-4ed1-ab6a-705a70a5b37d",
+      "name": "Record Metrics: Ollama 12",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        528
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "PIrrA2wpOppzVodi",
+          "name": "Header Auth account"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
         "url": "http://192.168.2.33:3003/health",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
@@ -239,6 +365,48 @@
       "typeVersion": 4.2,
       "position": [
         320,
+        -16
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "PIrrA2wpOppzVodi",
+          "name": "Header Auth account"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const source = $input.first().json || {};\nconst statusCandidates = [\n  source.statusCode,\n  source.status,\n  source.code,\n  source?.error?.statusCode,\n  source?.error?.code\n];\nconst statusCode = statusCandidates\n  .map((v) => Number(v))\n  .find((v) => Number.isFinite(v)) ?? 0;\nconst responseTime = source.responseTime ?? source.elapsedTime ?? source.duration ?? source.time ?? 0;\nconst ok = source && !source.error && (source.status === 'ok' || source.status === 'success' || source.ok === true);\n\nreturn [{\n  json: {\n    component: 'dataapi',\n    value: ok ? 1 : 0,\n    responseTime,\n    metadata: {\n      statusCode,\n      endpoint: '/health',\n      checkedAt: new Date().toISOString()\n    },\n    tags: ['health-check', 'automated']\n  }\n}];"
+      },
+      "id": "6dafc681-f004-4cc2-9a44-ecf1cf994db9",
+      "name": "Transform to Metrics: DataAPI",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3080/api/metrics/health",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "id": "468c0b61-d3fa-40aa-840d-2bba9d4b0280",
+      "name": "Record Metrics: DataAPI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
         -16
       ],
       "credentials": {
@@ -373,6 +541,22 @@
             "node": "Merge2",
             "type": "main",
             "index": 1
+          },
+          {
+            "node": "Transform to Metrics: Ollama 12",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transform to Metrics: Ollama 12": {
+      "main": [
+        [
+          {
+            "node": "Record Metrics: Ollama 12",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -384,6 +568,22 @@
             "node": "Merge1",
             "type": "main",
             "index": 1
+          },
+          {
+            "node": "Transform to Metrics: Ollama 99",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transform to Metrics: Ollama 99": {
+      "main": [
+        [
+          {
+            "node": "Record Metrics: Ollama 99",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -395,6 +595,22 @@
             "node": "Merge",
             "type": "main",
             "index": 1
+          },
+          {
+            "node": "Transform to Metrics: AgentX",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transform to Metrics: AgentX": {
+      "main": [
+        [
+          {
+            "node": "Record Metrics: AgentX",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -404,6 +620,22 @@
         [
           {
             "node": "Merge",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Transform to Metrics: DataAPI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transform to Metrics: DataAPI": {
+      "main": [
+        [
+          {
+            "node": "Record Metrics: DataAPI",
             "type": "main",
             "index": 0
           }
