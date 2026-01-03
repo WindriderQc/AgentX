@@ -6,6 +6,9 @@
   "scripts": {
     "start": "node server.js",
     "test": "jest --silent",
+    "test:unit": "jest tests/unit --coverage",
+    "test:integration": "jest tests/integration --runInBand",
+    "test:workflows": "jest tests/workflows",
     "test:e2e": "./test-all.sh",
     "test:e2e:playwright": "npx playwright test",
     "test:e2e:playwright:ui": "npx playwright test --ui",
@@ -23,6 +26,9 @@
     "test:load": "./tests/load/run-tests.sh",
     "test:load:basic": "artillery run tests/load/basic-load.yml",
     "test:load:stress": "artillery run tests/load/stress-test.yml",
+    "test:load:comprehensive": "artillery run tests/load/comprehensive-load.yml",
+    "lint": "eslint . --ext .js",
+    "lint:fix": "eslint . --ext .js --fix",
     "seed:ops": "node scripts/seed-sbqc-ops.js"
   },
   "author": "",

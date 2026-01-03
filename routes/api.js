@@ -9,7 +9,7 @@ const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...
 
 // Import Service Logic
 const { handleChatRequest } = require('../src/services/chatService');
-const { getRoutingStatus, classifyQuery, HOSTS, MODEL_ROUTING, TASK_MODELS } = require('../src/services/modelRouter');
+const { getRoutingStatus, classifyQuery, HOSTS, MODEL_ROUTING, TASK_MODELS, getModelHealth, getAllModelsHealth } = require('../src/services/modelRouter');
 
 // V3: Import RAG Store
 const { getRagStore } = require('../src/services/ragStore');
@@ -71,6 +71,23 @@ router.post('/models/classify', async (req, res) => {
             }
         });
     } catch (err) {
+        res.status(500).json({ status: 'error', message: err.message });
+    }
+});
+
+router.get('/models/health', async (req, res) => {
+    try {
+        const { host, model } = req.query;
+
+        if (host && model) {
+            const health = await getModelHealth(host, model);
+            return res.json({ status: 'success', data: { health } });
+        }
+
+        const allHealth = await getAllModelsHealth();
+        res.json({ status: 'success', data: { models: allHealth } });
+    } catch (err) {
+        logger.error('Failed to get model health', { error: err.message });
         res.status(500).json({ status: 'error', message: err.message });
     }
 });

@@ -1,0 +1,160 @@
+name: AgentX CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+
+jobs:
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop' || inputs.environment == 'staging'
+    environment:
+      name: staging
+      url: http://staging.agentx.local
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USER }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          script: |
+            cd /home/yb/codes/AgentX
+            git pull origin develop
+            npm ci --production
+            pm2 reload ecosystem.config.js --update-env
+            sleep 10
+            curl -f http://localhost:3080/health || exit 1
+
+      - name: Deploy n8n workflows
+        run: |
+          ./scripts/deploy-n8n-workflows.sh
+        env:
+          N8N_API_URL: ${{ secrets.N8N_STAGING_URL }}
+          N8N_API_KEY: ${{ secrets.N8N_STAGING_KEY }}
+
+      - name: Notify Slack
+        uses: slackapi/slack-github-action@v1
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          payload: |
+            {
+              "text": "✅ AgentX deployed to staging",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "Deployment to *staging* succeeded\n*Commit:* ${{ github.sha }}"
+                  }
+                }
+              ]
+            }
+
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || inputs.environment == 'production'
+    needs: [run-tests]
+    environment:
+      name: production
+      url: http://192.168.2.33:3080
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create backup
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          script: |
+            cd /home/yb/codes/AgentX
+            ./scripts/backup-mongodb.sh
+            ./scripts/backup-qdrant.sh
+
+      - name: Deploy application
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          script: |
+            cd /home/yb/codes/AgentX
+            git pull origin main
+            npm ci --production
+            pm2 reload ecosystem.config.js --update-env
+            sleep 10
+
+      - name: Health check
+        run: |
+          sleep 20
+          curl -f http://192.168.2.33:3080/health || exit 1
+
+      - name: Rollback on failure
+        if: failure()
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          script: |
+            cd /home/yb/codes/AgentX
+            ./scripts/rollback-deployment.sh
+
+      - name: Notify on success
+        uses: slackapi/slack-github-action@v1
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          payload: |
+            {
+              "text": "🚀 AgentX deployed to PRODUCTION",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Production deployment succeeded*\n*Commit:* ${{ github.sha }}\n*By:* ${{ github.actor }}"
+                  }
+                }
+              ]
+            }
+
+      - name: Notify on failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          payload: |
+            {
+              "text": "❌ AgentX production deployment FAILED - rollback initiated"
+            }
+
+  run-tests:
+    name: Pre-deployment Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm test
