@@ -50,7 +50,12 @@ describe('ModelRouter failover logic', () => {
 
     test('fails over when primary slow and logs remediation + alert', async () => {
         const timestamps = [0, 6001, 6001, 7000, 7010, 7010]; // primary start/end/lastChecked + backup
-        dateSpy.mockImplementation(() => timestamps.shift() || 8000);
+        dateSpy.mockImplementation(() => {
+            if (timestamps.length === 0) {
+                throw new Error('Date.now() called more times than expected in test');
+            }
+            return timestamps.shift();
+        });
 
         fetch.mockImplementation((url) => {
             if (url.startsWith(primaryHost)) {
@@ -81,7 +86,12 @@ describe('ModelRouter failover logic', () => {
 
     test('health cache avoids redundant checks within TTL', async () => {
         const timestamps = [0, 100, 100, 1100, 1100, 1200, 1200];
-        dateSpy.mockImplementation(() => timestamps.shift() || 1300);
+        dateSpy.mockImplementation(() => {
+            if (timestamps.length === 0) {
+                throw new Error('Date.now() called more times than expected in test');
+            }
+            return timestamps.shift();
+        });
 
         fetch.mockResolvedValue({ ok: true });
 
