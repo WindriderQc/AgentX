@@ -693,27 +693,40 @@ This section tracks the current implementation status and areas requiring develo
   - Helmet re-evaluation for production deployment
 - **Files:** `/src/app.js`, `/src/middleware/auth.js` (129 lines), `/src/middleware/rateLimiter.js` (135 lines)
 
-**AgentC Directory - PLANNING PHASE:**
-- **Location:** `/AgentC/` with 9 n8n workflow JSON files
-- **Status:** n8n workflows version-controlled and deployment-ready
-- **Workflows:**
-  - N1.1.json (12.6KB) - System Health Check
-  - N1.3.json (10.7KB) - Ops Diagnostic
-  - N2.1.json (4.1KB) - NAS Scan
-  - N2.2.json (4.2KB) - NAS Full Scan
-  - N2.3.json (11.5KB) - RAG Ingest
-  - N3.1.json (5.0KB) - Model Monitor (Fixed)
-  - N3.2.json (7.6KB) - AI Query
-  - N5.1.json (13.7KB) - Feedback Analysis
-  - testpack.json (11.9KB) - Test workflow pack
-- **Documentation:** `/AgentC/README.md` (315 lines), deployment script at `/scripts/deploy-n8n-workflows.sh`
+**AgentC Directory - AGENT PERSONA PATTERN ESTABLISHED:**
+- **Location:** `/AgentC/` with 9 n8n workflow JSON files + pattern documentation
+- **Status:** Agent Persona Pattern formalized, workflows production-ready
+- **Architecture:** Persona-based recurring agent workflows (Janitor, Curator, Auditor, Guardian, Analyst)
+- **Documentation:**
+  - `/AgentC/AGENT_PERSONAS.md` (600+ lines) - **Complete pattern specification**
+  - `/AgentC/WORKFLOW_TEMPLATE.json` - Starter template for new agents
+  - `/AgentC/README.md` (323 lines) - Quick start guide with persona references
+  - `/scripts/deploy-n8n-workflows.sh` - Deployment automation
+- **Active Workflows (Persona-Based):**
+  - **🧹 Janitor (N1.x)** - System health monitoring
+    - N1.1.json (12.6KB) - System Health Check (every 5 min) - **Canonical example**
+    - N1.3.json (10.7KB) - Ops Diagnostic
+  - **📚 Curator (N2.x)** - Content and data quality management
+    - N2.1.json (4.1KB) - NAS Quick Scan
+    - N2.2.json (4.2KB) - NAS Full Scan
+    - N2.3.json (11.5KB) - RAG Ingest Orchestrator
+  - **🔍 Auditor (N3.x)** - Performance and cost tracking
+    - N3.1.json (5.0KB) - Model Monitor (Fixed)
+    - N3.2.json (7.6KB) - AI Query Performance Auditor
+  - **📊 Analyst (N5.x)** - Feedback analysis and improvement loops
+    - N5.1.json (13.7KB) - Feedback Analysis
+- **Pattern Features:**
+  - Dual triggers (schedule + webhook for manual execution)
+  - Standardized metrics recording (`POST /api/metrics/{type}`)
+  - Stateful alert evaluation (`POST /api/alerts/evaluate`)
+  - Resilient error handling (continueOnFail on all HTTP nodes)
+  - Observable (all agents log to metrics + alerts APIs)
 - **n8n Instance:** http://192.168.2.199:5678 (public: https://n8n.specialblend.icu)
-- **Plan Evolution Needed:**
+- **Next Steps:**
+  - Define Guardian (N4.x) security monitoring workflows
   - Integration with MCP tools
   - Cloud AI LLM specific use cases on top of Ollama
-  - Minor automated workflow implementations
   - Global architecture review
-- **Priority:** TODO when requirements solidify
 
 ### 🔴 Critical Architecture Review Needed
 

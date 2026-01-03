@@ -19,7 +19,7 @@
     },
     {
       "parameters": {
-        "url": "http://192.168.2.33:3003/health",
+        "url": "http://localhost:3003/health",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "options": {
@@ -45,7 +45,7 @@
     },
     {
       "parameters": {
-        "url": "http://192.168.2.33:3080/health",
+        "url": "http://localhost:3080/health",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "options": {
@@ -166,7 +166,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://192.168.2.33:3080/api/chat",
+        "url": "http://localhost:3080/api/chat",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,

@@ -320,6 +320,8 @@ From [04-N8N-WORKFLOWS.md](../docs/SBQC-Stack-Final/04-N8N-WORKFLOWS.md):
 
 ## Documentation
 
+- **Agent Persona Pattern:** [AGENT_PERSONAS.md](AGENT_PERSONAS.md) - **START HERE for new workflows**
+- **Workflow Template:** [WORKFLOW_TEMPLATE.json](WORKFLOW_TEMPLATE.json) - Starter template
 - **Workflow Specs:** [04-N8N-WORKFLOWS.md](../docs/SBQC-Stack-Final/04-N8N-WORKFLOWS.md)
 - **API Setup:** [N8N-API-SETUP.md](../docs/SBQC-Stack-Final/N8N-API-SETUP.md)
 - **Deployment Guide:** [05-DEPLOYMENT.md](../docs/SBQC-Stack-Final/05-DEPLOYMENT.md)
