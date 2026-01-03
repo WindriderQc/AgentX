@@ -1,0 +1,1137 @@
+{
+  "name": "N4.4 Self-Healing Orchestrator",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "sbqc-n4-4-self-healing-trigger",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Self-Healing Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "webhookId": "sbqc-n4-4-self-healing-trigger"
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "ruleName",
+              "value": "={{ $json.body.ruleName }}"
+            },
+            {
+              "name": "component",
+              "value": "={{ $json.body.component }}"
+            },
+            {
+              "name": "remediationAction",
+              "value": "={{ $json.body.remediationAction }}"
+            },
+            {
+              "name": "requiresApproval",
+              "value": "={{ $json.body.requiresApproval }}"
+            },
+            {
+              "name": "detectedIssue",
+              "value": "={{ JSON.stringify($json.body.detectedIssue) }}"
+            },
+            {
+              "name": "startTime",
+              "value": "={{ $now.toISO() }}"
+            },
+            {
+              "name": "triggerSource",
+              "value": "webhook"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "extract-validate",
+      "name": "Extract & Validate",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate required fields\nconst data = $input.first().json;\n\nconst required = ['ruleName', 'component', 'remediationAction'];\nconst missing = required.filter(field => !data[field]);\n\nif (missing.length > 0) {\n  throw new Error(`Missing required fields: ${missing.join(', ')}`);\n}\n\n// Validate remediation action type\nconst validActions = [\n  'model_failover',\n  'prompt_rollback',\n  'service_restart',\n  'throttle_requests',\n  'alert_only'\n];\n\nif (!validActions.includes(data.remediationAction)) {\n  throw new Error(`Invalid remediation action: ${data.remediationAction}`);\n}\n\nreturn { json: data };"
+      },
+      "id": "validate-fields",
+      "name": "Validate Fields",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.requiresApproval }}",
+              "value2": "true"
+            }
+          ]
+        }
+      },
+      "id": "check-approval",
+      "name": "Check Approval Required",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.1,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:5678/webhook/sbqc-n4-1-alert-dispatch",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"alertId\": \"approval_{{ $json.ruleName }}_{{ $now.toUnixInteger() }}\",\n  \"severity\": \"high\",\n  \"title\": \"Self-Healing Action Requires Approval\",\n  \"message\": \"Rule {{ $json.ruleName }} detected an issue on {{ $json.component }} and requires approval to execute {{ $json.remediationAction }}. Detected Issue: {{ $json.detectedIssue }}\",\n  \"ruleName\": \"{{ $json.ruleName }}\",\n  \"channels\": [\"email\"],\n  \"context\": {\n    \"component\": \"{{ $json.component }}\",\n    \"action\": \"{{ $json.remediationAction }}\",\n    \"detectedIssue\": {{ $json.detectedIssue }},\n    \"approvalRequired\": true,\n    \"notifyEmail\": \"{{ $env.ADMIN_EMAIL || 'admin@sbqc.local' }}\"\n  }\n}",
+        "options": {}
+      },
+      "id": "send-approval-request",
+      "name": "Send Approval Request (Email)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1050, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3080/api/self-healing/pending-approvals",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.AGENTX_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"ruleName\": \"{{ $json.ruleName }}\",\n  \"component\": \"{{ $json.component }}\",\n  \"action\": \"{{ $json.remediationAction }}\",\n  \"detectedIssue\": {{ $json.detectedIssue }},\n  \"requestedAt\": \"{{ $json.startTime }}\",\n  \"status\": \"pending\"\n}",
+        "options": {}
+      },
+      "id": "store-pending-approval",
+      "name": "Store Pending Approval",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1250, 200]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "approvalStatus",
+              "value": "pending_manual_approval"
+            },
+            {
+              "name": "message",
+              "value": "Self-healing action requires manual approval. Request sent to Slack."
+            }
+          ]
+        }
+      },
+      "id": "approval-pending-response",
+      "name": "Approval Pending Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1450, 200]
+    },
+    {
+      "parameters": {
+        "dataType": "string",
+        "value1": "={{ $json.remediationAction }}",
+        "rules": {
+          "rules": [
+            {
+              "value2": "model_failover",
+              "output": 0
+            },
+            {
+              "value2": "prompt_rollback",
+              "output": 1
+            },
+            {
+              "value2": "service_restart",
+              "output": 2
+            },
+            {
+              "value2": "throttle_requests",
+              "output": 3
+            },
+            {
+              "value2": "alert_only",
+              "output": 4
+            }
+          ]
+        }
+      },
+      "id": "route-action",
+      "name": "Route Remediation Action",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [1050, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract hosts from component or use defaults\nconst data = $input.first().json;\nconst component = data.component;\n\n// Parse detected issue to get hosts\nconst issue = typeof data.detectedIssue === 'string' \n  ? JSON.parse(data.detectedIssue) \n  : data.detectedIssue;\n\nlet currentHost, backupHost;\n\nif (component === 'ollama-main') {\n  currentHost = 'http://localhost:11434';\n  backupHost = 'http://localhost:11435'; // ollama-secondary\n} else if (component === 'ollama-secondary') {\n  currentHost = 'http://localhost:11435';\n  backupHost = 'http://localhost:11434'; // ollama-main\n} else {\n  // Extract from metadata if available\n  currentHost = issue.currentHost || 'http://localhost:11434';\n  backupHost = issue.backupHost || 'http://localhost:11435';\n}\n\nreturn {\n  json: {\n    ...data,\n    currentHost,\n    backupHost,\n    threshold: issue.threshold || 5000\n  }\n};"
+      },
+      "id": "prepare-failover",
+      "name": "Prepare Model Failover",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3080/api/models/switch-host",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.AGENTX_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"currentHost\": \"{{ $json.currentHost }}\",\n  \"backupHost\": \"{{ $json.backupHost }}\",\n  \"reason\": \"self_healing_failover\",\n  \"triggeredBy\": \"{{ $json.ruleName }}\"\n}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "execute-failover",
+      "name": "Execute Model Failover",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1450, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.backupHost }}/api/tags",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "id": "verify-failover",
+      "name": "Verify Backup Host",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1650, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calculate response time and validate\nconst startTime = new Date($input.first().json.startTime).getTime();\nconst endTime = Date.now();\nconst responseTime = endTime - startTime;\nconst threshold = $input.first().json.threshold;\n\nconst success = responseTime < threshold;\n\nreturn {\n  json: {\n    ...$input.first().json,\n    failoverSuccess: success,\n    newResponseTime: responseTime,\n    threshold: threshold,\n    message: success \n      ? `Failover successful. Response time: ${responseTime}ms` \n      : `Failover verification failed. Response time: ${responseTime}ms exceeds threshold: ${threshold}ms`\n  }\n};"
+      },
+      "id": "check-failover-success",
+      "name": "Check Failover Success",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1850, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://localhost:3080/api/prompts/history",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.AGENTX_API_KEY }}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "limit",
+              "value": "10"
+            },
+            {
+              "name": "sortBy",
+              "value": "createdAt"
+            },
+            {
+              "name": "order",
+              "value": "desc"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "get-prompt-history",
+      "name": "Get Prompt History",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1250, 450]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Find previous version with better metrics\nconst data = $input.first().json;\nconst history = data.body.data || [];\n\nif (history.length === 0) {\n  throw new Error('No prompt history available for rollback');\n}\n\n// Get current version (first in list)\nconst current = history[0];\n\n// Find best previous version based on quality score\nlet bestVersion = null;\nlet bestScore = -1;\n\nfor (let i = 1; i < history.length; i++) {\n  const version = history[i];\n  const score = version.metrics?.qualityScore || 0;\n  \n  if (score > bestScore && score > (current.metrics?.qualityScore || 0)) {\n    bestScore = score;\n    bestVersion = version;\n  }\n}\n\nif (!bestVersion) {\n  throw new Error('No better prompt version found in history');\n}\n\nreturn {\n  json: {\n    ...$input.first().json,\n    promptId: current._id || current.id,\n    targetVersion: bestVersion._id || bestVersion.id,\n    currentQuality: current.metrics?.qualityScore || 0,\n    targetQuality: bestScore,\n    rollbackReason: 'self_healing_quality_improvement'\n  }\n};"
+      },
+      "id": "find-best-version",
+      "name": "Find Best Version",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1450, 450]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3080/api/prompts/rollback",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.AGENTX_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"promptId\": \"{{ $json.promptId }}\",\n  \"targetVersion\": \"{{ $json.targetVersion }}\",\n  \"reason\": \"{{ $json.rollbackReason }}\",\n  \"triggeredBy\": \"{{ $json.ruleName }}\"\n}",
+        "options": {}
+      },
+      "id": "execute-rollback",
+      "name": "Execute Prompt Rollback",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1650, 450]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "rollbackSuccess",
+              "value": "true"
+            },
+            {
+              "name": "message",
+              "value": "=Prompt rolled back from quality score {{ $json.currentQuality }} to {{ $json.targetQuality }}"
+            }
+          ]
+        }
+      },
+      "id": "rollback-success",
+      "name": "Rollback Success",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1850, 450]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3080/api/admin/pm2/restart",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.AGENTX_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"service\": \"agentx\",\n  \"reason\": \"self_healing_restart\",\n  \"triggeredBy\": \"{{ $json.ruleName }}\"\n}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "execute-restart",
+      "name": "Execute Service Restart",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1250, 600]
+    },
+    {
+      "parameters": {
+        "unit": "seconds",
+        "amount": 10
+      },
+      "id": "wait-after-restart",
+      "name": "Wait for Restart",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [1450, 600],
+      "webhookId": "wait-restart"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://localhost:3080/health",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "verify-health",
+      "name": "Verify Health Check",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1650, 600]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.statusCode }}",
+              "value2": 200
+            }
+          ]
+        }
+      },
+      "id": "check-health-status",
+      "name": "Check Health Status",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.1,
+      "position": [1850, 600]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "http://localhost:3080/api/config/rate-limit",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.AGENTX_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"maxRequests\": 50,\n  \"windowMs\": 60000,\n  \"reason\": \"self_healing_throttle\",\n  \"triggeredBy\": \"{{ $json.ruleName }}\"\n}",
+        "options": {}
+      },
+      "id": "update-rate-limit",
+      "name": "Update Rate Limit",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1250, 750]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "throttleSuccess",
+              "value": "true"
+            },
+            {
+              "name": "message",
+              "value": "Rate limit updated to 50 requests per minute"
+            }
+          ]
+        }
+      },
+      "id": "throttle-success",
+      "name": "Throttle Success",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1450, 750]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3080/api/alerts",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.AGENTX_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"ruleId\": \"{{ $json.ruleName }}\",\n  \"severity\": \"high\",\n  \"title\": \"Self-Healing Alert\",\n  \"message\": \"Detected issue: {{ $json.detectedIssue }}\",\n  \"component\": \"{{ $json.component }}\",\n  \"channels\": [\"email\"],\n  \"metadata\": {\n    \"action\": \"alert_only\",\n    \"triggeredBy\": \"{{ $json.ruleName }}\",\n    \"detectedAt\": \"{{ $json.startTime }}\"\n  }\n}",
+        "options": {}
+      },
+      "id": "send-alert-only",
+      "name": "Send Alert Only",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1250, 900]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "alertSuccess",
+              "value": "true"
+            },
+            {
+              "name": "message",
+              "value": "Alert sent to configured channels"
+            }
+          ]
+        }
+      },
+      "id": "alert-sent",
+      "name": "Alert Sent",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1450, 900]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByPosition",
+        "options": {}
+      },
+      "id": "merge-results",
+      "name": "Merge Action Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [2050, 550]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Determine overall success status\nconst data = $input.first().json;\n\nlet status = 'success';\nlet message = '';\n\nif (data.failoverSuccess !== undefined) {\n  status = data.failoverSuccess ? 'success' : 'failed';\n  message = data.message;\n} else if (data.rollbackSuccess !== undefined) {\n  status = data.rollbackSuccess === 'true' ? 'success' : 'failed';\n  message = data.message;\n} else if (data.statusCode === 200) {\n  status = 'success';\n  message = 'Service restarted and health check passed';\n} else if (data.throttleSuccess !== undefined) {\n  status = data.throttleSuccess === 'true' ? 'success' : 'failed';\n  message = data.message;\n} else if (data.alertSuccess !== undefined) {\n  status = data.alertSuccess === 'true' ? 'success' : 'failed';\n  message = data.message;\n} else {\n  status = 'unknown';\n  message = 'Action result could not be determined';\n}\n\nreturn {\n  json: {\n    ...data,\n    executionStatus: status,\n    executionMessage: message,\n    endTime: new Date().toISOString()\n  }\n};"
+      },
+      "id": "determine-status",
+      "name": "Determine Execution Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2250, 550]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3080/api/self-healing/executions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.AGENTX_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"ruleName\": \"{{ $json.ruleName }}\",\n  \"component\": \"{{ $json.component }}\",\n  \"action\": \"{{ $json.remediationAction }}\",\n  \"status\": \"{{ $json.executionStatus }}\",\n  \"startTime\": \"{{ $json.startTime }}\",\n  \"endTime\": \"{{ $json.endTime }}\",\n  \"result\": {\n    \"message\": \"{{ $json.executionMessage }}\",\n    \"detectedIssue\": {{ $json.detectedIssue }}\n  },\n  \"metadata\": {\n    \"triggerSource\": \"{{ $json.triggerSource }}\",\n    \"requiresApproval\": {{ $json.requiresApproval }}\n  }\n}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "record-execution",
+      "name": "Record Execution",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2450, 550]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.executionStatus }}",
+              "value2": "success"
+            }
+          ]
+        }
+      },
+      "id": "check-execution-status",
+      "name": "Check Execution Result",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.1,
+      "position": [2650, 550]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:5678/webhook/sbqc-n4-1-alert-dispatch",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"alertId\": \"success_{{ $json.ruleName }}_{{ $now.toUnixInteger() }}\",\n  \"severity\": \"info\",\n  \"title\": \"Self-Healing Action Successful\",\n  \"message\": \"✅ {{ $json.remediationAction }} completed successfully on {{ $json.component }}. Result: {{ $json.executionMessage }}\",\n  \"ruleName\": \"{{ $json.ruleName }}\",\n  \"channels\": [\"email\"],\n  \"context\": {\n    \"component\": \"{{ $json.component }}\",\n    \"action\": \"{{ $json.remediationAction }}\",\n    \"result\": \"{{ $json.executionMessage }}\",\n    \"notifyEmail\": \"{{ $env.ADMIN_EMAIL || 'admin@sbqc.local' }}\"\n  }\n}",
+        "options": {}
+      },
+      "id": "notify-success-email",
+      "name": "Notify Success (Email)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2850, 450]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3003/api/v1/feed/events",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.DATAAPI_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"type\": \"self_healing_success\",\n  \"title\": \"Self-Healing Action Successful\",\n  \"message\": \"{{ $json.executionMessage }}\",\n  \"metadata\": {\n    \"ruleName\": \"{{ $json.ruleName }}\",\n    \"component\": \"{{ $json.component }}\",\n    \"action\": \"{{ $json.remediationAction }}\",\n    \"executionTime\": \"{{ $json.endTime }}\"\n  }\n}",
+        "options": {}
+      },
+      "id": "log-success-dataapi",
+      "name": "Log Success (DataAPI)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3050, 450]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:5678/webhook/sbqc-n4-1-alert-dispatch",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"alertId\": \"failure_{{ $json.ruleName }}_{{ $now.toUnixInteger() }}\",\n  \"severity\": \"critical\",\n  \"title\": \"Self-Healing Action Failed\",\n  \"message\": \"❌ {{ $json.remediationAction }} failed on {{ $json.component }}. Error: {{ $json.executionMessage }}. Manual intervention may be required.\",\n  \"ruleName\": \"{{ $json.ruleName }}\",\n  \"channels\": [\"email\"],\n  \"context\": {\n    \"component\": \"{{ $json.component }}\",\n    \"action\": \"{{ $json.remediationAction }}\",\n    \"error\": \"{{ $json.executionMessage }}\",\n    \"notifyEmail\": \"{{ $env.ADMIN_EMAIL || 'admin@sbqc.local' }}\"\n  }\n}",
+        "options": {}
+      },
+      "id": "notify-failure-email",
+      "name": "Notify Failure (Email)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2850, 650]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PAGERDUTY_API_URL || 'https://api.pagerduty.com' }}/incidents",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Token token={{ $env.PAGERDUTY_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"incident\": {\n    \"type\": \"incident\",\n    \"title\": \"Self-Healing Action Failed: {{ $json.ruleName }}\",\n    \"service\": {\n      \"id\": \"{{ $env.PAGERDUTY_SERVICE_ID }}\",\n      \"type\": \"service_reference\"\n    },\n    \"urgency\": \"high\",\n    \"body\": {\n      \"type\": \"incident_body\",\n      \"details\": \"Component: {{ $json.component }}\\nAction: {{ $json.remediationAction }}\\nError: {{ $json.executionMessage }}\"\n    }\n  }\n}",
+        "options": {}
+      },
+      "id": "alert-pagerduty",
+      "name": "Alert PagerDuty (Optional)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3050, 650],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByPosition",
+        "options": {}
+      },
+      "id": "merge-notifications",
+      "name": "Merge Notifications",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [3250, 550]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"status\": \"{{ $json.executionStatus }}\",\n  \"ruleName\": \"{{ $json.ruleName }}\",\n  \"component\": \"{{ $json.component }}\",\n  \"action\": \"{{ $json.remediationAction }}\",\n  \"message\": \"{{ $json.executionMessage }}\",\n  \"executionId\": \"{{ $json.body.data._id || $json.body.data.id }}\",\n  \"startTime\": \"{{ $json.startTime }}\",\n  \"endTime\": \"{{ $json.endTime }}\"\n}",
+        "options": {}
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [3450, 550]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"status\": \"pending_approval\",\n  \"message\": \"{{ $json.message }}\",\n  \"ruleName\": \"{{ $json.ruleName }}\",\n  \"approvalRequested\": true\n}",
+        "options": {}
+      },
+      "id": "respond-approval-pending",
+      "name": "Respond Approval Pending",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1650, 200]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Self-Healing Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract & Validate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract & Validate": {
+      "main": [
+        [
+          {
+            "node": "Validate Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Fields": {
+      "main": [
+        [
+          {
+            "node": "Check Approval Required",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Approval Required": {
+      "main": [
+        [
+          {
+            "node": "Send Approval Request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Route Remediation Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Approval Request": {
+      "main": [
+        [
+          {
+            "node": "Store Pending Approval",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Pending Approval": {
+      "main": [
+        [
+          {
+            "node": "Approval Pending Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approval Pending Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Approval Pending",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Remediation Action": {
+      "main": [
+        [
+          {
+            "node": "Prepare Model Failover",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Prompt History",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute Service Restart",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update Rate Limit",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Alert Only",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Model Failover": {
+      "main": [
+        [
+          {
+            "node": "Execute Model Failover",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Model Failover": {
+      "main": [
+        [
+          {
+            "node": "Verify Backup Host",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Backup Host": {
+      "main": [
+        [
+          {
+            "node": "Check Failover Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Failover Success": {
+      "main": [
+        [
+          {
+            "node": "Merge Action Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Prompt History": {
+      "main": [
+        [
+          {
+            "node": "Find Best Version",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Best Version": {
+      "main": [
+        [
+          {
+            "node": "Execute Prompt Rollback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Prompt Rollback": {
+      "main": [
+        [
+          {
+            "node": "Rollback Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rollback Success": {
+      "main": [
+        [
+          {
+            "node": "Merge Action Results",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Execute Service Restart": {
+      "main": [
+        [
+          {
+            "node": "Wait for Restart",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for Restart": {
+      "main": [
+        [
+          {
+            "node": "Verify Health Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Health Check": {
+      "main": [
+        [
+          {
+            "node": "Check Health Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Health Status": {
+      "main": [
+        [
+          {
+            "node": "Merge Action Results",
+            "type": "main",
+            "index": 2
+          }
+        ],
+        [
+          {
+            "node": "Merge Action Results",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Update Rate Limit": {
+      "main": [
+        [
+          {
+            "node": "Throttle Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Throttle Success": {
+      "main": [
+        [
+          {
+            "node": "Merge Action Results",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Send Alert Only": {
+      "main": [
+        [
+          {
+            "node": "Alert Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert Sent": {
+      "main": [
+        [
+          {
+            "node": "Merge Action Results",
+            "type": "main",
+            "index": 4
+          }
+        ]
+      ]
+    },
+    "Merge Action Results": {
+      "main": [
+        [
+          {
+            "node": "Determine Execution Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Determine Execution Status": {
+      "main": [
+        [
+          {
+            "node": "Record Execution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record Execution": {
+      "main": [
+        [
+          {
+            "node": "Check Execution Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Execution Result": {
+      "main": [
+        [
+          {
+            "node": "Notify Success (Email)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notify Failure (Email)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify Success (Email)": {
+      "main": [
+        [
+          {
+            "node": "Log Success (DataAPI)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Success (DataAPI)": {
+      "main": [
+        [
+          {
+            "node": "Merge Notifications",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify Failure (Email)": {
+      "main": [
+        [
+          {
+            "node": "Alert PagerDuty (Optional)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert PagerDuty (Optional)": {
+      "main": [
+        [
+          {
+            "node": "Merge Notifications",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Notifications": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "sbqc-agentx"
+  },
+  "id": "N4.4",
+  "tags": [
+    {
+      "createdAt": "2026-01-02T00:00:00.000Z",
+      "updatedAt": "2026-01-02T00:00:00.000Z",
+      "id": "self-healing",
+      "name": "self-healing"
+    },
+    {
+      "createdAt": "2026-01-02T00:00:00.000Z",
+      "updatedAt": "2026-01-02T00:00:00.000Z",
+      "id": "automation",
+      "name": "automation"
+    }
+  ]
+}
