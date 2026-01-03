@@ -30,10 +30,12 @@
 ## 🔴 Priority 1: Prompt Management UI (Weeks 1-2)
 
 ### Overview
-- **Status:** Backend complete, frontend missing
+- **Status:** ✅ Backend + frontend implemented (as of 2026-01-03)
 - **Impact:** HIGH - Users need UI to customize prompts
 - **Effort:** 2 weeks (40-50 hours)
 - **Phase:** 1 (Full Feature Implementation)
+
+**Canonical UI:** `/prompts.html` (legacy `/personas.html` redirects to `/prompts.html`).
 
 ### What's Complete ✅
 - `/routes/prompts.js` (328 lines) - 7 CRUD endpoints
@@ -41,13 +43,15 @@
 - Template rendering API
 - Performance metrics integration
 
-### What's Missing ❌
-- Prompt management HTML page
-- Prompt editor component (Monaco/CodeMirror)
-- A/B test configuration UI (traffic weight sliders)
+- `/public/prompts.html` - Prompt Management UI
+- `/public/js/prompts.js` - Core UI logic
+- A/B test configuration UI
 - Template variable tester
 - Performance metrics dashboard
-- User onboarding wizard
+- First-time user onboarding wizard
+
+### What's Missing ❌
+- (No core deliverables missing; see other priorities for remaining work.)
 
 ### Implementation Timeline
 
@@ -61,13 +65,13 @@
 - Days 9-10: Performance dashboard, onboarding wizard
 
 ### Key Deliverables
-- [ ] `/public/prompts.html` - Main prompt management page
-- [ ] `/public/js/prompts.js` - Core UI logic
-- [ ] Prompt list with version history
-- [ ] Visual A/B test configuration (sliders, validation)
-- [ ] Template variable tester with preview
-- [ ] Per-prompt performance metrics
-- [ ] First-time user onboarding wizard
+- [x] `/public/prompts.html` - Main prompt management page
+- [x] `/public/js/prompts.js` - Core UI logic
+- [x] Prompt list with version history
+- [x] Visual A/B test configuration (sliders, validation)
+- [x] Template variable tester with preview
+- [x] Per-prompt performance metrics
+- [x] First-time user onboarding wizard
 
 ### Success Metrics
 - 90%+ users can create prompts successfully
@@ -137,7 +141,7 @@
 ### What's Complete ✅
 - 9 n8n workflow JSONs in `/AgentC/`
 - Deployment script: `/scripts/deploy-n8n-workflows.sh`
-- n8n instance operational (http://192.168.2.199:5678)
+- n8n instance operational (see deployment/config for current URL)
 - Webhook endpoints for n8n communication
 
 ### What's Missing ❌

@@ -1,6 +1,8 @@
 # AgentX Global Development Plan
 ## Updated: 2026-01-01
 
+⚠️ **Archived document:** This is kept for historical reference. For the current plan and up-to-date status, use `/GLOBAL_PLAN.md`.
+
 This document provides a comprehensive roadmap for AgentX development, based on codebase analysis and architecture review.
 
 ---

@@ -90,13 +90,12 @@ check_n8n_api() {
     fi
 }
 
-# Get workflow ID by name
-get_workflow_id() {
+# Get workflow IDs by name (may return multiple lines if duplicates exist)
+get_workflow_ids() {
     local workflow_name="$1"
 
     workflows=$(curl -s -H "X-N8N-API-KEY: $N8N_API_KEY" "$N8N_URL/api/v1/workflows" 2>/dev/null || echo '{"data":[]}')
-    workflow_id=$(echo "$workflows" | jq -r ".data[] | select(.name == \"$workflow_name\") | .id" 2>/dev/null)
-    echo "$workflow_id"
+    echo "$workflows" | jq -r ".data[] | select(.name == \"$workflow_name\") | .id" 2>/dev/null | sed '/^null$/d' | sed '/^$/d'
 }
 
 # Import or update workflow
@@ -119,23 +118,33 @@ deploy_workflow() {
     local wf_name=$(jq -r '.name' "$workflow_file")
     log_info "Deploying workflow: $wf_name"
     
-    # Check if workflow exists
-    local existing_id=$(get_workflow_id "$wf_name")
-    
-    if [ -n "$existing_id" ]; then
-        # Delete and recreate workflow (PUT doesn't preserve connections properly)
-        log_info "Found existing workflow (ID: $existing_id), replacing..."
+    # Check if workflow exists (may have duplicates)
+    local existing_ids
+    existing_ids=$(get_workflow_ids "$wf_name" || true)
 
-        # Delete the old workflow
-        delete_response=$(curl -s -w "\n%{http_code}" -X DELETE \
-            -H "X-N8N-API-KEY: $N8N_API_KEY" \
-            "$N8N_URL/api/v1/workflows/$existing_id" 2>/dev/null || echo -e "\n000")
-
-        delete_code=$(echo "$delete_response" | tail -n 1)
-        if [ "$delete_code" != "200" ]; then
-            log_error "Failed to delete old workflow (HTTP $delete_code)"
-            return 1
+    if [ -n "$existing_ids" ]; then
+        local id_count
+        id_count=$(echo "$existing_ids" | wc -l | tr -d ' ')
+        if [ "$id_count" -gt 1 ]; then
+            log_warning "Found $id_count workflows named '$wf_name' (duplicates). Deleting all before redeploy."
+        else
+            log_info "Found existing workflow (ID: $existing_ids), replacing..."
         fi
+
+        # Delete all matching workflows (PUT doesn't preserve connections properly)
+        while IFS= read -r existing_id; do
+            [ -z "$existing_id" ] && continue
+
+            delete_response=$(curl -s -w "\n%{http_code}" -X DELETE \
+                -H "X-N8N-API-KEY: $N8N_API_KEY" \
+                "$N8N_URL/api/v1/workflows/$existing_id" 2>/dev/null || echo -e "\n000")
+
+            delete_code=$(echo "$delete_response" | tail -n 1)
+            if [ "$delete_code" != "200" ]; then
+                log_error "Failed to delete old workflow '$wf_name' (ID: $existing_id) (HTTP $delete_code)"
+                return 1
+            fi
+        done <<< "$existing_ids"
 
         # Create new workflow (same code as below)
         local cleaned_json=$(jq '{name, nodes, connections, settings}' "$workflow_file")

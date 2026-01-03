@@ -1,4 +1,4 @@
-const RulesValidator = require('../../../src/utils/validateRules');
+const RulesValidator = require('../../src/utils/validateRules');
 const fs = require('fs');
 const path = require('path');
 

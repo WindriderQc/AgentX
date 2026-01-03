@@ -22,7 +22,13 @@ export const get = async (url, options = {}) => {
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
-    
+
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      const bodyPreview = (await response.text()).slice(0, 200);
+      throw new Error(`Expected JSON but got '${contentType}'. Body preview: ${bodyPreview}`);
+    }
+
     return await response.json();
   } catch (error) {
     console.error('API GET failed:', error);
@@ -52,7 +58,13 @@ export const post = async (url, data = {}, options = {}) => {
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
-    
+
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      const bodyPreview = (await response.text()).slice(0, 200);
+      throw new Error(`Expected JSON but got '${contentType}'. Body preview: ${bodyPreview}`);
+    }
+
     return await response.json();
   } catch (error) {
     console.error('API POST failed:', error);

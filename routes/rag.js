@@ -15,6 +15,32 @@ const { getRagStore } = require('../src/services/ragStore');
 const { resolveTarget } = require('../src/utils');
 const logger = require('../config/logger');
 
+function classifyRagAvailabilityError(error) {
+  const message = error?.message || '';
+  const stack = error?.stack || '';
+  const combined = `${message}\n${stack}`;
+
+  // Vector store (Qdrant) issues can include the collection name `agentx_embeddings`
+  // which would otherwise be misclassified as an embeddings failure.
+  if (/(qdrant|QdrantVectorStore|\b6333\b|ECONNREFUSED.*6333|agentx_embeddings)/i.test(combined)) {
+    return {
+      statusCode: 503,
+      error: 'Service Unavailable',
+      message: 'Vector store (Qdrant) is not available'
+    };
+  }
+
+  if (/(ollama|\/api\/embeddings|embeddings API|Failed to generate embedding|\bembedding\b)/i.test(combined)) {
+    return {
+      statusCode: 503,
+      error: 'Service Unavailable',
+      message: 'Embeddings service (Ollama) is not available'
+    };
+  }
+
+  return null;
+}
+
 // Initialize RAG store with environment config
 const ragStore = getRagStore({
   vectorStoreType: process.env.VECTOR_STORE_TYPE || 'memory',
@@ -139,12 +165,12 @@ router.post(['/ingest', '/documents'], async (req, res) => {
 
   } catch (error) {
     logger.error('RAG ingest error', { error: error.message, stack: error.stack });
-    
-    // Check if it's a service availability error
-    if (error.message.includes('Ollama') || error.message.includes('embedding')) {
-      return res.status(503).json({
-        error: 'Service Unavailable',
-        message: 'Embeddings service (Ollama) is not available'
+
+    const availability = classifyRagAvailabilityError(error);
+    if (availability) {
+      return res.status(availability.statusCode).json({
+        error: availability.error,
+        message: availability.message
       });
     }
 
@@ -231,12 +257,12 @@ router.post('/search', async (req, res) => {
 
   } catch (error) {
     logger.error('RAG search error', { error: error.message, stack: error.stack });
-    
-    // Check if it's a service availability error
-    if (error.message.includes('Ollama') || error.message.includes('embedding')) {
-      return res.status(503).json({
-        error: 'Service Unavailable',
-        message: 'Embeddings service (Ollama) is not available'
+
+    const availability = classifyRagAvailabilityError(error);
+    if (availability) {
+      return res.status(availability.statusCode).json({
+        error: availability.error,
+        message: availability.message
       });
     }
 

@@ -15,6 +15,18 @@ const HOSTS = {
     secondary: process.env.OLLAMA_HOST_2 || 'http://192.168.2.12:11434'
 };
 
+// Persistent failover state (in-memory)
+let ACTIVE_HOST_STATE = {
+    current: null, // Will be initialized to primary on first access
+    failedOver: false,
+    failoverTimestamp: null,
+    reason: null,
+    failoverCount: 0
+};
+
+// Initialize active host on module load
+ACTIVE_HOST_STATE.current = HOSTS.primary;
+
 // Model → Host mapping
 const MODEL_ROUTING = {
     // UGFrank (99) - Fast models for quick responses
@@ -296,8 +308,7 @@ async function getRoutingStatus() {
  * @returns {string} Active host URL
  */
 function getActiveHost() {
-    // For now, return primary. In future, track active failover state
-    return HOSTS.primary;
+    return ACTIVE_HOST_STATE.current || HOSTS.primary;
 }
 
 /**
@@ -312,17 +323,63 @@ function getBackupHost() {
 /**
  * Switch active host (for failover scenarios)
  * @param {string} hostUrl - Target host URL to switch to
+ * @param {string} reason - Reason for the switch (optional)
  */
-function switchHost(hostUrl) {
-    // This would update active routing state
-    // For now, just log the switch
-    logger.info('Host switch requested', { 
-        from: getActiveHost(), 
-        to: hostUrl 
+function switchHost(hostUrl, reason = 'manual') {
+    const previousHost = ACTIVE_HOST_STATE.current;
+
+    // Update state
+    ACTIVE_HOST_STATE.current = hostUrl;
+    ACTIVE_HOST_STATE.failedOver = (hostUrl !== HOSTS.primary);
+    ACTIVE_HOST_STATE.failoverTimestamp = new Date().toISOString();
+    ACTIVE_HOST_STATE.reason = reason;
+    ACTIVE_HOST_STATE.failoverCount += 1;
+
+    logger.warn('Host switch executed', {
+        from: previousHost,
+        to: hostUrl,
+        reason,
+        timestamp: ACTIVE_HOST_STATE.failoverTimestamp,
+        failoverCount: ACTIVE_HOST_STATE.failoverCount,
+        isFailedOver: ACTIVE_HOST_STATE.failedOver
     });
-    
-    // In production, this would update a persistent routing state
-    // that affects getTargetForModel() behavior
+}
+
+/**
+ * Get current failover status
+ * @returns {Object} Current failover state
+ */
+function getFailoverStatus() {
+    return {
+        currentHost: ACTIVE_HOST_STATE.current,
+        isFailedOver: ACTIVE_HOST_STATE.failedOver,
+        failoverTimestamp: ACTIVE_HOST_STATE.failoverTimestamp,
+        reason: ACTIVE_HOST_STATE.reason,
+        failoverCount: ACTIVE_HOST_STATE.failoverCount,
+        primaryHost: HOSTS.primary,
+        secondaryHost: HOSTS.secondary
+    };
+}
+
+/**
+ * Reset to primary host
+ * @param {string} reason - Reason for reset (optional)
+ */
+function resetToPrimary(reason = 'manual_reset') {
+    const previousState = { ...ACTIVE_HOST_STATE };
+
+    ACTIVE_HOST_STATE.current = HOSTS.primary;
+    ACTIVE_HOST_STATE.failedOver = false;
+    ACTIVE_HOST_STATE.failoverTimestamp = null;
+    ACTIVE_HOST_STATE.reason = null;
+    // Keep failoverCount for historical tracking
+
+    logger.info('Failover state reset to primary', {
+        reason,
+        previousHost: previousState.current,
+        previousReason: previousState.reason,
+        totalFailovers: ACTIVE_HOST_STATE.failoverCount
+    });
 }
 
 module.exports = {
@@ -335,6 +392,8 @@ module.exports = {
     getActiveHost,
     getBackupHost,
     switchHost,
+    getFailoverStatus,
+    resetToPrimary,
     HOSTS,
     MODEL_ROUTING,
     TASK_MODELS

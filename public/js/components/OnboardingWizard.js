@@ -736,7 +736,7 @@ Please respond to their questions professionally.</pre>
    */
   async onFinish() {
     // Reload prompts list to show newly created prompt
-    if (window.location.href.includes('prompts.html')) {
+      if (window.location.href.includes('prompts.html')) {
       this.toast.success('Onboarding complete! Reloading prompts...');
       setTimeout(() => window.location.reload(), 500);
     }

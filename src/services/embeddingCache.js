@@ -9,6 +9,12 @@
 
 const crypto = require('crypto');
 const logger = require('../../config/logger');
+let mongoose;
+try {
+  mongoose = require('mongoose');
+} catch (_e) {
+  mongoose = null;
+}
 
 class EmbeddingCache {
   constructor(config = {}) {
@@ -18,6 +24,13 @@ class EmbeddingCache {
     this.hitCount = 0;
     this.missCount = 0;
     this.evictionCount = 0;
+
+    // Cross-worker aggregated counters (flushed to MongoDB periodically)
+    this._pendingGlobal = { hit: 0, miss: 0, evict: 0 };
+    this._globalFlushInterval = setInterval(() => this._flushGlobalCounters(), 5000);
+    if (this._globalFlushInterval && typeof this._globalFlushInterval.unref === 'function') {
+      this._globalFlushInterval.unref();
+    }
 
     // Start periodic cleanup
     // Use unref() so this interval never keeps Node/Jest alive.
@@ -48,6 +61,7 @@ class EmbeddingCache {
 
     if (!entry) {
       this.missCount++;
+      this._queueGlobal('miss');
       return null;
     }
 
@@ -55,6 +69,7 @@ class EmbeddingCache {
     if (Date.now() - entry.timestamp > this.ttl) {
       this.cache.delete(hash);
       this.missCount++;
+      this._queueGlobal('miss');
       return null;
     }
 
@@ -62,6 +77,7 @@ class EmbeddingCache {
     this.cache.delete(hash);
     this.cache.set(hash, entry);
     this.hitCount++;
+    this._queueGlobal('hit');
     
     return entry.embedding;
   }
@@ -79,6 +95,7 @@ class EmbeddingCache {
       const firstKey = this.cache.keys().next().value;
       this.cache.delete(firstKey);
       this.evictionCount++;
+      this._queueGlobal('evict');
     }
 
     this.cache.set(hash, {
@@ -114,6 +131,50 @@ class EmbeddingCache {
     this.hitCount = 0;
     this.missCount = 0;
     this.evictionCount = 0;
+  }
+
+  _queueGlobal(type) {
+    if (!this._pendingGlobal) return;
+    if (type === 'hit') this._pendingGlobal.hit += 1;
+    if (type === 'miss') this._pendingGlobal.miss += 1;
+    if (type === 'evict') this._pendingGlobal.evict += 1;
+  }
+
+  async _flushGlobalCounters() {
+    try {
+      if (!mongoose || mongoose.connection.readyState !== 1) return;
+      const pending = this._pendingGlobal;
+      if (!pending) return;
+      if (pending.hit === 0 && pending.miss === 0 && pending.evict === 0) return;
+
+      let EmbeddingCacheStats;
+      try {
+        EmbeddingCacheStats = mongoose.model('EmbeddingCacheStats');
+      } catch (_e) {
+        EmbeddingCacheStats = require('../../models/EmbeddingCacheStats');
+      }
+
+      const inc = {};
+      if (pending.hit) inc.hitCount = pending.hit;
+      if (pending.miss) inc.missCount = pending.miss;
+      if (pending.evict) inc.evictionCount = pending.evict;
+
+      // Reset before write to reduce duplicate increments if multiple flushes overlap.
+      this._pendingGlobal = { hit: 0, miss: 0, evict: 0 };
+
+      await EmbeddingCacheStats.updateOne(
+        { _id: 'embedding' },
+        {
+          $inc: inc,
+          $set: { updatedAt: new Date() },
+          $setOnInsert: { _id: 'embedding' }
+        },
+        { upsert: true }
+      );
+    } catch (err) {
+      // If flush fails, keep the counters (best-effort)
+      logger.debug('EmbeddingCache global stats flush failed', { error: err.message });
+    }
   }
 
   /**
@@ -161,6 +222,9 @@ class EmbeddingCache {
   destroy() {
     if (this.cleanupInterval) {
       clearInterval(this.cleanupInterval);
+    }
+    if (this._globalFlushInterval) {
+      clearInterval(this._globalFlushInterval);
     }
     this.clear();
   }

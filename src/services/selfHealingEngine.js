@@ -332,23 +332,35 @@ class SelfHealingEngine {
       // Determine current and backup hosts
       const currentHost = ModelRouter.getActiveHost();
       const backupHost = ModelRouter.getBackupHost();
+      const backupHostKey = this._getHostKeyFromUrl(backupHost);
 
-      // Switch to backup host
-      ModelRouter.switchHost(backupHost);
+      // Switch to backup host with reason
+      ModelRouter.switchHost(backupHost, 'self_healing_failover');
 
       // Verify new host is responding
-      const healthCheck = await ModelRouter.checkHostHealth(backupHost);
-      if (!healthCheck.healthy) {
+      const healthCheck = await ModelRouter.checkHostHealth(backupHostKey);
+      if (healthCheck.status !== 'online') {
         // Rollback if backup is also unhealthy
-        ModelRouter.switchHost(currentHost);
-        throw new Error('Backup host is also unhealthy, rollback performed');
+        ModelRouter.switchHost(currentHost, 'rollback_unhealthy_backup');
+        throw new Error(`Backup host is also unhealthy (${healthCheck.status}), rollback performed`);
       }
+
+      logger.info('Model failover successful', {
+        previousHost: currentHost,
+        newHost: backupHost,
+        backupLatency: healthCheck.latency,
+        backupModelCount: healthCheck.models?.length || 0
+      });
 
       return {
         action: 'model_failover',
         previousHost: currentHost,
         newHost: backupHost,
-        healthCheck
+        healthCheck: {
+          status: healthCheck.status,
+          latency: healthCheck.latency,
+          modelCount: healthCheck.models?.length || 0
+        }
       };
     } catch (error) {
       logger.error('Model failover failed', { error: error.message });
@@ -357,33 +369,170 @@ class SelfHealingEngine {
   }
 
   /**
+   * Convert host URL to host key for health checks
+   * @param {string} url - Host URL
+   * @returns {string} Host key ('primary' or 'secondary')
+   */
+  _getHostKeyFromUrl(url) {
+    if (url === ModelRouter.HOSTS.primary) return 'primary';
+    if (url === ModelRouter.HOSTS.secondary) return 'secondary';
+    return 'primary'; // Fallback
+  }
+
+  /**
    * Execute prompt rollback to previous version
    */
   async _executePromptRollback(rule, context) {
+    const PromptConfig = require('../../models/PromptConfig');
+
     logger.info('Executing prompt rollback', { rule: rule.name });
 
-    // This would integrate with a prompt versioning system
-    // For now, log the action
-    return {
-      action: 'prompt_rollback',
-      message: 'Prompt rollback would be executed here',
-      note: 'Requires prompt versioning system integration'
-    };
+    try {
+      // Extract prompt name from context
+      const componentId = context.evaluation?.metrics?.component || rule.detectionQuery?.componentPattern || '';
+
+      // Parse prompt name from component ID (format: "prompt:default_chat:v2" or just "default_chat")
+      let promptName = componentId;
+      if (componentId.startsWith('prompt:')) {
+        promptName = componentId.replace('prompt:', '').split(':')[0];
+      } else if (!componentId || componentId === '*') {
+        promptName = 'default_chat'; // Fallback to default
+      }
+
+      logger.debug('Parsed prompt name for rollback', { componentId, promptName });
+
+      // Find currently active prompt
+      const currentPrompt = await PromptConfig.findOne({
+        name: promptName,
+        isActive: true
+      }).sort({ version: -1 });
+
+      if (!currentPrompt) {
+        throw new Error(`No active prompt found for ${promptName}`);
+      }
+
+      // Find previous version (next highest version that's not current)
+      const previousPrompt = await PromptConfig.findOne({
+        name: promptName,
+        version: { $lt: currentPrompt.version }
+      }).sort({ version: -1 });
+
+      if (!previousPrompt) {
+        throw new Error(`No previous version found for ${promptName} (current: v${currentPrompt.version})`);
+      }
+
+      // Deactivate current, activate previous
+      currentPrompt.isActive = false;
+      currentPrompt.trafficWeight = 0;
+      await currentPrompt.save();
+
+      previousPrompt.isActive = true;
+      previousPrompt.trafficWeight = 100;
+      await previousPrompt.save();
+
+      logger.info('Prompt rollback completed', {
+        promptName,
+        fromVersion: currentPrompt.version,
+        toVersion: previousPrompt.version,
+        currentPromptId: currentPrompt._id,
+        previousPromptId: previousPrompt._id
+      });
+
+      return {
+        action: 'prompt_rollback',
+        promptName,
+        previousVersion: currentPrompt.version,
+        rolledBackToVersion: previousPrompt.version,
+        previousPromptId: previousPrompt._id.toString(),
+        systemPromptPreview: previousPrompt.systemPrompt.substring(0, 100)
+      };
+    } catch (error) {
+      logger.error('Prompt rollback failed', { error: error.message });
+      throw error;
+    }
   }
 
   /**
    * Execute service restart (PM2)
    */
   async _executeServiceRestart(rule, context) {
-    logger.info('Executing service restart', { rule: rule.name });
+    const { exec } = require('child_process');
+    const util = require('util');
+    const execAsync = util.promisify(exec);
 
-    // Service restart requires approval, so this should only execute
-    // if approval was granted or automated mode overrides
-    return {
-      action: 'service_restart',
-      message: 'Service restart would be executed via PM2',
-      note: 'Requires shell command execution integration'
-    };
+    logger.warn('Executing service restart', { rule: rule.name });
+
+    try {
+      const componentId = context.evaluation?.metrics?.component || rule.detectionQuery?.componentPattern || 'agentx';
+
+      // Map component names to PM2 app names
+      const serviceMap = {
+        'agentx': 'agentx',
+        'agentx-main': 'agentx',
+        'agentx-api': 'agentx',
+        'dataapi': 'dataapi',
+        'dataapi-main': 'dataapi'
+      };
+
+      const pm2AppName = serviceMap[componentId.toLowerCase()] || 'agentx';
+
+      logger.info('Restarting PM2 service', { component: componentId, pm2App: pm2AppName });
+
+      // Execute PM2 reload (graceful restart with zero-downtime)
+      const { stdout: reloadOutput, stderr: reloadError } = await execAsync(`pm2 reload ${pm2AppName}`);
+
+      if (reloadError) {
+        logger.warn('PM2 reload stderr (may be informational)', { stderr: reloadError });
+      }
+
+      logger.info('PM2 reload command completed', {
+        service: pm2AppName,
+        stdout: reloadOutput.trim()
+      });
+
+      // Wait for service to stabilize (5 seconds)
+      await new Promise(resolve => setTimeout(resolve, 5000));
+
+      // Verify service is running
+      const { stdout: statusOutput } = await execAsync(`pm2 jlist`);
+      const processes = JSON.parse(statusOutput);
+      const targetProcess = processes.find(p => p.name === pm2AppName);
+
+      if (!targetProcess) {
+        throw new Error(`Service ${pm2AppName} not found in PM2 process list after restart`);
+      }
+
+      if (targetProcess.pm2_env.status !== 'online') {
+        throw new Error(`Service ${pm2AppName} status is ${targetProcess.pm2_env.status}, expected 'online'`);
+      }
+
+      const restartCount = targetProcess.pm2_env.restart_time || 0;
+      const uptime = targetProcess.pm2_env.pm_uptime ? Date.now() - targetProcess.pm2_env.pm_uptime : 0;
+
+      logger.info('Service restart verified successful', {
+        service: pm2AppName,
+        status: targetProcess.pm2_env.status,
+        restartCount,
+        uptimeMs: uptime
+      });
+
+      return {
+        action: 'service_restart',
+        service: pm2AppName,
+        status: 'online',
+        restartTime: new Date().toISOString(),
+        restartCount,
+        uptimeMs: uptime
+      };
+
+    } catch (error) {
+      logger.error('Service restart failed', {
+        rule: rule.name,
+        error: error.message,
+        stack: error.stack
+      });
+      throw error;
+    }
   }
 
   /**
@@ -392,12 +541,65 @@ class SelfHealingEngine {
   async _executeThrottle(rule, context) {
     logger.info('Executing request throttle', { rule: rule.name });
 
-    // This would integrate with rate limiting middleware
-    return {
-      action: 'throttle_requests',
-      message: 'Rate limiting would be enabled',
-      note: 'Requires rate limiter integration'
-    };
+    try {
+      // Dynamic rate limit adjustment
+      // This will reduce limits by 50% for 15 minutes
+      const throttleDurationMs = 15 * 60 * 1000; // 15 minutes
+      const reductionFactor = 0.5; // 50% reduction
+
+      // Store throttle state in global (in-memory for now, Redis in future)
+      if (!global._selfHealingThrottle) {
+        global._selfHealingThrottle = {};
+      }
+
+      const previousState = global._selfHealingThrottle.enabled || false;
+
+      global._selfHealingThrottle = {
+        enabled: true,
+        reductionFactor,
+        appliedAt: Date.now(),
+        expiresAt: Date.now() + throttleDurationMs,
+        reason: rule.name,
+        originalLimits: {
+          chat: 20, // per minute
+          api: 100  // per 15 minutes
+        }
+      };
+
+      logger.warn('Request throttling activated', {
+        reductionFactor: `${(1 - reductionFactor) * 100}%`,
+        durationMs: throttleDurationMs,
+        expiresAt: new Date(global._selfHealingThrottle.expiresAt).toISOString(),
+        previouslyThrottled: previousState
+      });
+
+      // Schedule automatic restoration
+      setTimeout(() => {
+        if (global._selfHealingThrottle && global._selfHealingThrottle.enabled) {
+          global._selfHealingThrottle.enabled = false;
+          logger.info('Request throttling automatically restored', {
+            duration: throttleDurationMs,
+            reason: 'timeout_reached'
+          });
+        }
+      }, throttleDurationMs);
+
+      return {
+        action: 'throttle_requests',
+        enabled: true,
+        reductionPercentage: `${(1 - reductionFactor) * 100}%`,
+        durationMs: throttleDurationMs,
+        expiresAt: new Date(global._selfHealingThrottle.expiresAt).toISOString(),
+        adjustedLimits: {
+          chat: Math.floor(global._selfHealingThrottle.originalLimits.chat * reductionFactor),
+          api: Math.floor(global._selfHealingThrottle.originalLimits.api * reductionFactor)
+        },
+        previouslyThrottled: previousState
+      };
+    } catch (error) {
+      logger.error('Request throttling failed', { error: error.message });
+      throw error;
+    }
   }
 
   /**

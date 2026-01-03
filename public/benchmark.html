@@ -555,7 +555,7 @@
             font-weight: 400;
         }
         .progress-bar {
-            width: 100%;
+            width: calc(100% - 16px);
             height: 32px;
             background: rgba(0, 0, 0, 0.4);
             border: 1px solid var(--panel-border);
@@ -564,6 +564,7 @@
             margin: 20px 8px;
             display: none;
             position: relative;
+            box-sizing: border-box;
         }
         .progress-bar.active {
             display: block;
@@ -849,7 +850,16 @@
                                 </span>
                             </span>
                         </th>
-                        <th style="width: 60px;">N</th>
+                        <th style="width: 80px;">
+                            <span class="tooltip-wrapper">
+                                Tests
+                                <span class="help-icon">?</span>
+                                <span class="tooltip-content">
+                                    <div class="tooltip-title">Sample Size</div>
+                                    <div class="tooltip-text">Number of benchmark test results included for this model (used to compute averages). Informational only — it does not affect ranking.</div>
+                                </span>
+                            </span>
+                        </th>
                     </tr>
                 </thead>
                 <tbody id="leaderboard">
@@ -884,6 +894,14 @@
                 <div class="form-group">
                     <label for="judgeTimeout">Judge Timeout (ms)</label>
                     <input type="number" id="judgeTimeout" value="30000" step="1000">
+                </div>
+
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                        <input type="checkbox" id="judgeSameHost" style="width: 16px; height: 16px;" />
+                        Use judge on same host as execution
+                    </label>
+                    <small class="form-text text-muted">Default is off (judge runs on the configured judge host for the model/exec host).</small>
                 </div>
 
                 <div style="margin-top: 20px; border-top: 1px solid var(--panel-border); padding-top: 15px;">
@@ -1290,6 +1308,7 @@ Respond ONLY with JSON in this exact format:
                         model: document.getElementById('judgeModel').value,
                         temperature: parseFloat(document.getElementById('judgeTemp').value),
                         timeout: parseInt(document.getElementById('judgeTimeout').value),
+                        judge_same_host: !!document.getElementById('judgeSameHost')?.checked,
                         prompts: {
                             reasoning: document.getElementById('promptReasoning').value,
                             code: document.getElementById('promptCode').value,
@@ -1304,21 +1323,29 @@ Respond ONLY with JSON in this exact format:
         }
 
         function formatHostLabel(url) {
-            if (!url) return 'Unknown';
-            if (url.includes('192.168.2.99')) return 'Primary (99)';
-            if (url.includes('192.168.2.12')) return 'Secondary (12)';
-            return 'Custom';
+            return url || 'Unknown';
+        }
+
+        function inferOppositeHostUrl(execHostUrl) {
+            if (!execHostUrl) return null;
+            const other = Array.isArray(ollamaHosts)
+                ? ollamaHosts.find(h => h && h.url && h.url !== execHostUrl)
+                : null;
+            return other ? other.url : null;
         }
 
         function renderBatchPlan(plan, fallbackHostUrl, qualityScoringEnabled) {
             if (!plan) {
-                const judgeModel = currentJudgeConfig.model ? `Judge model: ${currentJudgeConfig.model}` : 'Judge model: (default)';
+                const judgeModel = currentJudgeConfig.model ? `Judge model: ${currentJudgeConfig.model}` : 'Judge model: (server default)';
                 const exec = fallbackHostUrl ? `Exec host: ${formatHostLabel(fallbackHostUrl)}` : 'Exec host: (unknown)';
-                const judgePolicy = qualityScoringEnabled ? 'Judge host: opposite of exec host (per model routing)' : 'Judging disabled';
-                return `${exec} • ${judgeModel} • ${judgePolicy}`;
+                const judgeHostUrl = qualityScoringEnabled
+                    ? (currentJudgeConfig.judge_same_host ? fallbackHostUrl : inferOppositeHostUrl(fallbackHostUrl))
+                    : null;
+                const judgeHost = qualityScoringEnabled ? formatHostLabel(judgeHostUrl) : 'Disabled';
+                return `${exec} • ${judgeModel} • Judge host: ${judgeHost}`;
             }
 
-            const judgeModel = plan.judge_model || currentJudgeConfig.model || '(default)';
+            const judgeModel = plan.judge_model || currentJudgeConfig.model || '(server default)';
             const lines = [];
             lines.push(`Judge model: ${judgeModel}${qualityScoringEnabled ? '' : ' (disabled)'}`);
 
@@ -1327,7 +1354,7 @@ Respond ONLY with JSON in this exact format:
                     const execLabel = formatHostLabel(h.exec_host);
                     const judgeLabel = qualityScoringEnabled ? formatHostLabel(h.judge_host) : 'Disabled';
                     const modelCount = Array.isArray(h.models) ? h.models.length : 0;
-                    lines.push(`${execLabel} → Judge ${judgeLabel}: ${modelCount} model(s), ${h.tests} tests`);
+                    lines.push(`${execLabel} • Judge host: ${judgeLabel} • ${modelCount} model(s), ${h.tests} tests`);
                 }
             }
 
@@ -1372,9 +1399,18 @@ Respond ONLY with JSON in this exact format:
                         if (document.getElementById('judgeTimeout')) {
                             document.getElementById('judgeTimeout').value = config.timeout;
                         }
+
+                        if (document.getElementById('judgeSameHost')) {
+                            document.getElementById('judgeSameHost').checked = !!config.judge_same_host;
+                        }
                         
                         // Initialize current config
                         currentJudgeConfig = { ...config };
+                    }
+
+                    // Keep checkbox in sync with current config
+                    if (document.getElementById('judgeSameHost')) {
+                        document.getElementById('judgeSameHost').checked = !!currentJudgeConfig.judge_same_host;
                     }
 
                     // Populate Prompts (either from current config or default)
@@ -1644,13 +1680,13 @@ Respond ONLY with JSON in this exact format:
             let judgePromptText = '';
             let explanationText = '';
 
-            if (scoringMethod === 'quick') {
+            if (scoringMethod === 'quick' || scoringMethod === 'quick_scored') {
                 methodBadge = '<span style="background: linear-gradient(135deg, #3498db 0%, #2ecc71 100%); color: white; padding: 4px 12px; border-radius: 12px; font-size: 0.85em; font-weight: 600; display: inline-block; margin-bottom: 8px;">⚡ Quick Pattern Match</span>';
                 judgePromptText = 'Quick scoring used (no judge model invoked).';
                 const expectedAnswer = result.expected_answer || 'expected answer unavailable';
                 const quickInfo = result.quick_pattern ? ` Pattern: "${result.quick_pattern}"` : '';
                 explanationText = result.quality_explanation || `Quick scoring compared response against expected answer "${expectedAnswer}".${quickInfo}`;
-            } else if (scoringMethod === 'llm_judge') {
+            } else if (scoringMethod === 'llm_judge' || scoringMethod === 'llm_judged') {
                 methodBadge = `<span style="background: linear-gradient(135deg, #9b59b6 0%, #e74c3c 100%); color: white; padding: 4px 12px; border-radius: 12px; font-size: 0.85em; font-weight: 600; display: inline-block; margin-bottom: 8px;">🤖 LLM Judge</span> <span style="color: var(--muted); font-size: 0.85em; margin-left: 8px;">Model: ${judgeModel}</span>`;
                 judgePromptText = result.judge_prompt || 'Judge prompt not available';
                 explanationText = result.quality_explanation || 'No explanation available';
@@ -1715,8 +1751,8 @@ Respond ONLY with JSON in this exact format:
 
             const updatedAt = result.timestamp ? new Date(result.timestamp).toLocaleString() : 'unknown';
             const judgeHost = result.judge_host ? formatHostLabel(result.judge_host) : 'N/A';
-            const judgeModel = result.judge_model || currentJudgeConfig.model || 'N/A';
-            document.getElementById('detailJudgeMeta').innerHTML = `Updated: ${updatedAt} • Judge host: ${judgeHost} • Judge model: ${judgeModel}`;
+            const judgeModelName = result.judge_model || currentJudgeConfig.model || 'N/A';
+            document.getElementById('detailJudgeMeta').innerHTML = `Updated: ${updatedAt} • Judge host: ${judgeHost} • Judge model: ${judgeModelName}`;
 
             document.getElementById('judgeDetailsModal').style.display = 'block';
         }
@@ -1752,7 +1788,13 @@ Respond ONLY with JSON in this exact format:
                 const clampedProgress = Math.min(Number(batch.progress) || 0, 100);
                 document.getElementById('progressFill').style.width = `${clampedProgress}%`;
                 document.getElementById('progressFill').style.borderRadius = clampedProgress >= 99 ? '16px' : '16px 0 0 16px';
-                document.getElementById('progressText').textContent = `${clampedProgress}% (${batch.completed}/${batch.total_tests})`;
+                const judgeTotal = Number(batch.judge_total) || 0;
+                const judgeCompleted = Number(batch.judge_completed) || 0;
+                const judgeProgress = Math.min(Number(batch.judge_progress) || 0, 100);
+
+                const genText = `${clampedProgress}% (${batch.completed}/${batch.total_tests})`;
+                const judgeText = judgeTotal > 0 ? ` • Judge: ${judgeProgress}% (${judgeCompleted}/${judgeTotal})` : '';
+                document.getElementById('progressText').textContent = genText + judgeText;
 
                 // Show plan info during run/resume
                 const batchInfo = document.getElementById('batchInfo');
@@ -1764,6 +1806,13 @@ Respond ONLY with JSON in this exact format:
                 const status = document.getElementById('batchStatus');
                 if (status.textContent === 'Resuming session...') {
                     status.style.display = 'none';
+                }
+
+                // Warn if server reports completed beyond planned tests
+                if (Number(batch.completed) > Number(batch.total_tests)) {
+                    status.className = 'status error';
+                    status.style.display = 'block';
+                    status.textContent = `⚠ Warning: completed (${batch.completed}) exceeds planned tests (${batch.total_tests}). This usually indicates duplicate execution or a prior error. Batch ID: ${currentBatchId}`;
                 }
 
                 // Update Results Table
@@ -2085,6 +2134,9 @@ Respond ONLY with JSON in this exact format:
             if (firstHost) {
                 loadBatchModels(firstHost);
             }
+
+            // Load judge defaults so the UI can display the actual judge model (not just "default")
+            loadJudgeConfig();
 
             // Check for active batch
             const savedBatchId = localStorage.getItem('currentBatchId');

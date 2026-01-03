@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Backup & Recovery • AgentX</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .backup-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 2rem;
+            margin: 2rem 0;
+        }
+
+        .backup-section {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            border: 1px solid rgba(148, 163, 184, 0.1);
+            border-radius: 12px;
+            padding: 2rem;
+        }
+
+        .backup-section h3 {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin: 0 0 1.5rem 0;
+            font-size: 1.25rem;
+            color: #f1f5f9;
+        }
+
+        .backup-section h3 i {
+            color: #3b82f6;
+        }
+
+        .backup-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .backup-btn {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1rem 1.25rem;
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid rgba(59, 130, 246, 0.2);
+            border-radius: 8px;
+            color: #3b82f6;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .backup-btn:hover {
+            background: rgba(59, 130, 246, 0.2);
+            border-color: #3b82f6;
+            transform: translateY(-1px);
+        }
+
+        .backup-btn.success {
+            background: rgba(34, 197, 94, 0.1);
+            border-color: rgba(34, 197, 94, 0.2);
+            color: #22c55e;
+        }
+
+        .backup-btn.danger {
+            background: rgba(239, 68, 68, 0.1);
+            border-color: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+        }
+
+        .backup-btn.warning {
+            background: rgba(245, 158, 11, 0.1);
+            border-color: rgba(245, 158, 11, 0.2);
+            color: #f59e0b;
+        }
+
+        .backup-btn .btn-icon {
+            font-size: 1.2rem;
+        }
+
+        .backup-status {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            margin-top: 1.5rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid rgba(148, 163, 184, 0.1);
+        }
+
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem;
+            background: rgba(15, 23, 42, 0.5);
+            border-radius: 6px;
+        }
+
+        .status-label {
+            color: #94a3b8;
+            font-size: 0.875rem;
+        }
+
+        .status-value {
+            color: #f1f5f9;
+            font-weight: 600;
+        }
+
+        .backup-list {
+            margin-top: 1.5rem;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .backup-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem;
+            background: rgba(15, 23, 42, 0.5);
+            border: 1px solid rgba(148, 163, 184, 0.1);
+            border-radius: 8px;
+            margin-bottom: 0.75rem;
+            transition: all 0.2s;
+        }
+
+        .backup-item:hover {
+            background: rgba(15, 23, 42, 0.8);
+            border-color: rgba(148, 163, 184, 0.2);
+        }
+
+        .backup-info {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .backup-name {
+            color: #f1f5f9;
+            font-weight: 600;
+        }
+
+        .backup-meta {
+            color: #64748b;
+            font-size: 0.875rem;
+        }
+
+        .backup-item-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .icon-btn {
+            padding: 0.5rem;
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid rgba(59, 130, 246, 0.2);
+            border-radius: 6px;
+            color: #3b82f6;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .icon-btn:hover {
+            background: rgba(59, 130, 246, 0.2);
+            border-color: #3b82f6;
+        }
+
+        .icon-btn.danger {
+            background: rgba(239, 68, 68, 0.1);
+            border-color: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+        }
+
+        .icon-btn.danger:hover {
+            background: rgba(239, 68, 68, 0.2);
+            border-color: #ef4444;
+        }
+
+        .log-output {
+            margin-top: 1.5rem;
+            padding: 1rem;
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid rgba(148, 163, 184, 0.1);
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.875rem;
+            color: #94a3b8;
+            max-height: 200px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: #64748b;
+        }
+
+        .empty-state i {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+
+        .schedule-info {
+            background: rgba(59, 130, 246, 0.05);
+            border: 1px solid rgba(59, 130, 246, 0.1);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-top: 1rem;
+        }
+
+        .schedule-info h4 {
+            color: #3b82f6;
+            margin: 0 0 0.5rem 0;
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .schedule-info p {
+            color: #94a3b8;
+            font-size: 0.875rem;
+            margin: 0.25rem 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="nav-container"></div>
+    <script src="/js/components/nav.js"></script>
+    <script>injectNav('backup');</script>
+
+    <div class="monitor-page">
+        <div class="monitor-header">
+            <div class="eyebrow">AgentX • Operations</div>
+            <h1><i class="fas fa-shield-alt"></i><span class="title-separator"></span>Backup & Recovery</h1>
+            <p class="lede">Manage database backups, vector store snapshots, and workflow version control. Create backups, schedule automation, and restore from previous states.</p>
+        </div>
+
+        <div class="backup-grid">
+            <!-- MongoDB Backup Section -->
+            <div class="backup-section">
+                <h3><i class="fas fa-database"></i> MongoDB Backup</h3>
+                <div class="backup-actions">
+                    <button class="backup-btn" onclick="backupMongo()">
+                        <span>Create Backup Now</span>
+                        <i class="fas fa-download btn-icon"></i>
+                    </button>
+                    <button class="backup-btn success" onclick="listMongoBackups()">
+                        <span>View Backups</span>
+                        <i class="fas fa-list btn-icon"></i>
+                    </button>
+                </div>
+
+                <div class="backup-status">
+                    <div class="status-item">
+                        <span class="status-label">Last Backup</span>
+                        <span class="status-value" id="mongo-last-backup">Never</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Total Backups</span>
+                        <span class="status-value" id="mongo-backup-count">0</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Backup Size</span>
+                        <span class="status-value" id="mongo-backup-size">-</span>
+                    </div>
+                </div>
+
+                <div class="schedule-info">
+                    <h4>Automated Schedule</h4>
+                    <p><i class="fas fa-clock"></i> Daily at 2:00 AM</p>
+                    <p><i class="fas fa-archive"></i> Keep last 7 days</p>
+                </div>
+            </div>
+
+            <!-- Qdrant Backup Section -->
+            <div class="backup-section">
+                <h3><i class="fas fa-brain"></i> Vector Store (Qdrant)</h3>
+                <div class="backup-actions">
+                    <button class="backup-btn" onclick="backupQdrant()">
+                        <span>Create Snapshot</span>
+                        <i class="fas fa-camera btn-icon"></i>
+                    </button>
+                    <button class="backup-btn success" onclick="listQdrantBackups()">
+                        <span>View Snapshots</span>
+                        <i class="fas fa-list btn-icon"></i>
+                    </button>
+                </div>
+
+                <div class="backup-status">
+                    <div class="status-item">
+                        <span class="status-label">Last Snapshot</span>
+                        <span class="status-value" id="qdrant-last-backup">Never</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Total Snapshots</span>
+                        <span class="status-value" id="qdrant-backup-count">0</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Snapshot Size</span>
+                        <span class="status-value" id="qdrant-backup-size">-</span>
+                    </div>
+                </div>
+
+                <div class="schedule-info">
+                    <h4>Automated Schedule</h4>
+                    <p><i class="fas fa-clock"></i> Daily at 3:00 AM</p>
+                    <p><i class="fas fa-archive"></i> Keep last 7 days</p>
+                </div>
+            </div>
+
+            <!-- Workflow Version Control Section -->
+            <div class="backup-section">
+                <h3><i class="fas fa-code-branch"></i> Workflow Version Control</h3>
+                <div class="backup-actions">
+                    <button class="backup-btn" onclick="commitWorkflows()">
+                        <span>Commit Workflows</span>
+                        <i class="fab fa-git-alt btn-icon"></i>
+                    </button>
+                    <button class="backup-btn success" onclick="viewWorkflowHistory()">
+                        <span>View History</span>
+                        <i class="fas fa-history btn-icon"></i>
+                    </button>
+                </div>
+
+                <div class="backup-status">
+                    <div class="status-item">
+                        <span class="status-label">Last Commit</span>
+                        <span class="status-value" id="workflow-last-commit">Unknown</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Total Workflows</span>
+                        <span class="status-value" id="workflow-count">15</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Uncommitted Changes</span>
+                        <span class="status-value" id="workflow-changes">0</span>
+                    </div>
+                </div>
+
+                <div class="schedule-info">
+                    <h4>Automated Schedule</h4>
+                    <p><i class="fas fa-clock"></i> Every 6 hours</p>
+                    <p><i class="fas fa-sync"></i> Auto-push to remote</p>
+                </div>
+            </div>
+
+            <!-- Backup Automation Section -->
+            <div class="backup-section">
+                <h3><i class="fas fa-cog"></i> Backup Automation</h3>
+                <div class="backup-actions">
+                    <button class="backup-btn warning" onclick="setupCron()">
+                        <span>Install Cron Jobs</span>
+                        <i class="fas fa-calendar-plus btn-icon"></i>
+                    </button>
+                    <button class="backup-btn success" onclick="checkCronStatus()">
+                        <span>Check Status</span>
+                        <i class="fas fa-heartbeat btn-icon"></i>
+                    </button>
+                    <button class="backup-btn danger" onclick="removeCron()">
+                        <span>Remove Automation</span>
+                        <i class="fas fa-trash-alt btn-icon"></i>
+                    </button>
+                </div>
+
+                <div class="backup-status">
+                    <div class="status-item">
+                        <span class="status-label">Cron Status</span>
+                        <span class="status-value" id="cron-status">Unknown</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Next Backup</span>
+                        <span class="status-value" id="next-backup">Not scheduled</span>
+                    </div>
+                </div>
+
+                <div class="log-output" id="cron-log" style="display: none;"></div>
+            </div>
+        </div>
+
+        <!-- Backup List Modal -->
+        <div id="backup-list-container" style="display: none;">
+            <h2 id="backup-list-title">Available Backups</h2>
+            <div class="backup-list" id="backup-list">
+                <!-- Populated dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast">
+        <i class="fas fa-check-circle"></i>
+        <span id="toast-message"></span>
+    </div>
+
+    <script src="/js/backup.js"></script>
+</body>
+</html>

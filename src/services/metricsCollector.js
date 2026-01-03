@@ -9,16 +9,21 @@ class MetricsCollector {
       return MetricsCollector.instance;
     }
 
+    this.testMode = process.env.NODE_ENV === 'test';
+
     this.buffer = [];
     this.maxBufferSize = parseInt(process.env.METRICS_BUFFER_SIZE || '50', 10);
     this.flushIntervalMs = parseInt(process.env.METRICS_FLUSH_INTERVAL_MS || '5000', 10);
 
-    this.flushTimer = setInterval(() => {
-      this.flush().catch((err) => logger.error('Metrics buffer flush failed', { error: err.message }));
-    }, this.flushIntervalMs);
+    this.flushTimer = null;
+    if (!this.testMode) {
+      this.flushTimer = setInterval(() => {
+        this.flush().catch((err) => logger.error('Metrics buffer flush failed', { error: err.message }));
+      }, this.flushIntervalMs);
 
-    if (typeof this.flushTimer.unref === 'function') {
-      this.flushTimer.unref();
+      if (typeof this.flushTimer.unref === 'function') {
+        this.flushTimer.unref();
+      }
     }
 
     MetricsCollector.instance = this;
@@ -43,6 +48,11 @@ class MetricsCollector {
       value,
       metadata
     });
+
+    if (this.testMode) {
+      await metric.save();
+      return metric;
+    }
 
     this.buffer.push(metric);
 
@@ -121,6 +131,10 @@ class MetricsCollector {
   }
 
   async flush() {
+    if (this.testMode) {
+      return { inserted: 0 };
+    }
+
     if (!this.buffer.length) {
       return { inserted: 0 };
     }

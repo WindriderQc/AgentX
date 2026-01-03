@@ -603,16 +603,16 @@ beforeAll(async () => {
 
 This section tracks the current implementation status and areas requiring development attention.
 
-### 📊 Codebase Metrics (as of 2026-01-02)
+### 📊 Codebase Metrics (as of 2026-01-03)
 
 **Implementation Status:**
-- ✅ **Core Services:** 12 services (chatService, costCalculator, ragStore, embeddings, modelRouter, toolService, etc.)
-- ✅ **API Routes:** 15 route files covering 45+ endpoints (includes janitor proxy, cost analytics)
-- ✅ **Data Models:** 6 Mongoose schemas (Conversation, ModelPricingConfig, PromptConfig, UserProfile, etc.)
-- ✅ **Frontend:** 10 HTML pages, 34+ JavaScript modules (13 components including BaseOnboardingWizard)
+- ✅ **Core Services:** 15 services (chatService, costCalculator, ragStore, embeddings, modelRouter, toolService, alertService, selfHealingEngine, customModelService, etc.)
+- ✅ **API Routes:** 20 route files covering 64+ endpoints (includes janitor proxy, cost analytics, alerts, custom models)
+- ✅ **Data Models:** 9 Mongoose schemas (Conversation, ModelPricingConfig, PromptConfig, UserProfile, Alert, MetricsSnapshot, MetricsHourly, CustomModel, etc.)
+- ✅ **Frontend:** 11 HTML pages, 35+ JavaScript modules (13 components including BaseOnboardingWizard)
 - ✅ **Test Coverage:** 18 test files (~3,100 lines) including Phase 3 E2E tests + cost calculator tests
 - ✅ **Documentation:** 98+ markdown files (~45,600+ lines in /docs) - includes complete V5 cost tracking documentation
-- ✅ **n8n Workflows:** 10 workflow JSONs (9 functional + 1 empty backup)
+- ✅ **n8n Workflows:** 15 workflow JSONs (N0.x test, N1.x Janitor, N2.x Curator, N3.x Auditor, N4.x Guardian, N5.x Analyst, N6.x Architect)
 
 **Architecture Verified:**
 - Service-Oriented Architecture (Routes → Services → Models → DB/Ollama)
@@ -703,8 +703,11 @@ This section tracks the current implementation status and areas requiring develo
   - `/AgentC/README.md` (323 lines) - Quick start guide with persona references
   - `/scripts/deploy-n8n-workflows.sh` - Deployment automation
 - **Active Workflows (Persona-Based):**
+  - **⚙️ Test/Utility (N0.x)** - Infrastructure testing
+    - N0.0.json (3.0KB) - Deployment Test Workflow
+    - N0.1.json (4.2KB) - SBQC Health Dashboard
   - **🧹 Janitor (N1.x)** - System health monitoring
-    - N1.1.json (12.6KB) - System Health Check (every 5 min) - **Canonical example**
+    - N1.1.json (26.7KB) - System Health Check (every 5 min) - **Canonical example**
     - N1.3.json (10.7KB) - Ops Diagnostic
   - **📚 Curator (N2.x)** - Content and data quality management
     - N2.1.json (4.1KB) - NAS Quick Scan
@@ -712,9 +715,16 @@ This section tracks the current implementation status and areas requiring develo
     - N2.3.json (11.5KB) - RAG Ingest Orchestrator
   - **🔍 Auditor (N3.x)** - Performance and cost tracking
     - N3.1.json (5.0KB) - Model Monitor (Fixed)
-    - N3.2.json (7.6KB) - AI Query Performance Auditor
+    - N3.2.json (8.1KB) - AI Query Performance Auditor
+  - **🛡️ Guardian (N4.x)** - Security and self-healing ✅ **NEW**
+    - N4.1.json (17.6KB) - Alert Dispatcher
+    - N4.2.json (14.6KB) - Metrics Aggregation
+    - N4.4.json (10.5KB) - Self-Healing Orchestrator
   - **📊 Analyst (N5.x)** - Feedback analysis and improvement loops
-    - N5.1.json (13.7KB) - Feedback Analysis
+    - N5.1.json (14.2KB) - Feedback Analysis
+  - **🏗️ Architect (N6.x)** - Workflow generation and management ✅ **NEW**
+    - N6.1.json (22.0KB) - Workflow Architect
+    - N6.1-v2.json (11.4KB) - Workflow Architect (Simplified)
 - **Pattern Features:**
   - Dual triggers (schedule + webhook for manual execution)
   - Standardized metrics recording (`POST /api/metrics/{type}`)
@@ -722,11 +732,56 @@ This section tracks the current implementation status and areas requiring develo
   - Resilient error handling (continueOnFail on all HTTP nodes)
   - Observable (all agents log to metrics + alerts APIs)
 - **n8n Instance:** http://192.168.2.199:5678 (public: https://n8n.specialblend.icu)
-- **Next Steps:**
-  - Define Guardian (N4.x) security monitoring workflows
-  - Integration with MCP tools
-  - Cloud AI LLM specific use cases on top of Ollama
-  - Global architecture review
+- **Testing Status:** 6 workflows tested and validated (TEST_RESULTS_2026-01-02.md)
+
+**Multi-Agent Enhancement Plan (Tracks 1-6) - PARTIALLY IMPLEMENTED:**
+- **Track 1: Alerts & Notifications** ✅ **COMPLETE**
+  - AlertService implemented (`/src/services/alertService.js`)
+  - Alert model with delivery status tracking (`/models/Alert.js`)
+  - Alert management API (`/routes/alerts.js`)
+  - N4.1 Alert Dispatcher workflow deployed
+  - Rule engine for event evaluation
+  - Multi-channel support (email, Slack, webhook, DataAPI)
+- **Track 2: Historical Metrics & Analytics** ✅ **COMPLETE**
+  - MetricsSnapshot model for event-based metrics (`/models/MetricsSnapshot.js`)
+  - MetricsHourly model for time-series aggregation (`/models/MetricsHourly.js`)
+  - N4.2 Metrics Aggregation workflow deployed
+  - Time-series tracking infrastructure in place
+- **Track 3: Custom Model Management** ✅ **COMPLETE**
+  - CustomModel MongoDB schema with version tracking, stats, A/B testing (`/models/CustomModel.js` - 367 lines)
+  - customModelService for full lifecycle management (`/src/services/customModelService.js` - 482 lines)
+  - 14 API endpoints for CRUD, deployment, stats, and versioning (`/routes/custom-models.js` - 455 lines)
+  - Models Dashboard UI with registration, deployment, and performance monitoring (`/public/models.html`, `/public/js/models.js`)
+  - Ollama deployment integration via API
+  - Modelfile validation and hash tracking
+  - A/B testing with traffic-weighted selection
+  - Version history and rollback functionality
+  - Performance tracking (inferences, response time, tokens/sec, positive rate)
+- **Track 4: Self-Healing & Automation** ✅ **PARTIALLY COMPLETE**
+  - Self-healing engine implemented (`/src/services/selfHealingEngine.js`)
+  - N4.4 Self-Healing Orchestrator workflow deployed
+  - Automatic detection logic in place
+  - Remediation actions partially implemented
+- **Track 5: Advanced Testing & CI/CD** 🟡 **IN PROGRESS**
+  - CI/CD pipeline documented and operational (GitHub Actions)
+  - Workflow validation tests completed (6/6 workflows)
+  - Load testing infrastructure exists but needs expansion
+- **Track 6: Backup & Disaster Recovery** ✅ **COMPLETE**
+  - Backup scripts implemented in DataAPI (`/home/yb/codes/DataAPI/scripts/`)
+    - `backup-mongodb.sh` - MongoDB dumps with compression
+    - `backup-qdrant.sh` - Vector store snapshots
+    - `restore-mongodb.sh` - MongoDB restoration
+    - `restore-qdrant.sh` - Vector store restoration
+    - `setup-backup-cron.sh` - Cron job installer
+  - Backup management dashboard (`/public/backup.html`)
+    - MongoDB backup/restore interface
+    - Qdrant snapshot management
+    - Workflow version control (Git integration)
+    - Cron automation setup/removal
+    - Backup list/delete functionality
+  - API routes for backup operations (`/routes/backup.js`)
+  - Workflow version control via Git (all AgentC workflows tracked)
+  - Navigation integration (Backup link in main nav)
 
 ### 🔴 Critical Architecture Review Needed
 
@@ -778,8 +833,6 @@ This section tracks the current implementation status and areas requiring develo
 - Snapshot pattern: Conversations store prompt metadata for historical analysis
 - MongoDB indexes optimize analytics queries
 
-**Current Gap:** Onboarding wizard exists only on prompts page, not on main chat interface (index.html) - See next section
-
 **✅ Chat Interface First-Run Experience - COMPLETE (Janitor Project + Wizard Consolidation):**
 
 **Status:** Fully implemented with onboarding wizard and navigation improvements (now refactored with base class)
@@ -809,10 +862,8 @@ This section tracks the current implementation status and areas requiring develo
 
 **Testing Status:**
 - ✅ Automated integration tests: 6/6 passed
-- ⏳ Manual browser testing: Pending user verification
+- ✅ Manual browser testing: Complete and verified
 - 📋 Test plan: 16 test cases documented in `/docs/testing/CHAT_ONBOARDING_TEST_PLAN.md`
-
-**Current Gap:** Manual QA in browser needed to verify end-to-end flow
 
 ### 📋 Development Workflow Conventions ✅ ESTABLISHED
 

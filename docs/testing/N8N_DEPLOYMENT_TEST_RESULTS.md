@@ -25,7 +25,9 @@
 
 ### 2. Webhook Test (Before Activation)
 ```bash
-curl http://192.168.2.199:5678/webhook/test-deployment
+curl https://n8n.specialblend.icu/webhook/test-deployment
+# LAN fallback:
+# curl http://192.168.2.199:5678/webhook/test-deployment
 ```
 
 **Result:**
@@ -49,14 +51,16 @@ curl http://192.168.2.199:5678/webhook/test-deployment
 ```
 
 ### Step 2: Activate Workflow (Manual in UI)
-1. Open n8n UI: http://192.168.2.199:5678
+1. Open n8n UI: https://n8n.specialblend.icu (LAN fallback: http://192.168.2.199:5678)
 2. Find workflow: "N0.0 - Deployment Test Workflow"
 3. Click toggle switch in top-right to activate
 4. Wait for "Workflow activated" confirmation
 
 ### Step 3: Test Webhook
 ```bash
-curl http://192.168.2.199:5678/webhook/test-deployment
+curl https://n8n.specialblend.icu/webhook/test-deployment
+# LAN fallback:
+# curl http://192.168.2.199:5678/webhook/test-deployment
 ```
 
 **Expected Response:**

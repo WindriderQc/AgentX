@@ -41,7 +41,7 @@ The SBQC Stack uses an automated deployment script to import and update n8n work
 
 #### Option 1: Enable API in n8n Settings (Recommended)
 
-1. **Access n8n:** http://192.168.2.199:5678
+1. **Access n8n:** https://n8n.specialblend.icu (LAN fallback: http://192.168.2.199:5678)
 2. **Navigate to:** Settings → API
 3. **Enable:** "API enabled"
 4. **Generate API Key:** Click "Generate API Key"
@@ -57,7 +57,7 @@ Add to your shell profile (`~/.bashrc` or `~/.zshrc`):
 
 ```bash
 # n8n API Configuration
-export N8N_URL="http://192.168.2.199:5678"
+export N8N_URL="https://n8n.specialblend.icu"  # LAN fallback: http://192.168.2.199:5678
 export N8N_API_KEY="n8n_api_YOUR_KEY_HERE"
 ```
 
@@ -80,7 +80,7 @@ Output:
 ║       n8n Workflow Deployment Script v1.0                ║
 ╚═══════════════════════════════════════════════════════════╝
 
-ℹ Checking n8n API connectivity at http://192.168.2.199:5678...
+ℹ Checking n8n API connectivity at $N8N_URL...
 ✓ Connected to n8n API (5 workflows found)
 
 ℹ Deploying all workflows from /home/yb/codes/AgentX/AgentC...

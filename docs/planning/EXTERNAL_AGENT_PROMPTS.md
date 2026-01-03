@@ -1455,7 +1455,7 @@ jobs:
     needs: [run-tests]
     environment:
       name: production
-      url: http://192.168.2.33:3080
+      url: http://<agentx-host>:3080
 
     steps:
       - uses: actions/checkout@v4
@@ -1487,7 +1487,7 @@ jobs:
       - name: Health check
         run: |
           sleep 20
-          curl -f http://192.168.2.33:3080/health || exit 1
+          curl -f http://<agentx-host>:3080/health || exit 1
 
       - name: Rollback on failure
         if: failure()

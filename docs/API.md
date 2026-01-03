@@ -119,9 +119,10 @@ GET /webhook/test-deployment
   "deployed_at": "2026-01-03T02:00:00.000Z",
   "message": "Deployment test successful! All workflows operational.",
   "environment": {
-    "n8n": "http://192.168.2.199:5678",
-    "dataapi": "http://192.168.2.33:3003",
-    "agentx": "http://192.168.2.33:3080"
+    "n8n": "https://n8n.specialblend.icu",
+    "n8n_lan": "http://192.168.2.199:5678",
+    "dataapi": "http://<dataapi-host>:3003",
+    "agentx": "http://<agentx-host>:3080"
   },
   "workflows": {
     "production": [
@@ -167,7 +168,7 @@ GET /webhook/sbqc-health
       "component": "agentx_api",
       "status": "pass",
       "message": "AgentX API reachable",
-      "endpoint": "http://192.168.2.33:3080"
+      "endpoint": "http://<agentx-host>:3080"
     }
   ],
   "summary": {

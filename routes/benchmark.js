@@ -103,7 +103,10 @@ router.get('/config', (req, res) => {
     res.json({
         status: 'success',
         data: {
-            judge_config: JUDGE_CONFIG,
+            judge_config: {
+                ...JUDGE_CONFIG,
+                judge_same_host: false
+            },
             scoring_configs: SCORING_CONFIGS
         }
     });
@@ -556,10 +559,15 @@ router.post('/batch', async (req, res) => {
             modelsByHost[targetHost].push(model);
         }
 
+        const judgeSameHost = !!(judge_config && judge_config.judge_same_host);
+
         const execHosts = Object.entries(modelsByHost).map(([exec_host, hostModels]) => {
-            let judge_host = HOSTS.primary;
-            if (exec_host === HOSTS.primary) judge_host = HOSTS.secondary;
-            else if (exec_host === HOSTS.secondary) judge_host = HOSTS.primary;
+            let judge_host = exec_host;
+            if (!judgeSameHost) {
+                judge_host = HOSTS.primary;
+                if (exec_host === HOSTS.primary) judge_host = HOSTS.secondary;
+                else if (exec_host === HOSTS.secondary) judge_host = HOSTS.primary;
+            }
 
             return {
                 exec_host,
@@ -585,7 +593,8 @@ router.post('/batch', async (req, res) => {
 
         const plan = {
             exec_hosts: execHosts,
-            judge_model: (judge_config && judge_config.model) ? judge_config.model : null,
+            judge_model: (judge_config && judge_config.model) ? judge_config.model : JUDGE_CONFIG.model,
+            judge_same_host: judgeSameHost,
             total_models: models.length,
             total_prompts: selectedPrompts.length,
             categories
@@ -600,6 +609,10 @@ router.post('/batch', async (req, res) => {
             run_name: run_name || `Batch ${new Date().toLocaleString()}`,
             total_tests: models.length * selectedPrompts.length,
             plan,
+            judge_same_host: judgeSameHost,
+            judge_total: quality_scoring ? (models.length * selectedPrompts.length) : 0,
+            judge_completed: 0,
+            judge_failed: 0,
             completed: 0,
             failed: 0,
             status: 'running',
@@ -641,6 +654,31 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
     const resultsCollection = getCollection();
     const enableQualityScoring = options.quality_scoring !== false;
     const judgeConfig = options.judge_config || {};
+    const judgeSameHost = !!judgeConfig.judge_same_host;
+
+    // Prevent duplicate execution for the same batchId (e.g., accidental double-start or multi-process invocation)
+    const lock = await batchCollection.updateOne(
+        { _id: new ObjectId(batchId), execution_started_at: { $exists: false } },
+        { $set: { execution_started_at: new Date(), execution_pid: process.pid } }
+    );
+    if (!lock || lock.modifiedCount === 0) {
+        logger.warn('Skipping duplicate batch execution', { batchId, pid: process.pid });
+        return;
+    }
+
+    // Per-batch judge queue (keeps judging isolated from other batches)
+    const judgeQueue = new ConcurrencyQueue(2);
+
+    // Sanity-sync total_tests to the actual loop plan.
+    // In rare cases (e.g., duplicated prompts/models or legacy batches), completed can exceed total_tests;
+    // this keeps the UI truthful and helps debugging.
+    const plannedTotalTests = (Array.isArray(models) ? models.length : 0) * (Array.isArray(prompts) ? prompts.length : 0);
+    if (plannedTotalTests > 0) {
+        await batchCollection.updateOne(
+            { _id: new ObjectId(batchId) },
+            { $set: { total_tests: plannedTotalTests } }
+        );
+    }
 
     // Group models by host
     const modelsByHost = {};
@@ -662,12 +700,15 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
 
     // Create execution promises for each host
     const hostPromises = Object.entries(modelsByHost).map(async ([hostUrl, hostModels]) => {
-        // Determine judge host (opposite of execution host) to optimize performance
-        let judgeHostUrl = HOSTS.primary; 
-        if (hostUrl === HOSTS.primary) {
-            judgeHostUrl = HOSTS.secondary;
-        } else if (hostUrl === HOSTS.secondary) {
+        // Determine judge host: either same as execution host (optional), or opposite host (default)
+        let judgeHostUrl = hostUrl;
+        if (!judgeSameHost) {
             judgeHostUrl = HOSTS.primary;
+            if (hostUrl === HOSTS.primary) {
+                judgeHostUrl = HOSTS.secondary;
+            } else if (hostUrl === HOSTS.secondary) {
+                judgeHostUrl = HOSTS.primary;
+            }
         }
 
         for (const model of hostModels) {
@@ -711,7 +752,8 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                         batch_id: batchId,
                         timestamp: new Date(),
                         quality_score: null, // Will be updated if scoring is enabled
-                        scoring_method: enableQualityScoring ? 'pending' : 'disabled'
+                        scoring_method: enableQualityScoring ? 'pending' : 'disabled',
+                        judge_model: enableQualityScoring ? (judgeConfig.model || JUDGE_CONFIG.model) : null
                     };
 
                     const insertResult = await resultsCollection.insertOne(result);
@@ -738,7 +780,7 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
 
                     // Queue quality scoring if enabled (judge even if model == judge model)
                     if (enableQualityScoring) {
-                        judgeQueue.enqueue(async () => {
+                        judgeQueue.add(async () => {
                             try {
                                 const scores = await scoreResponse({
                                     response: data.response || '',
@@ -748,17 +790,16 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                                         host: judgeHostUrl
                                     }
                                 });
-                                
+
                                 const composite = calculateCompositeScore({
                                     latency,
                                     tokens_per_sec,
                                     quality_score: scores.quality_score
                                 });
-                                
-                                // Update the specific result with scores
+
                                 await resultsCollection.updateOne(
                                     { _id: resultId },
-                                    { 
+                                    {
                                         $set: {
                                             quality_score: scores.quality_score,
                                             quality_breakdown: scores.breakdown,
@@ -773,13 +814,24 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                                         }
                                     }
                                 );
+
+                                await batchCollection.updateOne(
+                                    { _id: new ObjectId(batchId) },
+                                    { $inc: { judge_completed: 1 } }
+                                );
                             } catch (scoreErr) {
                                 logger.warn('Quality scoring failed', { model, prompt: prompt.name, error: scoreErr.message });
                                 await resultsCollection.updateOne(
                                     { _id: resultId },
                                     { $set: { scoring_method: 'llm_failed', quality_explanation: scoreErr.message, judge_model: judgeConfig.model || JUDGE_CONFIG.model } }
                                 );
+                                await batchCollection.updateOne(
+                                    { _id: new ObjectId(batchId) },
+                                    { $inc: { judge_completed: 1, judge_failed: 1 } }
+                                );
                             }
+                        }).catch((enqueueErr) => {
+                            logger.error('Failed to enqueue judge task', { batchId, model, prompt: prompt.name, error: enqueueErr.message });
                         });
                     }
 
@@ -820,21 +872,32 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
         }
     });
 
-    // Wait for all host executions to complete
+    // Wait for all host executions (generation) to complete
     await Promise.all(hostPromises);
 
-    // Wait for any remaining judge tasks
-    // Note: We don't strictly need to wait for judging to finish to mark batch as "completed" in terms of generation,
-    // but it's nice to know when everything is done. 
-    // However, for UI responsiveness, we might want to mark as completed_at now.
-    
+    if (enableQualityScoring) {
+        await batchCollection.updateOne(
+            { _id: new ObjectId(batchId) },
+            {
+                $set: {
+                    status: 'judging',
+                    generated_at: new Date(),
+                    judge_total: plannedTotalTests
+                }
+            }
+        );
+
+        // Ensure all judge tasks complete before marking batch completed
+        await judgeQueue.drain();
+    }
+
     await batchCollection.updateOne(
         { _id: new ObjectId(batchId) },
-        { 
-            $set: { 
+        {
+            $set: {
                 completed_at: new Date(),
                 status: 'completed'
-            } 
+            }
         }
     );
 }
@@ -863,17 +926,53 @@ router.get('/batch/:id', async (req, res) => {
             ? Math.min(Math.round((batch.completed / batch.total_tests) * 100), 100)
             : 0;
 
+        const judge_progress = batch.judge_total > 0
+            ? Math.min(Math.round(((batch.judge_completed || 0) / batch.judge_total) * 100), 100)
+            : 0;
+
         // Hydrate results from benchmark_results to include latest judge data
         const results = await resultsCollection
             .find({ batch_id: req.params.id })
             .sort({ timestamp: -1 })
             .toArray();
 
-        const formattedResults = results.map((r) => ({
+        const defaultJudgeModel = (batch && batch.judge_config && batch.judge_config.model)
+            ? batch.judge_config.model
+            : JUDGE_CONFIG.model;
+
+        const judgeSameHost = !!(
+            (batch && batch.judge_same_host) ||
+            (batch && batch.judge_config && batch.judge_config.judge_same_host) ||
+            (batch && batch.plan && batch.plan.judge_same_host)
+        );
+
+        const inferJudgeHost = (execHost) => {
+            if (!execHost) return null;
+            if (judgeSameHost) return execHost;
+            if (execHost === HOSTS.primary) return HOSTS.secondary;
+            if (execHost === HOSTS.secondary) return HOSTS.primary;
+            // Unknown exec host: default to primary judge host
+            return HOSTS.primary;
+        };
+
+        const formattedResults = results.map((r) => {
+            const inferredJudgeHost = batch.quality_scoring !== false
+                ? (r.judge_host || inferJudgeHost(r.host))
+                : null;
+
+            const inferredJudgeModel = batch.quality_scoring !== false
+                ? (r.judge_model || defaultJudgeModel)
+                : null;
+
+            const inferredScoringMethod = r.scoring_method
+                ? r.scoring_method
+                : (batch.quality_scoring !== false ? (r.success ? 'pending' : 'disabled') : 'disabled');
+
+            return ({
             id: r._id ? r._id.toString() : null,
             model: r.model,
             host: r.host,
-            judge_host: r.judge_host || null,
+            judge_host: inferredJudgeHost,
             prompt_name: r.prompt_name,
             prompt_level: r.prompt_level,
             prompt_category: r.prompt_category,
@@ -883,8 +982,8 @@ router.get('/batch/:id', async (req, res) => {
             quality_score: r.quality_score,
             quality_explanation: r.quality_explanation,
             judge_prompt: r.judge_prompt,
-            judge_model: r.judge_model,
-            scoring_method: r.scoring_method,
+            judge_model: inferredJudgeModel,
+            scoring_method: inferredScoringMethod,
             quick_pattern: r.quick_pattern,
             composite_score: r.composite_score,
             success: r.success,
@@ -893,7 +992,8 @@ router.get('/batch/:id', async (req, res) => {
                 ? `${r.response.substring(0, 100)}...`
                 : (r.response_preview || ''),
             timestamp: r.timestamp
-        }));
+        });
+        });
 
         res.json({
             status: 'success',
@@ -901,6 +1001,7 @@ router.get('/batch/:id', async (req, res) => {
                 ...batch,
                 results: formattedResults,
                 progress,
+                judge_progress,
                 success_rate: batch.completed > 0
                     ? (((batch.completed - batch.failed) / batch.completed) * 100).toFixed(1) + '%'
                     : '0%'

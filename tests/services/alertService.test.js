@@ -1,5 +1,5 @@
-const alertService = require('../../../src/services/alertService');
-const Alert = require('../../../models/Alert');
+const alertService = require('../../src/services/alertService');
+const Alert = require('../../models/Alert');
 const mongoose = require('mongoose');
 
 /**

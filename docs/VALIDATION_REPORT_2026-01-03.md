@@ -1,30 +1,43 @@
 # 🔍 Codebase Validation Report
 **Date:** January 3, 2026  
 **Validation Type:** Comprehensive Multi-Agent Work Assessment  
-**Status:** ⚠️ CRITICAL ISSUES IDENTIFIED
+**Status:** ✅ UPDATED (key findings resolved)
+
+**Update (post-remediation):**
+- Track 2 Metrics API routes are implemented in `routes/metrics.js` (includes legacy dashboard stats endpoints plus Track 2 recording/query endpoints).
+- N1.1 workflow is enhanced to post health metrics to `POST /api/metrics/health` and create alerts via `POST /api/alerts`.
+- N5.1 workflow now creates alerts via `POST /api/alerts` when weekly feedback analysis detects performance issues.
+- The frontend canonical page is `/prompts.html` (legacy `/personas.html` redirects to `/prompts.html`).
 
 ---
 
 ## 🚨 CRITICAL FINDINGS
 
-### ❌ **Issue #1: API Route Mismatch**
-**Problem:** Documentation claims Track 2 Metrics API routes exist, but the actual `/routes/metrics.js` file is the OLD metrics file (cache/database stats), NOT the new Track 2 implementation.
+### ✅ **Issue #1: API Route Mismatch (RESOLVED)**
+**Previously:** Documentation and code were out of sync.
+**Now:** `routes/metrics.js` contains both dashboard monitoring endpoints and Track 2 metrics recording/query endpoints.
 
 **Evidence:**
 ```bash
-# What's documented:
-POST /api/metrics/health - Record health metrics
-POST /api/metrics/performance - Record performance metrics
-GET /api/metrics/timeseries - Query time-series data
+# Dashboard monitoring endpoints:
+GET  /api/metrics/system
+GET  /api/metrics/cache
+POST /api/metrics/cache/clear
+GET  /api/metrics/database
+GET  /api/metrics/connection
 
-# What actually exists:
-GET /api/metrics/cache - Embedding cache stats (OLD)
-GET /api/metrics/database - MongoDB stats (OLD)
+# Track 2 metrics recording/query endpoints:
+POST /api/metrics/health
+POST /api/metrics/performance
+POST /api/metrics/cost
+POST /api/metrics/resource
+POST /api/metrics/quality
+POST /api/metrics/usage
+GET  /api/metrics/query
+GET  /api/metrics/latest
 ```
 
-**Impact:** 🔴 SEVERE - The entire Track 2 metrics recording system is NOT implemented
-**API Tests:** ✅ Exist (tests/routes/metrics.api.test.js) but will FAIL
-**Service:** ⚠️ metricsCollector.js exists but not integrated with routes
+**Impact:** ✅ Resolved
 
 ---
 
@@ -47,6 +60,8 @@ GET /api/metrics/database - MongoDB stats (OLD)
 ```javascript
 {
   "source": "REQUIRED",  // ← Missing from docs
+  // NOTE: `source` is validated by the Alert model enum:
+  // one of: "agentx" | "n8n" | "dataapi" | "external"
   "severity": "info|warning|critical",  // ← No 'error' option
   "title": "Test",
   "message": "Test",
@@ -55,8 +70,8 @@ GET /api/metrics/database - MongoDB stats (OLD)
 }
 ```
 
-**Impact:** 🟡 MODERATE - Alert creation fails with misleading errors
-**Status:** ✅ File exists, ⚠️ API contract mismatch
+**Impact:** 🟡 MODERATE - Alert creation fails if `source` is missing or not one of the allowed enum values
+**Status:** ✅ Alert creation works when payload matches model validation; ⚠️ documentation drift remains
 
 ---
 
@@ -91,12 +106,10 @@ Warning: Duplicate schema index on {"expiresAt":1} found
 - `/models/Alert.js` - 272 lines, fully implemented
 - `/models/MetricsSnapshot.js` - Exists and loaded
 
-### ✅ **AlertService** (90% Complete)
-- `/src/services/alertService.js` - 699 lines
-- Rule loading ✅
-- Alert creation ✅
-- Notifications ❌ (email/Slack not configured)
-- Webhook trigger ✅
+### ✅ **AlertService** (Compatibility Layer)
+- `/src/services/alertService.js` is intentionally minimal to support the Alert API routes.
+- Notifications are best-effort; `dataapi_log` is supported, other channels may be unimplemented.
+- `evaluateEvent()` currently returns an empty match list (rule evaluation not yet defined here).
 
 ### ✅ **SelfHealingEngine** (100% Complete)
 - `/src/services/selfHealingEngine.js` - 680 lines
@@ -122,7 +135,7 @@ curl http://localhost:3080/api/self-healing/status
 - `/AgentC/N1.1.json` - 795 lines, 26 nodes
 - `/AgentC/N4.1.json` - 15 nodes  
 - `/AgentC/N4.2.json` - 538 lines, 11 nodes ✨ NEW (Jan 3, 2026)
-- **NOTE:** N1.1 NOT enhanced with metrics/alerts yet
+- ✅ **NOTE:** N1.1 enhanced with metrics + alerts (posts to AgentX localhost endpoints)
 
 ### ✅ **Test Files** (Created but not validated)
 - `tests/routes/alerts.api.test.js` - 15KB
@@ -142,26 +155,13 @@ curl http://localhost:3080/api/self-healing/status
 
 ## ❌ WHAT'S NOT IMPLEMENTED (But Documented)
 
-### ❌ **Track 2 Metrics API Routes** - 0% Implemented
-**Problem:** The actual implementation is MISSING entirely
+### ⚠️ **Metrics API Documentation Drift**
+Some older documents referenced endpoints like `GET /api/metrics/timeseries` / `GET /api/metrics/trends` / `POST /api/metrics/aggregate`.
 
-**Files:**
-- `routes/metrics.js` - ❌ OLD FILE, not the new Track 2 implementation
-- Expected endpoints DO NOT EXIST:
-  - POST /api/metrics/health
-  - POST /api/metrics/performance
-  - POST /api/metrics/cost
-  - POST /api/metrics/resource
-  - POST /api/metrics/quality
-  - POST /api/metrics/usage
-  - GET /api/metrics/timeseries
-  - GET /api/metrics/trends
-  - POST /api/metrics/aggregate
-
-**Service exists:** `src/services/metricsCollector.js` ✅
-**Routes missing:** Everything ❌
-
-**Action Required:** 🔴 URGENT - Must create actual Track 2 metrics routes
+Current implemented metrics endpoints are:
+- Recording: `POST /api/metrics/{health|performance|cost|resource|quality|usage}`
+- Query: `GET /api/metrics/query`, `GET /api/metrics/latest`
+- Dashboard stats: `GET /api/metrics/system`, `GET /api/metrics/cache`, `POST /api/metrics/cache/clear`, `GET /api/metrics/database`, `GET /api/metrics/connection`
 
 ---
 
@@ -175,16 +175,8 @@ curl http://localhost:3080/api/self-healing/status
 
 ---
 
-### ❌ **N1.1 Workflow Enhancements** - 0% Complete
-**Status:** N1.1 exists but NOT enhanced yet
-
-**Missing:**
-- No alert evaluation calls
-- No metrics recording calls
-- Still just health checks + DataAPI logging
-
-**Documented as complete:** ❌ FALSE
-**Actually complete:** ❌ NO
+### ✅ **N1.1 Workflow Enhancements (COMPLETE)**
+N1.1 posts a heartbeat to `POST /api/metrics/health` and creates alerts via `POST /api/alerts` (localhost AgentX endpoints).
 
 ---
 
@@ -200,7 +192,7 @@ curl http://localhost:3080/api/self-healing/status
 | T1.9 N4.1 Workflow | ✅ 100% | ✅ 100% | None (file exists) |
 | T2.2 MetricsSnapshot Model | ✅ 100% | ✅ 100% | None |
 | T2.3 MetricsCollector Service | ✅ 100% | ✅ 100% | None |
-| **T2.5 Metrics API Routes** | **✅ 100%** | **❌ 0%** | **WRONG FILE** |
+| **T2.5 Metrics API Routes** | **✅ 100%** | **✅ 100%** | None |
 | T4.6 Self-Healing Rules | ✅ 100% | ✅ 100% | None |
 | T4.3 SelfHealingEngine | ✅ 100% | ✅ 100% | None |
 

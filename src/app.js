@@ -176,6 +176,14 @@ app.use('/api/ollama-hosts', ollamaHostsRoutes);
 const workflowGeneratorRoutes = require('../routes/workflowGenerator');
 app.use('/api/workflow', workflowGeneratorRoutes);
 
+// Backup & Recovery routes (Track 6)
+const backupRoutes = require('../routes/backup');
+app.use('/api/backup', backupRoutes);
+
+// Custom Model Management routes (Track 3)
+const customModelsRoutes = require('../routes/custom-models');
+app.use('/api/custom-models', customModelsRoutes);
+
 // Dashboard routes
 const dashboardRoutes = require('../routes/dashboard');
 app.use('/api/dashboard', dashboardRoutes);
@@ -204,6 +212,11 @@ app.use('/api', apiRoutes);
 // STATIC FILES (must come AFTER API routes)
 // ============================================
 app.use(express.static(path.join(__dirname, '..', 'public')));
+
+// Legacy UI route: prompt management page was previously personas.html
+app.get('/personas.html', (req, res) => {
+  res.redirect(301, '/prompts.html');
+});
 
 // Health Check - Basic
 app.get('/health', (_req, res) => {

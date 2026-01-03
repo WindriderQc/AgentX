@@ -1,6 +1,7 @@
 # Multi-Agent Enhancement Plan: AgentX/AgentC System
 **Date:** 2026-01-02
-**Status:** Planning Phase
+**Status:** In Progress (implementation largely landed; some wiring/Track 6 gaps remain)
+**Last Verified Against Repo:** 2026-01-03
 **Execution Model:** Parallel Multi-Agent Implementation
 
 ---
@@ -20,6 +21,49 @@ This document outlines a comprehensive enhancement plan for the AgentX/AgentC mo
 **Total Estimated Effort:** 32 agent-tasks across 6 tracks
 **Parallel Execution:** Yes - minimal dependencies between tracks
 **Target Completion:** 2-3 development cycles (assumes 8-12 agents working in parallel)
+
+---
+
+## Current Implementation Status (Snapshot)
+
+This section reflects what is *already present in the repositories* as of **2026-01-03**.
+
+### ✅ Landed / Substantially Implemented
+
+1. **Track 1: Alerts & Notifications**
+  - Backend + UI + tests present (`/src/services/alertService.js`, `/models/Alert.js`, `/routes/alerts.js`, `/public/alerts.html`, tests under `/tests/*`).
+  - n8n alert delivery workflow present: `/AgentC/N4.1.json`.
+
+2. **Track 2: Historical Metrics & Analytics**
+  - Metrics models/collector/routes/tests present (`/models/MetricsSnapshot.js`, `/src/services/metricsCollector.js`, `/routes/metrics.js`).
+
+3. **Track 3: Custom Model Management**
+  - Model/service/routes present (`/models/CustomModel.js`, `/src/services/customModelService.js`, `/routes/custom-models.js`).
+
+4. **Track 4: Self-Healing & Automation**
+  - Engine/model/routes/tests present (`/src/services/selfHealingEngine.js`, `/models/RemediationAction.js`, `/routes/self-healing.js`).
+  - n8n orchestrator workflow present: `/AgentC/N4.4.json`.
+
+5. **Track 5: Advanced Testing & CI/CD**
+  - GitHub Actions workflows exist under `/.github/workflows/`.
+  - Jest + Playwright + load tests exist under `/tests/`.
+
+### 🟡 Partial / Needs Wiring
+
+6. **Track 6: Backup & Disaster Recovery**
+  - AgentX backup API + UI exist (`/routes/backup.js`, `/public/backup.html`).
+  - Backup scripts exist in **DataAPI** and are referenced by AgentX route:
+    - `DataAPI/scripts/backup-mongodb.sh`, `restore-mongodb.sh`
+    - `DataAPI/scripts/backup-qdrant.sh`, `restore-qdrant.sh`
+    - `DataAPI/scripts/setup-backup-cron.sh`
+  - Remaining items:
+    - Fix Qdrant backup listing mismatch (route expects `qdrant_*.tar.gz` but script outputs `*.snapshot`).
+    - Decide whether scripts should be copied into AgentX `/scripts/` vs referenced from DataAPI.
+    - Workflow backup automation: plan mentions N4.5 but `/AgentC/N4.5.json` not present; cron references `./scripts/commit-workflows.sh` but script not present in AgentX.
+
+### ⚠️ Known Wiring Gap
+
+- N1.1 and N5.1 workflows currently do not appear to call `/api/alerts` (so “alert creation” isn’t fully connected end-to-end yet).
 
 ---
 
@@ -1189,7 +1233,7 @@ jobs:
       - name: Health Check
         run: |
           sleep 30
-          curl -f http://192.168.2.33:3080/health || exit 1
+          curl -f http://<agentx-host>:3080/health || exit 1
       - name: Rollback on Failure
         if: failure()
         run: |
