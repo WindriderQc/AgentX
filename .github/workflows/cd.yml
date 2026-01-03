@@ -33,6 +33,7 @@ jobs:
     name: Deploy to Staging
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/develop' || inputs.environment == 'staging'
+    needs: [run-tests]
     environment:
       name: staging
       url: http://staging.agentx.local
