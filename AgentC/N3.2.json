@@ -3,6 +3,7 @@
   "nodes": [
     {
       "parameters": {
+        "httpMethod": "POST",
         "path": "sbqc-ai-query",
         "responseMode": "responseNode",
         "options": {}
@@ -14,7 +15,8 @@
       "position": [
         -400,
         0
-      ]
+      ],
+      "webhookId": "sbqc-n32-ai-gateway"
     },
     {
       "parameters": {

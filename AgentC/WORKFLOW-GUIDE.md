@@ -39,7 +39,44 @@
 jq -f scripts/fix-workflow-connections.jq AgentC/your-workflow.json > AgentC/your-workflow-fixed.json
 ```
 
-### 2. Webhook Response Modes
+### 2. Webhook Nodes MUST Have webhookId and httpMethod
+
+**Critical:** Every webhook node MUST include:
+- `webhookId`: A unique identifier for the webhook (e.g., "sbqc-n32-ai-gateway")
+- `httpMethod`: The HTTP method (GET, POST, PUT, DELETE, etc.)
+
+**❌ WRONG:**
+```json
+{
+  "parameters": {
+    "path": "my-webhook",
+    "responseMode": "responseNode",
+    "options": {}
+  },
+  "type": "n8n-nodes-base.webhook"
+}
+```
+
+**✅ CORRECT:**
+```json
+{
+  "parameters": {
+    "httpMethod": "POST",
+    "path": "my-webhook",
+    "responseMode": "responseNode",
+    "options": {}
+  },
+  "type": "n8n-nodes-base.webhook",
+  "webhookId": "sbqc-my-webhook"
+}
+```
+
+**Why:**
+- Without `webhookId`, n8n won't register the webhook endpoint
+- Without `httpMethod`, the webhook defaults to GET only
+- Missing either will cause 404 "webhook not registered" errors
+
+### 3. Webhook Response Modes
 
 **Two modes for webhook responses:**
 
@@ -77,7 +114,7 @@ jq -f scripts/fix-workflow-connections.jq AgentC/your-workflow.json > AgentC/you
 
 **Common Mistake:** Using `responseMode: "onReceived"` with a "Respond to Webhook" node. This will cause the webhook to return `{"message": "Workflow was started"}` instead of your actual data.
 
-### 3. Workflow File Structure
+### 4. Workflow File Structure
 
 **Required fields for deployment:**
 ```json
@@ -178,12 +215,28 @@ curl -s -X POST \
 ## Common Issues & Solutions
 
 ### Issue: "The requested webhook is not registered"
-**Cause:** Workflow is not activated
-**Solution:** Activate workflow using Step 3 above
+**Causes:**
+1. Workflow is not activated
+2. Webhook node is missing `webhookId` field
+3. Webhook node is missing `httpMethod` field
+
+**Solutions:**
+1. Activate workflow using the activation API endpoint
+2. Add `webhookId` to webhook node (e.g., "webhookId": "sbqc-my-workflow")
+3. Add `httpMethod` to webhook parameters (e.g., "httpMethod": "POST")
+4. Redeploy and reactivate workflow after fixing JSON
 
 ### Issue: Webhook returns "Workflow was started" instead of data
 **Cause:** responseMode is "onReceived" but should be "responseNode"
 **Solution:** Change webhook node responseMode to "responseNode"
+
+### Issue: "This webhook is not registered for POST/GET requests"
+**Cause:** httpMethod doesn't match the request method
+**Solution:**
+- Check what method your code/client is using (GET/POST/etc)
+- Update webhook node parameters to include matching `httpMethod`
+- Example: `"httpMethod": "POST"` for POST requests
+- Redeploy and reactivate workflow
 
 ### Issue: Nodes appear disconnected in n8n UI
 **Cause:** Connections use node IDs instead of names
@@ -202,6 +255,10 @@ curl -s -X POST \
 Before deploying a new/modified workflow:
 
 - [ ] Connections reference node names, not IDs
+- [ ] All webhook nodes have required fields:
+  - [ ] `webhookId` field present (e.g., "sbqc-workflow-name")
+  - [ ] `httpMethod` in parameters (e.g., "POST", "GET")
+  - [ ] `path` configured correctly
 - [ ] Webhook responseMode matches workflow design:
   - [ ] "responseNode" if using "Respond to Webhook" node
   - [ ] "onReceived" if no response node needed
@@ -242,12 +299,19 @@ After deployment:
 **N0.0 - Deployment Test Workflow:**
 - v2.0.0: Enhanced with comprehensive status output
 - v2.1.0: Fixed node name mismatch in connections
-- v2.2.0: Fixed responseMode (onReceived → responseNode)
+- v2.2.0: Fixed responseMode (onReceived → responseNode) + added webhookId
 
 **N3.2 - External AI Gateway:**
-- Connections fixed to use node names
+- v2.0: Connections fixed to use node names
+- v2.1: Added webhookId and httpMethod (POST) to webhook node
 - Deployed with proper responseNode mode
 
 **N5.1 - Feedback Analysis:**
-- Connections fixed to use node names
+- v2.0: Connections fixed to use node names
+- v2.1: Added webhookId to webhook node
 - continueOnFail added to logging nodes
+
+**Guide Updates:**
+- 2026-01-03: Added critical webhookId and httpMethod requirements
+- 2026-01-03: Documented connection name vs ID issue and fix script
+- 2026-01-03: Added comprehensive deployment and troubleshooting guide
