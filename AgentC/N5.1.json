@@ -23,7 +23,9 @@
     },
     {
       "parameters": {
+        "httpMethod": "GET",
         "path": "sbqc-n5-1-feedback-analysis",
+        "responseMode": "onReceived",
         "options": {}
       },
       "id": "WebhookTrigger",
