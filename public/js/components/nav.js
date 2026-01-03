@@ -2,7 +2,7 @@
  * Navigation Component
  * Injects the standard AgentX navigation bar with all pages.
  * Usage: injectNav('activePageId') where activePageId is one of:
- * 'chat', 'operations', 'alerts', 'n8n', 'benchmark', 'analytics', 'rag', 'personas', 'profile'
+ * 'chat', 'operations', 'alerts', 'n8n', 'backup', 'models', 'benchmark', 'performance', 'analytics', 'rag', 'personas', 'profile'
  */
 
 function injectNav(activePageId = '') {
@@ -15,6 +15,7 @@ function injectNav(activePageId = '') {
         { label: 'Backup', href: 'backup.html', icon: 'fa-shield-alt', id: 'backup' },
         { label: 'Models', href: 'models.html', icon: 'fa-cube', id: 'models' },
         { label: 'Benchmark', href: 'benchmark.html', icon: 'fa-rocket', id: 'benchmark' },
+        { label: 'Performance', href: 'performance.html', icon: 'fa-gauge-high', id: 'performance' },
         { label: 'Analytics', href: 'analytics.html', icon: 'fa-chart-line', id: 'analytics' },
         { label: 'RAG', href: 'rag.html', icon: 'fa-database', id: 'rag' },
         // Prompt management UI lives at prompts.html.

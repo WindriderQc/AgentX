@@ -1,4 +1,8 @@
 # AgentX Global Development Plan (REVISED)
+
+> **Canonical roadmap:** `docs/planning/ROADMAP.md` (stack-wide)
+>
+> This file is preserved as a detailed plan snapshot and remains useful context.
 ## Updated: 2026-01-01 | **FULL OPEN FIRST APPROACH** ✅ APPROVED
 
 ---

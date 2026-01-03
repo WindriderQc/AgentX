@@ -101,6 +101,14 @@ const CustomModelSchema = new mongoose.Schema({
     default: ''
   },
 
+  // Model Parameters (Tuning)
+  parameters: {
+    num_ctx: Number,
+    num_gpu: Number,
+    num_thread: Number,
+    keep_alive: String
+  },
+
   // Deployment
   status: {
     type: String,

@@ -193,17 +193,46 @@ async function callJudge(evalPrompt, config = {}) {
         const text = data.response || '';
         
         // Extract JSON from response
-        const jsonMatch = text.match(/\{[\s\S]*?\}/);
-        if (!jsonMatch) {
-            throw new Error('No JSON in judge response');
+        let jsonStr = null;
+        
+        // 1. Try Markdown code block
+        const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+        if (codeBlockMatch) {
+            jsonStr = codeBlockMatch[1];
+        } else {
+            // 2. Try finding outermost braces
+            const firstBrace = text.indexOf('{');
+            const lastBrace = text.lastIndexOf('}');
+            if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+                jsonStr = text.substring(firstBrace, lastBrace + 1);
+            }
+        }
+
+        if (!jsonStr) {
+            throw new Error('No JSON found in judge response');
         }
         
-        const scores = JSON.parse(jsonMatch[0]);
-        return {
-            success: true,
-            scores,
-            raw: text
-        };
+        try {
+            // 3. Clean and parse
+            // Fix common LLM JSON issues:
+            // - Control characters
+            // - Invalid escape sequences (like LaTeX \( or \))
+            let sanitized = jsonStr.replace(/[\x00-\x1F\x7F-\x9F]/g, "");
+            
+            // Escape backslashes that are not part of a valid JSON escape sequence
+            // Valid escapes: \" \\ \/ \b \f \n \r \t \uXXXX
+            // We conservatively escape \ followed by anything else
+            sanitized = sanitized.replace(/\\([^"\\/bfnrtu])/g, "\\\\$1");
+
+            const scores = JSON.parse(sanitized);
+            return {
+                success: true,
+                scores,
+                raw: text
+            };
+        } catch (parseErr) {
+            throw new Error(`JSON parse failed: ${parseErr.message}`);
+        }
         
     } catch (err) {
         clearTimeout(timeoutId);

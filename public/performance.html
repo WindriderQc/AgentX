@@ -1,0 +1,2143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgentX • Performance</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <style>
+        .performance-page {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .performance-header {
+            margin-bottom: 32px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+
+        .performance-header .header-content {
+            flex: 1;
+            min-width: 300px;
+        }
+
+        .performance-header .eyebrow {
+            color: var(--accent);
+            letter-spacing: 0.2em;
+            font-size: 11px;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+
+        .performance-header h1 {
+            margin: 6px 0 12px;
+            font-size: 42px;
+            letter-spacing: -0.5px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .performance-header h1 i {
+            color: var(--accent);
+            font-size: 36px;
+        }
+
+        .performance-header .lede {
+            margin: 0;
+            color: var(--muted);
+            line-height: 1.5;
+            max-width: 720px;
+        }
+
+        .header-controls {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .header-controls select,
+        .header-controls button {
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            border-radius: 8px;
+            padding: 10px 16px;
+            color: var(--text);
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: "Space Grotesk", system-ui, sans-serif;
+        }
+
+        .header-controls button:hover {
+            background: rgba(124, 240, 255, 0.1);
+            border-color: var(--accent);
+        }
+
+        .header-controls button i {
+            margin-right: 6px;
+        }
+
+        .header-controls .auto-refresh-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .header-controls .auto-refresh-toggle input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+
+        .header-controls .countdown {
+            font-size: 11px;
+            color: var(--muted);
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px;
+            margin-bottom: 32px;
+        }
+
+        .stat-card {
+            background: var(--panel);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--panel-border);
+            padding: 24px;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            transition: all 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-3px);
+            border-color: rgba(124, 240, 255, 0.3);
+            box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(124, 240, 255, 0.2);
+        }
+
+        .stat-card .label {
+            color: var(--muted);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 12px;
+            font-weight: 500;
+        }
+
+        .stat-card .value {
+            color: var(--text);
+            font-size: 2.2em;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+        }
+
+        .stat-card .sub {
+            color: var(--muted);
+            font-size: 12px;
+            margin-top: 8px;
+        }
+
+        .stat-card .trend {
+            font-size: 14px;
+            margin-left: 8px;
+        }
+
+        .stat-card .trend.up {
+            color: #22c55e;
+        }
+
+        .stat-card .trend.down {
+            color: #ef4444;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .badge.healthy {
+            background: rgba(34, 197, 94, 0.15);
+            color: #22c55e;
+            border: 1px solid rgba(34, 197, 94, 0.3);
+        }
+
+        .badge.degraded {
+            background: rgba(251, 191, 36, 0.15);
+            color: #fbbf24;
+            border: 1px solid rgba(251, 191, 36, 0.3);
+        }
+
+        .badge.critical {
+            background: rgba(239, 68, 68, 0.15);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        /* Section Cards */
+        .section-card {
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: var(--shadow);
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--panel-border);
+        }
+
+        .section-header h2 {
+            margin: 0;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .section-header h2 i {
+            color: var(--accent);
+            font-size: 18px;
+        }
+
+        .section-header .controls {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .section-header select,
+        .section-header button {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--panel-border);
+            border-radius: 6px;
+            padding: 6px 12px;
+            color: var(--text);
+            font-size: 12px;
+            cursor: pointer;
+            font-family: "Space Grotesk", system-ui, sans-serif;
+        }
+
+        .section-header button:hover {
+            background: rgba(124, 240, 255, 0.1);
+            border-color: var(--accent);
+        }
+
+        .section-body {
+            position: relative;
+        }
+
+        /* Charts */
+        .chart-container {
+            position: relative;
+            height: 400px;
+            margin-bottom: 16px;
+        }
+
+        .chart-container.small {
+            height: 300px;
+        }
+
+        .chart-empty {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--muted);
+            font-size: 14px;
+            display: none;
+        }
+
+        .chart-empty.visible {
+            display: block;
+        }
+
+        /* Two Column Layout */
+        .two-column {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+
+        @media (max-width: 1200px) {
+            .two-column {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Table Styles */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        .data-table thead {
+            background: rgba(0, 0, 0, 0.2);
+            position: sticky;
+            top: 0;
+        }
+
+        .data-table th {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--panel-border);
+            font-weight: 600;
+            color: var(--text);
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .data-table th:hover {
+            background: rgba(124, 240, 255, 0.05);
+        }
+
+        .data-table th.sortable::after {
+            content: ' ↕';
+            color: var(--muted);
+            font-size: 10px;
+        }
+
+        .data-table th.sorted-asc::after {
+            content: ' ↑';
+            color: var(--accent);
+        }
+
+        .data-table th.sorted-desc::after {
+            content: ' ↓';
+            color: var(--accent);
+        }
+
+        .data-table td {
+            padding: 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+        }
+
+        .data-table tbody tr {
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .data-table tbody tr:hover {
+            background: rgba(124, 240, 255, 0.05);
+        }
+
+        .data-table tbody tr.expanded {
+            background: rgba(124, 240, 255, 0.1);
+        }
+
+        .data-table .text-right {
+            text-align: right;
+        }
+
+        .data-table .text-center {
+            text-align: center;
+        }
+
+        .data-table .mono {
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+        }
+
+        /* Load Test Details */
+        .test-details {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 16px;
+            border-radius: 8px;
+            margin-top: 8px;
+            font-size: 12px;
+            line-height: 1.6;
+        }
+
+        .test-details h4 {
+            margin: 0 0 12px 0;
+            color: var(--accent);
+            font-size: 13px;
+        }
+
+        .test-details .detail-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 12px;
+        }
+
+        .test-details .detail-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .test-details .detail-label {
+            color: var(--muted);
+            font-size: 11px;
+            margin-bottom: 4px;
+        }
+
+        .test-details .detail-value {
+            color: var(--text);
+            font-weight: 500;
+        }
+
+        /* Baseline Comparison */
+        .baseline-card {
+            background: rgba(124, 240, 255, 0.05);
+            border: 1px solid rgba(124, 240, 255, 0.2);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .baseline-card h3 {
+            margin: 0 0 16px 0;
+            font-size: 16px;
+            color: var(--accent);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .baseline-card h3 i {
+            font-size: 14px;
+        }
+
+        .comparison-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+        }
+
+        .comparison-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .comparison-item .metric-label {
+            font-size: 11px;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .comparison-item .metric-values {
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+        }
+
+        .comparison-item .baseline-value {
+            font-size: 14px;
+            color: var(--muted);
+        }
+
+        .comparison-item .current-value {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .comparison-item .diff {
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .comparison-item .diff.positive {
+            color: #22c55e;
+        }
+
+        .comparison-item .diff.negative {
+            color: #ef4444;
+        }
+
+        /* Alert Banner */
+        .alert-banner {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+        }
+
+        .alert-banner i {
+            color: #ef4444;
+            font-size: 18px;
+            margin-top: 2px;
+        }
+
+        .alert-banner .alert-content {
+            flex: 1;
+        }
+
+        .alert-banner h4 {
+            margin: 0 0 6px 0;
+            color: #ef4444;
+            font-size: 14px;
+        }
+
+        .alert-banner p {
+            margin: 0;
+            font-size: 13px;
+            color: var(--text);
+        }
+
+        /* Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: var(--bg);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            padding: 32px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 40px 120px rgba(0, 0, 0, 0.6);
+        }
+
+        .modal h2 {
+            margin: 0 0 24px 0;
+            font-size: 24px;
+            color: var(--text);
+        }
+
+        .modal .form-group {
+            margin-bottom: 20px;
+        }
+
+        .modal .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 13px;
+            color: var(--text);
+            font-weight: 500;
+        }
+
+        .modal .form-group input,
+        .modal .form-group select,
+        .modal .form-group textarea {
+            width: 100%;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--panel-border);
+            border-radius: 8px;
+            padding: 10px 14px;
+            color: var(--text);
+            font-size: 14px;
+            font-family: "Space Grotesk", system-ui, sans-serif;
+        }
+
+        .modal .form-group textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+
+        .modal .form-group input[type="file"] {
+            padding: 8px;
+        }
+
+        .modal .form-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+            margin-top: 24px;
+        }
+
+        .modal .form-actions button {
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: "Space Grotesk", system-ui, sans-serif;
+        }
+
+        .modal .form-actions .btn-primary {
+            background: var(--accent);
+            color: var(--bg);
+            border: none;
+        }
+
+        .modal .form-actions .btn-primary:hover {
+            background: rgba(124, 240, 255, 0.8);
+        }
+
+        .modal .form-actions .btn-secondary {
+            background: transparent;
+            color: var(--text);
+            border: 1px solid var(--panel-border);
+        }
+
+        .modal .form-actions .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        /* Loading Spinner */
+        .loading-spinner {
+            display: none;
+            text-align: center;
+            padding: 40px;
+        }
+
+        .loading-spinner.active {
+            display: block;
+        }
+
+        .spinner {
+            border: 3px solid rgba(124, 240, 255, 0.1);
+            border-top: 3px solid var(--accent);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Tooltips */
+        [data-tooltip] {
+            position: relative;
+            cursor: help;
+        }
+
+        [data-tooltip]:hover::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.95);
+            color: var(--text);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 11px;
+            white-space: nowrap;
+            z-index: 100;
+            margin-bottom: 8px;
+            border: 1px solid var(--panel-border);
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--muted);
+        }
+
+        .empty-state i {
+            font-size: 48px;
+            color: var(--accent);
+            opacity: 0.3;
+            margin-bottom: 16px;
+        }
+
+        .empty-state h3 {
+            margin: 0 0 8px 0;
+            font-size: 18px;
+            color: var(--text);
+        }
+
+        .empty-state p {
+            margin: 0;
+            font-size: 14px;
+        }
+
+        /* Action Buttons */
+        .action-btn {
+            background: rgba(124, 240, 255, 0.1);
+            border: 1px solid rgba(124, 240, 255, 0.3);
+            color: var(--accent);
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: "Space Grotesk", system-ui, sans-serif;
+            font-weight: 500;
+        }
+
+        .action-btn:hover {
+            background: rgba(124, 240, 255, 0.2);
+            border-color: var(--accent);
+        }
+
+        .action-btn i {
+            margin-right: 4px;
+            font-size: 10px;
+        }
+
+        /* Baseline List */
+        .baseline-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .baseline-item {
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--panel-border);
+            border-radius: 8px;
+            padding: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.2s;
+        }
+
+        .baseline-item:hover {
+            background: rgba(124, 240, 255, 0.05);
+            border-color: rgba(124, 240, 255, 0.3);
+        }
+
+        .baseline-item.active {
+            border-color: var(--accent);
+            background: rgba(124, 240, 255, 0.1);
+        }
+
+        .baseline-item .baseline-info {
+            flex: 1;
+        }
+
+        .baseline-item .baseline-name {
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .baseline-item .baseline-meta {
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .baseline-item .baseline-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .performance-header {
+                flex-direction: column;
+            }
+
+            .header-controls {
+                width: 100%;
+                flex-direction: column;
+            }
+
+            .header-controls select,
+            .header-controls button {
+                width: 100%;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .two-column {
+                grid-template-columns: 1fr;
+            }
+
+            .performance-header h1 {
+                font-size: 32px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="nav-container"></div>
+    <script src="/js/components/nav.js"></script>
+    <script>injectNav('performance');</script>
+    <div class="bg-grid"></div>
+
+    <div class="performance-page" style="padding-top: 80px;">
+
+        <!-- Header -->
+        <header class="performance-header">
+            <div class="header-content">
+                <div class="eyebrow">SYSTEM PERFORMANCE</div>
+                <h1><i class="fas fa-chart-line"></i>Performance Monitoring Dashboard</h1>
+                <p class="lede">Real-time performance metrics, load test results, and baseline comparisons</p>
+            </div>
+            <div class="header-controls">
+                <select id="timeRangeSelect">
+                    <option value="1">Last Hour</option>
+                    <option value="6">Last 6 Hours</option>
+                    <option value="24" selected>Last 24 Hours</option>
+                    <option value="168">Last 7 Days</option>
+                </select>
+                <select id="endpointFilter">
+                    <option value="">All Endpoints</option>
+                </select>
+                <button id="refreshBtn"><i class="fas fa-sync-alt"></i> Refresh</button>
+                <div class="auto-refresh-toggle">
+                    <input type="checkbox" id="autoRefreshToggle">
+                    <label for="autoRefreshToggle" style="margin: 0; font-size: 13px; cursor: pointer;">Auto-refresh</label>
+                    <span class="countdown" id="refreshCountdown"></span>
+                </div>
+            </div>
+        </header>
+
+        <!-- System Health Overview -->
+        <div class="stats-grid">
+            <div class="stat-card" data-tooltip="Overall system health status based on error rates and response times">
+                <div class="label">System Status</div>
+                <div class="value">
+                    <span class="badge healthy" id="systemStatus">Healthy</span>
+                </div>
+                <div class="sub">Overall health</div>
+            </div>
+            <div class="stat-card" data-tooltip="Average response time across all requests in the selected time period">
+                <div class="label">Avg Response Time</div>
+                <div class="value">
+                    <span id="avgResponseTime">—</span>
+                    <span class="trend" id="responseTrend"></span>
+                </div>
+                <div class="sub">24h average</div>
+            </div>
+            <div class="stat-card" data-tooltip="Requests per second processed by the system">
+                <div class="label">Throughput</div>
+                <div class="value">
+                    <span id="throughput">—</span>
+                    <span class="trend" id="throughputTrend"></span>
+                </div>
+                <div class="sub">Requests/second</div>
+            </div>
+            <div class="stat-card" data-tooltip="Percentage of requests that resulted in errors">
+                <div class="label">Error Rate</div>
+                <div class="value">
+                    <span id="errorRate">—</span>
+                    <span class="trend" id="errorTrend"></span>
+                </div>
+                <div class="sub">Error percentage</div>
+            </div>
+            <div class="stat-card" data-tooltip="System uptime percentage over the last 24 hours">
+                <div class="label">Uptime</div>
+                <div class="value" id="uptime">—</div>
+                <div class="sub">24h uptime</div>
+            </div>
+            <div class="stat-card" data-tooltip="95th percentile latency - 95% of requests completed faster than this">
+                <div class="label">P95 Latency</div>
+                <div class="value">
+                    <span id="p95Latency">—</span>
+                    <span class="trend" id="p95Trend"></span>
+                </div>
+                <div class="sub">95th percentile</div>
+            </div>
+        </div>
+
+        <!-- Latency Analysis Charts -->
+        <div class="two-column">
+            <!-- Latency Trends -->
+            <div class="section-card">
+                <div class="section-header">
+                    <h2><i class="fas fa-wave-square"></i> Latency Trends</h2>
+                    <div class="controls">
+                        <span style="font-size: 11px; color: var(--muted); margin-right: 8px;">
+                            <span style="color: #22c55e;">■</span> P50
+                            <span style="color: #fbbf24; margin-left: 8px;">■</span> P95
+                            <span style="color: #ef4444; margin-left: 8px;">■</span> P99
+                        </span>
+                    </div>
+                </div>
+                <div class="section-body">
+                    <div class="chart-container">
+                        <canvas id="latencyTrendsChart"></canvas>
+                    </div>
+                    <div class="chart-empty" id="latencyTrendsEmpty">No latency data available for this time range.</div>
+                </div>
+            </div>
+
+            <!-- Percentile Distribution -->
+            <div class="section-card">
+                <div class="section-header">
+                    <h2><i class="fas fa-chart-bar"></i> Percentile Distribution</h2>
+                </div>
+                <div class="section-body">
+                    <div class="chart-container">
+                        <canvas id="percentileChart"></canvas>
+                    </div>
+                    <div class="chart-empty" id="percentileEmpty">No percentile data available.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Throughput Trends -->
+        <div class="section-card">
+            <div class="section-header">
+                <h2><i class="fas fa-tachometer-alt"></i> Throughput Trends</h2>
+                <div class="controls">
+                    <span style="font-size: 11px; color: var(--muted);">
+                        <span style="color: var(--accent);">■</span> Requests/sec
+                        <span style="color: var(--accent-2); margin-left: 8px;">■</span> Total Requests
+                    </span>
+                </div>
+            </div>
+            <div class="section-body">
+                <div class="chart-container">
+                    <canvas id="throughputChart"></canvas>
+                </div>
+                <div class="chart-empty" id="throughputEmpty">No throughput data available for this time range.</div>
+            </div>
+        </div>
+
+        <!-- Load Test Results -->
+        <div class="section-card">
+            <div class="section-header">
+                <h2><i class="fas fa-bolt"></i> Load Test Results</h2>
+                <div class="controls">
+                    <button id="importTestBtn"><i class="fas fa-file-upload"></i> Import Test</button>
+                </div>
+            </div>
+            <div class="section-body">
+                <div class="loading-spinner" id="loadTestsLoading">
+                    <div class="spinner"></div>
+                    <p style="margin-top: 16px; color: var(--muted);">Loading test results...</p>
+                </div>
+                <div style="overflow-x: auto;" id="loadTestsTableContainer">
+                    <table class="data-table" id="loadTestsTable">
+                        <thead>
+                            <tr>
+                                <th class="sortable" data-sort="date">Date</th>
+                                <th class="sortable" data-sort="scenario">Scenario</th>
+                                <th class="sortable text-right" data-sort="duration">Duration</th>
+                                <th class="sortable text-right" data-sort="rps">RPS Peak</th>
+                                <th class="sortable text-right" data-sort="success">Success Rate</th>
+                                <th class="sortable text-right" data-sort="p95">P95 Latency</th>
+                                <th class="text-center">Status</th>
+                                <th class="text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="loadTestsBody">
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+                <div class="empty-state" id="loadTestsEmpty" style="display: none;">
+                    <i class="fas fa-inbox"></i>
+                    <h3>No Load Tests Found</h3>
+                    <p>Import Artillery JSON results to get started</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Regression Alerts -->
+        <div id="regressionAlerts">
+            <!-- Populated dynamically if regressions detected -->
+        </div>
+
+        <!-- Baseline Comparison -->
+        <div class="section-card">
+            <div class="section-header">
+                <h2><i class="fas fa-flag-checkered"></i> Baseline Comparison</h2>
+                <div class="controls">
+                    <button id="createBaselineBtn"><i class="fas fa-plus"></i> Create Baseline</button>
+                </div>
+            </div>
+            <div class="section-body">
+                <div class="loading-spinner" id="baselineLoading">
+                    <div class="spinner"></div>
+                </div>
+
+                <!-- Active Baseline Card -->
+                <div id="activeBaselineCard" style="display: none;">
+                    <div class="baseline-card">
+                        <h3><i class="fas fa-star"></i> Active Baseline: <span id="activeBaselineName"></span></h3>
+                        <p style="font-size: 12px; color: var(--muted); margin: 0 0 16px 0;">
+                            Created: <span id="activeBaselineDate"></span>
+                        </p>
+                        <div class="comparison-grid" id="comparisonGrid">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Baseline List -->
+                <div>
+                    <h3 style="font-size: 16px; margin: 0 0 16px 0; color: var(--text);">All Baselines</h3>
+                    <div class="baseline-list" id="baselineList">
+                        <!-- Populated by JS -->
+                    </div>
+                    <div class="empty-state" id="baselinesEmpty" style="display: none;">
+                        <i class="fas fa-flag"></i>
+                        <h3>No Baselines Created</h3>
+                        <p>Create a baseline to track performance over time</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Create Baseline Modal -->
+    <div class="modal-overlay" id="createBaselineModal">
+        <div class="modal">
+            <h2>Create Performance Baseline</h2>
+            <form id="createBaselineForm">
+                <div class="form-group">
+                    <label for="baselineName">Baseline Name *</label>
+                    <input type="text" id="baselineName" placeholder="e.g., Production Release v2.1" required>
+                </div>
+                <div class="form-group">
+                    <label for="baselineDescription">Description</label>
+                    <textarea id="baselineDescription" placeholder="Optional description of this baseline..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="baselineSource">Source</label>
+                    <select id="baselineSource">
+                        <option value="current">Current Metrics</option>
+                        <option value="loadtest">Load Test Result</option>
+                    </select>
+                </div>
+                <div class="form-group" id="loadTestSelectGroup" style="display: none;">
+                    <label for="baselineLoadTest">Load Test</label>
+                    <select id="baselineLoadTest">
+                        <option value="">Select a load test...</option>
+                    </select>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn-secondary" id="cancelBaselineBtn">Cancel</button>
+                    <button type="submit" class="btn-primary">Create Baseline</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Import Load Test Modal -->
+    <div class="modal-overlay" id="importTestModal">
+        <div class="modal">
+            <h2>Import Load Test Results</h2>
+            <form id="importTestForm">
+                <div class="form-group">
+                    <label for="testFile">Artillery JSON Report *</label>
+                    <input type="file" id="testFile" accept=".json" required>
+                    <p style="font-size: 11px; color: var(--muted); margin: 8px 0 0 0;">
+                        Upload the JSON output from Artillery (artillery run --output report.json)
+                    </p>
+                </div>
+                <div class="form-group">
+                    <label for="testScenario">Scenario Name</label>
+                    <input type="text" id="testScenario" placeholder="e.g., Chat API Load Test">
+                </div>
+                <div class="form-group">
+                    <label for="testNotes">Notes</label>
+                    <textarea id="testNotes" placeholder="Optional notes about this test run..."></textarea>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn-secondary" id="cancelImportBtn">Cancel</button>
+                    <button type="submit" class="btn-primary">Import Test</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // Performance Dashboard Controller
+        const PerformanceDashboard = {
+            // State
+            charts: {},
+            data: {},
+            refreshInterval: null,
+            autoRefreshEnabled: false,
+            refreshCountdown: 60,
+            currentTimeRange: 24,
+            currentEndpoint: '',
+            sortColumn: null,
+            sortDirection: 'desc',
+
+            // Initialization
+            async init() {
+                console.log('Initializing Performance Dashboard...');
+                this.bindEvents();
+                await this.loadAll();
+                this.startRefreshCountdown();
+            },
+
+            // Load all data
+            async loadAll() {
+                await Promise.all([
+                    this.loadDashboard(),
+                    this.loadLatencyTrends(),
+                    this.loadPercentiles(),
+                    this.loadThroughput(),
+                    this.loadLoadTests(),
+                    this.loadBaselines(),
+                    this.populateEndpointFilter()
+                ]);
+            },
+
+            // Bind event listeners
+            bindEvents() {
+                // Header controls
+                document.getElementById('refreshBtn').addEventListener('click', () => this.loadAll());
+                document.getElementById('timeRangeSelect').addEventListener('change', (e) => {
+                    this.currentTimeRange = parseInt(e.target.value);
+                    this.loadAll();
+                });
+                document.getElementById('endpointFilter').addEventListener('change', (e) => {
+                    this.currentEndpoint = e.target.value;
+                    this.loadLatencyTrends();
+                    this.loadThroughput();
+                });
+                document.getElementById('autoRefreshToggle').addEventListener('change', (e) => {
+                    this.autoRefreshEnabled = e.target.checked;
+                    if (this.autoRefreshEnabled) {
+                        this.startAutoRefresh();
+                    } else {
+                        this.stopAutoRefresh();
+                    }
+                });
+
+                // Import test button
+                document.getElementById('importTestBtn').addEventListener('click', () => {
+                    document.getElementById('importTestModal').classList.add('active');
+                });
+                document.getElementById('cancelImportBtn').addEventListener('click', () => {
+                    document.getElementById('importTestModal').classList.remove('active');
+                });
+                document.getElementById('importTestForm').addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    this.importLoadTest();
+                });
+
+                // Create baseline button
+                document.getElementById('createBaselineBtn').addEventListener('click', () => {
+                    this.openCreateBaselineModal();
+                });
+                document.getElementById('cancelBaselineBtn').addEventListener('click', () => {
+                    document.getElementById('createBaselineModal').classList.remove('active');
+                });
+                document.getElementById('createBaselineForm').addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    this.createBaseline();
+                });
+                document.getElementById('baselineSource').addEventListener('change', (e) => {
+                    const loadTestGroup = document.getElementById('loadTestSelectGroup');
+                    loadTestGroup.style.display = e.target.value === 'loadtest' ? 'block' : 'none';
+                });
+
+                // Close modals on overlay click
+                document.querySelectorAll('.modal-overlay').forEach(overlay => {
+                    overlay.addEventListener('click', (e) => {
+                        if (e.target === overlay) {
+                            overlay.classList.remove('active');
+                        }
+                    });
+                });
+            },
+
+            // Load dashboard stats
+            async loadDashboard() {
+                try {
+                    const response = await fetch('/api/performance/dashboard');
+                    const result = await response.json();
+
+                    if (result.status === 'success' && result.data) {
+                        this.updateStatsCards(result.data);
+                    }
+                } catch (err) {
+                    console.error('Failed to load dashboard stats:', err);
+                }
+            },
+
+            // Update stats cards
+            updateStatsCards(data) {
+                // System Status
+                const statusBadge = document.getElementById('systemStatus');
+                const status = data.systemStatus || 'healthy';
+                statusBadge.className = `badge ${status}`;
+                statusBadge.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+
+                // Avg Response Time
+                const avgTime = data.avgResponseTime || 0;
+                document.getElementById('avgResponseTime').textContent = `${avgTime.toFixed(0)}ms`;
+                this.updateTrend('responseTrend', data.avgResponseTimeTrend);
+
+                // Throughput
+                const throughput = data.throughput || 0;
+                document.getElementById('throughput').textContent = throughput.toFixed(1);
+                this.updateTrend('throughputTrend', data.throughputTrend);
+
+                // Error Rate
+                const errorRate = data.errorRate || 0;
+                const errorEl = document.getElementById('errorRate');
+                errorEl.textContent = `${errorRate.toFixed(2)}%`;
+                errorEl.style.color = errorRate > 5 ? '#ef4444' : errorRate > 1 ? '#fbbf24' : 'inherit';
+                this.updateTrend('errorTrend', data.errorRateTrend);
+
+                // Uptime
+                const uptime = data.uptime || 0;
+                document.getElementById('uptime').textContent = `${uptime.toFixed(2)}%`;
+
+                // P95 Latency
+                const p95 = data.p95Latency || 0;
+                document.getElementById('p95Latency').textContent = `${p95.toFixed(0)}ms`;
+                this.updateTrend('p95Trend', data.p95LatencyTrend);
+            },
+
+            // Update trend indicator
+            updateTrend(elementId, trend) {
+                const el = document.getElementById(elementId);
+                if (!el || trend === undefined) return;
+
+                if (trend > 0) {
+                    el.innerHTML = `<i class="fas fa-arrow-up"></i> ${Math.abs(trend).toFixed(1)}%`;
+                    el.className = 'trend up';
+                } else if (trend < 0) {
+                    el.innerHTML = `<i class="fas fa-arrow-down"></i> ${Math.abs(trend).toFixed(1)}%`;
+                    el.className = 'trend down';
+                } else {
+                    el.innerHTML = '<i class="fas fa-minus"></i> 0%';
+                    el.className = 'trend';
+                }
+            },
+
+            // Load latency trends
+            async loadLatencyTrends() {
+                try {
+                    const params = new URLSearchParams({
+                        hours: this.currentTimeRange
+                    });
+                    if (this.currentEndpoint) {
+                        params.append('endpoint', this.currentEndpoint);
+                    }
+
+                    const response = await fetch(`/api/performance/latency-trends?${params}`);
+                    const result = await response.json();
+
+                    if (result.status === 'success' && result.data && result.data.length > 0) {
+                        this.renderLatencyTrendChart(result.data);
+                        document.getElementById('latencyTrendsEmpty').classList.remove('visible');
+                    } else {
+                        document.getElementById('latencyTrendsEmpty').classList.add('visible');
+                    }
+                } catch (err) {
+                    console.error('Failed to load latency trends:', err);
+                    document.getElementById('latencyTrendsEmpty').classList.add('visible');
+                }
+            },
+
+            // Render latency trend chart
+            renderLatencyTrendChart(data) {
+                const ctx = document.getElementById('latencyTrendsChart').getContext('2d');
+
+                if (this.charts.latencyTrends) {
+                    this.charts.latencyTrends.destroy();
+                }
+
+                const timestamps = data.map(d => new Date(d.timestamp).toLocaleTimeString());
+                const p50Data = data.map(d => d.p50);
+                const p95Data = data.map(d => d.p95);
+                const p99Data = data.map(d => d.p99);
+
+                this.charts.latencyTrends = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: timestamps,
+                        datasets: [
+                            {
+                                label: 'P50 (Median)',
+                                data: p50Data,
+                                borderColor: 'rgb(34, 197, 94)',
+                                backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                                tension: 0.4,
+                                fill: false,
+                                borderWidth: 2
+                            },
+                            {
+                                label: 'P95',
+                                data: p95Data,
+                                borderColor: 'rgb(251, 191, 36)',
+                                backgroundColor: 'rgba(251, 191, 36, 0.1)',
+                                tension: 0.4,
+                                fill: false,
+                                borderWidth: 2
+                            },
+                            {
+                                label: 'P99',
+                                data: p99Data,
+                                borderColor: 'rgb(239, 68, 68)',
+                                backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                                tension: 0.4,
+                                fill: false,
+                                borderWidth: 2
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                            tooltip: {
+                                mode: 'index',
+                                intersect: false,
+                                backgroundColor: 'rgba(0, 0, 0, 0.9)',
+                                titleColor: '#7cf0ff',
+                                bodyColor: '#e8edf5',
+                                borderColor: 'rgba(255, 255, 255, 0.1)',
+                                borderWidth: 1
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Latency (ms)',
+                                    color: '#93a0b5'
+                                },
+                                ticks: { color: '#93a0b5' },
+                                grid: {
+                                    color: 'rgba(255, 255, 255, 0.05)'
+                                }
+                            },
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Time',
+                                    color: '#93a0b5'
+                                },
+                                ticks: {
+                                    color: '#93a0b5',
+                                    maxTicksLimit: 12
+                                },
+                                grid: {
+                                    color: 'rgba(255, 255, 255, 0.05)'
+                                }
+                            }
+                        }
+                    }
+                });
+            },
+
+            // Load percentiles
+            async loadPercentiles() {
+                try {
+                    const params = new URLSearchParams({
+                        hours: this.currentTimeRange
+                    });
+                    if (this.currentEndpoint) {
+                        params.append('endpoint', this.currentEndpoint);
+                    }
+
+                    const response = await fetch(`/api/performance/percentiles?${params}`);
+                    const result = await response.json();
+
+                    if (result.status === 'success' && result.data) {
+                        this.renderPercentileChart(result.data);
+                        document.getElementById('percentileEmpty').classList.remove('visible');
+                    } else {
+                        document.getElementById('percentileEmpty').classList.add('visible');
+                    }
+                } catch (err) {
+                    console.error('Failed to load percentiles:', err);
+                    document.getElementById('percentileEmpty').classList.add('visible');
+                }
+            },
+
+            // Render percentile chart
+            renderPercentileChart(data) {
+                const ctx = document.getElementById('percentileChart').getContext('2d');
+
+                if (this.charts.percentile) {
+                    this.charts.percentile.destroy();
+                }
+
+                const labels = ['P50', 'P75', 'P90', 'P95', 'P99', 'P999'];
+                const values = [
+                    data.p50 || 0,
+                    data.p75 || 0,
+                    data.p90 || 0,
+                    data.p95 || 0,
+                    data.p99 || 0,
+                    data.p999 || 0
+                ];
+
+                const colors = [
+                    'rgba(34, 197, 94, 0.8)',
+                    'rgba(34, 197, 94, 0.6)',
+                    'rgba(251, 191, 36, 0.8)',
+                    'rgba(251, 191, 36, 0.6)',
+                    'rgba(239, 68, 68, 0.8)',
+                    'rgba(239, 68, 68, 0.6)'
+                ];
+
+                this.charts.percentile = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Latency (ms)',
+                            data: values,
+                            backgroundColor: colors,
+                            borderColor: colors.map(c => c.replace('0.8', '1').replace('0.6', '1')),
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        indexAxis: 'y',
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                backgroundColor: 'rgba(0, 0, 0, 0.9)',
+                                titleColor: '#7cf0ff',
+                                bodyColor: '#e8edf5',
+                                borderColor: 'rgba(255, 255, 255, 0.1)',
+                                borderWidth: 1
+                            }
+                        },
+                        scales: {
+                            x: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Latency (ms)',
+                                    color: '#93a0b5'
+                                },
+                                ticks: { color: '#93a0b5' },
+                                grid: { color: 'rgba(255, 255, 255, 0.05)' }
+                            },
+                            y: {
+                                ticks: { color: '#93a0b5' },
+                                grid: { color: 'rgba(255, 255, 255, 0.05)' }
+                            }
+                        }
+                    }
+                });
+            },
+
+            // Load throughput
+            async loadThroughput() {
+                try {
+                    const params = new URLSearchParams({
+                        hours: this.currentTimeRange
+                    });
+                    if (this.currentEndpoint) {
+                        params.append('endpoint', this.currentEndpoint);
+                    }
+
+                    const response = await fetch(`/api/performance/throughput?${params}`);
+                    const result = await response.json();
+
+                    if (result.status === 'success' && result.data && result.data.length > 0) {
+                        this.renderThroughputChart(result.data);
+                        document.getElementById('throughputEmpty').classList.remove('visible');
+                    } else {
+                        document.getElementById('throughputEmpty').classList.add('visible');
+                    }
+                } catch (err) {
+                    console.error('Failed to load throughput:', err);
+                    document.getElementById('throughputEmpty').classList.add('visible');
+                }
+            },
+
+            // Render throughput chart
+            renderThroughputChart(data) {
+                const ctx = document.getElementById('throughputChart').getContext('2d');
+
+                if (this.charts.throughput) {
+                    this.charts.throughput.destroy();
+                }
+
+                const timestamps = data.map(d => new Date(d.timestamp).toLocaleTimeString());
+                const rps = data.map(d => d.requestsPerSecond || 0);
+                const total = data.map(d => d.totalRequests || 0);
+
+                this.charts.throughput = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: timestamps,
+                        datasets: [
+                            {
+                                label: 'Requests/sec',
+                                data: rps,
+                                borderColor: 'rgb(124, 240, 255)',
+                                backgroundColor: 'rgba(124, 240, 255, 0.1)',
+                                tension: 0.4,
+                                yAxisID: 'y',
+                                borderWidth: 2,
+                                fill: true
+                            },
+                            {
+                                label: 'Total Requests',
+                                data: total,
+                                borderColor: 'rgb(238, 176, 255)',
+                                backgroundColor: 'rgba(238, 176, 255, 0.1)',
+                                tension: 0.4,
+                                yAxisID: 'y1',
+                                borderWidth: 2,
+                                fill: false
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: {
+                            mode: 'index',
+                            intersect: false
+                        },
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                            tooltip: {
+                                backgroundColor: 'rgba(0, 0, 0, 0.9)',
+                                titleColor: '#7cf0ff',
+                                bodyColor: '#e8edf5',
+                                borderColor: 'rgba(255, 255, 255, 0.1)',
+                                borderWidth: 1
+                            }
+                        },
+                        scales: {
+                            y: {
+                                type: 'linear',
+                                display: true,
+                                position: 'left',
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Requests/sec',
+                                    color: '#7cf0ff'
+                                },
+                                ticks: { color: '#93a0b5' },
+                                grid: { color: 'rgba(255, 255, 255, 0.05)' }
+                            },
+                            y1: {
+                                type: 'linear',
+                                display: true,
+                                position: 'right',
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Total Requests',
+                                    color: '#eeb0ff'
+                                },
+                                ticks: { color: '#93a0b5' },
+                                grid: { drawOnChartArea: false }
+                            },
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Time',
+                                    color: '#93a0b5'
+                                },
+                                ticks: {
+                                    color: '#93a0b5',
+                                    maxTicksLimit: 12
+                                },
+                                grid: { color: 'rgba(255, 255, 255, 0.05)' }
+                            }
+                        }
+                    }
+                });
+            },
+
+            // Load load tests
+            async loadLoadTests() {
+                try {
+                    document.getElementById('loadTestsLoading').classList.add('active');
+
+                    const response = await fetch('/api/performance/load-tests?limit=50');
+                    const result = await response.json();
+
+                    document.getElementById('loadTestsLoading').classList.remove('active');
+
+                    if (result.status === 'success' && result.data && result.data.length > 0) {
+                        this.renderLoadTestsTable(result.data);
+                        document.getElementById('loadTestsTableContainer').style.display = 'block';
+                        document.getElementById('loadTestsEmpty').style.display = 'none';
+                    } else {
+                        document.getElementById('loadTestsTableContainer').style.display = 'none';
+                        document.getElementById('loadTestsEmpty').style.display = 'block';
+                    }
+                } catch (err) {
+                    console.error('Failed to load load tests:', err);
+                    document.getElementById('loadTestsLoading').classList.remove('active');
+                    document.getElementById('loadTestsEmpty').style.display = 'block';
+                }
+            },
+
+            // Render load tests table
+            renderLoadTestsTable(tests) {
+                const tbody = document.getElementById('loadTestsBody');
+                tbody.innerHTML = '';
+
+                tests.forEach(test => {
+                    const row = document.createElement('tr');
+                    row.dataset.testId = test._id;
+
+                    const date = new Date(test.timestamp).toLocaleString();
+                    const scenario = test.scenario || 'Load Test';
+                    const duration = test.summary?.duration ? `${(test.summary.duration / 60).toFixed(1)}m` : '—';
+                    const rps = test.summary?.rps?.max ? test.summary.rps.max.toFixed(1) : '—';
+                    const successRate = test.summary?.codes?.[200]
+                        ? ((test.summary.codes[200] / test.summary.requestsCompleted) * 100).toFixed(1)
+                        : '—';
+                    const p95 = test.summary?.latency?.p95 ? `${test.summary.latency.p95.toFixed(0)}ms` : '—';
+                    const status = test.summary?.errors > 0 ? 'warning' : 'success';
+
+                    row.innerHTML = `
+                        <td>${date}</td>
+                        <td>${scenario}</td>
+                        <td class="text-right mono">${duration}</td>
+                        <td class="text-right mono">${rps}</td>
+                        <td class="text-right mono">${successRate}%</td>
+                        <td class="text-right mono">${p95}</td>
+                        <td class="text-center">
+                            <span class="badge ${status === 'success' ? 'healthy' : 'degraded'}" style="font-size: 10px; padding: 4px 8px;">
+                                ${status === 'success' ? 'PASS' : 'WARN'}
+                            </span>
+                        </td>
+                        <td class="text-center">
+                            <button class="action-btn view-details-btn" data-test-id="${test._id}">
+                                <i class="fas fa-eye"></i> Details
+                            </button>
+                            <button class="action-btn set-baseline-btn" data-test-id="${test._id}">
+                                <i class="fas fa-flag"></i> Baseline
+                            </button>
+                        </td>
+                    `;
+
+                    tbody.appendChild(row);
+
+                    // Attach event listeners
+                    row.querySelector('.view-details-btn').addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        this.toggleTestDetails(test._id, test);
+                    });
+
+                    row.querySelector('.set-baseline-btn').addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        this.setBaselineFromTest(test._id);
+                    });
+                });
+
+                // Add sort handlers
+                document.querySelectorAll('#loadTestsTable th.sortable').forEach(th => {
+                    th.addEventListener('click', () => {
+                        const sortKey = th.dataset.sort;
+                        this.sortLoadTests(sortKey);
+                    });
+                });
+            },
+
+            // Toggle test details
+            toggleTestDetails(testId, testData) {
+                const row = document.querySelector(`tr[data-test-id="${testId}"]`);
+                const existingDetails = row.nextElementSibling;
+
+                if (existingDetails && existingDetails.classList.contains('test-details-row')) {
+                    existingDetails.remove();
+                    row.classList.remove('expanded');
+                    return;
+                }
+
+                row.classList.add('expanded');
+
+                const detailsRow = document.createElement('tr');
+                detailsRow.classList.add('test-details-row');
+                detailsRow.innerHTML = `
+                    <td colspan="8">
+                        <div class="test-details">
+                            <h4>Test Summary</h4>
+                            <div class="detail-grid">
+                                <div class="detail-item">
+                                    <div class="detail-label">Scenario</div>
+                                    <div class="detail-value">${testData.scenario || 'N/A'}</div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">Duration</div>
+                                    <div class="detail-value">${testData.summary?.duration ? `${(testData.summary.duration / 60).toFixed(1)} minutes` : 'N/A'}</div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">Total Requests</div>
+                                    <div class="detail-value">${testData.summary?.requestsCompleted || 0}</div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">RPS (Mean)</div>
+                                    <div class="detail-value">${testData.summary?.rps?.mean?.toFixed(2) || 'N/A'}</div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">RPS (Max)</div>
+                                    <div class="detail-value">${testData.summary?.rps?.max?.toFixed(2) || 'N/A'}</div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">P50 Latency</div>
+                                    <div class="detail-value">${testData.summary?.latency?.p50?.toFixed(0) || 'N/A'} ms</div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">P95 Latency</div>
+                                    <div class="detail-value">${testData.summary?.latency?.p95?.toFixed(0) || 'N/A'} ms</div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">P99 Latency</div>
+                                    <div class="detail-value">${testData.summary?.latency?.p99?.toFixed(0) || 'N/A'} ms</div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">Errors</div>
+                                    <div class="detail-value">${testData.summary?.errors || 0}</div>
+                                </div>
+                            </div>
+                            ${testData.notes ? `<p style="margin-top: 12px; color: var(--muted); font-size: 12px;"><strong>Notes:</strong> ${testData.notes}</p>` : ''}
+                        </div>
+                    </td>
+                `;
+
+                row.after(detailsRow);
+            },
+
+            // Sort load tests
+            sortLoadTests(key) {
+                if (this.sortColumn === key) {
+                    this.sortDirection = this.sortDirection === 'asc' ? 'desc' : 'asc';
+                } else {
+                    this.sortColumn = key;
+                    this.sortDirection = 'desc';
+                }
+
+                // Update header classes
+                document.querySelectorAll('#loadTestsTable th.sortable').forEach(th => {
+                    th.classList.remove('sorted-asc', 'sorted-desc');
+                    if (th.dataset.sort === key) {
+                        th.classList.add(this.sortDirection === 'asc' ? 'sorted-asc' : 'sorted-desc');
+                    }
+                });
+
+                // Re-fetch and sort (in real implementation, would sort client-side)
+                this.loadLoadTests();
+            },
+
+            // Import load test
+            async importLoadTest() {
+                try {
+                    const fileInput = document.getElementById('testFile');
+                    const scenario = document.getElementById('testScenario').value;
+                    const notes = document.getElementById('testNotes').value;
+
+                    if (!fileInput.files || !fileInput.files[0]) {
+                        alert('Please select a file to upload');
+                        return;
+                    }
+
+                    const file = fileInput.files[0];
+                    const fileContent = await file.text();
+                    const artilleryData = JSON.parse(fileContent);
+
+                    const formData = {
+                        scenario: scenario || 'Load Test',
+                        notes: notes,
+                        summary: artilleryData.aggregate || artilleryData
+                    };
+
+                    const response = await fetch('/api/performance/load-tests', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(formData)
+                    });
+
+                    const result = await response.json();
+
+                    if (result.status === 'success') {
+                        alert('Load test imported successfully!');
+                        document.getElementById('importTestModal').classList.remove('active');
+                        document.getElementById('importTestForm').reset();
+                        await this.loadLoadTests();
+                    } else {
+                        alert('Failed to import load test: ' + (result.message || 'Unknown error'));
+                    }
+                } catch (err) {
+                    console.error('Import failed:', err);
+                    alert('Failed to import load test: ' + err.message);
+                }
+            },
+
+            // Load baselines
+            async loadBaselines() {
+                try {
+                    document.getElementById('baselineLoading').classList.add('active');
+
+                    const response = await fetch('/api/performance/baselines');
+                    const result = await response.json();
+
+                    document.getElementById('baselineLoading').classList.remove('active');
+
+                    if (result.status === 'success' && result.data && result.data.length > 0) {
+                        this.renderBaselines(result.data);
+                        document.getElementById('baselinesEmpty').style.display = 'none';
+
+                        // Load baseline comparison if there's an active one
+                        const activeBaseline = result.data.find(b => b.isActive);
+                        if (activeBaseline) {
+                            await this.loadBaselineComparison();
+                        }
+                    } else {
+                        document.getElementById('baselinesEmpty').style.display = 'block';
+                    }
+                } catch (err) {
+                    console.error('Failed to load baselines:', err);
+                    document.getElementById('baselineLoading').classList.remove('active');
+                }
+            },
+
+            // Render baselines list
+            renderBaselines(baselines) {
+                const list = document.getElementById('baselineList');
+                list.innerHTML = '';
+
+                baselines.forEach(baseline => {
+                    const item = document.createElement('div');
+                    item.classList.add('baseline-item');
+                    if (baseline.isActive) {
+                        item.classList.add('active');
+                    }
+
+                    const date = new Date(baseline.createdAt).toLocaleDateString();
+
+                    item.innerHTML = `
+                        <div class="baseline-info">
+                            <div class="baseline-name">${baseline.name}</div>
+                            <div class="baseline-meta">
+                                Created: ${date} ${baseline.isActive ? '• <strong style="color: var(--accent);">ACTIVE</strong>' : ''}
+                            </div>
+                        </div>
+                        <div class="baseline-actions">
+                            ${!baseline.isActive ? `
+                                <button class="action-btn activate-baseline-btn" data-id="${baseline._id}">
+                                    <i class="fas fa-check"></i> Activate
+                                </button>
+                            ` : ''}
+                            <button class="action-btn delete-baseline-btn" data-id="${baseline._id}">
+                                <i class="fas fa-trash"></i> Delete
+                            </button>
+                        </div>
+                    `;
+
+                    list.appendChild(item);
+
+                    // Attach event listeners
+                    const activateBtn = item.querySelector('.activate-baseline-btn');
+                    if (activateBtn) {
+                        activateBtn.addEventListener('click', () => this.activateBaseline(baseline._id));
+                    }
+
+                    item.querySelector('.delete-baseline-btn').addEventListener('click', () => {
+                        if (confirm(`Delete baseline "${baseline.name}"?`)) {
+                            this.deleteBaseline(baseline._id);
+                        }
+                    });
+                });
+            },
+
+            // Load baseline comparison
+            async loadBaselineComparison() {
+                try {
+                    const response = await fetch('/api/performance/baseline-compare');
+                    const result = await response.json();
+
+                    if (result.status === 'success' && result.data) {
+                        this.renderBaselineComparison(result.data);
+                        this.checkForRegressions(result.data);
+                    }
+                } catch (err) {
+                    console.error('Failed to load baseline comparison:', err);
+                }
+            },
+
+            // Render baseline comparison
+            renderBaselineComparison(data) {
+                const card = document.getElementById('activeBaselineCard');
+                card.style.display = 'block';
+
+                document.getElementById('activeBaselineName').textContent = data.baseline.name;
+                document.getElementById('activeBaselineDate').textContent = new Date(data.baseline.createdAt).toLocaleDateString();
+
+                const grid = document.getElementById('comparisonGrid');
+                grid.innerHTML = '';
+
+                const metrics = [
+                    { key: 'avgResponseTime', label: 'Avg Response Time', unit: 'ms', lowerIsBetter: true },
+                    { key: 'p95Latency', label: 'P95 Latency', unit: 'ms', lowerIsBetter: true },
+                    { key: 'p99Latency', label: 'P99 Latency', unit: 'ms', lowerIsBetter: true },
+                    { key: 'throughput', label: 'Throughput', unit: 'rps', lowerIsBetter: false },
+                    { key: 'errorRate', label: 'Error Rate', unit: '%', lowerIsBetter: true },
+                    { key: 'successRate', label: 'Success Rate', unit: '%', lowerIsBetter: false }
+                ];
+
+                metrics.forEach(metric => {
+                    const baselineValue = data.baseline.metrics[metric.key] || 0;
+                    const currentValue = data.current[metric.key] || 0;
+                    const diff = ((currentValue - baselineValue) / baselineValue) * 100;
+
+                    const isImprovement = metric.lowerIsBetter ? diff < 0 : diff > 0;
+
+                    const item = document.createElement('div');
+                    item.classList.add('comparison-item');
+                    item.innerHTML = `
+                        <div class="metric-label">${metric.label}</div>
+                        <div class="metric-values">
+                            <span class="baseline-value">${baselineValue.toFixed(metric.unit === '%' ? 2 : 1)}${metric.unit}</span>
+                            <span style="color: var(--muted);">→</span>
+                            <span class="current-value">${currentValue.toFixed(metric.unit === '%' ? 2 : 1)}${metric.unit}</span>
+                            <span class="diff ${isImprovement ? 'positive' : 'negative'}">
+                                ${diff > 0 ? '+' : ''}${diff.toFixed(1)}%
+                            </span>
+                        </div>
+                    `;
+                    grid.appendChild(item);
+                });
+            },
+
+            // Check for regressions
+            checkForRegressions(comparison) {
+                const alertsContainer = document.getElementById('regressionAlerts');
+                alertsContainer.innerHTML = '';
+
+                const regressions = [];
+
+                // Check thresholds
+                const baselineP95 = comparison.baseline.metrics.p95Latency || 0;
+                const currentP95 = comparison.current.p95Latency || 0;
+                const p95Increase = ((currentP95 - baselineP95) / baselineP95) * 100;
+
+                if (p95Increase > 20) {
+                    regressions.push(`P95 latency increased by ${p95Increase.toFixed(1)}% (${baselineP95.toFixed(0)}ms → ${currentP95.toFixed(0)}ms)`);
+                }
+
+                const baselineErrorRate = comparison.baseline.metrics.errorRate || 0;
+                const currentErrorRate = comparison.current.errorRate || 0;
+                if (currentErrorRate > baselineErrorRate * 1.5) {
+                    regressions.push(`Error rate increased by ${((currentErrorRate / baselineErrorRate - 1) * 100).toFixed(1)}%`);
+                }
+
+                if (regressions.length > 0) {
+                    regressions.forEach(regression => {
+                        const alert = document.createElement('div');
+                        alert.classList.add('alert-banner');
+                        alert.innerHTML = `
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <div class="alert-content">
+                                <h4>Performance Regression Detected</h4>
+                                <p>${regression}</p>
+                            </div>
+                        `;
+                        alertsContainer.appendChild(alert);
+                    });
+                }
+            },
+
+            // Open create baseline modal
+            openCreateBaselineModal() {
+                // Populate load test dropdown
+                fetch('/api/performance/load-tests?limit=10')
+                    .then(res => res.json())
+                    .then(result => {
+                        if (result.status === 'success' && result.data) {
+                            const select = document.getElementById('baselineLoadTest');
+                            select.innerHTML = '<option value="">Select a load test...</option>';
+                            result.data.forEach(test => {
+                                const option = document.createElement('option');
+                                option.value = test._id;
+                                option.textContent = `${test.scenario} - ${new Date(test.timestamp).toLocaleDateString()}`;
+                                select.appendChild(option);
+                            });
+                        }
+                    });
+
+                document.getElementById('createBaselineModal').classList.add('active');
+            },
+
+            // Create baseline
+            async createBaseline() {
+                try {
+                    const name = document.getElementById('baselineName').value;
+                    const description = document.getElementById('baselineDescription').value;
+                    const source = document.getElementById('baselineSource').value;
+                    const loadTestId = document.getElementById('baselineLoadTest').value;
+
+                    const data = { name, description };
+
+                    if (source === 'loadtest' && loadTestId) {
+                        data.loadTestId = loadTestId;
+                    }
+
+                    const response = await fetch('/api/performance/baselines', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(data)
+                    });
+
+                    const result = await response.json();
+
+                    if (result.status === 'success') {
+                        alert('Baseline created successfully!');
+                        document.getElementById('createBaselineModal').classList.remove('active');
+                        document.getElementById('createBaselineForm').reset();
+                        await this.loadBaselines();
+                    } else {
+                        alert('Failed to create baseline: ' + (result.message || 'Unknown error'));
+                    }
+                } catch (err) {
+                    console.error('Create baseline failed:', err);
+                    alert('Failed to create baseline: ' + err.message);
+                }
+            },
+
+            // Set baseline from test
+            setBaselineFromTest(testId) {
+                document.getElementById('baselineSource').value = 'loadtest';
+                document.getElementById('loadTestSelectGroup').style.display = 'block';
+                document.getElementById('baselineLoadTest').value = testId;
+                this.openCreateBaselineModal();
+            },
+
+            // Activate baseline
+            async activateBaseline(id) {
+                try {
+                    const response = await fetch(`/api/performance/baselines/${id}/activate`, {
+                        method: 'POST'
+                    });
+
+                    const result = await response.json();
+
+                    if (result.status === 'success') {
+                        await this.loadBaselines();
+                    } else {
+                        alert('Failed to activate baseline: ' + (result.message || 'Unknown error'));
+                    }
+                } catch (err) {
+                    console.error('Activate baseline failed:', err);
+                    alert('Failed to activate baseline: ' + err.message);
+                }
+            },
+
+            // Delete baseline
+            async deleteBaseline(id) {
+                try {
+                    const response = await fetch(`/api/performance/baselines/${id}`, {
+                        method: 'DELETE'
+                    });
+
+                    const result = await response.json();
+
+                    if (result.status === 'success') {
+                        await this.loadBaselines();
+                    } else {
+                        alert('Failed to delete baseline: ' + (result.message || 'Unknown error'));
+                    }
+                } catch (err) {
+                    console.error('Delete baseline failed:', err);
+                    alert('Failed to delete baseline: ' + err.message);
+                }
+            },
+
+            // Populate endpoint filter
+            async populateEndpointFilter() {
+                try {
+                    const response = await fetch('/api/performance/endpoints');
+                    const result = await response.json();
+
+                    if (result.status === 'success' && result.data) {
+                        const select = document.getElementById('endpointFilter');
+                        result.data.forEach(endpoint => {
+                            const option = document.createElement('option');
+                            option.value = endpoint;
+                            option.textContent = endpoint;
+                            select.appendChild(option);
+                        });
+                    }
+                } catch (err) {
+                    console.error('Failed to load endpoints:', err);
+                }
+            },
+
+            // Auto-refresh
+            startAutoRefresh() {
+                this.stopAutoRefresh();
+                this.refreshInterval = setInterval(() => {
+                    this.loadAll();
+                    this.refreshCountdown = 60;
+                }, 60000); // Refresh every 60 seconds
+            },
+
+            stopAutoRefresh() {
+                if (this.refreshInterval) {
+                    clearInterval(this.refreshInterval);
+                    this.refreshInterval = null;
+                }
+            },
+
+            startRefreshCountdown() {
+                setInterval(() => {
+                    if (this.autoRefreshEnabled && this.refreshCountdown > 0) {
+                        this.refreshCountdown--;
+                        document.getElementById('refreshCountdown').textContent = `(${this.refreshCountdown}s)`;
+                    } else if (this.autoRefreshEnabled) {
+                        this.refreshCountdown = 60;
+                    } else {
+                        document.getElementById('refreshCountdown').textContent = '';
+                    }
+                }, 1000);
+            }
+        };
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            PerformanceDashboard.init();
+        });
+    </script>
+</body>
+</html>

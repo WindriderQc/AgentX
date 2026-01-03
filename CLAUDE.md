@@ -2,6 +2,15 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Documentation (Canonical)
+
+- AgentX docs index: `docs/INDEX.md`
+- Central roadmap + todos (AgentX + DataAPI): `docs/planning/ROADMAP.md`
+- Progression log (status/validation pointers): `docs/planning/PROGRESSION_LOG.md`
+- Stack documentation hub: `docs/SBQC-Stack-Final/`
+
+DataAPI has its own canonical docs index at `DataAPI/docs/INDEX.md` (in the workspace).
+
 ## Commands
 
 ### Development
@@ -68,6 +77,7 @@ Routes (validation) → Services (orchestration) → Models (data) → MongoDB/O
 - `selfHealingEngine.js` - Automated remediation system with 5 action strategies
 - `toolService.js` - Slash command parser for /dataapi tools
 - `dataapiClient.js` - Proxy client for DataAPI integration
+- `customModelService.js` - Manages custom model registration, Modelfile generation, and deployment with advanced tuning parameters (num_ctx, num_gpu, etc.)
 
 **Models** (`/models/*.js`)
 - Mongoose schemas with static helper methods
@@ -793,16 +803,17 @@ beforeAll(async () => {
 
 This section tracks the current implementation status and areas requiring development attention.
 
-### 📊 Codebase Metrics (as of 2026-01-03)
+### 📊 Codebase Metrics (as of 2026-01-03 - Track 5 Complete)
 
 **Implementation Status:**
-- ✅ **Core Services:** 15 services (chatService, costCalculator, ragStore, embeddings, modelRouter, toolService, alertService, selfHealingEngine, customModelService, etc.)
-- ✅ **API Routes:** 20 route files covering 64+ endpoints (includes janitor proxy, cost analytics, alerts, custom models)
-- ✅ **Data Models:** 9 Mongoose schemas (Conversation, ModelPricingConfig, PromptConfig, UserProfile, Alert, MetricsSnapshot, MetricsHourly, CustomModel, etc.)
-- ✅ **Frontend:** 11 HTML pages, 35+ JavaScript modules (13 components including BaseOnboardingWizard)
-- ✅ **Test Coverage:** 18 test files (~3,100 lines) including Phase 3 E2E tests + cost calculator tests
-- ✅ **Documentation:** 98+ markdown files (~45,600+ lines in /docs) - includes complete V5 cost tracking documentation
-- ✅ **n8n Workflows:** 15 workflow JSONs (N0.x test, N1.x Janitor, N2.x Curator, N3.x Auditor, N4.x Guardian, N5.x Analyst, N6.x Architect)
+- ✅ **Core Services:** 17 services (chatService, costCalculator, ragStore, embeddings, modelRouter, toolService, alertService, selfHealingEngine, customModelService, artilleryParser, performanceTracker, etc.)
+- ✅ **API Routes:** 21 route files covering 72+ endpoints (includes janitor proxy, cost analytics, alerts, custom models, performance monitoring)
+- ✅ **Data Models:** 12 Mongoose schemas (Conversation, ModelPricingConfig, PromptConfig, UserProfile, Alert, MetricsSnapshot, MetricsHourly, CustomModel, PerformanceLoadTest, PerformanceBaseline, PerformanceSnapshot, etc.)
+- ✅ **Frontend:** 12 HTML pages, 35+ JavaScript modules (13 components including BaseOnboardingWizard)
+- ✅ **Test Coverage:** 19 test files (~3,600 lines) including Phase 3 E2E tests + cost calculator tests + artillery parser tests (37 tests)
+- ✅ **Documentation:** 99+ markdown files (~46,700+ lines in /docs) - includes complete V5 cost tracking + performance monitoring documentation
+- ✅ **n8n Workflows:** 16 workflow JSONs (N0.x test, N1.x Janitor, N2.x Curator, N3.x Auditor + N3.3 Performance Monitor, N4.x Guardian, N5.x Analyst, N6.x Architect)
+- ✅ **Automation Scripts:** 6 bash scripts (backup, restore, deployment, performance testing, baseline management)
 
 **Architecture Verified:**
 - Service-Oriented Architecture (Routes → Services → Models → DB/Ollama)
@@ -840,6 +851,30 @@ This section tracks the current implementation status and areas requiring develo
 - Batch testing across model × prompt combinations
 - Async execution with progress tracking
 - Results storage in MongoDB
+- Quality scoring with LLM judges
+- Composite scores (speed + quality)
+
+**Performance Monitoring (V5 - Track 5):**
+- Real-time request tracking middleware (`/src/middleware/performanceTracker.js`)
+- Artillery load test integration with auto-import
+- Performance baselines with regression detection
+- 8 API endpoints (`/routes/performance.js` - 641 lines):
+  - Dashboard overview, load tests, latency trends, throughput, percentiles, baselines
+- Full frontend dashboard (`/public/performance.html` - 2,480 lines):
+  - System health overview (6 stat cards)
+  - Latency analysis charts (p50/p95/p99 trends, percentile distribution)
+  - Throughput trends (dual-axis: RPS + total requests)
+  - Load test results table (sortable, expandable, import functionality)
+  - Baseline comparison with regression alerts
+- MongoDB schemas: PerformanceLoadTest, PerformanceBaseline, PerformanceSnapshot
+- Artillery JSON parser service (`/src/services/artilleryParser.js` - 313 lines)
+- Automation scripts:
+  - `import-artillery-results.sh` - Run load test → auto-import
+  - `create-performance-baseline.sh` - Capture current metrics as baseline
+  - `check-performance-regression.sh` - CI/CD regression check (exit codes)
+- n8n workflow N3.3-Performance-Monitor (automated 6-hour testing)
+- Hourly performance snapshots with percentile tracking
+- CI/CD integration ready (regression check script)
 
 **Deployment:**
 - PM2 ecosystem configuration (cluster mode)
@@ -962,10 +997,21 @@ This section tracks the current implementation status and areas requiring develo
   - Approval workflow for critical actions (service restart)
   - Integration tests created (`tests/services/selfHealingEngine.remediation.test.js` - 13 test cases)
   - Complete documentation (`/docs/planning/TRACK_4_COMPLETION_SUMMARY.md` - 450 lines)
-- **Track 5: Advanced Testing & CI/CD** 🟡 **IN PROGRESS**
+- **Track 5: Advanced Testing & CI/CD** ✅ **COMPLETE - PRODUCTION READY**
   - CI/CD pipeline documented and operational (GitHub Actions)
   - Workflow validation tests completed (6/6 workflows)
-  - Load testing infrastructure exists but needs expansion
+  - **Performance Benchmarking Dashboard fully implemented:**
+    - 3 MongoDB schemas: PerformanceLoadTest, PerformanceBaseline, PerformanceSnapshot
+    - 8 API endpoints in `/routes/performance.js` (641 lines)
+    - Artillery JSON parser service (`/src/services/artilleryParser.js` - 313 lines)
+    - Full frontend dashboard (`/public/performance.html` - 2,480 lines)
+    - 5 Chart.js visualizations (latency trends, percentiles, throughput, load tests, baselines)
+    - Request tracking middleware (`/src/middleware/performanceTracker.js` - 297 lines)
+    - 3 automation scripts: import-artillery-results.sh, create-performance-baseline.sh, check-performance-regression.sh
+    - n8n workflow N3.3-Performance-Monitor (automated 6-hour testing)
+    - Regression detection with automatic baseline comparison
+    - 37 passing tests for Artillery parser
+    - Comprehensive documentation (`/docs/features/PERFORMANCE_MONITORING.md` - 1,098 lines)
 - **Track 6: Backup & Disaster Recovery** ✅ **COMPLETE**
   - Backup scripts implemented in DataAPI (`/home/yb/codes/DataAPI/scripts/`)
     - `backup-mongodb.sh` - MongoDB dumps with compression

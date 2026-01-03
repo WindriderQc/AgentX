@@ -108,6 +108,10 @@ app.use(attachUser);
 // Request logging middleware
 app.use(requestLogger);
 
+// Performance tracking middleware (must come early to track all requests)
+const performanceTracker = require('./middleware/performanceTracker');
+app.use(performanceTracker.trackRequest);
+
 // ============================================
 // API ROUTES (must come BEFORE static files)
 // ============================================
@@ -183,6 +187,10 @@ app.use('/api/backup', backupRoutes);
 // Custom Model Management routes (Track 3)
 const customModelsRoutes = require('../routes/custom-models');
 app.use('/api/custom-models', customModelsRoutes);
+
+// Performance routes
+const performanceRoutes = require('../routes/performance');
+app.use('/api/performance', performanceRoutes);
 
 // Dashboard routes
 const dashboardRoutes = require('../routes/dashboard');

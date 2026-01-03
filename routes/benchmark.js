@@ -95,6 +95,29 @@ async function seedPrompts() {
     }
 }
 
+// Cleanup stale batches on startup
+async function cleanupStaleBatches() {
+    try {
+        // Wait a bit for DB connection
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        if (mongoose.connection.readyState !== 1) return;
+
+        const batchCollection = getBatchCollection();
+        const result = await batchCollection.updateMany(
+            { status: { $in: ['running', 'judging'] } },
+            { $set: { status: 'interrupted', completed_at: new Date() } }
+        );
+
+        if (result.modifiedCount > 0) {
+            logger.info('Cleaned up stale batches', { count: result.modifiedCount });
+        }
+    } catch (err) {
+        logger.error('Failed to cleanup stale batches', { error: err.message });
+    }
+}
+// Run cleanup
+cleanupStaleBatches();
+
 /**
  * GET /api/benchmark/config
  * Get benchmark configuration including judge settings
@@ -105,7 +128,7 @@ router.get('/config', (req, res) => {
         data: {
             judge_config: {
                 ...JUDGE_CONFIG,
-                judge_same_host: false
+                judge_same_host: true
             },
             scoring_configs: SCORING_CONFIGS
         }
@@ -299,7 +322,7 @@ router.get('/dashboard', async (req, res) => {
                 { $match: { success: true } },
                 {
                     $group: {
-                        _id: '$model',
+                        _id: { model: '$model', host: '$host' },
                         avg_latency: { $avg: '$latency' },
                         avg_tokens_per_sec: { $avg: { $toDouble: '$tokens_per_sec' } },
                         avg_quality: {
@@ -358,7 +381,8 @@ router.get('/dashboard', async (req, res) => {
             const hasComposite = m.avg_composite != null && !isNaN(m.avg_composite);
 
             return {
-                model: m._id,
+                model: m._id.model,
+                host: m._id.host,
                 avg_latency: Math.round(m.avg_latency || 0),
                 avg_tokens_per_sec: m.avg_tokens_per_sec ? m.avg_tokens_per_sec.toFixed(2) : '0',
                 avg_quality: hasQuality ? m.avg_quality.toFixed(1) : null,
@@ -558,14 +582,15 @@ router.post('/batch', async (req, res) => {
         const modelsByHost = {};
         for (const model of models) {
             let targetHost = host;
-            if (MODEL_ROUTING[model]) {
-                targetHost = HOSTS[MODEL_ROUTING[model]];
-            }
+            // Override disabled for benchmark tool - respect user selection
+            // if (MODEL_ROUTING[model]) {
+            //     targetHost = HOSTS[MODEL_ROUTING[model]];
+            // }
             if (!modelsByHost[targetHost]) modelsByHost[targetHost] = [];
             modelsByHost[targetHost].push(model);
         }
 
-        const judgeSameHost = !!(judge_config && judge_config.judge_same_host);
+        const judgeSameHost = (judge_config && judge_config.judge_same_host !== undefined) ? !!judge_config.judge_same_host : false;
 
         const execHosts = Object.entries(modelsByHost).map(([exec_host, hostModels]) => {
             let judge_host = exec_host;
@@ -660,7 +685,8 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
     const resultsCollection = getCollection();
     const enableQualityScoring = options.quality_scoring !== false;
     const judgeConfig = options.judge_config || {};
-    const judgeSameHost = !!judgeConfig.judge_same_host;
+    // Default to offloading (false) if not specified, as per user preference
+    const judgeSameHost = judgeConfig.judge_same_host !== undefined ? !!judgeConfig.judge_same_host : false;
 
     // Prevent duplicate execution for the same batchId (e.g., accidental double-start or multi-process invocation)
     const lock = await batchCollection.updateOne(
@@ -673,7 +699,8 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
     }
 
     // Per-batch judge queue (keeps judging isolated from other batches)
-    const judgeQueue = new ConcurrencyQueue(2);
+    const judgeConcurrency = judgeConfig.concurrency || 2;
+    const judgeQueue = new ConcurrencyQueue(judgeConcurrency);
 
     // Sanity-sync total_tests to the actual loop plan.
     // In rare cases (e.g., duplicated prompts/models or legacy batches), completed can exceed total_tests;
@@ -694,9 +721,10 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
         let targetHost = defaultHost;
 
         // Check if model has a specific host assignment
-        if (MODEL_ROUTING[model]) {
-            targetHost = HOSTS[MODEL_ROUTING[model]];
-        }
+        // Override disabled for benchmark tool - respect user selection
+        // if (MODEL_ROUTING[model]) {
+        //     targetHost = HOSTS[MODEL_ROUTING[model]];
+        // }
 
         if (!modelsByHost[targetHost]) {
             modelsByHost[targetHost] = [];
@@ -813,7 +841,8 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                                             judge_prompt: scores.judge_prompt,
                                             judge_model: scores.judge_model,
                                             scoring_method: scores.scoring_method,
-                                            scoring_type: prompt.scoring_type,
+                                            scoring_type: scores.scoring_type || prompt.scoring_type || 'reasoning',
+                                            scoring_time_ms: scores.scoring_time_ms,
                                             quick_pattern: scores.quick_pattern,
                                             composite_score: composite.composite_score,
                                             normalized_scores: composite.normalized
@@ -911,6 +940,33 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
 
 
 /**
+ * POST /api/benchmark/batch/:id/stop
+ * Stop a running batch
+ */
+router.post('/batch/:id/stop', async (req, res) => {
+    try {
+        const batchCollection = getBatchCollection();
+        const result = await batchCollection.updateOne(
+            { _id: new ObjectId(req.params.id), status: { $in: ['running', 'judging'] } },
+            { $set: { status: 'stopped', completed_at: new Date() } }
+        );
+
+        if (result.matchedCount === 0) {
+            return res.status(404).json({
+                status: 'error',
+                error: 'Batch not found or not running'
+            });
+        }
+
+        logger.info('Batch stopped by user', { batchId: req.params.id });
+        res.json({ status: 'success', message: 'Batch stopped' });
+    } catch (err) {
+        logger.error('Failed to stop batch', { error: err.message });
+        res.status(500).json({ status: 'error', error: err.message });
+    }
+});
+
+/**
  * GET /api/benchmark/batch/:id
  * Get batch progress and results
  */
@@ -952,6 +1008,21 @@ router.get('/batch/:id', async (req, res) => {
             (batch && batch.plan && batch.plan.judge_same_host)
         );
 
+        // Calculate judge stats
+        const judgedResults = results.filter(r => r.quality_score !== null && r.scoring_time_ms);
+        const avgJudgeTime = judgedResults.length > 0
+            ? judgedResults.reduce((acc, r) => acc + (r.scoring_time_ms || 0), 0) / judgedResults.length
+            : 0;
+        
+        const judgeLag = Math.max(0, batch.completed - (batch.judge_completed || 0));
+        const judgeStats = {
+            avg_time_ms: Math.round(avgJudgeTime),
+            lag: judgeLag,
+            completed: batch.judge_completed || 0,
+            total: batch.judge_total || 0,
+            concurrency: 2 // Hardcoded in executeBatch
+        };
+
         const inferJudgeHost = (execHost) => {
             if (!execHost) return null;
             if (judgeSameHost) return execHost;
@@ -990,6 +1061,8 @@ router.get('/batch/:id', async (req, res) => {
                 judge_prompt: r.judge_prompt,
                 judge_model: inferredJudgeModel,
                 scoring_method: inferredScoringMethod,
+                scoring_type: r.scoring_type,
+                scoring_time_ms: r.scoring_time_ms,
                 quick_pattern: r.quick_pattern,
                 composite_score: r.composite_score,
                 normalized_scores: r.normalized_scores,
@@ -1009,6 +1082,7 @@ router.get('/batch/:id', async (req, res) => {
                 results: formattedResults,
                 progress,
                 judge_progress,
+                judge_stats: judgeStats,
                 success_rate: batch.completed > 0
                     ? (((batch.completed - batch.failed) / batch.completed) * 100).toFixed(1) + '%'
                     : '0%'

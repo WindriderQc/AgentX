@@ -96,11 +96,19 @@ class CustomModelService {
         throw new Error(`Invalid Modelfile: ${validation.error}`);
       }
 
+      // Prepare Modelfile with parameters
+      let finalModelfile = model.modelfileContent;
+      if (model.parameters) {
+        if (model.parameters.num_ctx) finalModelfile += `\nPARAMETER num_ctx ${model.parameters.num_ctx}`;
+        if (model.parameters.num_gpu) finalModelfile += `\nPARAMETER num_gpu ${model.parameters.num_gpu}`;
+        if (model.parameters.num_thread) finalModelfile += `\nPARAMETER num_thread ${model.parameters.num_thread}`;
+      }
+
       // Deploy to Ollama using API
       const deployResult = await this._deployToOllamaAPI(
         targetHost,
         model.modelId,
-        model.modelfileContent
+        finalModelfile
       );
 
       // Update model status

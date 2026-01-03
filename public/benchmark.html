@@ -854,6 +854,8 @@
                     <div class="progress-text" id="progressText">0%</div>
                 </div>
 
+                <div id="judgeStatsContainer" style="display: none; margin-top: 8px; font-size: 0.85em; background: rgba(0,0,0,0.2); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);"></div>
+
                 <div id="batchStatus" class="status"></div>
 
                 <!-- Batch Results Table -->
@@ -872,6 +874,17 @@
                             </thead>
                             <tbody id="batchResultsBody"></tbody>
                         </table>
+                    </div>
+                </div>
+
+                <!-- Batch History -->
+                <div class="batch-history-section" style="margin-top: 25px; border-top: 1px solid var(--panel-border); padding-top: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <h3 style="margin: 0; font-size: 1.1em; color: var(--text);"><i class="fas fa-history text-muted me-2"></i> Recent Batches</h3>
+                        <button id="refreshHistoryBtn" class="btn-icon" title="Refresh History"><i class="fas fa-sync-alt"></i></button>
+                    </div>
+                    <div id="batchHistoryList" style="max-height: 250px; overflow-y: auto; border: 1px solid var(--panel-border); border-radius: 6px; background: rgba(0,0,0,0.1);">
+                        <div style="text-align: center; color: var(--muted); padding: 20px;">Loading history...</div>
                     </div>
                 </div>
             </div>
@@ -1008,6 +1021,12 @@
                 <div class="form-group">
                     <label for="judgeTimeout">Judge Timeout (ms)</label>
                     <input type="number" id="judgeTimeout" value="30000" step="1000">
+                </div>
+
+                <div class="form-group">
+                    <label for="judgeConcurrency">Judge Concurrency: <span id="judgeConcurrencyVal">2</span></label>
+                    <input type="range" id="judgeConcurrency" min="1" max="10" step="1" value="2" oninput="document.getElementById('judgeConcurrencyVal').textContent = this.value">
+                    <small class="form-text text-muted">Number of parallel judge requests. Increase for powerful judge hosts.</small>
                 </div>
 
                 <div class="form-group">
@@ -1484,6 +1503,7 @@
                         model: document.getElementById('judgeModel').value,
                         temperature: parseFloat(document.getElementById('judgeTemp').value),
                         timeout: parseInt(document.getElementById('judgeTimeout').value),
+                        concurrency: parseInt(document.getElementById('judgeConcurrency').value) || 2,
                         judge_same_host: !!document.getElementById('judgeSameHost')?.checked,
                         prompts: {
                             reasoning: document.getElementById('promptReasoning').value,
@@ -1499,7 +1519,11 @@
         }
 
         function formatHostLabel(url) {
-            return url || 'Unknown';
+            if (!url) return 'Unknown';
+            if (url.includes('192.168.2.99')) return 'UGFrank';
+            if (url.includes('192.168.2.12')) return 'UGBrutal';
+            if (url.includes('localhost')) return 'Local';
+            return url.replace('http://', '').replace(':11434', '');
         }
 
         function inferOppositeHostUrl(execHostUrl) {
@@ -1512,36 +1536,84 @@
 
         function renderBatchPlan(plan, fallbackHostUrl, qualityScoringEnabled) {
             if (!plan) {
-                const judgeModel = currentJudgeConfig.model ? `Judge model: ${currentJudgeConfig.model}` : 'Judge model: (server default)';
-                const exec = fallbackHostUrl ? `Exec host: ${formatHostLabel(fallbackHostUrl)}` : 'Exec host: (unknown)';
+                const judgeModel = currentJudgeConfig.model || '(server default)';
+                const exec = fallbackHostUrl ? formatHostLabel(fallbackHostUrl) : '(unknown)';
                 const judgeHostUrl = qualityScoringEnabled
                     ? (currentJudgeConfig.judge_same_host ? fallbackHostUrl : inferOppositeHostUrl(fallbackHostUrl))
                     : null;
                 const judgeHost = qualityScoringEnabled ? formatHostLabel(judgeHostUrl) : 'Disabled';
-                return `${exec} • ${judgeModel} • Judge host: ${judgeHost}`;
+                
+                return `
+                    <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+                        <span class="badge bg-light text-dark border">Exec: ${exec}</span>
+                        <span class="text-muted">•</span>
+                        <span class="badge bg-light text-dark border">Judge: ${judgeModel}</span>
+                        <span class="text-muted">•</span>
+                        <span class="badge bg-light text-dark border">Judge Host: ${judgeHost}</span>
+                    </div>
+                `;
             }
 
             const judgeModel = plan.judge_model || currentJudgeConfig.model || '(server default)';
-            const lines = [];
-            lines.push(`Judge model: ${judgeModel}${qualityScoringEnabled ? '' : ' (disabled)'}`);
+            let html = '';
 
+            // 1. Judge Info Header
+            html += `<div class="d-flex align-items-center mb-3 p-2 bg-light rounded border">`;
+            html += `<i class="fas fa-gavel me-2 text-primary"></i>`;
+            html += `<strong class="me-2">Judge Model:</strong>`;
+            html += `<span class="badge bg-primary me-2">${judgeModel}</span>`;
+            if (!qualityScoringEnabled) {
+                html += `<span class="badge bg-danger">Disabled</span>`;
+            }
+            html += `</div>`;
+
+            // 2. Execution Nodes
             if (Array.isArray(plan.exec_hosts) && plan.exec_hosts.length > 0) {
+                html += `<div class="card mb-3 shadow-0 border">`;
+                html += `<div class="card-header py-2 bg-light"><strong>Execution Nodes</strong></div>`;
+                html += `<ul class="list-group list-group-flush">`;
+                
                 for (const h of plan.exec_hosts) {
                     const execLabel = formatHostLabel(h.exec_host);
                     const judgeLabel = qualityScoringEnabled ? formatHostLabel(h.judge_host) : 'Disabled';
                     const modelCount = Array.isArray(h.models) ? h.models.length : 0;
-                    lines.push(`${execLabel} • Judge host: ${judgeLabel} • ${modelCount} model(s), ${h.tests} tests`);
+                    
+                    html += `<li class="list-group-item p-2">`;
+                    html += `<div class="row align-items-center g-2">`;
+                    html += `<div class="col-md-5"><small class="text-muted d-block">Execution Host</small><span class="text-break font-monospace" style="font-size: 0.9em;">${execLabel}</span></div>`;
+                    html += `<div class="col-md-5"><small class="text-muted d-block">Judge Host</small><span class="text-break font-monospace" style="font-size: 0.9em;">${judgeLabel}</span></div>`;
+                    html += `<div class="col-md-2 text-end">`;
+                    html += `<span class="badge bg-secondary mb-1 d-inline-block" title="Models">${modelCount} models</span><br>`;
+                    html += `<span class="badge bg-info text-dark" title="Tests">${h.tests} tests</span>`;
+                    html += `</div>`;
+                    html += `</div>`;
+                    html += `</li>`;
                 }
+                html += `</ul></div>`;
             }
 
+            // 3. Workload Breakdown
             if (Array.isArray(plan.categories) && plan.categories.length > 0) {
-                const catLines = plan.categories.map(c => `${c.category}: ${c.tests} tests (${c.prompt_count} prompt(s) × ${plan.total_models} model(s))`);
-                lines.push('');
-                lines.push('Counts by category:');
-                lines.push(...catLines);
+                html += `<div class="card shadow-0 border">`;
+                html += `<div class="card-header py-2 bg-light"><strong>Workload Breakdown</strong></div>`;
+                html += `<div class="table-responsive">`;
+                html += `<table class="table table-sm table-striped mb-0 align-middle" style="font-size: 0.9em;">`;
+                html += `<thead class="table-light"><tr><th>Category</th><th class="text-center">Prompts</th><th class="text-center">Models</th><th class="text-end">Total Tests</th></tr></thead>`;
+                html += `<tbody>`;
+                
+                for (const c of plan.categories) {
+                    html += `<tr>`;
+                    html += `<td class="fw-bold text-capitalize">${c.category}</td>`;
+                    html += `<td class="text-center">${c.prompt_count}</td>`;
+                    html += `<td class="text-center">${plan.total_models}</td>`;
+                    html += `<td class="text-end fw-bold">${c.tests}</td>`;
+                    html += `</tr>`;
+                }
+                
+                html += `</tbody></table></div></div>`;
             }
 
-            return lines.join('<br>');
+            return html;
         }
 
         async function loadJudgeConfig() {
@@ -1574,6 +1646,10 @@
                         }
                         if (document.getElementById('judgeTimeout')) {
                             document.getElementById('judgeTimeout').value = config.timeout;
+                        }
+                        if (document.getElementById('judgeConcurrency')) {
+                            document.getElementById('judgeConcurrency').value = config.concurrency || 2;
+                            document.getElementById('judgeConcurrencyVal').textContent = config.concurrency || 2;
                         }
 
                         if (document.getElementById('judgeSameHost')) {
@@ -1747,8 +1823,15 @@
             if (batchInfo) batchInfo.innerHTML = '';
         }
 
-        document.getElementById('stopBatchBtn').addEventListener('click', () => {
+        document.getElementById('stopBatchBtn').addEventListener('click', async () => {
             if (confirm('Stop current batch? This will clear the local session.')) {
+                if (currentBatchId) {
+                    try {
+                        await fetch(`${BENCHMARK_API}/batch/${currentBatchId}/stop`, { method: 'POST' });
+                    } catch (e) {
+                        console.error('Failed to stop batch on server', e);
+                    }
+                }
                 resetBatchUI();
             }
         });
@@ -1950,7 +2033,7 @@
             } else if (method === 'quick_scored') {
                 steps.push({ label: 'Queued for judging', state: 'done' });
                 steps.push({ label: 'Quick scoring complete', state: 'done' });
-            } else if (method === 'llm_judged') {
+            } else if (method === 'llm_judged' || method === 'llm_judge') {
                 steps.push({ label: 'Queued for judging', state: 'done' });
                 steps.push({ label: 'LLM judging complete', state: 'done' });
             } else if (method === 'llm_failed') {
@@ -1970,9 +2053,107 @@
             const updatedAt = result.timestamp ? new Date(result.timestamp).toLocaleString() : 'unknown';
             const judgeHost = result.judge_host ? formatHostLabel(result.judge_host) : 'N/A';
             const judgeModelName = result.judge_model || currentJudgeConfig.model || 'N/A';
-            document.getElementById('detailJudgeMeta').innerHTML = `Updated: ${updatedAt} • Judge host: ${judgeHost} • Judge model: ${judgeModelName}`;
+            const judgeDuration = result.scoring_time_ms ? `${(result.scoring_time_ms / 1000).toFixed(2)}s` : 'N/A';
+            const scoringType = result.scoring_type ? result.scoring_type.charAt(0).toUpperCase() + result.scoring_type.slice(1) : 'Standard';
+
+            document.getElementById('detailJudgeMeta').innerHTML = `
+                <div class="d-flex flex-wrap gap-3 align-items-center p-2 bg-dark rounded border border-secondary">
+                    <div title="Last Updated"><i class="far fa-clock me-1 text-muted"></i> ${updatedAt}</div>
+                    <div class="vr text-secondary"></div>
+                    <div title="Judge Host"><i class="fas fa-server me-1 text-muted"></i> ${judgeHost}</div>
+                    <div class="vr text-secondary"></div>
+                    <div title="Judge Model"><i class="fas fa-robot me-1 text-muted"></i> ${judgeModelName}</div>
+                    <div class="vr text-secondary"></div>
+                    <div title="Judge Duration"><i class="fas fa-stopwatch me-1 text-muted"></i> ${judgeDuration}</div>
+                    <div class="vr text-secondary"></div>
+                    <div title="Scoring Type"><i class="fas fa-tasks me-1 text-muted"></i> ${scoringType}</div>
+                </div>
+            `;
 
             document.getElementById('judgeDetailsModal').style.display = 'block';
+        }
+
+        async function loadBatchHistory() {
+            const container = document.getElementById('batchHistoryList');
+            if (!container) return;
+            
+            try {
+                const res = await fetch(`${BENCHMARK_API}/batches`);
+                const json = await res.json();
+                
+                if (json.status === 'success' && json.data.batches) {
+                    if (json.data.batches.length === 0) {
+                        container.innerHTML = '<div style="text-align: center; color: var(--muted); padding: 15px;">No previous batches found</div>';
+                        return;
+                    }
+                    
+                    container.innerHTML = json.data.batches.map(b => {
+                        const date = new Date(b.created_at).toLocaleString();
+                        const statusColor = b.status === 'completed' ? '#2ecc71' : (b.status === 'failed' ? '#e74c3c' : '#f1c40f');
+                        const qualityBadge = b.quality_scoring ? '<span class="badge bg-primary" style="font-size: 0.7em; padding: 2px 6px; margin-left: 6px;">Quality</span>' : '';
+                        const isCurrent = currentBatchId === b._id;
+                        const activeClass = isCurrent ? 'background: rgba(255,255,255,0.1); border-left: 3px solid var(--accent);' : '';
+                        
+                        return `
+                            <div class="history-item" onclick="loadBatchDetails('${b._id}')" style="padding: 12px; border-bottom: 1px solid var(--panel-border); cursor: pointer; transition: background 0.2s; ${activeClass}">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <div style="font-weight: 600; color: var(--text); font-size: 0.95em;">${b.run_name || 'Untitled Batch'}</div>
+                                    <div style="font-size: 0.8em; color: var(--muted);">${date}</div>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px;">
+                                    <div style="font-size: 0.85em; color: var(--muted);">
+                                        ${b.models ? b.models.length : 0} models • ${b.total_tests || 0} tests
+                                        ${qualityBadge}
+                                    </div>
+                                    <div style="font-size: 0.85em; color: ${statusColor}; text-transform: capitalize; font-weight: 500;">
+                                        ${b.status}
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                    
+                    // Add hover effect via JS
+                    document.querySelectorAll('.history-item').forEach(item => {
+                        if (!item.style.background.includes('rgba')) {
+                            item.onmouseover = () => item.style.background = 'rgba(255,255,255,0.05)';
+                            item.onmouseout = () => item.style.background = 'transparent';
+                        }
+                    });
+                    
+                }
+            } catch (err) {
+                console.error('Failed to load history:', err);
+                container.innerHTML = '<div style="text-align: center; color: #e74c3c; padding: 15px;">Failed to load history</div>';
+            }
+        }
+
+        async function loadBatchDetails(batchId) {
+            if (currentBatchId === batchId) return; // Already viewing
+            
+            // Stop any active polling for previous batch
+            if (batchPollInterval) {
+                clearInterval(batchPollInterval);
+                batchPollInterval = null;
+            }
+            
+            currentBatchId = batchId;
+            localStorage.setItem('currentBatchId', batchId);
+            
+            // Reset UI elements
+            document.getElementById('batchResultsContainer').style.display = 'none';
+            document.getElementById('batchResultsBody').innerHTML = '';
+            document.getElementById('batchStatus').style.display = 'none';
+            document.getElementById('batchInfo').innerHTML = '';
+            
+            // Update history selection visually
+            loadBatchHistory(); 
+            
+            // Trigger poll immediately to load data
+            await pollBatchProgress();
+            
+            // Scroll to top of batch section
+            document.querySelector('.batch-section').scrollIntoView({ behavior: 'smooth' });
         }
 
         async function pollBatchProgress() {
@@ -2014,10 +2195,64 @@
                 const judgeText = judgeTotal > 0 ? ` • Judge: ${judgeProgress}% (${judgeCompleted}/${judgeTotal})` : '';
                 document.getElementById('progressText').textContent = genText + judgeText;
 
+                // Update Judge Health Stats
+                const judgeStatsContainer = document.getElementById('judgeStatsContainer');
+                if (batch.judge_stats && judgeTotal > 0) {
+                    const stats = batch.judge_stats;
+                    const lag = stats.lag || 0;
+                    const avgTime = stats.avg_time_ms ? (stats.avg_time_ms / 1000).toFixed(2) + 's' : '-';
+                    
+                    // Determine health status based on lag
+                    // Lag > 5 is warning, > 10 is critical (assuming concurrency ~2)
+                    let healthColor = '#2ecc71'; // Green
+                    let healthIcon = '<i class="fas fa-check-circle"></i>';
+                    let healthText = 'Healthy';
+                    
+                    if (lag > 10) {
+                        healthColor = '#e74c3c'; // Red
+                        healthIcon = '<i class="fas fa-exclamation-triangle"></i>';
+                        healthText = 'Overloaded';
+                    } else if (lag > 4) {
+                        healthColor = '#f1c40f'; // Yellow
+                        healthIcon = '<i class="fas fa-clock"></i>';
+                        healthText = 'Busy';
+                    }
+
+                    judgeStatsContainer.style.display = 'flex';
+                    judgeStatsContainer.style.justifyContent = 'space-between';
+                    judgeStatsContainer.style.alignItems = 'center';
+                    judgeStatsContainer.innerHTML = `
+                        <div style="display: flex; gap: 15px; align-items: center;">
+                            <div style="color: ${healthColor}; font-weight: 600;">
+                                ${healthIcon} Judge Status: ${healthText}
+                            </div>
+                            <div class="vr" style="background: rgba(255,255,255,0.1); width: 1px; height: 14px;"></div>
+                            <div title="Items waiting to be judged">
+                                <span style="color: var(--muted);">Queue Lag:</span> 
+                                <span style="font-weight: 600; color: ${lag > 5 ? '#f1c40f' : 'var(--text)'};">${lag}</span>
+                            </div>
+                            <div class="vr" style="background: rgba(255,255,255,0.1); width: 1px; height: 14px;"></div>
+                            <div title="Average time per judgment">
+                                <span style="color: var(--muted);">Avg Time:</span> 
+                                <span style="font-weight: 600;">${avgTime}</span>
+                            </div>
+                        </div>
+                        <div style="font-size: 0.9em; color: var(--muted);">
+                            Concurrency: ${stats.concurrency || 2}
+                        </div>
+                    `;
+                } else {
+                    judgeStatsContainer.style.display = 'none';
+                }
+
                 // Show plan info during run/resume
                 const batchInfo = document.getElementById('batchInfo');
-                if (batchInfo && batchInfo.innerHTML.trim() === '' && (batch.plan || batch.judge_config || batch.host)) {
-                    batchInfo.innerHTML = renderBatchPlan(batch.plan, batch.host, batch.quality_scoring !== false);
+                // Always update if plan is available, to ensure persistence on refresh
+                if (batchInfo && (batch.plan || batch.judge_config || batch.host)) {
+                    // Only update if content is missing or we have a better plan object now
+                    if (batchInfo.innerHTML.trim() === '' || batch.plan) {
+                         batchInfo.innerHTML = renderBatchPlan(batch.plan, batch.host, batch.quality_scoring !== false);
+                    }
                 }
 
                 // Update status text if resuming
@@ -2076,8 +2311,26 @@
                     localStorage.removeItem('currentBatchId');
 
                     const status = document.getElementById('batchStatus');
-                    status.className = 'status success';
-                    status.textContent = `✓ Batch completed! ${batch.completed} tests run (${batch.success_rate} success)`;
+                    
+                    // Check if judging is actually complete
+                    const judgeTotal = Number(batch.judge_total) || 0;
+                    const judgeCompleted = Number(batch.judge_completed) || 0;
+                    
+                    if (judgeTotal > 0 && judgeCompleted < judgeTotal) {
+                        status.className = 'status warning';
+                        status.style.background = 'rgba(241, 196, 15, 0.1)';
+                        status.style.borderColor = 'rgba(241, 196, 15, 0.3)';
+                        status.style.color = '#f1c40f';
+                        status.innerHTML = `
+                            <i class="fas fa-exclamation-triangle"></i> Batch execution finished, but judging is incomplete (${judgeCompleted}/${judgeTotal}).<br>
+                            <small>The server process may have stopped or judging failed silently. Check logs.</small>
+                        `;
+                    } else {
+                        status.className = 'status success';
+                        status.textContent = `✓ Batch completed! ${batch.completed} tests run (${batch.success_rate} success)`;
+                    }
+                    
+                    status.style.display = 'block';
                     status.style.display = 'block';
 
                     const btn = document.getElementById('runBatchBtn');
@@ -2219,21 +2472,27 @@
                     document.getElementById('fastestModel').textContent = fastest.model;
 
                     // Update charts
-                    latencyChart.data.labels = data.model_stats.map(m => m.model);
+                    const chartLabels = data.model_stats.map(m => {
+                        const hostLabel = m.host ? formatHostLabel(m.host) : '';
+                        // Only append host if it's not localhost or if we have multiple hosts
+                        return hostLabel && hostLabel !== 'localhost' ? `${m.model} (${hostLabel})` : m.model;
+                    });
+
+                    latencyChart.data.labels = chartLabels;
                     latencyChart.data.datasets[0].data = data.model_stats.map(m => m.avg_latency);
                     latencyChart.update();
 
-                    tokensChart.data.labels = data.model_stats.map(m => m.model);
+                    tokensChart.data.labels = chartLabels;
                     tokensChart.data.datasets[0].data = data.model_stats.map(m => parseFloat(m.avg_tokens_per_sec));
                     tokensChart.update();
 
                     // Update quality chart
-                    qualityChart.data.labels = data.model_stats.map(m => m.model);
+                    qualityChart.data.labels = chartLabels;
                     qualityChart.data.datasets[0].data = data.model_stats.map(m => parseFloat(m.avg_quality) || 0);
                     qualityChart.update();
 
                     // Update composite chart
-                    compositeChart.data.labels = data.model_stats.map(m => m.model);
+                    compositeChart.data.labels = chartLabels;
                     compositeChart.data.datasets[0].data = data.model_stats.map(m => parseFloat(m.avg_composite) || 0);
                     compositeChart.update();
 
@@ -2276,10 +2535,14 @@
                         const rowClass = isBestOverall ? 'best-overall' : '';
 
                         const crown = isBestOverall ? '👑 ' : '';
+                        const hostLabel = model.host ? formatHostLabel(model.host) : 'Unknown';
                         return `
                             <tr class="${rowClass}">
                                 <td>${badge}</td>
-                                <td><strong>${crown}${model.model}</strong></td>
+                                <td>
+                                    <strong>${crown}${model.model}</strong>
+                                    <div style="font-size: 0.8em; color: var(--muted); margin-top: 2px; opacity: 0.7;">${hostLabel}</div>
+                                </td>
                                 <td>${model.avg_latency} ms</td>
                                 <td>${model.avg_tokens_per_sec}</td>
                                 <td class="${qualityClass}">${qualityDisplay}</td>
@@ -2385,6 +2648,10 @@
                 pollBatchProgress();
                 batchPollInterval = setInterval(pollBatchProgress, 2000);
             }
+
+            // Load history
+            loadBatchHistory();
+            document.getElementById('refreshHistoryBtn').addEventListener('click', loadBatchHistory);
         });
         initCharts();
         loadDashboard();

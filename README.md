@@ -9,6 +9,8 @@
 
 ## 📖 Documentation Hub
 
+**Canonical index:** `docs/INDEX.md` (roadmap + progression live under `docs/planning/`).
+
 **For complete, up-to-date documentation, see the SBQC Stack documentation:**
 
 ### 🎯 Start Here
@@ -68,6 +70,7 @@ AgentX is a Node.js application that transforms your local Ollama instance into 
 - **📊 Analytics & Metrics**: Track model performance, feedback rates, usage patterns, and cost estimation
 - **🔄 Prompt Versioning**: A/B testing and continuous improvement of system prompts
 - **🔌 n8n Integration**: Automated document ingestion and prompt optimization workflows
+- **🛠️ Custom Models**: Register and tune models with advanced parameters (context size, GPU layers, threads) directly from the UI
 
 ### Technical Highlights
 - Modular Express.js architecture with MongoDB backend

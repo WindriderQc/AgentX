@@ -1,10 +1,10 @@
 # AgentX API Reference
 
-**Version:** 1.0  
-**Base URL:** `http://192.168.2.33:3080`  
-**Last Updated:** December 31, 2025
+**Version:** 1.1
+**Base URL:** `http://192.168.2.33:3080`
+**Last Updated:** January 3, 2026
 
-> **Quick Links:** [Chat](#chat--conversations) • [Analytics](#analytics--metrics) • [RAG](#rag-retrieval-augmented-generation) • [Voice](#voice-io) • [Models](#model-management) • [n8n Integration](#n8n-integration)
+> **Quick Links:** [Chat](#chat--conversations) • [Analytics](#analytics--metrics) • [Performance](#performance-monitoring) • [RAG](#rag-retrieval-augmented-generation) • [Voice](#voice-io) • [Models](#model-management) • [n8n Integration](#n8n-integration)
 
 ---
 
@@ -831,6 +831,442 @@ All endpoints follow consistent error format:
   "details": "Error details..."
 }
 ```
+
+---
+
+## Model Management
+
+### `GET /api/custom-models`
+
+List all registered custom models.
+
+**Auth:** Optional
+
+**Query Params:**
+- `status` (string): Filter by status (`ready`, `deployed`, `training`, `failed`)
+- `baseModel` (string): Filter by base model
+- `tag` (string): Filter by tag
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "count": 5,
+  "models": [
+    {
+      "modelId": "my-custom-model:latest",
+      "baseModel": "llama2:7b",
+      "status": "deployed",
+      "parameters": {
+        "num_ctx": 4096,
+        "num_gpu": 1
+      }
+    }
+  ]
+}
+```
+
+### `POST /api/custom-models`
+
+Register a new custom model with optional tuning parameters.
+
+**Auth:** Optional
+
+**Request Body:**
+```json
+{
+  "modelId": "my-tuned-model:v1",
+  "displayName": "My Tuned Model",
+  "baseModel": "llama2:7b",
+  "modelfileContent": "FROM llama2:7b\nSYSTEM You are a helpful assistant.",
+  "parameters": {
+    "num_ctx": 8192,
+    "num_gpu": 1,
+    "num_thread": 8,
+    "keep_alive": "5m"
+  },
+  "tags": ["production", "tuned"]
+}
+```
+
+**Response (201 Created):**
+```json
+{
+  "success": true,
+  "model": { ... }
+}
+```
+
+### `POST /api/custom-models/:id/deploy`
+
+Deploy a custom model to the Ollama instance. This compiles the Modelfile with the configured parameters.
+
+**Auth:** Optional
+
+**Request Body:**
+```json
+{
+  "ollamaHost": "http://localhost:11434" // Optional override
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "deployment": { "status": "success" }
+}
+```
+
+---
+
+## Performance Monitoring
+
+### `GET /api/performance/dashboard`
+
+Get system health overview with key performance metrics.
+
+**Auth:** Optional
+
+**Response (200 OK):**
+```json
+{
+  "status": "success",
+  "data": {
+    "system_status": "healthy",
+    "avg_response_time": 150,
+    "throughput": 12.5,
+    "error_rate": 0.5,
+    "uptime": 99.8,
+    "p95_latency": 450,
+    "last_load_test": {
+      "name": "basic-load-20260103",
+      "p95": 460,
+      "rps_max": 25
+    },
+    "baseline_comparison": {
+      "active_baseline": "v1.0-baseline",
+      "regression_detected": false
+    }
+  }
+}
+```
+
+### `GET /api/performance/load-tests`
+
+List Artillery load test results history.
+
+**Auth:** Optional
+
+**Query Parameters:**
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `limit` | number | 20 | Max results to return |
+| `scenario` | string | - | Filter by scenario name |
+
+**Response (200 OK):**
+```json
+{
+  "status": "success",
+  "data": {
+    "tests": [
+      {
+        "id": "507f1f77bcf86cd799439011",
+        "name": "basic-load-20260103-153800",
+        "scenario": "basic-load",
+        "summary": {
+          "duration": 180,
+          "scenarios_completed": 1250,
+          "error_rate": 0.4,
+          "rps_mean": 12.5,
+          "rps_max": 25
+        },
+        "latency": {
+          "min": 45,
+          "max": 2300,
+          "median": 150,
+          "p95": 460,
+          "p99": 890
+        },
+        "timestamp": "2026-01-03T15:38:00Z"
+      }
+    ],
+    "total": 15
+  }
+}
+```
+
+### `POST /api/performance/load-tests`
+
+Import Artillery JSON report into the performance dashboard.
+
+**Auth:** Optional
+
+**Request Body:**
+```json
+{
+  "name": "basic-load-20260103-153800",
+  "scenario": "basic-load",
+  "raw_report": {
+    "aggregate": {
+      "counters": { "vusers.completed": 1250 },
+      "rates": { "http.request_rate": 12.5 },
+      "latency": {
+        "min": 45,
+        "max": 2300,
+        "median": 150,
+        "p95": 460,
+        "p99": 890
+      }
+    }
+  }
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "status": "success",
+  "data": {
+    "id": "507f1f77bcf86cd799439011",
+    "name": "basic-load-20260103-153800",
+    "parsed": true,
+    "summary": {
+      "duration": 180,
+      "scenarios_completed": 1250,
+      "error_rate": 0.4
+    }
+  }
+}
+```
+
+### `GET /api/performance/latency-trends`
+
+Get time-series latency data for charting.
+
+**Auth:** Optional
+
+**Query Parameters:**
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `hours` | number | 24 | Time range (1, 6, 24, 168) |
+| `endpoint` | string | - | Filter by endpoint path |
+
+**Response (200 OK):**
+```json
+{
+  "status": "success",
+  "data": {
+    "trends": [
+      {
+        "timestamp": "2026-01-03T14:00:00Z",
+        "p50": 120,
+        "p95": 420,
+        "p99": 850,
+        "requests": 450
+      }
+    ],
+    "period": "24h",
+    "endpoint": null
+  }
+}
+```
+
+### `GET /api/performance/throughput`
+
+Get requests per second trends over time.
+
+**Auth:** Optional
+
+**Query Parameters:**
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `hours` | number | 24 | Time range |
+
+**Response (200 OK):**
+```json
+{
+  "status": "success",
+  "data": {
+    "trends": [
+      {
+        "timestamp": "2026-01-03T14:00:00Z",
+        "rps": 12.5,
+        "requests_total": 45000
+      }
+    ]
+  }
+}
+```
+
+### `GET /api/performance/percentiles`
+
+Get latency percentile breakdown with histogram.
+
+**Auth:** Optional
+
+**Query Parameters:**
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `hours` | number | 24 | Time range |
+| `endpoint` | string | - | Filter by endpoint |
+
+**Response (200 OK):**
+```json
+{
+  "status": "success",
+  "data": {
+    "p50": 120,
+    "p75": 250,
+    "p90": 380,
+    "p95": 450,
+    "p99": 890,
+    "p999": 1500,
+    "histogram": [
+      { "bucket": "0-100ms", "count": 5000 },
+      { "bucket": "100-200ms", "count": 3000 },
+      { "bucket": "200-500ms", "count": 1500 },
+      { "bucket": "500-1000ms", "count": 400 },
+      { "bucket": "1000ms+", "count": 100 }
+    ]
+  }
+}
+```
+
+### `GET /api/performance/baselines`
+
+List all performance baselines.
+
+**Auth:** Optional
+
+**Response (200 OK):**
+```json
+{
+  "status": "success",
+  "data": {
+    "baselines": [
+      {
+        "id": "507f1f77bcf86cd799439012",
+        "name": "v1.0-baseline",
+        "description": "Production baseline",
+        "active": true,
+        "metrics": {
+          "avg_response_time": 150,
+          "p95_latency": 450,
+          "error_rate": 0.5,
+          "throughput_rps": 12.5
+        },
+        "created_at": "2026-01-03T10:00:00Z"
+      }
+    ],
+    "active": {
+      "id": "507f1f77bcf86cd799439012",
+      "name": "v1.0-baseline"
+    }
+  }
+}
+```
+
+### `POST /api/performance/baselines`
+
+Create a new performance baseline.
+
+**Auth:** Optional
+
+**Request Body:**
+```json
+{
+  "name": "v1.0-baseline",
+  "description": "Production baseline",
+  "metrics": {
+    "avg_response_time": 150,
+    "p95_latency": 450,
+    "error_rate": 0.5,
+    "throughput_rps": 12.5
+  },
+  "endpoints": [
+    {
+      "path": "/api/chat",
+      "method": "POST",
+      "avg_latency": 200,
+      "p95_latency": 500
+    }
+  ],
+  "activate": true
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "status": "success",
+  "data": {
+    "id": "507f1f77bcf86cd799439012",
+    "name": "v1.0-baseline",
+    "active": true,
+    "created_at": "2026-01-03T10:00:00Z"
+  }
+}
+```
+
+### `GET /api/performance/baseline-compare`
+
+Compare current metrics against active baseline for regression detection.
+
+**Auth:** Optional
+
+**Query Parameters:**
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `baseline_id` | string | active | Baseline to compare against |
+
+**Response (200 OK):**
+```json
+{
+  "status": "success",
+  "data": {
+    "baseline": {
+      "id": "507f1f77bcf86cd799439012",
+      "name": "v1.0-baseline"
+    },
+    "comparison": {
+      "avg_response_time": {
+        "baseline": 150,
+        "current": 145,
+        "diff_ms": -5,
+        "diff_percent": -3.33
+      },
+      "p95_latency": {
+        "baseline": 450,
+        "current": 460,
+        "diff_ms": 10,
+        "diff_percent": 2.22
+      },
+      "error_rate": {
+        "baseline": 0.5,
+        "current": 0.4,
+        "diff_percent": -20.0
+      },
+      "throughput_rps": {
+        "baseline": 12.5,
+        "current": 13.2,
+        "diff_percent": 5.6
+      }
+    },
+    "regression_detected": false,
+    "regressions": [],
+    "thresholds": {
+      "p95_latency_increase": 20,
+      "error_rate_increase": 50
+    }
+  }
+}
+```
+
+**Regression Detection:**
+- P95 latency increase > 20% → Regression
+- Error rate increase > 50% → Regression
+- Throughput decrease > 20% → Regression
 
 ---
 

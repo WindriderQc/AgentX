@@ -258,6 +258,12 @@ async function registerModel(event) {
         version: document.getElementById('version').value.trim() || '1.0.0',
         description: document.getElementById('description').value.trim(),
         modelfileContent: document.getElementById('modelfileContent').value.trim(),
+        parameters: {
+            num_ctx: document.getElementById('numCtx').value ? parseInt(document.getElementById('numCtx').value) : undefined,
+            num_gpu: document.getElementById('numGpu').value ? parseInt(document.getElementById('numGpu').value) : undefined,
+            num_thread: document.getElementById('numThread').value ? parseInt(document.getElementById('numThread').value) : undefined,
+            keep_alive: document.getElementById('keepAlive').value.trim() || undefined
+        },
         tags: document.getElementById('tags').value.split(',').map(t => t.trim()).filter(t => t)
     };
 

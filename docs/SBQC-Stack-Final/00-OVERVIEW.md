@@ -39,7 +39,8 @@
 | [04-N8N-WORKFLOWS.md](04-N8N-WORKFLOWS.md) | n8n workflow specifications | Building automations |
 | [05-DEPLOYMENT.md](05-DEPLOYMENT.md) | Deployment & environment configuration | Setup & deployment |
 | [06-AGENT-PROMPTS.md](06-AGENT-PROMPTS.md) | System prompts for AI coding agents | Agent configuration |
-| [07-AGENTX-API-REFERENCE.md](07-AGENTX-API-REFERENCE.md) | Complete API documentation (40+ endpoints) | API integration |
+| [07-AGENTX-API-REFERENCE.md](07-AGENTX-API-REFERENCE.md) | Complete API documentation (72+ endpoints) v1.1 | API integration |
+| [../features/PERFORMANCE_MONITORING.md](../features/PERFORMANCE_MONITORING.md) | Performance dashboard guide (Track 5) | Load testing & monitoring |
 | [archive/DISCREPANCY_AUDIT.md](archive/DISCREPANCY_AUDIT.md) | Detailed audit findings (archived) | Historical reference |
 | [archive/AGENT_C_PLAN_v2.md](archive/AGENT_C_PLAN_v2.md) | Agent C planning doc (archived) | Historical reference |
 
@@ -56,7 +57,7 @@
 | [04-N8N-WORKFLOWS.md](04-N8N-WORKFLOWS.md) | n8n workflow specifications |
 | [05-DEPLOYMENT.md](05-DEPLOYMENT.md) | How to run & configure everything |
 | [06-AGENT-PROMPTS.md](06-AGENT-PROMPTS.md) | System prompts for coding agents |
-| [07-AGENTX-API-REFERENCE.md](07-AGENTX-API-REFERENCE.md) | **✅ NEW** Complete API reference with all 40+ endpoints |
+| [07-AGENTX-API-REFERENCE.md](07-AGENTX-API-REFERENCE.md) | **✅ v1.1** Complete API reference with 72+ endpoints (includes Performance) |
 | [DISCREPANCY_AUDIT.md](DISCREPANCY_AUDIT.md) | Detailed audit findings with impact analysis |
 
 ---

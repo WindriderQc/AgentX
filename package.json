@@ -27,6 +27,9 @@
     "test:load:basic": "artillery run tests/load/basic-load.yml",
     "test:load:stress": "artillery run tests/load/stress-test.yml",
     "test:load:comprehensive": "artillery run tests/load/comprehensive-load.yml",
+    "test:load:import": "./scripts/import-artillery-results.sh basic-load",
+    "perf:baseline": "./scripts/create-performance-baseline.sh",
+    "perf:check": "./scripts/check-performance-regression.sh",
     "lint": "eslint . --ext .js",
     "lint:fix": "eslint . --ext .js --fix",
     "seed:ops": "node scripts/seed-sbqc-ops.js"
