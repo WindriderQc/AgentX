@@ -177,6 +177,192 @@
             margin-bottom: 32px;
         }
 
+        /* New Top Section Styles */
+        .top-section-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .compact-stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
+        }
+
+        .compact-stat-card {
+            background: var(--panel);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--panel-border);
+            padding: 16px;
+            border-radius: var(--radius);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        
+        .compact-stat-card .stat-label {
+            font-size: 11px;
+            margin-bottom: 4px;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+
+        .compact-stat-card .stat-value {
+            font-size: 1.5em;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .host-selection-hero {
+            background: linear-gradient(135deg, rgba(124, 240, 255, 0.08) 0%, rgba(124, 240, 255, 0.02) 100%);
+            border: 1px solid rgba(124, 240, 255, 0.2);
+            padding: 20px 24px;
+            border-radius: var(--radius);
+            display: flex;
+            align-items: center;
+            gap: 24px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+        }
+
+        .host-selection-hero label {
+            font-size: 1.1em;
+            font-weight: 600;
+            color: var(--accent);
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .host-selection-hero select {
+            flex: 1;
+            padding: 12px 16px;
+            font-size: 1.1em;
+            background: rgba(0,0,0,0.4);
+            border: 1px solid var(--panel-border);
+            border-radius: 8px;
+            color: var(--text);
+            cursor: pointer;
+        }
+        
+        .host-selection-hero select:focus {
+            border-color: var(--accent);
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(124, 240, 255, 0.1);
+        }
+
+        .quick-test-compact {
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            padding: 20px 24px;
+        }
+        
+        .quick-test-compact h2 {
+            font-size: 1.1em;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .quick-test-form-row {
+            display: flex;
+            gap: 16px;
+            align-items: flex-end;
+        }
+
+        .quick-test-form-row .form-group {
+            flex: 1;
+            margin-bottom: 0;
+        }
+        
+        .quick-test-form-row .form-group.model-select {
+            flex: 0 0 300px;
+        }
+
+        .quick-test-form-row button {
+            height: 42px;
+            white-space: nowrap;
+            padding: 0 32px;
+            margin-bottom: 1px; /* Alignment tweak */
+        }
+        
+        @media (max-width: 900px) {
+            .quick-test-form-row {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .quick-test-form-row .form-group.model-select {
+                flex: auto;
+            }
+            
+            .host-selection-hero {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 12px;
+            }
+        }
+
+        .quick-card {
+            background: var(--panel);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--panel-border);
+            padding: 20px;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+        }
+
+        .quick-card .stats-grid {
+            margin-bottom: 16px;
+            gap: 12px;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        }
+
+        .quick-card .stat-card {
+            padding: 14px;
+            box-shadow: none;
+            transition: none;
+        }
+
+        .quick-card .stat-card:hover {
+            transform: none;
+            border-color: var(--panel-border);
+            box-shadow: none;
+        }
+
+        .quick-card .stat-value {
+            font-size: 1.6em;
+        }
+
+        .quick-card .test-form {
+            background: transparent;
+            border: none;
+            padding: 0;
+            box-shadow: none;
+        }
+
+        .quick-card .test-form h2 {
+            margin-bottom: 12px;
+            font-size: 1.1em;
+        }
+
+        @media (min-width: 900px) {
+            .quick-card .form-grid {
+                grid-template-columns: 260px 240px 1fr 180px;
+                gap: 12px;
+                align-items: end;
+            }
+
+            .quick-card .form-actions {
+                margin-top: 0;
+            }
+        }
+
         .test-form {
             background: var(--panel);
             backdrop-filter: blur(10px);
@@ -802,52 +988,57 @@
             </div>
         </div>
 
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-label">Total Tests</div>
-                <div class="stat-value" id="totalTests">0</div>
-            </div>
-            <div class="stat-card" id="successRateCard">
-                <div class="stat-label">Success Rate</div>
-                <div class="stat-value" id="successRate">0<span class="stat-unit">%</span></div>
-                <div id="successRateDetails" style="display: none; margin-top: 8px; color: var(--muted); font-size: 0.85em;"></div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Avg Latency</div>
-                <div class="stat-value" id="avgLatency">0<span class="stat-unit">ms</span></div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Fastest Model</div>
-                <div class="stat-value" style="font-size: 1.5em;" id="fastestModel">-</div>
-            </div>
-        </div>
-
-        <div class="host-selector">
-            <label for="host"><i class="fas fa-server"></i> Ollama Host</label>
-            <select id="host" required>
-                <option value="">Loading...</option>
-            </select>
-        </div>
-
         <div class="benchmark-forms-wrapper">
-            <div class="test-form">
-                <h2>⚡ Quick Single Test</h2>
-                <form id="testForm" class="form-grid">
-                    <div class="form-group">
-                        <label for="model">Model</label>
-                        <select id="model" required>
-                            <option value="">Select host first...</option>
-                        </select>
+            <div class="top-section-grid">
+                <!-- 1. Compact Stats -->
+                <div class="compact-stats-grid">
+                    <div class="compact-stat-card">
+                        <div class="stat-label">Total Tests</div>
+                        <div class="stat-value" id="totalTests">0</div>
                     </div>
-                    <div class="form-group">
-                        <label for="prompt">Prompt</label>
-                        <input type="text" id="prompt" placeholder="Write a hello world function" required>
+                    <div class="compact-stat-card" id="successRateCard">
+                        <div class="stat-label">Success Rate</div>
+                        <div class="stat-value" id="successRate">0<span class="stat-unit">%</span></div>
+                        <div id="successRateDetails" style="display: none; margin-top: 4px; color: var(--muted); font-size: 0.75em;"></div>
                     </div>
-                    <div class="form-actions">
-                        <button type="submit" class="btn-primary" id="runBtn" style="width: 100%;">Run Test</button>
+                    <div class="compact-stat-card">
+                        <div class="stat-label">Avg Latency</div>
+                        <div class="stat-value" id="avgLatency">0<span class="stat-unit">ms</span></div>
                     </div>
-                </form>
-                <div id="status" class="status"></div>
+                    <div class="compact-stat-card">
+                        <div class="stat-label">Fastest Model</div>
+                        <div class="stat-value" style="font-size: 1.2em;" id="fastestModel">-</div>
+                    </div>
+                </div>
+
+                <!-- 2. Host Selection (Primary Action) -->
+                <div class="host-selection-hero">
+                    <label for="host"><i class="fas fa-server"></i> Ollama Host</label>
+                    <select id="host" required>
+                        <option value="">Loading...</option>
+                    </select>
+                </div>
+
+                <!-- 3. Quick Single Test -->
+                <div class="quick-test-compact">
+                    <h2>⚡ Quick Single Test</h2>
+                    <form id="testForm">
+                        <div class="quick-test-form-row">
+                            <div class="form-group model-select">
+                                <label for="model">Model</label>
+                                <select id="model" required>
+                                    <option value="">Select host first...</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="prompt">Prompt</label>
+                                <input type="text" id="prompt" placeholder="Write a hello world function" required>
+                            </div>
+                            <button type="submit" class="btn-primary" id="runBtn">Run Test</button>
+                        </div>
+                    </form>
+                    <div id="status" class="status"></div>
+                </div>
             </div>
 
             <div class="batch-section">
@@ -1375,7 +1566,12 @@
         <div class="modal-content" style="max-width: 800px;">
             <div class="modal-header">
                 <h2><i class="fas fa-book-open" style="color: var(--accent);"></i> Methodology & Scoring Guide</h2>
-                <span class="close">&times;</span>
+                <div style="display:flex; gap: 10px; align-items:center;">
+                    <a class="btn-secondary btn-sm" href="/docs/BENCHMARK_QUALITY_SCORING.md" target="_blank" rel="noopener noreferrer">
+                        <i class="fas fa-file-alt"></i> Docs
+                    </a>
+                    <span class="close">&times;</span>
+                </div>
             </div>
             <div class="modal-body">
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 32px;">
