@@ -191,6 +191,10 @@
             gap: 12px;
         }
 
+        .compact-stats-grid.bottom-stats {
+            margin-top: 28px;
+        }
+
         .compact-stat-card {
             background: var(--panel);
             backdrop-filter: blur(10px);
@@ -990,28 +994,7 @@
 
         <div class="benchmark-forms-wrapper">
             <div class="top-section-grid">
-                <!-- 1. Compact Stats -->
-                <div class="compact-stats-grid">
-                    <div class="compact-stat-card">
-                        <div class="stat-label">Total Tests</div>
-                        <div class="stat-value" id="totalTests">0</div>
-                    </div>
-                    <div class="compact-stat-card" id="successRateCard">
-                        <div class="stat-label">Success Rate</div>
-                        <div class="stat-value" id="successRate">0<span class="stat-unit">%</span></div>
-                        <div id="successRateDetails" style="display: none; margin-top: 4px; color: var(--muted); font-size: 0.75em;"></div>
-                    </div>
-                    <div class="compact-stat-card">
-                        <div class="stat-label">Avg Latency</div>
-                        <div class="stat-value" id="avgLatency">0<span class="stat-unit">ms</span></div>
-                    </div>
-                    <div class="compact-stat-card">
-                        <div class="stat-label">Fastest Model</div>
-                        <div class="stat-value" style="font-size: 1.2em;" id="fastestModel">-</div>
-                    </div>
-                </div>
-
-                <!-- 2. Host Selection (Primary Action) -->
+                <!-- 1. Host Selection (Primary Action) -->
                 <div class="host-selection-hero">
                     <label for="host"><i class="fas fa-server"></i> Ollama Host</label>
                     <select id="host" required>
@@ -1019,7 +1002,7 @@
                     </select>
                 </div>
 
-                <!-- 3. Quick Single Test -->
+                <!-- 2. Quick Single Test -->
                 <div class="quick-test-compact">
                     <h2>⚡ Quick Single Test</h2>
                     <form id="testForm">
@@ -1256,6 +1239,23 @@
                     <div id="recentTestsList" style="max-height: 250px; overflow-y: auto; border: 1px solid var(--panel-border); border-radius: 6px; background: rgba(0,0,0,0.1);">
                         <div style="text-align: center; color: var(--muted); padding: 20px;">Loading tests...</div>
                     </div>
+                </div>
+            </div>
+
+            <!-- Bottom Stats Row -->
+            <div class="compact-stats-grid bottom-stats">
+                <div class="compact-stat-card">
+                    <div class="stat-label">Total Tests</div>
+                    <div class="stat-value" id="totalTests">0</div>
+                </div>
+                <div class="compact-stat-card" id="successRateCard">
+                    <div class="stat-label">Success Rate</div>
+                    <div class="stat-value" id="successRate">0<span class="stat-unit">%</span></div>
+                    <div id="successRateDetails" style="display: none; margin-top: 4px; color: var(--muted); font-size: 0.75em;"></div>
+                </div>
+                <div class="compact-stat-card">
+                    <div class="stat-label">Avg Latency</div>
+                    <div class="stat-value" id="avgLatency">0<span class="stat-unit">ms</span></div>
                 </div>
             </div>
         </div>
@@ -4499,7 +4499,6 @@
                     const fastest = statsForCharts[0];
                     document.getElementById('avgLatency').innerHTML =
                         `${fastest.avg_latency}<span class="stat-unit">ms</span>`;
-                    document.getElementById('fastestModel').textContent = fastest.model;
 
                     // Update charts
                     const chartLabels = statsForCharts.map(m => {
