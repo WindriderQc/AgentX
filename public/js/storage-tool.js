@@ -1,9 +1,10 @@
 // Storage Tool Client-Side Logic
 
 import { formatFileSize } from '/js/utils/general-utils.js';
+import { PollingController } from '/js/utils/polling-controller.js';
 
 let currentScanId = null;
-let pollInterval = null;
+let poller = null;
 
 // Start a new scan
 async function startScan() {
@@ -98,22 +99,20 @@ async function stopCurrentScan() {
 
 // Start polling for scan status
 function startPolling() {
-    if (pollInterval) {
-        clearInterval(pollInterval);
-    }
-    
-    // Poll every 2 seconds
-    pollInterval = setInterval(updateScanStatus, 2000);
-    
-    // Update immediately
+    if (poller) poller.destroy();
+
+    poller = new PollingController();
+    poller.addTask('scan-status', updateScanStatus, 2000, { runOnStart: false });
+    poller.start();
+
     updateScanStatus();
 }
 
 // Stop polling
 function stopPolling() {
-    if (pollInterval) {
-        clearInterval(pollInterval);
-        pollInterval = null;
+    if (poller) {
+        poller.destroy();
+        poller = null;
     }
 }
 

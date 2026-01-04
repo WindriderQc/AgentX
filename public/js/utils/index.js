@@ -9,12 +9,14 @@ import * as DOMUtils from './dom-utils.js';
 import * as APIUtils from './api-utils.js';
 import * as GeoUtils from './geo-utils.js';
 import * as P5Helpers from './p5-helpers.js';
+import { PollingController } from './polling-controller.js';
 
 export const General = GeneralUtils;
 export const DOM = DOMUtils;
 export const API = APIUtils;
 export const GEO = GeoUtils;
 export const P5 = P5Helpers;
+export { PollingController };
 
 // Export commonly used functions directly for convenience
 export const { formatFileSize, formatDate, formatNumber } = GeneralUtils;

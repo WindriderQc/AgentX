@@ -3,17 +3,24 @@
 **Purpose:** This is the canonical “start here” index for permanent AgentX documentation.
 
 ## Start Here
+
+**Primary References:**
+- **[CLAUDE.md](../CLAUDE.md)** - Architecture reference for agents and humans
+  - Commands, architecture patterns, core components, critical conventions
+  - Service-oriented architecture, RAG system, model routing, self-healing
+- **[CONTRIBUTING.md](../CONTRIBUTING.md)** - Developer workflow and contribution guidelines
+  - Git conventions, testing standards, PR process, code review checklist
+- **[ROADMAP.md](../ROADMAP.md)** - Project status and priorities
+  - Six development tracks (all complete)
+  - Immediate priorities and backlog items
+
+**Documentation:**
 - User manual (recommended): [user-manual/README.md](user-manual/README.md)
 - UI pages map (URLs + what each page does): [user-manual/README.md#2-the-ui-pages--navigation](user-manual/README.md#2-the-ui-pages--navigation)
 - SBQC Stack overview (recommended): [SBQC-Stack-Final/00-OVERVIEW.md](SBQC-Stack-Final/00-OVERVIEW.md)
 - AgentX architecture (stack doc): [SBQC-Stack-Final/01-ARCHITECTURE.md](SBQC-Stack-Final/01-ARCHITECTURE.md)
 - AgentX API reference (stack doc): [SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md](SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md)
 - DataAPI tasks (stack doc): [SBQC-Stack-Final/02-DATAAPI-TASKS.md](SBQC-Stack-Final/02-DATAAPI-TASKS.md)
-
-## Roadmap & Progression
-- Canonical roadmap + todos: [planning/ROADMAP.md](planning/ROADMAP.md)
-- Progression log (decisions, milestones, summaries): [planning/PROGRESSION_LOG.md](planning/PROGRESSION_LOG.md)
-- Multi-agent plan (detailed tracks): [planning/MULTI_AGENT_ENHANCEMENT_PLAN.md](planning/MULTI_AGENT_ENHANCEMENT_PLAN.md)
 
 ## Onboarding
 - Onboarding hub: [onboarding/README.md](onboarding/README.md)

@@ -348,6 +348,57 @@ router.get('/percentiles', async (req, res) => {
 });
 
 /**
+ * GET /api/performance/endpoints
+ *
+ * List known endpoint paths observed in performance snapshots.
+ *
+ * Query params:
+ * - hours: Lookback window (default: 24)
+ *
+ * @returns {Array<String>} Endpoint paths
+ */
+router.get('/endpoints', async (req, res) => {
+  try {
+    const hours = parseInt(req.query.hours) || 24;
+    const startDate = new Date(Date.now() - hours * 60 * 60 * 1000);
+
+    logger.info('Fetching known endpoints', { hours });
+
+    const endpoints = await PerformanceSnapshot.aggregate([
+      {
+        $match: {
+          hour: { $gte: startDate }
+        }
+      },
+      { $unwind: '$by_endpoint' },
+      {
+        $group: {
+          _id: '$by_endpoint.path'
+        }
+      },
+      { $sort: { _id: 1 } }
+    ]);
+
+    const paths = endpoints
+      .map(e => e._id)
+      .filter(p => typeof p === 'string' && p.length > 0);
+
+    res.json({
+      status: 'success',
+      data: paths,
+      count: paths.length,
+      hours
+    });
+  } catch (err) {
+    logger.error('Endpoints fetch failed', { error: err.message });
+    res.status(500).json({
+      status: 'error',
+      message: err.message
+    });
+  }
+});
+
+/**
  * GET /api/performance/baselines
  *
  * List all performance baselines
@@ -394,7 +445,7 @@ router.get('/baselines', async (req, res) => {
  */
 router.post('/baselines', async (req, res) => {
   try {
-    const { name, description, metrics, endpoints, source, source_test_id, activate } = req.body;
+    const { name, description, metrics, endpoints, source, source_test_id, activate, loadTestId } = req.body;
 
     // Validate required fields
     if (!name) {
@@ -404,10 +455,43 @@ router.post('/baselines', async (req, res) => {
       });
     }
 
-    if (!metrics || !metrics.p95_latency || !metrics.error_rate || !metrics.throughput_rps) {
+    // Allow creating baselines from a load test without explicitly supplying metrics.
+    // UI may send loadTestId when source is load_test.
+    let resolvedMetrics = metrics;
+    let resolvedSourceTestId = source_test_id || loadTestId;
+
+    if (!resolvedMetrics) {
+      if (resolvedSourceTestId) {
+        const loadTest = await PerformanceLoadTest.findById(resolvedSourceTestId);
+        if (!loadTest) {
+          return res.status(404).json({
+            status: 'error',
+            message: 'Load test not found'
+          });
+        }
+        resolvedMetrics = {
+          avg_response_time: loadTest.latency?.median || 0,
+          p95_latency: loadTest.latency?.p95 || 0,
+          error_rate: loadTest.summary?.error_rate || 0,
+          throughput_rps: loadTest.summary?.rps_mean || 0
+        };
+      } else {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Missing required metrics or loadTestId'
+        });
+      }
+    }
+
+    if (
+      resolvedMetrics.avg_response_time === undefined ||
+      resolvedMetrics.p95_latency === undefined ||
+      resolvedMetrics.error_rate === undefined ||
+      resolvedMetrics.throughput_rps === undefined
+    ) {
       return res.status(400).json({
         status: 'error',
-        message: 'Missing required metrics: p95_latency, error_rate, throughput_rps'
+        message: 'Missing required metrics: avg_response_time, p95_latency, error_rate, throughput_rps'
       });
     }
 
@@ -416,10 +500,10 @@ router.post('/baselines', async (req, res) => {
     const baseline = new PerformanceBaseline({
       name,
       description,
-      metrics,
+      metrics: resolvedMetrics,
       endpoints: endpoints || [],
-      source: source || 'manual',
-      source_test_id
+      source: source || (resolvedSourceTestId ? 'load_test' : 'manual'),
+      source_test_id: resolvedSourceTestId
     });
 
     await baseline.save();

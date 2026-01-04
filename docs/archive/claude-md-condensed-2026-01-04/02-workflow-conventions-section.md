@@ -1,13 +1,14 @@
-# Contributing to AgentX
+# Development Workflow Conventions Section (Archived from CLAUDE.md)
 
-Welcome to AgentX! This guide covers the development workflow and contribution guidelines for the project.
-
-For architectural patterns and system design, see [CLAUDE.md](CLAUDE.md).
-For project status and priorities, see [ROADMAP.md](ROADMAP.md).
+**Archived:** 2026-01-04
+**Reason:** Moving to new CONTRIBUTING.md (developer workflow, not architecture reference)
+**Original Location:** CLAUDE.md lines 1216-1426
 
 ---
 
-## Branching Strategy
+### 📋 Development Workflow Conventions
+
+### Branching Strategy
 
 Use descriptive branch names following these patterns:
 - `feature/my-feature` - New functionality
@@ -27,9 +28,7 @@ git checkout main && git pull origin main
 git checkout feature/my-feature && git rebase main
 ```
 
----
-
-## Git Conventions
+### Git Conventions
 
 Use clear, imperative mood messages following [Conventional Commits](https://www.conventionalcommits.org/):
 
@@ -74,9 +73,7 @@ docs(api): update analytics endpoint reference
 Added new query parameters and response schema for /api/analytics/costs.
 ```
 
----
-
-## Testing Standards
+### Testing Standards
 
 **Pre-commit Requirements:**
 ```bash
@@ -101,9 +98,7 @@ npm run test:coverage        # Coverage report
 npm run test:load            # Load tests
 ```
 
----
-
-## Pull Request Process
+### Pull Request Process
 
 **Before Submitting:**
 - [ ] `npm test` passes locally
@@ -121,9 +116,7 @@ npm run test:load            # Load tests
 3. Approval: At least one approval required
 4. Merge Strategy: Squash and merge preferred (keeps history clean)
 
----
-
-## Code Review Checklist
+### Code Review Checklist
 
 **Architecture:**
 - [ ] Code follows Route → Service → Model pattern
@@ -153,9 +146,7 @@ npm run test:load            # Load tests
 - [ ] Code comments added for complex logic
 - [ ] Changelog entry added
 
----
-
-## Documentation Update Requirements
+### Documentation Update Requirements
 
 **When to Update CLAUDE.md:**
 - Adding/removing major components (routes, services, models)
@@ -183,9 +174,7 @@ Update `docs/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md` for:
 **Changelog:**
 Record all changes in `CHANGELOG.md` following [Keep a Changelog](https://keepachangelog.com/) format.
 
----
-
-## Breaking Changes Protocol
+### Breaking Changes Protocol
 
 **Database Schema Changes:**
 - Prefer backward compatible changes (add fields with defaults)
@@ -213,9 +202,7 @@ Record all changes in `CHANGELOG.md` following [Keep a Changelog](https://keepac
 - [ ] Team notified
 - [ ] Rollback plan documented
 
----
-
-## Established Patterns
+### Established Patterns
 
 **Wizard Consolidation Pattern:**
 When multiple components share similar logic:
@@ -229,7 +216,3 @@ After major refactoring:
 1. Update line counts in CLAUDE.md
 2. Document architectural improvements (base classes, patterns)
 3. Update codebase metrics in "Current State" section
-
----
-
-**Thank you for contributing to AgentX!** 🚀

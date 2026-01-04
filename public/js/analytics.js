@@ -1,3 +1,5 @@
+import { PollingController } from './utils/polling-controller.js';
+
 const elements = {
   // Product Analytics Elements
   periodSelect: document.getElementById('periodSelect'),
@@ -97,7 +99,7 @@ const charts = {
   costBreakdown: null,
 };
 
-let systemInterval = null;
+let poller = null;
 
 /* -------------------------------------------------------------------------- */
 /*                                Utility Fns                                 */
@@ -759,14 +761,12 @@ async function refreshCostBreakdown() {
 
 async function refreshSystem() {
   try {
-     const [cache, database, connection, system] = await Promise.all([
-      fetchJSON('/api/metrics/cache'),
-      fetchJSON('/api/metrics/database'),
-      fetchJSON('/api/metrics/connection'),
-      fetchJSON('/api/metrics/system')
+    const [summary, database] = await Promise.all([
+      fetchJSON('/api/metrics/summary'),
+      fetchJSON('/api/metrics/database')
     ]);
 
-    renderSystemMetrics({ cache, database, connection, system });
+    renderSystemMetrics({ summary, database });
     updateTimestamp();
 
   } catch (err) {
@@ -796,10 +796,10 @@ function setStatus(el, val, healthyThreshold = 70, warningThreshold = 90, revers
 }
 
 function renderSystemMetrics(metrics) {
-    const cache = metrics.cache.data.cache;
-    const db = metrics.database.data;
-    const conn = metrics.connection.data;
-    const sys = metrics.system.data;
+  const cache = metrics.summary.data.cache;
+  const db = metrics.database.data;
+  const conn = metrics.summary.data.connection;
+  const sys = metrics.summary.data.system;
 
     // --- Cache ---
     const hitRate = (cache.hitRate * 100);
@@ -1089,6 +1089,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Initial Load
   refreshAll();
 
-  // Poll system metrics
-  systemInterval = setInterval(refreshSystem, 5000);
+  // Poll system metrics (shared controller handles pause-on-blur)
+  poller = new PollingController();
+  poller.addTask('system-metrics', refreshSystem, 5000, { runOnStart: false });
+  poller.start();
 });

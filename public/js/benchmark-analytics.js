@@ -7,10 +7,11 @@
  * - Batch Comparison
  * - Tag Management
  */
+import { PollingController } from './utils/polling-controller.js';
 
 const BenchmarkAnalytics = (() => {
     const BENCHMARK_API = '/api/benchmark';
-    let pollInterval = null;
+    let poller = null;
     let trendsChart = null;
     let comparisonChart = null;
 
@@ -140,18 +141,20 @@ const BenchmarkAnalytics = (() => {
         // Initial load
         loadActiveStats();
 
-        // Poll every 3 seconds
-        if (pollInterval) clearInterval(pollInterval);
-        pollInterval = setInterval(loadActiveStats, 3000);
+        // Poll every 3 seconds (pause-on-blur via shared controller)
+        if (poller) poller.destroy();
+        poller = new PollingController();
+        poller.addTask('active-batches', loadActiveStats, 3000, { runOnStart: false });
+        poller.start();
     }
 
     /**
      * Stop active monitoring
      */
     function stopActiveMonitoring() {
-        if (pollInterval) {
-            clearInterval(pollInterval);
-            pollInterval = null;
+        if (poller) {
+            poller.destroy();
+            poller = null;
         }
     }
 
@@ -547,6 +550,9 @@ const BenchmarkAnalytics = (() => {
         stopActiveMonitoring
     };
 })();
+
+// Keep existing global API for inline onclick handlers
+window.BenchmarkAnalytics = BenchmarkAnalytics;
 
 // Auto-initialize when DOM is ready
 if (document.readyState === 'loading') {

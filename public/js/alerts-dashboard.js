@@ -4,6 +4,7 @@
  */
 
 import { apiClient } from './utils/api-client.js';
+import { PollingController } from './utils/polling-controller.js';
 
 class AlertsDashboard {
     constructor(options = {}) {
@@ -23,7 +24,7 @@ class AlertsDashboard {
             dateRange: 'today'
         };
         this.selectedAlerts = new Set();
-        this.autoRefreshTimer = null;
+        this.poller = null;
         
         // Severity configuration
         this.severityConfig = {
@@ -674,19 +675,21 @@ class AlertsDashboard {
      */
     startAutoRefresh() {
         this.stopAutoRefresh();
-        this.autoRefreshTimer = setInterval(() => {
-            this.loadAlerts();
-            this.loadStatistics();
-        }, this.refreshInterval);
+        this.poller = new PollingController();
+        this.poller.addTask('alerts-auto-refresh', async () => {
+            await this.loadAlerts();
+            await this.loadStatistics();
+        }, this.refreshInterval, { runOnStart: false });
+        this.poller.start();
     }
 
     /**
      * Stop auto-refresh
      */
     stopAutoRefresh() {
-        if (this.autoRefreshTimer) {
-            clearInterval(this.autoRefreshTimer);
-            this.autoRefreshTimer = null;
+        if (this.poller) {
+            this.poller.destroy();
+            this.poller = null;
         }
     }
 

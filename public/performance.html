@@ -1190,37 +1190,33 @@
 
             // Update stats cards
             updateStatsCards(data) {
-                // System Status
                 const statusBadge = document.getElementById('systemStatus');
-                const status = data.systemStatus || 'healthy';
+                const status = data.system_health || 'unknown';
                 statusBadge.className = `badge ${status}`;
                 statusBadge.textContent = status.charAt(0).toUpperCase() + status.slice(1);
 
-                // Avg Response Time
-                const avgTime = data.avgResponseTime || 0;
+                const metrics = data.metrics_24h || {};
+
+                const avgTime = Number(metrics.avg_latency || 0);
                 document.getElementById('avgResponseTime').textContent = `${avgTime.toFixed(0)}ms`;
-                this.updateTrend('responseTrend', data.avgResponseTimeTrend);
+                this.updateTrend('responseTrend', undefined);
 
-                // Throughput
-                const throughput = data.throughput || 0;
+                const throughput = Number(metrics.throughput_rps || 0);
                 document.getElementById('throughput').textContent = throughput.toFixed(1);
-                this.updateTrend('throughputTrend', data.throughputTrend);
+                this.updateTrend('throughputTrend', undefined);
 
-                // Error Rate
-                const errorRate = data.errorRate || 0;
+                const errorRate = Number(metrics.error_rate || 0);
                 const errorEl = document.getElementById('errorRate');
                 errorEl.textContent = `${errorRate.toFixed(2)}%`;
                 errorEl.style.color = errorRate > 5 ? '#ef4444' : errorRate > 1 ? '#fbbf24' : 'inherit';
-                this.updateTrend('errorTrend', data.errorRateTrend);
+                this.updateTrend('errorTrend', undefined);
 
-                // Uptime
-                const uptime = data.uptime || 0;
+                const uptime = Number(metrics.uptime_percent || 0);
                 document.getElementById('uptime').textContent = `${uptime.toFixed(2)}%`;
 
-                // P95 Latency
-                const p95 = data.p95Latency || 0;
+                const p95 = Number(metrics.p95_latency || 0);
                 document.getElementById('p95Latency').textContent = `${p95.toFixed(0)}ms`;
-                this.updateTrend('p95Trend', data.p95LatencyTrend);
+                this.updateTrend('p95Trend', undefined);
             },
 
             // Update trend indicator
@@ -1253,8 +1249,9 @@
                     const response = await fetch(`/api/performance/latency-trends?${params}`);
                     const result = await response.json();
 
-                    if (result.status === 'success' && result.data && result.data.length > 0) {
-                        this.renderLatencyTrendChart(result.data);
+                    const trends = result?.data?.trends || [];
+                    if (result.status === 'success' && Array.isArray(trends) && trends.length > 0) {
+                        this.renderLatencyTrendChart(trends);
                         document.getElementById('latencyTrendsEmpty').classList.remove('visible');
                     } else {
                         document.getElementById('latencyTrendsEmpty').classList.add('visible');
@@ -1374,8 +1371,9 @@
                     const response = await fetch(`/api/performance/percentiles?${params}`);
                     const result = await response.json();
 
-                    if (result.status === 'success' && result.data) {
-                        this.renderPercentileChart(result.data);
+                    const percentiles = result?.data?.percentiles || result?.data;
+                    if (result.status === 'success' && percentiles) {
+                        this.renderPercentileChart(percentiles);
                         document.getElementById('percentileEmpty').classList.remove('visible');
                     } else {
                         document.getElementById('percentileEmpty').classList.add('visible');
@@ -1472,8 +1470,9 @@
                     const response = await fetch(`/api/performance/throughput?${params}`);
                     const result = await response.json();
 
-                    if (result.status === 'success' && result.data && result.data.length > 0) {
-                        this.renderThroughputChart(result.data);
+                    const throughput = result?.data?.throughput || [];
+                    if (result.status === 'success' && Array.isArray(throughput) && throughput.length > 0) {
+                        this.renderThroughputChart(throughput);
                         document.getElementById('throughputEmpty').classList.remove('visible');
                     } else {
                         document.getElementById('throughputEmpty').classList.add('visible');
@@ -1493,8 +1492,8 @@
                 }
 
                 const timestamps = data.map(d => new Date(d.timestamp).toLocaleTimeString());
-                const rps = data.map(d => d.requestsPerSecond || 0);
-                const total = data.map(d => d.totalRequests || 0);
+                const rps = data.map(d => parseFloat(d.rps || 0));
+                const total = data.map(d => Number(d.requests_total || 0));
 
                 this.charts.throughput = new Chart(ctx, {
                     type: 'line',
@@ -1596,8 +1595,9 @@
 
                     document.getElementById('loadTestsLoading').classList.remove('active');
 
-                    if (result.status === 'success' && result.data && result.data.length > 0) {
-                        this.renderLoadTestsTable(result.data);
+                    const tests = result?.data?.tests || [];
+                    if (result.status === 'success' && Array.isArray(tests) && tests.length > 0) {
+                        this.renderLoadTestsTable(tests);
                         document.getElementById('loadTestsTableContainer').style.display = 'block';
                         document.getElementById('loadTestsEmpty').style.display = 'none';
                     } else {
@@ -1623,18 +1623,18 @@
                     const date = new Date(test.timestamp).toLocaleString();
                     const scenario = test.scenario || 'Load Test';
                     const duration = test.summary?.duration ? `${(test.summary.duration / 60).toFixed(1)}m` : '—';
-                    const rps = test.summary?.rps?.max ? test.summary.rps.max.toFixed(1) : '—';
-                    const successRate = test.summary?.codes?.[200]
-                        ? ((test.summary.codes[200] / test.summary.requestsCompleted) * 100).toFixed(1)
-                        : '—';
-                    const p95 = test.summary?.latency?.p95 ? `${test.summary.latency.p95.toFixed(0)}ms` : '—';
-                    const status = test.summary?.errors > 0 ? 'warning' : 'success';
+                    const rps = Number(test.summary?.rps_max ?? test.summary?.rps_mean);
+                    const rpsText = Number.isFinite(rps) ? rps.toFixed(1) : '—';
+                    const errorRate = Number(test.summary?.error_rate || 0);
+                    const successRate = (100 - errorRate).toFixed(1);
+                    const p95 = test.latency?.p95 ? `${Number(test.latency.p95).toFixed(0)}ms` : '—';
+                    const status = errorRate > 0 ? 'warning' : 'success';
 
                     row.innerHTML = `
                         <td>${date}</td>
                         <td>${scenario}</td>
                         <td class="text-right mono">${duration}</td>
-                        <td class="text-right mono">${rps}</td>
+                        <td class="text-right mono">${rpsText}</td>
                         <td class="text-right mono">${successRate}%</td>
                         <td class="text-right mono">${p95}</td>
                         <td class="text-center">
@@ -1705,31 +1705,31 @@
                                 </div>
                                 <div class="detail-item">
                                     <div class="detail-label">Total Requests</div>
-                                    <div class="detail-value">${testData.summary?.requestsCompleted || 0}</div>
+                                    <div class="detail-value">${testData.summary?.requests_completed || 0}</div>
                                 </div>
                                 <div class="detail-item">
                                     <div class="detail-label">RPS (Mean)</div>
-                                    <div class="detail-value">${testData.summary?.rps?.mean?.toFixed(2) || 'N/A'}</div>
+                                    <div class="detail-value">${Number.isFinite(testData.summary?.rps_mean) ? Number(testData.summary.rps_mean).toFixed(2) : 'N/A'}</div>
                                 </div>
                                 <div class="detail-item">
                                     <div class="detail-label">RPS (Max)</div>
-                                    <div class="detail-value">${testData.summary?.rps?.max?.toFixed(2) || 'N/A'}</div>
+                                    <div class="detail-value">${Number.isFinite(testData.summary?.rps_max) ? Number(testData.summary.rps_max).toFixed(2) : 'N/A'}</div>
                                 </div>
                                 <div class="detail-item">
                                     <div class="detail-label">P50 Latency</div>
-                                    <div class="detail-value">${testData.summary?.latency?.p50?.toFixed(0) || 'N/A'} ms</div>
+                                    <div class="detail-value">${Number.isFinite(testData.latency?.median) ? Number(testData.latency.median).toFixed(0) : 'N/A'} ms</div>
                                 </div>
                                 <div class="detail-item">
                                     <div class="detail-label">P95 Latency</div>
-                                    <div class="detail-value">${testData.summary?.latency?.p95?.toFixed(0) || 'N/A'} ms</div>
+                                    <div class="detail-value">${Number.isFinite(testData.latency?.p95) ? Number(testData.latency.p95).toFixed(0) : 'N/A'} ms</div>
                                 </div>
                                 <div class="detail-item">
                                     <div class="detail-label">P99 Latency</div>
-                                    <div class="detail-value">${testData.summary?.latency?.p99?.toFixed(0) || 'N/A'} ms</div>
+                                    <div class="detail-value">${Number.isFinite(testData.latency?.p99) ? Number(testData.latency.p99).toFixed(0) : 'N/A'} ms</div>
                                 </div>
                                 <div class="detail-item">
                                     <div class="detail-label">Errors</div>
-                                    <div class="detail-value">${testData.summary?.errors || 0}</div>
+                                    <div class="detail-value">${testData.summary?.error_rate ? `${Number(testData.summary.error_rate).toFixed(2)}%` : '0.00%'}</div>
                                 </div>
                             </div>
                             ${testData.notes ? `<p style="margin-top: 12px; color: var(--muted); font-size: 12px;"><strong>Notes:</strong> ${testData.notes}</p>` : ''}
@@ -1777,10 +1777,12 @@
                     const fileContent = await file.text();
                     const artilleryData = JSON.parse(fileContent);
 
+                    const nameBase = file.name ? file.name.replace(/\.[^.]+$/, '') : 'load-test';
                     const formData = {
+                        name: notes ? `${nameBase} - ${notes}` : nameBase,
                         scenario: scenario || 'Load Test',
-                        notes: notes,
-                        summary: artilleryData.aggregate || artilleryData
+                        raw_report: artilleryData,
+                        timestamp: new Date().toISOString()
                     };
 
                     const response = await fetch('/api/performance/load-tests', {
@@ -1815,12 +1817,13 @@
 
                     document.getElementById('baselineLoading').classList.remove('active');
 
-                    if (result.status === 'success' && result.data && result.data.length > 0) {
-                        this.renderBaselines(result.data);
+                    const baselines = result?.data?.baselines || [];
+                    if (result.status === 'success' && Array.isArray(baselines) && baselines.length > 0) {
+                        this.renderBaselines(baselines);
                         document.getElementById('baselinesEmpty').style.display = 'none';
 
                         // Load baseline comparison if there's an active one
-                        const activeBaseline = result.data.find(b => b.isActive);
+                        const activeBaseline = baselines.find(b => b.active);
                         if (activeBaseline) {
                             await this.loadBaselineComparison();
                         }
@@ -1841,21 +1844,21 @@
                 baselines.forEach(baseline => {
                     const item = document.createElement('div');
                     item.classList.add('baseline-item');
-                    if (baseline.isActive) {
+                    if (baseline.active) {
                         item.classList.add('active');
                     }
 
-                    const date = new Date(baseline.createdAt).toLocaleDateString();
+                    const date = new Date(baseline.created_at || baseline.createdAt || Date.now()).toLocaleDateString();
 
                     item.innerHTML = `
                         <div class="baseline-info">
                             <div class="baseline-name">${baseline.name}</div>
                             <div class="baseline-meta">
-                                Created: ${date} ${baseline.isActive ? '• <strong style="color: var(--accent);">ACTIVE</strong>' : ''}
+                                Created: ${date} ${baseline.active ? '• <strong style="color: var(--accent);">ACTIVE</strong>' : ''}
                             </div>
                         </div>
                         <div class="baseline-actions">
-                            ${!baseline.isActive ? `
+                            ${!baseline.active ? `
                                 <button class="action-btn activate-baseline-btn" data-id="${baseline._id}">
                                     <i class="fas fa-check"></i> Activate
                                 </button>
@@ -1903,18 +1906,16 @@
                 card.style.display = 'block';
 
                 document.getElementById('activeBaselineName').textContent = data.baseline.name;
-                document.getElementById('activeBaselineDate').textContent = new Date(data.baseline.createdAt).toLocaleDateString();
+                document.getElementById('activeBaselineDate').textContent = new Date().toLocaleDateString();
 
                 const grid = document.getElementById('comparisonGrid');
                 grid.innerHTML = '';
 
                 const metrics = [
-                    { key: 'avgResponseTime', label: 'Avg Response Time', unit: 'ms', lowerIsBetter: true },
-                    { key: 'p95Latency', label: 'P95 Latency', unit: 'ms', lowerIsBetter: true },
-                    { key: 'p99Latency', label: 'P99 Latency', unit: 'ms', lowerIsBetter: true },
-                    { key: 'throughput', label: 'Throughput', unit: 'rps', lowerIsBetter: false },
-                    { key: 'errorRate', label: 'Error Rate', unit: '%', lowerIsBetter: true },
-                    { key: 'successRate', label: 'Success Rate', unit: '%', lowerIsBetter: false }
+                    { key: 'avg_response_time', label: 'Avg Response Time', unit: 'ms', lowerIsBetter: true },
+                    { key: 'p95_latency', label: 'P95 Latency', unit: 'ms', lowerIsBetter: true },
+                    { key: 'throughput_rps', label: 'Throughput', unit: 'rps', lowerIsBetter: false },
+                    { key: 'error_rate', label: 'Error Rate', unit: '%', lowerIsBetter: true }
                 ];
 
                 metrics.forEach(metric => {
@@ -1949,16 +1950,16 @@
                 const regressions = [];
 
                 // Check thresholds
-                const baselineP95 = comparison.baseline.metrics.p95Latency || 0;
-                const currentP95 = comparison.current.p95Latency || 0;
+                const baselineP95 = comparison.baseline.metrics.p95_latency || 0;
+                const currentP95 = comparison.current.p95_latency || 0;
                 const p95Increase = ((currentP95 - baselineP95) / baselineP95) * 100;
 
                 if (p95Increase > 20) {
                     regressions.push(`P95 latency increased by ${p95Increase.toFixed(1)}% (${baselineP95.toFixed(0)}ms → ${currentP95.toFixed(0)}ms)`);
                 }
 
-                const baselineErrorRate = comparison.baseline.metrics.errorRate || 0;
-                const currentErrorRate = comparison.current.errorRate || 0;
+                const baselineErrorRate = comparison.baseline.metrics.error_rate || 0;
+                const currentErrorRate = comparison.current.error_rate || 0;
                 if (currentErrorRate > baselineErrorRate * 1.5) {
                     regressions.push(`Error rate increased by ${((currentErrorRate / baselineErrorRate - 1) * 100).toFixed(1)}%`);
                 }
@@ -1985,10 +1986,11 @@
                 fetch('/api/performance/load-tests?limit=10')
                     .then(res => res.json())
                     .then(result => {
-                        if (result.status === 'success' && result.data) {
+                        const tests = result?.data?.tests || [];
+                        if (result.status === 'success' && tests.length > 0) {
                             const select = document.getElementById('baselineLoadTest');
                             select.innerHTML = '<option value="">Select a load test...</option>';
-                            result.data.forEach(test => {
+                            tests.forEach(test => {
                                 const option = document.createElement('option');
                                 option.value = test._id;
                                 option.textContent = `${test.scenario} - ${new Date(test.timestamp).toLocaleDateString()}`;
@@ -2011,7 +2013,10 @@
                     const data = { name, description };
 
                     if (source === 'loadtest' && loadTestId) {
+                        data.source = 'load_test';
                         data.loadTestId = loadTestId;
+                    } else {
+                        data.source = 'manual';
                     }
 
                     const response = await fetch('/api/performance/baselines', {
@@ -2088,6 +2093,16 @@
             async populateEndpointFilter() {
                 try {
                     const response = await fetch('/api/performance/endpoints');
+                    const contentType = response.headers.get('content-type') || '';
+                    if (!response.ok) {
+                        const body = await response.text();
+                        throw new Error(`HTTP ${response.status} ${response.statusText}: ${body.slice(0, 200)}`);
+                    }
+                    if (!contentType.includes('application/json')) {
+                        const body = await response.text();
+                        throw new Error(`Expected JSON but got ${contentType || 'unknown content-type'}: ${body.slice(0, 200)}`);
+                    }
+
                     const result = await response.json();
 
                     if (result.status === 'success' && result.data) {

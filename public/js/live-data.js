@@ -39,6 +39,9 @@ var CityY = 0.0000;
 let _mqttClient = null;
 let _mqttConnected = false;
 
+// Polling timer (use classic script style; p5 expects globals)
+let _issTimer = null;
+
 
 
 function preload() 
@@ -139,6 +142,18 @@ function getISS_location()
   })
 }
 
+function startIssPolling() {
+  if (_issTimer) return;
+  _issTimer = setInterval(getISS_location, 10000);
+}
+
+function stopIssPolling() {
+  if (_issTimer) {
+    clearInterval(_issTimer);
+    _issTimer = null;
+  }
+}
+
 
 // Initialize MQTT in the browser using mqtt.js (loaded in the page)
 function initFrontendMQTT(mqttConfig) {
@@ -232,6 +247,16 @@ function initFrontendMQTT(mqttConfig) {
   }
 }
 
+// Pause polling when tab is inactive (reduces background chatter)
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    stopIssPolling();
+  } else {
+    try { getISS_location(); } catch (_e) { /* ignore */ }
+    startIssPolling();
+  }
+});
+
 const pressureChartCtx = document.getElementById('pressureChart').getContext('2d');
 const pressureChart = new Chart(pressureChartCtx, {
     type: 'line',
@@ -301,7 +326,7 @@ function setup() {
   drawBase()
 
   getISS_location()
-  setInterval(getISS_location, 10000)
+  startIssPolling()
 
   // Initialize MQTT if mqttConfig is provided on the page
   try {

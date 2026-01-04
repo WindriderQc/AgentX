@@ -4,16 +4,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Documentation (Canonical)
 
-- AgentX docs index (start here): [docs/INDEX.md](docs/INDEX.md)
-- User manual: [docs/user-manual/README.md](docs/user-manual/README.md)
-- UI pages map (URLs + what each page does): [docs/user-manual/README.md#2-the-ui-pages--navigation](docs/user-manual/README.md#2-the-ui-pages--navigation)
-- Central roadmap + todos (AgentX + DataAPI): [docs/planning/ROADMAP.md](docs/planning/ROADMAP.md)
-- Progression log (status/validation pointers): [docs/planning/PROGRESSION_LOG.md](docs/planning/PROGRESSION_LOG.md)
-- Stack documentation hub: [docs/SBQC-Stack-Final/](docs/SBQC-Stack-Final/)
+- **AgentX docs index** (start here): [docs/INDEX.md](docs/INDEX.md)
+- **User manual**: [docs/user-manual/README.md](docs/user-manual/README.md)
+- **UI pages map** (URLs + what each page does): [docs/user-manual/README.md#2-the-ui-pages--navigation](docs/user-manual/README.md#2-the-ui-pages--navigation)
+- **Project roadmap** (current status & priorities): [ROADMAP.md](ROADMAP.md)
+- **Stack documentation hub**: [docs/SBQC-Stack-Final/](docs/SBQC-Stack-Final/)
 
 AgentX is the SBQC stack system-of-record; DataAPI docs defer to AgentX for stack-level truth.
 
 DataAPI has its own canonical docs index at: [../DataAPI/docs/INDEX.md](../DataAPI/docs/INDEX.md)
+
+## Getting Started
+
+For initial setup, installation, and development tools, see: [docs/onboarding/quickstart.md](docs/onboarding/quickstart.md)
+
+**Quick Reference:**
+- Clone, install, configure environment, start server
+- Development tools: VS Code extensions, debugging, hot reload
+- Git pre-commit hooks: `./scripts/setup-git-hooks.sh`
 
 ## Commands
 
@@ -142,50 +150,23 @@ QDRANT_COLLECTION=agentx_rag
 
 ### Qdrant Deployment
 
-**Complete Guide:** `/docs/QDRANT_DEPLOYMENT.md` (comprehensive 600+ line guide)
+**Complete Guide:** [docs/QDRANT_DEPLOYMENT.md](docs/QDRANT_DEPLOYMENT.md) (comprehensive 600+ line deployment guide)
 
 **Quick Start:**
 ```bash
-# Using included binary
-./qdrant --config-path qdrant_config.yaml
-
-# Or with Docker
-docker run -d --name qdrant -p 6333:6333 -p 6334:6334 \
-  -v qdrant_storage:/qdrant/storage qdrant/qdrant:latest
-
-# Verify
-curl http://localhost:6333/healthz
+./qdrant --config-path qdrant_config.yaml  # Local binary
+# OR
+docker run -d --name qdrant -p 6333:6333 -v qdrant_storage:/qdrant/storage qdrant/qdrant:latest
 ```
 
-**Configuration Files:**
-- `qdrant_config.yaml` - Local binary configuration
-- `qdrant.tar.gz` - Pre-packaged binary (78MB)
-- `qdrant_data/` - Persistent storage directory
-- `.qdrant-initialized` - Marker file for init status
-
-**Migration Process:**
+**Configuration:**
 ```bash
-# Export from in-memory, import to Qdrant
-node scripts/migrate-vector-store.js --from in-memory --to qdrant
-
-# Validates migration (compares counts)
-# Creates backup of in-memory data
+VECTOR_STORE_TYPE=qdrant
+QDRANT_URL=http://localhost:6333
+QDRANT_COLLECTION=agentx_rag
 ```
 
-**Collection Schema:**
-- **Dimension:** 768 (nomic-embed-text)
-- **Distance:** Cosine similarity
-- **Indexing:** HNSW (automatic after 10K vectors)
-
-**Backup Strategy (documented):**
-- Snapshot API: `POST /collections/{name}/snapshots`
-- Automated script: `backup-qdrant.sh` (cron schedule provided)
-- Retention: 7 days default
-
-**Performance:**
-- Search latency: <50ms for 1M vectors
-- Persistent across restarts
-- Scales to millions of vectors
+**Migration:** `node scripts/migrate-vector-store.js --from in-memory --to qdrant`
 
 ## Model Routing System
 
@@ -1030,75 +1011,7 @@ This section tracks the current implementation status and areas requiring develo
 - **n8n Instance:** http://192.168.2.199:5678 (public: https://n8n.specialblend.icu)
 - **Testing Status:** 6 workflows tested and validated (TEST_RESULTS_2026-01-02.md)
 
-**Multi-Agent Enhancement Plan (Tracks 1-6) - PARTIALLY IMPLEMENTED:**
-- **Track 1: Alerts & Notifications** ✅ **COMPLETE**
-  - AlertService implemented (`/src/services/alertService.js`)
-  - Alert model with delivery status tracking (`/models/Alert.js`)
-  - Alert management API (`/routes/alerts.js`)
-  - N4.1 Alert Dispatcher workflow deployed
-  - Rule engine for event evaluation
-  - Multi-channel support (email, Slack, webhook, DataAPI)
-- **Track 2: Historical Metrics & Analytics** ✅ **COMPLETE**
-  - MetricsSnapshot model for event-based metrics (`/models/MetricsSnapshot.js`)
-  - MetricsHourly model for time-series aggregation (`/models/MetricsHourly.js`)
-  - N4.2 Metrics Aggregation workflow deployed
-  - Time-series tracking infrastructure in place
-- **Track 3: Custom Model Management** ✅ **COMPLETE**
-  - CustomModel MongoDB schema with version tracking, stats, A/B testing (`/models/CustomModel.js` - 367 lines)
-  - customModelService for full lifecycle management (`/src/services/customModelService.js` - 482 lines)
-  - 14 API endpoints for CRUD, deployment, stats, and versioning (`/routes/custom-models.js` - 455 lines)
-  - Models Dashboard UI with registration, deployment, and performance monitoring (`/public/models.html`, `/public/js/models.js`)
-  - Ollama deployment integration via API
-  - Modelfile validation and hash tracking
-  - A/B testing with traffic-weighted selection
-  - Version history and rollback functionality
-  - Performance tracking (inferences, response time, tokens/sec, positive rate)
-- **Track 4: Self-Healing & Automation** ✅ **COMPLETE - PRODUCTION READY**
-  - Self-healing engine fully implemented (`/src/services/selfHealingEngine.js` - 883 lines)
-  - **All 5 remediation actions complete:**
-    - Model failover with health verification and rollback (lines 325-380)
-    - Prompt rollback with MongoDB integration (lines 385-453)
-    - Service restart with PM2 integration (lines 458-536)
-    - Request throttling with auto-restoration (lines 541-603)
-    - Alert-only action with multi-channel support (lines 608-648)
-  - Persistent failover state tracking in ModelRouter (lines 124-130, 310-383)
-  - 12 comprehensive self-healing rules configured (`/config/self-healing-rules.json` - 363 lines)
-  - N4.4 Self-Healing Orchestrator workflow deployed and functional
-  - Cooldown enforcement prevents remediation thrashing
-  - Approval workflow for critical actions (service restart)
-  - Integration tests created (`tests/services/selfHealingEngine.remediation.test.js` - 13 test cases)
-  - Complete documentation (`/docs/planning/TRACK_4_COMPLETION_SUMMARY.md` - 450 lines)
-- **Track 5: Advanced Testing & CI/CD** ✅ **COMPLETE - PRODUCTION READY**
-  - CI/CD pipeline documented and operational (GitHub Actions)
-  - Workflow validation tests completed (6/6 workflows)
-  - **Performance Benchmarking Dashboard fully implemented:**
-    - 3 MongoDB schemas: PerformanceLoadTest, PerformanceBaseline, PerformanceSnapshot
-    - 8 API endpoints in `/routes/performance.js` (641 lines)
-    - Artillery JSON parser service (`/src/services/artilleryParser.js` - 313 lines)
-    - Full frontend dashboard (`/public/performance.html` - 2,480 lines)
-    - 5 Chart.js visualizations (latency trends, percentiles, throughput, load tests, baselines)
-    - Request tracking middleware (`/src/middleware/performanceTracker.js` - 297 lines)
-    - 3 automation scripts: import-artillery-results.sh, create-performance-baseline.sh, check-performance-regression.sh
-    - n8n workflow N3.3-Performance-Monitor (automated 6-hour testing)
-    - Regression detection with automatic baseline comparison
-    - 37 passing tests for Artillery parser
-    - Comprehensive documentation (`/docs/features/PERFORMANCE_MONITORING.md` - 1,098 lines)
-- **Track 6: Backup & Disaster Recovery** ✅ **COMPLETE**
-  - Backup scripts implemented in DataAPI (`/home/yb/codes/DataAPI/scripts/`)
-    - `backup-mongodb.sh` - MongoDB dumps with compression
-    - `backup-qdrant.sh` - Vector store snapshots
-    - `restore-mongodb.sh` - MongoDB restoration
-    - `restore-qdrant.sh` - Vector store restoration
-    - `setup-backup-cron.sh` - Cron job installer
-  - Backup management dashboard (`/public/backup.html`)
-    - MongoDB backup/restore interface
-    - Qdrant snapshot management
-    - Workflow version control (Git integration)
-    - Cron automation setup/removal
-    - Backup list/delete functionality
-  - API routes for backup operations (`/routes/backup.js`)
-  - Workflow version control via Git (all AgentC workflows tracked)
-  - Navigation integration (Backup link in main nav)
+**Project Status:** See [ROADMAP.md](ROADMAP.md) for detailed status of all six development tracks, immediate priorities, and backlog items.
 
 ### 🔴 Critical Architecture Review Needed
 
@@ -1182,37 +1095,15 @@ This section tracks the current implementation status and areas requiring develo
 - ✅ Manual browser testing: Complete and verified
 - 📋 Test plan: 16 test cases documented in `/docs/testing/CHAT_ONBOARDING_TEST_PLAN.md`
 
-### 📋 Development Workflow Conventions ✅ ESTABLISHED
+### 📋 Development Workflow
 
-**Status:** Formalized in [CONTRIBUTING.md](CONTRIBUTING.md)
+For detailed contribution guidelines including branching strategy, git conventions, testing standards, pull request process, code review checklists, and breaking changes protocol, see: [CONTRIBUTING.md](CONTRIBUTING.md)
 
-**Key Conventions Documented:**
-- **Testing Standards:** Pre-commit requirements, when to write tests, coverage expectations
-- **Code Review Checklist:** Architecture, security, logging, testing, documentation
-- **Git Conventions:** Commit message format (Conventional Commits), branch management, PR process
-- **Documentation Updates:** When and how to update CLAUDE.md, API reference, changelog
-- **Breaking Changes:** Protocol for schema changes, API versioning, environment variables
-- **Common Pitfalls:** 7 documented pitfalls with solutions (vector store, hardcoding, secrets, etc.)
-
-**Pre-commit Hook Available:**
-```bash
-# Run this once to install git hooks
-./scripts/setup-git-hooks.sh
-# Automatically runs 'npm test' before each commit
-```
-
-**Pull Request Template:** Available at `.github/PULL_REQUEST_TEMPLATE.md`
-
-**Established Patterns (from recent work):**
-- **Wizard Consolidation Pattern** - When multiple components share similar logic:
-  1. Create base class with shared functionality (step navigation, rendering, styling)
-  2. Extract common methods to base class (nextStep, prevStep, render, etc.)
-  3. Keep component-specific logic in subclasses (step definitions, API calls)
-  4. Benefits: 20-50% code reduction, easier maintenance, consistent UX
-- **Documentation Updates** - After major refactoring:
-  1. Update line counts in CLAUDE.md
-  2. Document architectural improvements (base classes, patterns)
-  3. Update codebase metrics in "Current State" section
+**Quick Reference:**
+- Use conventional commits (`feat:`, `fix:`, `docs:`, etc.)
+- Test coverage: Services >80%, Routes >70%, Helpers >90%
+- PR template available at `.github/PULL_REQUEST_TEMPLATE.md`
+- Follow Service-Oriented Architecture (Routes → Services → Models)
 
 ## Critical Gotchas
 
@@ -1253,12 +1144,13 @@ This section tracks the current implementation status and areas requiring develo
 ## Documentation
 
 **Start Here:**
-- **[CLAUDE.md](CLAUDE.md)** (this file) - Comprehensive project guide for AI agents
+- **[CLAUDE.md](CLAUDE.md)** (this file) - Unified canonical reference for agents and humans
+  - Getting started, commands, architecture patterns, critical conventions
+  - Development workflow, testing standards, code review checklist
   - "Current State & Development TODOs" section - Implementation status and priority tasks
-  - Commands, architecture patterns, critical conventions
-- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Development standards and workflow guide for contributors
-  - Getting started, testing standards, code review checklist
-  - Pull request process, git conventions, common pitfalls
+- **[ROADMAP.md](ROADMAP.md)** - Project status and priorities
+  - Six development tracks (Alerts, Analytics, Custom Models, Self-Healing, Testing/CI-CD, Backup/DR)
+  - Current implementation status and immediate action items
 
 **Primary Documentation:**
 - `/docs/SBQC-Stack-Final/00-OVERVIEW.md` - System architecture overview

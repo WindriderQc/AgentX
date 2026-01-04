@@ -13,12 +13,15 @@
  */
 
 import { apiClient } from './utils/api-client.js';
+import { PollingController } from './utils/polling-controller.js';
 
 class AlertAnalytics {
     constructor(options = {}) {
         this.containerId = options.containerId || 'alert-analytics-container';
         this.refreshInterval = options.refreshInterval || 60000; // 1 minute
         this.timeRange = options.timeRange || 7; // days
+
+        this.poller = null;
 
         // Chart instances
         this.charts = {};
@@ -876,23 +879,25 @@ class AlertAnalytics {
      * Start auto-refresh timer
      */
     startAutoRefresh() {
-        if (this.refreshTimer) {
-            clearInterval(this.refreshTimer);
+        if (this.poller) {
+            this.poller.destroy();
         }
 
-        this.refreshTimer = setInterval(() => {
+        this.poller = new PollingController();
+        this.poller.addTask('alert-analytics-auto-refresh', async () => {
             console.log('Auto-refreshing analytics...');
-            this.refresh();
-        }, this.refreshInterval);
+            await this.refresh();
+        }, this.refreshInterval, { runOnStart: false });
+        this.poller.start();
     }
 
     /**
      * Stop auto-refresh timer
      */
     stopAutoRefresh() {
-        if (this.refreshTimer) {
-            clearInterval(this.refreshTimer);
-            this.refreshTimer = null;
+        if (this.poller) {
+            this.poller.destroy();
+            this.poller = null;
         }
     }
 

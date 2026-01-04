@@ -312,6 +312,7 @@ router.get('/rag-stats', optionalAuth, async (req, res) => {
 
     // RAG usage counts
     const totalConversations = await Conversation.countDocuments(dateFilter);
+    const ragRequestedConversations = await Conversation.countDocuments({ ...dateFilter, ragRequested: true });
     const ragConversations = await Conversation.countDocuments({ ...dateFilter, ragUsed: true });
     const noRagConversations = totalConversations - ragConversations;
     const ragUsageRate = totalConversations > 0 ? ragConversations / totalConversations : 0;
@@ -355,6 +356,7 @@ router.get('/rag-stats', optionalAuth, async (req, res) => {
         from: fromDate.toISOString(),
         to: toDate.toISOString(),
         totalConversations,
+        ragRequestedConversations,
         ragConversations,
         noRagConversations,
         ragUsageRate,

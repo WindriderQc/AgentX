@@ -451,6 +451,10 @@ On server start, `config/db-mongodb.js` ensures a default prompt exists:
 
 ## Agent C (n8n) Integration Guide
 
+**Integration target:** Call these endpoints on **AgentX** directly (there is no DataAPI proxy layer for `/api/analytics/*` or `/api/dataset/*`).
+
+**Auth:** Provide `x-api-key: $AGENTX_API_KEY` on requests (or a logged-in session cookie for browser-based calls).
+
 ### Prompt Evolution Workflow
 
 **1. Monitor Phase** (runs every 6 hours)

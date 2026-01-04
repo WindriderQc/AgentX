@@ -4,13 +4,15 @@
  * Shows impressions, positive/negative rates, trending indicators
  */
 
+import { PollingController } from '../utils/polling-controller.js';
+
 export class PerformanceMetricsDashboard {
   constructor(containerId, state) {
     this.container = document.getElementById(containerId);
     this.state = state;
     this.isCollapsed = false;
     this.autoRefresh = false;
-    this.refreshInterval = null;
+    this.poller = null;
     this.selectedTimeRange = '7d';
     this.selectedModel = 'all'; // New: model filter
     this.metricsData = null;
@@ -165,14 +167,15 @@ export class PerformanceMetricsDashboard {
   handleAutoRefresh() {
     if (this.autoRefresh) {
       // Start auto-refresh (every 30 seconds)
-      this.refreshInterval = setInterval(() => {
-        this.loadMetrics();
-      }, 30000);
+      if (this.poller) this.poller.destroy();
+      this.poller = new PollingController();
+      this.poller.addTask('performance-metrics', () => this.loadMetrics(), 30000, { runOnStart: false });
+      this.poller.start();
     } else {
       // Stop auto-refresh
-      if (this.refreshInterval) {
-        clearInterval(this.refreshInterval);
-        this.refreshInterval = null;
+      if (this.poller) {
+        this.poller.destroy();
+        this.poller = null;
       }
     }
   }

@@ -1,5 +1,6 @@
 import { apiClient } from './utils/api-client.js';
 import { sleep } from './utils/general-utils.js';
+import { PollingController } from './utils/polling-controller.js';
 
 const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 const MAX_OVERLAYS = 4;
@@ -77,7 +78,7 @@ export class TimeSeriesChart {
 
     this.chart = null;
     this.cache = new Map();
-    this.intervalId = null;
+    this.poller = null;
 
     this._onResize = this.handleResize.bind(this);
   }
@@ -88,14 +89,16 @@ export class TimeSeriesChart {
   }
 
   startAutoRefresh() {
-    if (this.intervalId) return;
-    this.intervalId = setInterval(() => this.refresh(), this.refreshInterval);
+    if (this.poller) return;
+    this.poller = new PollingController();
+    this.poller.addTask(`chart:${this.containerId}`, () => this.refresh(), this.refreshInterval, { runOnStart: false });
+    this.poller.start();
   }
 
   stopAutoRefresh() {
-    if (this.intervalId) {
-      clearInterval(this.intervalId);
-      this.intervalId = null;
+    if (this.poller) {
+      this.poller.destroy();
+      this.poller = null;
     }
   }
 

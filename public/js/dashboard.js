@@ -1,10 +1,8 @@
 // AgentX Unified Operations Center Logic
 // Single-page dashboard - no tabs, all sections visible
-import { API } from './utils/index.js';
+import { API, PollingController } from './utils/index.js';
 
-let metricsInterval = null;
-let healthInterval = null;
-let eventsInterval = null;
+let poller = null;
 
 // --- UTILITIES ---
 
@@ -31,18 +29,16 @@ function timeAgo(date) {
 
 // --- HEALTH LOGIC ---
 
-async function updateHealthStatus() {
+function applyHealthStatus(health) {
     try {
-        // 1. AgentX Health (Local)
-        const localHealth = await API.get('/health');
+        const localHealth = { status: health?.agentx?.status === 'ok' ? 'ok' : 'degraded' };
         const agentxDot = document.querySelector('#health-agentx .dot');
         if (agentxDot) {
             agentxDot.classList.toggle('online', localHealth.status === 'ok');
             agentxDot.classList.toggle('offline', localHealth.status !== 'ok');
         }
 
-        // 2. MongoDB Health (via /api/dashboard/health)
-        const dashHealth = await API.get('/api/dashboard/health');
+        const dashHealth = { data: { mongodb: { status: health?.mongodb?.status } } };
         const mongoDot = document.querySelector('#health-mongodb .dot');
         if (mongoDot) {
             const mongoOk = dashHealth.data?.mongodb?.status === 'connected';
@@ -50,8 +46,7 @@ async function updateHealthStatus() {
             mongoDot.classList.toggle('offline', !mongoOk);
         }
 
-        // 3. External Health (Ollama, DataAPI, n8n via aggregated endpoint)
-        const externalHealth = await API.get('/api/health/external');
+        const externalHealth = health?.external || {};
 
         const map = {
             ollama: '#health-ollama',
@@ -69,6 +64,25 @@ async function updateHealthStatus() {
         }
 
     } catch (error) {
+        console.error('Health apply failed:', error);
+    }
+}
+
+async function updateHealthStatus() {
+    try {
+        // Back-compat direct calls (used by manual refresh paths)
+        const [localHealth, dashHealth, externalHealth] = await Promise.all([
+            API.get('/health'),
+            API.get('/api/dashboard/health'),
+            API.get('/api/health/external')
+        ]);
+
+        applyHealthStatus({
+            agentx: { status: localHealth.status },
+            mongodb: { status: dashHealth.data?.mongodb?.status },
+            external: externalHealth
+        });
+    } catch (error) {
         console.error('Health check failed:', error);
     }
 }
@@ -84,11 +98,14 @@ async function updateQuickStats() {
         const elTotal = document.getElementById('db-total-docs');
         if (elTotal) elTotal.textContent = formatNumber(totalDocs);
 
-        // System metrics for overview cards
-        const sys = await API.get('/api/metrics/system');
+        // System + cache + connection: use the summary endpoint to avoid 3 separate calls
+        const summary = await API.get('/api/metrics/summary');
+        const sys = summary.data.system;
+        const cache = summary.data.cache;
+        const conn = summary.data.connection;
+
         const uptimeEl = document.getElementById('sys-uptime');
-        
-        if (uptimeEl) uptimeEl.textContent = sys.data.uptime.formatted;
+        if (uptimeEl) uptimeEl.textContent = sys?.uptime?.formatted || '—';
 
         // Memory metric card with bar and status
         const memEl = document.getElementById('sys-mem');
@@ -96,10 +113,10 @@ async function updateQuickStats() {
         const sysTotalMem = document.getElementById('sysTotalMem');
         const sysStatus = document.getElementById('sysStatus');
         
-        if (memEl && sys.data.memory) {
-            const heapUsed = (sys.data.memory.heapUsed / (1024 * 1024)).toFixed(2);
-            const heapTotal = (sys.data.memory.heapTotal / (1024 * 1024)).toFixed(2);
-            const memPct = ((sys.data.memory.heapUsed / sys.data.memory.heapTotal) * 100);
+        if (memEl && sys?.memory) {
+            const heapUsed = (sys.memory.heapUsed / (1024 * 1024)).toFixed(2);
+            const heapTotal = (sys.memory.heapTotal / (1024 * 1024)).toFixed(2);
+            const memPct = ((sys.memory.heapUsed / sys.memory.heapTotal) * 100);
             
             memEl.textContent = `${heapUsed} MB`;
             if (sysTotalMem) sysTotalMem.textContent = `${heapTotal} MB`;
@@ -110,8 +127,7 @@ async function updateQuickStats() {
         }
 
         // Cache hit rate metric card with bar
-        const cache = await API.get('/api/metrics/cache');
-        const hitRate = (cache.data.cache.hitRate * 100).toFixed(0);
+        const hitRate = ((cache?.hitRate || 0) * 100).toFixed(0);
         const hitRateEl = document.getElementById('cache-hit-rate');
         const cacheBar = document.getElementById('cacheBar');
         const cacheStatus = document.getElementById('cacheStatus');
@@ -121,32 +137,30 @@ async function updateQuickStats() {
         if (hitRateEl) hitRateEl.textContent = hitRate + '%';
         if (cacheBar) cacheBar.style.width = hitRate + '%';
         if (cacheStatus) {
-            cacheStatus.className = 'status-dot ' + (hitRate >= 80 ? 'healthy' : hitRate >= 50 ? 'warning' : 'error');
+            const hitRateNum = Number(hitRate) || 0;
+            cacheStatus.className = 'status-dot ' + (hitRateNum >= 80 ? 'healthy' : hitRateNum >= 50 ? 'warning' : 'error');
         }
-        if (cacheHits) cacheHits.textContent = formatNumber(cache.data.cache.hits || 0);
-        if (cacheMisses) cacheMisses.textContent = formatNumber(cache.data.cache.misses || 0);
+        if (cacheHits) cacheHits.textContent = formatNumber(cache?.hitCount || 0);
+        if (cacheMisses) cacheMisses.textContent = formatNumber(cache?.missCount || 0);
 
-        // Database connections metric card with bar
-        const db = await API.get('/api/metrics/database');
+        // DB connections card (from summary.connection)
         const connActive = document.getElementById('connActive');
         const connMax = document.getElementById('connMax');
         const connAvail = document.getElementById('connAvail');
         const connBar = document.getElementById('connBar');
         const connStatus = document.getElementById('connStatus');
+
+        const active = conn?.activeConnections || 0;
+        const max = conn?.poolSize || 10;
+        const avail = conn?.availableConnections || 0;
+        const connPct = max > 0 ? (active / max) * 100 : 0;
         
-        if (db.data.connections && connActive && connMax) {
-            const active = db.data.connections.current || 0;
-            const max = db.data.connections.max || 10;
-            const avail = db.data.connections.available || 0;
-            const connPct = (active / max) * 100;
-            
-            connActive.textContent = active;
-            connMax.textContent = max;
-            if (connAvail) connAvail.textContent = avail;
-            if (connBar) connBar.style.width = `${connPct}%`;
-            if (connStatus) {
-                connStatus.className = 'status-dot ' + (connPct > 90 ? 'error' : connPct > 75 ? 'warning' : 'healthy');
-            }
+        if (connActive) connActive.textContent = active;
+        if (connMax) connMax.textContent = max;
+        if (connAvail) connAvail.textContent = avail;
+        if (connBar) connBar.style.width = `${connPct}%`;
+        if (connStatus) {
+            connStatus.className = 'status-dot ' + (connPct > 90 ? 'error' : connPct > 75 ? 'warning' : 'healthy');
         }
 
     } catch (error) {
@@ -154,13 +168,11 @@ async function updateQuickStats() {
     }
 }
 
-async function updateSystemEvents() {
+function applySystemEvents(events) {
     const container = document.getElementById('system-events-list');
     if (!container) return;
 
     try {
-        const response = await API.get('/api/events/system?limit=15');
-        const events = response.data;
 
         if (!events || events.length === 0) {
             container.innerHTML = `
@@ -183,7 +195,7 @@ async function updateSystemEvents() {
         `).join('');
 
     } catch (error) {
-        console.error('Failed to fetch system events:', error);
+        console.error('Failed to render system events:', error);
         container.innerHTML = `
             <div class="event-row">
                 <div class="event-indicator error"></div>
@@ -192,6 +204,16 @@ async function updateSystemEvents() {
                     <div class="event-time">${error.message}</div>
                 </div>
             </div>`;
+    }
+}
+
+async function updateSystemEvents() {
+    try {
+        const response = await API.get('/api/events/system?limit=15');
+        applySystemEvents(response.data);
+    } catch (error) {
+        console.error('Failed to fetch system events:', error);
+        applySystemEvents([]);
     }
 }
 
@@ -392,16 +414,12 @@ function setStatusDot(el, val, healthyThreshold = 70, warningThreshold = 90, rev
     el.className = `status-dot ${status}`;
 }
 
-async function refreshSystemMetrics() {
+async function refreshSystemMetrics(summaryData) {
     try {
-        const [cache, conn, sys] = await Promise.all([
-            API.get('/api/metrics/cache'),
-            API.get('/api/metrics/connection'),
-            API.get('/api/metrics/system')
-        ]);
+        const data = summaryData || (await API.get('/api/metrics/summary')).data;
 
         // --- Cache ---
-        const cacheData = cache.data.cache;
+        const cacheData = data.cache;
         const hitRate = (cacheData.hitRate * 100);
         
         const elHitRate = document.getElementById('cacheHitRate');
@@ -418,8 +436,8 @@ async function refreshSystemMetrics() {
         if (missEl) missEl.textContent = formatNumber(cacheData.missCount);
 
         // --- Connections ---
-        const activeConn = conn.data.activeConnections || 0;
-        const maxConn = conn.data.poolSize || 100;
+        const activeConn = data.connection.activeConnections || 0;
+        const maxConn = data.connection.poolSize || 100;
         const connUsage = (activeConn / maxConn) * 100;
 
         const connActiveEl = document.getElementById('connActive');
@@ -430,11 +448,11 @@ async function refreshSystemMetrics() {
         if (connActiveEl) connActiveEl.textContent = activeConn;
         if (connMaxEl) connMaxEl.textContent = maxConn;
         if (connBarEl) connBarEl.style.width = connUsage + '%';
-        if (connAvailEl) connAvailEl.textContent = conn.data.availableConnections || '0';
+        if (connAvailEl) connAvailEl.textContent = data.connection.availableConnections || '0';
         setStatusDot(document.getElementById('connStatus'), connUsage, 70, 90, true);
 
         // --- System ---
-        const sysData = sys.data;
+        const sysData = data.system;
         const heapUsedMB = Math.round(sysData.memory.heapUsed / 1024 / 1024);
         const heapTotalMB = Math.round(sysData.memory.heapTotal / 1024 / 1024);
         const memUsagePercent = (sysData.memory.heapUsed / sysData.memory.heapTotal) * 100;
@@ -454,6 +472,50 @@ async function refreshSystemMetrics() {
 
     } catch (error) {
         console.error('Metrics refresh failed:', error);
+    }
+}
+
+function applyScans(result) {
+    const container = document.getElementById('scans-list');
+    if (!container) return;
+
+    if (!result || result.status !== 'success' || !result.data?.scans || result.data.scans.length === 0) {
+        container.innerHTML = '<div class="scan-item"><span style="color: var(--muted);">No recent scans</span></div>';
+        return;
+    }
+
+    container.innerHTML = result.data.scans.map(scan => {
+        const isRunning = scan.status === 'running';
+        const statusClass = isRunning ? 'running' : (scan.status === 'complete' ? 'complete' : 'stopped');
+        const duration = scan.duration ? `${scan.duration}s` : (isRunning ? 'Running...' : '-');
+        
+        return `
+        <div class="scan-item">
+            <div class="scan-info">
+                <span class="id" title="${scan._id}">${scan._id.substring(0, 8)}...</span>
+                <span class="status ${statusClass}">${scan.status}</span>
+                <span style="font-size: 10px; color: var(--muted);">${timeAgo(scan.started_at)} • ${scan.counts?.files_processed || 0} files</span>
+            </div>
+            <div class="scan-actions">
+                ${isRunning ? `<button class="btn-xs danger" onclick="window.stopScan('${scan._id}')" title="Stop Scan"><i class="fas fa-stop"></i></button>` : ''}
+                <button class="btn-xs" onclick="window.viewScanReport('${scan._id}')" title="View Report"><i class="fas fa-file-alt"></i></button>
+            </div>
+        </div>
+        `;
+    }).join('');
+}
+
+async function refreshDashboardSummary() {
+    try {
+        const response = await API.get('/api/dashboard/summary?eventsLimit=15&scansLimit=5');
+        const payload = response.data;
+
+        applyHealthStatus(payload.health);
+        refreshSystemMetrics(payload.metrics);
+        applySystemEvents(payload.events);
+        applyScans(payload.scans);
+    } catch (error) {
+        console.error('Dashboard summary refresh failed:', error);
     }
 }
 
@@ -566,10 +628,11 @@ document.addEventListener('DOMContentLoaded', () => {
     refreshSystemMetrics();
     loadCollections();
 
-    // Periodic updates
-    healthInterval = setInterval(updateHealthStatus, 30000);
-    eventsInterval = setInterval(updateSystemEvents, 60000);
-    metricsInterval = setInterval(refreshSystemMetrics, 10000);
+    // Periodic updates (shared polling controller handles pause-on-blur)
+    // Prefer batched polling to reduce request volume.
+    poller = new PollingController();
+    poller.addTask('summary', refreshDashboardSummary, 10000, { runOnStart: false });
+    poller.start();
 
     // n8n Webhook Listeners
     const triggerBtn = document.getElementById('triggerWebhookBtn');
@@ -673,9 +736,8 @@ document.addEventListener('DOMContentLoaded', () => {
         refreshScansBtn.addEventListener('click', loadScans);
     }
 
-    // Initial load of scans
+    // Scans are loaded once initially; periodic refresh uses batched summary
     loadScans();
-    setInterval(loadScans, 10000); // Refresh scans every 10s
 
     // Modal Close
     const closeBtn = document.getElementById('closeScanReportBtn');

@@ -3,12 +3,40 @@ const router = express.Router();
 const mongoose = require('mongoose');
 const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
 const logger = require('../config/logger');
+const { getEmbeddingsService } = require('../src/services/embeddings');
+let EmbeddingCacheStats;
+try {
+    EmbeddingCacheStats = require('../models/EmbeddingCacheStats');
+} catch (_e) {
+    EmbeddingCacheStats = null;
+}
 
 // Environment variables
 const OLLAMA_HOST = process.env.OLLAMA_HOST || 'http://localhost:11434';
 const OLLAMA_HOST_2 = process.env.OLLAMA_HOST_2 || 'http://192.168.2.12:11434';
 const DATAAPI_BASE_URL = process.env.DATAAPI_BASE_URL || 'http://192.168.2.33:3003';
 const DATAAPI_API_KEY = process.env.DATAAPI_API_KEY;
+
+function formatUptime(seconds) {
+    const s = Math.max(0, Math.floor(seconds || 0));
+    const days = Math.floor(s / 86400);
+    const hours = Math.floor((s % 86400) / 3600);
+    const minutes = Math.floor((s % 3600) / 60);
+    const parts = [];
+    if (days) parts.push(`${days}d`);
+    if (hours || days) parts.push(`${hours}h`);
+    parts.push(`${minutes}m`);
+    return parts.join(' ');
+}
+
+function formatBytes(bytes) {
+    const b = Number(bytes) || 0;
+    if (b === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(b) / Math.log(k));
+    return `${(b / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
+}
 
 if (!DATAAPI_API_KEY) {
     logger.warn('DATAAPI_API_KEY not set - dashboard scans proxy will not work');
@@ -99,6 +127,167 @@ router.get('/health', async (req, res) => {
         status: 'success',
         data: status
     });
+});
+
+/**
+ * GET /api/dashboard/summary
+ * Batched endpoint for the UI to reduce polling chattiness.
+ * Intentionally excludes expensive per-collection counting.
+ */
+router.get('/summary', async (req, res) => {
+    const eventsLimit = Number(req.query.eventsLimit || 15);
+    const scansLimit = Number(req.query.scansLimit || 5);
+
+    try {
+        // --- Metrics summary (same shape as /api/metrics/summary) ---
+        const embeddings = getEmbeddingsService();
+        const cacheStats = embeddings.getCacheStats() || {};
+        let hitCount = Number(cacheStats.hitCount) || 0;
+        let missCount = Number(cacheStats.missCount) || 0;
+        let evictionCount = Number(cacheStats.evictionCount) || 0;
+
+        if (EmbeddingCacheStats && mongoose.connection.readyState === 1) {
+            const global = await EmbeddingCacheStats.findById('embedding').lean();
+            if (global) {
+                hitCount = Number(global.hitCount) || hitCount;
+                missCount = Number(global.missCount) || missCount;
+                evictionCount = Number(global.evictionCount) || evictionCount;
+            }
+        }
+        const total = hitCount + missCount;
+        const hitRate = total > 0 ? hitCount / total : 0;
+
+        const connected = mongoose.connection.readyState === 1 && mongoose.connection.db;
+        let serverStatus;
+        if (connected) {
+            try {
+                serverStatus = await mongoose.connection.db.admin().serverStatus();
+            } catch (_e) {
+                serverStatus = null;
+            }
+        }
+        const current = Number(serverStatus?.connections?.current) || 0;
+        const available = Number(serverStatus?.connections?.available) || 0;
+        const maxConnections = current + available;
+        const options = mongoose.connection.client?.options || {};
+        const minPoolSize = Number(options.minPoolSize) || 0;
+
+        const mem = process.memoryUsage();
+        const seconds = process.uptime();
+
+        const metrics = {
+            cache: {
+                size: Number(cacheStats.size) || 0,
+                maxSize: Number(cacheStats.maxSize) || 0,
+                hitCount,
+                missCount,
+                evictions: evictionCount,
+                hitRate,
+                ttlMs: Number(cacheStats.ttl) || 0
+            },
+            connection: {
+                host: mongoose.connection.host,
+                port: mongoose.connection.port,
+                readyState: mongoose.connection.readyState,
+                activeConnections: current,
+                availableConnections: available,
+                poolSize: maxConnections,
+                minPoolSize
+            },
+            system: {
+                uptime: {
+                    seconds,
+                    formatted: formatUptime(seconds)
+                },
+                nodeVersion: process.version,
+                platform: process.platform,
+                memory: {
+                    rss: mem.rss,
+                    heapTotal: mem.heapTotal,
+                    heapUsed: mem.heapUsed,
+                    formatted: {
+                        rss: formatBytes(mem.rss),
+                        heapTotal: formatBytes(mem.heapTotal),
+                        heapUsed: formatBytes(mem.heapUsed)
+                    }
+                },
+                timestamp: new Date().toISOString()
+            }
+        };
+
+        // --- External health (reuses same target intent as /api/health/external) ---
+        const fetchFn = require('node-fetch');
+        const targets = [
+            { name: 'dataapi', url: `${DATAAPI_BASE_URL}/health` },
+            { name: 'ollama', url: OLLAMA_HOST + '/api/tags' },
+            {
+                name: 'n8n',
+                url: process.env.N8N_WEBHOOK_BASE_URL
+                    ? process.env.N8N_WEBHOOK_BASE_URL.split('/webhook')[0] + '/healthz'
+                    : 'https://n8n.specialblend.icu/healthz'
+            }
+        ];
+
+        const external = {};
+        await Promise.all(
+            targets.map(async (t) => {
+                try {
+                    const resp = await fetchFn(t.url, { timeout: 3000 });
+                    external[t.name] = { status: resp.ok ? 'ok' : 'error' };
+                } catch (_err) {
+                    external[t.name] = { status: 'error' };
+                }
+            })
+        );
+
+        // --- Events (DataAPI appevents) ---
+        let events = [];
+        try {
+            const response = await fetch(`${DATAAPI_BASE_URL}/api/v1/collection/appevents/items?limit=${eventsLimit}`, {
+                headers: { 'x-api-key': DATAAPI_API_KEY }
+            });
+            const data = await response.json();
+            events = Array.isArray(data?.data) ? data.data : (Array.isArray(data) ? data : []);
+        } catch (err) {
+            logger.warn('Dashboard summary events fetch failed', { error: err.message });
+        }
+
+        // --- Scans (DataAPI) ---
+        let scans = null;
+        try {
+            const url = `${DATAAPI_BASE_URL}/api/v1/storage/scans?limit=${scansLimit}`;
+            const response = await fetch(url, {
+                headers: { 'x-api-key': DATAAPI_API_KEY }
+            });
+            scans = await response.json();
+        } catch (err) {
+            logger.warn('Dashboard summary scans fetch failed', { error: err.message });
+        }
+
+        // --- Mongo status ---
+        const mongodb = {
+            status: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+            host: mongoose.connection.host
+        };
+
+        return res.json({
+            status: 'success',
+            data: {
+                metrics,
+                health: {
+                    agentx: { status: 'ok' },
+                    mongodb,
+                    external
+                },
+                events,
+                scans,
+                timestamp: new Date().toISOString()
+            }
+        });
+    } catch (err) {
+        logger.error('Dashboard summary error', { error: err.message });
+        return res.status(500).json({ status: 'error', message: err.message });
+    }
 });
 
 /**

@@ -9,7 +9,6 @@ const router = express.Router();
 const mongoose = require('mongoose');
 const Conversation = require('../models/Conversation');
 const PromptConfig = require('../models/PromptConfig');
-const { apiKeyAuth } = require('../src/middleware/auth');
 const logger = require('../config/logger');
 const { requireAuth, optionalAuth } = require('../src/middleware/auth');
 
@@ -246,7 +245,7 @@ router.get('/prompts', optionalAuth, requireAuth, async (req, res) => {
  * Response: { data: <activated PromptConfig> }
  * Auth: Required - prevents unauthorized prompt version changes
  */
-router.patch('/prompts/:id/activate', apiKeyAuth, async (req, res) => {
+router.patch('/prompts/:id/activate', optionalAuth, requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
 

@@ -45,6 +45,17 @@ body {
   min-height: 100vh;
 }
 
+/* On very large screens, let dashboards use available width */
+@media (min-width: 1600px) {
+  .page {
+    max-width: none;
+  }
+
+  .main-content {
+    max-width: none;
+  }
+}
+
 .page.history-hidden .sidebar {
   display: none;
 }

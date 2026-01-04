@@ -38,6 +38,93 @@ function formatBytes(bytes) {
 // Dashboard monitoring endpoints (used by /dashboard.html and /analytics.html)
 // ---------------------------------------------------------------------------
 
+router.get('/summary', optionalAuth, async (_req, res) => {
+  try {
+    // 1. Cache Stats
+    const embeddings = getEmbeddingsService();
+    const cacheStats = embeddings.getCacheStats() || {};
+    let hitCount = Number(cacheStats.hitCount) || 0;
+    let missCount = Number(cacheStats.missCount) || 0;
+    let evictionCount = Number(cacheStats.evictionCount) || 0;
+
+    if (EmbeddingCacheStats && mongoose.connection.readyState === 1) {
+      const global = await EmbeddingCacheStats.findById('embedding').lean();
+      if (global) {
+        hitCount = Number(global.hitCount) || hitCount;
+        missCount = Number(global.missCount) || missCount;
+        evictionCount = Number(global.evictionCount) || evictionCount;
+      }
+    }
+    const total = hitCount + missCount;
+    const hitRate = total > 0 ? hitCount / total : 0;
+
+    // 2. Connection Stats
+    const connected = mongoose.connection.readyState === 1 && mongoose.connection.db;
+    let serverStatus;
+    if (connected) {
+      try {
+        serverStatus = await mongoose.connection.db.admin().serverStatus();
+      } catch (_e) {
+        serverStatus = null;
+      }
+    }
+    const current = Number(serverStatus?.connections?.current) || 0;
+    const available = Number(serverStatus?.connections?.available) || 0;
+    const maxConnections = current + available;
+    const options = mongoose.connection.client?.options || {};
+    const minPoolSize = Number(options.minPoolSize) || 0;
+
+    // 3. System Stats
+    const mem = process.memoryUsage();
+    const seconds = process.uptime();
+
+    res.json({
+      status: 'success',
+      data: {
+        cache: {
+          size: Number(cacheStats.size) || 0,
+          maxSize: Number(cacheStats.maxSize) || 0,
+          hitCount,
+          missCount,
+          evictions: evictionCount,
+          hitRate,
+          ttlMs: Number(cacheStats.ttl) || 0
+        },
+        connection: {
+          host: mongoose.connection.host,
+          port: mongoose.connection.port,
+          readyState: mongoose.connection.readyState,
+          activeConnections: current,
+          availableConnections: available,
+          poolSize: maxConnections,
+          minPoolSize
+        },
+        system: {
+          uptime: {
+            seconds,
+            formatted: formatUptime(seconds)
+          },
+          nodeVersion: process.version,
+          platform: process.platform,
+          memory: {
+            rss: mem.rss,
+            heapTotal: mem.heapTotal,
+            heapUsed: mem.heapUsed,
+            formatted: {
+              rss: formatBytes(mem.rss),
+              heapTotal: formatBytes(mem.heapTotal),
+              heapUsed: formatBytes(mem.heapUsed)
+            }
+          },
+          timestamp: new Date().toISOString()
+        }
+      }
+    });
+  } catch (error) {
+    return res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
 router.get('/cache', optionalAuth, async (_req, res) => {
   try {
     const embeddings = getEmbeddingsService();

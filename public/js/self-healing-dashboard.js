@@ -12,6 +12,7 @@
  */
 
 import { apiClient } from './utils/api-client.js';
+import { PollingController } from './utils/polling-controller.js';
 
 class SelfHealingDashboard {
     constructor(options = {}) {
@@ -24,7 +25,8 @@ class SelfHealingDashboard {
         this.rules = [];
         this.executionHistory = [];
         this.engineStatus = null;
-        this.autoRefreshTimer = null;
+        this.autoRefreshPoller = null;
+        this.cooldownPoller = null;
         this.cooldownTimers = new Map();
 
         // Strategy configuration
@@ -849,15 +851,15 @@ class SelfHealingDashboard {
      * Start cooldown countdown timers
      */
     startCooldownTimers() {
-        // Update cooldown displays every second
-        setInterval(() => {
-            const historyEntries = document.querySelectorAll('[data-rule-name]');
-            historyEntries.forEach(async (element) => {
-                // Trigger re-render of cooldown displays
-                await this.loadHistory();
-                this.renderRules();
-            });
-        }, 60000); // Update every minute
+        if (this.cooldownPoller) return;
+
+        // Update cooldown displays every minute (paused on blur)
+        this.cooldownPoller = new PollingController();
+        this.cooldownPoller.addTask('self-healing-cooldowns', async () => {
+            await this.loadHistory();
+            this.renderRules();
+        }, 60000, { runOnStart: false });
+        this.cooldownPoller.start();
     }
 
     /**
@@ -865,20 +867,22 @@ class SelfHealingDashboard {
      */
     startAutoRefresh() {
         this.stopAutoRefresh();
-        this.autoRefreshTimer = setInterval(async () => {
+        this.autoRefreshPoller = new PollingController();
+        this.autoRefreshPoller.addTask('self-healing-auto-refresh', async () => {
             await this.loadStatus();
             await this.loadRules();
             await this.loadHistory();
-        }, this.refreshInterval);
+        }, this.refreshInterval, { runOnStart: false });
+        this.autoRefreshPoller.start();
     }
 
     /**
      * Stop auto-refresh
      */
     stopAutoRefresh() {
-        if (this.autoRefreshTimer) {
-            clearInterval(this.autoRefreshTimer);
-            this.autoRefreshTimer = null;
+        if (this.autoRefreshPoller) {
+            this.autoRefreshPoller.destroy();
+            this.autoRefreshPoller = null;
         }
     }
 
