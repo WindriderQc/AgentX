@@ -198,5 +198,35 @@
     "expected_answer": "Using product rule: f'(x) = 3x^2*sin(x) + x^3*cos(x). Product rule: (fg)' = f'g + fg'",
     "judge_criteria": ["Correct derivative: 3x²sin(x) + x³cos(x)", "Product rule correctly stated", "Shows work applying rule", "Identifies u and v components"],
     "scoring_type": "math"
+  },
+  {
+    "level": 4,
+    "category": "coding",
+    "name": "Thread-Safe Singleton",
+    "prompt": "Implement a thread-safe singleton pattern in Python using a decorator or metaclass. Explain why it is thread-safe.",
+    "expected_tokens": 300,
+    "expected_answer": "Python implementation using a lock (threading.Lock) inside the instance creation logic to ensure only one instance is created even with concurrent access.",
+    "judge_criteria": ["Uses threading.Lock or similar mechanism", "Correct Singleton logic (one instance)", "Code is valid Python", "Explanation of thread safety is correct"],
+    "scoring_type": "code"
+  },
+  {
+    "level": 5,
+    "category": "reasoning",
+    "name": "Logical Fallacy Analysis",
+    "prompt": "Analyze the following argument for logical fallacies: 'If we don't ban all cars, pollution will destroy the earth. Therefore, anyone who drives hates the planet.' Identify at least two fallacies.",
+    "expected_tokens": 250,
+    "expected_answer": "Identifies False Dilemma (ban cars or destroy earth) and Ad Hominem / Straw Man (drivers hate the planet).",
+    "judge_criteria": ["Identifies False Dilemma/Dichotomy", "Identifies Ad Hominem or Straw Man", "Explains why they are fallacies", "Analysis is sound"],
+    "scoring_type": "reasoning"
+  },
+  {
+    "level": 5,
+    "category": "coding",
+    "name": "Cycle Detection",
+    "prompt": "Write a function to detect a cycle in a linked list using Floyd's Cycle-Finding Algorithm (tortoise and hare). Explain the time and space complexity.",
+    "expected_tokens": 300,
+    "expected_answer": "Implementation using two pointers (slow and fast). Slow moves 1 step, fast moves 2. If they meet, there is a cycle. Time O(n), Space O(1).",
+    "judge_criteria": ["Correct implementation of two-pointer method", "Correctly identifies cycle condition", "Time complexity stated as O(n)", "Space complexity stated as O(1)"],
+    "scoring_type": "code"
   }
 ]

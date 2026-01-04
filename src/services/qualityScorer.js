@@ -367,28 +367,43 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
 /**
  * Calculate composite score combining speed and quality
  * @param {Object} metrics - Performance and quality metrics
+ * @param {String} profile - Scoring profile ('interactive' | 'reasoning')
  * @returns {Object} Composite scores
  */
-function calculateCompositeScore(metrics) {
+function calculateCompositeScore(metrics, profile = 'interactive') {
     const { latency, tokens_per_sec, quality_score } = metrics;
     
-    // Normalize latency (lower is better, cap at 30s)
-    // Score: 10 at 0ms, 0 at 30000ms
-    const latencyScore = Math.max(0, 10 - (latency / 3000));
+    const PROFILES = {
+        interactive: {
+            weights: { quality: 0.4, latency: 0.4, speed: 0.2 },
+            latencyCap: 30000, // 30s
+            description: "Optimized for user-facing chat"
+        },
+        reasoning: {
+            weights: { quality: 0.8, latency: 0.1, speed: 0.1 },
+            latencyCap: 120000, // 120s
+            description: "Optimized for complex problem solving"
+        },
+        coding: {
+            weights: { quality: 0.7, latency: 0.2, speed: 0.1 },
+            latencyCap: 60000, // 60s
+            description: "Optimized for code generation accuracy"
+        }
+    };
+
+    const config = PROFILES[profile] || PROFILES.interactive;
+    const weights = config.weights;
+
+    // Normalize latency (lower is better)
+    // Score: 100 at 0ms, 0 at cap
+    const latencyScore = Math.max(0, 100 - ((latency / config.latencyCap) * 100));
     
     // Normalize tokens/sec (higher is better, cap at 100 t/s)
-    // Score: 0 at 0 t/s, 10 at 100 t/s
-    const speedScore = Math.min(10, (parseFloat(tokens_per_sec) || 0) / 10);
+    // Score: 0 at 0 t/s, 100 at 100 t/s
+    const speedScore = Math.min(100, (parseFloat(tokens_per_sec) || 0));
     
-    // Quality score is already 0-10
-    const qualityScore = quality_score || 0;
-    
-    // Composite with configurable weights
-    const weights = {
-        quality: 0.5,    // Quality is most important
-        latency: 0.3,    // Latency matters
-        speed: 0.2       // Tokens/sec is nice-to-have
-    };
+    // Quality score is 0-10, scale to 0-100
+    const qualityScore = (quality_score || 0) * 10;
     
     const composite = (
         qualityScore * weights.quality +
@@ -403,17 +418,20 @@ function calculateCompositeScore(metrics) {
             latency: Math.round(latencyScore * 10) / 10,
             speed: Math.round(speedScore * 10) / 10
         },
-        weights
+        weights,
+        profile
     };
 }
 
 /**
  * Batch score multiple responses
  * @param {Array} results - Array of benchmark results with responses
+ * @param {Object} options - Scoring options { profile: 'interactive'|'reasoning' }
  * @returns {Promise<Array>} Results with quality scores added
  */
-async function batchScore(results) {
+async function batchScore(results, options = {}) {
     const scoredResults = [];
+    const profile = options.profile || 'interactive';
     
     for (const result of results) {
         if (!result.response || !result.success) {
@@ -443,7 +461,7 @@ async function batchScore(results) {
             latency: result.latency,
             tokens_per_sec: result.tokens_per_sec,
             quality_score: scores.quality_score
-        });
+        }, profile);
         
         scoredResults.push({
             ...result,

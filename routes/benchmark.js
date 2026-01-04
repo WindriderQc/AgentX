@@ -115,12 +115,24 @@ router.get('/summary', async (req, res) => {
 /**
  * GET /api/benchmark/dashboard
  * Get dashboard data with charts and stats including quality metrics
+ *
+ * Query params:
+ *   - sort: Sort criteria (latency, quality, composite, etc.)
+ *   - modelCategory: Filter by model category (ops, coding, reasoning, etc.)
+ *   - promptCategory: Filter by prompt category (coding, reasoning, factual, etc.)
+ *   - tag: Filter by batch tag
  */
 router.get('/dashboard', async (req, res) => {
     try {
-        const sortBy = req.query.sort || 'latency';
+        const { sort, modelCategory, promptCategory, tag } = req.query;
+        const sortBy = sort || 'latency';
 
-        const dashboard = await benchmarkService.getDashboard({ sortBy });
+        const dashboard = await benchmarkService.getDashboard({
+            sortBy,
+            modelCategory,
+            promptCategory,
+            tag
+        });
 
         res.json({
             status: 'success',

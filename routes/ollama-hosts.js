@@ -91,9 +91,30 @@ async function fetchModels(hostUrl) {
         }
 
         const data = await response.json();
+        
+        // Filter out embedding models
+        const models = (data.models || [])
+            .filter(m => {
+                const name = m.name.toLowerCase();
+                const family = m.details?.family?.toLowerCase() || '';
+                
+                // Exclude known embedding keywords
+                if (name.includes('embed') || name.includes('nomic') || name.includes('bert')) {
+                    return false;
+                }
+                
+                // Exclude embedding families
+                if (family === 'bert' || family === 'nomic-bert') {
+                    return false;
+                }
+                
+                return true;
+            })
+            .map(m => m.name);
+
         return {
             success: true,
-            models: (data.models || []).map(m => m.name)
+            models
         };
     } catch (err) {
         return {

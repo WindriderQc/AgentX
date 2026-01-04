@@ -14,6 +14,13 @@ const BenchmarkAnalytics = (() => {
     let poller = null;
     let trendsChart = null;
     let comparisonChart = null;
+    
+    let currentFilters = {
+        modelCategory: null,
+        promptCategory: null,
+        tag: null,
+        sort: 'composite'
+    };
 
     /**
      * Initialize all analytics components
@@ -461,9 +468,32 @@ const BenchmarkAnalytics = (() => {
      * Filter batches by tag
      */
     function filterByTag(tag) {
-        // TODO: Implement batch filtering by tag
-        console.log('Filter by tag:', tag);
+        currentFilters.tag = tag;
         showToast(`Filtering by tag: ${tag}`, 'info');
+        if (window.loadDashboard) window.loadDashboard();
+    }
+
+    function filterByModelCategory(category) {
+        currentFilters.modelCategory = category || null;
+        if (window.loadDashboard) window.loadDashboard();
+    }
+
+    function filterByPromptCategory(category) {
+        currentFilters.promptCategory = category || null;
+        if (window.loadDashboard) window.loadDashboard();
+    }
+
+    function getActiveFilters() {
+        return currentFilters;
+    }
+
+    function clearAllFilters() {
+        currentFilters = { modelCategory: null, promptCategory: null, tag: null, sort: 'composite' };
+        const modelFilter = document.getElementById('modelCategoryFilter');
+        if (modelFilter) modelFilter.value = '';
+        const promptFilter = document.getElementById('promptCategoryFilter');
+        if (promptFilter) promptFilter.value = '';
+        if (window.loadDashboard) window.loadDashboard();
     }
 
     /**
@@ -547,7 +577,11 @@ const BenchmarkAnalytics = (() => {
         loadActiveStats,
         loadTagStats,
         compareBatches,
-        stopActiveMonitoring
+        stopActiveMonitoring,
+        filterByModelCategory,
+        filterByPromptCategory,
+        getActiveFilters,
+        clearAllFilters
     };
 })();
 

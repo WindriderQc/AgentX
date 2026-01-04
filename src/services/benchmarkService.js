@@ -247,13 +247,48 @@ class BenchmarkService {
     /**
      * Get dashboard data with model statistics
      */
-    async getDashboard({ sortBy = 'latency' } = {}) {
-        const [totalTests, successCount, recentTests, modelStats, failureStats] = await Promise.all([
+    async getDashboard({ sortBy = 'latency', modelCategory, promptCategory, tag } = {}) {
+        // Build match query for filtering
+        const matchQuery = { success: true };
+
+        // Filter by prompt category
+        if (promptCategory) {
+            matchQuery.prompt_category = promptCategory;
+        }
+
+        // Filter by tag (batch-level)
+        if (tag) {
+            const BenchmarkBatch = require('../../models/BenchmarkBatch');
+            const batches = await BenchmarkBatch.find({ tags: tag }).distinct('_id');
+            if (batches.length > 0) {
+                matchQuery.batch_id = { $in: batches.map(b => b.toString()) };
+            } else {
+                // No batches with this tag - return empty results
+                matchQuery.batch_id = { $in: [] };
+            }
+        }
+
+        // Filter by model category (requires ModelRegistry lookup)
+        let modelNames = null;
+        if (modelCategory) {
+            const ModelRegistry = require('../../models/ModelRegistry');
+            const models = await ModelRegistry.findByCategory(modelCategory);
+            modelNames = models.map(m => m.modelName);
+
+            if (modelNames.length > 0) {
+                matchQuery.model = { $in: modelNames };
+            } else {
+                // No models in this category - return empty results
+                matchQuery.model = { $in: [] };
+            }
+        }
+
+        const [totalTests, successCount, recentTests, modelStats, failureStats, judgeStats] = await Promise.all([
             BenchmarkResult.countDocuments(),
-            BenchmarkResult.countDocuments({ success: true }),
-            BenchmarkResult.find().sort({ timestamp: -1 }).limit(10),
+            BenchmarkResult.countDocuments(matchQuery),
+            BenchmarkResult.find(matchQuery).sort({ timestamp: -1 }).limit(10),
             BenchmarkResult.aggregate([
-                { $match: { success: true } },
+                { $match: matchQuery },
                 {
                     $group: {
                         _id: { model: '$model', host: '$host' },
@@ -307,11 +342,21 @@ class BenchmarkService {
                 { $sort: { avg_latency: 1 } }
             ]),
             BenchmarkResult.aggregate([
-                { $match: { success: false } },
+                { $match: { ...matchQuery, success: false } },
                 {
                     $group: {
                         _id: { model: '$model', host: '$host' },
                         failed: { $sum: 1 }
+                    }
+                }
+            ]),
+            BenchmarkResult.aggregate([
+                { $match: { scoring_time_ms: { $ne: null } } },
+                {
+                    $group: {
+                        _id: '$judge_model',
+                        avg_latency: { $avg: '$scoring_time_ms' },
+                        count: { $sum: 1 }
                     }
                 }
             ])
@@ -325,7 +370,32 @@ class BenchmarkService {
         const successByKey = new Map();
         let sortedStats = modelStats.map(m => {
             const hasQuality = m.avg_quality != null && !isNaN(m.avg_quality);
-            const hasComposite = m.avg_composite != null && !isNaN(m.avg_composite);
+            
+            // Normalize quality to 0-10 for calculation (handle mixed 0-10 and 0-100 data)
+            let rawQuality = m.avg_quality || 0;
+            if (rawQuality > 10) rawQuality = rawQuality / 10;
+
+            const avgLatency = m.avg_latency || 0;
+            const avgTokens = parseFloat(m.avg_tokens_per_sec) || 0;
+
+            // Calculate profiles dynamically
+            const interactive = calculateCompositeScore({
+                latency: avgLatency,
+                tokens_per_sec: avgTokens,
+                quality_score: rawQuality
+            }, 'interactive');
+
+            const reasoning = calculateCompositeScore({
+                latency: avgLatency,
+                tokens_per_sec: avgTokens,
+                quality_score: rawQuality
+            }, 'reasoning');
+
+            const coding = calculateCompositeScore({
+                latency: avgLatency,
+                tokens_per_sec: avgTokens,
+                quality_score: rawQuality
+            }, 'coding');
 
             const key = `${m._id.model}@@${m._id.host}`;
             const failedTests = failureByKey.get(key) || 0;
@@ -333,13 +403,24 @@ class BenchmarkService {
 
             successByKey.set(key, true);
 
+            // Helper to format score 0-10
+            const fmtScore = (s) => (s !== null && s !== undefined && !isNaN(s)) ? (s / 10).toFixed(1) : null;
+
             return {
                 model: m._id.model,
                 host: m._id.host,
-                avg_latency: Math.round(m.avg_latency || 0),
-                avg_tokens_per_sec: m.avg_tokens_per_sec ? m.avg_tokens_per_sec.toFixed(2) : '0',
-                avg_quality: hasQuality ? m.avg_quality.toFixed(1) : null,
-                avg_composite: hasComposite ? m.avg_composite.toFixed(1) : null,
+                avg_latency: Math.round(avgLatency),
+                avg_tokens_per_sec: avgTokens.toFixed(2),
+                avg_quality: hasQuality ? rawQuality.toFixed(1) : null, // Display as 0-10
+                
+                // Dynamic scores (converted to 0-10 scale)
+                interactive_score: fmtScore(interactive.composite_score),
+                reasoning_score: fmtScore(reasoning.composite_score),
+                coding_score: fmtScore(coding.composite_score),
+                
+                // Legacy field for compat
+                avg_composite: fmtScore(interactive.composite_score), 
+
                 quality_tests: m.quality_tests || 0,
                 tests: successTests,
                 failed_tests: failedTests,
@@ -359,6 +440,9 @@ class BenchmarkService {
                 avg_tokens_per_sec: '0',
                 avg_quality: null,
                 avg_composite: null,
+                interactive_score: 0,
+                reasoning_score: 0,
+                coding_score: 0,
                 quality_tests: 0,
                 tests: 0,
                 failed_tests: failedTests,
@@ -387,13 +471,26 @@ class BenchmarkService {
             case 'quality':
                 sortedStats.sort((a, b) => {
                     if (a.failure_only !== b.failure_only) return a.failure_only ? 1 : -1;
-                    return (b.avg_quality || 0) - (a.avg_quality || 0);
+                    return (Number(b.avg_quality) || 0) - (Number(a.avg_quality) || 0);
                 });
                 break;
             case 'composite':
+            case 'interactive':
                 sortedStats.sort((a, b) => {
                     if (a.failure_only !== b.failure_only) return a.failure_only ? 1 : -1;
-                    return (b.avg_composite || 0) - (a.avg_composite || 0);
+                    return (b.interactive_score || 0) - (a.interactive_score || 0);
+                });
+                break;
+            case 'reasoning':
+                sortedStats.sort((a, b) => {
+                    if (a.failure_only !== b.failure_only) return a.failure_only ? 1 : -1;
+                    return (b.reasoning_score || 0) - (a.reasoning_score || 0);
+                });
+                break;
+            case 'coding':
+                sortedStats.sort((a, b) => {
+                    if (a.failure_only !== b.failure_only) return a.failure_only ? 1 : -1;
+                    return (b.coding_score || 0) - (a.coding_score || 0);
                 });
                 break;
             case 'speed':
@@ -421,6 +518,7 @@ class BenchmarkService {
             },
             recent_tests: recentTests,
             model_stats: sortedStats,
+            judge_stats: judgeStats,
             sorted_by: sortBy
         };
     }

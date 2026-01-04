@@ -194,6 +194,10 @@ app.use('/api/backup', backupRoutes);
 const customModelsRoutes = require('../routes/custom-models');
 app.use('/api/custom-models', customModelsRoutes);
 
+// Model Registry routes (Benchmark Enhancement)
+const modelRegistryRoutes = require('../routes/model-registry');
+app.use('/api/models/registry', modelRegistryRoutes);
+
 // Performance routes
 const performanceRoutes = require('../routes/performance');
 app.use('/api/performance', performanceRoutes);

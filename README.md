@@ -1,9 +1,22 @@
-# AgentX v1.3.1
+# AgentX v1.4.1
 
 [![AgentX CI Pipeline](https://github.com/WindriderQc/AgentX/actions/workflows/ci.yml/badge.svg)](https://github.com/WindriderQc/AgentX/actions/workflows/ci.yml)
 [![AgentX CD Pipeline](https://github.com/WindriderQc/AgentX/actions/workflows/cd.yml/badge.svg)](https://github.com/WindriderQc/AgentX/actions/workflows/cd.yml)
 
 **Production-ready local AI assistant with RAG, conversation memory, and continuous improvement capabilities.**
+
+---
+
+## ✅ Completed Development Tracks (Phase 1)
+
+The following development tracks have been successfully completed, bringing the SBQC Stack to feature maturity:
+
+1.  **Alerts:** Real-time system monitoring and notification system.
+2.  **Analytics:** Comprehensive dashboard for usage, performance, and quality metrics.
+3.  **Custom Models:** Advanced model configuration and tuning UI.
+4.  **Self-Healing:** Automated recovery workflows for critical failures.
+5.  **Testing:** Robust CI/CD pipeline with unit and integration tests.
+6.  **Backup:** Automated backup and restore strategies for MongoDB and Qdrant.
 
 ---
 
@@ -73,12 +86,11 @@ AgentX is a Node.js application that transforms your local Ollama instance into 
 - **🛠️ Custom Models**: Register and tune models with advanced parameters (context size, GPU layers, threads) directly from the UI
 
 ### Technical Highlights
-- Modular Express.js architecture with MongoDB backend
-- In-memory vector store with cosine similarity search (Ollama embeddings)
-- RESTful APIs with comprehensive contracts for external integrations
-- Real-time feedback collection with thumbs up/down
-- Dataset export for training and evaluation
-- Health monitoring and error recovery
+- **Service-Oriented Architecture (SOA):** Decoupled architecture with AgentX (Logic) and DataAPI (Data Services).
+- **Vector Database:** Qdrant for high-performance, persistent vector storage.
+- **Database:** MongoDB for conversation history, user profiles, and analytics.
+- **Integration:** RESTful APIs with comprehensive contracts for n8n and external tools.
+- **Resilience:** Self-healing capabilities and automated health monitoring.
 
 ---
 
@@ -119,7 +131,7 @@ Notes:
 
 AgentX can use a companion headless tool server (DataAPI) for file scanning/search/exports. AgentX remains the only UI; browsers never talk to DataAPI directly.
 
-Once configured, open `http://localhost:3080/dataapi.html` to use the Data Tools page (AgentX calls DataAPI via server-side proxy routes under `/api/dataapi/*`).
+AgentX integrates with DataAPI via server-side proxy routes under `/api/dataapi/*`.
 
 Add to AgentX `.env`:
 

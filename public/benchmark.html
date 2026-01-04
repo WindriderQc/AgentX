@@ -1409,6 +1409,16 @@
             </div>
         </div>
 
+        <!-- Judge Stats Section -->
+        <div class="judge-stats-container" style="margin-bottom: 32px; display: none;" id="judgeStatsContainer">
+            <h3 style="margin-bottom: 16px; font-size: 1.2em; color: var(--text); display: flex; align-items: center; gap: 10px;">
+                <i class="fas fa-gavel" style="color: var(--accent);"></i> Judge Performance
+            </h3>
+            <div class="stats-grid" id="judgeStatsGrid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+                <!-- Populated by JS -->
+            </div>
+        </div>
+
         <div class="leaderboard">
             <div
                 style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
@@ -1419,6 +1429,14 @@
                         style="font-size: 13px; color: #888; margin-top: 4px; display: block;"></span>
                 </div>
                 <div class="sort-controls" style="display: flex; gap: 8px; align-items: center;">
+                    <label style="color: #666; font-size: 13px;">Profile:</label>
+                    <select id="scoringProfile"
+                        style="padding: 6px 12px; border-radius: 6px; background: var(--card-bg); border: 1px solid rgba(255,255,255,0.1); color: #fff; font-size: 13px;">
+                        <option value="interactive" selected>Interactive (Chat)</option>
+                        <option value="reasoning">Reasoning (Deep)</option>
+                        <option value="coding">Coding (Dev)</option>
+                    </select>
+                    <div style="width: 1px; height: 20px; background: rgba(255,255,255,0.1); margin: 0 8px;"></div>
                     <label style="color: #666; font-size: 13px;">Sort:</label>
                     <select id="sortBy"
                         style="padding: 6px 12px; border-radius: 6px; background: var(--card-bg); border: 1px solid rgba(255,255,255,0.1); color: #fff; font-size: 13px;">
@@ -1429,6 +1447,35 @@
                         <option value="speed">Tokens/sec</option>
                     </select>
                 </div>
+            </div>
+
+            <div class="filter-controls" style="display: flex; gap: 16px; margin-bottom: 20px; align-items: center; flex-wrap: wrap;">
+                <div class="filter-group">
+                    <label for="modelCategoryFilter" style="color: var(--muted); font-size: 0.85em; margin-right: 8px;">Model Category:</label>
+                    <select id="modelCategoryFilter" class="filter-select" onchange="BenchmarkAnalytics.filterByModelCategory(this.value)" style="padding: 6px 12px; border-radius: 6px; background: var(--card-bg); border: 1px solid rgba(255,255,255,0.1); color: #fff; font-size: 13px;">
+                        <option value="">All Models</option>
+                        <option value="ops">Ops/Glue</option>
+                        <option value="coding">Coding</option>
+                        <option value="reasoning">Reasoning</option>
+                        <option value="specialist">Specialists</option>
+                        <option value="generalist">Generalists</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label for="promptCategoryFilter" style="color: var(--muted); font-size: 0.85em; margin-right: 8px;">Task Type:</label>
+                    <select id="promptCategoryFilter" class="filter-select" onchange="BenchmarkAnalytics.filterByPromptCategory(this.value)" style="padding: 6px 12px; border-radius: 6px; background: var(--card-bg); border: 1px solid rgba(255,255,255,0.1); color: #fff; font-size: 13px;">
+                        <option value="">All Tasks</option>
+                        <option value="coding">Coding Tasks</option>
+                        <option value="reasoning">Reasoning Tasks</option>
+                        <option value="factual">Factual Recall</option>
+                        <option value="math">Math Problems</option>
+                        <option value="creative">Creative Writing</option>
+                        <option value="general">General</option>
+                    </select>
+                </div>
+                
+                <button onclick="BenchmarkAnalytics.clearAllFilters()" class="btn-secondary" style="padding: 6px 12px; font-size: 13px; margin-left: auto; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; border-radius: 6px; cursor: pointer;">Clear Filters</button>
             </div>
             <table>
                 <thead>
@@ -1460,18 +1507,18 @@
                                 Quality
                                 <span class="help-icon">?</span>
                                 <span class="tooltip-content">
-                                    <div class="tooltip-title">Quality Score (0-10)</div>
+                                    <div class="tooltip-title">Quality Score (0-100)</div>
                                     <div class="tooltip-text">LLM-judged accuracy & reasoning quality.</div>
                                 </span>
                             </span>
                         </th>
                         <th>
                             <span class="tooltip-wrapper">
-                                Composite
+                                <span id="compositeHeader">Composite</span>
                                 <span class="help-icon">?</span>
                                 <span class="tooltip-content">
                                     <div class="tooltip-title">Balanced Score</div>
-                                    <div class="tooltip-text">50% Quality + 30% Latency + 20% Speed</div>
+                                    <div class="tooltip-text">Weighted score based on selected profile.</div>
                                 </span>
                             </span>
                         </th>
@@ -4513,7 +4560,17 @@
         // Load dashboard data
         async function loadDashboard() {
             try {
-                const res = await fetch(`${BENCHMARK_API}/dashboard?sort=${currentSortBy}`);
+                const params = new URLSearchParams();
+                params.append('sort', currentSortBy);
+                
+                if (window.BenchmarkAnalytics && typeof window.BenchmarkAnalytics.getActiveFilters === 'function') {
+                    const filters = window.BenchmarkAnalytics.getActiveFilters();
+                    if (filters.modelCategory) params.append('modelCategory', filters.modelCategory);
+                    if (filters.promptCategory) params.append('promptCategory', filters.promptCategory);
+                    if (filters.tag) params.append('tag', filters.tag);
+                }
+
+                const res = await fetch(`${BENCHMARK_API}/dashboard?${params.toString()}`);
 
                 if (res.status === 429) {
                     console.warn('Rate limited loading dashboard, skipping...');
@@ -4572,15 +4629,37 @@
 
                     // Update composite chart
                     compositeChart.data.labels = chartLabels;
-                    compositeChart.data.datasets[0].data = statsForCharts.map(m => parseFloat(m.avg_composite) || 0);
+                    const currentProfile = document.getElementById('scoringProfile') ? document.getElementById('scoringProfile').value : 'interactive';
+                    let profileKey = 'interactive_score';
+                    if (currentProfile === 'reasoning') profileKey = 'reasoning_score';
+                    if (currentProfile === 'coding') profileKey = 'coding_score';
+                    
+                    compositeChart.data.datasets[0].data = statsForCharts.map(m => parseFloat(m[profileKey]) || 0);
                     compositeChart.update();
 
+                    // Update Judge Stats
+                    const judgeContainer = document.getElementById('judgeStatsContainer');
+                    const judgeGrid = document.getElementById('judgeStatsGrid');
+                    
+                    if (data.judge_stats && data.judge_stats.length > 0 && judgeContainer && judgeGrid) {
+                        judgeContainer.style.display = 'block';
+                        judgeGrid.innerHTML = data.judge_stats.map(stat => `
+                            <div class="stat-card" style="padding: 16px;">
+                                <div class="stat-label" style="margin-bottom: 8px;">${stat._id || 'Unknown Judge'}</div>
+                                <div class="stat-value" style="font-size: 1.8em;">${Math.round(stat.avg_latency)}<span class="stat-unit">ms</span></div>
+                                <div style="font-size: 0.8em; color: var(--muted); margin-top: 4px;">${stat.count} evaluations</div>
+                            </div>
+                        `).join('');
+                    } else if (judgeContainer) {
+                        judgeContainer.style.display = 'none';
+                    }
+
                     // Find best overall model (highest composite score)
-                    const modelsWithComposite = statsForCharts.filter(m => m.avg_composite && parseFloat(m.avg_composite) > 0);
+                    const modelsWithComposite = statsForCharts.filter(m => m[profileKey] && parseFloat(m[profileKey]) > 0);
                     let bestOverallModel = null;
                     if (modelsWithComposite.length > 0) {
                         bestOverallModel = modelsWithComposite.reduce((best, current) =>
-                            parseFloat(current.avg_composite) > parseFloat(best.avg_composite) ? current : best
+                            parseFloat(current[profileKey]) > parseFloat(best[profileKey]) ? current : best
                         );
                     }
 
@@ -4588,7 +4667,8 @@
                     const bestOverallText = document.getElementById('bestOverallText');
                     if (bestOverallText) {
                         if (bestOverallModel) {
-                            bestOverallText.innerHTML = `👑 Best Overall: <strong style="color: #2ecc71;">${bestOverallModel.model}</strong> <span style="color: #888;">(${bestOverallModel.avg_composite} composite)</span>`;
+                            const score = bestOverallModel[profileKey];
+                            bestOverallText.innerHTML = `👑 Best Overall: <strong style="color: #2ecc71;">${bestOverallModel.model}</strong> <span style="color: #888;">(${score} ${currentProfile})</span>`;
                         } else {
                             bestOverallText.innerHTML = `👑 Best Overall: <span style="color: #888;">Run tests with quality scoring</span>`;
                         }
@@ -4614,10 +4694,10 @@
                         else badge = `<span>${idx + 1}</span>`;
 
                         const qualityVal = parseFloat(model.avg_quality);
-                        const compositeVal = parseFloat(model.avg_composite);
+                        const compositeVal = parseFloat(model[profileKey]);
                         const qualityDisplay = !isNaN(qualityVal) ? model.avg_quality : '-';
-                        const compositeDisplay = !isNaN(compositeVal) ? model.avg_composite : '-';
-                        const qualityClass = qualityVal >= 7 ? 'quality-high' : qualityVal >= 4 ? 'quality-mid' : (qualityVal > 0 ? 'quality-low' : '');
+                        const compositeDisplay = !isNaN(compositeVal) ? compositeVal : '-';
+                        const qualityClass = qualityVal >= 70 ? 'quality-high' : qualityVal >= 40 ? 'quality-mid' : (qualityVal > 0 ? 'quality-low' : '');
 
                         const hasSuccessSamples = Number(model.tests) > 0;
                         const latencyDisplay = hasSuccessSamples ? `${model.avg_latency} ms` : '-';
@@ -4741,9 +4821,32 @@
             }
         }
 
+        // Profile selector change handler
+        const profileSelector = document.getElementById('scoringProfile');
+        if (profileSelector) {
+            profileSelector.addEventListener('change', (e) => {
+                const profile = e.target.value;
+                const sortSelector = document.getElementById('sortBy');
+                
+                // If currently sorting by composite/score, switch to the new profile score
+                if (['composite', 'interactive', 'reasoning', 'coding'].includes(currentSortBy)) {
+                    currentSortBy = profile;
+                    if (sortSelector) sortSelector.value = 'composite';
+                }
+                loadDashboard();
+            });
+        }
+
         // Sort selector change handler
         document.getElementById('sortBy').addEventListener('change', (e) => {
-            currentSortBy = e.target.value;
+            const val = e.target.value;
+            if (val === 'composite') {
+                // If user selects "Composite", use the current profile
+                const profile = document.getElementById('scoringProfile') ? document.getElementById('scoringProfile').value : 'interactive';
+                currentSortBy = profile;
+            } else {
+                currentSortBy = val;
+            }
             loadDashboard();
         });
 
@@ -4952,6 +5055,7 @@
             document.getElementById('refreshHistoryBtn').addEventListener('click', loadBatchHistory);
         });
         initCharts();
+        window.loadDashboard = loadDashboard;
         loadDashboard();
         setupModals();
 

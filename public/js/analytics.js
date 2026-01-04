@@ -10,6 +10,7 @@ const elements = {
   totalMessages: document.getElementById('totalMessages'),
   positiveFeedback: document.getElementById('positiveFeedback'),
   positiveRate: document.getElementById('positiveRate'),
+  feedbackSampleSize: document.getElementById('feedbackSampleSize'),
   ragUsage: document.getElementById('ragUsage'),
   ragConversations: document.getElementById('ragConversations'),
   ragRequestedConversations: document.getElementById('ragRequestedConversations'),
@@ -35,8 +36,11 @@ const elements = {
 
   // Cost Tracking Elements
   totalCost: document.getElementById('totalCost'),
+  totalCostConvCount: document.getElementById('totalCostConvCount'),
   costPerConversation: document.getElementById('costPerConversation'),
+  costPerConvMessages: document.getElementById('costPerConvMessages'),
   costPer1kTokens: document.getElementById('costPer1kTokens'),
+  costTotalTokens: document.getElementById('costTotalTokens'),
   tokensPerDollar: document.getElementById('tokensPerDollar'),
   costTrendGroupSelect: document.getElementById('costTrendGroupSelect'),
   costTrendEmpty: document.getElementById('costTrendEmpty'),
@@ -246,6 +250,15 @@ function renderUsageChart(data, groupBy) {
       responsive: true,
       plugins: {
         legend: { position: 'top' },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              const label = context.dataset.label || '';
+              const value = context.parsed.y;
+              return `${label}: ${formatNumber(value)}`;
+            }
+          }
+        }
       },
       scales: {
         y: { beginAtZero: true },
@@ -291,6 +304,16 @@ function renderFeedbackChart(data, groupBy) {
       responsive: true,
       plugins: {
         legend: { position: 'top' },
+        tooltip: {
+          callbacks: {
+            footer: function(tooltipItems) {
+              const total = tooltipItems.reduce((sum, item) => sum + item.parsed.y, 0);
+              const positive = tooltipItems.find(item => item.dataset.label === 'Positive')?.parsed.y || 0;
+              const rate = total > 0 ? (positive / total * 100).toFixed(1) : '0.0';
+              return `\nTotal: ${total} | Positive: ${rate}%`;
+            }
+          }
+        }
       },
       scales: {
         x: { stacked: true },
@@ -325,6 +348,17 @@ function renderRagChart(data) {
       cutout: '70%',
       plugins: {
         legend: { position: 'bottom' },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              const label = context.label || '';
+              const value = context.parsed;
+              const total = context.dataset.data.reduce((a, b) => a + b, 0);
+              const percentage = total > 0 ? (value / total * 100).toFixed(1) : '0.0';
+              return `${label}: ${formatNumber(value)} conversations (${percentage}%)`;
+            }
+          }
+        },
       },
     },
   });
@@ -339,6 +373,10 @@ function updateProductSummary(usage = {}, feedback = {}, rag = {}) {
   if (elements.positiveRate) {
     elements.positiveRate.textContent =
       feedback.totalFeedback > 0 ? `(${formatPercent(feedback.positiveRate)} positive)` : '(no feedback)';
+  }
+  if (elements.feedbackSampleSize) {
+    const total = feedback.totalFeedback || 0;
+    elements.feedbackSampleSize.textContent = formatNumber(total);
   }
 
   if (elements.ragUsage) elements.ragUsage.textContent = formatPercent(rag.ragUsageRate);
@@ -471,8 +509,23 @@ async function refreshCostStats() {
     const tokensPerDollar = totalCost > 0 ? (totalTokens / totalCost) : 0;
 
     elements.totalCost.textContent = `$${(totalCost || 0).toFixed(2)}`;
+    if (elements.totalCostConvCount) {
+      elements.totalCostConvCount.textContent = formatNumber(summary.totalConversations || 0);
+    }
+
     elements.costPerConversation.textContent = `$${(summary.avgCostPerConversation || 0).toFixed(3)}`;
+    if (elements.costPerConvMessages) {
+      const avgMsgs = summary.totalMessages && summary.totalConversations
+        ? (summary.totalMessages / summary.totalConversations).toFixed(1)
+        : '—';
+      elements.costPerConvMessages.textContent = avgMsgs;
+    }
+
     elements.costPer1kTokens.textContent = `$${(summary.costPer1kTokens || 0).toFixed(4)}`;
+    if (elements.costTotalTokens) {
+      elements.costTotalTokens.textContent = formatNumber(totalTokens);
+    }
+
     elements.tokensPerDollar.textContent = Math.round(tokensPerDollar || 0).toLocaleString();
   } catch (err) {
     console.error('Cost stats refresh error:', err);
@@ -678,6 +731,9 @@ async function refreshEfficiencyTable() {
           </td>
           <td style="padding: 8px; text-align: right; color: var(--accent);">
             <strong>$${(row.cost?.total || 0).toFixed(2)}</strong>
+          </td>
+          <td style="padding: 8px; text-align: right; color: var(--muted);">
+            ${formatNumber(row.messages || 0)}
           </td>
           <td style="padding: 8px; text-align: right; color: var(--text);">
             ${formatNumber(row.tokens?.total || 0)}
@@ -1025,6 +1081,13 @@ async function refreshRagMetrics() {
             elements.ragNewest.textContent = stats.newestDocument 
                 ? new Date(stats.newestDocument).toLocaleString()
                 : '—';
+        }
+        
+        // Update timestamp
+        const timestampEl = document.getElementById('ragMetricsTimestamp');
+        if (timestampEl) {
+            const now = new Date();
+            timestampEl.textContent = `Updated ${now.toLocaleTimeString()}`;
         }
         
     } catch (error) {
