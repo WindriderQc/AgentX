@@ -84,6 +84,33 @@ PromptConfigSchema.statics.getVersions = async function(name) {
   return this.find({ name }).sort({ version: -1 });
 };
 
+// Activate a prompt configuration by id.
+// - Sets isActive=true for the target
+// - Sets isActive=false for other prompts with the same name
+// - Also updates legacy `status` field when present in the collection
+PromptConfigSchema.statics.activate = async function(id) {
+  const prompt = await this.findById(id).lean();
+  if (!prompt) {
+    const err = new Error('Prompt not found');
+    err.status = 404;
+    throw err;
+  }
+
+  // Use raw collection updates to avoid any schema strictness issues with
+  // legacy/unmodeled fields like `status`.
+  await this.collection.updateMany(
+    { name: prompt.name, _id: { $ne: prompt._id } },
+    { $set: { isActive: false, status: 'deprecated' } }
+  );
+
+  await this.collection.updateOne(
+    { _id: prompt._id },
+    { $set: { isActive: true, status: 'active' } }
+  );
+
+  return this.findById(prompt._id).lean();
+};
+
 // Instance method to increment stats
 PromptConfigSchema.methods.recordImpression = async function() {
   this.stats.impressions = (this.stats.impressions || 0) + 1;

@@ -214,6 +214,13 @@ const JUDGE_CONFIG = {
 };
 ```
 
+Additional operational knobs are supported end-to-end (UI → API → judge):
+
+- `timeout` (ms): abort long-running judge calls
+- `concurrency`: parallel judge requests
+- `judge_same_host`: optionally force judge to run on the same host as execution
+- `num_predict`: caps judge output tokens (Ollama `num_predict`) to reduce long outputs
+
 ### Quick Scoring
 
 For simple factual answers, pattern matching is used before calling the LLM judge:
@@ -261,6 +268,48 @@ const {
 ```
 
 ## Dashboard UI
+
+### Progressive Disclosure (Simple → Detailed → Hyper)
+
+The Benchmark page is designed to stay simple by default, with drill-down layers when you need them:
+
+- **Default view:** charts + leaderboard + basic run controls
+- **Show details:** richer batch status, per-model progress, and quick access to “Details” for specific samples
+- **Show hyper details:** a raw JSON snapshot of the current batch state + copy buttons and anomaly highlights
+
+Hyper mode is meant for debugging and operations (what’s stuck, what’s failing, what’s slow) without leaving the page.
+
+### Execution vs Judging Progress (Planned vs Effective)
+
+For batch runs, the UI separates progress into two independent tracks:
+
+- **Execution (Exec):** model responses generated
+- **Judging (Judge):** quality scoring performed (LLM-as-judge and/or quick scoring)
+
+Important nuance:
+
+- **Planned** = how many items the batch intended to run
+- **Effective / eligible** = how many items are actually judgeable (execution failures are not judgeable)
+
+This prevents misleading states such as “execution finished but judging incomplete forever” when some executions failed.
+
+### Judge Health (Queue + Failures + ETA)
+
+When quality scoring is enabled, the UI shows a **Judge Health** panel with operational telemetry:
+
+- **Lag** and **Pending** (judge queue)
+- **Judge Failed** and **Exec Failed** counts
+- **Avg judge time** plus **ETA (avg)** and **ETA (worst-case)**
+- **Configured concurrency** and **timeout**
+- Host breakdowns (exec vs judge) and scoring method counts
+- Distributions for latency / throughput / judge-time / quality (p50/p95/p10)
+
+### “Top Offenders” (Batch + Overall)
+
+The UI highlights likely problem models using compact chips:
+
+- **Batch-level offenders (clickable):** worst latency, worst throughput, longest judge time, lowest quality. Clicking opens a representative sample in the Details modal.
+- **Leaderboard-level offenders (overall aggregates):** slowest latency, lowest throughput, lowest quality, most failures. This summary sits under the ranking table.
 
 ### New Charts
 

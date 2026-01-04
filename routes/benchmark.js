@@ -11,14 +11,17 @@ const benchmarkService = require('../src/services/benchmarkService');
 const { JUDGE_CONFIG, SCORING_CONFIGS } = require('../src/services/qualityScorer');
 
 // Cleanup stale batches on startup
-(async () => {
-    try {
-        await new Promise(resolve => setTimeout(resolve, 2000)); // Wait for DB connection
-        await benchmarkService.cleanupStaleBatches();
-    } catch (err) {
-        logger.error('Failed to cleanup stale batches', { error: err.message });
-    }
-})();
+// Skip in tests to avoid timers/open handles and cross-test DB interference.
+if (process.env.NODE_ENV !== 'test') {
+    (async () => {
+        try {
+            await new Promise(resolve => setTimeout(resolve, 2000)); // Wait for DB connection
+            await benchmarkService.cleanupStaleBatches();
+        } catch (err) {
+            logger.error('Failed to cleanup stale batches', { error: err.message });
+        }
+    })();
+}
 
 /**
  * GET /api/benchmark/config
@@ -178,6 +181,24 @@ router.delete('/results', async (req, res) => {
 });
 
 /**
+ * DELETE /api/benchmark/results/failed
+ * Clear failed results only
+ */
+router.delete('/results/failed', async (req, res) => {
+    try {
+        const count = await benchmarkService.clearFailedResults();
+
+        res.json({
+            status: 'success',
+            message: `Cleared ${count} failed results`
+        });
+    } catch (err) {
+        logger.error('Failed to clear failed results', { error: err.message });
+        res.status(500).json({ status: 'error', error: err.message });
+    }
+});
+
+/**
  * GET /api/benchmark/prompts
  * Get all prompts grouped by level
  */
@@ -306,6 +327,111 @@ router.get('/quality-breakdown', async (req, res) => {
         });
     } catch (err) {
         logger.error('Failed to fetch quality breakdown', { error: err.message });
+        res.status(500).json({ status: 'error', error: err.message });
+    }
+});
+
+/**
+ * GET /api/benchmark/trends
+ * Get time-series performance trends
+ */
+router.get('/trends', async (req, res) => {
+    try {
+        const { model, days, groupBy } = req.query;
+
+        const data = await benchmarkService.getModelTrends({
+            model,
+            days: parseInt(days) || 7,
+            groupBy: groupBy || 'day'
+        });
+
+        res.json({
+            status: 'success',
+            data
+        });
+    } catch (err) {
+        logger.error('Failed to fetch trends', { error: err.message });
+        res.status(500).json({ status: 'error', error: err.message });
+    }
+});
+
+/**
+ * POST /api/benchmark/compare-batches
+ * Compare multiple batches side-by-side
+ */
+router.post('/compare-batches', async (req, res) => {
+    try {
+        const { batch_ids } = req.body;
+
+        if (!batch_ids || !Array.isArray(batch_ids)) {
+            return res.status(400).json({
+                status: 'error',
+                error: 'batch_ids array is required'
+            });
+        }
+
+        const data = await benchmarkService.compareBatches(batch_ids);
+
+        res.json({
+            status: 'success',
+            data
+        });
+    } catch (err) {
+        logger.error('Failed to compare batches', { error: err.message });
+        res.status(500).json({ status: 'error', error: err.message });
+    }
+});
+
+/**
+ * GET /api/benchmark/stats-by-tag
+ * Get statistics grouped by tags
+ */
+router.get('/stats-by-tag', async (req, res) => {
+    try {
+        const data = await benchmarkService.getBatchStatsByTag();
+
+        res.json({
+            status: 'success',
+            data
+        });
+    } catch (err) {
+        logger.error('Failed to fetch stats by tag', { error: err.message });
+        res.status(500).json({ status: 'error', error: err.message });
+    }
+});
+
+/**
+ * GET /api/benchmark/active-stats
+ * Get real-time statistics for active batches
+ */
+router.get('/active-stats', async (req, res) => {
+    try {
+        const data = await benchmarkService.getActiveStats();
+
+        res.json({
+            status: 'success',
+            data
+        });
+    } catch (err) {
+        logger.error('Failed to fetch active stats', { error: err.message });
+        res.status(500).json({ status: 'error', error: err.message });
+    }
+});
+
+/**
+ * GET /api/benchmark/presets
+ * Get configuration presets for common test scenarios
+ */
+router.get('/presets', (req, res) => {
+    try {
+        const data = benchmarkService.getConfigPresets();
+
+        res.json({
+            status: 'success',
+            data
+        });
+    } catch (err) {
+        logger.error('Failed to fetch presets', { error: err.message });
         res.status(500).json({ status: 'error', error: err.message });
     }
 });

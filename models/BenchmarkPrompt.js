@@ -34,7 +34,7 @@ const BenchmarkPromptSchema = new mongoose.Schema({
     },
     scoring_type: {
         type: String,
-        enum: ['reasoning', 'quick', 'pattern', 'code'],
+        enum: ['reasoning', 'quick', 'pattern', 'code', 'factual', 'math', 'creative'],
         default: 'reasoning'
     },
     custom: {

@@ -144,6 +144,41 @@ const BenchmarkBatchSchema = new mongoose.Schema({
     execution_pid: {
         type: Number,
         default: null
+    },
+
+    // Detailed execution metrics
+    execution_metrics: {
+        total_duration_ms: { type: Number, default: null },
+        generation_duration_ms: { type: Number, default: null },
+        judging_duration_ms: { type: Number, default: null },
+        avg_test_duration_ms: { type: Number, default: null },
+        avg_judge_duration_ms: { type: Number, default: null },
+        tests_per_minute: { type: Number, default: null },
+        peak_memory_mb: { type: Number, default: null },
+        total_tokens_generated: { type: Number, default: 0 },
+        total_tokens_per_sec_avg: { type: Number, default: null }
+    },
+
+    // Configuration snapshot (for reproducibility)
+    config_snapshot: {
+        ollama_version: String,
+        agentx_version: String,
+        node_version: String,
+        os_platform: String,
+        cpu_count: Number
+    },
+
+    // Tags for categorization
+    tags: {
+        type: [String],
+        default: [],
+        index: true
+    },
+
+    // Notes/description
+    description: {
+        type: String,
+        default: ''
     }
 }, {
     timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' }
@@ -272,6 +307,81 @@ BenchmarkBatchSchema.methods.lockForExecution = function(pid) {
     this.execution_started_at = new Date();
     this.execution_pid = pid;
     return this.save();
+};
+
+BenchmarkBatchSchema.methods.calculateMetrics = async function() {
+    const BenchmarkResult = require('./BenchmarkResult');
+
+    const results = await BenchmarkResult.find({ batch_id: this._id.toString() });
+
+    if (results.length === 0) return this;
+
+    // Calculate durations
+    if (this.started_at && this.completed_at) {
+        this.execution_metrics.total_duration_ms = this.completed_at - this.started_at;
+    }
+
+    if (this.started_at && this.generated_at) {
+        this.execution_metrics.generation_duration_ms = this.generated_at - this.started_at;
+    }
+
+    if (this.generated_at && this.completed_at) {
+        this.execution_metrics.judging_duration_ms = this.completed_at - this.generated_at;
+    }
+
+    // Calculate test statistics
+    const latencies = results.filter(r => r.latency).map(r => r.latency);
+    if (latencies.length > 0) {
+        this.execution_metrics.avg_test_duration_ms = Math.round(
+            latencies.reduce((a, b) => a + b, 0) / latencies.length
+        );
+    }
+
+    // Calculate judge statistics
+    const judgeTimes = results.filter(r => r.scoring_time_ms).map(r => r.scoring_time_ms);
+    if (judgeTimes.length > 0) {
+        this.execution_metrics.avg_judge_duration_ms = Math.round(
+            judgeTimes.reduce((a, b) => a + b, 0) / judgeTimes.length
+        );
+    }
+
+    // Calculate throughput
+    if (this.execution_metrics.generation_duration_ms > 0) {
+        this.execution_metrics.tests_per_minute = Math.round(
+            (this.completed * 60000) / this.execution_metrics.generation_duration_ms
+        );
+    }
+
+    // Calculate token statistics
+    const tokens = results.filter(r => r.tokens).map(r => r.tokens);
+    if (tokens.length > 0) {
+        this.execution_metrics.total_tokens_generated = tokens.reduce((a, b) => a + b, 0);
+    }
+
+    const tokensPerSec = results
+        .filter(r => r.tokens_per_sec && !isNaN(parseFloat(r.tokens_per_sec)))
+        .map(r => parseFloat(r.tokens_per_sec));
+
+    if (tokensPerSec.length > 0) {
+        this.execution_metrics.total_tokens_per_sec_avg =
+            (tokensPerSec.reduce((a, b) => a + b, 0) / tokensPerSec.length).toFixed(2);
+    }
+
+    return this.save();
+};
+
+BenchmarkBatchSchema.methods.captureSystemSnapshot = function() {
+    const os = require('os');
+    const packageJson = require('../package.json');
+
+    this.config_snapshot = {
+        agentx_version: packageJson.version || '1.3.2',
+        node_version: process.version,
+        os_platform: os.platform(),
+        cpu_count: os.cpus().length
+    };
+
+    return this;
 };
 
 module.exports = mongoose.model('BenchmarkBatch', BenchmarkBatchSchema);

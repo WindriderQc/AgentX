@@ -1,10 +1,32 @@
 const mongoose = require('mongoose');
 const logger = require('./logger');
 
+function deriveTestMongoUri(uri) {
+  const fallback = 'mongodb://localhost:27017/agentx_test';
+  if (!uri || typeof uri !== 'string') return fallback;
+
+  const parts = uri.split('?');
+  const base = parts[0];
+  const query = parts.length > 1 ? parts.slice(1).join('?') : '';
+
+  const lastSlash = base.lastIndexOf('/');
+  if (lastSlash === -1) return fallback;
+
+  const prefix = base.slice(0, lastSlash + 1);
+  const dbName = base.slice(lastSlash + 1);
+  const nextDbName = dbName ? `${dbName}_test` : 'agentx_test';
+
+  return query ? `${prefix}${nextDbName}?${query}` : `${prefix}${nextDbName}`;
+}
+
 const connectDB = async () => {
   try {
     const isTest = process.env.NODE_ENV === 'test';
-    const conn = await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/agentx', {
+    const mongoUri = isTest
+      ? (process.env.MONGODB_URI_TEST || deriveTestMongoUri(process.env.MONGODB_URI))
+      : (process.env.MONGODB_URI || 'mongodb://localhost:27017/agentx');
+
+    const conn = await mongoose.connect(mongoUri, {
       serverSelectionTimeoutMS: 2000, // Fail fast if no DB
       // Connection pooling optimization (Week 2 Performance)
       maxPoolSize: 50,        // Maximum connections in pool (default: 100)

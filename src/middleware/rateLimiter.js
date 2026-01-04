@@ -15,7 +15,7 @@ function getClientKey(req) {
   }
 
   // Default: key by IP (IPv6-aware)
-  return ipKeyGenerator(req);
+  return ipKeyGenerator(req.ip);
 }
 
 /**
@@ -60,7 +60,8 @@ const benchmarkLimiter = rateLimit({
     message: 'Benchmark rate limit exceeded'
   },
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
+  keyGenerator: getClientKey
 });
 
 /**
@@ -83,7 +84,7 @@ const chatLimiter = rateLimit({
     if (req.session?.userId) {
       return req.session.userId;
     }
-    return ipKeyGenerator(req);
+    return ipKeyGenerator(req.ip);
   },
   validate: { ip: false }, // We're using ipKeyGenerator helper for IPv6 support
   handler: (req, res) => {
@@ -118,7 +119,7 @@ const strictLimiter = rateLimit({
     if (req.session?.userId) {
       return req.session.userId;
     }
-    return ipKeyGenerator(req);
+    return ipKeyGenerator(req.ip);
   },
   validate: { ip: false }, // We're using ipKeyGenerator helper for IPv6 support
   handler: (req, res) => {
@@ -148,6 +149,7 @@ const authLimiter = rateLimit({
     status: 'error',
     message: 'Too many authentication attempts. Please try again later.'
   },
+  keyGenerator: getClientKey,
   handler: (req, res) => {
     logger.warn('Auth rate limit exceeded', {
       ip: req.ip,

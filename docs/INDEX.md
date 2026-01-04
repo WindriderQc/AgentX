@@ -46,6 +46,7 @@
 - Cost tracking index: [COST_TRACKING_INDEX.md](COST_TRACKING_INDEX.md)
 - Self-healing quick start: [SELF_HEALING_QUICK_START.md](SELF_HEALING_QUICK_START.md)
 - Alerts dashboard: [ALERTS_DASHBOARD_IMPLEMENTATION.md](ALERTS_DASHBOARD_IMPLEMENTATION.md)
+- Benchmark quality scoring + dashboard: [BENCHMARK_QUALITY_SCORING.md](BENCHMARK_QUALITY_SCORING.md)
 
 ## Testing & Validation
 - Testing hub: [testing/README.md](testing/README.md)

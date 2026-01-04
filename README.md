@@ -101,10 +101,19 @@ AgentX is a Node.js application that transforms your local Ollama instance into 
 2. **Configure environment** (create \`.env\` file):
    \`\`\`bash
    MONGODB_URI=mongodb://localhost:27017/agentx
-   OLLAMA_HOST=http://localhost:11434
+  # Single Ollama host
+  OLLAMA_HOST=http://localhost:11434
+
+  # Optional: multi-host Ollama discovery for the UI (Benchmark page host picker)
+  # OLLAMA_HOST_PRIMARY=http://192.168.2.99:11434
+  # OLLAMA_HOST_2=http://192.168.2.12:11434
    EMBEDDING_MODEL=nomic-embed-text
    PORT=3080
    \`\`\`
+
+Notes:
+- The Benchmark page populates its host dropdown via `GET /api/ollama-hosts`.
+- The UI only falls back to `http://localhost:11434` if no hosts are configured on the server.
 
 ### DataAPI tool server (optional, recommended)
 

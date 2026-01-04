@@ -23,6 +23,8 @@ class MetricsCleanup {
       return MetricsCleanup.instance;
     }
 
+    this.testMode = process.env.NODE_ENV === 'test';
+
     this.config = {
       // Retention periods in days
       retentionPeriods: {
@@ -44,7 +46,8 @@ class MetricsCleanup {
       batchSize: parseInt(process.env.METRICS_CLEANUP_BATCH_SIZE || '1000'),
 
       // Enable/disable auto-cleanup
-      enableAutoCleanup: process.env.METRICS_AUTO_CLEANUP !== 'false'
+      // In tests, never schedule timers (they keep Jest alive).
+      enableAutoCleanup: !this.testMode && process.env.METRICS_AUTO_CLEANUP !== 'false'
     };
 
     this.cleanupTimer = null;

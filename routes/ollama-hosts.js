@@ -12,32 +12,55 @@ const logger = require('../config/logger');
 function getConfiguredHosts() {
     const hosts = [];
 
+    const normalizeHostUrl = (raw) => {
+        if (!raw) return null;
+        const trimmed = String(raw).trim();
+        if (!trimmed) return null;
+        // Allow env to be set as "192.168.2.99:11434" (no scheme)
+        if (/^https?:\/\//i.test(trimmed)) return trimmed;
+        return `http://${trimmed}`;
+    };
+
+    const envFirst = (...keys) => {
+        for (const key of keys) {
+            const v = process.env[key];
+            if (v && String(v).trim()) return String(v).trim();
+        }
+        return null;
+    };
+
     // Primary host
-    if (process.env.OLLAMA_HOST) {
+    const primaryRaw = envFirst('OLLAMA_HOST', 'OLLAMA_HOST_1', 'OLLAMA_HOST_PRIMARY');
+    const primaryUrl = normalizeHostUrl(primaryRaw);
+    if (primaryUrl) {
         hosts.push({
             id: 'primary',
             name: 'Primary',
-            url: process.env.OLLAMA_HOST,
+            url: primaryUrl,
             priority: 1
         });
     }
 
     // Secondary host
-    if (process.env.OLLAMA_HOST_2) {
+    const secondaryRaw = envFirst('OLLAMA_HOST_2', 'OLLAMA_HOST_HEAVY', 'OLLAMA_HOST_SECONDARY');
+    const secondaryUrl = normalizeHostUrl(secondaryRaw);
+    if (secondaryUrl) {
         hosts.push({
             id: 'secondary',
             name: 'Secondary',
-            url: process.env.OLLAMA_HOST_2,
+            url: secondaryUrl,
             priority: 2
         });
     }
 
     // Tertiary host
-    if (process.env.OLLAMA_HOST_3) {
+    const tertiaryRaw = envFirst('OLLAMA_HOST_3', 'OLLAMA_HOST_TERTIARY');
+    const tertiaryUrl = normalizeHostUrl(tertiaryRaw);
+    if (tertiaryUrl) {
         hosts.push({
             id: 'tertiary',
             name: 'Tertiary',
-            url: process.env.OLLAMA_HOST_3,
+            url: tertiaryUrl,
             priority: 3
         });
     }

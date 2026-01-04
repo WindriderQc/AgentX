@@ -76,6 +76,7 @@ Most pages use the same top navigation (in the UI header). These are the real, c
 	- Custom models UI.
 - **Benchmark**: `http://localhost:3080/benchmark.html`
 	- Benchmark runner and charts.
+	- Includes exec vs judge progress, Judge Health telemetry, and “details/hyper” drilldowns for debugging.
 - **Performance**: `http://localhost:3080/performance.html`
 	- Performance dashboard and charts.
 - **Analytics**: `http://localhost:3080/analytics.html`

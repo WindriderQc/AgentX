@@ -11,7 +11,7 @@ const Conversation = require('../models/Conversation');
 const PromptConfig = require('../models/PromptConfig');
 const { apiKeyAuth } = require('../src/middleware/auth');
 const logger = require('../config/logger');
-const { requireAuth } = require('../src/middleware/auth');
+const { requireAuth, optionalAuth } = require('../src/middleware/auth');
 
 /**
  * GET /api/dataset/conversations
@@ -25,7 +25,7 @@ const { requireAuth } = require('../src/middleware/auth');
  *   - model (string, filter by model)
  * Response: { data: [...conversations], nextCursor: <id> | null }
  */
-router.get('/conversations', requireAuth, async (req, res) => {
+router.get('/conversations', optionalAuth, requireAuth, async (req, res) => {
   try {
     const {
       limit = 50,
@@ -160,7 +160,7 @@ router.get('/conversations', requireAuth, async (req, res) => {
  *   - author (optional, default: 'n8n')
  * Response: { data: <created PromptConfig> }
  */
-router.post('/prompts', requireAuth, async (req, res) => {
+router.post('/prompts', optionalAuth, requireAuth, async (req, res) => {
   try {
     const {
       name,
@@ -218,7 +218,7 @@ router.post('/prompts', requireAuth, async (req, res) => {
  *   - status (string, filter by status: 'active', 'deprecated', 'proposed')
  * Response: { data: [...prompts] }
  */
-router.get('/prompts', requireAuth, async (req, res) => {
+router.get('/prompts', optionalAuth, requireAuth, async (req, res) => {
   try {
     const { name, status } = req.query;
 
@@ -258,7 +258,7 @@ router.patch('/prompts/:id/activate', apiKeyAuth, async (req, res) => {
     });
   } catch (err) {
     logger.error('Dataset prompts activate error', { error: err.message, stack: err.stack });
-    res.status(500).json({ status: 'error', message: err.message });
+    res.status(err.status || 500).json({ status: 'error', message: err.message });
   }
 });
 

@@ -746,7 +746,42 @@
             line-height: 1.4;
             color: rgba(255,255,255,0.9);
         }
+
+        /* Judge Health header responsiveness (prevents overflow on smaller screens) */
+        #judgeStatsContainer.judge-health-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 10px 16px;
+            align-items: start;
+        }
+
+        #judgeStatsContainer .judge-health-main {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+            min-width: 0;
+        }
+
+        #judgeStatsContainer .judge-health-meta {
+            font-size: 0.9em;
+            color: var(--muted);
+            text-align: right;
+            min-width: 220px;
+        }
+
+        @media (max-width: 1100px) {
+            #judgeStatsContainer.judge-health-grid {
+                grid-template-columns: 1fr;
+            }
+
+            #judgeStatsContainer .judge-health-meta {
+                text-align: left;
+                min-width: 0;
+            }
+        }
     </style>
+    <link rel="stylesheet" href="/css/benchmark-analytics.css">
 </head>
 
 <body>
@@ -772,9 +807,10 @@
                 <div class="stat-label">Total Tests</div>
                 <div class="stat-value" id="totalTests">0</div>
             </div>
-            <div class="stat-card">
+            <div class="stat-card" id="successRateCard">
                 <div class="stat-label">Success Rate</div>
                 <div class="stat-value" id="successRate">0<span class="stat-unit">%</span></div>
+                <div id="successRateDetails" style="display: none; margin-top: 8px; color: var(--muted); font-size: 0.85em;"></div>
             </div>
             <div class="stat-card">
                 <div class="stat-label">Avg Latency</div>
@@ -869,6 +905,23 @@
                     </div>
                     <div class="model-grid" id="modelCheckboxes">
                         <p style="color: #666;">Loading models...</p>
+                    </div>
+                </div>
+
+                <div style="margin-top: 24px;">
+                    <h3>Batch Metadata (Optional)</h3>
+                    <div class="form-group" style="margin-bottom: 12px;">
+                        <label for="batchTags">Tags (comma-separated)</label>
+                        <input type="text" id="batchTags" placeholder="production, weekly, llama-family"
+                               style="padding: 10px; border: 1px solid var(--panel-border); background: rgba(0,0,0,0.3); border-radius: 8px; color: var(--text); width: 100%; font-size: 0.95em;">
+                        <small style="color: var(--muted); font-size: 0.85em; margin-top: 4px; display: block;">
+                            <i class="fas fa-info-circle"></i> Use tags to organize and filter batch runs
+                        </small>
+                    </div>
+                    <div class="form-group">
+                        <label for="batchDescription">Description</label>
+                        <textarea id="batchDescription" rows="2" placeholder="Weekly production model evaluation for Llama 3.2..."
+                                  style="padding: 10px; border: 1px solid var(--panel-border); background: rgba(0,0,0,0.3); border-radius: 8px; color: var(--text); width: 100%; font-size: 0.95em; resize: vertical; font-family: inherit;"></textarea>
                     </div>
                 </div>
 
@@ -991,6 +1044,108 @@
                         <div style="text-align: center; color: var(--muted); padding: 20px;">Loading history...</div>
                     </div>
                 </div>
+
+                <div class="batch-history-section" style="margin-top: 18px; border-top: 1px solid var(--panel-border); padding-top: 18px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <h3 style="margin: 0; font-size: 1.1em; color: var(--text);"><i class="fas fa-list text-muted me-2"></i> Recent Tests</h3>
+                        <span style="color: var(--muted); font-size: 0.85em;">Includes failures</span>
+                    </div>
+                    <div style="display:flex; gap: 10px; align-items:center; margin-bottom: 10px; flex-wrap: wrap;">
+                        <label style="display:flex; gap: 8px; align-items:center; color: var(--muted); font-size: 0.85em;">
+                            <input id="recentTestsFailuresOnly" type="checkbox" />
+                            Failures only
+                        </label>
+                        <label style="display:flex; gap: 8px; align-items:center; color: var(--muted); font-size: 0.85em;">
+                            Model
+                            <select id="recentTestsModelFilter" class="form-control" style="width: 240px; padding: 6px 10px; margin-top: 0;">
+                                <option value="">All</option>
+                            </select>
+                        </label>
+                    </div>
+                    <div id="recentTestsList" style="max-height: 250px; overflow-y: auto; border: 1px solid var(--panel-border); border-radius: 6px; background: rgba(0,0,0,0.1);">
+                        <div style="text-align: center; color: var(--muted); padding: 20px;">Loading tests...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Configuration Presets Section -->
+        <div class="presets-section">
+            <div class="section-header">
+                <h3><i class="fas fa-magic"></i> Quick Start Presets</h3>
+            </div>
+            <div id="presetsContainer" class="presets-grid">
+                <!-- Presets loaded dynamically -->
+            </div>
+        </div>
+
+        <!-- Real-Time Active Batches Monitor -->
+        <div class="active-stats-widget" id="activeStatsWidget">
+            <div id="activeStatsContainer">
+                <div class="no-active-batches">
+                    <i class="fas fa-check-circle"></i>
+                    <p>No active batches</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Performance Trends Chart -->
+        <div class="trends-section">
+            <div class="section-header">
+                <h3><i class="fas fa-chart-line"></i> Performance Trends</h3>
+                <div class="trends-controls">
+                    <select id="trendsPeriod">
+                        <option value="7">Last 7 Days</option>
+                        <option value="14">Last 14 Days</option>
+                        <option value="30">Last 30 Days</option>
+                    </select>
+                    <select id="trendsModelFilter">
+                        <option value="">All Models</option>
+                        <!-- Populated dynamically -->
+                    </select>
+                </div>
+            </div>
+            <div class="trends-chart-container">
+                <canvas id="trendsChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Batch Comparison Section -->
+        <div class="comparison-section">
+            <div class="section-header">
+                <h3><i class="fas fa-code-compare"></i> Batch Comparison</h3>
+            </div>
+            <div class="comparison-selectors">
+                <div class="form-group">
+                    <label>Batch 1</label>
+                    <select id="compareBatch1">
+                        <option value="">Select batch...</option>
+                        <!-- Populated from batch history -->
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Batch 2</label>
+                    <select id="compareBatch2">
+                        <option value="">Select batch...</option>
+                        <!-- Populated from batch history -->
+                    </select>
+                </div>
+                <button id="compareBatchesBtn" class="btn-primary">
+                    <i class="fas fa-balance-scale"></i> Compare
+                </button>
+            </div>
+            <div id="comparisonResults" style="display: none;">
+                <!-- Comparison results rendered here -->
+            </div>
+        </div>
+
+        <!-- Tag Statistics Section -->
+        <div class="tags-section">
+            <div class="section-header">
+                <h3><i class="fas fa-tags"></i> Batch Tags</h3>
+            </div>
+            <div id="tagStatsContainer">
+                <!-- Tag chips loaded dynamically -->
             </div>
         </div>
 
@@ -1028,6 +1183,7 @@
                         style="padding: 6px 12px; border-radius: 6px; background: var(--card-bg); border: 1px solid rgba(255,255,255,0.1); color: #fff; font-size: 13px;">
                         <option value="composite" selected>Composite ⭐</option>
                         <option value="quality">Quality</option>
+                        <option value="reliability">Reliability</option>
                         <option value="latency">Latency</option>
                         <option value="speed">Tokens/sec</option>
                     </select>
@@ -1078,6 +1234,16 @@
                                 </span>
                             </span>
                         </th>
+                        <th style="width: 110px;">
+                            <span class="tooltip-wrapper">
+                                Reliability
+                                <span class="help-icon">?</span>
+                                <span class="tooltip-content">
+                                    <div class="tooltip-title">Failure Rate</div>
+                                    <div class="tooltip-text">How often this model/host fails. Lower is better.</div>
+                                </span>
+                            </span>
+                        </th>
                         <th style="width: 80px;">
                             <span class="tooltip-wrapper">
                                 Tests
@@ -1094,10 +1260,23 @@
                 </thead>
                 <tbody id="leaderboard">
                     <tr>
-                        <td colspan="7" style="text-align: center; color: #999;">No tests run yet</td>
+                        <td colspan="8" style="text-align: center; color: #999;">No tests run yet</td>
                     </tr>
                 </tbody>
             </table>
+
+            <div id="leaderboardOffenders" style="margin-top: 10px;"></div>
+
+            <div style="display:flex; justify-content:flex-end; gap: 10px; margin-top: 12px; flex-wrap: wrap;">
+                <button id="resetFailedLeaderboardBtn" type="button" class="btn-secondary btn-sm"
+                    style="background: rgba(231, 76, 60, 0.08); border-color: rgba(231, 76, 60, 0.35); color: rgba(231, 76, 60, 0.9);">
+                    <i class="fas fa-ban"></i> Reset Failed
+                </button>
+                <button id="resetLeaderboardBtn" type="button" class="btn-secondary btn-sm"
+                    style="background: rgba(231, 76, 60, 0.12); border-color: rgba(231, 76, 60, 0.45); color: rgba(231, 76, 60, 0.95);">
+                    <i class="fas fa-trash"></i> Reset Tests
+                </button>
+            </div>
         </div>
     </div>
 
@@ -1557,6 +1736,126 @@
         let ollamaHosts = [];
         let currentSortBy = 'composite';
         let currentJudgeConfig = {};
+        let lastDashboardOverview = null;
+        let lastRecentTests = [];
+        let showSuccessRateDetails = false;
+
+        function buildRecentTestsModelOptions(recentTests) {
+            const select = document.getElementById('recentTestsModelFilter');
+            if (!select) return;
+
+            const prevValue = select.value;
+            const models = new Set();
+            for (const t of (Array.isArray(recentTests) ? recentTests : [])) {
+                if (t && t.model) models.add(String(t.model));
+            }
+            const sorted = Array.from(models).sort((a, b) => a.localeCompare(b));
+
+            select.innerHTML = ['<option value="">All</option>']
+                .concat(sorted.map(m => `<option value="${String(m).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')}">${String(m).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')}</option>`))
+                .join('');
+
+            // Keep selection if still valid
+            if (prevValue && sorted.includes(prevValue)) select.value = prevValue;
+        }
+
+        function getRecentTestsFilters() {
+            const failuresOnlyEl = document.getElementById('recentTestsFailuresOnly');
+            const modelFilterEl = document.getElementById('recentTestsModelFilter');
+            return {
+                failuresOnly: !!(failuresOnlyEl && failuresOnlyEl.checked),
+                model: modelFilterEl ? String(modelFilterEl.value || '') : ''
+            };
+        }
+
+        function applyRecentTestsFilters(recentTests) {
+            const { failuresOnly, model } = getRecentTestsFilters();
+            return (Array.isArray(recentTests) ? recentTests : []).filter(t => {
+                if (!t) return false;
+                if (failuresOnly && t.success === true) return false;
+                if (model && String(t.model || '') !== model) return false;
+                return true;
+            });
+        }
+
+        function rerenderRecentTests() {
+            const filtered = applyRecentTestsFilters(lastRecentTests);
+            renderRecentTests(filtered);
+        }
+
+        function renderSuccessRateDetails() {
+            const el = document.getElementById('successRateDetails');
+            if (!el) return;
+            if (!showSuccessRateDetails) {
+                el.style.display = 'none';
+                return;
+            }
+
+            const o = lastDashboardOverview;
+            const total = o && Number.isFinite(Number(o.total_tests)) ? Number(o.total_tests) : 0;
+            const successful = o && Number.isFinite(Number(o.successful)) ? Number(o.successful) : 0;
+            const failed = o && Number.isFinite(Number(o.failed)) ? Number(o.failed) : 0;
+            el.textContent = `${successful} successful • ${failed} failed • ${total} total`;
+            el.style.display = 'block';
+        }
+
+        function renderRecentTests(recentTests) {
+            const container = document.getElementById('recentTestsList');
+            if (!container) return;
+
+            const items = Array.isArray(recentTests) ? recentTests : [];
+            if (items.length === 0) {
+                container.innerHTML = '<div style="text-align: center; color: var(--muted); padding: 20px;">No tests yet</div>';
+                return;
+            }
+
+            const esc = (s) => String(s || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/\"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+
+            const fmtTime = (iso) => {
+                try {
+                    const d = new Date(iso);
+                    if (Number.isNaN(d.getTime())) return '';
+                    return d.toLocaleString();
+                } catch {
+                    return '';
+                }
+            };
+
+            container.innerHTML = items.map((t) => {
+                const ok = t && t.success === true;
+                const model = esc(t && t.model);
+                const host = esc(t && t.host);
+                const latency = (t && Number.isFinite(Number(t.latency))) ? `${Math.round(Number(t.latency))} ms` : '-';
+                const tps = (t && t.tokens_per_sec !== undefined && t.tokens_per_sec !== null) ? esc(t.tokens_per_sec) : '-';
+                const when = fmtTime(t && t.timestamp);
+                const error = !ok ? esc(t && t.error) : '';
+
+                return `
+                    <div style="padding: 10px 12px; border-bottom: 1px solid var(--panel-border);">
+                        <div style="display:flex; justify-content: space-between; align-items: baseline; gap: 10px;">
+                            <div style="font-weight: 600; color: var(--text);">${ok ? '✓' : '✗'} ${model}</div>
+                            <div style="color: var(--muted); font-size: 0.85em;">${esc(when)}</div>
+                        </div>
+                        <div style="color: var(--muted); font-size: 0.85em; margin-top: 2px; opacity: 0.9;">${host}</div>
+                        <div style="display:flex; gap: 14px; flex-wrap: wrap; margin-top: 6px; font-size: 0.9em; color: rgba(255,255,255,0.88);">
+                            <div>Latency: <span style="color: var(--text);">${esc(latency)}</span></div>
+                            <div>Tokens/s: <span style="color: var(--text);">${tps}</span></div>
+                        </div>
+                        ${!ok && error ? `<div style="margin-top: 6px; color: rgba(231,76,60,0.95); font-size: 0.85em; line-height: 1.35;">${error}</div>` : ''}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function toggleSuccessRateDetails() {
+            showSuccessRateDetails = !showSuccessRateDetails;
+            renderSuccessRateDetails();
+        }
 
         // Modal Logic
         function setupModals() {
@@ -1644,6 +1943,63 @@
             const seconds = totalSeconds % 60;
             if (minutes <= 0) return `${totalSeconds}s`;
             return `${minutes}m ${seconds}s`;
+        }
+
+        function toFiniteNumber(v) {
+            const n = Number(v);
+            return Number.isFinite(n) ? n : null;
+        }
+
+        function percentile(sortedValuesAsc, p) {
+            const xs = Array.isArray(sortedValuesAsc) ? sortedValuesAsc : [];
+            if (xs.length === 0) return null;
+            const clamped = Math.max(0, Math.min(1, p));
+            const idx = (xs.length - 1) * clamped;
+            const lo = Math.floor(idx);
+            const hi = Math.ceil(idx);
+            if (lo === hi) return xs[lo];
+            const w = idx - lo;
+            return xs[lo] * (1 - w) + xs[hi] * w;
+        }
+
+        function summarizeNumbers(values) {
+            const xs = (Array.isArray(values) ? values : [])
+                .map(toFiniteNumber)
+                .filter(v => v !== null)
+                .slice()
+                .sort((a, b) => a - b);
+            if (xs.length === 0) {
+                return { n: 0, min: null, max: null, mean: null, p10: null, p50: null, p90: null, p95: null };
+            }
+            const sum = xs.reduce((acc, v) => acc + v, 0);
+            return {
+                n: xs.length,
+                min: xs[0],
+                max: xs[xs.length - 1],
+                mean: sum / xs.length,
+                p10: percentile(xs, 0.10),
+                p50: percentile(xs, 0.50),
+                p90: percentile(xs, 0.90),
+                p95: percentile(xs, 0.95)
+            };
+        }
+
+        function countBy(items, getKey) {
+            const counts = Object.create(null);
+            for (const item of (Array.isArray(items) ? items : [])) {
+                const key = getKey(item);
+                if (!key) continue;
+                counts[key] = (counts[key] || 0) + 1;
+            }
+            return counts;
+        }
+
+        function topCounts(countsObj, limit = 5) {
+            const entries = Object.entries(countsObj || {})
+                .map(([k, v]) => ({ key: k, count: Number(v) || 0 }))
+                .filter(e => e.count > 0)
+                .sort((a, b) => b.count - a.count);
+            return entries.slice(0, limit);
         }
 
         function inferOppositeHostUrl(execHostUrl) {
@@ -1840,8 +2196,10 @@
                 }
             } catch (err) {
                 console.error('Failed to load Ollama hosts:', err);
-                document.getElementById('host').innerHTML =
-                    '<option value="http://localhost:11434">Default (http://localhost:11434)</option>';
+                const hostSelect = document.getElementById('host');
+                if (hostSelect) {
+                    hostSelect.innerHTML = '<option value="" selected disabled>No hosts available — check server OLLAMA_HOST config</option>';
+                }
             }
         }
 
@@ -1964,6 +2322,17 @@
             if (advancedDetails) advancedDetails.style.display = showAdvanced ? 'block' : 'none';
             if (hyperDetails) hyperDetails.style.display = (showAdvanced && showHyper) ? 'block' : 'none';
 
+            if (batchPollInterval) {
+                clearInterval(batchPollInterval);
+                batchPollInterval = null;
+            }
+            currentBatchId = null;
+            localStorage.removeItem('currentBatchId');
+
+            const batchInfo = document.getElementById('batchInfo');
+            if (batchInfo) batchInfo.innerHTML = '';
+
+        }
 
         function setAdvancedMode(showAdvanced) {
             localStorage.setItem('benchmarkShowAdvanced', showAdvanced ? 'true' : 'false');
@@ -2271,16 +2640,6 @@
 
             return null;
         }
-            if (batchPollInterval) {
-                clearInterval(batchPollInterval);
-                batchPollInterval = null;
-            }
-            currentBatchId = null;
-            localStorage.removeItem('currentBatchId');
-
-            const batchInfo = document.getElementById('batchInfo');
-            if (batchInfo) batchInfo.innerHTML = '';
-        }
 
         document.getElementById('stopBatchBtn').addEventListener('click', async () => {
             if (confirm('Stop current batch? This will clear the local session.')) {
@@ -2343,6 +2702,12 @@
             window.currentJudgeDetailId = null;
             if (batchInfo) batchInfo.innerHTML = '';
 
+            // Get tags and description
+            const tagsInput = document.getElementById('batchTags');
+            const descriptionInput = document.getElementById('batchDescription');
+            const tags = tagsInput ? tagsInput.value.split(',').map(t => t.trim()).filter(t => t) : [];
+            const description = descriptionInput ? descriptionInput.value.trim() : '';
+
             try {
                 const res = await fetch(`${BENCHMARK_API}/batch`, {
                     method: 'POST',
@@ -2352,7 +2717,9 @@
                         models: selectedModels,
                         levels: selectedLevels,
                         quality_scoring: qualityScoring,
-                        judge_config: currentJudgeConfig
+                        judge_config: currentJudgeConfig,
+                        tags,
+                        description
                     })
                 });
 
@@ -2561,7 +2928,7 @@
                 
                 if (json.status === 'success' && json.data.batches) {
                     if (json.data.batches.length === 0) {
-                        container.innerHTML = '<div style="text-align: center; color: var(--muted); padding: 15px;">No previous batches found</div>';
+                        container.innerHTML = '<div style="text-align: center; color: var(--muted); padding: 15px;">No previous batches found<br/><span style="font-size: 0.9em;">(Batch runs appear here — Quick Single Tests show under Recent Tests)</span></div>';
                         return;
                     }
                     
@@ -2598,7 +2965,19 @@
                             item.onmouseout = () => item.style.background = 'transparent';
                         }
                     });
-                    
+
+                    // Also populate batch comparison dropdowns
+                    const batch1Select = document.getElementById('compareBatch1');
+                    const batch2Select = document.getElementById('compareBatch2');
+                    if (batch1Select && batch2Select) {
+                        const batchOptions = json.data.batches
+                            .filter(b => b.status === 'completed')
+                            .map(b => `<option value="${b._id}">${b.run_name || 'Untitled'} - ${new Date(b.created_at).toLocaleDateString()}</option>`)
+                            .join('');
+                        batch1Select.innerHTML = '<option value="">Select batch...</option>' + batchOptions;
+                        batch2Select.innerHTML = '<option value="">Select batch...</option>' + batchOptions;
+                    }
+
                 }
             } catch (err) {
                 console.error('Failed to load history:', err);
@@ -2660,6 +3039,10 @@
                     throw new Error('No batch data in response');
                 }
 
+                const showAdvanced = localStorage.getItem('benchmarkShowAdvanced') === 'true';
+                const showHyper = localStorage.getItem('benchmarkShowHyper') === 'true';
+                const results = Array.isArray(batch.results) ? batch.results : [];
+
                 const clampedProgress = Math.min(Number(batch.progress) || 0, 100);
                 const execBar = document.getElementById('execProgressBar');
                 const execFill = document.getElementById('execProgressFill');
@@ -2703,7 +3086,6 @@
 
                 // Update Judge Health Stats
                 const judgeStatsContainer = document.getElementById('judgeStatsContainer');
-                const showAdvanced = localStorage.getItem('benchmarkShowAdvanced') === 'true';
                 if (batch.judge_stats && judgeTotal > 0 && showAdvanced) {
                     const stats = batch.judge_stats;
                     const lag = stats.lag || 0;
@@ -2731,11 +3113,88 @@
                         healthText = 'Busy';
                     }
 
-                    judgeStatsContainer.style.display = 'flex';
-                    judgeStatsContainer.style.justifyContent = 'space-between';
-                    judgeStatsContainer.style.alignItems = 'center';
+                    const latencyStats = summarizeNumbers(results.map(r => r && r.latency));
+                    const tpsStats = summarizeNumbers(results.map(r => r && r.tokens_per_sec).filter(v => Number(v) > 0));
+                    const judgeMsStats = summarizeNumbers(results.map(r => r && r.scoring_time_ms).filter(v => Number(v) > 0));
+                    const qualityStats = summarizeNumbers(results.map(r => r && r.quality_score));
+
+                    const execHostCounts = countBy(results, (r) => r && r.host ? formatHostLabel(r.host) : null);
+                    const judgeHostCounts = countBy(results, (r) => r && r.judge_host ? formatHostLabel(r.judge_host) : null);
+                    const methodCounts = countBy(results, (r) => {
+                        const m = r && r.scoring_method ? String(r.scoring_method).toLowerCase() : null;
+                        return m || null;
+                    });
+                    const topExecHosts = topCounts(execHostCounts, 3);
+                    const topJudgeHosts = topCounts(judgeHostCounts, 3);
+                    const topMethods = topCounts(methodCounts, 4);
+
+                    const fmtMs = (ms) => (ms === null ? '-' : `${Math.round(ms)}ms`);
+                    const fmtSec = (ms) => (ms === null ? '-' : `${(ms / 1000).toFixed(2)}s`);
+                    const fmtNum = (n, digits = 2) => (n === null ? '-' : Number(n).toFixed(digits));
+                    const fmtQuality = (q) => (q === null ? '-' : Number(q).toFixed(2));
+                    const fmtTop = (arr) => arr.length === 0
+                        ? '-'
+                        : arr.map(e => `${e.key}:${e.count}`).join(' ');
+
+                    // Per-model offenders (clickable)
+                    const models = Array.from(new Set(results.map(r => r && r.model).filter(Boolean)));
+                    const perModelPerf = models.map(model => {
+                        const modelResults = results.filter(r => r && r.model === model);
+                        const lat = summarizeNumbers(modelResults.map(r => r && r.latency));
+                        const tps = summarizeNumbers(modelResults.map(r => r && r.tokens_per_sec).filter(v => Number(v) > 0));
+                        const judge = summarizeNumbers(modelResults.map(r => r && r.scoring_time_ms).filter(v => Number(v) > 0));
+                        const quality = summarizeNumbers(modelResults.map(r => r && r.quality_score));
+                        return { model, lat, tps, judge, quality };
+                    });
+                    const pickMax = (arr, getVal) => {
+                        let best = null;
+                        for (const item of arr) {
+                            const v = getVal(item);
+                            if (!Number.isFinite(v)) continue;
+                            if (!best || v > best.v) best = { item, v };
+                        }
+                        return best ? best.item : null;
+                    };
+                    const pickMin = (arr, getVal) => {
+                        let best = null;
+                        for (const item of arr) {
+                            const v = getVal(item);
+                            if (!Number.isFinite(v)) continue;
+                            if (!best || v < best.v) best = { item, v };
+                        }
+                        return best ? best.item : null;
+                    };
+
+                    const worstLatencyModel = pickMax(perModelPerf, (p) => p.lat && Number.isFinite(p.lat.p95) ? p.lat.p95 : null);
+                    const worstThroughputModel = pickMin(perModelPerf, (p) => p.tps && Number.isFinite(p.tps.p10) ? p.tps.p10 : null);
+                    const longestJudgeModel = pickMax(perModelPerf, (p) => p.judge && Number.isFinite(p.judge.p95) ? p.judge.p95 : null);
+                    const lowestQualityModel = pickMin(perModelPerf, (p) => p.quality && Number.isFinite(p.quality.p10) ? p.quality.p10 : null);
+
+                    const offenderChip = (label, model, mode, valueText) => {
+                        if (!model || !model.model) return '';
+                        const safeModel = String(model.model).replace(/"/g, '&quot;');
+                        const safeValue = valueText ? String(valueText).replace(/"/g, '&quot;') : '';
+                        return `<button type="button" class="btn-secondary" data-action="inspect-model" data-model="${safeModel}" data-mode="${mode}" style="padding: 4px 8px;" title="${label}: ${safeModel}${safeValue ? ` (${safeValue})` : ''}">${label}: <span style="font-weight:700;">${safeModel}</span>${safeValue ? ` <span style=\"color: var(--muted);\">(${safeValue})</span>` : ''}</button>`;
+                    };
+
+                    const chips = [
+                        offenderChip('Worst latency', worstLatencyModel, 'worst_latency', worstLatencyModel && worstLatencyModel.lat && Number.isFinite(worstLatencyModel.lat.p95) ? `${Math.round(worstLatencyModel.lat.p95)}ms p95` : ''),
+                        offenderChip('Worst throughput', worstThroughputModel, 'worst_throughput', worstThroughputModel && worstThroughputModel.tps && Number.isFinite(worstThroughputModel.tps.p10) ? `${worstThroughputModel.tps.p10.toFixed(2)} t/s p10` : ''),
+                        offenderChip('Longest judge', longestJudgeModel, 'longest_judge', longestJudgeModel && longestJudgeModel.judge && Number.isFinite(longestJudgeModel.judge.p95) ? `${Math.round(longestJudgeModel.judge.p95)}ms p95` : ''),
+                        offenderChip('Lowest quality', lowestQualityModel, 'lowest_quality', lowestQualityModel && lowestQualityModel.quality && Number.isFinite(lowestQualityModel.quality.p10) ? `${lowestQualityModel.quality.p10.toFixed(2)} p10` : '')
+                    ].filter(Boolean);
+
+                    const offenderStrip = chips.length > 0
+                        ? `<div style="width: 100%; margin-top: 8px; display:flex; gap: 8px; flex-wrap: wrap; align-items:center;">
+                            <div style="color: var(--muted); font-size: 0.85em; margin-right: 4px;">Top offenders:</div>
+                            ${chips.join('')}
+                           </div>`
+                        : '';
+
+                    judgeStatsContainer.style.display = 'block';
+                    judgeStatsContainer.classList.add('judge-health-grid');
                     judgeStatsContainer.innerHTML = `
-                        <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
+                        <div class="judge-health-main">
                             <div style="color: ${healthColor}; font-weight: 600;">
                                 ${healthIcon} Judge Status: ${healthText}
                             </div>
@@ -2774,11 +3233,50 @@
                                 <span style="color: var(--muted);">ETA (worst):</span>
                                 <span style="font-weight: 600;">${etaWorst}</span>
                             </div>
+                            <div class="vr" style="background: rgba(255,255,255,0.1); width: 1px; height: 14px;"></div>
+                            <div title="Latency distribution (all results with numeric latency)">
+                                <span style="color: var(--muted);">Latency p50/p95:</span>
+                                <span style="font-weight: 600;">${fmtMs(latencyStats.p50)} / ${fmtMs(latencyStats.p95)}</span>
+                            </div>
+                            <div class="vr" style="background: rgba(255,255,255,0.1); width: 1px; height: 14px;"></div>
+                            <div title="Throughput distribution (tokens/sec, numeric > 0)">
+                                <span style="color: var(--muted);">t/s p50/p10:</span>
+                                <span style="font-weight: 600;">${fmtNum(tpsStats.p50)} / ${fmtNum(tpsStats.p10)}</span>
+                            </div>
+                            <div class="vr" style="background: rgba(255,255,255,0.1); width: 1px; height: 14px;"></div>
+                            <div title="Judge time distribution (ms, numeric > 0)">
+                                <span style="color: var(--muted);">Judge ms p50/p95:</span>
+                                <span style="font-weight: 600;">${fmtMs(judgeMsStats.p50)} / ${fmtMs(judgeMsStats.p95)}</span>
+                            </div>
+                            <div class="vr" style="background: rgba(255,255,255,0.1); width: 1px; height: 14px;"></div>
+                            <div title="Quality score distribution (0-10)">
+                                <span style="color: var(--muted);">Quality p50/p10:</span>
+                                <span style="font-weight: 600;">${fmtQuality(qualityStats.p50)} / ${fmtQuality(qualityStats.p10)}</span>
+                            </div>
+                            ${offenderStrip}
                         </div>
-                        <div style="font-size: 0.9em; color: var(--muted);">
-                            Concurrency: ${stats.concurrency || 2} • Timeout: ${timeoutMs}ms
+                        <div class="judge-health-meta">
+                            Concurrency: ${stats.concurrency || 2} • Timeout: ${timeoutMs}ms<br/>
+                            <span title="Host split (exec)">Exec hosts: ${fmtTop(topExecHosts)}</span> •
+                            <span title="Host split (judge)">Judge hosts: ${fmtTop(topJudgeHosts)}</span><br/>
+                            <span title="Scoring method counts">Methods: ${fmtTop(topMethods)}</span> •
+                            <span title="Latency summary">lat n=${latencyStats.n} avg=${fmtSec(latencyStats.mean)} max=${fmtSec(latencyStats.max)}</span>
                         </div>
                     `;
+
+                    if (!judgeStatsContainer.dataset.bound) {
+                        judgeStatsContainer.addEventListener('click', (e) => {
+                            const btn = e.target && e.target.closest && e.target.closest('[data-action="inspect-model"]');
+                            if (!btn) return;
+                            const model = btn.getAttribute('data-model');
+                            const mode = btn.getAttribute('data-mode') || 'failure';
+                            const idOrIndex = pickRepresentativeResultIdForModel(model, mode);
+                            if (idOrIndex !== null && typeof window.showJudgeDetails === 'function') {
+                                window.showJudgeDetails(idOrIndex);
+                            }
+                        });
+                        judgeStatsContainer.dataset.bound = 'true';
+                    }
                 } else {
                     judgeStatsContainer.style.display = 'none';
                 }
@@ -2800,9 +3298,10 @@
                         : perModelPlanned;
 
                     const isQualityEnabled = batch.quality_scoring !== false;
-                    const results = Array.isArray(batch.results) ? batch.results : [];
+                    const showHyperDetails = showHyper;
 
-                    const showHyperDetails = localStorage.getItem('benchmarkShowHyper') === 'true';
+                    const thresholds = getAnomalyThresholds();
+                    const minSamples = Math.max(1, Number(thresholds.model_min_n) || 5);
 
                     const judgeDoneMethods = new Set(['quick', 'quick_scored', 'llm_judge', 'llm_judged', 'llm_failed', 'exec_failed']);
                     const isJudgeDone = (r) => {
@@ -2821,6 +3320,28 @@
                     };
 
                     if (perModelContainer && models.length > 0 && perModelPlannedFromPlan > 0 && showAdvanced) {
+                        // Median baselines (model-level averages) for quick relative indicators
+                        const perModelAggForMedian = models.map(model => {
+                            const modelResults = results.filter(r => r && r.model === model);
+                            const tpsValues = modelResults
+                                .map(r => toFiniteNumber(r && r.tokens_per_sec))
+                                .filter(v => v !== null && v > 0);
+                            const judgeMsValues = modelResults
+                                .map(r => toFiniteNumber(r && r.scoring_time_ms))
+                                .filter(v => v !== null && v > 0);
+                            const avgTps = tpsValues.length > 0 ? (tpsValues.reduce((sum, v) => sum + v, 0) / tpsValues.length) : null;
+                            const avgJudgeMs = judgeMsValues.length > 0 ? (judgeMsValues.reduce((sum, v) => sum + v, 0) / judgeMsValues.length) : null;
+                            return { model, avgTps, tpsN: tpsValues.length, avgJudgeMs, judgeMsN: judgeMsValues.length };
+                        });
+                        const medianBaseline = (values) => {
+                            const xs = (Array.isArray(values) ? values : []).filter(v => Number.isFinite(v)).slice().sort((a, b) => a - b);
+                            if (xs.length === 0) return null;
+                            const mid = Math.floor(xs.length / 2);
+                            return (xs.length % 2 === 1) ? xs[mid] : (xs[mid - 1] + xs[mid]) / 2;
+                        };
+                        const tpsMedianModelAvg = medianBaseline(perModelAggForMedian.map(x => x.avgTps).filter(v => Number.isFinite(v) && v > 0));
+                        const judgeMsMedianModelAvg = medianBaseline(perModelAggForMedian.map(x => x.avgJudgeMs).filter(v => Number.isFinite(v) && v > 0));
+
                         const rows = models.map(model => {
                             const modelResults = results.filter(r => r && r.model === model);
                             const execDone = modelResults.length;
@@ -2851,6 +3372,88 @@
                                 <div style="margin-top: 4px; color: var(--muted); font-size: 0.85em;">${judgeDone}/${perModelPlannedFromPlan} (eff ${judgeEffPct}% • fail ${judgeFailed})</div>
                             ` : `<div style="color: var(--muted);">Disabled</div>`;
 
+                            const latencyAgg = summarizeNumbers(modelResults.map(r => r && r.latency));
+                            const tpsAgg = summarizeNumbers(modelResults.map(r => r && r.tokens_per_sec).filter(v => Number(v) > 0));
+                            const judgeAgg = summarizeNumbers(modelResults.map(r => r && r.scoring_time_ms).filter(v => Number(v) > 0));
+                            const qualityAgg = summarizeNumbers(modelResults.map(r => r && r.quality_score));
+
+                            const execHostCounts = countBy(modelResults, (r) => r && r.host ? formatHostLabel(r.host) : null);
+                            const judgeHostCounts = countBy(modelResults, (r) => r && r.judge_host ? formatHostLabel(r.judge_host) : null);
+                            const methodCounts = countBy(modelResults, (r) => (r && r.scoring_method) ? String(r.scoring_method).toLowerCase() : null);
+                            const promptLevelCounts = countBy(modelResults, (r) => (r && r.prompt_level !== undefined && r.prompt_level !== null) ? String(r.prompt_level) : null);
+                            const promptCategoryCounts = countBy(modelResults, (r) => (r && r.prompt_category) ? String(r.prompt_category) : null);
+
+                            const ratioOrNull = (a, b) => {
+                                if (!Number.isFinite(a) || !Number.isFinite(b) || b <= 0) return null;
+                                return a / b;
+                            };
+                            const tpsVsMedian = ratioOrNull(tpsAgg.mean, tpsMedianModelAvg);
+                            const judgeMsVsMedian = ratioOrNull(judgeAgg.mean, judgeMsMedianModelAvg);
+                            const formatRatio = (x) => (x === null ? '-' : `${x.toFixed(2)}×`);
+                            const ratioColor = (x, invert = false) => {
+                                if (x === null) return 'var(--muted)';
+                                // throughput: higher is better, judge ms: lower is better
+                                const good = invert ? (x <= 0.85) : (x >= 1.15);
+                                const bad = invert ? (x >= 1.25) : (x <= 0.75);
+                                if (good) return '#2ecc71';
+                                if (bad) return '#e74c3c';
+                                return 'var(--text)';
+                            };
+
+                            const tpsBelowPct = Math.max(0, Math.min(100, Number(thresholds.model_tps_below_median_pct) || 30));
+                            const judgeMsAbovePct = Math.max(0, Math.min(300, Number(thresholds.model_judge_ms_above_median_pct) || 50));
+                            const tpsCutoff = (tpsMedianModelAvg !== null && Number.isFinite(tpsMedianModelAvg))
+                                ? (tpsMedianModelAvg * (1 - (tpsBelowPct / 100)))
+                                : null;
+                            const judgeMsCutoff = (judgeMsMedianModelAvg !== null && Number.isFinite(judgeMsMedianModelAvg))
+                                ? (judgeMsMedianModelAvg * (1 + (judgeMsAbovePct / 100)))
+                                : null;
+
+                            const reasons = [];
+                            const execRate = execDone > 0 ? (execFailed / execDone) : 0;
+                            const judgeRate = judgeDone > 0 ? (judgeFailed / judgeDone) : 0;
+                            const execOutPct = Math.max(0, Math.min(100, Number(thresholds.model_exec_out_pct) || 20)) / 100;
+                            const judgeOutPct = Math.max(0, Math.min(100, Number(thresholds.model_judge_out_pct) || 10)) / 100;
+
+                            if (execDone >= minSamples && execRate >= execOutPct) reasons.push('<span class="badge bg-danger">FAIL</span>');
+                            if (isQualityEnabled && judgeDone >= minSamples && judgeRate >= judgeOutPct) reasons.push('<span class="badge bg-warning text-dark">JFAIL</span>');
+                            if (tpsCutoff !== null && tpsAgg.n >= minSamples && Number.isFinite(tpsAgg.mean) && tpsAgg.mean <= tpsCutoff) reasons.push('<span class="badge bg-info text-dark">LOW TPS</span>');
+                            if (judgeMsCutoff !== null && judgeAgg.n >= minSamples && Number.isFinite(judgeAgg.mean) && judgeAgg.mean >= judgeMsCutoff) reasons.push('<span class="badge bg-info text-dark">SLOW JUDGE</span>');
+
+                            const aggCell = (primary, secondary, title) => {
+                                return `
+                                    <div title="${title}" style="white-space: nowrap;">
+                                        <div style="font-weight: 600; color: var(--text);">${primary}</div>
+                                        <div style="color: var(--muted); font-size: 0.82em;">${secondary}</div>
+                                    </div>
+                                `;
+                            };
+
+                            const latencyCell = aggCell(
+                                latencyAgg.n > 0 ? `${Math.round(latencyAgg.p50)}ms` : '-',
+                                latencyAgg.n > 0 ? `p95 ${Math.round(latencyAgg.p95)}ms` : `n=0`,
+                                latencyAgg.n > 0 ? `n=${latencyAgg.n} avg=${Math.round(latencyAgg.mean)}ms min=${Math.round(latencyAgg.min)}ms max=${Math.round(latencyAgg.max)}ms` : 'No latency data'
+                            );
+                            const tpsCell = aggCell(
+                                tpsAgg.n > 0 ? `${tpsAgg.p50.toFixed(2)} t/s` : '-',
+                                tpsAgg.n > 0
+                                    ? `p10 ${tpsAgg.p10.toFixed(2)} • vs med ${formatRatio(tpsVsMedian)}`
+                                    : `n=0`,
+                                tpsAgg.n > 0 ? `n=${tpsAgg.n} avg=${tpsAgg.mean.toFixed(2)} p95=${tpsAgg.p95.toFixed(2)} min=${tpsAgg.min.toFixed(2)}` : 'No throughput data'
+                            );
+                            const judgeMsCell = aggCell(
+                                judgeAgg.n > 0 ? `${Math.round(judgeAgg.p50)}ms` : '-',
+                                judgeAgg.n > 0
+                                    ? `p95 ${Math.round(judgeAgg.p95)}ms • vs med ${formatRatio(judgeMsVsMedian)}`
+                                    : `n=0`,
+                                judgeAgg.n > 0 ? `n=${judgeAgg.n} avg=${Math.round(judgeAgg.mean)}ms max=${Math.round(judgeAgg.max)}ms` : 'No judge-time data'
+                            );
+                            const qualityCell = aggCell(
+                                qualityAgg.n > 0 ? `${qualityAgg.p50.toFixed(2)}` : '-',
+                                qualityAgg.n > 0 ? `p10 ${qualityAgg.p10.toFixed(2)}` : `n=0`,
+                                qualityAgg.n > 0 ? `n=${qualityAgg.n} avg=${qualityAgg.mean.toFixed(2)} p95=${qualityAgg.p95.toFixed(2)} min=${qualityAgg.min.toFixed(2)}` : 'No quality data'
+                            );
+
                             const recentErrors = modelResults
                                 .filter(r => isExecFailed(r) || isJudgeFailed(r))
                                 .slice(-5)
@@ -2876,6 +3479,23 @@
                                     percent_planned: judgePct,
                                     percent_effective: judgeEffPct
                                 } : { disabled: true },
+                                aggregates: {
+                                    latency_ms: latencyAgg,
+                                    tokens_per_sec: tpsAgg,
+                                    judge_time_ms: judgeAgg,
+                                    quality_score: qualityAgg,
+                                    vs_median: {
+                                        model_avg_tokens_per_sec_ratio: tpsVsMedian,
+                                        model_avg_judge_time_ms_ratio: judgeMsVsMedian
+                                    }
+                                },
+                                breakdowns: {
+                                    exec_host: execHostCounts,
+                                    judge_host: judgeHostCounts,
+                                    scoring_method: methodCounts,
+                                    prompt_level: promptLevelCounts,
+                                    prompt_category: promptCategoryCounts
+                                },
                                 recent_errors: recentErrors,
                                 sample_result: null,
                                 samples: null
@@ -2909,15 +3529,26 @@
                                 <tr data-model-main-row="${String(model).replace(/\"/g, '&quot;')}">
                                     <td style="padding: 10px 10px; font-weight: 600; color: var(--text); white-space: nowrap;">
                                         <div style="display:flex; align-items:center; justify-content: space-between; gap: 10px;">
-                                            <span>${model}</span>
+                                            <div style="display:flex; flex-direction: column; gap: 4px;">
+                                                <span>${model}</span>
+                                                ${reasons.length > 0 ? `<div style="display:flex; gap: 6px; flex-wrap: wrap;">${reasons.join('')}</div>` : ''}
+                                            </div>
                                             ${hyperToggle}
                                         </div>
                                     </td>
                                     <td style="padding: 10px 10px; min-width: 220px;">${execBar}</td>
                                     <td style="padding: 10px 10px; min-width: 220px;">${judgeBar}</td>
+                                    <td style="padding: 10px 10px; min-width: 140px;">${latencyCell}</td>
+                                    <td style="padding: 10px 10px; min-width: 140px;">
+                                        <div style="color: ${ratioColor(tpsVsMedian, false)};">${tpsCell}</div>
+                                    </td>
+                                    <td style="padding: 10px 10px; min-width: 140px;">
+                                        <div style="color: ${ratioColor(judgeMsVsMedian, true)};">${judgeMsCell}</div>
+                                    </td>
+                                    <td style="padding: 10px 10px; min-width: 140px;">${qualityCell}</td>
                                 </tr>
                                 <tr data-model-hyper-row="${String(model).replace(/"/g, '&quot;')}" style="display:none;">
-                                    <td colspan="3" style="padding: 0 10px 10px;">
+                                    <td colspan="7" style="padding: 0 10px 10px;">
                                         <div class="advanced-details" style="margin-top: 0;">
                                             <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom: 6px;">
                                                 <div style="display:flex; align-items:center; gap: 10px; flex-wrap: wrap;">
@@ -2950,6 +3581,10 @@
                                             <th style="padding: 8px 10px;">Model</th>
                                             <th style="padding: 8px 10px;">Exec</th>
                                             <th style="padding: 8px 10px;">Judge</th>
+                                            <th style="padding: 8px 10px;">Latency</th>
+                                            <th style="padding: 8px 10px;">t/s</th>
+                                            <th style="padding: 8px 10px;">Judge ms</th>
+                                            <th style="padding: 8px 10px;">Quality</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -3016,15 +3651,25 @@
                 }
 
                 // Update Results Table
-                if (batch.results && batch.results.length > 0) {
+                if (results.length > 0) {
                     const container = document.getElementById('batchResultsContainer');
                     const tbody = document.getElementById('batchResultsBody');
                     container.style.display = 'block';
 
-                    window.currentBatchResults = batch.results;
-                    tbody.innerHTML = batch.results.map((r, idx) => {
+                    window.currentBatchResults = results;
+                    tbody.innerHTML = results.map((r, idx) => {
                         const qualityScore = r.quality_score !== undefined && r.quality_score !== null ? r.quality_score : '-';
                         const qualityClass = qualityScore >= 7 ? 'quality-high' : qualityScore >= 4 ? 'quality-mid' : (qualityScore !== '-' ? 'quality-low' : '');
+
+                        const lat = toFiniteNumber(r.latency);
+                        const tps = toFiniteNumber(r.tokens_per_sec);
+                        const judgeMs = toFiniteNumber(r.scoring_time_ms);
+                        const perfLine = (lat !== null || tps !== null)
+                            ? `<div style="font-size: 0.75em; color: var(--muted); margin-top: 2px;">${lat !== null ? `L: ${Math.round(lat)}ms` : 'L: -'} • ${tps !== null ? `t/s: ${tps.toFixed(2)}` : 't/s: -'}</div>`
+                            : '';
+                        const judgeLine = (judgeMs !== null)
+                            ? `<div style="font-size: 0.75em; color: var(--muted);">Judge ms: ${Math.round(judgeMs)}ms</div>`
+                            : '';
 
                         const hostInfo = r.host ? `<div style="font-size: 0.75em; color: var(--muted); margin-top: 2px;">Exec: ${formatHostLabel(r.host)}</div>` : '';
                         const judgeInfo = r.judge_host ? `<div style="font-size: 0.75em; color: var(--muted);">Judge: ${formatHostLabel(r.judge_host)}</div>` : '';
@@ -3036,11 +3681,12 @@
                                     ${r.model}
                                     ${hostInfo}
                                 </td>
-                                <td style="padding: 8px 12px;">${r.prompt_name}</td>
+                                <td style="padding: 8px 12px;">${r.prompt_name}${perfLine}</td>
                                 <td style="padding: 8px 12px; text-align: center;" class="${qualityClass}">
                                     ${qualityScore}
                                     ${judgeInfo}
                                     ${judgeStatus}
+                                    ${judgeLine}
                                 </td>
                                 <td style="padding: 8px 12px; text-align: center;">
                                     <button class="btn-secondary btn-sm" onclick="showJudgeDetails('${r.id || idx}')">
@@ -3052,57 +3698,7 @@
                     }).join('');
                 }
 
-                if (batch.status === 'completed') {
-                    clearInterval(batchPollInterval);
-                    batchPollInterval = null;
-                    localStorage.removeItem('currentBatchId');
-
-                    const status = document.getElementById('batchStatus');
-                    
-                    // Check if judging is actually complete
-                    const judgeTotal = Number(batch.judge_total) || 0;
-                    const judgeTotalEffective = Number(
-                        batch.judge_total_effective ??
-                        (batch.judge_stats ? batch.judge_stats.total : null) ??
-                        judgeTotal
-                    ) || 0;
-                    const judgeCompleted = Number(batch.judge_completed) || 0;
-                    
-                    if (judgeTotalEffective > 0 && judgeCompleted < judgeTotalEffective) {
-                        status.className = 'status warning';
-                        status.style.background = 'rgba(241, 196, 15, 0.1)';
-                        status.style.borderColor = 'rgba(241, 196, 15, 0.3)';
-                        status.style.color = '#f1c40f';
-                        status.innerHTML = `
-                            <i class="fas fa-exclamation-triangle"></i> Batch execution finished, but judging is incomplete (${judgeCompleted}/${judgeTotalEffective}).<br>
-                            <small>The server process may have stopped or judging failed silently. Check logs.</small>
-                        `;
-                    } else {
-                        status.className = 'status success';
-                        status.textContent = `✓ Batch completed! ${batch.completed} tests run (${batch.success_rate} success)`;
-                    }
-                    
-                    status.style.display = 'block';
-                    status.style.display = 'block';
-
-                    const btn = document.getElementById('runBatchBtn');
-                    const stopBtn = document.getElementById('stopBatchBtn');
-                    btn.disabled = false;
-                    btn.textContent = 'Start Batch Test';
-                    stopBtn.style.display = 'none';
-
-                    // Refresh dashboard
-                    loadDashboard();
-                }
-            } catch (err) {
-                console.error('Failed to poll batch progress:', err);
-                // If 404 (batch not found), clear local storage
-                if (err.message.includes('404')) {
-                    resetBatchUI();
-                }
-
                 // Hyper details: structured snapshot (avoid full results array)
-                const showHyper = localStorage.getItem('benchmarkShowHyper') === 'true';
                 const hyperPre = document.getElementById('hyperBatchJson');
                 const hyperDetails = document.getElementById('hyperBatchDetails');
                 const hyperAnomalies = document.getElementById('hyperAnomalies');
@@ -3124,7 +3720,6 @@
                         const judgeFailRate = judgeCompleted > 0 ? (judgeFailed / judgeCompleted) : 0;
                         const judgeStats = batch.judge_stats || null;
 
-                        const results = Array.isArray(batch.results) ? batch.results : [];
                         const models = Array.isArray(batch.models) && batch.models.length > 0
                             ? batch.models
                             : Array.from(new Set(results.map(r => r && r.model).filter(Boolean)));
@@ -3251,6 +3846,9 @@
                         let judgeMsCutoff = null;
                         let judgeMsEligibleModels = 0;
 
+                        const throughputOutliers = [];
+                        const judgeTimeOutliers = [];
+
                         const tpsBaseline = modelStats.filter(s => Number.isFinite(s.avgTps) && s.tpsN >= minSamples);
                         tpsEligibleModels = tpsBaseline.length;
                         tpsMedian = median(tpsBaseline.map(s => s.avgTps));
@@ -3261,6 +3859,13 @@
                                 .sort((a, b) => (a.avgTps / tpsMedian) - (b.avgTps / tpsMedian))
                                 .slice(0, 3);
                             for (const s of tpsOutliers) {
+                                throughputOutliers.push({
+                                    model: s.model,
+                                    avg_tps: Number.isFinite(s.avgTps) ? Number(s.avgTps.toFixed(6)) : null,
+                                    median_tps: Number(tpsMedian.toFixed(6)),
+                                    ratio_vs_median: Number.isFinite(s.avgTps) ? Number((s.avgTps / tpsMedian).toFixed(6)) : null,
+                                    n: s.tpsN
+                                });
                                 modelAnomalies.push({
                                     type: 'throughput_outlier',
                                     model: s.model,
@@ -3280,6 +3885,13 @@
                                 .sort((a, b) => (b.avgJudgeMs / judgeMsMedian) - (a.avgJudgeMs / judgeMsMedian))
                                 .slice(0, 3);
                             for (const s of judgeMsOutliers) {
+                                judgeTimeOutliers.push({
+                                    model: s.model,
+                                    avg_ms: Number.isFinite(s.avgJudgeMs) ? Math.round(s.avgJudgeMs) : null,
+                                    median_ms: Math.round(judgeMsMedian),
+                                    ratio_vs_median: Number.isFinite(s.avgJudgeMs) ? Number((s.avgJudgeMs / judgeMsMedian).toFixed(6)) : null,
+                                    n: s.judgeMsN
+                                });
                                 modelAnomalies.push({
                                     type: 'judge_time_outlier',
                                     model: s.model,
@@ -3288,6 +3900,77 @@
                                 });
                             }
                         }
+
+                        const batchDistributions = {
+                            latency_ms: summarizeNumbers(results.map(r => r && r.latency)),
+                            tokens_per_sec: summarizeNumbers(results.map(r => r && r.tokens_per_sec).filter(v => Number(v) > 0)),
+                            judge_time_ms: summarizeNumbers(results.map(r => r && r.scoring_time_ms).filter(v => Number(v) > 0)),
+                            quality_score: summarizeNumbers(results.map(r => r && r.quality_score))
+                        };
+                        const batchBreakdowns = {
+                            exec_host: countBy(results, (r) => r && r.host ? formatHostLabel(r.host) : null),
+                            judge_host: countBy(results, (r) => r && r.judge_host ? formatHostLabel(r.judge_host) : null),
+                            scoring_method: countBy(results, (r) => (r && r.scoring_method) ? String(r.scoring_method).toLowerCase() : null),
+                            prompt_level: countBy(results, (r) => (r && r.prompt_level !== undefined && r.prompt_level !== null) ? String(r.prompt_level) : null),
+                            prompt_category: countBy(results, (r) => (r && r.prompt_category) ? String(r.prompt_category) : null)
+                        };
+
+                        const groupAverages = (getKey) => {
+                            const buckets = Object.create(null);
+                            for (const r of results) {
+                                const key = getKey(r);
+                                if (!key) continue;
+                                if (!buckets[key]) buckets[key] = { n: 0, lat: [], q: [] };
+                                buckets[key].n += 1;
+                                const lat = toFiniteNumber(r && r.latency);
+                                const q = toFiniteNumber(r && r.quality_score);
+                                if (lat !== null) buckets[key].lat.push(lat);
+                                if (q !== null) buckets[key].q.push(q);
+                            }
+                            const out = [];
+                            for (const [key, b] of Object.entries(buckets)) {
+                                const latStats = summarizeNumbers(b.lat);
+                                const qStats = summarizeNumbers(b.q);
+                                out.push({
+                                    key,
+                                    n: b.n,
+                                    avg_latency_ms: latStats.n > 0 ? latStats.mean : null,
+                                    p50_latency_ms: latStats.n > 0 ? latStats.p50 : null,
+                                    p95_latency_ms: latStats.n > 0 ? latStats.p95 : null,
+                                    avg_quality: qStats.n > 0 ? qStats.mean : null,
+                                    p10_quality: qStats.n > 0 ? qStats.p10 : null,
+                                    p50_quality: qStats.n > 0 ? qStats.p50 : null
+                                });
+                            }
+                            return out;
+                        };
+
+                        const byLevel = groupAverages((r) => (r && r.prompt_level !== undefined && r.prompt_level !== null) ? String(r.prompt_level) : null);
+                        const byCategory = groupAverages((r) => (r && r.prompt_category) ? String(r.prompt_category) : null);
+
+                        const worstLatencyLevels = byLevel
+                            .filter(x => Number.isFinite(x.avg_latency_ms))
+                            .sort((a, b) => b.avg_latency_ms - a.avg_latency_ms)
+                            .slice(0, 3);
+                        const worstLatencyCategories = byCategory
+                            .filter(x => Number.isFinite(x.avg_latency_ms))
+                            .sort((a, b) => b.avg_latency_ms - a.avg_latency_ms)
+                            .slice(0, 3);
+                        const lowestQualityLevels = byLevel
+                            .filter(x => Number.isFinite(x.avg_quality))
+                            .sort((a, b) => a.avg_quality - b.avg_quality)
+                            .slice(0, 3);
+                        const lowestQualityCategories = byCategory
+                            .filter(x => Number.isFinite(x.avg_quality))
+                            .sort((a, b) => a.avg_quality - b.avg_quality)
+                            .slice(0, 3);
+
+                        const promptOutliers = {
+                            worst_latency_levels: worstLatencyLevels,
+                            worst_latency_categories: worstLatencyCategories,
+                            lowest_quality_levels: lowestQualityLevels,
+                            lowest_quality_categories: lowestQualityCategories
+                        };
 
                         if (hyperAnomalies) {
                             const lines = [];
@@ -3303,6 +3986,19 @@
                                 for (const m of modelAnomalies.slice(0, 8)) {
                                     lines.push(`<div style="margin: 4px 0; color: rgba(255,255,255,0.92);">• <button type="button" class="btn-secondary" data-action="jump-model" data-model="${String(m.model).replace(/\"/g, '&quot;')}" style="padding: 4px 8px; margin-right: 6px;">${m.model}</button><button type="button" class="btn-secondary" data-action="inspect-model" data-model="${String(m.model).replace(/\"/g, '&quot;')}" data-mode="${String((m && m.inspect_mode) || 'failure').replace(/\"/g, '&quot;')}" style="padding: 4px 8px; margin-right: 8px;">Inspect</button>${m.message}</div>`);
                                 }
+
+                                const fmtOutlier = (label, entries, fmt) => {
+                                    if (!Array.isArray(entries) || entries.length === 0) return;
+                                    lines.push(`<div style="margin-top: 8px; font-weight: 700; color: var(--text);">${label}</div>`);
+                                    for (const e of entries.slice(0, 3)) {
+                                        lines.push(`<div style="margin: 4px 0; color: rgba(255,255,255,0.92);">• ${fmt(e)}</div>`);
+                                    }
+                                };
+                                fmtOutlier('Prompt draggers — latency', worstLatencyLevels, (e) => `Level ${e.key}: avg ${Math.round(e.avg_latency_ms)}ms (n=${e.n})`);
+                                fmtOutlier('Prompt draggers — latency', worstLatencyCategories, (e) => `${e.key}: avg ${Math.round(e.avg_latency_ms)}ms (n=${e.n})`);
+                                fmtOutlier('Prompt draggers — quality', lowestQualityLevels, (e) => `Level ${e.key}: avg ${Number(e.avg_quality).toFixed(2)} (n=${e.n})`);
+                                fmtOutlier('Prompt draggers — quality', lowestQualityCategories, (e) => `${e.key}: avg ${Number(e.avg_quality).toFixed(2)} (n=${e.n})`);
+
                                 hyperAnomalies.innerHTML = lines.join('');
                             }
 
@@ -3377,6 +4073,9 @@
                                 stats: batch.judge_stats || null
                             },
                             quality_scoring: batch.quality_scoring,
+                            batch_distributions: batchDistributions,
+                            batch_breakdowns: batchBreakdowns,
+                            prompt_outliers: promptOutliers,
                             anomaly_thresholds: thresholds,
                             anomaly_baselines: {
                                 model_min_n: minSamples,
@@ -3384,13 +4083,15 @@
                                     eligible_models: tpsEligibleModels,
                                     median_tokens_per_sec: tpsMedian !== null ? Number(tpsMedian.toFixed(6)) : null,
                                     cutoff_tokens_per_sec: tpsCutoff !== null ? Number(tpsCutoff.toFixed(6)) : null,
-                                    below_median_pct: tpsBelowPct
+                                    below_median_pct: tpsBelowPct,
+                                    outliers: throughputOutliers
                                 },
                                 judge_time: {
                                     eligible_models: judgeMsEligibleModels,
                                     median_ms: judgeMsMedian !== null ? Math.round(judgeMsMedian) : null,
                                     cutoff_ms: judgeMsCutoff !== null ? Math.round(judgeMsCutoff) : null,
-                                    above_median_pct: judgeMsAbovePct
+                                    above_median_pct: judgeMsAbovePct,
+                                    outliers: judgeTimeOutliers
                                 }
                             },
                             anomalies: anomalies,
@@ -3422,6 +4123,55 @@
                         if (hyperAnomalies) hyperAnomalies.style.display = 'none';
                         if (hyperThresholds) hyperThresholds.style.display = 'none';
                     }
+                }
+
+                if (batch.status === 'completed') {
+                    clearInterval(batchPollInterval);
+                    batchPollInterval = null;
+                    localStorage.removeItem('currentBatchId');
+
+                    const status = document.getElementById('batchStatus');
+                    
+                    // Check if judging is actually complete
+                    const judgeTotal = Number(batch.judge_total) || 0;
+                    const judgeTotalEffective = Number(
+                        batch.judge_total_effective ??
+                        (batch.judge_stats ? batch.judge_stats.total : null) ??
+                        judgeTotal
+                    ) || 0;
+                    const judgeCompleted = Number(batch.judge_completed) || 0;
+                    
+                    if (judgeTotalEffective > 0 && judgeCompleted < judgeTotalEffective) {
+                        status.className = 'status warning';
+                        status.style.background = 'rgba(241, 196, 15, 0.1)';
+                        status.style.borderColor = 'rgba(241, 196, 15, 0.3)';
+                        status.style.color = '#f1c40f';
+                        status.innerHTML = `
+                            <i class="fas fa-exclamation-triangle"></i> Batch execution finished, but judging is incomplete (${judgeCompleted}/${judgeTotalEffective}).<br>
+                            <small>The server process may have stopped or judging failed silently. Check logs.</small>
+                        `;
+                    } else {
+                        status.className = 'status success';
+                        status.textContent = `✓ Batch completed! ${batch.completed} tests run (${batch.success_rate} success)`;
+                    }
+                    
+                    status.style.display = 'block';
+                    status.style.display = 'block';
+
+                    const btn = document.getElementById('runBatchBtn');
+                    const stopBtn = document.getElementById('stopBatchBtn');
+                    btn.disabled = false;
+                    btn.textContent = 'Start Batch Test';
+                    stopBtn.style.display = 'none';
+
+                    // Refresh dashboard
+                    loadDashboard();
+                }
+            } catch (err) {
+                console.error('Failed to poll batch progress:', err);
+                // If 404 (batch not found), clear local storage
+                if (err.message.includes('404')) {
+                    resetBatchUI();
                 }
             }
         }
@@ -3535,44 +4285,53 @@
                     throw new Error('Invalid dashboard data structure');
                 }
 
+                lastDashboardOverview = data.overview;
+                renderSuccessRateDetails();
+
+                lastRecentTests = Array.isArray(data.recent_tests) ? data.recent_tests : [];
+                buildRecentTestsModelOptions(lastRecentTests);
+                rerenderRecentTests();
+
                 // Update stats
                 document.getElementById('totalTests').textContent = data.overview.total_tests;
                 document.getElementById('successRate').innerHTML =
                     data.overview.success_rate.replace('%', '<span class="stat-unit">%</span>');
 
-                if (data.model_stats && data.model_stats.length > 0) {
-                    const fastest = data.model_stats[0];
+                const statsForCharts = (data.model_stats || []).filter(m => Number(m && m.tests) > 0);
+
+                if (statsForCharts.length > 0) {
+                    const fastest = statsForCharts[0];
                     document.getElementById('avgLatency').innerHTML =
                         `${fastest.avg_latency}<span class="stat-unit">ms</span>`;
                     document.getElementById('fastestModel').textContent = fastest.model;
 
                     // Update charts
-                    const chartLabels = data.model_stats.map(m => {
+                    const chartLabels = statsForCharts.map(m => {
                         const hostLabel = m.host ? formatHostLabel(m.host) : '';
                         // Only append host if it's not localhost or if we have multiple hosts
                         return hostLabel && hostLabel !== 'localhost' ? `${m.model} (${hostLabel})` : m.model;
                     });
 
                     latencyChart.data.labels = chartLabels;
-                    latencyChart.data.datasets[0].data = data.model_stats.map(m => m.avg_latency);
+                    latencyChart.data.datasets[0].data = statsForCharts.map(m => m.avg_latency);
                     latencyChart.update();
 
                     tokensChart.data.labels = chartLabels;
-                    tokensChart.data.datasets[0].data = data.model_stats.map(m => parseFloat(m.avg_tokens_per_sec));
+                    tokensChart.data.datasets[0].data = statsForCharts.map(m => parseFloat(m.avg_tokens_per_sec));
                     tokensChart.update();
 
                     // Update quality chart
                     qualityChart.data.labels = chartLabels;
-                    qualityChart.data.datasets[0].data = data.model_stats.map(m => parseFloat(m.avg_quality) || 0);
+                    qualityChart.data.datasets[0].data = statsForCharts.map(m => parseFloat(m.avg_quality) || 0);
                     qualityChart.update();
 
                     // Update composite chart
                     compositeChart.data.labels = chartLabels;
-                    compositeChart.data.datasets[0].data = data.model_stats.map(m => parseFloat(m.avg_composite) || 0);
+                    compositeChart.data.datasets[0].data = statsForCharts.map(m => parseFloat(m.avg_composite) || 0);
                     compositeChart.update();
 
                     // Find best overall model (highest composite score)
-                    const modelsWithComposite = data.model_stats.filter(m => m.avg_composite && parseFloat(m.avg_composite) > 0);
+                    const modelsWithComposite = statsForCharts.filter(m => m.avg_composite && parseFloat(m.avg_composite) > 0);
                     let bestOverallModel = null;
                     if (modelsWithComposite.length > 0) {
                         bestOverallModel = modelsWithComposite.reduce((best, current) =>
@@ -3590,9 +4349,19 @@
                         }
                     }
 
+                    // Populate trends model filter
+                    const trendsModelFilter = document.getElementById('trendsModelFilter');
+                    if (trendsModelFilter && statsForCharts.length > 0) {
+                        const uniqueModels = [...new Set(statsForCharts.map(m => m.model))];
+                        const currentSelection = trendsModelFilter.value;
+                        trendsModelFilter.innerHTML = '<option value="">All Models</option>' +
+                            uniqueModels.map(model => `<option value="${model}">${model}</option>`).join('');
+                        if (currentSelection) trendsModelFilter.value = currentSelection;
+                    }
+
                     // Update leaderboard
                     const tbody = document.getElementById('leaderboard');
-                    tbody.innerHTML = data.model_stats.map((model, idx) => {
+                    tbody.innerHTML = (data.model_stats || []).map((model, idx) => {
                         let badge = '';
                         if (idx === 0) badge = '<span class="badge gold">🥇 1st</span>';
                         else if (idx === 1) badge = '<span class="badge silver">🥈 2nd</span>';
@@ -3604,6 +4373,17 @@
                         const qualityDisplay = !isNaN(qualityVal) ? model.avg_quality : '-';
                         const compositeDisplay = !isNaN(compositeVal) ? model.avg_composite : '-';
                         const qualityClass = qualityVal >= 7 ? 'quality-high' : qualityVal >= 4 ? 'quality-mid' : (qualityVal > 0 ? 'quality-low' : '');
+
+                        const hasSuccessSamples = Number(model.tests) > 0;
+                        const latencyDisplay = hasSuccessSamples ? `${model.avg_latency} ms` : '-';
+                        const tpsDisplay = hasSuccessSamples ? `${model.avg_tokens_per_sec}` : '-';
+
+                        const totalTests = Number(model.total_tests || (Number(model.tests) + Number(model.failed_tests || 0)));
+                        const failedTests = Number(model.failed_tests || 0);
+                        const failRate = totalTests > 0 ? (failedTests / totalTests) : 0;
+                        const reliabilityDisplay = totalTests > 0
+                            ? `${(failRate * 100).toFixed(1)}%`
+                            : '-';
 
                         // Highlight best overall model
                         const isBestOverall = bestOverallModel && model.model === bestOverallModel.model;
@@ -3618,14 +4398,98 @@
                                     <strong>${crown}${model.model}</strong>
                                     <div style="font-size: 0.8em; color: var(--muted); margin-top: 2px; opacity: 0.7;">${hostLabel}</div>
                                 </td>
-                                <td>${model.avg_latency} ms</td>
-                                <td>${model.avg_tokens_per_sec}</td>
+                                <td>${latencyDisplay}</td>
+                                <td>${tpsDisplay}</td>
                                 <td class="${qualityClass}">${qualityDisplay}</td>
                                 <td style="font-weight: bold;">${compositeDisplay}</td>
-                                <td>${model.tests}</td>
+                                <td>${reliabilityDisplay}</td>
+                                <td>
+                                    ${model.tests}
+                                    ${model.failed_tests && Number(model.failed_tests) > 0
+                                        ? `<div style="margin-top: 2px; color: rgba(231, 76, 60, 0.9); font-size: 0.8em;">Failed: ${model.failed_tests}</div>`
+                                        : ''}
+                                </td>
                             </tr>
                         `;
                     }).join('');
+
+                    // Leaderboard top offenders (overall)
+                    const offendersEl = document.getElementById('leaderboardOffenders');
+                    if (offendersEl) {
+                        const rows = Array.isArray(data.model_stats) ? data.model_stats : [];
+                        const toNum = (v) => {
+                            const n = typeof v === 'string' ? parseFloat(v) : Number(v);
+                            return Number.isFinite(n) ? n : null;
+                        };
+                        const safeHtml = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+                        const pickMax = (arr, getVal) => {
+                            let best = null;
+                            for (const item of arr) {
+                                const v = getVal(item);
+                                if (!Number.isFinite(v)) continue;
+                                if (!best || v > best.v) best = { item, v };
+                            }
+                            return best ? best.item : null;
+                        };
+                        const pickMin = (arr, getVal) => {
+                            let best = null;
+                            for (const item of arr) {
+                                const v = getVal(item);
+                                if (!Number.isFinite(v)) continue;
+                                if (!best || v < best.v) best = { item, v };
+                            }
+                            return best ? best.item : null;
+                        };
+
+                        const hasSuccess = (m) => Number(m && m.tests) > 0;
+                        const successRows = rows.filter(hasSuccess);
+
+                        const slowestLatency = pickMax(successRows, (m) => toNum(m.avg_latency));
+                        const lowestTps = pickMin(successRows, (m) => {
+                            const t = toNum(m.avg_tokens_per_sec);
+                            return t !== null && t > 0 ? t : null;
+                        });
+                        const lowestQuality = pickMin(
+                            rows.filter(m => {
+                                const q = toNum(m && m.avg_quality);
+                                return q !== null && q > 0 && Number(m && m.quality_tests) > 0;
+                            }),
+                            (m) => toNum(m.avg_quality)
+                        );
+
+                        let mostFailures = null;
+                        for (const m of rows) {
+                            const failed = Number(m && m.failed_tests) || 0;
+                            if (failed <= 0) continue;
+                            const total = Number(m && m.total_tests) || (Number(m && m.tests) || 0) + failed;
+                            const rate = total > 0 ? (failed / total) : 0;
+                            if (!mostFailures || failed > mostFailures.failed || (failed === mostFailures.failed && rate > mostFailures.rate)) {
+                                mostFailures = { item: m, failed, total, rate };
+                            }
+                        }
+
+                        const chip = (label, modelName, valueText) => {
+                            if (!modelName) return '';
+                            const safeModel = safeHtml(modelName);
+                            const safeValue = valueText ? safeHtml(valueText) : '';
+                            return `<button type="button" class="btn-secondary" disabled style="padding: 4px 8px; opacity: 0.85; cursor: default;" title="${label}: ${safeModel}${safeValue ? ` (${safeValue})` : ''}">${label}: <span style="font-weight:700;">${safeModel}</span>${safeValue ? ` <span style=\"color: var(--muted);\">(${safeValue})</span>` : ''}</button>`;
+                        };
+
+                        const chips = [
+                            slowestLatency ? chip('Slowest latency', slowestLatency.model, `${slowestLatency.avg_latency}ms`) : '',
+                            lowestTps ? chip('Lowest throughput', lowestTps.model, `${parseFloat(lowestTps.avg_tokens_per_sec).toFixed(2)} t/s`) : '',
+                            lowestQuality ? chip('Lowest quality', lowestQuality.model, `${parseFloat(lowestQuality.avg_quality).toFixed(1)}`) : '',
+                            mostFailures ? chip('Most failures', mostFailures.item.model, `${mostFailures.failed}/${mostFailures.total} (${Math.round(mostFailures.rate * 100)}%)`) : ''
+                        ].filter(Boolean);
+
+                        offendersEl.innerHTML = chips.length > 0
+                            ? `<div style="width: 100%; display:flex; gap: 8px; flex-wrap: wrap; align-items:center;">
+                                <div style="color: var(--muted); font-size: 0.85em; margin-right: 4px;">Top offenders:</div>
+                                ${chips.join('')}
+                               </div>`
+                            : '';
+                    }
                 }
             } catch (err) {
                 console.error('Failed to load dashboard:', err);
@@ -3845,8 +4709,93 @@
         initCharts();
         loadDashboard();
         setupModals();
+
+        const recentTestsFailuresOnly = document.getElementById('recentTestsFailuresOnly');
+        if (recentTestsFailuresOnly) {
+            recentTestsFailuresOnly.addEventListener('change', rerenderRecentTests);
+        }
+        const recentTestsModelFilter = document.getElementById('recentTestsModelFilter');
+        if (recentTestsModelFilter) {
+            recentTestsModelFilter.addEventListener('change', rerenderRecentTests);
+        }
+
+        const successRateCard = document.getElementById('successRateCard');
+        if (successRateCard) {
+            successRateCard.style.cursor = 'pointer';
+            successRateCard.title = 'Click for breakdown';
+            successRateCard.addEventListener('click', toggleSuccessRateDetails);
+        }
+
+        const resetLeaderboardBtn = document.getElementById('resetLeaderboardBtn');
+        if (resetLeaderboardBtn) {
+            resetLeaderboardBtn.addEventListener('click', async () => {
+                const first = confirm('Reset all benchmark tests? This will clear the leaderboard and charts.');
+                if (!first) return;
+                const second = confirm('Are you sure? This cannot be undone.');
+                if (!second) return;
+
+                try {
+                    resetLeaderboardBtn.disabled = true;
+                    const prev = resetLeaderboardBtn.textContent;
+                    resetLeaderboardBtn.textContent = 'Resetting...';
+
+                    const res = await fetch(`${BENCHMARK_API}/results`, { method: 'DELETE' });
+                    const json = await res.json().catch(() => null);
+                    if (!res.ok) {
+                        const msg = (json && (json.error || json.message)) ? (json.error || json.message) : `HTTP ${res.status}`;
+                        throw new Error(msg);
+                    }
+
+                    await loadDashboard();
+                    // Keep button responsive
+                    resetLeaderboardBtn.textContent = 'Reset Tests';
+                    resetLeaderboardBtn.disabled = false;
+                } catch (err) {
+                    console.error('Failed to reset benchmark results:', err);
+                    alert(`Failed to reset results: ${err.message}`);
+                    resetLeaderboardBtn.textContent = 'Reset Tests';
+                    resetLeaderboardBtn.disabled = false;
+                }
+            });
+        }
+
+        const resetFailedLeaderboardBtn = document.getElementById('resetFailedLeaderboardBtn');
+        if (resetFailedLeaderboardBtn) {
+            resetFailedLeaderboardBtn.addEventListener('click', async () => {
+                const first = confirm('Reset FAILED benchmark tests only? Successful results will be kept.');
+                if (!first) return;
+                const second = confirm('Are you sure? This cannot be undone.');
+                if (!second) return;
+
+                try {
+                    resetFailedLeaderboardBtn.disabled = true;
+                    const prev = resetFailedLeaderboardBtn.textContent;
+                    resetFailedLeaderboardBtn.textContent = 'Resetting...';
+
+                    const res = await fetch(`${BENCHMARK_API}/results/failed`, { method: 'DELETE' });
+                    const json = await res.json().catch(() => null);
+                    if (!res.ok) {
+                        const msg = (json && (json.error || json.message)) ? (json.error || json.message) : `HTTP ${res.status}`;
+                        throw new Error(msg);
+                    }
+
+                    await loadDashboard();
+                    resetFailedLeaderboardBtn.textContent = 'Reset Failed';
+                    resetFailedLeaderboardBtn.disabled = false;
+                } catch (err) {
+                    console.error('Failed to reset failed benchmark results:', err);
+                    alert(`Failed to reset failed results: ${err.message}`);
+                    resetFailedLeaderboardBtn.textContent = 'Reset Failed';
+                    resetFailedLeaderboardBtn.disabled = false;
+                }
+            });
+        }
+
         setInterval(loadDashboard, 10000); // Refresh every 10s
     </script>
+
+    <!-- Benchmark Analytics Module -->
+    <script src="/js/benchmark-analytics.js"></script>
 </body>
 
 </html>

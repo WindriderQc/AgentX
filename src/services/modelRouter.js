@@ -22,7 +22,8 @@ const HOSTS = {
 
 function refreshHosts() {
     HOSTS.primary = process.env.OLLAMA_HOST || 'http://192.168.2.99:11434';
-    HOSTS.secondary = process.env.OLLAMA_HOST_2 || process.env.OLLAMA_HOST_SECONDARY || 'http://192.168.2.12:11434';
+    // Prefer explicit SECONDARY override if both are present (tests often set it)
+    HOSTS.secondary = process.env.OLLAMA_HOST_SECONDARY || process.env.OLLAMA_HOST_2 || 'http://192.168.2.12:11434';
 }
 
 refreshHosts();

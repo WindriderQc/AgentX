@@ -8,7 +8,8 @@ const mongoose = require('mongoose');
 const BenchmarkResultSchema = new mongoose.Schema({
     batch_id: {
         type: String,
-        required: true,
+        required: false,
+        default: null,
         index: true
     },
     model: {

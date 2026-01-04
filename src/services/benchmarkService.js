@@ -248,7 +248,7 @@ class BenchmarkService {
      * Get dashboard data with model statistics
      */
     async getDashboard({ sortBy = 'latency' } = {}) {
-        const [totalTests, successCount, recentTests, modelStats] = await Promise.all([
+        const [totalTests, successCount, recentTests, modelStats, failureStats] = await Promise.all([
             BenchmarkResult.countDocuments(),
             BenchmarkResult.countDocuments({ success: true }),
             BenchmarkResult.find().sort({ timestamp: -1 }).limit(10),
@@ -305,13 +305,33 @@ class BenchmarkService {
                     }
                 },
                 { $sort: { avg_latency: 1 } }
+            ]),
+            BenchmarkResult.aggregate([
+                { $match: { success: false } },
+                {
+                    $group: {
+                        _id: { model: '$model', host: '$host' },
+                        failed: { $sum: 1 }
+                    }
+                }
             ])
         ]);
 
+        const failureByKey = new Map(
+            (failureStats || []).map(s => [`${s._id.model}@@${s._id.host}`, s.failed || 0])
+        );
+
         // Format and sort model stats
+        const successByKey = new Map();
         let sortedStats = modelStats.map(m => {
             const hasQuality = m.avg_quality != null && !isNaN(m.avg_quality);
             const hasComposite = m.avg_composite != null && !isNaN(m.avg_composite);
+
+            const key = `${m._id.model}@@${m._id.host}`;
+            const failedTests = failureByKey.get(key) || 0;
+            const successTests = m.count || 0;
+
+            successByKey.set(key, true);
 
             return {
                 model: m._id.model,
@@ -321,24 +341,73 @@ class BenchmarkService {
                 avg_quality: hasQuality ? m.avg_quality.toFixed(1) : null,
                 avg_composite: hasComposite ? m.avg_composite.toFixed(1) : null,
                 quality_tests: m.quality_tests || 0,
-                tests: m.count
+                tests: successTests,
+                failed_tests: failedTests,
+                total_tests: successTests + failedTests,
+                failure_only: false
             };
         });
 
+        // Add failure-only model/host combos so issues are visible in the leaderboard.
+        for (const [key, failedTests] of failureByKey.entries()) {
+            if (successByKey.has(key)) continue;
+            const [model, host] = key.split('@@');
+            sortedStats.push({
+                model,
+                host,
+                avg_latency: 0,
+                avg_tokens_per_sec: '0',
+                avg_quality: null,
+                avg_composite: null,
+                quality_tests: 0,
+                tests: 0,
+                failed_tests: failedTests,
+                total_tests: failedTests,
+                failure_only: true
+            });
+        }
+
         // Apply sorting
         switch (sortBy) {
+            case 'reliability':
+                sortedStats.sort((a, b) => {
+                    if (a.failure_only !== b.failure_only) return a.failure_only ? 1 : -1;
+                    const aTotal = Number(a.total_tests) || 0;
+                    const bTotal = Number(b.total_tests) || 0;
+                    const aFailed = Number(a.failed_tests) || 0;
+                    const bFailed = Number(b.failed_tests) || 0;
+                    const aRate = aTotal > 0 ? (aFailed / aTotal) : 0;
+                    const bRate = bTotal > 0 ? (bFailed / bTotal) : 0;
+                    if (aRate !== bRate) return aRate - bRate;
+                    // Tie-breakers: more samples first, then latency
+                    if (aTotal !== bTotal) return bTotal - aTotal;
+                    return a.avg_latency - b.avg_latency;
+                });
+                break;
             case 'quality':
-                sortedStats.sort((a, b) => (b.avg_quality || 0) - (a.avg_quality || 0));
+                sortedStats.sort((a, b) => {
+                    if (a.failure_only !== b.failure_only) return a.failure_only ? 1 : -1;
+                    return (b.avg_quality || 0) - (a.avg_quality || 0);
+                });
                 break;
             case 'composite':
-                sortedStats.sort((a, b) => (b.avg_composite || 0) - (a.avg_composite || 0));
+                sortedStats.sort((a, b) => {
+                    if (a.failure_only !== b.failure_only) return a.failure_only ? 1 : -1;
+                    return (b.avg_composite || 0) - (a.avg_composite || 0);
+                });
                 break;
             case 'speed':
-                sortedStats.sort((a, b) => parseFloat(b.avg_tokens_per_sec) - parseFloat(a.avg_tokens_per_sec));
+                sortedStats.sort((a, b) => {
+                    if (a.failure_only !== b.failure_only) return a.failure_only ? 1 : -1;
+                    return parseFloat(b.avg_tokens_per_sec) - parseFloat(a.avg_tokens_per_sec);
+                });
                 break;
             case 'latency':
             default:
-                sortedStats.sort((a, b) => a.avg_latency - b.avg_latency);
+                sortedStats.sort((s => (a, b) => {
+                    if (a.failure_only !== b.failure_only) return a.failure_only ? 1 : -1;
+                    return a.avg_latency - b.avg_latency;
+                })());
         }
 
         return {
@@ -432,9 +501,20 @@ class BenchmarkService {
     }
 
     /**
+     * Clear failed results only (for cleanup)
+     */
+    async clearFailedResults() {
+        const count = await BenchmarkResult.countDocuments({ success: false });
+        await BenchmarkResult.deleteMany({ success: false });
+
+        logger.info('Benchmark failed results cleared', { count });
+        return count;
+    }
+
+    /**
      * Start a batch benchmark test
      */
-    async startBatch({ host, models, levels, run_name, quality_scoring = true, judge_config = {} }) {
+    async startBatch({ host, models, levels, run_name, quality_scoring = true, judge_config = {}, tags = [], description = '' }) {
         if (!host || !models || !Array.isArray(models) || !levels || !Array.isArray(levels)) {
             throw new Error('host, models (array), and levels (array) are required');
         }
@@ -512,16 +592,24 @@ class BenchmarkService {
             judge_same_host: judgeSameHost,
             judge_total: quality_scoring ? (models.length * selectedPrompts.length) : 0,
             status: 'running',
-            started_at: new Date()
+            started_at: new Date(),
+            tags: Array.isArray(tags) ? tags : [],
+            description: typeof description === 'string' ? description : ''
         });
+
+        // Capture system snapshot for reproducibility
+        batch.captureSystemSnapshot();
 
         await batch.save();
         const batchId = batch._id.toString();
 
-        // Start batch execution in background
-        this.executeBatch(batchId, host, models, selectedPrompts, { quality_scoring, judge_config }).catch(err => {
-            logger.error('Batch execution failed', { batchId, error: err.message });
-        });
+        // Start batch execution in background.
+        // Skip in tests to keep Jest deterministic and avoid runaway async work.
+        if (process.env.NODE_ENV !== 'test') {
+            this.executeBatch(batchId, host, models, selectedPrompts, { quality_scoring, judge_config }).catch(err => {
+                logger.error('Batch execution failed', { batchId, error: err.message });
+            });
+        }
 
         return {
             batch_id: batchId,
@@ -823,10 +911,16 @@ class BenchmarkService {
             }
         }
 
-        // Mark batch as completed
+        // Mark batch as completed and calculate metrics
         const finalBatch = await BenchmarkBatch.findById(batchId);
         if (finalBatch) {
             await finalBatch.markAsCompleted();
+            await finalBatch.calculateMetrics();
+            logger.info('Batch completed with metrics', {
+                batchId,
+                total_duration: finalBatch.execution_metrics?.total_duration_ms,
+                tests_per_minute: finalBatch.execution_metrics?.tests_per_minute
+            });
         }
     }
 
@@ -997,6 +1091,342 @@ class BenchmarkService {
     async getBatches({ limit = 20 } = {}) {
         const batches = await BenchmarkBatch.getRecent(limit);
         return { batches, total: batches.length };
+    }
+
+    /**
+     * Get time-series analytics for model performance trends
+     */
+    async getModelTrends({ model, days = 7, groupBy = 'day' } = {}) {
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - days);
+
+        const matchStage = {
+            timestamp: { $gte: cutoff },
+            success: true
+        };
+
+        if (model) {
+            matchStage.model = model;
+        }
+
+        // Determine grouping based on parameter
+        let dateGroup;
+        switch (groupBy) {
+            case 'hour':
+                dateGroup = {
+                    year: { $year: '$timestamp' },
+                    month: { $month: '$timestamp' },
+                    day: { $dayOfMonth: '$timestamp' },
+                    hour: { $hour: '$timestamp' }
+                };
+                break;
+            case 'day':
+            default:
+                dateGroup = {
+                    year: { $year: '$timestamp' },
+                    month: { $month: '$timestamp' },
+                    day: { $dayOfMonth: '$timestamp' }
+                };
+        }
+
+        const trends = await BenchmarkResult.aggregate([
+            { $match: matchStage },
+            {
+                $group: {
+                    _id: {
+                        ...dateGroup,
+                        ...(model ? {} : { model: '$model' })
+                    },
+                    avg_latency: { $avg: '$latency' },
+                    avg_tokens_per_sec: { $avg: { $toDouble: '$tokens_per_sec' } },
+                    avg_quality: { $avg: '$quality_score' },
+                    avg_composite: { $avg: '$composite_score' },
+                    tests_count: { $sum: 1 },
+                    total_tokens: { $sum: '$tokens' }
+                }
+            },
+            { $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1, '_id.hour': 1 } }
+        ]);
+
+        return {
+            trends,
+            period: { days, groupBy },
+            model: model || 'all'
+        };
+    }
+
+    /**
+     * Get comparative batch analysis
+     */
+    async compareBatches(batchIds) {
+        if (!Array.isArray(batchIds) || batchIds.length === 0) {
+            throw new Error('batchIds array is required');
+        }
+
+        const batches = await Promise.all(
+            batchIds.map(id => BenchmarkBatch.findById(id))
+        );
+
+        const validBatches = batches.filter(b => b !== null);
+
+        if (validBatches.length === 0) {
+            throw new Error('No valid batches found');
+        }
+
+        const comparison = validBatches.map(batch => ({
+            batch_id: batch._id.toString(),
+            run_name: batch.run_name,
+            models: batch.models,
+            status: batch.status,
+            total_tests: batch.total_tests,
+            completed: batch.completed,
+            success_rate: batch.success_rate,
+            execution_metrics: batch.execution_metrics,
+            config_snapshot: batch.config_snapshot,
+            created_at: batch.created_at,
+            completed_at: batch.completed_at,
+            quality_scoring: batch.quality_scoring
+        }));
+
+        // Calculate comparative statistics
+        const stats = {
+            avg_duration_ms: null,
+            avg_tests_per_minute: null,
+            avg_tokens_generated: null,
+            fastest_batch: null,
+            slowest_batch: null
+        };
+
+        const durations = validBatches
+            .filter(b => b.execution_metrics?.total_duration_ms)
+            .map(b => ({
+                id: b._id.toString(),
+                name: b.run_name,
+                duration: b.execution_metrics.total_duration_ms
+            }));
+
+        if (durations.length > 0) {
+            stats.avg_duration_ms = Math.round(
+                durations.reduce((a, b) => a + b.duration, 0) / durations.length
+            );
+            stats.fastest_batch = durations.reduce((a, b) => (a.duration < b.duration ? a : b));
+            stats.slowest_batch = durations.reduce((a, b) => (a.duration > b.duration ? a : b));
+        }
+
+        const throughputs = validBatches
+            .filter(b => b.execution_metrics?.tests_per_minute)
+            .map(b => b.execution_metrics.tests_per_minute);
+
+        if (throughputs.length > 0) {
+            stats.avg_tests_per_minute = Math.round(
+                throughputs.reduce((a, b) => a + b, 0) / throughputs.length
+            );
+        }
+
+        const tokens = validBatches
+            .filter(b => b.execution_metrics?.total_tokens_generated)
+            .map(b => b.execution_metrics.total_tokens_generated);
+
+        if (tokens.length > 0) {
+            stats.avg_tokens_generated = Math.round(
+                tokens.reduce((a, b) => a + b, 0) / tokens.length
+            );
+        }
+
+        return { comparison, stats };
+    }
+
+    /**
+     * Get batch statistics grouped by tag
+     */
+    async getBatchStatsByTag() {
+        const batches = await BenchmarkBatch.find({ tags: { $exists: true, $ne: [] } });
+
+        const statsByTag = {};
+
+        batches.forEach(batch => {
+            batch.tags.forEach(tag => {
+                if (!statsByTag[tag]) {
+                    statsByTag[tag] = {
+                        tag,
+                        count: 0,
+                        completed: 0,
+                        avg_duration_ms: 0,
+                        avg_success_rate: 0,
+                        durations: [],
+                        success_rates: []
+                    };
+                }
+
+                statsByTag[tag].count += 1;
+
+                if (batch.status === 'completed') {
+                    statsByTag[tag].completed += 1;
+
+                    if (batch.execution_metrics?.total_duration_ms) {
+                        statsByTag[tag].durations.push(batch.execution_metrics.total_duration_ms);
+                    }
+
+                    const successRate = parseFloat(batch.success_rate);
+                    if (!isNaN(successRate)) {
+                        statsByTag[tag].success_rates.push(successRate);
+                    }
+                }
+            });
+        });
+
+        // Calculate averages
+        Object.values(statsByTag).forEach(stat => {
+            if (stat.durations.length > 0) {
+                stat.avg_duration_ms = Math.round(
+                    stat.durations.reduce((a, b) => a + b, 0) / stat.durations.length
+                );
+            }
+
+            if (stat.success_rates.length > 0) {
+                stat.avg_success_rate =
+                    (stat.success_rates.reduce((a, b) => a + b, 0) / stat.success_rates.length).toFixed(1) + '%';
+            }
+
+            // Clean up temporary arrays
+            delete stat.durations;
+            delete stat.success_rates;
+        });
+
+        return {
+            tags: Object.values(statsByTag),
+            total_tags: Object.keys(statsByTag).length
+        };
+    }
+
+    /**
+     * Get real-time statistics for active batches
+     */
+    async getActiveStats() {
+        const activeBatches = await BenchmarkBatch.find({
+            status: { $in: ['running', 'judging'] }
+        });
+
+        const stats = {
+            active_batches: activeBatches.length,
+            total_tests_running: 0,
+            total_completed: 0,
+            total_pending: 0,
+            estimated_completion_time: null,
+            batches: []
+        };
+
+        activeBatches.forEach(batch => {
+            stats.total_tests_running += batch.total_tests;
+            stats.total_completed += batch.completed || 0;
+            stats.total_pending += batch.total_tests - (batch.completed || 0);
+
+            const elapsed = batch.started_at ? Date.now() - batch.started_at : 0;
+            const progress = batch.completed / batch.total_tests;
+            const eta = progress > 0 ? (elapsed / progress) - elapsed : null;
+
+            stats.batches.push({
+                batch_id: batch._id.toString(),
+                run_name: batch.run_name,
+                progress: batch.progress,
+                status: batch.status,
+                completed: batch.completed,
+                total: batch.total_tests,
+                elapsed_ms: elapsed,
+                eta_ms: eta,
+                judge_progress: batch.judge_progress
+            });
+        });
+
+        // Calculate overall ETA (weighted average)
+        if (stats.batches.length > 0) {
+            const etas = stats.batches.filter(b => b.eta_ms).map(b => b.eta_ms);
+            if (etas.length > 0) {
+                stats.estimated_completion_time = Math.max(...etas);
+            }
+        }
+
+        return stats;
+    }
+
+    /**
+     * Get configuration presets for common test scenarios
+     */
+    getConfigPresets() {
+        return {
+            presets: [
+                {
+                    id: 'quick-test',
+                    name: 'Quick Test',
+                    description: 'Fast validation test with simple prompts',
+                    config: {
+                        levels: [1, 2],
+                        quality_scoring: false,
+                        judge_config: null
+                    },
+                    recommended_for: 'Initial model validation, quick checks',
+                    estimated_duration: '2-5 minutes'
+                },
+                {
+                    id: 'standard-benchmark',
+                    name: 'Standard Benchmark',
+                    description: 'Balanced test across all levels with quality scoring',
+                    config: {
+                        levels: [1, 2, 3, 4, 5],
+                        quality_scoring: true,
+                        judge_config: {
+                            concurrency: 2,
+                            judge_same_host: false
+                        }
+                    },
+                    recommended_for: 'Regular model evaluation',
+                    estimated_duration: '15-30 minutes'
+                },
+                {
+                    id: 'deep-quality',
+                    name: 'Deep Quality Analysis',
+                    description: 'Comprehensive quality scoring on complex prompts',
+                    config: {
+                        levels: [3, 4, 5],
+                        quality_scoring: true,
+                        judge_config: {
+                            concurrency: 1,
+                            judge_same_host: false,
+                            timeout: 60000
+                        }
+                    },
+                    recommended_for: 'In-depth model analysis, publication-ready benchmarks',
+                    estimated_duration: '30-60 minutes'
+                },
+                {
+                    id: 'speed-test',
+                    name: 'Speed Test',
+                    description: 'Focus on latency and throughput measurement',
+                    config: {
+                        levels: [1, 2],
+                        quality_scoring: false,
+                        judge_config: null
+                    },
+                    recommended_for: 'Performance optimization, latency testing',
+                    estimated_duration: '5-10 minutes'
+                },
+                {
+                    id: 'reasoning-test',
+                    name: 'Reasoning & Logic',
+                    description: 'Test logical reasoning and problem-solving',
+                    config: {
+                        levels: [3, 4],
+                        quality_scoring: true,
+                        judge_config: {
+                            concurrency: 2,
+                            judge_same_host: false
+                        }
+                    },
+                    recommended_for: 'Evaluating reasoning capabilities',
+                    estimated_duration: '20-40 minutes'
+                }
+            ]
+        };
     }
 }
 

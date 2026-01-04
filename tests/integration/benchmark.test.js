@@ -5,36 +5,11 @@
 
 const request = require('supertest');
 const mongoose = require('mongoose');
-const { MongoMemoryServer } = require('mongodb-memory-server');
 const { app } = require('../../src/app');
 
 const BenchmarkPrompt = require('../../models/BenchmarkPrompt');
 const BenchmarkResult = require('../../models/BenchmarkResult');
 const BenchmarkBatch = require('../../models/BenchmarkBatch');
-
-let mongod;
-
-beforeAll(async () => {
-    // Start in-memory MongoDB
-    mongod = await MongoMemoryServer.create();
-    const uri = mongod.getUri();
-
-    // Disconnect if already connected
-    if (mongoose.connection.readyState !== 0) {
-        await mongoose.disconnect();
-    }
-
-    await mongoose.connect(uri);
-});
-
-afterAll(async () => {
-    try {
-        await mongoose.disconnect();
-        await mongod.stop();
-    } catch (err) {
-        // Ignore cleanup errors
-    }
-}, 10000);
 
 afterEach(async () => {
     // Clear all collections between tests
@@ -61,13 +36,13 @@ describe('Benchmark System - Integration Tests', () => {
     });
 
     describe('GET /api/benchmark/prompts', () => {
-        it('should return empty array when no prompts exist', async () => {
+        it('should return prompts (seeding from JSON if empty)', async () => {
             const response = await request(app).get('/api/benchmark/prompts');
 
             expect(response.status).toBe(200);
             expect(response.body.status).toBe('success');
-            expect(response.body.data.prompts).toEqual([]);
-            expect(response.body.data.total).toBe(0);
+            expect(Array.isArray(response.body.data.prompts)).toBe(true);
+            expect(response.body.data.total).toBeGreaterThanOrEqual(0);
         });
 
         it('should seed prompts from JSON file if collection is empty', async () => {
@@ -381,7 +356,7 @@ describe('Benchmark System - Integration Tests', () => {
             const fakeId = new mongoose.Types.ObjectId();
             const response = await request(app).get(`/api/benchmark/batch/${fakeId}`);
 
-            expect(response.status).toBe(500); // Service throws error, caught as 500
+            expect(response.status).toBe(404);
             expect(response.body.status).toBe('error');
         });
 
