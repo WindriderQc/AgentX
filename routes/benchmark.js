@@ -8,102 +8,20 @@ const router = express.Router();
 const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
 const mongoose = require('mongoose');
 const logger = require('../config/logger');
-const fs = require('fs').promises;
-const path = require('path');
 const { ObjectId } = mongoose.Types;
-const { scoreResponse, calculateCompositeScore, JUDGE_CONFIG, SCORING_CONFIGS } = require('../src/services/qualityScorer');
-const { HOSTS, MODEL_ROUTING } = require('../src/services/modelRouter');
-
-// Simple Concurrency Queue for managing parallel tasks (like judging)
-class ConcurrencyQueue {
-    constructor(concurrency) {
-        this.concurrency = concurrency;
-        this.running = 0;
-        this.queue = [];
-        this.activePromises = [];
-    }
-
-    add(task) {
-        return new Promise((resolve, reject) => {
-            this.queue.push({ task, resolve, reject });
-            this.process();
-        });
-    }
-
-    async process() {
-        if (this.running >= this.concurrency || this.queue.length === 0) return;
-
-        this.running++;
-        const { task, resolve, reject } = this.queue.shift();
-
-        const promise = (async () => {
-            try {
-                const result = await task();
-                resolve(result);
-            } catch (err) {
-                reject(err);
-            } finally {
-                this.running--;
-                // Remove from active promises
-                const idx = this.activePromises.indexOf(promise);
-                if (idx > -1) this.activePromises.splice(idx, 1);
-                this.process();
-            }
-        })();
-
-        this.activePromises.push(promise);
-    }
-
-    // Wait for all tasks to complete
-    async drain() {
-        while (this.queue.length > 0 || this.running > 0) {
-            await new Promise(resolve => setTimeout(resolve, 100));
-        }
-    }
-}
-
-// Get MongoDB collections using Mongoose connection
-function getCollection() {
-    return mongoose.connection.db.collection('benchmark_results');
-}
-
-function getPromptsCollection() {
-    return mongoose.connection.db.collection('benchmark_prompts');
-}
-
-function getBatchCollection() {
-    return mongoose.connection.db.collection('benchmark_batches');
-}
-
-// Seed prompts from JSON file if collection is empty
-async function seedPrompts() {
-    const promptsCollection = getPromptsCollection();
-    const count = await promptsCollection.countDocuments();
-
-    if (count === 0) {
-        const promptsPath = path.join(__dirname, '..', 'data', 'benchmark-prompts.json');
-        const promptsData = await fs.readFile(promptsPath, 'utf-8');
-        const prompts = JSON.parse(promptsData);
-
-        await promptsCollection.insertMany(prompts.map(p => ({
-            ...p,
-            custom: false,
-            created_at: new Date()
-        })));
-
-        logger.info('Seeded benchmark prompts', { count: prompts.length });
-    }
-}
+const { JUDGE_CONFIG, SCORING_CONFIGS } = require('../src/services/qualityScorer');
+const benchmarkService = require('../src/services/benchmarkService');
+const BenchmarkResult = require('../models/BenchmarkResult');
+const BenchmarkBatch = require('../models/BenchmarkBatch');
+const BenchmarkPrompt = require('../models/BenchmarkPrompt');
 
 // Cleanup stale batches on startup
 async function cleanupStaleBatches() {
     try {
-        // Wait a bit for DB connection
         await new Promise(resolve => setTimeout(resolve, 2000));
         if (mongoose.connection.readyState !== 1) return;
 
-        const batchCollection = getBatchCollection();
-        const result = await batchCollection.updateMany(
+        const result = await BenchmarkBatch.updateMany(
             { status: { $in: ['running', 'judging'] } },
             { $set: { status: 'interrupted', completed_at: new Date() } }
         );
@@ -115,7 +33,6 @@ async function cleanupStaleBatches() {
         logger.error('Failed to cleanup stale batches', { error: err.message });
     }
 }
-// Run cleanup
 cleanupStaleBatches();
 
 /**
@@ -150,7 +67,6 @@ router.post('/test', async (req, res) => {
     }
 
     const start = Date.now();
-    const resultsCollection = getCollection();
 
     try {
         const response = await fetch(`${host}/api/generate`, {
@@ -168,7 +84,7 @@ router.post('/test', async (req, res) => {
         const latency = Date.now() - start;
         const tokens = Math.ceil((data.response || '').length / 4);
 
-        const result = {
+        const result = new BenchmarkResult({
             model,
             host,
             prompt,
@@ -176,11 +92,10 @@ router.post('/test', async (req, res) => {
             tokens,
             tokens_per_sec: tokens > 0 ? (tokens / (latency / 1000)).toFixed(2) : 0,
             response: data.response || '',
-            success: true,
-            timestamp: new Date()
-        };
+            success: true
+        });
 
-        await resultsCollection.insertOne(result);
+        await result.save();
         logger.info('Benchmark test completed', {
             model, host, latency, tokens_per_sec: result.tokens_per_sec
         });
@@ -191,16 +106,15 @@ router.post('/test', async (req, res) => {
         });
 
     } catch (err) {
-        const result = {
+        const result = new BenchmarkResult({
             model,
             host,
             prompt,
             error: err.message,
-            success: false,
-            timestamp: new Date()
-        };
+            success: false
+        });
 
-        await resultsCollection.insertOne(result);
+        await result.save();
         logger.error('Benchmark test failed', { model, host, error: err.message });
 
         res.status(500).json({
@@ -218,15 +132,12 @@ router.post('/test', async (req, res) => {
 router.get('/results', async (req, res) => {
     try {
         const limit = parseInt(req.query.limit) || 20;
-        const resultsCollection = getCollection();
 
-        const results = await resultsCollection
-            .find()
+        const results = await BenchmarkResult.find()
             .sort({ timestamp: -1 })
-            .limit(limit)
-            .toArray();
+            .limit(limit);
 
-        const total = await resultsCollection.countDocuments();
+        const total = await BenchmarkResult.countDocuments();
 
         res.json({
             status: 'success',
@@ -244,12 +155,8 @@ router.get('/results', async (req, res) => {
  */
 router.get('/summary', async (req, res) => {
     try {
-        const resultsCollection = getCollection();
-
-        const [successful, failed] = await Promise.all([
-            resultsCollection.find({ success: true }).toArray(),
-            resultsCollection.countDocuments({ success: false })
-        ]);
+        const successful = await BenchmarkResult.find({ success: true }).lean();
+        const failedCount = await BenchmarkResult.countDocuments({ success: false });
 
         if (successful.length === 0) {
             return res.json({
@@ -268,7 +175,6 @@ router.get('/summary', async (req, res) => {
         const latencies = successful.map(r => r.latency);
         const avgLatency = latencies.reduce((a, b) => a + b, 0) / latencies.length;
 
-        // Group by model
         const byModel = {};
         successful.forEach(r => {
             if (!byModel[r.model]) {
@@ -292,9 +198,9 @@ router.get('/summary', async (req, res) => {
         res.json({
             status: 'success',
             data: {
-                total_tests: successful.length + failed,
+                total_tests: successful.length + failedCount,
                 successful: successful.length,
-                failed,
+                failed: failedCount,
                 avg_latency: Math.round(avgLatency),
                 leaderboard
             }
@@ -311,29 +217,23 @@ router.get('/summary', async (req, res) => {
  */
 router.get('/dashboard', async (req, res) => {
     try {
-        const resultsCollection = getCollection();
         const sortBy = req.query.sort || 'latency'; // latency, quality, composite, speed
 
         const [totalTests, successCount, recentTests, modelStats] = await Promise.all([
-            resultsCollection.countDocuments(),
-            resultsCollection.countDocuments({ success: true }),
-            resultsCollection.find().sort({ timestamp: -1 }).limit(10).toArray(),
-            resultsCollection.aggregate([
+            BenchmarkResult.countDocuments(),
+            BenchmarkResult.countDocuments({ success: true }),
+            BenchmarkResult.find().sort({ timestamp: -1 }).limit(10).lean(),
+            BenchmarkResult.aggregate([
                 { $match: { success: true } },
                 {
                     $group: {
                         _id: { model: '$model', host: '$host' },
                         avg_latency: { $avg: '$latency' },
-                        avg_tokens_per_sec: { $avg: { $toDouble: '$tokens_per_sec' } },
+                        avg_tokens_per_sec: { $avg: '$tokens_per_sec' }, // Mongoose stores as number now
                         avg_quality: {
                             $avg: {
                                 $cond: [
-                                    {
-                                        $and: [
-                                            { $ne: ['$quality_score', null] },
-                                            { $ne: [{ $type: '$quality_score' }, 'missing'] }
-                                        ]
-                                    },
+                                    { $ne: ['$quality_score', null] },
                                     '$quality_score',
                                     null
                                 ]
@@ -342,12 +242,7 @@ router.get('/dashboard', async (req, res) => {
                         avg_composite: {
                             $avg: {
                                 $cond: [
-                                    {
-                                        $and: [
-                                            { $ne: ['$composite_score', null] },
-                                            { $ne: [{ $type: '$composite_score' }, 'missing'] }
-                                        ]
-                                    },
+                                    { $ne: ['$composite_score', null] },
                                     '$composite_score',
                                     null
                                 ]
@@ -356,12 +251,7 @@ router.get('/dashboard', async (req, res) => {
                         quality_tests: {
                             $sum: {
                                 $cond: [
-                                    {
-                                        $and: [
-                                            { $ne: ['$quality_score', null] },
-                                            { $ne: [{ $type: '$quality_score' }, 'missing'] }
-                                        ]
-                                    },
+                                    { $ne: ['$quality_score', null] },
                                     1,
                                     0
                                 ]
@@ -371,26 +261,19 @@ router.get('/dashboard', async (req, res) => {
                     }
                 },
                 { $sort: { avg_latency: 1 } }
-            ]).toArray()
+            ])
         ]);
 
-        // Sort model stats based on query param
-        let sortedStats = modelStats.map(m => {
-            // Handle null/undefined quality scores
-            const hasQuality = m.avg_quality != null && !isNaN(m.avg_quality);
-            const hasComposite = m.avg_composite != null && !isNaN(m.avg_composite);
-
-            return {
-                model: m._id.model,
-                host: m._id.host,
-                avg_latency: Math.round(m.avg_latency || 0),
-                avg_tokens_per_sec: m.avg_tokens_per_sec ? m.avg_tokens_per_sec.toFixed(2) : '0',
-                avg_quality: hasQuality ? m.avg_quality.toFixed(1) : null,
-                avg_composite: hasComposite ? m.avg_composite.toFixed(1) : null,
-                quality_tests: m.quality_tests || 0,
-                tests: m.count
-            };
-        });
+        let sortedStats = modelStats.map(m => ({
+            model: m._id.model,
+            host: m._id.host,
+            avg_latency: Math.round(m.avg_latency || 0),
+            avg_tokens_per_sec: m.avg_tokens_per_sec ? m.avg_tokens_per_sec.toFixed(2) : '0',
+            avg_quality: m.avg_quality != null ? m.avg_quality.toFixed(1) : null,
+            avg_composite: m.avg_composite != null ? m.avg_composite.toFixed(1) : null,
+            quality_tests: m.quality_tests || 0,
+            tests: m.count
+        }));
 
         // Apply sorting
         switch (sortBy) {
@@ -447,21 +330,16 @@ router.get('/compare', async (req, res) => {
     const modelList = models.split(',').map(m => m.trim());
 
     try {
-        const resultsCollection = getCollection();
-
         const comparison = await Promise.all(
             modelList.map(async (model) => {
-                const tests = await resultsCollection
-                    .find({ model, success: true })
-                    .toArray();
+                const tests = await BenchmarkResult.find({ model, success: true }).lean();
 
                 if (tests.length === 0) {
                     return { model, error: 'No successful tests found' };
                 }
 
                 const latencies = tests.map(t => t.latency);
-                const tokensPerSec = tests.map(t => parseFloat(t.tokens_per_sec))
-                    .filter(t => t > 0);
+                const tokensPerSec = tests.map(t => parseFloat(t.tokens_per_sec)).filter(t => t > 0);
 
                 return {
                     model,
@@ -492,15 +370,11 @@ router.get('/compare', async (req, res) => {
  */
 router.delete('/results', async (req, res) => {
     try {
-        const resultsCollection = getCollection();
-        const count = await resultsCollection.countDocuments();
-        await resultsCollection.deleteMany({});
-
-        logger.info('Benchmark results cleared', { count });
-
+        const result = await BenchmarkResult.deleteMany({});
+        logger.info('Benchmark results cleared', { count: result.deletedCount });
         res.json({
             status: 'success',
-            message: `Cleared ${count} results`
+            message: `Cleared ${result.deletedCount} results`
         });
     } catch (err) {
         logger.error('Failed to clear results', { error: err.message });
@@ -514,20 +388,14 @@ router.delete('/results', async (req, res) => {
  */
 router.get('/prompts', async (req, res) => {
     try {
-        await seedPrompts(); // Ensure prompts are seeded
-        const promptsCollection = getPromptsCollection();
-
-        const prompts = await promptsCollection
-            .find()
+        await benchmarkService.seedPrompts();
+        const prompts = await BenchmarkPrompt.find()
             .sort({ level: 1, category: 1 })
-            .toArray();
+            .lean();
 
-        // Group by level
         const byLevel = {};
         prompts.forEach(p => {
-            if (!byLevel[p.level]) {
-                byLevel[p.level] = [];
-            }
+            if (!byLevel[p.level]) byLevel[p.level] = [];
             byLevel[p.level].push(p);
         });
 
@@ -547,407 +415,37 @@ router.get('/prompts', async (req, res) => {
 
 /**
  * POST /api/benchmark/batch
- * Start a batch benchmark test with optional quality scoring
- * Body: { host, models: ['model1', 'model2'], levels: [1, 2, 3], quality_scoring: true, judge_config: {...} }
+ * Start a batch benchmark
  */
 router.post('/batch', async (req, res) => {
-    const { host, models, levels, run_name, quality_scoring = true, judge_config } = req.body;
-
-    if (!host || !models || !Array.isArray(models) || !levels || !Array.isArray(levels)) {
-        return res.status(400).json({
-            status: 'error',
-            error: 'host, models (array), and levels (array) are required'
-        });
-    }
-
     try {
-        await seedPrompts(); // Ensure prompts are seeded
-        const promptsCollection = getPromptsCollection();
-        const batchCollection = getBatchCollection();
-
-        // Get prompts for selected levels
-        const selectedPrompts = await promptsCollection
-            .find({ level: { $in: levels } })
-            .toArray();
-
-        if (selectedPrompts.length === 0) {
-            return res.status(400).json({
-                status: 'error',
-                error: 'No prompts found for selected levels'
-            });
-        }
-
-        // Create batch record
-        // Compute a simple plan for UI display (exec host(s), judge host(s), counts)
-        const modelsByHost = {};
-        for (const model of models) {
-            let targetHost = host;
-            // Override disabled for benchmark tool - respect user selection
-            // if (MODEL_ROUTING[model]) {
-            //     targetHost = HOSTS[MODEL_ROUTING[model]];
-            // }
-            if (!modelsByHost[targetHost]) modelsByHost[targetHost] = [];
-            modelsByHost[targetHost].push(model);
-        }
-
-        const judgeSameHost = (judge_config && judge_config.judge_same_host !== undefined) ? !!judge_config.judge_same_host : false;
-
-        const execHosts = Object.entries(modelsByHost).map(([exec_host, hostModels]) => {
-            let judge_host = exec_host;
-            if (!judgeSameHost) {
-                judge_host = HOSTS.primary;
-                if (exec_host === HOSTS.primary) judge_host = HOSTS.secondary;
-                else if (exec_host === HOSTS.secondary) judge_host = HOSTS.primary;
-            }
-
-            return {
-                exec_host,
-                judge_host: quality_scoring ? judge_host : null,
-                models: hostModels,
-                tests: hostModels.length * selectedPrompts.length
-            };
-        });
-
-        const categoryCounts = {};
-        for (const p of selectedPrompts) {
-            const cat = p.category || 'uncategorized';
-            categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
-        }
-
-        const categories = Object.entries(categoryCounts)
-            .map(([category, prompt_count]) => ({
-                category,
-                prompt_count,
-                tests: prompt_count * models.length
-            }))
-            .sort((a, b) => b.tests - a.tests);
-
-        const plan = {
-            exec_hosts: execHosts,
-            judge_model: (judge_config && judge_config.model) ? judge_config.model : JUDGE_CONFIG.model,
-            judge_same_host: judgeSameHost,
-            total_models: models.length,
-            total_prompts: selectedPrompts.length,
-            categories
-        };
-
-        const batch = {
-            host,
-            models,
-            levels,
-            quality_scoring,
-            judge_config,
-            run_name: run_name || `Batch ${new Date().toLocaleString()}`,
-            total_tests: models.length * selectedPrompts.length,
-            plan,
-            judge_same_host: judgeSameHost,
-            judge_total: quality_scoring ? (models.length * selectedPrompts.length) : 0,
-            judge_completed: 0,
-            judge_failed: 0,
-            completed: 0,
-            failed: 0,
-            status: 'running',
-            results: [],
-            created_at: new Date(),
-            started_at: new Date(),
-            completed_at: null
-        };
-
-        const insertResult = await batchCollection.insertOne(batch);
-        const batchId = insertResult.insertedId.toString();
-
-        // Start batch execution in background with quality scoring option
-        executeBatch(batchId, host, models, selectedPrompts, { quality_scoring, judge_config }).catch(err => {
-            logger.error('Batch execution failed', { batchId, error: err.message });
-        });
-
+        const batch = await benchmarkService.startBatch(req.body);
         res.json({
             status: 'success',
             data: {
-                batch_id: batchId,
+                batch_id: batch._id,
                 total_tests: batch.total_tests,
-                quality_scoring,
-                plan,
-                message: `Batch test started${quality_scoring ? ' with quality scoring' : ''}`
+                quality_scoring: batch.quality_scoring,
+                plan: batch.plan,
+                message: `Batch test started${batch.quality_scoring ? ' with quality scoring' : ''}`
             }
         });
     } catch (err) {
+        if (err.message.includes('required')) {
+            return res.status(400).json({ status: 'error', error: err.message });
+        }
         logger.error('Failed to start batch test', { error: err.message });
         res.status(500).json({ status: 'error', error: err.message });
     }
 });
 
 /**
- * Execute batch tests with parallel host execution
- */
-async function executeBatch(batchId, defaultHost, models, prompts, options = {}) {
-    const batchCollection = getBatchCollection();
-    const resultsCollection = getCollection();
-    const enableQualityScoring = options.quality_scoring !== false;
-    const judgeConfig = options.judge_config || {};
-    // Default to offloading (false) if not specified, as per user preference
-    const judgeSameHost = judgeConfig.judge_same_host !== undefined ? !!judgeConfig.judge_same_host : false;
-
-    // Prevent duplicate execution for the same batchId (e.g., accidental double-start or multi-process invocation)
-    const lock = await batchCollection.updateOne(
-        { _id: new ObjectId(batchId), execution_started_at: { $exists: false } },
-        { $set: { execution_started_at: new Date(), execution_pid: process.pid } }
-    );
-    if (!lock || lock.modifiedCount === 0) {
-        logger.warn('Skipping duplicate batch execution', { batchId, pid: process.pid });
-        return;
-    }
-
-    // Per-batch judge queue (keeps judging isolated from other batches)
-    const judgeConcurrency = judgeConfig.concurrency || 2;
-    const judgeQueue = new ConcurrencyQueue(judgeConcurrency);
-
-    // Sanity-sync total_tests to the actual loop plan.
-    // In rare cases (e.g., duplicated prompts/models or legacy batches), completed can exceed total_tests;
-    // this keeps the UI truthful and helps debugging.
-    const plannedTotalTests = (Array.isArray(models) ? models.length : 0) * (Array.isArray(prompts) ? prompts.length : 0);
-    if (plannedTotalTests > 0) {
-        await batchCollection.updateOne(
-            { _id: new ObjectId(batchId) },
-            { $set: { total_tests: plannedTotalTests } }
-        );
-    }
-
-    // Group models by host
-    const modelsByHost = {};
-
-    for (const model of models) {
-        // Determine host for this model
-        let targetHost = defaultHost;
-
-        // Check if model has a specific host assignment
-        // Override disabled for benchmark tool - respect user selection
-        // if (MODEL_ROUTING[model]) {
-        //     targetHost = HOSTS[MODEL_ROUTING[model]];
-        // }
-
-        if (!modelsByHost[targetHost]) {
-            modelsByHost[targetHost] = [];
-        }
-        modelsByHost[targetHost].push(model);
-    }
-
-    // Create execution promises for each host
-    const hostPromises = Object.entries(modelsByHost).map(async ([hostUrl, hostModels]) => {
-        // Determine judge host: either same as execution host (optional), or opposite host (default)
-        let judgeHostUrl = hostUrl;
-        if (!judgeSameHost) {
-            judgeHostUrl = HOSTS.primary;
-            if (hostUrl === HOSTS.primary) {
-                judgeHostUrl = HOSTS.secondary;
-            } else if (hostUrl === HOSTS.secondary) {
-                judgeHostUrl = HOSTS.primary;
-            }
-        }
-
-        for (const model of hostModels) {
-            for (const prompt of prompts) {
-                // Check if batch was stopped
-                const currentBatch = await batchCollection.findOne({ _id: new ObjectId(batchId) });
-                if (currentBatch && currentBatch.status === 'stopped') {
-                    logger.info('Batch execution stopped by user', { batchId });
-                    return; // Stop processing this host
-                }
-
-                try {
-                    const start = Date.now();
-                    const response = await fetch(`${hostUrl}/api/generate`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ model, prompt: prompt.prompt, stream: false }),
-                        timeout: 60000 // 60s timeout for complex prompts
-                    });
-
-                    const data = await response.json();
-                    const latency = Date.now() - start;
-                    const tokens = Math.ceil((data.response || '').length / 4);
-                    const tokens_per_sec = tokens > 0 ? (tokens / (latency / 1000)).toFixed(2) : 0;
-
-                    // Initial result without quality score
-                    const result = {
-                        model,
-                        host: hostUrl,
-                        judge_host: enableQualityScoring ? judgeHostUrl : null,
-                        prompt: prompt.prompt,
-                        prompt_level: prompt.level,
-                        prompt_category: prompt.category,
-                        prompt_name: prompt.name,
-                        expected_answer: prompt.expected_answer,
-                        latency,
-                        tokens,
-                        tokens_per_sec,
-                        response: data.response || '',
-                        success: true,
-                        batch_id: batchId,
-                        timestamp: new Date(),
-                        quality_score: null, // Will be updated if scoring is enabled
-                        scoring_method: enableQualityScoring ? 'pending' : 'disabled',
-                        judge_model: enableQualityScoring ? (judgeConfig.model || JUDGE_CONFIG.model) : null
-                    };
-
-                    const insertResult = await resultsCollection.insertOne(result);
-                    const resultId = insertResult.insertedId;
-
-                    // Update batch progress
-                    await batchCollection.updateOne(
-                        { _id: new ObjectId(batchId) },
-                        {
-                            $inc: { completed: 1 },
-                            $push: {
-                                results: {
-                                    model,
-                                    host: hostUrl,
-                                    judge_host: enableQualityScoring ? judgeHostUrl : null,
-                                    prompt_name: prompt.name,
-                                    success: true,
-                                    latency,
-                                    response_preview: (data.response || '').substring(0, 100) + '...'
-                                }
-                            }
-                        }
-                    );
-
-                    // Queue quality scoring if enabled (judge even if model == judge model)
-                    if (enableQualityScoring) {
-                        judgeQueue.add(async () => {
-                            try {
-                                const scores = await scoreResponse({
-                                    response: data.response || '',
-                                    prompt: prompt,
-                                    judgeConfig: {
-                                        ...judgeConfig,
-                                        host: judgeHostUrl
-                                    }
-                                });
-
-                                const composite = calculateCompositeScore({
-                                    latency,
-                                    tokens_per_sec,
-                                    quality_score: scores.quality_score
-                                });
-
-                                await resultsCollection.updateOne(
-                                    { _id: resultId },
-                                    {
-                                        $set: {
-                                            quality_score: scores.quality_score,
-                                            quality_breakdown: scores.breakdown,
-                                            quality_explanation: scores.explanation,
-                                            judge_prompt: scores.judge_prompt,
-                                            judge_model: scores.judge_model,
-                                            scoring_method: scores.scoring_method,
-                                            scoring_type: scores.scoring_type || prompt.scoring_type || 'reasoning',
-                                            scoring_time_ms: scores.scoring_time_ms,
-                                            quick_pattern: scores.quick_pattern,
-                                            composite_score: composite.composite_score,
-                                            normalized_scores: composite.normalized
-                                        }
-                                    }
-                                );
-
-                                await batchCollection.updateOne(
-                                    { _id: new ObjectId(batchId) },
-                                    { $inc: { judge_completed: 1 } }
-                                );
-                            } catch (scoreErr) {
-                                logger.warn('Quality scoring failed', { model, prompt: prompt.name, error: scoreErr.message });
-                                await resultsCollection.updateOne(
-                                    { _id: resultId },
-                                    { $set: { scoring_method: 'llm_failed', quality_explanation: scoreErr.message, judge_model: judgeConfig.model || JUDGE_CONFIG.model } }
-                                );
-                                await batchCollection.updateOne(
-                                    { _id: new ObjectId(batchId) },
-                                    { $inc: { judge_completed: 1, judge_failed: 1 } }
-                                );
-                            }
-                        }).catch((enqueueErr) => {
-                            logger.error('Failed to enqueue judge task', { batchId, model, prompt: prompt.name, error: enqueueErr.message });
-                        });
-                    }
-
-                    logger.info('Batch test completed', { batchId, model, prompt: prompt.name, latency });
-
-                } catch (err) {
-                    const result = {
-                        model,
-                        host: hostUrl,
-                        prompt: prompt.prompt,
-                        prompt_level: prompt.level,
-                        prompt_category: prompt.category,
-                        prompt_name: prompt.name,
-                        error: err.message,
-                        success: false,
-                        batch_id: batchId,
-                        timestamp: new Date()
-                    };
-
-                    await resultsCollection.insertOne(result);
-                    await batchCollection.updateOne(
-                        { _id: new ObjectId(batchId) },
-                        {
-                            $inc: { completed: 1 },
-                            $push: {
-                                results: {
-                                    model,
-                                    prompt_name: prompt.name,
-                                    success: false,
-                                    error: err.message
-                                }
-                            }
-                        }
-                    );
-                    logger.error('Batch test failed', { batchId, model, prompt: prompt.name, error: err.message });
-                }
-            }
-        }
-    });
-
-    // Wait for all host executions (generation) to complete
-    await Promise.all(hostPromises);
-
-    if (enableQualityScoring) {
-        await batchCollection.updateOne(
-            { _id: new ObjectId(batchId) },
-            {
-                $set: {
-                    status: 'judging',
-                    generated_at: new Date(),
-                    judge_total: plannedTotalTests
-                }
-            }
-        );
-
-        // Ensure all judge tasks complete before marking batch completed
-        await judgeQueue.drain();
-    }
-
-    await batchCollection.updateOne(
-        { _id: new ObjectId(batchId) },
-        {
-            $set: {
-                completed_at: new Date(),
-                status: 'completed'
-            }
-        }
-    );
-}
-
-
-
-/**
  * POST /api/benchmark/batch/:id/stop
- * Stop a running batch
  */
 router.post('/batch/:id/stop', async (req, res) => {
     try {
-        const batchCollection = getBatchCollection();
-        const result = await batchCollection.updateOne(
-            { _id: new ObjectId(req.params.id), status: { $in: ['running', 'judging'] } },
+        const result = await BenchmarkBatch.updateOne(
+            { _id: req.params.id, status: { $in: ['running', 'judging'] } },
             { $set: { status: 'stopped', completed_at: new Date() } }
         );
 
@@ -968,14 +466,10 @@ router.post('/batch/:id/stop', async (req, res) => {
 
 /**
  * GET /api/benchmark/batch/:id
- * Get batch progress and results
  */
 router.get('/batch/:id', async (req, res) => {
     try {
-        const batchCollection = getBatchCollection();
-        const resultsCollection = getCollection();
-
-        const batch = await batchCollection.findOne({ _id: new ObjectId(req.params.id) });
+        const batch = await BenchmarkBatch.findById(req.params.id).lean();
 
         if (!batch) {
             return res.status(404).json({
@@ -992,88 +486,28 @@ router.get('/batch/:id', async (req, res) => {
             ? Math.min(Math.round(((batch.judge_completed || 0) / batch.judge_total) * 100), 100)
             : 0;
 
-        // Hydrate results from benchmark_results to include latest judge data
-        const results = await resultsCollection
-            .find({ batch_id: req.params.id })
+        const results = await BenchmarkResult.find({ batch_id: req.params.id })
             .sort({ timestamp: -1 })
-            .toArray();
+            .lean();
 
-        const defaultJudgeModel = (batch && batch.judge_config && batch.judge_config.model)
-            ? batch.judge_config.model
-            : JUDGE_CONFIG.model;
-
-        const judgeSameHost = !!(
-            (batch && batch.judge_same_host) ||
-            (batch && batch.judge_config && batch.judge_config.judge_same_host) ||
-            (batch && batch.plan && batch.plan.judge_same_host)
-        );
-
-        // Calculate judge stats
+        // Calculate judge stats (re-implementation of logic from old controller)
         const judgedResults = results.filter(r => r.quality_score !== null && r.scoring_time_ms);
         const avgJudgeTime = judgedResults.length > 0
             ? judgedResults.reduce((acc, r) => acc + (r.scoring_time_ms || 0), 0) / judgedResults.length
             : 0;
         
-        const judgeLag = Math.max(0, batch.completed - (batch.judge_completed || 0));
         const judgeStats = {
             avg_time_ms: Math.round(avgJudgeTime),
-            lag: judgeLag,
+            lag: Math.max(0, batch.completed - (batch.judge_completed || 0)),
             completed: batch.judge_completed || 0,
             total: batch.judge_total || 0,
-            concurrency: 2 // Hardcoded in executeBatch
+            concurrency: (batch.judge_config && batch.judge_config.concurrency) || 2
         };
 
-        const inferJudgeHost = (execHost) => {
-            if (!execHost) return null;
-            if (judgeSameHost) return execHost;
-            if (execHost === HOSTS.primary) return HOSTS.secondary;
-            if (execHost === HOSTS.secondary) return HOSTS.primary;
-            // Unknown exec host: default to primary judge host
-            return HOSTS.primary;
-        };
-
-        const formattedResults = results.map((r) => {
-            const inferredJudgeHost = batch.quality_scoring !== false
-                ? (r.judge_host || inferJudgeHost(r.host))
-                : null;
-
-            const inferredJudgeModel = batch.quality_scoring !== false
-                ? (r.judge_model || defaultJudgeModel)
-                : null;
-
-            const inferredScoringMethod = r.scoring_method
-                ? r.scoring_method
-                : (batch.quality_scoring !== false ? (r.success ? 'pending' : 'disabled') : 'disabled');
-
-            return ({
-                id: r._id ? r._id.toString() : null,
-                model: r.model,
-                host: r.host,
-                judge_host: inferredJudgeHost,
-                prompt_name: r.prompt_name,
-                prompt_level: r.prompt_level,
-                prompt_category: r.prompt_category,
-                expected_answer: r.expected_answer,
-                latency: r.latency,
-                tokens_per_sec: r.tokens_per_sec,
-                quality_score: r.quality_score,
-                quality_explanation: r.quality_explanation,
-                judge_prompt: r.judge_prompt,
-                judge_model: inferredJudgeModel,
-                scoring_method: inferredScoringMethod,
-                scoring_type: r.scoring_type,
-                scoring_time_ms: r.scoring_time_ms,
-                quick_pattern: r.quick_pattern,
-                composite_score: r.composite_score,
-                normalized_scores: r.normalized_scores,
-                success: r.success,
-                error: r.error,
-                response_preview: r.response
-                    ? `${r.response.substring(0, 100)}...`
-                    : (r.response_preview || ''),
-                timestamp: r.timestamp
-            });
-        });
+        const formattedResults = results.map(r => ({
+            id: r._id.toString(),
+            ...r
+        }));
 
         res.json({
             status: 'success',
@@ -1096,16 +530,13 @@ router.get('/batch/:id', async (req, res) => {
 
 /**
  * GET /api/benchmark/batches
- * Get all batch runs
  */
 router.get('/batches', async (req, res) => {
     try {
-        const batchCollection = getBatchCollection();
-        const batches = await batchCollection
-            .find()
+        const batches = await BenchmarkBatch.find()
             .sort({ created_at: -1 })
             .limit(20)
-            .toArray();
+            .lean();
 
         res.json({
             status: 'success',
@@ -1119,11 +550,9 @@ router.get('/batches', async (req, res) => {
 
 /**
  * GET /api/benchmark/quality-breakdown
- * Get quality scores broken down by category and level
  */
 router.get('/quality-breakdown', async (req, res) => {
     try {
-        const resultsCollection = getCollection();
         const { model } = req.query;
 
         const matchStage = {
@@ -1133,8 +562,7 @@ router.get('/quality-breakdown', async (req, res) => {
         if (model) matchStage.model = model;
 
         const [byCategory, byLevel, byModel] = await Promise.all([
-            // Breakdown by category (coding, reasoning, factual, etc.)
-            resultsCollection.aggregate([
+            BenchmarkResult.aggregate([
                 { $match: matchStage },
                 {
                     $group: {
@@ -1145,10 +573,9 @@ router.get('/quality-breakdown', async (req, res) => {
                     }
                 },
                 { $sort: { '_id.model': 1, avg_quality: -1 } }
-            ]).toArray(),
+            ]),
 
-            // Breakdown by level (1-5)
-            resultsCollection.aggregate([
+            BenchmarkResult.aggregate([
                 { $match: matchStage },
                 {
                     $group: {
@@ -1159,10 +586,9 @@ router.get('/quality-breakdown', async (req, res) => {
                     }
                 },
                 { $sort: { '_id.model': 1, '_id.level': 1 } }
-            ]).toArray(),
+            ]),
 
-            // Overall by model
-            resultsCollection.aggregate([
+            BenchmarkResult.aggregate([
                 { $match: matchStage },
                 {
                     $group: {
@@ -1176,10 +602,9 @@ router.get('/quality-breakdown', async (req, res) => {
                     }
                 },
                 { $sort: { avg_composite: -1 } }
-            ]).toArray()
+            ])
         ]);
 
-        // Restructure category data by model
         const categoryByModel = {};
         byCategory.forEach(item => {
             const modelName = item._id.model;
@@ -1191,7 +616,6 @@ router.get('/quality-breakdown', async (req, res) => {
             };
         });
 
-        // Restructure level data by model
         const levelByModel = {};
         byLevel.forEach(item => {
             const modelName = item._id.model;
