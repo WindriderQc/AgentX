@@ -78,12 +78,14 @@ Routes (validation) → Services (orchestration) → Models (data) → MongoDB/O
 - `toolService.js` - Slash command parser for /dataapi tools
 - `dataapiClient.js` - Proxy client for DataAPI integration
 - `customModelService.js` - Manages custom model registration, Modelfile generation, and deployment with advanced tuning parameters (num_ctx, num_gpu, etc.)
+- `benchmarkService.js` - Orchestrates benchmark batch execution, queue management, and quality scoring (with fix for stalled judge progress)
 
 **Models** (`/models/*.js`)
 - Mongoose schemas with static helper methods
 - `Conversation.js` - Chat history with feedback and RAG sources (subdocument arrays with _id)
 - `UserProfile.js` - User memory and preferences (injected into system prompts)
 - `PromptConfig.js` - Versioned system prompts with A/B testing (traffic weights)
+- `BenchmarkResult.js`, `BenchmarkBatch.js`, `BenchmarkPrompt.js` - Benchmark data persistence
 
 **Helpers** (`/src/helpers/*.js`)
 - Pure utility functions
@@ -847,10 +849,12 @@ This section tracks the current implementation status and areas requiring develo
 - Template rendering with Handlebars-like syntax
 
 **Benchmark System:**
+- **Architecture:** SOA with `benchmarkService.js` and Mongoose models
+- **Frontend:** De-coupled JS (`public/js/benchmark.js`)
 - Five-level prompt library (Simple → Advanced)
 - Batch testing across model × prompt combinations
-- Async execution with progress tracking
-- Results storage in MongoDB
+- Async execution with progress tracking (queue-based)
+- Results storage in MongoDB (`BenchmarkResult`)
 - Quality scoring with LLM judges
 - Composite scores (speed + quality)
 
