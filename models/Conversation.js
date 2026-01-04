@@ -24,6 +24,9 @@ const MessageSchema = new mongoose.Schema({
     parameters: mongoose.Schema.Types.Mixed, // Snapshot of options used (temp, top_k, etc)
     meta: mongoose.Schema.Types.Mixed      // Additional metadata (model name, etc)
   },
+  // V5.1: General Metadata (Tools, DeepJob, etc)
+  metadata: mongoose.Schema.Types.Mixed,
+
   // V5: Cost Tracking
   cost: {
     promptTokenCost: { type: Number, default: 0 },
@@ -64,6 +67,9 @@ const ConversationSchema = new mongoose.Schema({
   promptConfigId: { type: mongoose.Schema.Types.ObjectId, ref: 'PromptConfig' },
   promptName: { type: String },     // Snapshot: e.g. "default_chat"
   promptVersion: { type: Number },  // Snapshot: e.g. 5
+
+  // V5.1 BrainX Deep Research Job
+  deepJobId: { type: String }, // Links to DeepJob collection
 
   // V5: Total conversation cost (sum of all message costs)
   totalCost: {

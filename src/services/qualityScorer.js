@@ -388,5 +388,3 @@ module.exports = {
     SCORING_CONFIGS,
     JUDGE_CONFIG
 };
-    JUDGE_CONFIG
-};
