@@ -139,7 +139,11 @@ app.use('/api/metrics', metricsRoutes);
 
 // n8n callback routes (Webhook targets)
 const n8nCallbackRoutes = require('../routes/n8n_callback');
-app.use('/api/n8n/callback', n8nCallbackRoutes);
+app.use('/api/n8n/callback', strictLimiter, n8nCallbackRoutes);
+
+// Job status routes
+const jobsRoutes = require('../routes/jobs');
+app.use('/api/jobs', jobsRoutes);
 
 // n8n integration routes (API key authentication)
 const n8nRoutes = require('../routes/n8n');

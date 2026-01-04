@@ -48,7 +48,7 @@ const DeepJobSchema = new mongoose.Schema({
 
 DeepJobSchema.index({ conversationId: 1 });
 DeepJobSchema.index({ status: 1 });
-DeepJobSchema.index({ createdAt: 1 });
+DeepJobSchema.index({ createdAt: 1 }, { expireAfterSeconds: 604800 }); // 7 days retention
 
 DeepJobSchema.pre('save', function() {
   this.updatedAt = Date.now();

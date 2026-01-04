@@ -193,4 +193,19 @@ describe('BrainX Deep Research Flow', () => {
     expect(metadata.deepResearchEvidence).toHaveLength(1);
     expect(metadata.deepJobStatus).toBe('completed');
   });
+
+  it('should reject callback without API key', async () => {
+    const res = await request(app)
+      .post('/api/n8n/callback/deep-research')
+      .send({ jobId: 'test' });
+    expect(res.status).toBe(401);
+  });
+
+  it('should reject callback with wrong API key', async () => {
+    const res = await request(app)
+      .post('/api/n8n/callback/deep-research')
+      .set('x-api-key', 'wrong-key')
+      .send({ jobId: 'test' });
+    expect(res.status).toBe(401);
+  });
 });
