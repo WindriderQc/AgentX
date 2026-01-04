@@ -312,7 +312,12 @@ router.get('/rag-stats', optionalAuth, async (req, res) => {
 
     // RAG usage counts
     const totalConversations = await Conversation.countDocuments(dateFilter);
-    const ragRequestedConversations = await Conversation.countDocuments({ ...dateFilter, ragRequested: true });
+    // Backward compatible: older data may not have `ragRequested` persisted.
+    // In that case, `ragUsed: true` implies it was requested/enabled.
+    const ragRequestedConversations = await Conversation.countDocuments({
+      ...dateFilter,
+      $or: [{ ragRequested: true }, { ragUsed: true }]
+    });
     const ragConversations = await Conversation.countDocuments({ ...dateFilter, ragUsed: true });
     const noRagConversations = totalConversations - ragConversations;
     const ragUsageRate = totalConversations > 0 ? ragConversations / totalConversations : 0;
@@ -546,11 +551,7 @@ router.get('/costs', optionalAuth, async (req, res) => {
     const costAgg = await Conversation.aggregate([
       { $match: dateFilter },
       { $unwind: '$messages' },
-      { $match: {
-          'messages.cost.totalCost': { $exists: true, $gt: 0 },
-          'messages.role': 'assistant'
-        }
-      },
+      { $match: { 'messages.role': 'assistant' } },
       { $group: {
           _id: groupKey,
           messageCount: { $sum: 1 },

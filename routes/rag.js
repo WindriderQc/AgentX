@@ -343,64 +343,77 @@ router.delete('/documents/:documentId', async (req, res) => {
  * collection health, and ingestion performance.
  */
 router.get('/metrics', async (req, res) => {
+  const timestamp = new Date().toISOString();
+  let warning = null;
+  let healthy = false;
+  let stats = {};
+  let documents = [];
+
   try {
-    // Get base stats from RAG store
-    const stats = await ragStore.getStats();
-    
-    // Get health status
-    const healthy = await ragStore.healthCheck();
-    
-    // Get all documents for additional metrics
-    const documents = await ragStore.listDocuments();
-    
-    // Calculate additional metrics
-    const sourceBreakdown = {};
-    let totalChunks = 0;
-    let oldestDoc = null;
-    let newestDoc = null;
-    
-    documents.forEach(doc => {
-      // Source breakdown
-      if (!sourceBreakdown[doc.source]) {
-        sourceBreakdown[doc.source] = { count: 0, chunks: 0 };
-      }
-      sourceBreakdown[doc.source].count++;
-      sourceBreakdown[doc.source].chunks += doc.chunkCount || 0;
-      totalChunks += doc.chunkCount || 0;
-      
-      // Date tracking
-      if (doc.createdAt) {
-        const docDate = new Date(doc.createdAt);
-        if (!oldestDoc || docDate < new Date(oldestDoc)) {
-          oldestDoc = doc.createdAt;
-        }
-        if (!newestDoc || docDate > new Date(newestDoc)) {
-          newestDoc = doc.createdAt;
-        }
-      }
-    });
-    
-    res.json({
-      status: 'success',
-      healthy,
-      stats: {
-        ...stats,
-        totalDocuments: documents.length,
-        totalChunks,
-        avgChunksPerDoc: documents.length > 0 ? (totalChunks / documents.length).toFixed(2) : 0,
-        sourceBreakdown,
-        oldestDocument: oldestDoc,
-        newestDocument: newestDoc
-      },
-      timestamp: new Date().toISOString()
-    });
+    healthy = await ragStore.healthCheck();
   } catch (error) {
-    logger.error('RAG metrics error', { error: error.message, stack: error.stack });
-    res.status(500).json({
-      error: 'Internal server error',
-      message: error.message
-    });
+    warning = warning || error.message;
+    logger.warn('RAG health check failed', { error: error.message });
   }
+
+  try {
+    stats = await ragStore.getStats();
+  } catch (error) {
+    warning = warning || error.message;
+    logger.warn('RAG getStats failed', { error: error.message });
+    stats = {};
+  }
+
+  try {
+    documents = await ragStore.listDocuments();
+  } catch (error) {
+    warning = warning || error.message;
+    logger.warn('RAG listDocuments failed', { error: error.message });
+    documents = [];
+  }
+
+  // Calculate additional metrics (safe even when documents is empty)
+  const sourceBreakdown = {};
+  let totalChunks = 0;
+  let oldestDoc = null;
+  let newestDoc = null;
+
+  documents.forEach(doc => {
+    const source = doc && doc.source ? doc.source : 'unknown';
+    if (!sourceBreakdown[source]) {
+      sourceBreakdown[source] = { count: 0, chunks: 0 };
+    }
+
+    sourceBreakdown[source].count++;
+    sourceBreakdown[source].chunks += doc.chunkCount || 0;
+    totalChunks += doc.chunkCount || 0;
+
+    if (doc.createdAt) {
+      const docDate = new Date(doc.createdAt);
+      if (!oldestDoc || docDate < new Date(oldestDoc)) {
+        oldestDoc = doc.createdAt;
+      }
+      if (!newestDoc || docDate > new Date(newestDoc)) {
+        newestDoc = doc.createdAt;
+      }
+    }
+  });
+
+  res.json({
+    status: 'success',
+    healthy: Boolean(healthy),
+    ...(warning ? { warning } : {}),
+    stats: {
+      ...stats,
+      totalDocuments: documents.length,
+      totalChunks,
+      avgChunksPerDoc: documents.length > 0 ? (totalChunks / documents.length).toFixed(2) : '0.00',
+      sourceBreakdown,
+      oldestDocument: oldestDoc,
+      newestDocument: newestDoc
+    },
+    timestamp
+  });
 });
 
 /**

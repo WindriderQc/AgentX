@@ -36,12 +36,324 @@ router.get('/dashboard', async (req, res) => {
   try {
     logger.info('Fetching performance dashboard metrics');
 
-    // Get metrics from last 24 hours
-    const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const hours = parseInt(req.query.hours) || 24;
+    const startDate = new Date(Date.now() - hours * 60 * 60 * 1000);
     const now = new Date();
 
     // Fetch aggregated metrics from snapshots
-    const metrics = await PerformanceSnapshot.getAggregatedMetrics(last24h, now);
+    const metrics = await PerformanceSnapshot.getAggregatedMetrics(startDate, now);
+
+    // Snapshot provenance (for UI transparency)
+    const [snapshotsCount, lastSnapshot] = await Promise.all([
+      PerformanceSnapshot.countDocuments({ hour: { $gte: startDate, $lte: now } }),
+      PerformanceSnapshot.findOne({ hour: { $gte: startDate, $lte: now } })
+        .sort({ hour: -1 })
+        .select('hour requests_total')
+        .lean()
+    ]);
+
+    // Endpoint-derived provenance (exact breakdown + semantic grouping)
+    const endpointFacet = await PerformanceSnapshot.aggregate([
+      {
+        $match: {
+          hour: { $gte: startDate, $lte: now }
+        }
+      },
+      { $unwind: '$by_endpoint' },
+      {
+        $addFields: {
+          endpoint_path: '$by_endpoint.path',
+          endpoint_method: '$by_endpoint.method',
+          endpoint_count: '$by_endpoint.count',
+          endpoint_error_count: '$by_endpoint.error_count',
+          endpoint_avg_latency: '$by_endpoint.avg_latency'
+        }
+      },
+      {
+        $addFields: {
+          endpoint_is_api: {
+            $regexMatch: {
+              input: '$endpoint_path',
+              regex: '^/api/'
+            }
+          }
+        }
+      },
+      {
+        $addFields: {
+          endpoint_category: {
+            $cond: [
+              '$endpoint_is_api',
+              {
+                $switch: {
+                  branches: [
+                    { case: { $regexMatch: { input: '$endpoint_path', regex: '^/api/(chat|chatkit)(/|$)' } }, then: 'chat' },
+                    { case: { $regexMatch: { input: '$endpoint_path', regex: '^/api/(conversation|conversations)(/|$)' } }, then: 'conversations' },
+                    { case: { $regexMatch: { input: '$endpoint_path', regex: '^/api/(history)(/|$)' } }, then: 'history' },
+                    { case: { $regexMatch: { input: '$endpoint_path', regex: '^/api/(rag|search)(/|$)' } }, then: 'rag' },
+                    { case: { $regexMatch: { input: '$endpoint_path', regex: '^/api/(workflow|workflows|batch|batches|job|jobs|task|tasks)(/|$)' } }, then: 'batch_workflows' },
+                    { case: { $regexMatch: { input: '$endpoint_path', regex: '^/api/(auth|login|logout|session|sessions)(/|$)' } }, then: 'auth' },
+                    { case: { $regexMatch: { input: '$endpoint_path', regex: '^/api/(alerts)(/|$)' } }, then: 'alerts' },
+                    { case: { $regexMatch: { input: '$endpoint_path', regex: '^/api/(metrics|performance)(/|$)' } }, then: 'metrics' },
+                    { case: { $regexMatch: { input: '$endpoint_path', regex: '^/api/(admin|config|settings)(/|$)' } }, then: 'admin' }
+                  ],
+                  default: 'other_api'
+                }
+              },
+              {
+                $switch: {
+                  branches: [
+                    { case: { $regexMatch: { input: '$endpoint_path', regex: '^/batch(/|$)' } }, then: 'batch_ui' },
+                    { case: { $regexMatch: { input: '$endpoint_path', regex: '^/(dashboard|active-stats)(/|$)' } }, then: 'ui_pages' },
+                    { case: { $regexMatch: { input: '$endpoint_path', regex: '^/performance(/|$)' } }, then: 'ui_performance' }
+                  ],
+                  default: 'other_non_api'
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        $facet: {
+          totals: [
+            {
+              $group: {
+                _id: '$endpoint_is_api',
+                count: { $sum: '$endpoint_count' },
+                error_count: { $sum: '$endpoint_error_count' }
+              }
+            }
+          ],
+          categories: [
+            {
+              $group: {
+                _id: '$endpoint_category',
+                count: { $sum: '$endpoint_count' },
+                error_count: { $sum: '$endpoint_error_count' },
+                latency_weighted_sum: {
+                  $sum: {
+                    $multiply: [
+                      { $ifNull: ['$endpoint_avg_latency', 0] },
+                      '$endpoint_count'
+                    ]
+                  }
+                },
+                latency_count_sum: { $sum: '$endpoint_count' }
+              }
+            },
+            {
+              $project: {
+                _id: 0,
+                category: '$_id',
+                count: 1,
+                error_count: 1,
+                error_rate: {
+                  $cond: [
+                    { $gt: ['$count', 0] },
+                    { $round: [{ $multiply: [{ $divide: ['$error_count', '$count'] }, 100] }, 2] },
+                    0
+                  ]
+                },
+                avg_latency: {
+                  $cond: [
+                    { $gt: ['$latency_count_sum', 0] },
+                    { $round: [{ $divide: ['$latency_weighted_sum', '$latency_count_sum'] }, 0] },
+                    0
+                  ]
+                }
+              }
+            },
+            { $sort: { count: -1 } }
+          ],
+          top_endpoints: [
+            {
+              $group: {
+                _id: { path: '$endpoint_path', method: '$endpoint_method' },
+                count: { $sum: '$endpoint_count' },
+                error_count: { $sum: '$endpoint_error_count' },
+                latency_weighted_sum: {
+                  $sum: {
+                    $multiply: [
+                      { $ifNull: ['$endpoint_avg_latency', 0] },
+                      '$endpoint_count'
+                    ]
+                  }
+                },
+                latency_count_sum: { $sum: '$endpoint_count' }
+              }
+            },
+            {
+              $project: {
+                _id: 0,
+                path: '$_id.path',
+                method: '$_id.method',
+                count: 1,
+                error_count: 1,
+                error_rate: {
+                  $cond: [
+                    { $gt: ['$count', 0] },
+                    { $round: [{ $multiply: [{ $divide: ['$error_count', '$count'] }, 100] }, 2] },
+                    0
+                  ]
+                },
+                avg_latency: {
+                  $cond: [
+                    { $gt: ['$latency_count_sum', 0] },
+                    { $round: [{ $divide: ['$latency_weighted_sum', '$latency_count_sum'] }, 0] },
+                    0
+                  ]
+                }
+              }
+            },
+            { $sort: { count: -1 } },
+            { $limit: 5 }
+          ],
+          top_error_endpoints: [
+            {
+              $group: {
+                _id: { path: '$endpoint_path', method: '$endpoint_method' },
+                count: { $sum: '$endpoint_count' },
+                error_count: { $sum: '$endpoint_error_count' },
+                latency_weighted_sum: {
+                  $sum: {
+                    $multiply: [
+                      { $ifNull: ['$endpoint_avg_latency', 0] },
+                      '$endpoint_count'
+                    ]
+                  }
+                },
+                latency_count_sum: { $sum: '$endpoint_count' }
+              }
+            },
+            { $match: { count: { $gte: 20 } } },
+            {
+              $project: {
+                _id: 0,
+                path: '$_id.path',
+                method: '$_id.method',
+                count: 1,
+                error_count: 1,
+                error_rate: {
+                  $cond: [
+                    { $gt: ['$count', 0] },
+                    { $round: [{ $multiply: [{ $divide: ['$error_count', '$count'] }, 100] }, 2] },
+                    0
+                  ]
+                },
+                avg_latency: {
+                  $cond: [
+                    { $gt: ['$latency_count_sum', 0] },
+                    { $round: [{ $divide: ['$latency_weighted_sum', '$latency_count_sum'] }, 0] },
+                    0
+                  ]
+                }
+              }
+            },
+            { $sort: { error_rate: -1, error_count: -1, count: -1 } },
+            { $limit: 5 }
+          ],
+          top_slow_endpoints: [
+            {
+              $group: {
+                _id: { path: '$endpoint_path', method: '$endpoint_method' },
+                count: { $sum: '$endpoint_count' },
+                error_count: { $sum: '$endpoint_error_count' },
+                latency_weighted_sum: {
+                  $sum: {
+                    $multiply: [
+                      { $ifNull: ['$endpoint_avg_latency', 0] },
+                      '$endpoint_count'
+                    ]
+                  }
+                },
+                latency_count_sum: { $sum: '$endpoint_count' }
+              }
+            },
+            { $match: { count: { $gte: 20 } } },
+            {
+              $project: {
+                _id: 0,
+                path: '$_id.path',
+                method: '$_id.method',
+                count: 1,
+                error_count: 1,
+                error_rate: {
+                  $cond: [
+                    { $gt: ['$count', 0] },
+                    { $round: [{ $multiply: [{ $divide: ['$error_count', '$count'] }, 100] }, 2] },
+                    0
+                  ]
+                },
+                avg_latency: {
+                  $cond: [
+                    { $gt: ['$latency_count_sum', 0] },
+                    { $round: [{ $divide: ['$latency_weighted_sum', '$latency_count_sum'] }, 0] },
+                    0
+                  ]
+                }
+              }
+            },
+            { $match: { avg_latency: { $gt: 0 } } },
+            { $sort: { avg_latency: -1, count: -1 } },
+            { $limit: 5 }
+          ]
+        }
+      }
+    ]);
+
+    const facet = Array.isArray(endpointFacet) && endpointFacet.length ? endpointFacet[0] : {};
+    const totals = Array.isArray(facet.totals) ? facet.totals : [];
+    const categories = Array.isArray(facet.categories) ? facet.categories : [];
+    const topEndpoints = (Array.isArray(facet.top_endpoints) ? facet.top_endpoints : [])
+      .map(e => ({
+        path: e?.path,
+        method: e?.method,
+        count: e?.count || 0,
+        error_count: e?.error_count || 0,
+        error_rate: Number.isFinite(e?.error_rate) ? e.error_rate : 0,
+        avg_latency: e?.avg_latency || 0
+      }))
+      .filter(e => typeof e.path === 'string' && e.path.length > 0);
+
+    const topErrorEndpoints = (Array.isArray(facet.top_error_endpoints) ? facet.top_error_endpoints : [])
+      .map(e => ({
+        path: e?.path,
+        method: e?.method,
+        count: e?.count || 0,
+        error_count: e?.error_count || 0,
+        error_rate: Number.isFinite(e?.error_rate) ? e.error_rate : 0,
+        avg_latency: e?.avg_latency || 0
+      }))
+      .filter(e => typeof e.path === 'string' && e.path.length > 0);
+
+    const topSlowEndpoints = (Array.isArray(facet.top_slow_endpoints) ? facet.top_slow_endpoints : [])
+      .map(e => ({
+        path: e?.path,
+        method: e?.method,
+        count: e?.count || 0,
+        error_count: e?.error_count || 0,
+        error_rate: Number.isFinite(e?.error_rate) ? e.error_rate : 0,
+        avg_latency: e?.avg_latency || 0
+      }))
+      .filter(e => typeof e.path === 'string' && e.path.length > 0);
+
+    const breakdown = {
+      api_requests: 0,
+      non_api_requests: 0,
+      total_endpoint_requests: 0,
+      delta_vs_total_requests: 0
+    };
+    for (const t of totals) {
+      const isApi = !!t?._id;
+      const count = t?.count || 0;
+      breakdown.total_endpoint_requests += count;
+      if (isApi) breakdown.api_requests += count;
+      else breakdown.non_api_requests += count;
+    }
+
+    const totalRequests = metrics?.total_requests || 0;
+    breakdown.delta_vs_total_requests = breakdown.total_endpoint_requests - totalRequests;
 
     // Fetch latest load test result
     const latestLoadTest = await PerformanceLoadTest.getLatest();
@@ -53,7 +365,7 @@ router.get('/dashboard', async (req, res) => {
     const systemHealth = calculateSystemHealth(metrics, activeBaseline);
 
     // Get throughput trend
-    const throughputTrend = await PerformanceSnapshot.getThroughputTrend(24);
+    const throughputTrend = await PerformanceSnapshot.getThroughputTrend(hours);
     const avgRps = throughputTrend.length > 0
       ? throughputTrend.reduce((sum, t) => sum + parseFloat(t.rps), 0) / throughputTrend.length
       : 0;
@@ -87,7 +399,29 @@ router.get('/dashboard', async (req, res) => {
           name: activeBaseline.name,
           p95_latency: activeBaseline.metrics.p95_latency,
           error_rate: activeBaseline.metrics.error_rate
-        } : null
+        } : null,
+        sources: {
+          production: {
+            hours,
+            snapshots: snapshotsCount,
+            total_requests: metrics?.total_requests || 0,
+            last_snapshot_hour: lastSnapshot?.hour || null,
+            breakdown,
+            category_breakdown: categories,
+            top_endpoints: topEndpoints,
+            top_error_endpoints: topErrorEndpoints,
+            top_slow_endpoints: topSlowEndpoints
+          },
+          latest_load_test: latestLoadTest ? {
+            name: latestLoadTest.name,
+            scenario: latestLoadTest.scenario,
+            timestamp: latestLoadTest.timestamp
+          } : null,
+          active_baseline: activeBaseline ? {
+            name: activeBaseline.name
+          } : null,
+          tracking_scope: 'Non-static, non-health HTTP requests (middleware-based)'
+        }
       }
     };
 

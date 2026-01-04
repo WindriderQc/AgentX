@@ -44,6 +44,23 @@ module.exports = {
         autorestart: true,
         max_restarts: 10,
         min_uptime: '10s'
+    },
+    {
+      name: 'qdrant',
+      cwd: __dirname,
+      script: './qdrant',
+      exec_interpreter: 'none',
+      args: '--config-path qdrant_config.yaml',
+      instances: 1,
+      exec_mode: 'fork',
+      watch: false,
+      merge_logs: true,
+      out_file: './logs/qdrant.out.log',
+      error_file: './logs/qdrant.err.log',
+      restart_delay: 2000,
+      autorestart: true,
+      max_restarts: 10,
+      min_uptime: '5s'
     }
   ]
 };

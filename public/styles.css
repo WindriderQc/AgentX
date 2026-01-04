@@ -49,10 +49,24 @@ body {
 @media (min-width: 1600px) {
   .page {
     max-width: none;
+    width: 100%;
+    margin: 0;
   }
 
   .main-content {
     max-width: none;
+    width: 100%;
+    margin: 0;
+  }
+
+  /* Some dashboards use their own outer wrappers (often defined inline in the HTML).
+     Override those caps as well. */
+  .analytics-page,
+  .performance-page,
+  .benchmark-container {
+    max-width: none !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
   }
 }
 
@@ -1962,7 +1976,7 @@ button:active {
 .rag-stats {
   flex: 1;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 16px;
 }
 

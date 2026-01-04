@@ -12,6 +12,7 @@ const elements = {
   positiveRate: document.getElementById('positiveRate'),
   ragUsage: document.getElementById('ragUsage'),
   ragConversations: document.getElementById('ragConversations'),
+  ragRequestedConversations: document.getElementById('ragRequestedConversations'),
   noRagConversations: document.getElementById('noRagConversations'),
   ragPositiveRate: document.getElementById('ragPositiveRate'),
   noRagPositiveRate: document.getElementById('noRagPositiveRate'),
@@ -303,7 +304,7 @@ function renderRagChart(data) {
   if (charts.rag) charts.rag.destroy();
 
   const { ragConversations, noRagConversations } = data;
-  const labels = ['RAG', 'Non-RAG'];
+  const labels = ['RAG Used', 'Non-RAG'];
   const values = [ragConversations, noRagConversations];
 
   charts.rag = new Chart(ctx, {
@@ -330,18 +331,31 @@ function renderRagChart(data) {
   elements.ragDonutLabel.textContent = formatPercent(data.ragUsageRate);
 }
 
-function updateProductSummary(usage, feedback, rag) {
-  elements.totalConversations.textContent = formatNumber(usage.totalConversations);
-  elements.totalMessages.textContent = formatNumber(usage.totalMessages);
-  elements.positiveFeedback.textContent = formatNumber(feedback.positive);
-  elements.positiveRate.textContent = feedback.totalFeedback > 0 ? `(${formatPercent(feedback.positiveRate)} positive)` : '(no feedback)';
-  elements.ragUsage.textContent = formatPercent(rag.ragUsageRate);
-  elements.ragConversations.textContent = formatNumber(rag.ragConversations);
-  elements.noRagConversations.textContent = formatNumber(rag.noRagConversations);
-  elements.ragPositiveRate.textContent = formatPercent(rag.feedback.rag.positiveRate);
-  elements.noRagPositiveRate.textContent = formatPercent(rag.feedback.noRag.positiveRate);
-  const delta = rag.feedback.rag.positiveRate - rag.feedback.noRag.positiveRate;
-  elements.ragDelta.textContent = Number.isFinite(delta) ? `${delta >= 0 ? '+' : ''}${(delta * 100).toFixed(1)} pts` : '–';
+function updateProductSummary(usage = {}, feedback = {}, rag = {}) {
+  if (elements.totalConversations) elements.totalConversations.textContent = formatNumber(usage.totalConversations);
+  if (elements.totalMessages) elements.totalMessages.textContent = formatNumber(usage.totalMessages);
+  if (elements.positiveFeedback) elements.positiveFeedback.textContent = formatNumber(feedback.positive);
+  if (elements.positiveRate) {
+    elements.positiveRate.textContent =
+      feedback.totalFeedback > 0 ? `(${formatPercent(feedback.positiveRate)} positive)` : '(no feedback)';
+  }
+
+  if (elements.ragUsage) elements.ragUsage.textContent = formatPercent(rag.ragUsageRate);
+  if (elements.ragConversations) elements.ragConversations.textContent = formatNumber(rag.ragConversations);
+  if (elements.ragRequestedConversations)
+    elements.ragRequestedConversations.textContent = formatNumber(rag.ragRequestedConversations);
+  if (elements.noRagConversations) elements.noRagConversations.textContent = formatNumber(rag.noRagConversations);
+
+  const ragPositiveRate = rag?.feedback?.rag?.positiveRate;
+  const noRagPositiveRate = rag?.feedback?.noRag?.positiveRate;
+
+  if (elements.ragPositiveRate) elements.ragPositiveRate.textContent = formatPercent(ragPositiveRate);
+  if (elements.noRagPositiveRate) elements.noRagPositiveRate.textContent = formatPercent(noRagPositiveRate);
+
+  const delta = ragPositiveRate - noRagPositiveRate;
+  if (elements.ragDelta) {
+    elements.ragDelta.textContent = Number.isFinite(delta) ? `${delta >= 0 ? '+' : ''}${(delta * 100).toFixed(1)} pts` : '–';
+  }
 }
 
 function toggleEmptyState(container, emptyEl, hasData) {
@@ -360,28 +374,33 @@ async function refreshProduct() {
   const feedbackGroup = elements.feedbackGroupSelect.value;
 
   try {
-    const [usage, feedback, rag] = await Promise.all([
+    const [usageResult, feedbackResult, ragResult] = await Promise.allSettled([
       loadUsage(days, usageGroup),
       loadFeedback(days, feedbackGroup),
       loadRag(days),
     ]);
 
-    updateProductSummary(usage, feedback, rag);
+    const usage = usageResult.status === 'fulfilled' ? usageResult.value : null;
+    const feedback = feedbackResult.status === 'fulfilled' ? feedbackResult.value : null;
+    const rag = ragResult.status === 'fulfilled' ? ragResult.value : null;
 
-    const usageHasData = usage.breakdown && usage.breakdown.length > 0;
+    updateProductSummary(usage || {}, feedback || {}, rag || {});
+
+    const usageHasData = !!(usage && usage.breakdown && usage.breakdown.length > 0);
     toggleEmptyState(document.getElementById('usageChart'), elements.usageEmpty, usageHasData);
     if (usageHasData) renderUsageChart(usage, usageGroup);
 
-    const feedbackHasData = feedback.breakdown && feedback.breakdown.length > 0;
+    const feedbackHasData = !!(feedback && feedback.breakdown && feedback.breakdown.length > 0);
     toggleEmptyState(document.getElementById('feedbackChart'), elements.feedbackEmpty, feedbackHasData);
     if (feedbackHasData) renderFeedbackChart(feedback, feedbackGroup);
 
-    const ragHasData = rag.totalConversations > 0;
-    if (ragHasData) {
-      renderRagChart(rag);
-    } else {
-      elements.ragDonutLabel.textContent = '–';
-    }
+    const ragHasData = !!(rag && rag.totalConversations > 0);
+    if (ragHasData) renderRagChart(rag);
+    else if (elements.ragDonutLabel) elements.ragDonutLabel.textContent = '–';
+
+    if (usageResult.status === 'rejected') console.warn('Usage analytics failed', usageResult.reason);
+    if (feedbackResult.status === 'rejected') console.warn('Feedback analytics failed', feedbackResult.reason);
+    if (ragResult.status === 'rejected') console.warn('RAG analytics failed', ragResult.reason);
   } catch (err) {
     console.error('Analytics load failed', err);
     // Don't alert aggressively on auto-refresh or tab switches, just log
@@ -395,8 +414,11 @@ async function refreshProduct() {
 async function loadCosts(days, groupBy = null, breakdown = null) {
   const query = buildRangeQuery(days);
   const params = new URLSearchParams(query);
-  if (groupBy) params.append('groupBy', groupBy);
-  if (breakdown) params.append('breakdown', breakdown);
+
+  // Backend supports: groupBy={model|day|promptVersion}
+  // Older UI code passed a `breakdown` arg; treat it as a fallback groupBy.
+  const effectiveGroupBy = groupBy || breakdown;
+  if (effectiveGroupBy) params.append('groupBy', effectiveGroupBy);
 
   try {
     const response = await fetchJSON(`/api/analytics/costs?${params.toString()}`);
@@ -421,10 +443,15 @@ async function refreshCostStats() {
       return;
     }
 
-    elements.totalCost.textContent = data.totalCost !== undefined ? `$${data.totalCost.toFixed(2)}` : '—';
-    elements.costPerConversation.textContent = data.avgCostPerConversation !== undefined ? `$${data.avgCostPerConversation.toFixed(3)}` : '—';
-    elements.costPer1kTokens.textContent = data.costPer1kTokens !== undefined ? `$${data.costPer1kTokens.toFixed(4)}` : '—';
-    elements.tokensPerDollar.textContent = data.tokensPerDollar !== undefined ? Math.round(data.tokensPerDollar).toLocaleString() : '—';
+    const summary = data.summary || {};
+    const totalCost = summary.totalCost || 0;
+    const totalTokens = summary.totalTokens || 0;
+    const tokensPerDollar = totalCost > 0 ? (totalTokens / totalCost) : 0;
+
+    elements.totalCost.textContent = `$${(totalCost || 0).toFixed(2)}`;
+    elements.costPerConversation.textContent = `$${(summary.avgCostPerConversation || 0).toFixed(3)}`;
+    elements.costPer1kTokens.textContent = `$${(summary.costPer1kTokens || 0).toFixed(4)}`;
+    elements.tokensPerDollar.textContent = Math.round(tokensPerDollar || 0).toLocaleString();
   } catch (err) {
     console.error('Cost stats refresh error:', err);
   }
@@ -437,7 +464,8 @@ async function refreshCostTrend() {
   try {
     const data = await loadCosts(days, groupBy);
 
-    if (!data || !data.trends || data.trends.length === 0) {
+    const breakdown = data?.breakdown || [];
+    if (!data || breakdown.length === 0) {
       if (charts.costTrend) charts.costTrend.destroy();
       document.getElementById('costTrendChart').style.display = 'none';
       elements.costTrendEmpty.style.display = 'block';
@@ -447,16 +475,21 @@ async function refreshCostTrend() {
     document.getElementById('costTrendChart').style.display = 'block';
     elements.costTrendEmpty.style.display = 'none';
 
+    let items = breakdown;
+    if (groupBy === 'day') {
+      items = [...breakdown].sort((a, b) => String(a.key).localeCompare(String(b.key)));
+    }
+
     // Extract labels based on groupBy
-    let labels = data.trends.map(item => {
-      if (groupBy === 'day') return item.date;
-      if (groupBy === 'model') return item.model || 'Unknown';
-      if (groupBy === 'promptVersion') return `${item.promptName || 'Prompt'} v${item.promptVersion || '?'}`;
-      return '';
+    const labels = items.map(item => {
+      if (groupBy === 'day') return String(item.key);
+      if (groupBy === 'model') return item.key || 'Unknown';
+      if (groupBy === 'promptVersion') return `${item.key?.name || 'Prompt'} v${item.key?.version ?? '?'}`;
+      return String(item.key ?? '');
     });
 
-    const costData = data.trends.map(item => item.cost || 0);
-    const conversationData = data.trends.map(item => item.conversations || 0);
+    const costData = items.map(item => item.cost?.total || 0);
+    const conversationData = items.map(item => item.conversationCount || 0);
 
     // Recreate chart
     if (charts.costTrend) charts.costTrend.destroy();
@@ -589,9 +622,10 @@ async function refreshEfficiencyTable() {
   const days = elements.periodSelect.value;
 
   try {
-    const data = await loadCosts(days, null, 'model');
+    const data = await loadCosts(days, 'model');
+    const breakdown = data?.breakdown || [];
 
-    if (!data || !data.efficiency || data.efficiency.length === 0) {
+    if (!data || breakdown.length === 0) {
       elements.efficiencyEmpty.style.display = 'block';
       elements.efficiencyTableBody.innerHTML = '<tr><td colspan="7" style="padding: 16px; text-align: center; color: var(--muted);">No data</td></tr>';
       return;
@@ -600,7 +634,7 @@ async function refreshEfficiencyTable() {
     elements.efficiencyEmpty.style.display = 'none';
 
     // Sort by efficiency (ascending cost per 1k tokens)
-    const sorted = data.efficiency.sort((a, b) => a.costPer1kTokens - b.costPer1kTokens);
+    const sorted = [...breakdown].sort((a, b) => (a.cost?.per1kTokens || 0) - (b.cost?.per1kTokens || 0));
 
     // Create rows
     elements.efficiencyTableBody.innerHTML = sorted.map((row, idx) => {
@@ -618,22 +652,22 @@ async function refreshEfficiencyTable() {
         <tr style="border-bottom: 1px solid var(--panel-border); transition: background 0.2s;">
           <td style="padding: 8px; color: var(--text); font-weight: 500;">
             <i class="fas fa-cube" style="color: var(--accent); margin-right: 6px; font-size: 11px;"></i>
-            ${row.model || 'Unknown'}
+            ${row.key || 'Unknown'}
           </td>
           <td style="padding: 8px; text-align: right; color: var(--accent);">
-            <strong>$${(row.totalCost || 0).toFixed(2)}</strong>
+            <strong>$${(row.cost?.total || 0).toFixed(2)}</strong>
           </td>
           <td style="padding: 8px; text-align: right; color: var(--text);">
-            ${formatNumber(row.totalTokens || 0)}
+            ${formatNumber(row.tokens?.total || 0)}
           </td>
           <td style="padding: 8px; text-align: right; color: var(--text);">
-            $${(row.costPer1kTokens || 0).toFixed(4)}
+            $${(row.cost?.per1kTokens || 0).toFixed(4)}
           </td>
           <td style="padding: 8px; text-align: right; color: #4ade80;">
-            <strong>${Math.round(row.tokensPerDollar || 0).toLocaleString()}</strong>
+            <strong>${Math.round(((row.cost?.total || 0) > 0 ? (row.tokens?.total || 0) / row.cost.total : 0) || 0).toLocaleString()}</strong>
           </td>
           <td style="padding: 8px; text-align: right; color: var(--text);">
-            $${(row.avgCostPerConversation || 0).toFixed(3)}
+            $${(row.cost?.avgPerConversation || 0).toFixed(3)}
           </td>
           <td style="padding: 8px; text-align: center;">
             <span style="background: ${efficiencyBg}; color: ${efficiencyColor}; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600;">
@@ -653,7 +687,7 @@ async function refreshCostBreakdown() {
   const days = elements.periodSelect.value;
 
   try {
-    const data = await loadCosts(days, null, 'model');
+    const data = await loadCosts(days, 'model');
 
     if (!data || !data.breakdown || data.breakdown.length === 0) {
       if (charts.costBreakdown) charts.costBreakdown.destroy();
@@ -680,14 +714,23 @@ async function refreshCostBreakdown() {
 
     const isDonut = elements.costBreakdownDonut.checked;
 
+    const items = data.breakdown.map(item => ({
+      label: item.key || 'Unknown',
+      cost: item.cost?.total || 0,
+      conversations: item.conversationCount || 0,
+      tokens: item.tokens?.total || 0
+    }));
+
+    const totalCost = items.reduce((sum, item) => sum + item.cost, 0);
+
     const ctx = document.getElementById('costBreakdownChart').getContext('2d');
     charts.costBreakdown = new Chart(ctx, {
       type: isDonut ? 'doughnut' : 'pie',
       data: {
-        labels: data.breakdown.map(b => b.model || 'Unknown'),
+        labels: items.map(b => b.label),
         datasets: [{
-          data: data.breakdown.map(b => b.cost || 0),
-          backgroundColor: data.breakdown.map((_, i) => colors[i % colors.length]),
+          data: items.map(b => b.cost),
+          backgroundColor: items.map((_, i) => colors[i % colors.length]),
           borderColor: 'rgba(12, 15, 26, 0.8)',
           borderWidth: 2,
           hoverOffset: 4
@@ -721,16 +764,16 @@ async function refreshCostBreakdown() {
     });
 
     // Populate stats panel
-    elements.costBreakdownStats.innerHTML = data.breakdown
+    elements.costBreakdownStats.innerHTML = items
       .sort((a, b) => (b.cost || 0) - (a.cost || 0))
       .map((item, idx) => {
         const color = colors[idx % colors.length];
-        const percentage = item.percentage || 0;
+        const percentage = totalCost > 0 ? ((item.cost / totalCost) * 100) : 0;
 
         return `
           <div style="padding: 12px; background: rgba(255, 255, 255, 0.02); border-left: 3px solid ${color}; border-radius: 4px;">
             <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
-              <strong style="color: var(--text);">${item.model || 'Unknown'}</strong>
+              <strong style="color: var(--text);">${item.label}</strong>
               <span style="color: var(--accent); font-weight: 600;">$${(item.cost || 0).toFixed(2)}</span>
             </div>
             <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">

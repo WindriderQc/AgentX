@@ -154,10 +154,15 @@
                             <div class="donut-center" id="ragDonutLabel">—</div>
                         </div>
                         <div class="rag-stats">
-                            <div class="rag-stat" data-tooltip="Conversations that used RAG to retrieve relevant context before generating responses. Shows count and positive feedback rate.">
-                                <div class="label">RAG Conversations</div>
+                            <div class="rag-stat" data-tooltip="Conversations that actually used retrieval (RAG) to pull relevant context before generating responses. Shows count and positive feedback rate.">
+                                <div class="label">RAG Used</div>
                                 <div class="value" id="ragConversations">—</div>
                                 <div class="sub">Positive: <span id="ragPositiveRate">—</span></div>
+                            </div>
+                            <div class="rag-stat" data-tooltip="Conversations where RAG was requested/enabled (e.g., RAG toggle on), regardless of whether retrieval was ultimately used.">
+                                <div class="label">RAG Requested</div>
+                                <div class="value" id="ragRequestedConversations">—</div>
+                                <div class="sub">Requested / enabled</div>
                             </div>
                             <div class="rag-stat" data-tooltip="Conversations without RAG retrieval (direct model responses). Shows count and positive feedback rate.">
                                 <div class="label">Non-RAG Conversations</div>

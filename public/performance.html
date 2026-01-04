@@ -106,6 +106,22 @@
             color: var(--muted);
         }
 
+        .sources-indicator {
+            margin: 0 0 24px;
+            padding: 10px 14px;
+            background: rgba(0, 0, 0, 0.18);
+            border: 1px solid var(--panel-border);
+            border-radius: 10px;
+            color: var(--muted);
+            font-size: 12px;
+            line-height: 1.4;
+        }
+
+        .sources-indicator strong {
+            color: var(--text);
+            font-weight: 600;
+        }
+
         /* Stats Grid */
         .stats-grid {
             display: grid;
@@ -826,6 +842,10 @@
             </div>
         </header>
 
+        <div class="sources-indicator" id="sourcesIndicator">
+            <strong>Sources:</strong> Production request snapshots (hourly) • Load tests • Baselines
+        </div>
+
         <!-- System Health Overview -->
         <div class="stats-grid">
             <div class="stat-card" data-tooltip="Overall system health status based on error rates and response times">
@@ -1177,7 +1197,7 @@
             // Load dashboard stats
             async loadDashboard() {
                 try {
-                    const response = await fetch('/api/performance/dashboard');
+                    const response = await fetch(`/api/performance/dashboard?hours=${this.currentTimeRange}`);
                     const result = await response.json();
 
                     if (result.status === 'success' && result.data) {
@@ -1217,6 +1237,146 @@
                 const p95 = Number(metrics.p95_latency || 0);
                 document.getElementById('p95Latency').textContent = `${p95.toFixed(0)}ms`;
                 this.updateTrend('p95Trend', undefined);
+
+                // Sources / provenance indicator
+                const indicator = document.getElementById('sourcesIndicator');
+                if (indicator) {
+                    const src = data.sources || {};
+
+                    const prod = src.production || {};
+                    const prodParts = [
+                        `Production snapshots (hourly, last ${prod.hours || this.currentTimeRange}h)`
+                    ];
+                    if (Number.isFinite(prod.snapshots)) prodParts.push(`${prod.snapshots} snapshots`);
+                    if (Number.isFinite(prod.total_requests)) prodParts.push(`${prod.total_requests} req`);
+                    if (prod.last_snapshot_hour) prodParts.push(`last ${new Date(prod.last_snapshot_hour).toLocaleString()}`);
+
+                    const breakdown = prod.breakdown || {};
+                    const breakdownParts = [];
+                    if (Number.isFinite(breakdown.api_requests)) breakdownParts.push(`API ${breakdown.api_requests}`);
+                    if (Number.isFinite(breakdown.non_api_requests)) breakdownParts.push(`Non‑API ${breakdown.non_api_requests}`);
+                    if (Number.isFinite(breakdown.total_endpoint_requests)) breakdownParts.push(`Total ${breakdown.total_endpoint_requests}`);
+                    const delta = Number(breakdown.delta_vs_total_requests);
+                    if (Number.isFinite(delta) && delta !== 0) {
+                        const sign = delta > 0 ? '+' : '';
+                        breakdownParts.push(`Δ ${sign}${delta}`);
+                    }
+                    const breakdownText = breakdownParts.length
+                        ? `Breakdown: ${breakdownParts.join(' • ')}${(Number.isFinite(delta) && delta !== 0) ? ' (endpoint rollup vs total req)' : ''}`
+                        : '';
+
+                    const categoryLabel = (key) => {
+                        switch (key) {
+                            case 'chat': return 'Chat';
+                            case 'conversations': return 'Conversations';
+                            case 'history': return 'History';
+                            case 'rag': return 'RAG/Search';
+                            case 'batch_workflows': return 'Batch/Workflows';
+                            case 'auth': return 'Auth';
+                            case 'alerts': return 'Alerts';
+                            case 'metrics': return 'Metrics';
+                            case 'admin': return 'Admin';
+                            case 'other_api': return 'Other API';
+                            case 'batch_ui': return 'Batch (UI)';
+                            case 'ui_pages': return 'UI Pages';
+                            case 'ui_performance': return 'Performance UI';
+                            case 'other_non_api': return 'Other Non‑API';
+                            default: return key;
+                        }
+                    };
+
+                    const categoryRows = Array.isArray(prod.category_breakdown) ? prod.category_breakdown : [];
+                    const categoryText = categoryRows.length
+                        ? `Categories: ${categoryRows
+                            .filter(r => r && typeof r.category === 'string')
+                            .slice(0, 6)
+                            .map(r => {
+                                const count = Number(r.count || 0);
+                                const err = Number(r.error_rate || 0);
+                                const lat = Number(r.avg_latency || 0);
+                                const extras = [];
+                                if (Number.isFinite(err) && err > 0) extras.push(`${err.toFixed(2)}% err`);
+                                if (Number.isFinite(lat) && lat > 0) extras.push(`${lat.toFixed(0)}ms avg`);
+                                return `${categoryLabel(r.category)} ${count}${extras.length ? ` (${extras.join(', ')})` : ''}`;
+                            })
+                            .join(' • ')}`
+                        : '';
+
+                    const hotspots = [];
+                    for (const r of categoryRows) {
+                        if (!r || typeof r.category !== 'string') continue;
+                        const err = Number(r.error_rate || 0);
+                        const lat = Number(r.avg_latency || 0);
+                        const count = Number(r.count || 0);
+                        if (!Number.isFinite(count) || count <= 0) continue;
+                        if ((Number.isFinite(err) && err >= 2) || (Number.isFinite(lat) && lat >= 250)) {
+                            const parts = [];
+                            if (Number.isFinite(err) && err >= 2) parts.push(`${err.toFixed(2)}% err`);
+                            if (Number.isFinite(lat) && lat >= 250) parts.push(`${lat.toFixed(0)}ms avg`);
+                            hotspots.push(`${categoryLabel(r.category)} (${parts.join(', ')})`);
+                        }
+                    }
+
+                    const top = Array.isArray(prod.top_endpoints) ? prod.top_endpoints : [];
+                    const topText = top.length
+                        ? `Top: ${top.map(e => {
+                            const err = Number(e.error_rate || 0);
+                            const lat = Number(e.avg_latency || 0);
+                            const extras = [];
+                            if (Number.isFinite(err) && err > 0) extras.push(`${err.toFixed(2)}% err`);
+                            if (Number.isFinite(lat) && lat > 0) extras.push(`${lat.toFixed(0)}ms avg`);
+                            return `${e.method} ${e.path} (${e.count}${extras.length ? `, ${extras.join(', ')}` : ''})`;
+                        }).join(' • ')}`
+                        : '';
+
+                    const topErrors = Array.isArray(prod.top_error_endpoints) ? prod.top_error_endpoints : [];
+                    const topErrorsText = topErrors.length
+                        ? `Top errors: ${topErrors.map(e => {
+                            const err = Number(e.error_rate || 0);
+                            const count = Number(e.count || 0);
+                            const extra = Number.isFinite(err) ? `${err.toFixed(2)}%` : '0%';
+                            return `${e.method} ${e.path} (${extra}, ${count})`;
+                        }).join(' • ')}`
+                        : '';
+
+                    const topSlow = Array.isArray(prod.top_slow_endpoints) ? prod.top_slow_endpoints : [];
+                    const topSlowText = topSlow.length
+                        ? `Top slow: ${topSlow.map(e => {
+                            const lat = Number(e.avg_latency || 0);
+                            const count = Number(e.count || 0);
+                            return `${e.method} ${e.path} (${lat.toFixed(0)}ms, ${count})`;
+                        }).join(' • ')}`
+                        : '';
+
+                    const hotspotText = hotspots.length ? `Hotspots: ${hotspots.slice(0, 4).join(' • ')}` : '';
+
+                    const legendParts = [
+                        'Legend: API = /api/*',
+                        'Batch (UI) = /batch/*',
+                        'UI Pages = /dashboard, /active-stats',
+                        'Δ = endpoint rollup − total req'
+                    ];
+                    const legendText = legendParts.join(' • ');
+
+                    const loadTest = src.latest_load_test;
+                    const loadTestText = loadTest
+                        ? `Latest load test: ${loadTest.scenario || loadTest.name || '—'} (${new Date(loadTest.timestamp).toLocaleString()})`
+                        : 'Latest load test: none';
+
+                    const baseline = src.active_baseline;
+                    const baselineText = baseline
+                        ? `Active baseline: ${baseline.name}`
+                        : 'Active baseline: none';
+
+                    const scopeText = src.tracking_scope
+                        ? `Tracking scope: ${src.tracking_scope}`
+                        : 'Tracking scope: non-static, non-health HTTP requests';
+
+                    const extraLines = [breakdownText, categoryText, hotspotText, topText, topErrorsText, topSlowText, legendText].filter(Boolean);
+                    const extraHtml = extraLines.length ? `<br>${extraLines.join('<br>')}` : '';
+
+                    indicator.innerHTML = `<strong>Sources:</strong> ${prodParts.join(' • ')}<br>${loadTestText} • ${baselineText}${extraHtml}<br>${scopeText}`;
+                }
             },
 
             // Update trend indicator
@@ -1888,7 +2048,7 @@
             // Load baseline comparison
             async loadBaselineComparison() {
                 try {
-                    const response = await fetch('/api/performance/baseline-compare');
+                    const response = await fetch(`/api/performance/baseline-compare?hours=${this.currentTimeRange}`);
                     const result = await response.json();
 
                     if (result.status === 'success' && result.data) {

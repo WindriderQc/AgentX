@@ -51,6 +51,8 @@ const ConversationSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now },
   
   // V3: RAG support
+  // ragRequested: user/client requested RAG (toggle on) even if retrieval returned no sources.
+  ragRequested: { type: Boolean, default: false },
   ragUsed: { type: Boolean, default: false },
   ragSources: [{
     text: String,        // Truncated chunk preview (first 200 chars)
@@ -83,6 +85,7 @@ ConversationSchema.index({ createdAt: 1 });
 ConversationSchema.index({ model: 1, createdAt: 1 });
 ConversationSchema.index({ promptConfigId: 1 });
 ConversationSchema.index({ promptName: 1, promptVersion: 1 });
+ConversationSchema.index({ ragRequested: 1 });
 ConversationSchema.index({ ragUsed: 1 });
 ConversationSchema.index({ 'messages.feedback.rating': 1 });
 

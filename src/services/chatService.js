@@ -146,6 +146,7 @@ const handleChatRequest = async ({
                 conversation.title = (message || 'New Conversation').substring(0, 50);
             }
 
+            conversation.ragRequested = false;
             conversation.ragUsed = false;
             conversation.ragSources = [];
             conversation.promptConfigId = activePrompt._id;
@@ -358,6 +359,8 @@ const handleChatRequest = async ({
             conversation.title = (message || 'New Conversation').substring(0, 50);
         }
 
+        // Persist both the user request (toggle) and the actual retrieval usage.
+        conversation.ragRequested = useRag === true;
         conversation.ragUsed = ragUsed;
         conversation.ragSources = ragSources;
         conversation.promptConfigId = activePrompt._id;
