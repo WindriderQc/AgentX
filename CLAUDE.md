@@ -108,6 +108,59 @@ Critical services use singletons to maintain shared in-memory state:
 - `getEmbeddingsService()` - Shared embedding cache (LRU with 24hr TTL)
 - Cache hit rate: 50-80% reduction in embedding API calls
 
+## Model Registry
+
+The Model Registry categorizes models by capability to enable task-specific benchmarking and routing.
+
+**Categories:**
+- `ops`: Fast, low-latency models for classification/routing (e.g., smollm2)
+- `coding`: Code generation and debugging specialists (e.g., qwen2.5-coder)
+- `reasoning`: Complex logic and step-by-step thinking (e.g., deepseek-r1)
+- `specialist`: Domain-specific models (medical, legal, etc.)
+- `generalist`: Balanced models for general conversation (e.g., llama3)
+- `embedding`: Vector embedding models (e.g., nomic-embed-text)
+- `judge`: Models used to evaluate other models
+
+### API Endpoints (`/api/models/registry`)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/` | GET | List models (filters: category, tag, vendor) |
+| `/` | POST | Register new model |
+| `/:id` | GET | Get model details |
+| `/:id` | PUT | Update model |
+| `/:id` | DELETE | Remove model |
+| `/stats` | GET | Get category distribution stats |
+| `/grouped` | GET | Get models grouped by category |
+| `/tags` | GET | List all available tags |
+| `/sync` | POST | Sync registry with benchmark results |
+| `/category/:category` | GET | Get models by category |
+| `/:id/capabilities` | PUT | Update model capabilities |
+| `/:id/benchmark` | POST | Update benchmark stats manually |
+| `/recommend` | POST | Get recommended model for task |
+
+### Usage Examples
+
+**Filter Benchmarks by Category:**
+```bash
+# Get coding models only
+curl "http://localhost:3080/api/models/registry?category=coding"
+
+# Get dashboard filtered by reasoning models
+curl "http://localhost:3080/api/benchmark/dashboard?modelCategory=reasoning"
+```
+
+**Register a New Model:**
+```bash
+curl -X POST http://localhost:3080/api/models/registry \
+  -H "Content-Type: application/json" \
+  -d '{
+    "modelId": "deepseek-r1:14b",
+    "category": "reasoning",
+    "capabilities": { "reasoning": 95, "coding": 80 }
+  }'
+```
+
 ## RAG System Architecture
 
 Three-layer design: **Ingestion** (Document → Chunks → Embeddings → Vector Store) → **Storage** (Qdrant/in-memory via factory pattern) → **Retrieval** (Semantic search → Context injection into system prompt).
@@ -229,6 +282,11 @@ effectiveSystemPrompt = basePrompt
 ## Benchmark System
 
 Service-Oriented Architecture: Routes (314 lines) delegate to benchmarkService (1,098 lines). Supports 5-level prompt library, batch testing with async execution, and quality scoring with LLM judges. Models: BenchmarkPrompt, BenchmarkResult, BenchmarkBatch with helper methods and state transitions.
+
+**Category Filtering:**
+Benchmarks now support filtering by model category (ops, coding, reasoning, etc.) to compare "apples to apples".
+- Filter dashboard: `GET /api/benchmark/dashboard?modelCategory=coding`
+- Filter quality breakdown: `GET /api/benchmark/quality-breakdown?category=reasoning`
 
 **Full API specification:** [docs/BENCHMARK_QUALITY_SCORING.md](docs/BENCHMARK_QUALITY_SCORING.md)
 
