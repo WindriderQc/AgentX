@@ -14,7 +14,11 @@ echo -e "${YELLOW}Starting AgentX Test Suite...${NC}"
 # 1. Run Unit & Integration Tests (Jest)
 echo ""
 echo -e "${YELLOW}[1/4] Running Jest Tests (Unit/Integration)...${NC}"
-npm test
+if [ "${SKIP_JEST:-}" = "1" ] || [ "${E2E_ONLY:-}" = "1" ]; then
+    echo -e "${YELLOW}Skipping Jest in E2E-only mode.${NC}"
+else
+    npm test
+fi
 
 # 2. Check if Server is running for E2E tests
 echo ""
@@ -69,7 +73,11 @@ echo -e "${YELLOW}[2/4] Running Backend E2E Tests (V1/V2)...${NC}"
 
 echo ""
 echo -e "${YELLOW}[3/4] Running V3 RAG Tests...${NC}"
-./test-v3-rag.sh
+if [ "${E2E_CI:-}" = "1" ] || [ "${CI:-}" = "true" ]; then
+    echo -e "${YELLOW}Skipping V3 RAG tests in CI mode (requires Ollama/embeddings).${NC}"
+else
+    ./test-v3-rag.sh
+fi
 
 echo ""
 echo -e "${YELLOW}[4/4] Running V4 Analytics Tests...${NC}"

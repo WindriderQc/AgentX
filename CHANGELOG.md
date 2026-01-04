@@ -5,6 +5,26 @@ All notable changes to AgentX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] - 2026-01-03
+
+### Added
+- CI: E2E smoke run via `./test-all.sh` (CI mode) and a Jest open-handles check (`npm run test:ci`)
+- Testing: New scripts `test:ci` and `test:debug:handles` for diagnosing hangs/open handles
+
+### Changed
+- E2E shell scripts now summarize API responses by default (set `DEBUG=1` for full payloads)
+- CI mode skips Ollama-dependent chat/RAG E2E steps (set `E2E_CI=1`)
+
+## [Unreleased]
+
+### Added
+- Benchmark dashboard: exec vs judge progress semantics (planned vs eligible), richer judge telemetry (lag/pending/ETA/failures), progressive disclosure (details + hyper snapshot), anomaly highlights, and a leaderboard “Top offenders” summary row
+- Benchmark settings: configurable judge timeout/concurrency and `num_predict` (max tokens) end-to-end
+
+### Changed
+- Ollama host discovery: supports multiple env var aliases and avoids misleading localhost fallback when hosts can’t be loaded
+- Benchmark UI: responsive Judge Health header to prevent overflow on smaller screens
+
 ## [1.4.0] - 2026-01-03
 
 ### Added - Track 5: Performance Monitoring Dashboard (Complete)

@@ -253,10 +253,13 @@ describe('SelfHealingEngine', () => {
     });
 
     test('should evaluate time-based conditions', async () => {
+      jest.useFakeTimers();
+      // Use a fixed time to avoid flakiness around midnight/timezone boundaries.
+      jest.setSystemTime(new Date(2026, 0, 3, 12, 0, 0));
+
       const now = new Date();
       const currentHour = now.getHours().toString().padStart(2, '0');
-      const currentMinute = now.getMinutes().toString().padStart(2, '0');
-      const futureTime = `${(parseInt(currentHour) + 1) % 24}:00`;
+      const futureTime = `${(parseInt(currentHour, 10) + 1).toString().padStart(2, '0')}:00`;
 
       const timeBasedRule = [
         {
@@ -295,6 +298,8 @@ describe('SelfHealingEngine', () => {
 
       expect(evaluation.shouldTrigger).toBe(false);
       expect(evaluation.reason).toBe('outside_time_window');
+
+      jest.useRealTimers();
     });
 
     test('should handle missing metrics gracefully', async () => {
@@ -354,7 +359,7 @@ describe('SelfHealingEngine', () => {
 
       expect(result.status).toBe('success');
       expect(result.result.action).toBe('model_failover');
-      expect(ModelRouter.switchHost).toHaveBeenCalledWith('ollama-secondary');
+        expect(ModelRouter.switchHost).toHaveBeenCalledWith('ollama-secondary', 'self_healing_failover');
     });
 
     test('should execute prompt_rollback action', async () => {
@@ -550,7 +555,7 @@ describe('SelfHealingEngine', () => {
 
       await engine.executeRemediation(rule, {});
 
-      expect(ModelRouter.switchHost).toHaveBeenCalledWith('ollama-secondary');
+        expect(ModelRouter.switchHost).toHaveBeenCalledWith('ollama-secondary', 'self_healing_failover');
       expect(ModelRouter.checkHostHealth).toHaveBeenCalledWith('ollama-secondary');
     });
 

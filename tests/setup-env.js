@@ -6,8 +6,11 @@
 const mongoose = require('mongoose');
 const connectDB = require('../config/db-mongodb');
 const { MongoMemoryServer } = require('mongodb-memory-server');
+const fs = require('fs');
+const path = require('path');
 
 let mongoServer;
+const mongoUriFile = path.join(__dirname, '.jest-mongo-uri');
 
 // Set test environment
 process.env.NODE_ENV = 'test';
@@ -18,11 +21,23 @@ beforeAll(async () => {
   // Opt out only if explicitly requested.
   const useExternalMongo = process.env.TEST_USE_EXTERNAL_MONGO === 'true';
   if (!useExternalMongo) {
-    mongoServer = await MongoMemoryServer.create({
-      instance: { dbName: 'agentx_test' }
-    });
-    // mongodb-memory-server may return a URI without a db path; explicitly set it.
-    process.env.MONGODB_URI = mongoServer.getUri('agentx_test');
+    // Prefer the shared MongoMemoryServer started by Jest globalSetup.
+    // Fallback to per-process server when running a single file outside Jest global setup.
+    if (fs.existsSync(mongoUriFile)) {
+      const baseUri = fs.readFileSync(mongoUriFile, 'utf8').trim().replace(/\/+$/, '');
+      const workerId = process.env.JEST_WORKER_ID || '0';
+      const dbName = `agentx_test_${workerId}`;
+      process.env.MONGODB_URI = `${baseUri}/${dbName}`;
+    } else {
+      mongoServer = await MongoMemoryServer.create({
+        instance: {
+          dbName: 'agentx_test',
+          launchTimeout: 30000
+        }
+      });
+
+      process.env.MONGODB_URI = mongoServer.getUri('agentx_test');
+    }
   }
 
   // Only connect if not already connected

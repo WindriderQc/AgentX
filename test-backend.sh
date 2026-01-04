@@ -51,7 +51,9 @@ echo ""
 # Test chat endpoint (requires Ollama)
 echo "3. Testing chat endpoint..."
 echo "   (Note: This requires Ollama to be running with llama2 model)"
-if true; then
+if [ "${E2E_CI:-}" = "1" ] || [ "${CI:-}" = "true" ]; then
+    echo "   Skipping chat endpoint test in CI mode"
+elif true; then
     CHAT=$(curl -s -X POST "$BASE_URL/api/chat" \
         -H "Content-Type: application/json" \
         -d "{

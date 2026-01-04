@@ -11,6 +11,16 @@ RED='\033[0;31m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# In CI we run E2E in a reduced mode (no Ollama/embeddings available).
+if [ "${E2E_CI:-}" = "1" ] || [ "${CI:-}" = "true" ]; then
+  echo "========================================="
+  echo "   AgentX V3 RAG Testing Suite"
+  echo "========================================="
+  echo
+  echo -e "${YELLOW}Skipping V3 RAG tests in CI mode (requires Ollama/embeddings).${NC}"
+  exit 0
+fi
+
 echo "========================================="
 echo "   AgentX V3 RAG Testing Suite"
 echo "========================================="
@@ -65,7 +75,11 @@ INGEST2_RESPONSE=$(curl -s -X POST "$BASE_URL/api/rag/ingest" \
     "tags": ["readme", "documentation"]
   }')
 
-echo "$INGEST2_RESPONSE" | jq .
+if [ "${DEBUG:-0}" = "1" ]; then
+    echo "$INGEST2_RESPONSE" | jq .
+else
+    echo "$INGEST2_RESPONSE" | jq -c '{status, documentId, chunkCount, message}'
+fi
 echo
 
 # Test 3: Search for relevant chunks
@@ -80,7 +94,11 @@ SEARCH_RESPONSE=$(curl -s -X POST "$BASE_URL/api/rag/search" \
 if echo "$SEARCH_RESPONSE" | jq -e '.resultCount' > /dev/null; then
     RESULT_COUNT=$(echo "$SEARCH_RESPONSE" | jq -r '.resultCount')
     echo -e "${GREEN}✓ Search returned $RESULT_COUNT results${NC}"
-    echo "$SEARCH_RESPONSE" | jq '.results[] | {score, title: .metadata.title, preview: .text[0:100]}'
+    if [ "${DEBUG:-0}" = "1" ]; then
+      echo "$SEARCH_RESPONSE" | jq '.results[] | {score, title: .metadata.title, preview: .text[0:100]}'
+    else
+      echo "$SEARCH_RESPONSE" | jq -c '{resultCount, top: (.results[0] // null | {score, title: .metadata.title})}'
+    fi
 else
     echo -e "${RED}✗ Search failed${NC}"
     echo "$SEARCH_RESPONSE" | jq .
@@ -91,7 +109,13 @@ echo
 # Test 4: List documents
 echo -e "${YELLOW}[5/8] Testing GET /api/rag/documents...${NC}"
 DOCS_RESPONSE=$(curl -s "$BASE_URL/api/rag/documents")
-echo "$DOCS_RESPONSE" | jq '{stats, count, documents: [.documents[] | {title, source, chunkCount}]}'
+if echo "$DOCS_RESPONSE" | jq -e '.status == "success"' > /dev/null; then
+  echo "$DOCS_RESPONSE" | jq '{stats, count, documents: [(.data // [])[] | {title, source, chunkCount}]}'
+else
+  echo -e "${RED}✗ Listing documents failed${NC}"
+  echo "$DOCS_RESPONSE" | jq .
+  exit 1
+fi
 echo
 
 # Test 5: V1/V2 Chat without RAG (backwards compatibility)
@@ -156,7 +180,11 @@ ERROR_RESPONSE=$(curl -s -X POST "$BASE_URL/api/rag/ingest" \
 
 if echo "$ERROR_RESPONSE" | jq -e '.error' > /dev/null; then
     echo -e "${GREEN}✓ Validation errors work correctly${NC}"
+  if [ "${DEBUG:-0}" = "1" ]; then
     echo "$ERROR_RESPONSE" | jq .
+  else
+    echo "$ERROR_RESPONSE" | jq -c '{error, message}'
+  fi
 else
     echo -e "${RED}✗ Error handling not working${NC}"
     exit 1
