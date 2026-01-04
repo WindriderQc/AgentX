@@ -146,9 +146,7 @@ const handleChatRequest = async ({
                 conversation.title = (message || 'New Conversation').substring(0, 50);
             }
 
-            conversation.ragRequested = false;
-            conversation.ragUsed = false;
-            conversation.ragSources = [];
+            // Tool-command conversations shouldn't overwrite previously recorded RAG flags.
             conversation.promptConfigId = activePrompt._id;
             conversation.promptName = activePrompt.name;
             conversation.promptVersion = activePrompt.version;
@@ -360,9 +358,14 @@ const handleChatRequest = async ({
         }
 
         // Persist both the user request (toggle) and the actual retrieval usage.
-        conversation.ragRequested = useRag === true;
-        conversation.ragUsed = ragUsed;
-        conversation.ragSources = ragSources;
+        // These are conversation-level metrics, so treat them as "ever true" across turns.
+        conversation.ragRequested = conversation.ragRequested === true || useRag === true;
+        conversation.ragUsed = conversation.ragUsed === true || ragUsed === true;
+
+        // Avoid wiping prior sources when a later turn doesn't use RAG.
+        if (ragUsed === true && Array.isArray(ragSources) && ragSources.length > 0) {
+            conversation.ragSources = ragSources;
+        }
         conversation.promptConfigId = activePrompt._id;
         conversation.promptName = activePrompt.name;
         conversation.promptVersion = activePrompt.version;

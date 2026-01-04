@@ -58,6 +58,7 @@ describe('Conversation Model', () => {
     });
 
     expect(conversation.messages).toEqual([]);
+    expect(conversation.ragRequested).toBe(false);
     expect(conversation.ragUsed).toBe(false);
   });
 });

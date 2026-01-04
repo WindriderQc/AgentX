@@ -13,6 +13,7 @@ const elements = {
   ragUsage: document.getElementById('ragUsage'),
   ragConversations: document.getElementById('ragConversations'),
   ragRequestedConversations: document.getElementById('ragRequestedConversations'),
+  ragRequestedNotUsed: document.getElementById('ragRequestedNotUsed'),
   noRagConversations: document.getElementById('noRagConversations'),
   ragPositiveRate: document.getElementById('ragPositiveRate'),
   noRagPositiveRate: document.getElementById('noRagPositiveRate'),
@@ -346,11 +347,32 @@ function updateProductSummary(usage = {}, feedback = {}, rag = {}) {
     elements.ragRequestedConversations.textContent = formatNumber(rag.ragRequestedConversations);
   if (elements.noRagConversations) elements.noRagConversations.textContent = formatNumber(rag.noRagConversations);
 
+  const ragFbTotal = rag?.feedback?.rag?.total;
+  const ragFbPositive = rag?.feedback?.rag?.positive;
   const ragPositiveRate = rag?.feedback?.rag?.positiveRate;
+
+  const noRagFbTotal = rag?.feedback?.noRag?.total;
+  const noRagFbPositive = rag?.feedback?.noRag?.positive;
   const noRagPositiveRate = rag?.feedback?.noRag?.positiveRate;
 
-  if (elements.ragPositiveRate) elements.ragPositiveRate.textContent = formatPercent(ragPositiveRate);
-  if (elements.noRagPositiveRate) elements.noRagPositiveRate.textContent = formatPercent(noRagPositiveRate);
+  if (elements.ragPositiveRate) {
+    elements.ragPositiveRate.textContent =
+      ragFbTotal > 0 ? `${formatPercent(ragPositiveRate)} (${formatNumber(ragFbPositive)}/${formatNumber(ragFbTotal)})` : '–';
+  }
+  if (elements.noRagPositiveRate) {
+    elements.noRagPositiveRate.textContent =
+      noRagFbTotal > 0
+        ? `${formatPercent(noRagPositiveRate)} (${formatNumber(noRagFbPositive)}/${formatNumber(noRagFbTotal)})`
+        : '–';
+  }
+
+  if (elements.ragRequestedNotUsed) {
+    const requested = rag?.ragRequestedConversations;
+    const used = rag?.ragConversations;
+    const notUsed =
+      Number.isFinite(requested) && Number.isFinite(used) ? Math.max(0, requested - used) : null;
+    elements.ragRequestedNotUsed.textContent = formatNumber(notUsed);
+  }
 
   const delta = ragPositiveRate - noRagPositiveRate;
   if (elements.ragDelta) {
