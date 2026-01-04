@@ -16,14 +16,14 @@ const { getAlertService } = require('./alertService');
 // To keep behavior predictable (and allow tests to override), we refresh
 // the host URLs from process.env on demand.
 const HOSTS = {
-    primary: 'http://192.168.2.99:11434',
-    secondary: 'http://192.168.2.12:11434'
+    primary: null,
+    secondary: null
 };
 
 function refreshHosts() {
-    HOSTS.primary = process.env.OLLAMA_HOST || 'http://192.168.2.99:11434';
+    HOSTS.primary = process.env.OLLAMA_HOST;
     // Prefer explicit SECONDARY override if both are present (tests often set it)
-    HOSTS.secondary = process.env.OLLAMA_HOST_SECONDARY || process.env.OLLAMA_HOST_2 || 'http://192.168.2.12:11434';
+    HOSTS.secondary = process.env.OLLAMA_HOST_SECONDARY || process.env.OLLAMA_HOST_2;
 }
 
 refreshHosts();
@@ -81,6 +81,11 @@ async function classifyAndRoute(message, options = {}) {
     // unless health is slow/unhealthy.
     const primaryHost = HOSTS.primary;
     const secondaryHost = HOSTS.secondary;
+
+    if (!primaryHost) {
+        logger.error('No primary Ollama host configured');
+        throw new Error('No primary Ollama host configured');
+    }
 
     const primaryHealth = await getModelHealth(primaryHost, null);
     const shouldFailover = !primaryHealth.healthy || primaryHealth.latency > HEALTH_SLOW_THRESHOLD_MS;

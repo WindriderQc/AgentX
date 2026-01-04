@@ -65,16 +65,6 @@ function getConfiguredHosts() {
         });
     }
 
-    // Fallback if no hosts configured
-    if (hosts.length === 0) {
-        hosts.push({
-            id: 'default',
-            name: 'Default',
-            url: 'http://localhost:11434',
-            priority: 1
-        });
-    }
-
     return hosts;
 }
 
@@ -105,6 +95,11 @@ async function fetchModels(hostUrl) {
                 
                 // Exclude embedding families
                 if (family === 'bert' || family === 'nomic-bert') {
+                    return false;
+                }
+
+                // Exclude diagnostic models
+                if (name.includes('diagnostic')) {
                     return false;
                 }
                 
@@ -215,7 +210,11 @@ router.get('/proxy/tags', async (req, res) => {
             ollamaHost = customHost;
         } else {
             const configuredHosts = getConfiguredHosts();
-            ollamaHost = configuredHosts[0]?.url || 'http://localhost:11434';
+            ollamaHost = configuredHosts[0]?.url;
+            
+            if (!ollamaHost) {
+                throw new Error('No Ollama hosts configured');
+            }
         }
 
         const response = await fetch(`${ollamaHost}/api/tags`, {

@@ -48,6 +48,7 @@ npm run test:load:stress                   # Stress testing
 ### Database Operations
 ```bash
 npm run seed:ops            # Seed SBQC operations data
+node scripts/seed-model-registry.js  # Seed model registry with 11 models
 ```
 
 ### Production Deployment (PM2)
@@ -110,55 +111,117 @@ Critical services use singletons to maintain shared in-memory state:
 
 ## Model Registry
 
-The Model Registry categorizes models by capability to enable task-specific benchmarking and routing.
+Single source of truth for model metadata with multi-dimensional categorization. Enables task-specific benchmarking, intelligent routing, and capability tracking.
 
-**Categories:**
-- `ops`: Fast, low-latency models for classification/routing (e.g., smollm2)
-- `coding`: Code generation and debugging specialists (e.g., qwen2.5-coder)
-- `reasoning`: Complex logic and step-by-step thinking (e.g., deepseek-r1)
-- `specialist`: Domain-specific models (medical, legal, etc.)
-- `generalist`: Balanced models for general conversation (e.g., llama3)
-- `embedding`: Vector embedding models (e.g., nomic-embed-text)
-- `judge`: Models used to evaluate other models
+**Model:** `/models/ModelRegistry.js` (590 lines)
+**Routes:** `/routes/model-registry.js` (489 lines, 13 endpoints)
+**Seeded Data:** 11 pre-configured models with proper categorization
+
+### 7-Tier Category System
+
+Models can have **multiple categories** (e.g., qwen2.5-coder is both `coding` and `specialist`):
+
+- `ops` - Operations/glue logic (routing, classification, simple tasks)
+- `coding` - Code generation, refactoring, debugging specialists
+- `reasoning` - Deep thinking, problem-solving, complex analysis
+- `specialist` - Fine-tuned for specific domain (code, embeddings, legal)
+- `generalist` - General-purpose chat and broad task coverage
+- `embedding` - Vector embeddings for RAG ingestion only
+- `judge` - LLM-as-judge quality scoring
+
+### Schema & Capabilities
+
+```javascript
+{
+  modelName: String (unique, indexed),
+  displayName: String,
+  vendor: String,  // 'meta', 'alibaba', 'deepseek'
+  categories: [String],  // Multi-select: ['coding', 'specialist']
+  tags: [String],        // Freeform: ['production', 'fast', 'thinking-model']
+
+  capabilities: {
+    maxContext: Number,           // 2048, 8192, 128000
+    supportsThinking: Boolean,    // Thinking models
+    avgLatencyMs: Number,         // Calibrated average
+    p95LatencyMs: Number,         // 95th percentile
+    targetUseCase: String         // Description
+  },
+
+  benchmarkStats: {
+    avgCompositeScore: Number,
+    bestCategory: String,         // Where it excels
+    worstCategory: String,        // Where it struggles
+    totalTests: Number
+  }
+}
+```
+
+### Seeded Models (11)
+
+```bash
+node scripts/seed-model-registry.js  # Populate registry
+```
+
+| Model | Categories | Tags | Use Case |
+|-------|-----------|------|----------|
+| qwen2.5-coder:7b | coding, specialist | production, fast, code-generation | Code generation, refactoring |
+| qwen2.5-coder:14b | coding, specialist, reasoning | production, high-quality | Complex code, architecture |
+| deepseek-r1:7b | reasoning, specialist | experimental, thinking-model | Deep reasoning, problem-solving |
+| qwen2.5:7b | reasoning, generalist | production, thinking-model | General reasoning |
+| qwen2.5-7b-instruct-q4_0 | generalist, ops | production, fast, recommended | Front-door model, routing |
+| llama3.3:70b | generalist, reasoning | production, high-quality, slow | High-quality responses |
+| smollm2:1.7b | ops, specialist | experimental, ultra-fast | Query classification |
+| gemma2:2b | ops, generalist | production, fast | Quick responses |
+| nomic-embed-text | embedding | production, rag, embeddings | RAG embeddings |
+| mxbai-embed-large | embedding | production, rag, high-quality | High-quality RAG |
+| llama3.1:8b | judge, generalist | production, judge, balanced | LLM-as-judge scoring |
 
 ### API Endpoints (`/api/models/registry`)
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/` | GET | List models (filters: category, tag, vendor) |
-| `/` | POST | Register new model |
-| `/:id` | GET | Get model details |
-| `/:id` | PUT | Update model |
-| `/:id` | DELETE | Remove model |
-| `/stats` | GET | Get category distribution stats |
-| `/grouped` | GET | Get models grouped by category |
-| `/tags` | GET | List all available tags |
-| `/sync` | POST | Sync registry with benchmark results |
-| `/category/:category` | GET | Get models by category |
-| `/:id/capabilities` | PUT | Update model capabilities |
-| `/:id/benchmark` | POST | Update benchmark stats manually |
-| `/recommend` | POST | Get recommended model for task |
-
-### Usage Examples
-
-**Filter Benchmarks by Category:**
+**Query & List (13 endpoints total):**
 ```bash
-# Get coding models only
-curl "http://localhost:3080/api/models/registry?category=coding"
+# List all models with filtering
+GET /api/models/registry?category=coding&tag=production&vendor=alibaba
 
-# Get dashboard filtered by reasoning models
-curl "http://localhost:3080/api/benchmark/dashboard?modelCategory=reasoning"
+# Get category statistics
+GET /api/models/registry/stats
+
+# Get models grouped by category
+GET /api/models/registry/grouped
+
+# Get models in specific category
+GET /api/models/registry/category/coding
+
+# Get models with specific tag
+GET /api/models/registry/tag/production
+
+# Get specific model
+GET /api/models/registry/:name
 ```
 
-**Register a New Model:**
+**CRUD Operations (require auth):**
 ```bash
-curl -X POST http://localhost:3080/api/models/registry \
-  -H "Content-Type: application/json" \
-  -d '{
-    "modelId": "deepseek-r1:14b",
-    "category": "reasoning",
-    "capabilities": { "reasoning": 95, "coding": 80 }
-  }'
+# Register new model
+POST /api/models/registry
+{
+  "modelName": "new-model:7b",
+  "categories": ["generalist"],
+  "tags": ["experimental"],
+  "capabilities": { "maxContext": 4096 }
+}
+
+# Update model
+PATCH /api/models/registry/:name
+
+# Retire model (soft delete)
+DELETE /api/models/registry/:name?reason=deprecated
+
+# Sync benchmark stats (auto-updates avgCompositeScore, bestCategory)
+POST /api/models/registry/:name/sync
+
+# Add/remove categories
+POST /api/models/registry/:name/categories
+DELETE /api/models/registry/:name/categories/:category
 ```
 
 ## RAG System Architecture
@@ -283,12 +346,49 @@ effectiveSystemPrompt = basePrompt
 
 Service-Oriented Architecture: Routes (314 lines) delegate to benchmarkService (1,098 lines). Supports 5-level prompt library, batch testing with async execution, and quality scoring with LLM judges. Models: BenchmarkPrompt, BenchmarkResult, BenchmarkBatch with helper methods and state transitions.
 
-**Category Filtering:**
-Benchmarks now support filtering by model category (ops, coding, reasoning, etc.) to compare "apples to apples".
-- Filter dashboard: `GET /api/benchmark/dashboard?modelCategory=coding`
-- Filter quality breakdown: `GET /api/benchmark/quality-breakdown?category=reasoning`
-
 **Full API specification:** [docs/BENCHMARK_QUALITY_SCORING.md](docs/BENCHMARK_QUALITY_SCORING.md)
+
+### Category Filtering (Task-Segmented Leaderboards)
+
+Benchmarks support filtering by model category, prompt category, and tags to enable "apples to apples" comparisons.
+
+**Enhanced Dashboard Endpoint:**
+```bash
+GET /api/benchmark/dashboard?modelCategory=<category>&promptCategory=<category>&tag=<tag>&sort=<criteria>
+```
+
+**Filter Parameters:**
+- `modelCategory` - Filter to models in category (ops, coding, reasoning, specialist, generalist, embedding, judge)
+- `promptCategory` - Filter to prompts in category (coding, reasoning, factual, math, creative, general)
+- `tag` - Filter to batches with specific tag (production, experimental, etc.)
+- `sort` - Sort criteria (latency, quality, composite)
+
+**Examples:**
+```bash
+# Get coding models only
+curl "http://localhost:3080/api/benchmark/dashboard?modelCategory=coding"
+
+# Get reasoning tasks only
+curl "http://localhost:3080/api/benchmark/dashboard?promptCategory=reasoning"
+
+# Get coding models on coding tasks (find best code generator)
+curl "http://localhost:3080/api/benchmark/dashboard?modelCategory=coding&promptCategory=coding"
+
+# Get production-tagged batches sorted by quality
+curl "http://localhost:3080/api/benchmark/dashboard?tag=production&sort=quality"
+
+# Combined filters
+curl "http://localhost:3080/api/benchmark/dashboard?modelCategory=reasoning&promptCategory=reasoning&tag=production&sort=composite"
+```
+
+**How It Works:**
+1. Frontend passes category/tag filters to dashboard endpoint
+2. Backend queries ModelRegistry for models matching `modelCategory`
+3. BenchmarkResult aggregation filters to matching models and `promptCategory`
+4. Tag filter queries BenchmarkBatch for batches with tag, then filters results
+5. Returns task-specific leaderboard (e.g., "Best Coding Models" vs "Best Reasoning Models")
+
+**Critical Pattern:** Category filtering enables finding the right model for specific tasks, preventing fast-but-weak models from ranking artificially high on trivial tasks.
 
 ## DataAPI Proxy Integration
 

@@ -197,8 +197,14 @@ class BenchmarkService {
      */
     async getSummary() {
         const [successful, failed] = await Promise.all([
-            BenchmarkResult.find({ success: true }),
-            BenchmarkResult.countDocuments({ success: false })
+            BenchmarkResult.find({ 
+                success: true,
+                model: { $not: /diagnostic/i } // Exclude diagnostic models
+            }),
+            BenchmarkResult.countDocuments({ 
+                success: false,
+                model: { $not: /diagnostic/i } // Exclude diagnostic models
+            })
         ]);
 
         if (successful.length === 0) {
@@ -249,7 +255,10 @@ class BenchmarkService {
      */
     async getDashboard({ sortBy = 'latency', modelCategory, promptCategory, tag } = {}) {
         // Build match query for filtering
-        const matchQuery = { success: true };
+        const matchQuery = { 
+            success: true,
+            model: { $not: /diagnostic/i } // Exclude diagnostic models
+        };
 
         // Filter by prompt category
         if (promptCategory) {
@@ -284,7 +293,7 @@ class BenchmarkService {
         }
 
         const [totalTests, successCount, recentTests, modelStats, failureStats, judgeStats] = await Promise.all([
-            BenchmarkResult.countDocuments(),
+            BenchmarkResult.countDocuments({ model: { $not: /diagnostic/i } }),
             BenchmarkResult.countDocuments(matchQuery),
             BenchmarkResult.find(matchQuery).sort({ timestamp: -1 }).limit(10),
             BenchmarkResult.aggregate([
@@ -342,7 +351,10 @@ class BenchmarkService {
                 { $sort: { avg_latency: 1 } }
             ]),
             BenchmarkResult.aggregate([
-                { $match: { ...matchQuery, success: false } },
+                { $match: { 
+                    success: false,
+                    model: { $not: /diagnostic/i } // Exclude diagnostic models from failure stats too
+                } },
                 {
                     $group: {
                         _id: { model: '$model', host: '$host' },

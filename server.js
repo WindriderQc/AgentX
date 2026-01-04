@@ -7,7 +7,10 @@ const SelfHealingEngine = require('./src/services/selfHealingEngine');
 
 const PORT = process.env.PORT || 3080;
 const HOST = process.env.HOST || 'localhost';
-const OLLAMA_HOST = process.env.OLLAMA_HOST || 'http://localhost:11434';
+const OLLAMA_HOST = process.env.OLLAMA_HOST;
+if (!OLLAMA_HOST) {
+  logger.warn('OLLAMA_HOST not defined in environment variables. Some features may be disabled.');
+}
 
 // Global error handlers
 process.on('unhandledRejection', (reason, promise) => {

@@ -12,11 +12,16 @@ const { HOSTS } = require('./modelRouter');
 const JUDGE_CONFIG = {
     model: 'qwen2.5:7b-instruct-q4_0',  // Fast but capable judge
     fallback_model: 'llama3.2:1b',       // Fallback if primary unavailable
-    host: HOSTS.primary,                  // Use primary host for judging
+    host: null,                           // Will be set dynamically from env
     timeout: 30000,                       // 30s timeout for judge calls
     temperature: 0.1,                     // Low temp for consistent scoring
     num_predict: 200                      // Max tokens to generate for judge output
 };
+
+// Initialize host from env
+if (process.env.OLLAMA_HOST) {
+    JUDGE_CONFIG.host = process.env.OLLAMA_HOST;
+}
 
 /**
  * Scoring type configurations

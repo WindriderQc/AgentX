@@ -1066,6 +1066,32 @@
                 </div>
             </div>
 
+            <div class="model-selection-section" style="margin-bottom: 32px; background: var(--card-bg); border: 1px solid var(--panel-border); border-radius: 12px; padding: 24px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                    <div>
+                        <h2 style="margin: 0; display: flex; align-items: center; gap: 10px;"><i class="fas fa-list-check" style="color: var(--accent);"></i> Model Selection</h2>
+                        <p style="color: var(--muted); margin: 4px 0 0 0; font-size: 0.9em;">Select models for batch testing and manage model notes.</p>
+                    </div>
+                </div>
+                
+                <div style="overflow-x: auto; border: 1px solid var(--panel-border); border-radius: 8px;">
+                    <table class="model-selection-table" style="width: 100%; border-collapse: collapse; font-size: 0.95em;">
+                        <thead style="background: rgba(0,0,0,0.2);">
+                            <tr>
+                                <th style="width: 40px; text-align: center; padding: 12px;"><input type="checkbox" id="selectAllModelsTable"></th>
+                                <th style="padding: 12px; text-align: left;">Model</th>
+                                <th style="padding: 12px; text-align: center; width: 80px;">Tests</th>
+                                <th style="padding: 12px; text-align: left; width: 150px;">Category</th>
+                                <th style="padding: 12px; text-align: left;">Notes</th>
+                            </tr>
+                        </thead>
+                        <tbody id="modelSelectionTableBody">
+                            <tr><td colspan="5" style="text-align: center; padding: 20px; color: var(--muted);">Select a host to load models</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
             <div class="batch-section">
                 <h2>🔥 Batch Benchmark</h2>
                 <p>Run comprehensive tests across multiple models with standardized prompts</p>
@@ -1112,19 +1138,6 @@
                                 </div>
                                 <small style="color: #999; display: block; margin-top: 6px; margin-left: 28px;">Uses LLM-as-judge to
                                     evaluate response quality</small>
-                            </div>
-
-                            <div class="model-selection">
-                                <h3>Select Models</h3>
-                                <div class="select-all-wrapper">
-                                    <label>
-                                        <input type="checkbox" id="selectAllModels">
-                                        Select All
-                                    </label>
-                                </div>
-                                <div class="model-grid" id="modelCheckboxes">
-                                    <p style="color: #666;">Loading models...</p>
-                                </div>
                             </div>
 
                             <div style="margin-top: 24px;">
@@ -1512,23 +1525,13 @@
                                 </span>
                             </span>
                         </th>
-                        <th>
-                            <span class="tooltip-wrapper">
-                                <span id="compositeHeader">Composite</span>
-                                <span class="help-icon">?</span>
-                                <span class="tooltip-content">
-                                    <div class="tooltip-title">Balanced Score</div>
-                                    <div class="tooltip-text">Weighted score based on selected profile.</div>
-                                </span>
-                            </span>
-                        </th>
                         <th style="width: 110px;">
                             <span class="tooltip-wrapper">
                                 Reliability
                                 <span class="help-icon">?</span>
                                 <span class="tooltip-content">
-                                    <div class="tooltip-title">Failure Rate</div>
-                                    <div class="tooltip-text">How often this model/host fails. Lower is better.</div>
+                                    <div class="tooltip-title">Success Rate</div>
+                                    <div class="tooltip-text">Percentage of successful tests. Higher is better.</div>
                                 </span>
                             </span>
                         </th>
@@ -1544,6 +1547,16 @@
                                 </span>
                             </span>
                         </th>
+                        <th>
+                            <span class="tooltip-wrapper">
+                                <span id="compositeHeader">Composite</span>
+                                <span class="help-icon">?</span>
+                                <span class="tooltip-content">
+                                    <div class="tooltip-title">Balanced Score</div>
+                                    <div class="tooltip-text">Weighted score based on selected profile.</div>
+                                </span>
+                            </span>
+                        </th>
                     </tr>
                 </thead>
                 <tbody id="leaderboard">
@@ -1552,8 +1565,6 @@
                     </tr>
                 </tbody>
             </table>
-
-            <div id="leaderboardOffenders" style="margin-top: 10px;"></div>
 
             <div style="display:flex; justify-content:flex-end; gap: 10px; margin-top: 12px; flex-wrap: wrap;">
                 <button id="resetFailedLeaderboardBtn" type="button" class="btn-secondary btn-sm"
@@ -2523,26 +2534,112 @@
         // Load models for batch testing
         function loadBatchModels(hostUrl) {
             const host = ollamaHosts.find(h => h.url === hostUrl);
-            const container = document.getElementById('modelCheckboxes');
+            const tbody = document.getElementById('modelSelectionTableBody');
+            
+            if (!tbody) return;
 
             if (host && host.models && host.models.length > 0) {
-                container.innerHTML = host.models.map(model => {
+                tbody.innerHTML = host.models.map(model => {
                     const safeId = model.replace(/[^a-zA-Z0-9]/g, '_');
+                    const noteKey = `agentx_model_note_${model}`;
+                    const savedNote = localStorage.getItem(noteKey) || '';
+                    
+                    // Try to find test count from global data if available
+                    let testCount = '-';
+                    if (window.latestBenchmarkData && window.latestBenchmarkData.model_stats) {
+                        const stats = window.latestBenchmarkData.model_stats.find(m => m.model === model);
+                        if (stats) {
+                             testCount = Number(stats.tests || 0) + Number(stats.failed_tests || 0);
+                        }
+                    }
+
+                    // Infer category (simple heuristic)
+                    let category = 'General';
+                    if (model.includes('coder') || model.includes('deepseek-coder')) category = 'Coding';
+                    else if (model.includes('math')) category = 'Math';
+                    else if (model.includes('reasoning') || model.includes('r1')) category = 'Reasoning';
+                    else if (model.includes('llama')) category = 'General';
+                    else if (model.includes('mistral')) category = 'General';
+                    else if (model.includes('gemma')) category = 'General';
+                    else if (model.includes('qwen')) category = 'General';
+                    
                     return `
-                    <label class="model-checkbox">
-                        <input type="checkbox" id="batch_${safeId}" value="${model}" class="batch-model-checkbox">
-                        <label for="batch_${safeId}">${model}</label>
-                    </label>
+                    <tr data-model="${model}">
+                        <td style="text-align: center; padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                            <input type="checkbox" id="batch_${safeId}" value="${model}" class="batch-model-checkbox">
+                        </td>
+                        <td style="padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <label for="batch_${safeId}" style="cursor: pointer; font-weight: 500;">${model}</label>
+                                <div class="model-badges" style="display: flex; gap: 4px;"></div>
+                            </div>
+                        </td>
+                        <td style="text-align: center; padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.05); color: var(--muted);">
+                            ${testCount}
+                        </td>
+                        <td style="padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                            <span class="badge" style="background: rgba(255,255,255,0.1); font-weight: normal;">${category}</span>
+                        </td>
+                        <td style="padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                            <input type="text" class="model-note-input" data-model="${model}" value="${savedNote}" placeholder="Add note..." 
+                                style="width: 100%; background: transparent; border: none; color: var(--text); border-bottom: 1px solid transparent; padding: 4px;"
+                                onfocus="this.style.borderBottom='1px solid var(--accent)'"
+                                onblur="this.style.borderBottom='1px solid transparent'; saveModelNote('${model}', this.value)">
+                        </td>
+                    </tr>
                 `}).join('');
+                
+                // Update badges immediately after rendering
+                updateModelSelectionBadges();
             } else {
-                container.innerHTML = '<p style="color: #666;">No models available</p>';
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px; color: var(--muted);">No models available</td></tr>';
             }
 
             updateBatchInfo();
         }
 
+        function updateModelSelectionBadges() {
+            const offenders = window.benchmarkOffenders;
+            if (!offenders) return;
+
+            const rows = document.querySelectorAll('#modelSelectionTableBody tr[data-model]');
+            rows.forEach(row => {
+                const model = row.getAttribute('data-model');
+                const badgeContainer = row.querySelector('.model-badges');
+                if (!badgeContainer) return;
+
+                let badgesHtml = '';
+
+                if (model === offenders.slowest) {
+                    badgesHtml += `<span title="Slowest Latency" style="color: #e74c3c; font-size: 0.9em;"><i class="fas fa-hourglass-end"></i></span>`;
+                }
+                if (model === offenders.lowestTps) {
+                    badgesHtml += `<span title="Lowest Throughput" style="color: #e67e22; font-size: 0.9em;"><i class="fas fa-tachometer-alt"></i></span>`;
+                }
+                if (model === offenders.lowestQuality) {
+                    badgesHtml += `<span title="Lowest Quality" style="color: #f39c12; font-size: 0.9em;"><i class="fas fa-star-half-alt"></i></span>`;
+                }
+                if (model === offenders.mostFailures) {
+                    badgesHtml += `<span title="Most Failures" style="color: #c0392b; font-size: 0.9em;"><i class="fas fa-exclamation-triangle"></i></span>`;
+                }
+
+                badgeContainer.innerHTML = badgesHtml;
+            });
+        }
+        
+        // Expose to window
+        window.updateModelSelectionBadges = updateModelSelectionBadges;
+
+        function saveModelNote(model, note) {
+            const noteKey = `agentx_model_note_${model}`;
+            localStorage.setItem(noteKey, note);
+        }
+        
+        // Expose to window for onblur
+        window.saveModelNote = saveModelNote;
+
         // Select all models checkbox
-        document.getElementById('selectAllModels').addEventListener('change', (e) => {
+        document.getElementById('selectAllModelsTable').addEventListener('change', (e) => {
             const checkboxes = document.querySelectorAll('.batch-model-checkbox');
             checkboxes.forEach(cb => cb.checked = e.target.checked);
             updateBatchInfo();
@@ -4583,6 +4680,8 @@
 
                 const json = await res.json();
                 const data = json.data || json; // Handle both wrapped and unwrapped responses
+                window.latestBenchmarkData = data; // Store globally for other components
+
 
                 if (!data || !data.overview) {
                     throw new Error('Invalid dashboard data structure');
@@ -4705,9 +4804,9 @@
 
                         const totalTests = Number(model.total_tests || (Number(model.tests) + Number(model.failed_tests || 0)));
                         const failedTests = Number(model.failed_tests || 0);
-                        const failRate = totalTests > 0 ? (failedTests / totalTests) : 0;
+                        const successRate = totalTests > 0 ? ((totalTests - failedTests) / totalTests) : 0;
                         const reliabilityDisplay = totalTests > 0
-                            ? `${(failRate * 100).toFixed(1)}%`
+                            ? `${(successRate * 100).toFixed(1)}%`
                             : '-';
 
                         // Highlight best overall model
@@ -4726,7 +4825,6 @@
                                 <td>${latencyDisplay}</td>
                                 <td>${tpsDisplay}</td>
                                 <td class="${qualityClass}">${qualityDisplay}</td>
-                                <td style="font-weight: bold;">${compositeDisplay}</td>
                                 <td>${reliabilityDisplay}</td>
                                 <td>
                                     ${model.tests}
@@ -4734,86 +4832,75 @@
                                         ? `<div style="margin-top: 2px; color: rgba(231, 76, 60, 0.9); font-size: 0.8em;">Failed: ${model.failed_tests}</div>`
                                         : ''}
                                 </td>
+                                <td style="font-weight: bold;">${compositeDisplay}</td>
                             </tr>
                         `;
                     }).join('');
 
-                    // Leaderboard top offenders (overall)
-                    const offendersEl = document.getElementById('leaderboardOffenders');
-                    if (offendersEl) {
-                        const rows = Array.isArray(data.model_stats) ? data.model_stats : [];
-                        const toNum = (v) => {
-                            const n = typeof v === 'string' ? parseFloat(v) : Number(v);
-                            return Number.isFinite(n) ? n : null;
-                        };
-                        const safeHtml = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    // Calculate Top Offenders
+                    const rows = Array.isArray(data.model_stats) ? data.model_stats : [];
+                    const toNum = (v) => {
+                        const n = typeof v === 'string' ? parseFloat(v) : Number(v);
+                        return Number.isFinite(n) ? n : null;
+                    };
 
-                        const pickMax = (arr, getVal) => {
-                            let best = null;
-                            for (const item of arr) {
-                                const v = getVal(item);
-                                if (!Number.isFinite(v)) continue;
-                                if (!best || v > best.v) best = { item, v };
-                            }
-                            return best ? best.item : null;
-                        };
-                        const pickMin = (arr, getVal) => {
-                            let best = null;
-                            for (const item of arr) {
-                                const v = getVal(item);
-                                if (!Number.isFinite(v)) continue;
-                                if (!best || v < best.v) best = { item, v };
-                            }
-                            return best ? best.item : null;
-                        };
-
-                        const hasSuccess = (m) => Number(m && m.tests) > 0;
-                        const successRows = rows.filter(hasSuccess);
-
-                        const slowestLatency = pickMax(successRows, (m) => toNum(m.avg_latency));
-                        const lowestTps = pickMin(successRows, (m) => {
-                            const t = toNum(m.avg_tokens_per_sec);
-                            return t !== null && t > 0 ? t : null;
-                        });
-                        const lowestQuality = pickMin(
-                            rows.filter(m => {
-                                const q = toNum(m && m.avg_quality);
-                                return q !== null && q > 0 && Number(m && m.quality_tests) > 0;
-                            }),
-                            (m) => toNum(m.avg_quality)
-                        );
-
-                        let mostFailures = null;
-                        for (const m of rows) {
-                            const failed = Number(m && m.failed_tests) || 0;
-                            if (failed <= 0) continue;
-                            const total = Number(m && m.total_tests) || (Number(m && m.tests) || 0) + failed;
-                            const rate = total > 0 ? (failed / total) : 0;
-                            if (!mostFailures || failed > mostFailures.failed || (failed === mostFailures.failed && rate > mostFailures.rate)) {
-                                mostFailures = { item: m, failed, total, rate };
-                            }
+                    const pickMax = (arr, getVal) => {
+                        let best = null;
+                        for (const item of arr) {
+                            const v = getVal(item);
+                            if (!Number.isFinite(v)) continue;
+                            if (!best || v > best.v) best = { item, v };
                         }
+                        return best ? best.item : null;
+                    };
+                    const pickMin = (arr, getVal) => {
+                        let best = null;
+                        for (const item of arr) {
+                            const v = getVal(item);
+                            if (!Number.isFinite(v)) continue;
+                            if (!best || v < best.v) best = { item, v };
+                        }
+                        return best ? best.item : null;
+                    };
 
-                        const chip = (label, modelName, valueText) => {
-                            if (!modelName) return '';
-                            const safeModel = safeHtml(modelName);
-                            const safeValue = valueText ? safeHtml(valueText) : '';
-                            return `<button type="button" class="btn-secondary" disabled style="padding: 4px 8px; opacity: 0.85; cursor: default;" title="${label}: ${safeModel}${safeValue ? ` (${safeValue})` : ''}">${label}: <span style="font-weight:700;">${safeModel}</span>${safeValue ? ` <span style=\"color: var(--muted);\">(${safeValue})</span>` : ''}</button>`;
-                        };
+                    const hasSuccess = (m) => Number(m && m.tests) > 0;
+                    const successRows = rows.filter(hasSuccess);
 
-                        const chips = [
-                            slowestLatency ? chip('Slowest latency', slowestLatency.model, `${slowestLatency.avg_latency}ms`) : '',
-                            lowestTps ? chip('Lowest throughput', lowestTps.model, `${parseFloat(lowestTps.avg_tokens_per_sec).toFixed(2)} t/s`) : '',
-                            lowestQuality ? chip('Lowest quality', lowestQuality.model, `${parseFloat(lowestQuality.avg_quality).toFixed(1)}`) : '',
-                            mostFailures ? chip('Most failures', mostFailures.item.model, `${mostFailures.failed}/${mostFailures.total} (${Math.round(mostFailures.rate * 100)}%)`) : ''
-                        ].filter(Boolean);
+                    const slowestLatency = pickMax(successRows, (m) => toNum(m.avg_latency));
+                    const lowestTps = pickMin(successRows, (m) => {
+                        const t = toNum(m.avg_tokens_per_sec);
+                        return t !== null && t > 0 ? t : null;
+                    });
+                    const lowestQuality = pickMin(
+                        rows.filter(m => {
+                            const q = toNum(m && m.avg_quality);
+                            return q !== null && q > 0 && Number(m && m.quality_tests) > 0;
+                        }),
+                        (m) => toNum(m.avg_quality)
+                    );
 
-                        offendersEl.innerHTML = chips.length > 0
-                            ? `<div style="width: 100%; display:flex; gap: 8px; flex-wrap: wrap; align-items:center;">
-                                <div style="color: var(--muted); font-size: 0.85em; margin-right: 4px;">Top offenders:</div>
-                                ${chips.join('')}
-                               </div>`
-                            : '';
+                    let mostFailures = null;
+                    for (const m of rows) {
+                        const failed = Number(m && m.failed_tests) || 0;
+                        if (failed <= 0) continue;
+                        const total = Number(m && m.total_tests) || (Number(m && m.tests) || 0) + failed;
+                        const rate = total > 0 ? (failed / total) : 0;
+                        if (!mostFailures || failed > mostFailures.failed || (failed === mostFailures.failed && rate > mostFailures.rate)) {
+                            mostFailures = { item: m, failed, total, rate };
+                        }
+                    }
+
+                    // Store offenders globally for the model selection table
+                    window.benchmarkOffenders = {
+                        slowest: slowestLatency ? slowestLatency.model : null,
+                        lowestTps: lowestTps ? lowestTps.model : null,
+                        lowestQuality: lowestQuality ? lowestQuality.model : null,
+                        mostFailures: mostFailures ? mostFailures.item.model : null
+                    };
+
+                    // Update Model Selection Table if it exists
+                    if (typeof updateModelSelectionBadges === 'function') {
+                        updateModelSelectionBadges();
                     }
                 }
             } catch (err) {
