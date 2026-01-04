@@ -61,6 +61,9 @@ const fetch = require('node-fetch');
 
 let mongoServer;
 
+// Set API Key for testing
+process.env.N8N_CALLBACK_API_KEY = 'test-api-key';
+
 beforeAll(async () => {
   mongoServer = await MongoMemoryServer.create();
   const uri = mongoServer.getUri();
@@ -159,6 +162,7 @@ describe('BrainX Deep Research Flow', () => {
     // 5. Send Callback
     const callbackRes = await request(app)
         .post('/api/n8n/callback/deep-research')
+        .set('x-api-key', 'test-api-key')
         .send({
             jobId: 'job_unique_123',
             status: 'completed',

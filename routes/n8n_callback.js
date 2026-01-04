@@ -10,6 +10,16 @@ const logger = require('../config/logger');
  */
 router.post('/deep-research', async (req, res) => {
     try {
+        // Validate API Key
+        const apiKey = req.header('x-api-key');
+        const expectedKey = process.env.N8N_CALLBACK_API_KEY;
+
+        // Strict validation: Env var must be set, and key must match
+        if (!expectedKey || apiKey !== expectedKey) {
+            logger.warn('Unauthorized callback attempt', { ip: req.ip });
+            return res.status(401).json({ status: 'error', message: 'Unauthorized' });
+        }
+
         const { jobId, result, status, error } = req.body;
 
         logger.info(`Received deep-research callback for job ${jobId}`, { status });

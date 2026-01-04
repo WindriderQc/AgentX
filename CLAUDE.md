@@ -73,6 +73,7 @@ Routes (validation) → Services (orchestration) → Models (data) → MongoDB/O
 - `Conversation.js` - Chat history with feedback and RAG sources (subdocument arrays with _id)
 - `UserProfile.js` - User memory and preferences (injected into system prompts)
 - `PromptConfig.js` - Versioned system prompts with A/B testing (traffic weights)
+- `DeepJob.js` - Async research task tracking (BrainX integration)
 
 **Helpers** (`/src/helpers/*.js`)
 - Pure utility functions
@@ -171,6 +172,21 @@ node scripts/migrate-vector-store.js --from in-memory --to qdrant
 - Search latency: <50ms for 1M vectors
 - Persistent across restarts
 - Scales to millions of vectors
+
+## BrainX Deep Research System (V5.1)
+
+### Dual-Timing Architecture
+
+**Flow:**
+1. **Immediate Response:** User gets a quick "draft" answer from the LLM.
+2. **Async Job:** `chatService.js` creates a `DeepJob` and triggers an n8n webhook.
+3. **Research:** n8n workflow performs deep research (browsing, synthesis).
+4. **Callback:** n8n calls `POST /api/n8n/callback/deep-research` with results.
+5. **Update:** AgentX appends results to the original conversation message.
+
+**Components:**
+- `DeepJob` model: Tracks status (pending, completed, failed) and results.
+- `routes/n8n_callback.js`: Handles secure callbacks (requires `x-api-key`).
 
 ## Model Routing System
 
