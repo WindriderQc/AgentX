@@ -4,12 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Documentation (Canonical)
 
-- AgentX docs index: `docs/INDEX.md`
-- Central roadmap + todos (AgentX + DataAPI): `docs/planning/ROADMAP.md`
-- Progression log (status/validation pointers): `docs/planning/PROGRESSION_LOG.md`
-- Stack documentation hub: `docs/SBQC-Stack-Final/`
+- AgentX docs index (start here): [docs/INDEX.md](docs/INDEX.md)
+- User manual: [docs/user-manual/README.md](docs/user-manual/README.md)
+- UI pages map (URLs + what each page does): [docs/user-manual/README.md#2-the-ui-pages--navigation](docs/user-manual/README.md#2-the-ui-pages--navigation)
+- Central roadmap + todos (AgentX + DataAPI): [docs/planning/ROADMAP.md](docs/planning/ROADMAP.md)
+- Progression log (status/validation pointers): [docs/planning/PROGRESSION_LOG.md](docs/planning/PROGRESSION_LOG.md)
+- Stack documentation hub: [docs/SBQC-Stack-Final/](docs/SBQC-Stack-Final/)
 
-DataAPI has its own canonical docs index at `DataAPI/docs/INDEX.md` (in the workspace).
+AgentX is the SBQC stack system-of-record; DataAPI docs defer to AgentX for stack-level truth.
+
+DataAPI has its own canonical docs index at: [../DataAPI/docs/INDEX.md](../DataAPI/docs/INDEX.md)
 
 ## Commands
 
@@ -431,6 +435,36 @@ effectiveSystemPrompt = basePrompt
 
 ## Benchmark System
 
+**Architecture:** Fully refactored to Service-Oriented Architecture (January 2026)
+- **Routes:** Thin HTTP layer (314 lines) - validation and delegation only
+- **Service:** Complete business logic in `benchmarkService.js` (1,098 lines)
+- **Models:** Mongoose schemas with helper methods and indexes
+
+### Service-Oriented Architecture
+
+**Pattern:** Routes → Services → Models → MongoDB
+
+**Core Components:**
+
+**Models** (`/models/`):
+- `BenchmarkPrompt.js` - Prompt library with static helpers (level grouping, seeding)
+- `BenchmarkResult.js` - Individual test results with quality scoring fields
+- `BenchmarkBatch.js` - Batch tracking with state management methods
+
+**Service** (`/src/services/benchmarkService.js`):
+- `seedPrompts()` - Auto-import from JSON
+- `runTest()` - Single test execution
+- `getResults()`, `getSummary()`, `getDashboard()` - Analytics
+- `compareModels()` - Multi-model comparison
+- `getQualityBreakdown()` - Category/level analysis
+- `startBatch()` - Batch initialization with execution plan
+- `executeBatch()` - Async batch execution with ConcurrencyQueue
+- `stopBatch()`, `getBatch()`, `getBatches()` - Batch management
+
+**Routes** (`/routes/benchmark.js`):
+- 14 endpoints: `/test`, `/results`, `/summary`, `/dashboard`, `/compare`, `/prompts`, `/batch`, `/batches`, `/quality-breakdown`, etc.
+- ALL routes delegate to `benchmarkService` - zero business logic in routes
+
 ### Five-Level Prompt Library
 
 **Data Source:** `/data/benchmark-prompts.json`
@@ -442,31 +476,63 @@ effectiveSystemPrompt = basePrompt
 4. Specialized - Code generation, math, analysis
 5. Advanced - Long-form content, research synthesis
 
-**Seeding:** Auto-imported to MongoDB on first `/api/benchmark/prompts` call
+**Seeding:** `BenchmarkPrompt.seedFromArray()` called on first access
+
+**Helper Methods:**
+- `getByLevel(level)` - Get prompts for specific level
+- `getByLevels([levels])` - Get prompts for multiple levels
+- `getByCategory(category)` - Filter by category
+- `getAllGroupedByLevel()` - Returns `{ prompts, byLevel }`
 
 ### Batch Test Architecture
 
 **Flow:**
 ```
 POST /api/benchmark/batch → {
-  1. Create batch record in benchmark_batches
-  2. Start async execution (executeBatch)
-  3. Return batch_id immediately
-  4. Sequential test execution:
+  1. Validate inputs (host, models, levels)
+  2. Load prompts via BenchmarkPrompt.getByLevels()
+  3. Build execution plan (host routing, judge config)
+  4. Create BenchmarkBatch record
+  5. Start async execution via benchmarkService.executeBatch()
+  6. Return batch_id immediately
+  7. Background execution:
      - For each model × prompt combination
      - Call Ollama /api/generate
-     - Store result in benchmark_results
-     - Update batch progress
-  5. Mark batch complete
+     - Create BenchmarkResult record
+     - Update batch progress counters
+     - Queue quality scoring tasks (ConcurrencyQueue)
+  8. Mark batch as 'judging' when generation completes
+  9. Drain judge queue
+  10. Mark batch as 'completed'
 }
 ```
 
 **Monitoring:** Poll `GET /api/benchmark/batch/:id` for progress
 
-**Collections:**
-- `benchmark_results` - Individual test outcomes
-- `benchmark_batches` - Batch metadata + progress
-- `benchmark_prompts` - Prompt library
+**State Transitions** (via instance methods):
+- `markAsRunning()` - Set status='running', timestamp started_at
+- `markAsJudging()` - Set status='judging', timestamp generated_at
+- `markAsCompleted()` - Set status='completed', timestamp completed_at
+- `markAsStopped()` - User-triggered stop
+- `markAsFailed(error)` - Execution failure
+
+**Progress Tracking:**
+- `completed` / `total_tests` - Generation progress
+- `judge_completed` / `judge_total` - Quality scoring progress
+- Virtuals: `progress`, `judge_progress`, `success_rate`
+
+**Mongoose Models:**
+- `BenchmarkPrompt` - Prompt library (indexed on level, category)
+- `BenchmarkResult` - Individual test outcomes (indexed on model, batch_id, quality_score)
+- `BenchmarkBatch` - Batch metadata (indexed on status, created_at)
+
+**Key Improvements (Jan 2026 Refactor):**
+1. **Zero Direct Collection Access** - All DB operations via Mongoose models
+2. **Service Layer Completeness** - 100% of business logic extracted from routes
+3. **Static Helper Methods** - `getByLevel()`, `getModelStats()`, `getQualityBreakdown()`
+4. **Instance Methods** - State transitions (`markAsCompleted()`), progress updates
+5. **Compound Indexes** - Optimized for analytics queries
+6. **Integration Tests** - Full test coverage with mongodb-memory-server
 
 ## DataAPI Proxy Integration
 
@@ -806,9 +872,9 @@ This section tracks the current implementation status and areas requiring develo
 ### 📊 Codebase Metrics (as of 2026-01-03 - Track 5 Complete)
 
 **Implementation Status:**
-- ✅ **Core Services:** 17 services (chatService, costCalculator, ragStore, embeddings, modelRouter, toolService, alertService, selfHealingEngine, customModelService, artilleryParser, performanceTracker, etc.)
-- ✅ **API Routes:** 21 route files covering 72+ endpoints (includes janitor proxy, cost analytics, alerts, custom models, performance monitoring)
-- ✅ **Data Models:** 12 Mongoose schemas (Conversation, ModelPricingConfig, PromptConfig, UserProfile, Alert, MetricsSnapshot, MetricsHourly, CustomModel, PerformanceLoadTest, PerformanceBaseline, PerformanceSnapshot, etc.)
+- ✅ **Core Services:** 18 services (chatService, costCalculator, ragStore, embeddings, modelRouter, toolService, alertService, selfHealingEngine, customModelService, artilleryParser, performanceTracker, **benchmarkService**, etc.)
+- ✅ **API Routes:** 21 route files covering 72+ endpoints (includes janitor proxy, cost analytics, alerts, custom models, performance monitoring, **benchmark**)
+- ✅ **Data Models:** 15 Mongoose schemas (Conversation, ModelPricingConfig, PromptConfig, UserProfile, Alert, MetricsSnapshot, MetricsHourly, CustomModel, PerformanceLoadTest, PerformanceBaseline, PerformanceSnapshot, **BenchmarkPrompt, BenchmarkResult, BenchmarkBatch**, etc.)
 - ✅ **Frontend:** 12 HTML pages, 35+ JavaScript modules (13 components including BaseOnboardingWizard)
 - ✅ **Test Coverage:** 19 test files (~3,600 lines) including Phase 3 E2E tests + cost calculator tests + artillery parser tests (37 tests)
 - ✅ **Documentation:** 99+ markdown files (~46,700+ lines in /docs) - includes complete V5 cost tracking + performance monitoring documentation
@@ -846,13 +912,18 @@ This section tracks the current implementation status and areas requiring develo
 - CRUD API for prompt management (`/api/prompts`)
 - Template rendering with Handlebars-like syntax
 
-**Benchmark System:**
-- Five-level prompt library (Simple → Advanced)
+**Benchmark System (Fully Refactored - Jan 2026):**
+- ✅ **Complete SOA Implementation** - Routes (314 lines) delegate 100% to benchmarkService (1,098 lines)
+- ✅ **Mongoose Models** - BenchmarkPrompt, BenchmarkResult, BenchmarkBatch with helper methods
+- ✅ **Zero Direct Collection Access** - All DB ops via Mongoose ORM
+- Five-level prompt library (Simple → Advanced) with auto-seeding
 - Batch testing across model × prompt combinations
-- Async execution with progress tracking
-- Results storage in MongoDB
-- Quality scoring with LLM judges
-- Composite scores (speed + quality)
+- Async execution with progress tracking and ConcurrencyQueue
+- Quality scoring with LLM judges (parallel execution)
+- Composite scores (speed + quality) with normalized metrics
+- State management with instance methods (`markAsCompleted()`, etc.)
+- Compound indexes for analytics queries
+- Integration tests with mongodb-memory-server
 
 **Performance Monitoring (V5 - Track 5):**
 - Real-time request tracking middleware (`/src/middleware/performanceTracker.js`)

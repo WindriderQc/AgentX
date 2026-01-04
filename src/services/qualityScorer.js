@@ -14,7 +14,8 @@ const JUDGE_CONFIG = {
     fallback_model: 'llama3.2:1b',       // Fallback if primary unavailable
     host: HOSTS.primary,                  // Use primary host for judging
     timeout: 30000,                       // 30s timeout for judge calls
-    temperature: 0.1                      // Low temp for consistent scoring
+    temperature: 0.1,                     // Low temp for consistent scoring
+    num_predict: 200                      // Max tokens to generate for judge output
 };
 
 /**
@@ -177,7 +178,7 @@ async function callJudge(evalPrompt, config = {}) {
                 stream: false,
                 options: {
                     temperature: judgeConfig.temperature,
-                    num_predict: 200
+                    num_predict: judgeConfig.num_predict
                 }
             }),
             signal: controller.signal

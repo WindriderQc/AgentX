@@ -7,6 +7,17 @@ const rateLimit = require('express-rate-limit');
 const { ipKeyGenerator } = require('express-rate-limit');
 const logger = require('../../config/logger');
 
+function getClientKey(req) {
+  // In tests, allow callers to isolate rate limit buckets deterministically.
+  if (process.env.NODE_ENV === 'test') {
+    const testKey = req.get('x-test-client');
+    if (testKey) return `test:${testKey}`;
+  }
+
+  // Default: key by IP (IPv6-aware)
+  return ipKeyGenerator(req);
+}
+
 /**
  * General API rate limiter
  * 100 requests per 15 minutes
@@ -20,6 +31,7 @@ const apiLimiter = rateLimit({
   },
   standardHeaders: true, // Return rate limit info in `RateLimit-*` headers
   legacyHeaders: false, // Disable `X-RateLimit-*` headers
+  keyGenerator: getClientKey,
   skip: (req) => req.originalUrl.startsWith('/api/benchmark'), // Skip benchmark routes (handled separately)
   handler: (req, res) => {
     logger.warn('Rate limit exceeded', {
@@ -64,6 +76,9 @@ const chatLimiter = rateLimit({
     message: 'Too many chat requests. Please wait a moment.'
   },
   keyGenerator: (req) => {
+    if (process.env.NODE_ENV === 'test') {
+      return getClientKey(req);
+    }
     // Use session user ID if authenticated, otherwise IP
     if (req.session?.userId) {
       return req.session.userId;
@@ -97,6 +112,9 @@ const strictLimiter = rateLimit({
     message: 'This operation is rate-limited. Please try again in a minute.'
   },
   keyGenerator: (req) => {
+    if (process.env.NODE_ENV === 'test') {
+      return getClientKey(req);
+    }
     if (req.session?.userId) {
       return req.session.userId;
     }

@@ -275,20 +275,24 @@ function getBufferStatus() {
 }
 
 // Start periodic flushing (every 60 seconds)
-const flushInterval = setInterval(flushToDatabase, 60000);
+// In tests, avoid starting background intervals (open handles + DB writes).
+let flushInterval;
+if (process.env.NODE_ENV !== 'test') {
+  flushInterval = setInterval(flushToDatabase, 60000);
 
-// Graceful shutdown: flush on process exit
-process.on('SIGTERM', async () => {
-  clearInterval(flushInterval);
-  await flushToDatabase();
-  logger.info('Performance tracker shutdown complete');
-});
+  // Graceful shutdown: flush on process exit
+  process.on('SIGTERM', async () => {
+    clearInterval(flushInterval);
+    await flushToDatabase();
+    logger.info('Performance tracker shutdown complete');
+  });
 
-process.on('SIGINT', async () => {
-  clearInterval(flushInterval);
-  await flushToDatabase();
-  logger.info('Performance tracker shutdown complete');
-});
+  process.on('SIGINT', async () => {
+    clearInterval(flushInterval);
+    await flushToDatabase();
+    logger.info('Performance tracker shutdown complete');
+  });
+}
 
 module.exports = {
   trackRequest,

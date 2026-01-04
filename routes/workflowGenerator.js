@@ -281,8 +281,9 @@ router.post('/generate', async (req, res) => {
       examplesCount: workflowExamples.length
     });
 
-    // Call AI with everything in the message (no conflicting system prompt)
+    // Call AI with the workflow architect persona.
     const aiResponse = await handleChatRequest({
+      persona: 'sbqc_workflow_architect',
       message: prompt,
       conversationId: null,  // No conversation history
       userId: 'workflow-generator',

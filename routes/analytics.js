@@ -710,69 +710,233 @@ router.get('/feedback/summary', optionalAuth, async (req, res) => {
       dateFilter.promptName = promptName;
     }
 
-    // Overall feedback metrics - query from Feedback model
-    const overallAgg = await Feedback.aggregate([
-      { $match: dateFilter },
-      { $group: {
-          _id: null,
-          totalFeedback: { $sum: 1 },
-          positive: { $sum: { $cond: [{ $eq: ['$rating', 'positive'] }, 1, 0] } },
-          negative: { $sum: { $cond: [{ $eq: ['$rating', 'negative'] }, 1, 0] } }
+    // Summary includes both:
+    //  - explicit Feedback documents (rating: 'positive'/'negative')
+    //  - embedded Conversation message feedback (rating: 1/-1)
+    // This keeps Phase 3 endpoints consistent with other parts of the app.
+
+    // ---------------------------------------------------------------------
+    // Source A: Feedback collection
+    // ---------------------------------------------------------------------
+    const [overallAggA, byModelA, byPromptVersionA] = await Promise.all([
+      Feedback.aggregate([
+        { $match: dateFilter },
+        {
+          $group: {
+            _id: null,
+            totalFeedback: { $sum: 1 },
+            positive: { $sum: { $cond: [{ $eq: ['$rating', 'positive'] }, 1, 0] } },
+            negative: { $sum: { $cond: [{ $eq: ['$rating', 'negative'] }, 1, 0] } }
+          }
         }
-      }
+      ]),
+      Feedback.aggregate([
+        { $match: dateFilter },
+        {
+          $group: {
+            _id: '$model',
+            positive: { $sum: { $cond: [{ $eq: ['$rating', 'positive'] }, 1, 0] } },
+            negative: { $sum: { $cond: [{ $eq: ['$rating', 'negative'] }, 1, 0] } }
+          }
+        },
+        {
+          $project: {
+            _id: 1,
+            model: '$_id',
+            positive: 1,
+            negative: 1,
+            total: { $add: ['$positive', '$negative'] },
+            rate: {
+              $cond: [
+                { $gt: [{ $add: ['$positive', '$negative'] }, 0] },
+                { $divide: ['$positive', { $add: ['$positive', '$negative'] }] },
+                0
+              ]
+            }
+          }
+        },
+        { $sort: { total: -1 } }
+      ]),
+      Feedback.aggregate([
+        { $match: dateFilter },
+        {
+          $group: {
+            _id: { name: '$promptName', version: '$promptVersion' },
+            positive: { $sum: { $cond: [{ $eq: ['$rating', 'positive'] }, 1, 0] } },
+            negative: { $sum: { $cond: [{ $eq: ['$rating', 'negative'] }, 1, 0] } }
+          }
+        },
+        {
+          $project: {
+            _id: 0,
+            promptName: '$_id.name',
+            promptVersion: '$_id.version',
+            positive: 1,
+            negative: 1,
+            total: { $add: ['$positive', '$negative'] },
+            rate: {
+              $cond: [
+                { $gt: [{ $add: ['$positive', '$negative'] }, 0] },
+                { $divide: ['$positive', { $add: ['$positive', '$negative'] }] },
+                0
+              ]
+            }
+          }
+        },
+        { $sort: { promptName: 1, promptVersion: -1 } }
+      ])
     ]);
 
-    const overall = {
-      totalFeedback: overallAgg[0]?.totalFeedback || 0,
-      positive: overallAgg[0]?.positive || 0,
-      negative: overallAgg[0]?.negative || 0,
-      positiveRate: overallAgg[0] ? overallAgg[0].positive / overallAgg[0].totalFeedback : 0
+    const overallA = {
+      totalFeedback: overallAggA[0]?.totalFeedback || 0,
+      positive: overallAggA[0]?.positive || 0,
+      negative: overallAggA[0]?.negative || 0
     };
 
-    // By model - query from Feedback model
-    const byModel = await Feedback.aggregate([
-      { $match: dateFilter },
-      { $group: {
-          _id: '$model',
-          positive: { $sum: { $cond: [{ $eq: ['$rating', 'positive'] }, 1, 0] } },
-          negative: { $sum: { $cond: [{ $eq: ['$rating', 'negative'] }, 1, 0] } }
+    // ---------------------------------------------------------------------
+    // Source B: Conversation embedded message feedback
+    // ---------------------------------------------------------------------
+    const convDateFilter = {
+      createdAt: { $gte: fromDate, $lte: toDate }
+    };
+    if (userId) {
+      convDateFilter.userId = userId;
+    }
+    if (promptName) {
+      convDateFilter.promptName = promptName;
+    }
+
+    const Conversation = require('../models/Conversation');
+
+    const [overallAggB, byModelB, byPromptVersionB] = await Promise.all([
+      Conversation.aggregate([
+        { $match: convDateFilter },
+        { $unwind: '$messages' },
+        { $match: { 'messages.feedback.rating': { $in: [1, -1] } } },
+        {
+          $group: {
+            _id: null,
+            totalFeedback: { $sum: 1 },
+            positive: { $sum: { $cond: [{ $eq: ['$messages.feedback.rating', 1] }, 1, 0] } },
+            negative: { $sum: { $cond: [{ $eq: ['$messages.feedback.rating', -1] }, 1, 0] } }
+          }
         }
-      },
-      { $project: {
-          _id: 1,
-          model: '$_id',
-          positive: 1,
-          negative: 1,
-          total: { $add: ['$positive', '$negative'] },
-          rate: { $cond: [{ $gt: [{ $add: ['$positive', '$negative'] }, 0] },
-                          { $divide: ['$positive', { $add: ['$positive', '$negative'] }] }, 0] }
-        }
-      },
-      { $sort: { total: -1 } }
+      ]),
+      Conversation.aggregate([
+        { $match: convDateFilter },
+        { $unwind: '$messages' },
+        { $match: { 'messages.feedback.rating': { $in: [1, -1] } } },
+        {
+          $group: {
+            _id: '$model',
+            positive: { $sum: { $cond: [{ $eq: ['$messages.feedback.rating', 1] }, 1, 0] } },
+            negative: { $sum: { $cond: [{ $eq: ['$messages.feedback.rating', -1] }, 1, 0] } }
+          }
+        },
+        {
+          $project: {
+            _id: 1,
+            model: '$_id',
+            positive: 1,
+            negative: 1,
+            total: { $add: ['$positive', '$negative'] },
+            rate: {
+              $cond: [
+                { $gt: [{ $add: ['$positive', '$negative'] }, 0] },
+                { $divide: ['$positive', { $add: ['$positive', '$negative'] }] },
+                0
+              ]
+            }
+          }
+        },
+        { $sort: { total: -1 } }
+      ]),
+      Conversation.aggregate([
+        { $match: convDateFilter },
+        { $unwind: '$messages' },
+        { $match: { 'messages.feedback.rating': { $in: [1, -1] } } },
+        {
+          $group: {
+            _id: { name: '$promptName', version: '$promptVersion' },
+            positive: { $sum: { $cond: [{ $eq: ['$messages.feedback.rating', 1] }, 1, 0] } },
+            negative: { $sum: { $cond: [{ $eq: ['$messages.feedback.rating', -1] }, 1, 0] } }
+          }
+        },
+        {
+          $project: {
+            _id: 0,
+            promptName: '$_id.name',
+            promptVersion: '$_id.version',
+            positive: 1,
+            negative: 1,
+            total: { $add: ['$positive', '$negative'] },
+            rate: {
+              $cond: [
+                { $gt: [{ $add: ['$positive', '$negative'] }, 0] },
+                { $divide: ['$positive', { $add: ['$positive', '$negative'] }] },
+                0
+              ]
+            }
+          }
+        },
+        { $sort: { promptName: 1, promptVersion: -1 } }
+      ])
     ]);
 
-    // By prompt version - query from Feedback model
-    const byPromptVersion = await Feedback.aggregate([
-      { $match: dateFilter },
-      { $group: {
-          _id: { name: '$promptName', version: '$promptVersion' },
-          positive: { $sum: { $cond: [{ $eq: ['$rating', 'positive'] }, 1, 0] } },
-          negative: { $sum: { $cond: [{ $eq: ['$rating', 'negative'] }, 1, 0] } }
-        }
-      },
-      { $project: {
-          _id: 0,
-          promptName: '$_id.name',
-          promptVersion: '$_id.version',
-          positive: 1,
-          negative: 1,
-          total: { $add: ['$positive', '$negative'] },
-          rate: { $cond: [{ $gt: [{ $add: ['$positive', '$negative'] }, 0] },
-                          { $divide: ['$positive', { $add: ['$positive', '$negative'] }] }, 0] }
-        }
-      },
-      { $sort: { promptName: 1, promptVersion: -1 } }
-    ]);
+    const overallB = {
+      totalFeedback: overallAggB[0]?.totalFeedback || 0,
+      positive: overallAggB[0]?.positive || 0,
+      negative: overallAggB[0]?.negative || 0
+    };
+
+    // ---------------------------------------------------------------------
+    // Merge A + B
+    // ---------------------------------------------------------------------
+    const overall = {
+      totalFeedback: overallA.totalFeedback + overallB.totalFeedback,
+      positive: overallA.positive + overallB.positive,
+      negative: overallA.negative + overallB.negative,
+      positiveRate: 0
+    };
+    overall.positiveRate = overall.totalFeedback > 0 ? overall.positive / overall.totalFeedback : 0;
+
+    const byModelMap = new Map();
+    [...byModelA, ...byModelB].forEach((row) => {
+      const key = row?._id ?? row?.model ?? 'unknown';
+      const existing = byModelMap.get(key) || { _id: key, model: key, positive: 0, negative: 0, total: 0, rate: 0 };
+      existing.positive += row.positive || 0;
+      existing.negative += row.negative || 0;
+      existing.total = existing.positive + existing.negative;
+      existing.rate = existing.total > 0 ? existing.positive / existing.total : 0;
+      byModelMap.set(key, existing);
+    });
+    const byModel = Array.from(byModelMap.values()).sort((a, b) => (b.total || 0) - (a.total || 0));
+
+    const byPromptVersionMap = new Map();
+    [...byPromptVersionA, ...byPromptVersionB].forEach((row) => {
+      const key = `${row.promptName}|${row.promptVersion}`;
+      const existing = byPromptVersionMap.get(key) || {
+        promptName: row.promptName,
+        promptVersion: row.promptVersion,
+        positive: 0,
+        negative: 0,
+        total: 0,
+        rate: 0
+      };
+      existing.positive += row.positive || 0;
+      existing.negative += row.negative || 0;
+      existing.total = existing.positive + existing.negative;
+      existing.rate = existing.total > 0 ? existing.positive / existing.total : 0;
+      byPromptVersionMap.set(key, existing);
+    });
+    const byPromptVersion = Array.from(byPromptVersionMap.values()).sort((a, b) => {
+      if (a.promptName !== b.promptName) return a.promptName.localeCompare(b.promptName);
+      // Prefer numeric desc when possible
+      const av = typeof a.promptVersion === 'number' ? a.promptVersion : Number.NaN;
+      const bv = typeof b.promptVersion === 'number' ? b.promptVersion : Number.NaN;
+      if (!Number.isNaN(av) && !Number.isNaN(bv)) return bv - av;
+      return String(b.promptVersion).localeCompare(String(a.promptVersion));
+    });
 
     // Identify low performers (below threshold)
     const lowPerformingPrompts = byPromptVersion.filter(p => p.rate < minPositiveRate && p.total >= 5);
@@ -814,6 +978,10 @@ router.get('/feedback/summary', optionalAuth, async (req, res) => {
 
     res.json({
       status: 'success',
+      dateRange: {
+        start: fromDate.toISOString(),
+        end: toDate.toISOString()
+      },
       data: {
         from: fromDate.toISOString(),
         to: toDate.toISOString(),
@@ -886,15 +1054,20 @@ router.post('/feedback', optionalAuth, async (req, res) => {
       userId: res.locals.user?.userId
     });
 
+    const feedbackPayload = {
+      id: feedback._id,
+      conversationId: feedback.conversationId,
+      messageId: feedback.messageId,
+      rating: feedback.rating,
+      createdAt: feedback.createdAt
+    };
+
+    // Prefer consistent API shape, but keep legacy fields for compatibility.
     res.status(201).json({
+      status: 'success',
+      data: { feedback: feedbackPayload },
       success: true,
-      feedback: {
-        id: feedback._id,
-        conversationId: feedback.conversationId,
-        messageId: feedback.messageId,
-        rating: feedback.rating,
-        createdAt: feedback.createdAt
-      }
+      feedback: feedbackPayload
     });
   } catch (err) {
     logger.error('Feedback recording error', { error: err.message });

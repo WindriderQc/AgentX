@@ -8,7 +8,6 @@ const logger = require('../config/logger');
 const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
 
 // Import Service Logic
-const { handleChatRequest } = require('../src/services/chatService');
 const { getRoutingStatus, classifyQuery, HOSTS, MODEL_ROUTING, TASK_MODELS, getModelHealth, getAllModelsHealth } = require('../src/services/modelRouter');
 
 // V3: Import RAG Store
@@ -100,6 +99,7 @@ router.post('/chat', optionalAuth, async (req, res) => {
     message, 
     messages = [], 
     system, 
+        persona,
     options = {}, 
     conversationId, 
     useRag, 
@@ -115,12 +115,14 @@ router.post('/chat', optionalAuth, async (req, res) => {
   if (!message) return res.status(400).json({ status: 'error', message: 'Message is required' });
 
   try {
+        const { handleChatRequest } = require('../src/services/chatService');
     const result = await handleChatRequest({
         userId,
         model,
         message,
         messages,
         system,
+            persona,
         options,
         conversationId,
         useRag,

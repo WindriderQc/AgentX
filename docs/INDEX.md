@@ -4,6 +4,7 @@
 
 ## Start Here
 - User manual (recommended): [user-manual/README.md](user-manual/README.md)
+- UI pages map (URLs + what each page does): [user-manual/README.md#2-the-ui-pages--navigation](user-manual/README.md#2-the-ui-pages--navigation)
 - SBQC Stack overview (recommended): [SBQC-Stack-Final/00-OVERVIEW.md](SBQC-Stack-Final/00-OVERVIEW.md)
 - AgentX architecture (stack doc): [SBQC-Stack-Final/01-ARCHITECTURE.md](SBQC-Stack-Final/01-ARCHITECTURE.md)
 - AgentX API reference (stack doc): [SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md](SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md)
@@ -64,5 +65,5 @@
 
 ### Conventions
 - **Permanent docs** live under this folder (this index is the entrypoint).
-- **Roadmap/todos** live under `planning/`.
-- **Time-stamped status/validation** documents belong under `reports/` or `archive/`.
+- **Roadmap/todos** live under [planning/](planning/).
+- **Time-stamped status/validation** documents belong under [reports/](reports/) or [archive/](archive/).

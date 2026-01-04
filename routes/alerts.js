@@ -114,27 +114,24 @@ router.post('/evaluate', optionalAuth, async (req, res) => {
   try {
     const event = req.body;
 
-    if (!event.component && !event.metric) {
+    // Accept events in either format:
+    // - { component, metric, value, ... }
+    // - { source, data: { ...facts } }
+    if (!event || typeof event !== 'object') {
       return res.status(400).json({
         status: 'error',
-        message: 'Event must have at least component or metric'
+        message: 'Event payload is required'
       });
     }
 
     const alerts = await alertService.evaluateEvent(event);
+    const matched = alerts.length > 0;
 
     res.json({
       status: 'success',
-      message: `Evaluated event, triggered ${alerts.length} alert(s)`,
       data: {
-        triggeredAlerts: alerts.length,
-        alerts: alerts.map(a => ({
-          id: a._id,
-          ruleId: a.ruleId,
-          severity: a.severity,
-          title: a.title,
-          occurrenceCount: a.occurrenceCount
-        }))
+        matched,
+        alert: matched ? alerts[0] : null
       }
     });
   } catch (error) {
@@ -159,7 +156,7 @@ router.get('/', optionalAuth, async (req, res) => {
       status,
       ruleId,
       limit = 50,
-      offset = 0
+      skip = 0
     } = req.query;
 
     const filters = {};
@@ -167,11 +164,32 @@ router.get('/', optionalAuth, async (req, res) => {
     if (status) filters.status = status;
     if (ruleId) filters.ruleId = ruleId;
 
-    const alerts = await Alert.find(filters)
-      .sort({ createdAt: -1 })
-      .limit(parseInt(limit))
-      .skip(parseInt(offset))
-      .lean();
+    const limitNum = parseInt(limit);
+    const skipNum = parseInt(skip);
+
+    // Sort by severity priority (critical -> error -> warning -> info), then recency
+    const alerts = await Alert.aggregate([
+      { $match: filters },
+      {
+        $addFields: {
+          __severityRank: {
+            $switch: {
+              branches: [
+                { case: { $eq: ['$severity', 'critical'] }, then: 3 },
+                { case: { $eq: ['$severity', 'error'] }, then: 2 },
+                { case: { $eq: ['$severity', 'warning'] }, then: 1 },
+                { case: { $eq: ['$severity', 'info'] }, then: 0 }
+              ],
+              default: 0
+            }
+          }
+        }
+      },
+      { $sort: { __severityRank: -1, createdAt: -1 } },
+      { $skip: skipNum },
+      { $limit: limitNum },
+      { $project: { __severityRank: 0 } }
+    ]);
 
     const total = await Alert.countDocuments(filters);
 
@@ -179,12 +197,9 @@ router.get('/', optionalAuth, async (req, res) => {
       status: 'success',
       data: {
         alerts,
-        pagination: {
-          total,
-          limit: parseInt(limit),
-          offset: parseInt(offset),
-          hasMore: total > parseInt(offset) + alerts.length
-        }
+        total,
+        limit: limitNum,
+        skip: skipNum
       }
     });
   } catch (error) {
@@ -203,6 +218,14 @@ router.get('/', optionalAuth, async (req, res) => {
  */
 router.get('/:id', optionalAuth, async (req, res) => {
   try {
+    const mongoose = require('mongoose');
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Invalid alert ID'
+      });
+    }
+
     const alert = await Alert.findById(req.params.id);
 
     if (!alert) {
@@ -249,7 +272,13 @@ router.put('/:id/acknowledge', optionalAuth, async (req, res) => {
     res.json({
       status: 'success',
       message: 'Alert acknowledged',
-      data: { alert }
+      data: {
+        alert: {
+          ...alert.toObject(),
+          acknowledgedBy: alert.acknowledgment?.acknowledgedBy,
+          acknowledgedAt: alert.acknowledgment?.acknowledgedAt
+        }
+      }
     });
   } catch (error) {
     logger.error('Failed to acknowledge alert', { error: error.message });
@@ -292,7 +321,14 @@ router.put('/:id/resolve', optionalAuth, async (req, res) => {
     res.json({
       status: 'success',
       message: 'Alert resolved',
-      data: { alert }
+      data: {
+        alert: {
+          ...alert.toObject(),
+          resolvedBy: alert.resolution?.resolvedBy,
+          resolvedAt: alert.resolution?.resolvedAt,
+          resolution: alert.resolution?.comment
+        }
+      }
     });
   } catch (error) {
     logger.error('Failed to resolve alert', { error: error.message });
@@ -319,7 +355,7 @@ router.put('/:id/resolve', optionalAuth, async (req, res) => {
  */
 router.post('/:id/delivery-status', optionalAuth, async (req, res) => {
   try {
-    const { channel, sent, error } = req.body;
+    const { channel, status, error, timestamp } = req.body;
 
     if (!channel) {
       return res.status(400).json({
@@ -337,14 +373,16 @@ router.post('/:id/delivery-status', optionalAuth, async (req, res) => {
       });
     }
 
-    // Update delivery status
-    if (!alert.delivery[channel]) {
-      alert.delivery[channel] = {};
-    }
+    const sent = status === 'sent';
+    const sentAt = timestamp ? new Date(timestamp) : new Date();
 
-    alert.delivery[channel].sent = sent;
-    alert.delivery[channel].sentAt = sent ? new Date() : undefined;
-    alert.delivery[channel].error = error || undefined;
+    // Update delivery status (virtual alias deliveryStatus maps to delivery)
+    const deliveryStatus = alert.deliveryStatus || {};
+    deliveryStatus[channel] = deliveryStatus[channel] || {};
+    deliveryStatus[channel].sent = sent;
+    deliveryStatus[channel].sentAt = sent ? sentAt : undefined;
+    deliveryStatus[channel].error = !sent ? (error || undefined) : undefined;
+    alert.deliveryStatus = deliveryStatus;
 
     await alert.save();
 
@@ -352,9 +390,7 @@ router.post('/:id/delivery-status', optionalAuth, async (req, res) => {
       status: 'success',
       message: 'Delivery status updated',
       data: {
-        alertId: alert._id,
-        channel,
-        delivered: sent
+        alert
       }
     });
   } catch (error) {
@@ -382,31 +418,13 @@ router.get('/stats/summary', optionalAuth, async (req, res) => {
     if (severity) filters.severity = severity;
     if (status) filters.status = status;
 
-    const stats = await alertService.getStatistics(filters);
-
-    // Get counts by severity and status
-    const severityCounts = await Alert.aggregate([
-      { $match: filters.from ? { createdAt: { $gte: new Date(filters.from) } } : {} },
-      { $group: { _id: '$severity', count: { $sum: 1 } } }
-    ]);
-
-    const statusCounts = await Alert.aggregate([
-      { $match: filters.from ? { createdAt: { $gte: new Date(filters.from) } } : {} },
-      { $group: { _id: '$status', count: { $sum: 1 } } }
-    ]);
+    const statsArray = await alertService.getStatistics(filters);
+    const stats = statsArray?.[0] || { total: 0, bySeverity: {}, byStatus: {} };
 
     res.json({
       status: 'success',
       data: {
-        statistics: stats,
-        bySeverity: severityCounts.reduce((acc, item) => {
-          acc[item._id] = item.count;
-          return acc;
-        }, {}),
-        byStatus: statusCounts.reduce((acc, item) => {
-          acc[item._id] = item.count;
-          return acc;
-        }, {})
+        statistics: stats
       }
     });
   } catch (error) {

@@ -31,6 +31,11 @@ const connectDB = async () => {
     await ensureDefaultPromptConfig();
   } catch (err) {
     logger.error('MongoDB connection failed', { error: err.message });
+    // In tests we must fail fast; otherwise queries buffer and tests time out.
+    if (process.env.NODE_ENV === 'test') {
+      throw err;
+    }
+
     // Don't kill the server if DB is missing, just log error for now to allow frontend verification
     // process.exit(1);
   }

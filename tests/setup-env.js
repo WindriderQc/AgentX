@@ -19,7 +19,6 @@ beforeAll(async () => {
   const useExternalMongo = process.env.TEST_USE_EXTERNAL_MONGO === 'true';
   if (!useExternalMongo) {
     mongoServer = await MongoMemoryServer.create({
-      binary: { version: '7.0.5' },
       instance: { dbName: 'agentx_test' }
     });
     // mongodb-memory-server may return a URI without a db path; explicitly set it.

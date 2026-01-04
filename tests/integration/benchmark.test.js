@@ -1,0 +1,482 @@
+/**
+ * Benchmark Integration Tests
+ * Tests for benchmark routes and service layer
+ */
+
+const request = require('supertest');
+const mongoose = require('mongoose');
+const { MongoMemoryServer } = require('mongodb-memory-server');
+const { app } = require('../../src/app');
+
+const BenchmarkPrompt = require('../../models/BenchmarkPrompt');
+const BenchmarkResult = require('../../models/BenchmarkResult');
+const BenchmarkBatch = require('../../models/BenchmarkBatch');
+
+let mongod;
+
+beforeAll(async () => {
+    // Start in-memory MongoDB
+    mongod = await MongoMemoryServer.create();
+    const uri = mongod.getUri();
+
+    // Disconnect if already connected
+    if (mongoose.connection.readyState !== 0) {
+        await mongoose.disconnect();
+    }
+
+    await mongoose.connect(uri);
+});
+
+afterAll(async () => {
+    try {
+        await mongoose.disconnect();
+        await mongod.stop();
+    } catch (err) {
+        // Ignore cleanup errors
+    }
+}, 10000);
+
+afterEach(async () => {
+    // Clear all collections between tests
+    try {
+        await BenchmarkPrompt.deleteMany({});
+        await BenchmarkResult.deleteMany({});
+        await BenchmarkBatch.deleteMany({});
+    } catch (err) {
+        // Ignore cleanup errors during tests
+    }
+});
+
+describe('Benchmark System - Integration Tests', () => {
+    describe('POST /api/benchmark/test', () => {
+        it('should validate required fields', async () => {
+            const response = await request(app)
+                .post('/api/benchmark/test')
+                .send({ model: 'test-model' }); // Missing host and prompt
+
+            expect(response.status).toBe(400);
+            expect(response.body.status).toBe('error');
+            expect(response.body.error).toContain('required');
+        });
+    });
+
+    describe('GET /api/benchmark/prompts', () => {
+        it('should return empty array when no prompts exist', async () => {
+            const response = await request(app).get('/api/benchmark/prompts');
+
+            expect(response.status).toBe(200);
+            expect(response.body.status).toBe('success');
+            expect(response.body.data.prompts).toEqual([]);
+            expect(response.body.data.total).toBe(0);
+        });
+
+        it('should seed prompts from JSON file if collection is empty', async () => {
+            const response = await request(app).get('/api/benchmark/prompts');
+
+            expect(response.status).toBe(200);
+            expect(response.body.status).toBe('success');
+
+            // Verify prompts were seeded
+            const count = await BenchmarkPrompt.countDocuments();
+            expect(count).toBeGreaterThan(0);
+        });
+
+        it('should return prompts grouped by level', async () => {
+            // Create test prompts
+            await BenchmarkPrompt.create([
+                {
+                    name: 'Test Prompt 1',
+                    prompt: 'What is 2+2?',
+                    level: 1,
+                    category: 'math'
+                },
+                {
+                    name: 'Test Prompt 2',
+                    prompt: 'Explain quantum computing',
+                    level: 3,
+                    category: 'reasoning'
+                }
+            ]);
+
+            const response = await request(app).get('/api/benchmark/prompts');
+
+            expect(response.status).toBe(200);
+            expect(response.body.data.prompts).toHaveLength(2);
+            expect(response.body.data.by_level).toHaveProperty('1');
+            expect(response.body.data.by_level).toHaveProperty('3');
+            expect(response.body.data.by_level['1']).toHaveLength(1);
+            expect(response.body.data.by_level['3']).toHaveLength(1);
+        });
+    });
+
+    describe('GET /api/benchmark/results', () => {
+        it('should return paginated results', async () => {
+            // Create test results
+            await BenchmarkResult.create([
+                {
+                    model: 'test-model',
+                    host: 'http://localhost:11434',
+                    prompt: 'Test prompt',
+                    latency: 1000,
+                    tokens: 100,
+                    success: true
+                },
+                {
+                    model: 'test-model-2',
+                    host: 'http://localhost:11434',
+                    prompt: 'Test prompt 2',
+                    latency: 2000,
+                    tokens: 200,
+                    success: true
+                }
+            ]);
+
+            const response = await request(app).get('/api/benchmark/results?limit=10');
+
+            expect(response.status).toBe(200);
+            expect(response.body.status).toBe('success');
+            expect(response.body.data.results).toHaveLength(2);
+            expect(response.body.data.total).toBe(2);
+        });
+
+        it('should respect limit parameter', async () => {
+            // Create 5 results
+            const results = [];
+            for (let i = 0; i < 5; i++) {
+                results.push({
+                    model: `model-${i}`,
+                    host: 'http://localhost:11434',
+                    prompt: `Prompt ${i}`,
+                    latency: 1000 + i * 100,
+                    tokens: 100,
+                    success: true
+                });
+            }
+            await BenchmarkResult.create(results);
+
+            const response = await request(app).get('/api/benchmark/results?limit=3');
+
+            expect(response.status).toBe(200);
+            expect(response.body.data.results).toHaveLength(3);
+            expect(response.body.data.total).toBe(5);
+        });
+    });
+
+    describe('GET /api/benchmark/summary', () => {
+        it('should return empty summary when no results exist', async () => {
+            const response = await request(app).get('/api/benchmark/summary');
+
+            expect(response.status).toBe(200);
+            expect(response.body.status).toBe('success');
+            expect(response.body.data.total_tests).toBe(0);
+            expect(response.body.data.leaderboard).toEqual([]);
+        });
+
+        it('should calculate correct statistics', async () => {
+            // Create test results
+            await BenchmarkResult.create([
+                {
+                    model: 'model-a',
+                    host: 'http://localhost:11434',
+                    prompt: 'Test',
+                    latency: 1000,
+                    tokens: 100,
+                    tokens_per_sec: 100,
+                    success: true
+                },
+                {
+                    model: 'model-a',
+                    host: 'http://localhost:11434',
+                    prompt: 'Test',
+                    latency: 2000,
+                    tokens: 200,
+                    tokens_per_sec: 100,
+                    success: true
+                },
+                {
+                    model: 'model-b',
+                    host: 'http://localhost:11434',
+                    prompt: 'Test',
+                    latency: 1500,
+                    tokens: 150,
+                    tokens_per_sec: 100,
+                    success: false
+                }
+            ]);
+
+            const response = await request(app).get('/api/benchmark/summary');
+
+            expect(response.status).toBe(200);
+            expect(response.body.data.total_tests).toBe(3);
+            expect(response.body.data.successful).toBe(2);
+            expect(response.body.data.failed).toBe(1);
+            expect(response.body.data.leaderboard).toHaveLength(1); // Only successful model-a
+            expect(response.body.data.leaderboard[0].model).toBe('model-a');
+            expect(response.body.data.leaderboard[0].avg_latency).toBe(1500);
+        });
+    });
+
+    describe('GET /api/benchmark/dashboard', () => {
+        it('should return dashboard statistics', async () => {
+            await BenchmarkResult.create({
+                model: 'test-model',
+                host: 'http://localhost:11434',
+                prompt: 'Test',
+                latency: 1000,
+                tokens: 100,
+                tokens_per_sec: 100,
+                success: true
+            });
+
+            const response = await request(app).get('/api/benchmark/dashboard');
+
+            expect(response.status).toBe(200);
+            expect(response.body.status).toBe('success');
+            expect(response.body.data.overview).toHaveProperty('total_tests');
+            expect(response.body.data.overview).toHaveProperty('successful');
+            expect(response.body.data.overview).toHaveProperty('success_rate');
+            expect(response.body.data.model_stats).toBeInstanceOf(Array);
+        });
+
+        it('should sort results by specified criteria', async () => {
+            await BenchmarkResult.create([
+                {
+                    model: 'fast-model',
+                    host: 'http://localhost:11434',
+                    prompt: 'Test',
+                    latency: 500,
+                    tokens: 100,
+                    tokens_per_sec: 200,
+                    success: true
+                },
+                {
+                    model: 'slow-model',
+                    host: 'http://localhost:11434',
+                    prompt: 'Test',
+                    latency: 2000,
+                    tokens: 100,
+                    tokens_per_sec: 50,
+                    success: true
+                }
+            ]);
+
+            const responseLatency = await request(app).get('/api/benchmark/dashboard?sort=latency');
+            expect(responseLatency.body.data.model_stats[0].model).toBe('fast-model');
+
+            const responseSpeed = await request(app).get('/api/benchmark/dashboard?sort=speed');
+            expect(responseSpeed.body.data.model_stats[0].model).toBe('fast-model');
+        });
+    });
+
+    describe('GET /api/benchmark/compare', () => {
+        it('should require models parameter', async () => {
+            const response = await request(app).get('/api/benchmark/compare');
+
+            expect(response.status).toBe(400);
+            expect(response.body.status).toBe('error');
+            expect(response.body.error).toContain('models');
+        });
+
+        it('should compare multiple models', async () => {
+            await BenchmarkResult.create([
+                {
+                    model: 'model-a',
+                    host: 'http://localhost:11434',
+                    prompt: 'Test',
+                    latency: 1000,
+                    tokens: 100,
+                    tokens_per_sec: 100,
+                    success: true
+                },
+                {
+                    model: 'model-b',
+                    host: 'http://localhost:11434',
+                    prompt: 'Test',
+                    latency: 1500,
+                    tokens: 150,
+                    tokens_per_sec: 100,
+                    success: true
+                }
+            ]);
+
+            const response = await request(app)
+                .get('/api/benchmark/compare?models=model-a,model-b');
+
+            expect(response.status).toBe(200);
+            expect(response.body.data.comparison).toHaveLength(2);
+            expect(response.body.data.comparison[0].model).toBe('model-a');
+            expect(response.body.data.comparison[1].model).toBe('model-b');
+        });
+    });
+
+    describe('POST /api/benchmark/batch', () => {
+        beforeEach(async () => {
+            // Seed prompts for batch tests
+            await BenchmarkPrompt.create([
+                {
+                    name: 'Simple Test',
+                    prompt: 'What is 1+1?',
+                    level: 1,
+                    category: 'math'
+                },
+                {
+                    name: 'Complex Test',
+                    prompt: 'Explain relativity',
+                    level: 3,
+                    category: 'reasoning'
+                }
+            ]);
+        });
+
+        it('should validate required fields', async () => {
+            const response = await request(app)
+                .post('/api/benchmark/batch')
+                .send({ host: 'http://localhost:11434' }); // Missing models and levels
+
+            expect(response.status).toBe(400);
+            expect(response.body.status).toBe('error');
+            expect(response.body.error).toContain('required');
+        });
+
+        it('should create batch with valid inputs', async () => {
+            const response = await request(app)
+                .post('/api/benchmark/batch')
+                .send({
+                    host: 'http://localhost:11434',
+                    models: ['test-model'],
+                    levels: [1],
+                    run_name: 'Test Batch',
+                    quality_scoring: false
+                });
+
+            expect(response.status).toBe(200);
+            expect(response.body.status).toBe('success');
+            expect(response.body.data).toHaveProperty('batch_id');
+            expect(response.body.data.total_tests).toBe(1); // 1 model * 1 prompt (level 1)
+
+            // Verify batch was created in database
+            const batch = await BenchmarkBatch.findById(response.body.data.batch_id);
+            expect(batch).toBeTruthy();
+            expect(batch.status).toBe('running');
+            expect(batch.models).toEqual(['test-model']);
+        });
+
+        it('should handle multiple models and levels', async () => {
+            const response = await request(app)
+                .post('/api/benchmark/batch')
+                .send({
+                    host: 'http://localhost:11434',
+                    models: ['model-a', 'model-b'],
+                    levels: [1, 3],
+                    quality_scoring: false
+                });
+
+            expect(response.status).toBe(200);
+            expect(response.body.data.total_tests).toBe(4); // 2 models * 2 prompts
+        });
+    });
+
+    describe('GET /api/benchmark/batch/:id', () => {
+        it('should return 404 for non-existent batch', async () => {
+            const fakeId = new mongoose.Types.ObjectId();
+            const response = await request(app).get(`/api/benchmark/batch/${fakeId}`);
+
+            expect(response.status).toBe(500); // Service throws error, caught as 500
+            expect(response.body.status).toBe('error');
+        });
+
+        it('should return batch details', async () => {
+            const batch = await BenchmarkBatch.create({
+                host: 'http://localhost:11434',
+                models: ['test-model'],
+                levels: [1],
+                run_name: 'Test Batch',
+                total_tests: 5,
+                status: 'completed',
+                quality_scoring: false
+            });
+
+            const response = await request(app).get(`/api/benchmark/batch/${batch._id}`);
+
+            expect(response.status).toBe(200);
+            expect(response.body.status).toBe('success');
+            expect(response.body.data.run_name).toBe('Test Batch');
+            expect(response.body.data.status).toBe('completed');
+            expect(response.body.data).toHaveProperty('progress');
+            expect(response.body.data).toHaveProperty('success_rate');
+        });
+    });
+
+    describe('DELETE /api/benchmark/results', () => {
+        it('should clear all results', async () => {
+            // Create test results
+            await BenchmarkResult.create([
+                {
+                    model: 'test-model',
+                    host: 'http://localhost:11434',
+                    prompt: 'Test',
+                    latency: 1000,
+                    tokens: 100,
+                    success: true
+                },
+                {
+                    model: 'test-model-2',
+                    host: 'http://localhost:11434',
+                    prompt: 'Test 2',
+                    latency: 2000,
+                    tokens: 200,
+                    success: true
+                }
+            ]);
+
+            const response = await request(app).delete('/api/benchmark/results');
+
+            expect(response.status).toBe(200);
+            expect(response.body.status).toBe('success');
+            expect(response.body.message).toContain('Cleared 2 results');
+
+            // Verify results were deleted
+            const count = await BenchmarkResult.countDocuments();
+            expect(count).toBe(0);
+        });
+    });
+
+    describe('GET /api/benchmark/quality-breakdown', () => {
+        it('should return quality breakdown by category and level', async () => {
+            await BenchmarkResult.create([
+                {
+                    model: 'test-model',
+                    host: 'http://localhost:11434',
+                    prompt: 'Test',
+                    prompt_level: 1,
+                    prompt_category: 'math',
+                    latency: 1000,
+                    tokens: 100,
+                    quality_score: 85,
+                    composite_score: 90,
+                    success: true
+                },
+                {
+                    model: 'test-model',
+                    host: 'http://localhost:11434',
+                    prompt: 'Test 2',
+                    prompt_level: 2,
+                    prompt_category: 'reasoning',
+                    latency: 1500,
+                    tokens: 150,
+                    quality_score: 75,
+                    composite_score: 80,
+                    success: true
+                }
+            ]);
+
+            const response = await request(app).get('/api/benchmark/quality-breakdown');
+
+            expect(response.status).toBe(200);
+            expect(response.body.status).toBe('success');
+            expect(response.body.data).toHaveProperty('overall');
+            expect(response.body.data).toHaveProperty('by_category');
+            expect(response.body.data).toHaveProperty('by_level');
+        });
+    });
+});

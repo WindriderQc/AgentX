@@ -122,6 +122,10 @@ const { apiLimiter, benchmarkLimiter, chatLimiter, strictLimiter, authLimiter } 
 // Apply general API rate limiter to all /api routes (except specific ones)
 app.use('/api/', apiLimiter);
 
+// Apply strict limiter to expensive operations BEFORE their routers are mounted
+app.use('/api/rag/ingest', strictLimiter);
+app.use('/api/prompts/:name/analyze-failures', strictLimiter);
+
 // Auth routes (with stricter limit for brute force protection)
 const authRoutes = require('../routes/auth');
 app.use('/api/auth', authLimiter, authRoutes);
@@ -211,9 +215,6 @@ app.use('/api/conversations', historyRoutes);
 const apiRoutes = require('../routes/api');
 // Apply chat-specific rate limiter to chat endpoint
 app.use('/api/chat', chatLimiter);
-// Apply strict limiter to expensive RAG operations
-app.use('/api/rag/ingest', strictLimiter);
-app.use('/api/prompts/:name/analyze-failures', strictLimiter);
 app.use('/api', apiRoutes);
 
 // ============================================

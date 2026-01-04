@@ -101,7 +101,60 @@ These exist in the UI but are not top-nav items:
 - `http://localhost:3080/personas.html` redirects to `http://localhost:3080/prompts.html`.
 
 ### 2.4 Test/demo pages (not for normal ops)
-AgentX also ships a couple of UI test pages under `public/` (e.g., onboarding/template testers). Treat these as dev/test utilities.
+AgentX also ships a couple of UI test pages under [public/](../../public/) (e.g., onboarding/template testers). Treat these as dev/test utilities.
+
+### 2.5 Common workflows (page-accurate)
+
+#### Check stack health (fast)
+1. Open `http://localhost:3080/dashboard.html` (Operations Center).
+2. Look at the “System Health” strip (AgentX / MongoDB / DataAPI / Ollama / n8n).
+3. If anything is degraded, jump to [TROUBLESHOOTING_QUICK_REF.md](../TROUBLESHOOTING_QUICK_REF.md).
+
+#### Trigger an n8n webhook (from Operations Center)
+1. Open `http://localhost:3080/dashboard.html`.
+2. In the “n8n Webhook” section, pick a workflow from the “Workflow” dropdown.
+3. (Optional) Edit “Payload (JSON)” then click “Trigger Webhook”.
+4. Read the “Response” box.
+
+#### Trigger RAG ingestion (from Operations Center)
+1. Open `http://localhost:3080/dashboard.html`.
+2. In the “RAG Ingestion” section, set “Target Directory” (default `/mnt/datalake/RAG`).
+3. Click “Trigger Ingestion” and watch for the result.
+
+#### Manage RAG documents (upload + verify)
+1. Open `http://localhost:3080/rag.html`.
+2. Drop files into the upload zone (“Upload Documents”).
+3. Use the search box to verify your document appears.
+
+#### Work with alerts (list → filter → analytics)
+1. Open `http://localhost:3080/alerts.html`.
+2. Use “Filters & Actions” to narrow what you’re looking at.
+3. Click “Refresh” to pull the latest alerts.
+4. Click “Analytics” to open `http://localhost:3080/alert-analytics.html`.
+
+#### Manage personas/prompts
+1. Open `http://localhost:3080/prompts.html`.
+2. Use “Simple Mode” to hide advanced features when you just need basics.
+3. Click “Create Persona” to add a new persona.
+4. Use “Export / Import / Compare Versions” for library management (advanced).
+5. Click “Show Tutorial” to reopen the onboarding guide.
+
+#### Set your profile (what the AI sees)
+1. Open `http://localhost:3080/profile.html`.
+2. (Optional) Use “Quick Fill Templates” then click “Apply”.
+3. Fill “About You”, “Custom Instructions”, and “Preferences”.
+4. Click “Save Profile”, then confirm the “Preview: What the AI Sees”.
+
+#### Read product analytics
+1. Open `http://localhost:3080/analytics.html`.
+2. Set “Last 7/14/30 days”, then click “Refresh”.
+3. Use “Usage Trends” grouping (By Day / By Model / By Prompt).
+
+#### Use the n8n monitor screen
+1. Open `http://localhost:3080/n8n-monitor.html`.
+2. Click “Refresh” under “System Health”.
+3. Select a workflow to view details and test controls.
+4. Use “Deploy Selected” / “Deploy All” only if you intend to update n8n.
 
 ---
 
@@ -114,7 +167,7 @@ AgentX also ships a couple of UI test pages under `public/` (e.g., onboarding/te
 - AgentX running.
 
 Optional but common:
-- DataAPI running (for the Data Tools page and some workflows).
+- DataAPI running (for “DataAPI Scans” in Operations Center and some workflows).
 
 ### 3.2 Confirm the system is alive
 
@@ -213,13 +266,7 @@ For deep technical details, use:
 This is the “ops cockpit” part of AgentX. The primary page is:
 - `http://localhost:3080/dashboard.html` (Operations Center)
 
-From there you can:
-- check health for AgentX / MongoDB / DataAPI / Ollama / n8n,
-- view operational metrics (cache hit rate, DB doc counts, connections, memory),
-- see Collections and recent DataAPI scans,
-- trigger n8n webhooks (preconfigured workflows or custom),
-- trigger RAG ingestion by directory,
-- inspect recent system events.
+For step-by-step tasks (health checks, webhook triggers, ingestion, alerts), see “2.5 Common workflows”.
 
 ### 6.1 DataAPI: what users should know
 - You operate it from AgentX (primarily via the Operations Center).
@@ -235,7 +282,7 @@ DATAAPI_API_KEY=change-me-long-random
 
 DataAPI must be configured with a matching API key and may require `x-api-key` on tool endpoints.
 
-DataAPI canonical docs index lives in the DataAPI repo at: `DataAPI/docs/INDEX.md`.
+DataAPI canonical docs index lives in the DataAPI repo at: [../DataAPI/docs/INDEX.md](../../DataAPI/docs/INDEX.md).
 
 ### 6.3 n8n
 There are two main UI surfaces:
@@ -326,6 +373,16 @@ Usually no. Use AgentX.
 curl http://localhost:3080/health
 ```
 
+Detailed health:
+```bash
+curl http://localhost:3080/health/detailed
+```
+
+Effective runtime config:
+```bash
+curl http://localhost:3080/api/config
+```
+
 ### Ollama
 ```bash
 curl http://localhost:11434/api/tags
@@ -338,4 +395,4 @@ curl http://localhost:11434/api/tags
 
 ### Docs entrypoints
 - AgentX docs index: [docs/INDEX.md](../INDEX.md)
-- DataAPI docs index: `DataAPI/docs/INDEX.md`
+- DataAPI docs index: [../DataAPI/docs/INDEX.md](../../DataAPI/docs/INDEX.md)

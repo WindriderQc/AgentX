@@ -66,6 +66,7 @@ const handleChatRequest = async ({
     messages = [],
     system,
     options = {},
+    persona,
     conversationId,
     useRag,
     ragTopK,
@@ -75,6 +76,8 @@ const handleChatRequest = async ({
     autoRoute = false,  // Enable smart model routing
     taskType = null     // Override task classification
 }) => {
+    const personaName = persona || options.persona || 'default_chat';
+
     // 0. Smart Model Routing (if enabled)
     let effectiveModel = model;
     let effectiveTarget = target;
@@ -106,7 +109,7 @@ const handleChatRequest = async ({
     // 1. Check for Tool Commands
     const toolCommand = await tryHandleToolCommand(message);
     if (toolCommand) {
-        const activePrompt = await getActivePrompt(system);
+        const activePrompt = await getActivePrompt(system, personaName);
         const userProfile = await getOrCreateProfile(userId);
         const effectiveSystemPrompt = buildSystemPrompt(activePrompt.systemPrompt, userProfile, null);
 
@@ -164,8 +167,7 @@ const handleChatRequest = async ({
     }
 
     // 2. Standard Chat Flow
-    const persona = options.persona || 'default_chat';
-    const activePrompt = await getActivePrompt(system, persona);
+    const activePrompt = await getActivePrompt(system, personaName);
     const userProfile = await getOrCreateProfile(userId);
 
     // RAG Logic

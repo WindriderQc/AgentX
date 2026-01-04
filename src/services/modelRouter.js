@@ -7,15 +7,25 @@
  */
 
 const logger = require('../../config/logger');
-const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
+const fetch = require('node-fetch');
 const { RemediationAction } = require('../../models/RemediationAction');
 const { getAlertService } = require('./alertService');
 
 // Host configuration
+// NOTE: Some unit tests set env vars after requiring this module.
+// To keep behavior predictable (and allow tests to override), we refresh
+// the host URLs from process.env on demand.
 const HOSTS = {
-    primary: process.env.OLLAMA_HOST || 'http://192.168.2.99:11434',
-    secondary: process.env.OLLAMA_HOST_2 || process.env.OLLAMA_HOST_SECONDARY || 'http://192.168.2.12:11434'
+    primary: 'http://192.168.2.99:11434',
+    secondary: 'http://192.168.2.12:11434'
 };
+
+function refreshHosts() {
+    HOSTS.primary = process.env.OLLAMA_HOST || 'http://192.168.2.99:11434';
+    HOSTS.secondary = process.env.OLLAMA_HOST_2 || process.env.OLLAMA_HOST_SECONDARY || 'http://192.168.2.12:11434';
+}
+
+refreshHosts();
 
 // ---------------------------------------------------------------------------
 // Back-compat helpers (used by unit tests and older call-sites)
@@ -26,32 +36,35 @@ const HEALTH_SLOW_THRESHOLD_MS = parseInt(process.env.MODEL_HEALTH_SLOW_THRESHOL
 const _healthCache = new Map();
 
 async function getModelHealth(hostUrl, _model = null) {
+    refreshHosts();
     if (!hostUrl) {
         return { healthy: false, latency: -1, checkedAt: Date.now() };
     }
 
     const cacheKey = `${hostUrl}|${_model || ''}`;
-    const now = Date.now();
+    const start = Date.now();
     const cached = _healthCache.get(cacheKey);
-    if (cached && now - cached.checkedAt < HEALTH_CACHE_TTL_MS) {
+    const cacheAgeMs = cached ? (start - cached.checkedAt) : null;
+    if (cached && cacheAgeMs >= 0 && cacheAgeMs < HEALTH_CACHE_TTL_MS) {
         return cached;
     }
 
-    const start = Date.now();
     try {
         const response = await fetch(`${hostUrl}/api/tags`, { method: 'GET' });
+        const end = Date.now();
         const result = {
             healthy: !!response?.ok,
-            latency: Date.now() - start,
-            checkedAt: Date.now()
+            latency: end - start,
+            checkedAt: end
         };
         _healthCache.set(cacheKey, result);
         return result;
     } catch (err) {
+        const end = Date.now();
         const result = {
             healthy: false,
-            latency: Date.now() - start,
-            checkedAt: Date.now(),
+            latency: end - start,
+            checkedAt: end,
             error: err.message
         };
         _healthCache.set(cacheKey, result);
@@ -60,6 +73,7 @@ async function getModelHealth(hostUrl, _model = null) {
 }
 
 async function classifyAndRoute(message, options = {}) {
+    refreshHosts();
     const { taskType = null } = options;
 
     // Minimal deterministic behavior for tests: if taskType is given, route to primary
@@ -198,6 +212,7 @@ User query: `;
  * @returns {string} Full URL of the Ollama host
  */
 function getTargetForModel(model) {
+    refreshHosts();
     if (!model) return HOSTS.primary;
     
     const normalizedModel = model.toLowerCase().trim();
@@ -225,6 +240,7 @@ function getTargetForModel(model) {
  * @returns {{ model: string, host: string, url: string }}
  */
 function getModelForTask(taskType) {
+    refreshHosts();
     const task = TASK_MODELS[taskType] || TASK_MODELS.general_chat;
     return {
         model: task.model,
@@ -240,6 +256,7 @@ function getModelForTask(taskType) {
  * @returns {Promise<string>} Task classification
  */
 async function classifyQuery(message, timeout = 10000) {
+    refreshHosts();
     const frontDoor = HOSTS.primary;
     const classificationModel = 'qwen2.5:7b';
     
@@ -300,6 +317,7 @@ async function classifyQuery(message, timeout = 10000) {
  * @returns {Promise<{ model: string, target: string, taskType: string, routed: boolean }>}
  */
 async function routeRequest(message, options = {}) {
+    refreshHosts();
     const { autoRoute = false, taskType, preferredModel } = options;
     
     // If preferred model specified, just return its target
@@ -350,7 +368,20 @@ async function routeRequest(message, options = {}) {
  * @returns {Promise<{ status: string, models: string[], latency: number }>}
  */
 async function checkHostHealth(hostKey) {
-    const host = HOSTS[hostKey];
+    refreshHosts();
+    // Accept several identifiers:
+    // - 'primary' | 'secondary'
+    // - legacy aliases 'ollama-main' | 'ollama-secondary'
+    // - a full host URL
+    // - a URL equal to HOSTS.primary / HOSTS.secondary
+    let host = null;
+    if (hostKey === 'primary' || hostKey === 'ollama-main') host = HOSTS.primary;
+    else if (hostKey === 'secondary' || hostKey === 'ollama-secondary') host = HOSTS.secondary;
+    else if (typeof hostKey === 'string' && hostKey.startsWith('http')) host = hostKey;
+    else if (hostKey === HOSTS.primary) host = HOSTS.primary;
+    else if (hostKey === HOSTS.secondary) host = HOSTS.secondary;
+    else if (typeof hostKey === 'string') host = HOSTS[hostKey];
+
     if (!host) {
         return { status: 'unknown', models: [], latency: -1 };
     }
@@ -393,6 +424,7 @@ async function checkHostHealth(hostKey) {
  * @returns {Promise<Object>}
  */
 async function getRoutingStatus() {
+    refreshHosts();
     const [primaryHealth, secondaryHealth] = await Promise.all([
         checkHostHealth('primary'),
         checkHostHealth('secondary')
@@ -413,6 +445,7 @@ async function getRoutingStatus() {
  * @returns {string} Active host URL
  */
 function getActiveHost() {
+    refreshHosts();
     return ACTIVE_HOST_STATE.current || HOSTS.primary;
 }
 
@@ -421,6 +454,7 @@ function getActiveHost() {
  * @returns {string} Backup host URL
  */
 function getBackupHost() {
+    refreshHosts();
     const current = getActiveHost();
     return current === HOSTS.primary ? HOSTS.secondary : HOSTS.primary;
 }
@@ -431,6 +465,7 @@ function getBackupHost() {
  * @param {string} reason - Reason for the switch (optional)
  */
 function switchHost(hostUrl, reason = 'manual') {
+    refreshHosts();
     const previousHost = ACTIVE_HOST_STATE.current;
 
     // Update state
@@ -455,6 +490,7 @@ function switchHost(hostUrl, reason = 'manual') {
  * @returns {Object} Current failover state
  */
 function getFailoverStatus() {
+    refreshHosts();
     return {
         currentHost: ACTIVE_HOST_STATE.current,
         isFailedOver: ACTIVE_HOST_STATE.failedOver,
@@ -471,6 +507,7 @@ function getFailoverStatus() {
  * @param {string} reason - Reason for reset (optional)
  */
 function resetToPrimary(reason = 'manual_reset') {
+    refreshHosts();
     const previousState = { ...ACTIVE_HOST_STATE };
 
     ACTIVE_HOST_STATE.current = HOSTS.primary;

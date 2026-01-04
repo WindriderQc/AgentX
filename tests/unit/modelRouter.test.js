@@ -2,9 +2,10 @@
  * Unit tests for modelRouter failover logic
  */
 jest.mock('node-fetch', () => jest.fn());
+const mockTriggerAlert = jest.fn().mockResolvedValue({});
 jest.mock('../../src/services/alertService', () => ({
     getAlertService: () => ({
-        triggerAlert: jest.fn().mockResolvedValue({})
+        triggerAlert: mockTriggerAlert
     })
 }));
 jest.mock('../../models/RemediationAction', () => ({
@@ -50,7 +51,7 @@ describe('ModelRouter failover logic', () => {
 
     test('fails over when primary slow and logs remediation + alert', async () => {
         const timestamps = [0, 6001, 6001, 7000, 7010, 7010]; // primary start/end/lastChecked + backup
-        dateSpy.mockImplementation(() => timestamps.shift() || 8000);
+        dateSpy.mockImplementation(() => (timestamps.shift() ?? 8000));
 
         fetch.mockImplementation((url) => {
             if (url.startsWith(primaryHost)) {
@@ -70,7 +71,7 @@ describe('ModelRouter failover logic', () => {
             strategy: 'model_failover',
             automatedExecution: true
         }));
-        expect(getAlertService().triggerAlert).toHaveBeenCalledWith(
+        expect(mockTriggerAlert).toHaveBeenCalledWith(
             'model_failover',
             'warning',
             expect.objectContaining({
@@ -81,7 +82,7 @@ describe('ModelRouter failover logic', () => {
 
     test('health cache avoids redundant checks within TTL', async () => {
         const timestamps = [0, 100, 100, 1100, 1100, 1200, 1200];
-        dateSpy.mockImplementation(() => timestamps.shift() || 1300);
+        dateSpy.mockImplementation(() => (timestamps.shift() ?? 1300));
 
         fetch.mockResolvedValue({ ok: true });
 
