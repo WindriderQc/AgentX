@@ -104,6 +104,41 @@
             margin-left: 5px;
         }
 
+        /* Category Tabs */
+        .category-tabs {
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(124, 240, 255, 0.3) transparent;
+        }
+
+        .category-tabs::-webkit-scrollbar {
+            height: 4px;
+        }
+
+        .category-tabs::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .category-tabs::-webkit-scrollbar-thumb {
+            background: rgba(124, 240, 255, 0.3);
+            border-radius: 2px;
+        }
+
+        .category-tab {
+            position: relative;
+            transition: all 0.2s ease;
+        }
+
+        .category-tab:hover:not(.active) {
+            color: var(--text) !important;
+            border-bottom-color: rgba(124, 240, 255, 0.3) !important;
+            background: rgba(124, 240, 255, 0.05);
+        }
+
+        .category-tab:active {
+            transform: translateY(1px);
+        }
+
         .charts-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
@@ -1462,6 +1497,45 @@
                 </div>
             </div>
 
+            <!-- Category Tabs -->
+            <div class="category-tabs" style="display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 2px solid rgba(255,255,255,0.1); padding-bottom: 2px; overflow-x: auto;">
+                <button class="category-tab active" data-category="" onclick="switchCategoryTab('')" style="padding: 10px 20px; background: none; border: none; border-bottom: 3px solid var(--accent); color: var(--accent); font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: all 0.2s;">
+                    <i class="fas fa-globe" style="margin-right: 6px;"></i> Universal
+                </button>
+                <button class="category-tab" data-category="ops" onclick="switchCategoryTab('ops')" style="padding: 10px 20px; background: none; border: none; border-bottom: 3px solid transparent; color: var(--muted); font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: all 0.2s;">
+                    <i class="fas fa-bolt" style="margin-right: 6px;"></i> Ops/Glue
+                </button>
+                <button class="category-tab" data-category="coding" onclick="switchCategoryTab('coding')" style="padding: 10px 20px; background: none; border: none; border-bottom: 3px solid transparent; color: var(--muted); font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: all 0.2s;">
+                    <i class="fas fa-code" style="margin-right: 6px;"></i> Coding
+                </button>
+                <button class="category-tab" data-category="reasoning" onclick="switchCategoryTab('reasoning')" style="padding: 10px 20px; background: none; border: none; border-bottom: 3px solid transparent; color: var(--muted); font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: all 0.2s;">
+                    <i class="fas fa-brain" style="margin-right: 6px;"></i> Reasoning
+                </button>
+                <button class="category-tab" data-category="specialist" onclick="switchCategoryTab('specialist')" style="padding: 10px 20px; background: none; border: none; border-bottom: 3px solid transparent; color: var(--muted); font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: all 0.2s;">
+                    <i class="fas fa-star" style="margin-right: 6px;"></i> Specialists
+                </button>
+                <button class="category-tab" data-category="generalist" onclick="switchCategoryTab('generalist')" style="padding: 10px 20px; background: none; border: none; border-bottom: 3px solid transparent; color: var(--muted); font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: all 0.2s;">
+                    <i class="fas fa-cubes" style="margin-right: 6px;"></i> Generalists
+                </button>
+            </div>
+
+            <!-- Category Insights Panel -->
+            <div id="categoryInsights" style="display: none; background: linear-gradient(135deg, rgba(124, 240, 255, 0.1) 0%, rgba(124, 240, 255, 0.05) 100%); border: 1px solid rgba(124, 240, 255, 0.2); border-radius: 8px; padding: 16px 20px; margin-bottom: 20px;">
+                <div style="display: flex; align-items: start; gap: 12px;">
+                    <i class="fas fa-info-circle" style="color: var(--accent); font-size: 20px; margin-top: 2px;"></i>
+                    <div style="flex: 1;">
+                        <div style="font-weight: 600; color: var(--accent); margin-bottom: 6px; font-size: 14px;" id="insightsTitle">Category Insights</div>
+                        <div style="color: rgba(255,255,255,0.8); font-size: 13px; line-height: 1.5;" id="insightsContent">
+                            Select a category to see specialized insights and recommendations.
+                        </div>
+                        <div id="insightsMetrics" style="display: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(124, 240, 255, 0.2); display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+                    <button onclick="document.getElementById('categoryInsights').style.display='none'" style="background: none; border: none; color: var(--muted); cursor: pointer; font-size: 18px; padding: 0 4px; transition: color 0.2s;" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">×</button>
+                </div>
+            </div>
+
             <div class="filter-controls" style="display: flex; gap: 16px; margin-bottom: 20px; align-items: center; flex-wrap: wrap;">
                 <div class="filter-group">
                     <label for="modelCategoryFilter" style="color: var(--muted); font-size: 0.85em; margin-right: 8px;">Model Category:</label>
@@ -1487,7 +1561,7 @@
                         <option value="general">General</option>
                     </select>
                 </div>
-                
+
                 <button onclick="BenchmarkAnalytics.clearAllFilters()" class="btn-secondary" style="padding: 6px 12px; font-size: 13px; margin-left: auto; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; border-radius: 6px; cursor: pointer;">Clear Filters</button>
             </div>
             <table>
@@ -5142,7 +5216,138 @@
             document.getElementById('refreshHistoryBtn').addEventListener('click', loadBatchHistory);
         });
         initCharts();
+        /**
+         * Switch between category tabs
+         */
+        function switchCategoryTab(category) {
+            // Update active tab styling
+            const tabs = document.querySelectorAll('.category-tab');
+            tabs.forEach(tab => {
+                const isActive = tab.dataset.category === category;
+                if (isActive) {
+                    tab.classList.add('active');
+                    tab.style.borderBottomColor = 'var(--accent)';
+                    tab.style.color = 'var(--accent)';
+                } else {
+                    tab.classList.remove('active');
+                    tab.style.borderBottomColor = 'transparent';
+                    tab.style.color = 'var(--muted)';
+                }
+            });
+
+            // Update model category filter dropdown to match
+            const modelFilter = document.getElementById('modelCategoryFilter');
+            if (modelFilter) {
+                modelFilter.value = category;
+            }
+
+            // Apply filter
+            if (window.BenchmarkAnalytics && typeof window.BenchmarkAnalytics.filterByModelCategory === 'function') {
+                window.BenchmarkAnalytics.filterByModelCategory(category);
+            }
+
+            // Update leaderboard header text
+            updateLeaderboardHeader(category);
+
+            // Show category insights
+            showCategoryInsights(category);
+        }
+
+        /**
+         * Update leaderboard header based on active category
+         */
+        function updateLeaderboardHeader(category) {
+            const headerText = document.querySelector('.leaderboard h2');
+            const bestOverallText = document.getElementById('bestOverallText');
+
+            const categoryInfo = {
+                '': {
+                    title: 'Model Leaderboard',
+                    subtitle: 'All models ranked across all task types'
+                },
+                'ops': {
+                    title: 'Ops/Glue Specialists',
+                    subtitle: 'Fast, lightweight models for routing and classification'
+                },
+                'coding': {
+                    title: 'Coding Specialists',
+                    subtitle: 'Models optimized for code generation and debugging'
+                },
+                'reasoning': {
+                    title: 'Reasoning Specialists',
+                    subtitle: 'Deep thinking models for complex problem-solving'
+                },
+                'specialist': {
+                    title: 'Domain Specialists',
+                    subtitle: 'Fine-tuned models for specific tasks'
+                },
+                'generalist': {
+                    title: 'General-Purpose Models',
+                    subtitle: 'Balanced models for broad task coverage'
+                }
+            };
+
+            const info = categoryInfo[category] || categoryInfo[''];
+            if (headerText) {
+                headerText.innerHTML = `<i class="fas fa-trophy" style="color: var(--accent);"></i> ${info.title}`;
+            }
+            if (bestOverallText) {
+                bestOverallText.textContent = info.subtitle;
+            }
+        }
+
+        /**
+         * Show category-specific insights and recommendations
+         */
+        function showCategoryInsights(category) {
+            const insightsPanel = document.getElementById('categoryInsights');
+            const insightsTitle = document.getElementById('insightsTitle');
+            const insightsContent = document.getElementById('insightsContent');
+
+            const categoryInsights = {
+                '': {
+                    show: false
+                },
+                'ops': {
+                    title: '⚡ Ops/Glue Models - Speed is King',
+                    content: '<strong>Use For:</strong> Query classification, routing decisions, simple validation, quick checks<br><strong>Key Metric:</strong> Latency < 500ms preferred. Quality matters less than speed.<br><strong>💡 Tip:</strong> Models like smollm2:1.7b excel here despite lower quality scores on complex tasks.',
+                    show: true
+                },
+                'coding': {
+                    title: '💻 Coding Specialists - Precision & Context',
+                    content: '<strong>Use For:</strong> Code generation, refactoring, debugging, architecture design<br><strong>Key Metric:</strong> Quality > 80, Context window > 8K tokens<br><strong>💡 Tip:</strong> Use qwen2.5-coder:14b for complex tasks, :7b for quick snippets. Filter by "Coding Tasks" to see domain-specific scores.',
+                    show: true
+                },
+                'reasoning': {
+                    title: '🧠 Reasoning Models - Depth Over Speed',
+                    content: '<strong>Use For:</strong> Complex problem-solving, multi-step logic, deep analysis<br><strong>Key Metric:</strong> Quality score is paramount, latency acceptable up to 10s<br><strong>💡 Tip:</strong> Thinking models (deepseek-r1, qwen2.5) show reasoning process. Use for tasks where correctness > speed.',
+                    show: true
+                },
+                'specialist': {
+                    title: '⭐ Domain Specialists - Fine-Tuned Excellence',
+                    content: '<strong>Use For:</strong> Tasks matching their specific training domain<br><strong>Key Metric:</strong> Check "bestCategory" field - specialists excel in their niche<br><strong>💡 Tip:</strong> Specialists may rank low on universal benchmarks but dominate in their category. Use category-filtered view for accurate comparison.',
+                    show: true
+                },
+                'generalist': {
+                    title: '🧊 Generalists - Balanced & Versatile',
+                    content: '<strong>Use For:</strong> Broad task coverage, unpredictable queries, general chat<br><strong>Key Metric:</strong> Balanced scores across all categories<br><strong>💡 Tip:</strong> Models like llama3.3:70b and qwen2.5-7b-instruct offer best "all-around" performance. Good for production front-door models.',
+                    show: true
+                }
+            };
+
+            const insights = categoryInsights[category] || categoryInsights[''];
+
+            if (insights.show) {
+                insightsTitle.textContent = insights.title;
+                insightsContent.innerHTML = insights.content;
+                insightsPanel.style.display = 'block';
+            } else {
+                insightsPanel.style.display = 'none';
+            }
+        }
+
         window.loadDashboard = loadDashboard;
+        window.switchCategoryTab = switchCategoryTab;
         loadDashboard();
         setupModals();
 

@@ -22,10 +22,16 @@ function sanitizeOptions(options = {}) {
 
 // Resolve Ollama Target
 function resolveTarget(target) {
-    const fallback = 'http://localhost:11434';
-    if (!target || typeof target !== 'string') return fallback;
+    const envHost = process.env.OLLAMA_HOST;
+    if (!target || typeof target !== 'string') {
+        if (envHost) return envHost.replace(/\/+$/, '');
+        throw new Error('Ollama host not configured (OLLAMA_HOST env var missing) and no target provided');
+    }
     const trimmed = target.trim();
-    if (!trimmed) return fallback;
+    if (!trimmed) {
+        if (envHost) return envHost.replace(/\/+$/, '');
+        throw new Error('Ollama host not configured (OLLAMA_HOST env var missing) and no target provided');
+    }
     if (/^https?:\/\//i.test(trimmed)) return trimmed.replace(/\/+$/, '');
     return `http://${trimmed.replace(/\/+$/, '')}`;
 }

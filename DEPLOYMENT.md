@@ -83,8 +83,8 @@ SERVER_HOST=localhost
 # CORS Configuration
 CORS_ORIGINS=*
 
-# Ollama Configuration
-OLLAMA_HOST=http://localhost:11434
+# Ollama Configuration (Required)
+OLLAMA_HOST=http://192.168.1.100:11434
 EMBEDDING_MODEL=nomic-embed-text
 ```
 
@@ -96,7 +96,7 @@ EMBEDDING_MODEL=nomic-embed-text
 | `PORT` | `3080` | HTTP server port |
 | `SERVER_HOST` | `localhost` | Server hostname for logs/display |
 | `CORS_ORIGINS` | `*` | Comma-separated allowed origins |
-| `OLLAMA_HOST` | `http://localhost:11434` | Ollama API endpoint |
+| `OLLAMA_HOST` | **Required** | Primary Ollama API endpoint (e.g. http://192.168.1.100:11434) |
 | `EMBEDDING_MODEL` | `nomic-embed-text` | Model for RAG embeddings |
 
 ### MongoDB Atlas Configuration
@@ -612,20 +612,20 @@ cat .env | grep MONGO_URI
 
 **Symptoms:**
 ```
-Error: connect ECONNREFUSED localhost:11434
+Error: connect ECONNREFUSED <host>:11434
 ```
 
 **Solutions:**
 
 ```bash
-# Check Ollama service
+# Check Ollama service (on the host machine)
 systemctl status ollama  # or ps aux | grep ollama
 
 # Start Ollama
 ollama serve &
 
-# Test Ollama API
-curl http://localhost:11434/api/tags
+# Test Ollama API (replace with your OLLAMA_HOST)
+curl http://<ollama-host>:11434/api/tags
 
 # Check models are available
 ollama list
@@ -646,8 +646,8 @@ ollama pull nomic-embed-text
 # Verify in .env
 cat .env | grep EMBEDDING_MODEL
 
-# Test embedding endpoint
-curl http://localhost:11434/api/embeddings \
+# Test embedding endpoint (replace with your OLLAMA_HOST)
+curl http://<ollama-host>:11434/api/embeddings \
   -d '{"model":"nomic-embed-text","prompt":"test"}'
 ```
 

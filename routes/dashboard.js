@@ -12,8 +12,8 @@ try {
 }
 
 // Environment variables
-const OLLAMA_HOST = process.env.OLLAMA_HOST || 'http://localhost:11434';
-const OLLAMA_HOST_2 = process.env.OLLAMA_HOST_2 || 'http://192.168.2.12:11434';
+const OLLAMA_HOST = process.env.OLLAMA_HOST;
+const OLLAMA_HOST_2 = process.env.OLLAMA_HOST_2;
 const DATAAPI_BASE_URL = process.env.DATAAPI_BASE_URL || 'http://192.168.2.33:3003';
 const DATAAPI_API_KEY = process.env.DATAAPI_API_KEY;
 

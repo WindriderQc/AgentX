@@ -71,8 +71,8 @@ curl -fsSL https://ollama.ai/install.sh | sh
 # Pull a model
 ollama pull llama2
 
-# Verify it's running
-curl http://localhost:11434/api/tags
+# Verify it's running (replace with your OLLAMA_HOST)
+curl http://<ollama-host>:11434/api/tags
 ```
 
 ## Viewing the Database
@@ -117,10 +117,10 @@ Ensure MongoDB is running locally or `MONGODB_URI` is set correctly in `.env`.
 
 ### "Ollama connection failed"
 
-Make sure Ollama is running:
+Make sure Ollama is running and `OLLAMA_HOST` is set in `.env`:
 ```bash
-# Check if Ollama is running
-curl http://localhost:11434/api/tags
+# Check if Ollama is running (replace with your OLLAMA_HOST)
+curl http://<ollama-host>:11434/api/tags
 
 # If not, start it
 ollama serve

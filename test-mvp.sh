@@ -54,7 +54,14 @@ echo "=========================================="
 test_endpoint "Benchmark Health" "http://localhost:3081/health" "GET" "" "200"
 
 # Test benchmark (note: will fail if no Ollama host is running, that's expected)
-test_endpoint "Benchmark Test (may fail without Ollama)" "http://localhost:3081/test" "POST" '{"model":"llama2","host":"http://localhost:11434","prompt":"Hello"}' "200|500"
+# Note: We use the configured OLLAMA_HOST from env
+if [ -z "$OLLAMA_HOST" ]; then
+  echo "Error: OLLAMA_HOST environment variable is not set."
+  echo "Please set it to your Ollama instance (e.g., http://192.168.1.100:11434)"
+  exit 1
+fi
+
+test_endpoint "Benchmark Test (may fail without Ollama)" "http://localhost:3081/test" "POST" "{\"model\":\"llama2\",\"host\":\"$OLLAMA_HOST\",\"prompt\":\"Hello\"}" "200|500"
 
 # Get results
 test_endpoint "Benchmark Results" "http://localhost:3081/results" "GET" "" "200"

@@ -249,7 +249,15 @@ app.get('/health', (_req, res) => {
 
 // Config endpoint - expose server configuration
 app.get('/api/config', (_req, res) => {
-  const ollamaHost = process.env.OLLAMA_HOST || 'http://localhost:11434';
+  const ollamaHost = process.env.OLLAMA_HOST;
+  
+  if (!ollamaHost) {
+    return res.status(500).json({ 
+      status: 'error',
+      message: 'OLLAMA_HOST environment variable is not configured' 
+    });
+  }
+
   const match = ollamaHost.match(/^(?:https?:\/\/)?([^:]+)(?::(\d+))?/);
   const host = match ? match[1] : 'localhost';
   const port = match && match[2] ? match[2] : '11434';

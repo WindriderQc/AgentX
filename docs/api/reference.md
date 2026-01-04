@@ -31,7 +31,7 @@ Primary chat endpoint with conversation logging and memory injection.
   "conversationId": "uuid-here",    // Optional, creates new if omitted
   "message": "What is recursion?",  // Required
   "model": "llama2",                // Required
-  "target": "localhost:11434",      // Optional, defaults to "localhost:11434"
+  "target": "http://ollama-host:11434", // Optional, defaults to configured OLLAMA_HOST
   "system": "You are a helpful...", // Optional system prompt
   "options": {                      // Optional LLM parameters
     "temperature": 0.7,
@@ -99,7 +99,7 @@ GET /api/conversations?userId=user123&limit=20
       "title": "What is recursion?",
       "model": "llama2",
       "system_prompt": "You are AgentX...",
-      "target": "localhost:11434",
+      "target": "ollama-a-host:11434",
       "created_at": "2025-12-02T10:30:00.000Z",
       "updated_at": "2025-12-02T10:35:00.000Z"
     }
@@ -412,11 +412,11 @@ These endpoints remain for backward compatibility with the existing frontend:
 Proxy to retrieve available Ollama models.
 
 **Query Parameters:**
-- `target` (optional, default: "localhost:11434")
+- `target` (optional, default: configured OLLAMA_HOST)
 
 **Request:**
 ```
-GET /api/ollama/models?target=localhost:11434
+GET /api/ollama/models?target=http://192.168.1.100:11434
 ```
 
 **Response:**
@@ -447,7 +447,7 @@ Legacy chat endpoint without logging (direct Ollama proxy).
 **Request:**
 ```json
 {
-  "target": "localhost:11434",
+  "target": "ollama-host:11434",
   "model": "llama2",
   "messages": [
     { "role": "system", "content": "You are helpful" },

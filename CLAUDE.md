@@ -273,8 +273,8 @@ QDRANT_COLLECTION=agentx_rag
 **Host Configuration:**
 ```javascript
 HOSTS = {
-  primary: process.env.OLLAMA_HOST,              // Default: http://localhost:11434
-  secondary: process.env.OLLAMA_HOST_SECONDARY   // Heavy models
+  primary: process.env.OLLAMA_HOST,              // Required
+  secondary: process.env.OLLAMA_HOST_SECONDARY   // Optional: Heavy models
 }
 ```
 

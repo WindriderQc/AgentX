@@ -197,7 +197,11 @@ BenchmarkResultSchema.statics.getQualityBreakdown = async function(model = null)
         success: true,
         quality_score: { $ne: null }
     };
-    if (model) matchStage.model = model;
+    if (model) {
+        matchStage.model = model;
+    } else {
+        matchStage.model = { $not: /diagnostic/i };
+    }
 
     const [byCategory, byLevel, byModel] = await Promise.all([
         this.aggregate([

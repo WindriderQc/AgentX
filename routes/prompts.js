@@ -393,7 +393,10 @@ router.post('/:name/analyze-failures', optionalAuth, async (req, res) => {
         const sampleConversations = conversations.slice(0, 5);
         
         // Call Ollama for deeper analysis
-        const ollamaHost = process.env.OLLAMA_HOST || 'http://localhost:11434';
+        const ollamaHost = process.env.OLLAMA_HOST;
+        if (!ollamaHost) {
+            throw new Error('OLLAMA_HOST environment variable is required for failure analysis');
+        }
         const llmAnalysis = await callOllamaForAnalysis(
             prompt,
             patternAnalysis,

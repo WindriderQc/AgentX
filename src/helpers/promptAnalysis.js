@@ -146,7 +146,10 @@ function analyzeFailurePatterns(conversations) {
  * @param {string} ollamaHost - Ollama API host
  * @returns {Promise<Object>} LLM analysis and suggestions
  */
-async function callOllamaForAnalysis(prompt, analysis, sampleConversations, ollamaHost = 'http://localhost:11434') {
+async function callOllamaForAnalysis(prompt, analysis, sampleConversations, ollamaHost = process.env.OLLAMA_HOST) {
+  if (!ollamaHost) {
+      throw new Error('OLLAMA_HOST environment variable is required for prompt analysis');
+  }
   try {
     // Prepare analysis prompt for LLM
     const analysisPrompt = `You are an expert prompt engineer. Analyze the following system prompt and its failure patterns to suggest improvements.

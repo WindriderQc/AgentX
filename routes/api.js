@@ -20,7 +20,10 @@ const ragStore = getRagStore({
 
 // PROXY: Models List
 router.get('/ollama/models', async (req, res) => {
-    const target = req.query.target || process.env.OLLAMA_HOST || 'localhost:11434';
+    const target = req.query.target || process.env.OLLAMA_HOST;
+    if (!target) {
+        return res.status(500).json({ status: 'error', message: 'OLLAMA_HOST not configured and no target provided' });
+    }
     try {
         const url = `${resolveTarget(target)}/api/tags`;
         const response = await fetch(url);
@@ -94,7 +97,7 @@ router.get('/models/health', async (req, res) => {
 // CHAT: Delegated to chatService
 router.post('/chat', optionalAuth, async (req, res) => {
   const { 
-    target = process.env.OLLAMA_HOST || 'localhost:11434', 
+    target = process.env.OLLAMA_HOST, 
     model, 
     message, 
     messages = [], 
@@ -108,6 +111,10 @@ router.post('/chat', optionalAuth, async (req, res) => {
     autoRoute = false,  // Enable smart model routing
     taskType = null     // Override task classification (code_generation, deep_reasoning, etc.)
   } = req.body;
+
+  if (!target) {
+      return res.status(500).json({ status: 'error', message: 'OLLAMA_HOST not configured and no target provided' });
+  }
   const userId = getUserId(res);
 
   // Model is optional if autoRoute or taskType is enabled

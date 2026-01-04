@@ -18,7 +18,10 @@ const logger = require('../../config/logger');
 
 class EmbeddingsService {
   constructor(config = {}) {
-    this.ollamaHost = config.ollamaHost || process.env.OLLAMA_HOST || 'http://localhost:11434';
+    this.ollamaHost = config.ollamaHost || process.env.OLLAMA_HOST;
+    if (!this.ollamaHost) {
+        throw new Error('OLLAMA_HOST environment variable is required for EmbeddingsService');
+    }
     this.model = config.embeddingModel || process.env.EMBEDDING_MODEL || 'nomic-embed-text';
     this.dimension = 768; // nomic-embed-text default dimension
     this.batchSize = 10; // Process in batches to avoid memory issues
