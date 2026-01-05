@@ -11,8 +11,6 @@ const logger = require('../../config/logger');
 // Use global fetch (for tests) or dynamic import
 const fetch = (...args) => (global.fetch ? global.fetch(...args) : import('node-fetch').then(({ default: fn }) => fn(...args)));
 
-const DeepJob = require('../../models/DeepJob');
-
 // Helper to detect thinking models
 const isThinkingModel = (model) => {
     if (!model) return false;
@@ -386,44 +384,15 @@ const handleChatRequest = async ({
         logger.error('Failed to save conversation', { error: err.message });
     }
 
-    // V5.1 BrainX Deep Research Logic
-    let deepJobId = null;
+    // V5.1 BrainX Deep Research Logic (Lightweight)
     const isBrainX = (options.persona === 'brainx' || options.persona === 'brainx_research');
 
     if (isBrainX && conversation && assistantMessageId) {
         try {
-            logger.info('BrainX persona detected. Initiating Deep Research Job.');
-
-            // Generate Unique Job ID
-            const jobId = `job_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-            deepJobId = jobId;
-
-            // Create Job Record
-            const job = new DeepJob({
-                jobId: jobId,
-                conversationId: conversation._id,
-                messageId: assistantMessageId,
-                status: 'pending',
-                payload: {
-                    query: message,
-                    model: effectiveModel,
-                    params: options
-                }
-            });
-            await job.save();
-
-            // Update Conversation with Job ID
-            if (conversation.messages) {
-                const lastMsg = conversation.messages.id(assistantMessageId);
-                if (lastMsg) {
-                    lastMsg.metadata = lastMsg.metadata || {};
-                    lastMsg.metadata.deepJobId = jobId;
-                }
-            }
-            conversation.deepJobId = jobId;
-            await conversation.save();
+            logger.info('BrainX persona detected. Triggering n8n workflow.');
 
             // Trigger n8n Webhook (Async/Fire-and-forget)
+            // n8n manages the state. We just pass context.
             const webhookUrl = process.env.N8N_WEBHOOK_URL || 'http://localhost:5678/webhook/brainx-research';
             const callbackUrl = `${process.env.BASE_URL || 'http://localhost:3080'}/api/n8n/callback/deep-research`;
 
@@ -431,25 +400,24 @@ const handleChatRequest = async ({
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    jobId: jobId,
                     query: message,
                     conversationId: conversation._id,
+                    messageId: assistantMessageId,
                     callbackUrl
                 })
             }).then(res => {
-                if (res.ok) logger.info(`DeepJob ${jobId} triggered successfully.`);
-                else logger.warn(`DeepJob ${jobId} trigger failed: ${res.statusText}`);
+                if (res.ok) logger.info(`BrainX webhook triggered for conversation ${conversation._id}`);
+                else logger.warn(`BrainX webhook failed: ${res.statusText}`);
             }).catch(err => {
-                logger.error(`DeepJob ${jobId} trigger error`, { error: err.message });
+                logger.error(`BrainX webhook error`, { error: err.message });
             });
 
         } catch (err) {
-            logger.error('Failed to initiate BrainX Deep Job', { error: err.message });
+            logger.error('Failed to initiate BrainX webhook', { error: err.message });
         }
     }
 
     return {
-        deepJobId: deepJobId || null,
         response: finalContent,
         conversationId: conversation?._id || null,
         messageId: assistantMessageId,

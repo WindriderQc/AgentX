@@ -11,12 +11,11 @@
 
 ### V5.1 BrainX Deep Research (Completed ✅)
 - Dual-timing architecture
-- Async `DeepJob` tracking
+- Lightweight integration (State managed by n8n)
 - n8n webhook integration
 - Secure callback endpoint (`x-api-key`)
 - Integration tests
 
 ### Next Steps
-- Job status API for frontend polling (Completed in V1.4.0)
 - UI integration for research results
 - Advanced AgentC tool integration

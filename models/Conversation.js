@@ -68,9 +68,6 @@ const ConversationSchema = new mongoose.Schema({
   promptName: { type: String },     // Snapshot: e.g. "default_chat"
   promptVersion: { type: Number },  // Snapshot: e.g. 5
 
-  // V5.1 BrainX Deep Research Job
-  deepJobId: { type: String }, // Links to DeepJob collection
-
   // V5: Total conversation cost (sum of all message costs)
   totalCost: {
     sum: { type: Number, default: 0 },

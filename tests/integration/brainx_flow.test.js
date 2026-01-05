@@ -3,7 +3,6 @@ const { MongoMemoryServer } = require('mongodb-memory-server');
 const request = require('supertest');
 const { app } = require('../../src/app');
 const Conversation = require('../../models/Conversation');
-const DeepJob = require('../../models/DeepJob');
 const PromptConfig = require('../../models/PromptConfig');
 
 // Mock n8n webhook utility to avoid actual network calls
@@ -119,52 +118,32 @@ describe('BrainX Deep Research Flow', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('success');
-    expect(res.body.data.deepJobId).toBeDefined();
+    expect(res.body.data.deepJobId).toBeUndefined();
 
-    const jobId = res.body.data.deepJobId;
-
-    // 2. Verify DeepJob creation in DB
-    const job = await DeepJob.findOne({ jobId: jobId });
-    expect(job).toBeDefined();
-    expect(job.status).toBe('pending');
-    expect(job.payload.query).toBe('What is the meaning of life?');
-
-    // 3. Verify n8n webhook was triggered
+    // 2. Verify n8n webhook was triggered (Log verification optional)
+    // In this lightweight architecture, we trust the service call if response is 200.
     // Note: In integration tests, module mocks might behave differently depending on how app is required.
     // Ideally we check side effects.
   });
 
   it('should update conversation on n8n callback', async () => {
-    // Setup existing job and conversation
+    // Setup conversation
     const conversation = await Conversation.create({
         userId: 'test-user',
         messages: [
             { role: 'user', content: 'Complex question' },
-            { role: 'assistant', content: 'Draft answer', deepJobId: null } // ID added later
+            { role: 'assistant', content: 'Draft answer' }
         ]
     });
     const msgId = conversation.messages[1]._id;
 
-    const job = await DeepJob.create({
-        jobId: 'job_unique_123',
-        conversationId: conversation._id,
-        messageId: msgId,
-        status: 'pending',
-        payload: { query: 'Complex question' }
-    });
-
-    // Link job to message (normally done in chat flow)
-    conversation.messages[1].deepJobId = job._id;
-    // We must initialize metadata or Mongoose might not handle Mixed type updates well initially?
-    conversation.messages[1].metadata = { deepJobId: job._id };
-    await conversation.save();
-
-    // 5. Send Callback
+    // Send Callback with direct conversation/message references
     const callbackRes = await request(app)
         .post('/api/n8n/callback/deep-research')
         .set('x-api-key', 'test-api-key')
         .send({
-            jobId: 'job_unique_123',
+            conversationId: conversation._id,
+            messageId: msgId,
             status: 'completed',
             result: {
                 finalAnswer: 'The answer is 42.',
@@ -174,13 +153,7 @@ describe('BrainX Deep Research Flow', () => {
 
     expect(callbackRes.status).toBe(200);
 
-    // 6. Verify Job Updated
-    const updatedJob = await DeepJob.findOne({ jobId: 'job_unique_123' });
-    expect(updatedJob.status).toBe('completed');
-    expect(updatedJob.result.finalAnswer).toBe('The answer is 42.');
-
-    // 7. Verify Conversation Updated
-    // Reload explicitly to check updates
+    // Verify Conversation Updated
     const reloadedConv = await Conversation.findById(conversation._id).lean();
     const reloadedMsg = reloadedConv.messages.find(m => m._id.toString() === msgId.toString());
 
@@ -197,7 +170,7 @@ describe('BrainX Deep Research Flow', () => {
   it('should reject callback without API key', async () => {
     const res = await request(app)
       .post('/api/n8n/callback/deep-research')
-      .send({ jobId: 'test' });
+      .send({ conversationId: 'test', messageId: 'test' });
     expect(res.status).toBe(401);
   });
 
@@ -205,7 +178,7 @@ describe('BrainX Deep Research Flow', () => {
     const res = await request(app)
       .post('/api/n8n/callback/deep-research')
       .set('x-api-key', 'wrong-key')
-      .send({ jobId: 'test' });
+      .send({ conversationId: 'test', messageId: 'test' });
     expect(res.status).toBe(401);
   });
 });
