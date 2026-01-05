@@ -71,7 +71,45 @@ Get real-time statistics for all currently running batches.
 
 ---
 
-### 2. GET /api/benchmark/trends
+### 3. GET /api/benchmark/judge-leaderboard
+
+Get performance rankings and activity stats for Judge Models (LLM-as-a-Judge).
+
+**Use Case:** "The Courthouse" dashboard, evaluating judge reliability and speed.
+
+**Query Parameters:** None
+
+**Response:**
+```json
+{
+  "status": "success",
+  "data": {
+    "leaderboard": [
+      {
+        "judge_model": "llama3:8b",
+        "judge_host": "http://localhost:11434",
+        "count": 150,
+        "avg_latency": 4500,
+        "success_rate": 98.5,
+        "avg_explanation_len": 320,
+        "score_distribution": { "1": 2, "5": 10, "10": 50 }
+      }
+    ],
+    "activity": [
+      {
+        "model": "deepseek-coder:6.7b",
+        "judge_model": "llama3:8b",
+        "quality_score": 9,
+        "timestamp": "2026-01-04T10:00:00Z"
+      }
+    ]
+  }
+}
+```
+
+---
+
+### 4. GET /api/benchmark/trends
 
 Get time-series performance trends for model analysis.
 

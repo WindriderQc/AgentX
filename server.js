@@ -69,9 +69,27 @@ app.get('/health/detailed', async (_req, res) => {
   // Refresh checks
   const mongoStatus = await checkMongoHealth();
   const ollamaStatus = await checkOllamaHealth();
-  
+
+  // Check Qdrant if configured
+  const VECTOR_STORE_TYPE = process.env.VECTOR_STORE_TYPE;
+  const QDRANT_URL = process.env.QDRANT_URL || 'http://localhost:6333';
+  let qdrantStatus = { healthy: false, message: 'Not configured' };
+
+  if (VECTOR_STORE_TYPE === 'qdrant') {
+    try {
+      const response = await fetch(`${QDRANT_URL}/healthz`);
+      if (response.ok) {
+        qdrantStatus = { healthy: true, message: 'Connected' };
+      } else {
+        qdrantStatus = { healthy: false, message: `HTTP ${response.status}` };
+      }
+    } catch (err) {
+      qdrantStatus = { healthy: false, message: err.message };
+    }
+  }
+
   const health = {
-    status: (mongoStatus.healthy && ollamaStatus.healthy) ? 'healthy' : 'degraded',
+    status: (mongoStatus.healthy && ollamaStatus.healthy && (VECTOR_STORE_TYPE !== 'qdrant' || qdrantStatus.healthy)) ? 'healthy' : 'degraded',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     services: {
@@ -85,6 +103,13 @@ app.get('/health/detailed', async (_req, res) => {
         message: ollamaStatus.message,
         host: OLLAMA_HOST,
         lastCheck: new Date().toISOString()
+      },
+      qdrant: {
+        status: qdrantStatus.healthy ? 'connected' : (VECTOR_STORE_TYPE === 'qdrant' ? 'error' : 'not_configured'),
+        message: qdrantStatus.message,
+        url: VECTOR_STORE_TYPE === 'qdrant' ? QDRANT_URL : undefined,
+        vectorStoreType: VECTOR_STORE_TYPE || 'memory',
+        lastCheck: new Date().toISOString()
       }
     },
     system: {
@@ -96,7 +121,7 @@ app.get('/health/detailed', async (_req, res) => {
       }
     }
   };
-  
+
   const statusCode = health.status === 'healthy' ? 200 : 503;
   res.status(statusCode).json(health);
 });
@@ -135,10 +160,36 @@ async function startServer() {
   } catch (err) {
     systemHealth.ollama = { status: 'error', lastCheck: new Date().toISOString(), error: err.message };
     console.log(`   ✗ Ollama:   ${err.message} (${OLLAMA_HOST})`);
-    logger.warn('Ollama not available - chat features will not work until Ollama is running', { 
+    logger.warn('Ollama not available - chat features will not work until Ollama is running', {
       error: err.message,
-      host: OLLAMA_HOST 
+      host: OLLAMA_HOST
     });
+  }
+
+  // Check Qdrant (only if configured)
+  const VECTOR_STORE_TYPE = process.env.VECTOR_STORE_TYPE;
+  const QDRANT_URL = process.env.QDRANT_URL || 'http://localhost:6333';
+  if (VECTOR_STORE_TYPE === 'qdrant') {
+    try {
+      const response = await fetch(`${QDRANT_URL}/healthz`);
+      if (response.ok) {
+        systemHealth.qdrant = { status: 'connected', lastCheck: new Date().toISOString(), error: null };
+        console.log(`   ✓ Qdrant:   Connected (${QDRANT_URL})`);
+        logger.info('Qdrant connected successfully', { url: QDRANT_URL });
+      } else {
+        throw new Error(`HTTP ${response.status}`);
+      }
+    } catch (err) {
+      systemHealth.qdrant = { status: 'error', lastCheck: new Date().toISOString(), error: err.message };
+      console.log(`   ✗ Qdrant:   ${err.message} (${QDRANT_URL})`);
+      logger.warn('Qdrant not available - RAG will use in-memory fallback', {
+        error: err.message,
+        url: QDRANT_URL
+      });
+    }
+  } else {
+    systemHealth.qdrant = { status: 'not_configured', lastCheck: new Date().toISOString(), error: 'VECTOR_STORE_TYPE is not set to qdrant' };
+    console.log(`   ℹ Qdrant:   Not configured (using ${VECTOR_STORE_TYPE || 'memory'} vector store)`);
   }
 
   // Load self-healing rules

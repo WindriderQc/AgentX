@@ -6,6 +6,10 @@ let metricsInterval = null;
 let healthInterval = null;
 let eventsInterval = null;
 
+let metricsCooldownUntil = 0;
+let metricsBackoffMs = 0;
+let metricsLast429LogAt = 0;
+
 // --- UTILITIES ---
 
 function formatBytes(bytes) {
@@ -84,11 +88,13 @@ async function updateQuickStats() {
         const elTotal = document.getElementById('db-total-docs');
         if (elTotal) elTotal.textContent = formatNumber(totalDocs);
 
-        // System metrics for overview cards
-        const sys = await API.get('/api/metrics/system');
+        // System + cache + connection: use the summary endpoint to avoid multiple calls
+        const summary = await API.get('/api/metrics/summary');
+        const sys = summary.data.system;
+        const cache = summary.data.cache;
         const uptimeEl = document.getElementById('sys-uptime');
         
-        if (uptimeEl) uptimeEl.textContent = sys.data.uptime.formatted;
+        if (uptimeEl) uptimeEl.textContent = sys?.uptime?.formatted || '—';
 
         // Memory metric card with bar and status
         const memEl = document.getElementById('sys-mem');
@@ -96,10 +102,10 @@ async function updateQuickStats() {
         const sysTotalMem = document.getElementById('sysTotalMem');
         const sysStatus = document.getElementById('sysStatus');
         
-        if (memEl && sys.data.memory) {
-            const heapUsed = (sys.data.memory.heapUsed / (1024 * 1024)).toFixed(2);
-            const heapTotal = (sys.data.memory.heapTotal / (1024 * 1024)).toFixed(2);
-            const memPct = ((sys.data.memory.heapUsed / sys.data.memory.heapTotal) * 100);
+        if (memEl && sys?.memory) {
+            const heapUsed = (sys.memory.heapUsed / (1024 * 1024)).toFixed(2);
+            const heapTotal = (sys.memory.heapTotal / (1024 * 1024)).toFixed(2);
+            const memPct = ((sys.memory.heapUsed / sys.memory.heapTotal) * 100);
             
             memEl.textContent = `${heapUsed} MB`;
             if (sysTotalMem) sysTotalMem.textContent = `${heapTotal} MB`;
@@ -110,8 +116,7 @@ async function updateQuickStats() {
         }
 
         // Cache hit rate metric card with bar
-        const cache = await API.get('/api/metrics/cache');
-        const hitRate = parseFloat(cache.data.cache.hitRate || 0).toFixed(0);
+        const hitRate = parseFloat((cache?.hitRate || 0) * 100).toFixed(0);
         const hitRateEl = document.getElementById('cache-hit-rate');
         const cacheBar = document.getElementById('cacheBar');
         const cacheStatus = document.getElementById('cacheStatus');
@@ -123,8 +128,8 @@ async function updateQuickStats() {
         if (cacheStatus) {
             cacheStatus.className = 'status-dot ' + (hitRate >= 80 ? 'healthy' : hitRate >= 50 ? 'warning' : 'error');
         }
-        if (cacheHits) cacheHits.textContent = formatNumber(cache.data.cache.hitCount || 0);
-        if (cacheMisses) cacheMisses.textContent = formatNumber(cache.data.cache.missCount || 0);
+        if (cacheHits) cacheHits.textContent = formatNumber(cache?.hitCount || 0);
+        if (cacheMisses) cacheMisses.textContent = formatNumber(cache?.missCount || 0);
 
         // Database connections metric card with bar
         const db = await API.get('/api/metrics/database');
@@ -285,15 +290,20 @@ function setStatusDot(el, val, healthyThreshold = 70, warningThreshold = 90, rev
 }
 
 async function refreshSystemMetrics() {
+    const now = Date.now();
+    if (now < metricsCooldownUntil) return;
+
     try {
-        const [cache, conn, sys] = await Promise.all([
-            API.get('/api/metrics/cache'),
-            API.get('/api/metrics/connection'),
-            API.get('/api/metrics/system')
-        ]);
+        const summary = await API.get('/api/metrics/summary');
+        const cache = summary.data.cache;
+        const conn = summary.data.connection;
+        const sys = summary.data.system;
+
+        metricsBackoffMs = 0;
+        metricsCooldownUntil = 0;
 
         // --- Cache ---
-        const cacheData = cache.data.cache;
+        const cacheData = cache;
         const hitRate = (cacheData.hitRate * 100);
         
         const elHitRate = document.getElementById('cacheHitRate');
@@ -310,8 +320,8 @@ async function refreshSystemMetrics() {
         if (missEl) missEl.textContent = formatNumber(cacheData.missCount);
 
         // --- Connections ---
-        const activeConn = conn.data.activeConnections || 0;
-        const maxConn = conn.data.poolSize || 100;
+        const activeConn = conn.activeConnections || 0;
+        const maxConn = conn.poolSize || 100;
         const connUsage = (activeConn / maxConn) * 100;
 
         const connActiveEl = document.getElementById('connActive');
@@ -322,11 +332,11 @@ async function refreshSystemMetrics() {
         if (connActiveEl) connActiveEl.textContent = activeConn;
         if (connMaxEl) connMaxEl.textContent = maxConn;
         if (connBarEl) connBarEl.style.width = connUsage + '%';
-        if (connAvailEl) connAvailEl.textContent = conn.data.availableConnections || '0';
+        if (connAvailEl) connAvailEl.textContent = conn.availableConnections || '0';
         setStatusDot(document.getElementById('connStatus'), connUsage, 70, 90, true);
 
         // --- System ---
-        const sysData = sys.data;
+        const sysData = sys;
         const heapUsedMB = Math.round(sysData.memory.heapUsed / 1024 / 1024);
         const heapTotalMB = Math.round(sysData.memory.heapTotal / 1024 / 1024);
         const memUsagePercent = (sysData.memory.heapUsed / sysData.memory.heapTotal) * 100;
@@ -345,6 +355,19 @@ async function refreshSystemMetrics() {
         setStatusDot(document.getElementById('sysStatus'), memUsagePercent, 80, 90, true);
 
     } catch (error) {
+        const status = error?.status;
+        if (status === 429) {
+            const retryAfterMs = Number.isFinite(error?.retryAfterMs) ? error.retryAfterMs : null;
+            const nextBackoff = retryAfterMs ?? (metricsBackoffMs ? metricsBackoffMs * 2 : 15000);
+            metricsBackoffMs = Math.min(Math.max(nextBackoff, 15000), 120000);
+            metricsCooldownUntil = Date.now() + metricsBackoffMs;
+
+            if (Date.now() - metricsLast429LogAt > 10000) {
+                console.warn(`Dashboard metrics rate-limited (429). Backing off for ${Math.round(metricsBackoffMs / 1000)}s`);
+                metricsLast429LogAt = Date.now();
+            }
+            return;
+        }
         console.error('Metrics refresh failed:', error);
     }
 }
@@ -479,7 +502,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Periodic updates
     healthInterval = setInterval(updateHealthStatus, 30000);
     eventsInterval = setInterval(updateSystemEvents, 60000);
-    metricsInterval = setInterval(refreshSystemMetrics, 10000);
+    metricsInterval = setInterval(refreshSystemMetrics, 15000);
     setInterval(loadScans, 10000); // Refresh scans every 10s
 
     // Modal Close

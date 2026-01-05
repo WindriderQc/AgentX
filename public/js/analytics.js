@@ -151,8 +151,22 @@ async function fetchJSON(url, method = 'GET') {
     window.location.href = '/login.html?redirect=' + encodeURIComponent(window.location.pathname);
     throw new Error('Unauthorized');
   }
+
   if (!res.ok) {
-    throw new Error(`Request failed: ${res.status}`);
+    const retryAfter = res.headers.get('retry-after');
+    const retryAfterMs = (() => {
+      if (!retryAfter) return null;
+      const seconds = Number(retryAfter);
+      if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+      const asDate = Date.parse(retryAfter);
+      if (!Number.isNaN(asDate)) return Math.max(0, asDate - Date.now());
+      return null;
+    })();
+
+    const error = new Error(`Request failed: ${res.status}`);
+    error.status = res.status;
+    error.retryAfterMs = retryAfterMs;
+    throw error;
   }
   
   // Check if response is actually JSON
@@ -164,6 +178,10 @@ async function fetchJSON(url, method = 'GET') {
   
   return res.json();
 }
+
+let systemMetricsCooldownUntil = 0;
+let systemMetricsBackoffMs = 0;
+let systemMetricsLast429LogAt = 0;
 
 async function checkAuth() {
   try {
@@ -881,6 +899,9 @@ async function refreshCostBreakdown() {
 /* -------------------------------------------------------------------------- */
 
 async function refreshSystem() {
+  const now = Date.now();
+  if (now < systemMetricsCooldownUntil) return;
+
   try {
     const [summary, database] = await Promise.all([
       fetchJSON('/api/metrics/summary'),
@@ -890,7 +911,25 @@ async function refreshSystem() {
     renderSystemMetrics({ summary, database });
     updateTimestamp();
 
+    systemMetricsBackoffMs = 0;
+    systemMetricsCooldownUntil = 0;
+
   } catch (err) {
+    const status = err?.status;
+    if (status === 429) {
+      const retryAfterMs = Number.isFinite(err?.retryAfterMs) ? err.retryAfterMs : null;
+      const nextBackoff = retryAfterMs ?? (systemMetricsBackoffMs ? systemMetricsBackoffMs * 2 : 15000);
+      systemMetricsBackoffMs = Math.min(Math.max(nextBackoff, 15000), 120000);
+      systemMetricsCooldownUntil = Date.now() + systemMetricsBackoffMs;
+
+      if (Date.now() - systemMetricsLast429LogAt > 10000) {
+        // eslint-disable-next-line no-console
+        console.warn(`System metrics rate-limited (429). Backing off for ${Math.round(systemMetricsBackoffMs / 1000)}s`);
+        systemMetricsLast429LogAt = Date.now();
+      }
+      return;
+    }
+
     console.error('System metrics load failed', err);
   }
 }
@@ -1219,6 +1258,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Poll system metrics (shared controller handles pause-on-blur)
   poller = new PollingController();
-  poller.addTask('system-metrics', refreshSystem, 5000, { runOnStart: false });
+  poller.addTask('system-metrics', refreshSystem, 15000, { runOnStart: false });
   poller.start();
 });

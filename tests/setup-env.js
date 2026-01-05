@@ -15,6 +15,13 @@ const mongoUriFile = path.join(__dirname, '.jest-mongo-uri');
 // Set test environment
 process.env.NODE_ENV = 'test';
 
+// Ensure deterministic ModelRouter host configuration for unit/integration tests.
+// These are only defaults for tests; production should set real hosts.
+if (!process.env.OLLAMA_HOST) process.env.OLLAMA_HOST = 'http://127.0.0.1:11434';
+if (!process.env.OLLAMA_HOST_SECONDARY && !process.env.OLLAMA_HOST_2) {
+  process.env.OLLAMA_HOST_SECONDARY = 'http://127.0.0.1:11435';
+}
+
 // Connect to MongoDB before all tests
 beforeAll(async () => {
   // Use in-memory MongoDB for deterministic, isolated tests.

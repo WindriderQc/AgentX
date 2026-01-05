@@ -2,6 +2,16 @@
  * @file API and networking utility functions.
  */
 
+const parseRetryAfterMs = (response) => {
+  const retryAfter = response?.headers?.get?.('retry-after');
+  if (!retryAfter) return null;
+  const seconds = Number(retryAfter);
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+  const asDate = Date.parse(retryAfter);
+  if (!Number.isNaN(asDate)) return Math.max(0, asDate - Date.now());
+  return null;
+};
+
 /**
  * Generic GET request wrapper
  * @param {string} url - The URL to fetch
@@ -16,11 +26,15 @@ export const get = async (url, options = {}) => {
         'Content-Type': 'application/json',
         ...options.headers
       },
+      credentials: options.credentials || 'include',
       ...options
     });
     
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      const error = new Error(`HTTP error! status: ${response.status}`);
+      error.status = response.status;
+      error.retryAfterMs = parseRetryAfterMs(response);
+      throw error;
     }
 
     const contentType = response.headers.get('content-type') || '';
@@ -52,11 +66,15 @@ export const post = async (url, data = {}, options = {}) => {
         ...options.headers
       },
       body: JSON.stringify(data),
+      credentials: options.credentials || 'include',
       ...options
     });
     
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      const error = new Error(`HTTP error! status: ${response.status}`);
+      error.status = response.status;
+      error.retryAfterMs = parseRetryAfterMs(response);
+      throw error;
     }
 
     const contentType = response.headers.get('content-type') || '';

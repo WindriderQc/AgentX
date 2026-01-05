@@ -1102,16 +1102,31 @@
             </div>
 
             <div class="model-selection-section" style="margin-bottom: 32px; background: var(--card-bg); border: 1px solid var(--panel-border); border-radius: 12px; padding: 24px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 16px;">
                     <div>
                         <h2 style="margin: 0; display: flex; align-items: center; gap: 10px;"><i class="fas fa-list-check" style="color: var(--accent);"></i> Model Selection</h2>
                         <p style="color: var(--muted); margin: 4px 0 0 0; font-size: 0.9em;">Select models for batch testing and manage model notes.</p>
                     </div>
+                    <div style="display: flex; gap: 12px; align-items: center;">
+                        <div class="search-wrapper" style="position: relative;">
+                            <i class="fas fa-search" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--muted);"></i>
+                            <input type="text" id="modelSearchInput" placeholder="Search models..." 
+                                style="padding: 8px 12px 8px 32px; border-radius: 6px; border: 1px solid var(--panel-border); background: rgba(0,0,0,0.2); color: var(--text); width: 200px; font-size: 0.9em;">
+                        </div>
+                        <select id="modelCategoryFilterSelect" style="padding: 8px 12px; border-radius: 6px; border: 1px solid var(--panel-border); background: rgba(0,0,0,0.2); color: var(--text); font-size: 0.9em;">
+                            <option value="">All Categories</option>
+                            <option value="ops">Ops/Glue</option>
+                            <option value="coding">Coding</option>
+                            <option value="reasoning">Reasoning</option>
+                            <option value="specialist">Specialist</option>
+                            <option value="generalist">Generalist</option>
+                        </select>
+                    </div>
                 </div>
                 
-                <div style="overflow-x: auto; border: 1px solid var(--panel-border); border-radius: 8px;">
+                <div style="overflow-x: auto; border: 1px solid var(--panel-border); border-radius: 8px; max-height: 500px; overflow-y: auto;">
                     <table class="model-selection-table" style="width: 100%; border-collapse: collapse; font-size: 0.95em;">
-                        <thead style="background: rgba(0,0,0,0.2);">
+                        <thead style="background: rgba(0,0,0,0.2); position: sticky; top: 0; z-index: 10; backdrop-filter: blur(5px);">
                             <tr>
                                 <th style="width: 40px; text-align: center; padding: 12px;"><input type="checkbox" id="selectAllModelsTable"></th>
                                 <th style="padding: 12px; text-align: left;">Model</th>
@@ -1125,11 +1140,72 @@
                         </tbody>
                     </table>
                 </div>
+                <div style="margin-top: 12px; display: flex; justify-content: space-between; align-items: center; font-size: 0.85em; color: var(--muted);">
+                    <span id="modelCountDisplay">0 models shown</span>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn-secondary btn-sm" onclick="selectAllVisibleModels(true)">Select All Visible</button>
+                        <button class="btn-secondary btn-sm" onclick="selectAllVisibleModels(false)">Deselect All Visible</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Capability / Aspect Radar Compare (Models) -->
+            <div class="capability-compare-section" style="margin-bottom: 32px; background: var(--card-bg); border: 1px solid var(--panel-border); border-radius: 12px; padding: 24px;">
+                <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px;">
+                    <h2 style="margin: 0; display: flex; align-items: center; gap: 10px;">
+                        <i class="fas fa-chart-area" style="color: var(--accent);"></i> Capability Radar Compare
+                    </h2>
+                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <button id="capabilityAddSelectedBtn" class="btn-secondary btn-sm" title="Adds checked models using the selected Ollama Host">
+                            <i class="fas fa-plus"></i> Add Checked Models (@ Host)
+                        </button>
+                        <button id="capabilityAddTopBtn" class="btn-secondary btn-sm" title="Adds top leaderboard models for the selected host">
+                            <i class="fas fa-trophy"></i> Add Top 3 (@ Host)
+                        </button>
+                        <button id="capabilityClearBtn" class="btn-secondary btn-sm" title="Clear compare selection">
+                            <i class="fas fa-trash"></i> Clear
+                        </button>
+                        <button id="capabilityRefreshBtn" class="btn-secondary btn-sm" title="Refresh chart data">
+                            <i class="fas fa-sync-alt"></i> Refresh
+                        </button>
+                    </div>
+                </div>
+                <div style="color: var(--muted); font-size: 0.9em; margin-bottom: 14px;">
+                    Compares quality scores across categories for multiple <strong>model@host</strong> selections.
+                </div>
+
+                <div id="capabilityCompareList" class="compare-chip-list" style="margin-bottom: 14px;"></div>
+
+                <div class="capability-compare-grid" style="display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 16px; align-items: stretch;">
+                    <div class="chart-card" style="margin: 0; padding: 18px;">
+                        <div style="height: 320px;">
+                            <canvas id="capabilityRadarChart"></canvas>
+                        </div>
+                        <div id="capabilityEmpty" class="chart-empty" style="display: none; margin-top: 10px;">Select models to compare.</div>
+                    </div>
+                    <div class="chart-card" style="margin: 0; padding: 18px;">
+                        <div id="capabilityInsights" style="height: 100%;"></div>
+                    </div>
+                </div>
             </div>
 
             <div class="batch-section">
                 <h2>🔥 Batch Benchmark</h2>
                 <p>Run comprehensive tests across multiple models with standardized prompts</p>
+
+                <!-- Active Batch Warning (Single Batch System) -->
+                <div id="activeBatchWarning" style="display: none; margin-bottom: 24px; padding: 16px; background: rgba(241, 196, 15, 0.1); border: 1px solid rgba(241, 196, 15, 0.3); border-radius: 8px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <i class="fas fa-info-circle" style="color: #f1c40f; font-size: 1.2em;"></i>
+                            <span style="font-weight: 600; color: var(--text);">Active Batch Running</span>
+                        </div>
+                        <button class="btn-secondary btn-sm" onclick="refreshActiveBatch()">
+                            <i class="fas fa-sync"></i> Refresh
+                        </button>
+                    </div>
+                    <div id="activeBatchInfo"></div>
+                </div>
 
                 <div class="batch-content">
                     <div class="batch-layout">
@@ -1212,6 +1288,35 @@
                                 </div>
                             </div>
 
+                            <!-- Current Test Indicator -->
+                            <div id="currentTestIndicator" style="display: none; margin: 10px 8px 0; padding: 12px; background: rgba(0,0,0,0.3); border-radius: 8px; border-left: 4px solid var(--accent);">
+                                <div style="display: flex; align-items: center; gap: 12px;">
+                                    <div class="pulse-dot" style="width: 12px; height: 12px; background: var(--accent); border-radius: 50%; animation: pulse 2s ease-in-out infinite;"></div>
+                                    <div style="flex: 1;">
+                                        <div style="font-weight: 600; color: var(--text); font-size: 0.95em;" id="currentTestStage">Executing Test...</div>
+                                        <div style="color: var(--muted); font-size: 0.85em; margin-top: 4px;">
+                                            <span id="currentTestModel" style="color: var(--accent); font-weight: 500;"></span> →
+                                            <span id="currentTestPrompt"></span>
+                                        </div>
+                                        <div style="color: var(--muted); font-size: 0.80em; margin-top: 2px;">
+                                            <i class="fas fa-clock"></i> <span id="currentTestDuration">0s</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Execution Timeline (Collapsible) -->
+                            <div id="timelineContainer" style="display: none; margin: 10px 8px 0; background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
+                                <button id="toggleTimelineBtn" type="button" style="width: 100%; padding: 12px; background: transparent; border: none; color: var(--text); cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-weight: 600;">
+                                    <span><i class="fas fa-stream"></i> Execution Timeline</span>
+                                    <i class="fas fa-chevron-down" id="timelineChevron"></i>
+                                </button>
+                                <div id="timelineContent" style="display: none; padding: 0 12px 12px; max-height: 300px; overflow-y: auto;">
+                                    <div id="timelineEvents" style="font-size: 0.85em;"></div>
+                                    <div id="timelineSummary" style="margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.1); font-size: 0.85em; color: var(--muted);"></div>
+                                </div>
+                            </div>
+
                             <div style="display:flex; gap: 10px; align-items:center; margin: 10px 8px 0; flex-wrap: wrap;">
                                 <button class="btn-secondary" id="toggleAdvancedBtn" type="button" style="padding: 8px 12px;">Show details</button>
                                 <button class="btn-secondary" id="toggleHyperBtn" type="button" style="padding: 8px 12px; display:none;">Show hyper details</button>
@@ -1219,7 +1324,7 @@
                             </div>
 
                             <div class="advanced-details" id="advancedBatchDetails" style="display:none;">
-                                <div id="judgeStatsContainer" style="display: none; margin-top: 0; font-size: 0.85em; background: rgba(0,0,0,0.2); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);"></div>
+                                <div id="judgeHealthContainer" style="display: none; margin-top: 0; font-size: 0.85em; background: rgba(0,0,0,0.2); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);"></div>
                                 <div id="perModelProgressContainer" style="display:none; margin-top: 12px; font-size: 0.9em; background: rgba(0,0,0,0.2); padding: 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);"></div>
 
                                 <div class="advanced-details" id="hyperBatchDetails" style="display:none; margin-top: 12px;">
@@ -1381,7 +1486,10 @@
         <!-- Performance Trends Chart -->
         <div class="trends-section">
             <div class="section-header">
-                <h3><i class="fas fa-chart-line"></i> Performance Trends</h3>
+                <h3 style="display: flex; align-items: center; gap: 10px;">
+                    <i class="fas fa-chart-line"></i> Performance Trends 
+                    <i class="fas fa-info-circle" style="font-size: 0.6em; opacity: 0.5; cursor: help;" title="Quality Score is scaled x10 (0-100) for visibility. Latency is in ms."></i>
+                </h3>
                 <div class="trends-controls">
                     <select id="trendsPeriod">
                         <option value="7">Last 7 Days</option>
@@ -1467,6 +1575,73 @@
             </div>
         </div>
 
+        <!-- Judge Radar Compare -->
+        <div class="judge-compare-section" style="margin-bottom: 32px; background: var(--card-bg); border: 1px solid var(--panel-border); border-radius: 12px; padding: 24px; display: none;" id="judgeCompareContainer">
+            <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px;">
+                <h3 style="margin: 0; font-size: 1.2em; color: var(--text); display: flex; align-items: center; gap: 10px;">
+                    <i class="fas fa-gavel" style="color: var(--accent);"></i> Judge Radar Compare
+                </h3>
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <select id="judgeCompareSelect" style="padding: 8px 12px; border-radius: 6px; border: 1px solid var(--panel-border); background: rgba(0,0,0,0.2); color: var(--text); font-size: 0.9em; min-width: 320px;">
+                        <option value="">Loading judges...</option>
+                    </select>
+                    <button id="judgeAddCompareBtn" class="btn-secondary btn-sm">
+                        <i class="fas fa-plus"></i> Add
+                    </button>
+                    <button id="judgeAddTopCompareBtn" class="btn-secondary btn-sm" title="Adds the top judge from the courthouse leaderboard">
+                        <i class="fas fa-trophy"></i> Add Top
+                    </button>
+                    <button id="judgeClearCompareBtn" class="btn-secondary btn-sm">
+                        <i class="fas fa-trash"></i> Clear
+                    </button>
+                    <button id="judgeRefreshCompareBtn" class="btn-secondary btn-sm">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                </div>
+            </div>
+            <div style="color: var(--muted); font-size: 0.9em; margin-bottom: 14px;">
+                Compares <strong>judge@host</strong> performance across Speed, Reliability, Diligence, and Avg Score Given.
+            </div>
+
+            <div id="judgeCompareList" class="compare-chip-list" style="margin-bottom: 14px;"></div>
+
+            <div class="chart-card" style="margin: 0; padding: 18px;">
+                <div style="height: 320px;">
+                    <canvas id="judgeRadarChart"></canvas>
+                </div>
+                <div id="judgeRadarEmpty" class="chart-empty" style="display: none; margin-top: 10px;">Add judges to compare.</div>
+            </div>
+        </div>
+
+        <!-- Judge Leaderboard (The Courthouse) -->
+        <div class="judge-leaderboard-section" style="margin-bottom: 32px; display: none;" id="judgeLeaderboardContainer">
+            <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h3 style="font-size: 1.2em; color: var(--text); display: flex; align-items: center; gap: 10px;">
+                    <i class="fas fa-balance-scale" style="color: var(--accent);"></i> The Courthouse
+                </h3>
+                <button class="btn-secondary btn-sm" onclick="window.BenchmarkAnalytics.loadJudgeStats()">
+                    <i class="fas fa-sync-alt"></i> Refresh
+                </button>
+            </div>
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Judge Model</th>
+                            <th>Host</th>
+                            <th>Evaluations</th>
+                            <th>Avg Latency</th>
+                            <th>Success Rate</th>
+                            <th>Avg Explanation</th>
+                        </tr>
+                    </thead>
+                    <tbody id="judgeLeaderboardBody">
+                        <tr><td colspan="6" style="text-align: center; padding: 20px; color: var(--muted);">Loading judge data...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
         <div class="leaderboard">
             <div
                 style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
@@ -1537,17 +1712,15 @@
             </div>
 
             <div class="filter-controls" style="display: flex; gap: 16px; margin-bottom: 20px; align-items: center; flex-wrap: wrap;">
-                <div class="filter-group">
-                    <label for="modelCategoryFilter" style="color: var(--muted); font-size: 0.85em; margin-right: 8px;">Model Category:</label>
-                    <select id="modelCategoryFilter" class="filter-select" onchange="BenchmarkAnalytics.filterByModelCategory(this.value)" style="padding: 6px 12px; border-radius: 6px; background: var(--card-bg); border: 1px solid rgba(255,255,255,0.1); color: #fff; font-size: 13px;">
-                        <option value="">All Models</option>
-                        <option value="ops">Ops/Glue</option>
-                        <option value="coding">Coding</option>
-                        <option value="reasoning">Reasoning</option>
-                        <option value="specialist">Specialists</option>
-                        <option value="generalist">Generalists</option>
-                    </select>
-                </div>
+                <!-- Hidden but kept for programmatic sync with tabs -->
+                <select id="modelCategoryFilter" class="filter-select" onchange="BenchmarkAnalytics.filterByModelCategory(this.value)" style="display: none;">
+                    <option value="">All Models</option>
+                    <option value="ops">Ops/Glue</option>
+                    <option value="coding">Coding</option>
+                    <option value="reasoning">Reasoning</option>
+                    <option value="specialist">Specialists</option>
+                    <option value="generalist">Generalists</option>
+                </select>
 
                 <div class="filter-group">
                     <label for="promptCategoryFilter" style="color: var(--muted); font-size: 0.85em; margin-right: 8px;">Task Type:</label>
@@ -2003,6 +2176,17 @@
             }
         }
 
+        @keyframes pulse {
+            0%, 100% {
+                transform: scale(1);
+                opacity: 1;
+            }
+            50% {
+                transform: scale(1.2);
+                opacity: 0.6;
+            }
+        }
+
         .modal-header {
             padding: 20px 24px;
             border-bottom: 1px solid var(--panel-border);
@@ -2323,6 +2507,101 @@
             return `${minutes}m ${seconds}s`;
         }
 
+        function updateTimeline(batch) {
+            if (!batch || !batch.timeline) return;
+
+            const eventsContainer = document.getElementById('timelineEvents');
+            const summaryContainer = document.getElementById('timelineSummary');
+
+            if (!eventsContainer || !summaryContainer) return;
+
+            const timeline = batch.timeline || [];
+            const recentEvents = timeline.slice(-20); // Show last 20 events
+
+            // Calculate event type icons and colors
+            const getEventDisplay = (event) => {
+                switch (event.event) {
+                    case 'test_start':
+                        return { icon: 'fa-play-circle', color: '#3498db', label: 'Test Started' };
+                    case 'test_complete':
+                        return { icon: 'fa-check-circle', color: '#2ecc71', label: 'Test Completed' };
+                    case 'judge_start':
+                        return { icon: 'fa-gavel', color: '#9b59b6', label: 'Judging Started' };
+                    case 'judge_complete':
+                        return { icon: 'fa-certificate', color: '#1abc9c', label: 'Judging Complete' };
+                    case 'error':
+                        return { icon: 'fa-exclamation-circle', color: '#e74c3c', label: 'Error' };
+                    default:
+                        return { icon: 'fa-info-circle', color: '#95a5a6', label: event.event };
+                }
+            };
+
+            // Render timeline events
+            const eventsHtml = recentEvents.map((event, index) => {
+                const display = getEventDisplay(event);
+                const timestamp = new Date(event.timestamp).toLocaleTimeString();
+                const durationText = event.duration_ms ? ` (${event.duration_ms < 1000 ? `${event.duration_ms}ms` : `${(event.duration_ms / 1000).toFixed(1)}s`})` : '';
+                const modelText = event.model ? `<span style="color: ${display.color}; font-weight: 500;">${event.model}</span>` : '';
+                const errorText = event.error ? `<div style="color: #e74c3c; font-size: 0.9em; margin-top: 2px;">${event.error}</div>` : '';
+
+                return `
+                    <div style="display: flex; align-items: start; gap: 10px; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                        <i class="fas ${display.icon}" style="color: ${display.color}; margin-top: 2px;"></i>
+                        <div style="flex: 1;">
+                            <div style="color: var(--text);">${display.label}${durationText}</div>
+                            <div style="color: var(--muted); font-size: 0.9em; margin-top: 2px;">
+                                ${modelText}${modelText && event.prompt_id ? ' → ' : ''}${event.prompt_id || ''}
+                            </div>
+                            ${errorText}
+                        </div>
+                        <div style="color: var(--muted); font-size: 0.85em; white-space: nowrap;">${timestamp}</div>
+                    </div>
+                `;
+            }).join('');
+
+            eventsContainer.innerHTML = eventsHtml || '<div style="color: var(--muted); padding: 8px 0;">No events yet</div>';
+
+            // Calculate summary statistics
+            const testEvents = timeline.filter(e => e.event === 'test_complete');
+            const judgeEvents = timeline.filter(e => e.event === 'judge_complete');
+            const errorEvents = timeline.filter(e => e.event === 'error');
+
+            const avgTestDuration = testEvents.length > 0
+                ? Math.round(testEvents.reduce((sum, e) => sum + (e.duration_ms || 0), 0) / testEvents.length)
+                : null;
+
+            const avgJudgeDuration = judgeEvents.length > 0
+                ? Math.round(judgeEvents.reduce((sum, e) => sum + (e.duration_ms || 0), 0) / judgeEvents.length)
+                : null;
+
+            const summaryHtml = `
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;">
+                    <div>
+                        <div style="font-weight: 600; color: var(--text);">Total Events</div>
+                        <div>${timeline.length}</div>
+                    </div>
+                    <div>
+                        <div style="font-weight: 600; color: var(--text);">Tests Completed</div>
+                        <div style="color: #2ecc71;">${testEvents.length}</div>
+                    </div>
+                    <div>
+                        <div style="font-weight: 600; color: var(--text);">Errors</div>
+                        <div style="color: ${errorEvents.length > 0 ? '#e74c3c' : 'var(--muted)'}">${errorEvents.length}</div>
+                    </div>
+                    <div>
+                        <div style="font-weight: 600; color: var(--text);">Avg Test Time</div>
+                        <div>${avgTestDuration ? `${(avgTestDuration / 1000).toFixed(1)}s` : '-'}</div>
+                    </div>
+                    <div>
+                        <div style="font-weight: 600; color: var(--text);">Avg Judge Time</div>
+                        <div>${avgJudgeDuration ? `${(avgJudgeDuration / 1000).toFixed(1)}s` : '-'}</div>
+                    </div>
+                </div>
+            `;
+
+            summaryContainer.innerHTML = summaryHtml;
+        }
+
         function toFiniteNumber(v) {
             const n = Number(v);
             return Number.isFinite(n) ? n : null;
@@ -2544,8 +2823,17 @@
 
         // Fetch Ollama hosts from AgentX config
         async function loadOllamaHosts() {
+            console.log('Loading Ollama hosts...');
+            const select = document.getElementById('host');
+
             try {
-                const res = await fetch('/api/ollama-hosts');
+                // Add timeout to client-side fetch
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
+
+                const res = await fetch('/api/ollama-hosts', { signal: controller.signal });
+                clearTimeout(timeoutId);
+
                 if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
                 const json = await res.json();
                 const data = json.data || json;
@@ -2554,29 +2842,31 @@
                     ollamaHosts = data.hosts;
 
                     // Populate host select
-                    const select = document.getElementById('host');
-                    select.innerHTML = ollamaHosts.map(h => {
-                        const status = h.available ? '✓' : '✗';
-                        const modelCount = h.models ? ` [${h.models.length} models]` : '';
-                        return `<option value="${h.url}">${status} ${h.name} (${h.url})${modelCount}</option>`;
-                    }).join('');
+                    if (select) {
+                        select.innerHTML = ollamaHosts.map(h => {
+                            const status = h.available ? '✓' : '✗';
+                            const modelCount = h.models ? ` [${h.models.length} models]` : '';
+                            return `<option value="${h.url}">${status} ${h.name} (${h.url})${modelCount}</option>`;
+                        }).join('');
 
-                    // Set default to first available host
-                    const firstAvailable = ollamaHosts.find(h => h.available);
-                    if (firstAvailable) {
-                        select.value = firstAvailable.url;
+                        // Set default to first available host
+                        const firstAvailable = ollamaHosts.find(h => h.available);
+                        if (firstAvailable) {
+                            select.value = firstAvailable.url;
+                        }
+
+                        // Load models for default host
+                        loadModelsForHost(select.value);
+                        loadBatchModels(select.value);
                     }
-
-                    // Load models for default host
-                    loadModelsForHost(select.value);
                 } else {
                     throw new Error('No hosts configured');
                 }
             } catch (err) {
                 console.error('Failed to load Ollama hosts:', err);
-                const hostSelect = document.getElementById('host');
-                if (hostSelect) {
-                    hostSelect.innerHTML = '<option value="" selected disabled>No hosts available — check server OLLAMA_HOST config</option>';
+                if (select) {
+                    const msg = err.name === 'AbortError' ? 'Request timed out' : 'No hosts available';
+                    select.innerHTML = `<option value="" selected disabled>${msg} — check server OLLAMA_HOST config</option>`;
                 }
             }
         }
@@ -2605,8 +2895,159 @@
             loadBatchModels(e.target.value); // Also update batch model checkboxes
         });
 
+        let modelRegistryCache = {};
+
+        async function fetchModelRegistry() {
+            try {
+                const res = await fetch('/api/models/registry');
+                const json = await res.json();
+                if (json.status === 'success') {
+                    modelRegistryCache = {};
+                    json.data.models.forEach(m => {
+                        modelRegistryCache[m.modelName] = m;
+                    });
+                    renderCategoryTabs();
+                }
+            } catch (err) {
+                console.error('Failed to fetch model registry:', err);
+            }
+        }
+
+        function renderCategoryTabs() {
+            const categories = new Set();
+            Object.values(modelRegistryCache).forEach(m => {
+                if (m.categories && Array.isArray(m.categories)) {
+                    m.categories.forEach(c => {
+                        if (c) categories.add(c);
+                    });
+                }
+            });
+
+            const sortedCategories = Array.from(categories).sort();
+            const container = document.querySelector('.category-tabs');
+            if (!container) return;
+
+            // Keep the current active category if possible
+            const currentActive = document.querySelector('.category-tab.active');
+            const activeCategory = currentActive ? currentActive.dataset.category : '';
+
+            let html = `
+                <button class="category-tab ${activeCategory === '' ? 'active' : ''}" data-category="" onclick="switchCategoryTab('')" style="padding: 10px 20px; background: none; border: none; border-bottom: 3px solid ${activeCategory === '' ? 'var(--accent)' : 'transparent'}; color: ${activeCategory === '' ? 'var(--accent)' : 'var(--muted)'}; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: all 0.2s;">
+                    <i class="fas fa-globe" style="margin-right: 6px;"></i> Universal
+                </button>
+            `;
+
+            sortedCategories.forEach(cat => {
+                const isActive = activeCategory === cat;
+                // Choose an icon based on category name
+                let icon = 'fa-tag';
+                const lowerCat = cat.toLowerCase();
+                if (lowerCat.includes('ops') || lowerCat.includes('glue')) icon = 'fa-bolt';
+                else if (lowerCat.includes('code') || lowerCat.includes('dev')) icon = 'fa-code';
+                else if (lowerCat.includes('reason') || lowerCat.includes('think')) icon = 'fa-brain';
+                else if (lowerCat.includes('special')) icon = 'fa-star';
+                else if (lowerCat.includes('general')) icon = 'fa-cubes';
+
+                html += `
+                    <button class="category-tab ${isActive ? 'active' : ''}" data-category="${cat}" onclick="switchCategoryTab('${cat}')" style="padding: 10px 20px; background: none; border: none; border-bottom: 3px solid ${isActive ? 'var(--accent)' : 'transparent'}; color: ${isActive ? 'var(--accent)' : 'var(--muted)'}; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: all 0.2s;">
+                        <i class="fas ${icon}" style="margin-right: 6px;"></i> ${cat.charAt(0).toUpperCase() + cat.slice(1)}
+                    </button>
+                `;
+            });
+
+            container.innerHTML = html;
+        }
+
+        async function saveModelNote(model, note) {
+            // Optimistic update
+            if (!modelRegistryCache[model]) {
+                modelRegistryCache[model] = { modelName: model, displayName: model };
+            }
+            modelRegistryCache[model].userNote = note;
+
+            try {
+                // Try PATCH first
+                let res = await fetch(`/api/models/registry/${encodeURIComponent(model)}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userNote: note })
+                });
+                
+                if (res.status === 404) {
+                    // Create if not exists
+                    res = await fetch('/api/models/registry', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            modelName: model, 
+                            displayName: model,
+                            userNote: note,
+                            categories: ['generalist'] // Default
+                        })
+                    });
+                }
+                
+                if (window.BenchmarkAnalytics && window.BenchmarkAnalytics.showToast) {
+                    window.BenchmarkAnalytics.showToast(`Note saved for ${model}`, 'success');
+                }
+            } catch (err) {
+                console.error('Failed to save note:', err);
+                if (window.BenchmarkAnalytics && window.BenchmarkAnalytics.showToast) {
+                    window.BenchmarkAnalytics.showToast(`Failed to save note for ${model}`, 'error');
+                }
+            }
+        }
+        
+        // Expose to window for onblur
+        window.saveModelNote = saveModelNote;
+
+        async function saveModelCategory(model, category) {
+             // Optimistic update
+            if (!modelRegistryCache[model]) {
+                modelRegistryCache[model] = { modelName: model, displayName: model };
+            }
+            modelRegistryCache[model].categories = [category];
+            renderCategoryTabs();
+
+            try {
+                // Try PATCH first
+                let res = await fetch(`/api/models/registry/${encodeURIComponent(model)}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ categories: [category] })
+                });
+                
+                if (res.status === 404) {
+                    // Create if not exists
+                    res = await fetch('/api/models/registry', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            modelName: model, 
+                            displayName: model,
+                            categories: [category]
+                        })
+                    });
+                }
+
+                if (window.BenchmarkAnalytics && window.BenchmarkAnalytics.showToast) {
+                    window.BenchmarkAnalytics.showToast(`Category updated for ${model}`, 'success');
+                }
+                
+                // Update badges to reflect new category
+                updateModelSelectionBadges();
+            } catch (err) {
+                console.error('Failed to save category:', err);
+                if (window.BenchmarkAnalytics && window.BenchmarkAnalytics.showToast) {
+                    window.BenchmarkAnalytics.showToast(`Failed to save category for ${model}`, 'error');
+                }
+            }
+        }
+        window.saveModelCategory = saveModelCategory;
+
         // Load models for batch testing
-        function loadBatchModels(hostUrl) {
+        async function loadBatchModels(hostUrl) {
+            await fetchModelRegistry();
             const host = ollamaHosts.find(h => h.url === hostUrl);
             const tbody = document.getElementById('modelSelectionTableBody');
             
@@ -2615,27 +3056,44 @@
             if (host && host.models && host.models.length > 0) {
                 tbody.innerHTML = host.models.map(model => {
                     const safeId = model.replace(/[^a-zA-Z0-9]/g, '_');
-                    const noteKey = `agentx_model_note_${model}`;
-                    const savedNote = localStorage.getItem(noteKey) || '';
+                    
+                    // Get from registry or fallback to local storage (migration path) or empty
+                    const registryEntry = modelRegistryCache[model];
+                    const savedNote = registryEntry ? (registryEntry.userNote || '') : (localStorage.getItem(`agentx_model_note_${model}`) || '');
                     
                     // Try to find test count from global data if available
                     let testCount = '-';
                     if (window.latestBenchmarkData && window.latestBenchmarkData.model_stats) {
-                        const stats = window.latestBenchmarkData.model_stats.find(m => m.model === model);
+                        // Match both model name AND host to avoid cross-host confusion
+                        const stats = window.latestBenchmarkData.model_stats.find(m => m.model === model && m.host === hostUrl);
                         if (stats) {
                              testCount = Number(stats.tests || 0) + Number(stats.failed_tests || 0);
                         }
                     }
 
-                    // Infer category (simple heuristic)
-                    let category = 'General';
-                    if (model.includes('coder') || model.includes('deepseek-coder')) category = 'Coding';
-                    else if (model.includes('math')) category = 'Math';
-                    else if (model.includes('reasoning') || model.includes('r1')) category = 'Reasoning';
-                    else if (model.includes('llama')) category = 'General';
-                    else if (model.includes('mistral')) category = 'General';
-                    else if (model.includes('gemma')) category = 'General';
-                    else if (model.includes('qwen')) category = 'General';
+                    // Determine category: Registry > Heuristic > Default
+                    let category = 'generalist';
+                    if (registryEntry && registryEntry.categories && registryEntry.categories.length > 0) {
+                        category = registryEntry.categories[0];
+                    } else {
+                        // Heuristic fallback
+                        if (model.includes('coder') || model.includes('deepseek-coder')) category = 'coding';
+                        else if (model.includes('math')) category = 'reasoning'; // Map math to reasoning
+                        else if (model.includes('reasoning') || model.includes('r1')) category = 'reasoning';
+                        else if (model.includes('ops')) category = 'ops';
+                    }
+                    
+                    // Collect all known categories for datalist
+                    const allCategories = new Set(['generalist', 'coding', 'reasoning', 'ops', 'specialist', 'judge']);
+                    Object.values(modelRegistryCache).forEach(m => {
+                        if (m.categories) m.categories.forEach(c => {
+                            if (c) allCategories.add(c);
+                        });
+                    });
+                    
+                    const datalistOptions = Array.from(allCategories).sort().map(c => 
+                        `<option value="${c}">`
+                    ).join('');
                     
                     return `
                     <tr data-model="${model}">
@@ -2652,7 +3110,12 @@
                             ${testCount}
                         </td>
                         <td style="padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.05);">
-                            <span class="badge" style="background: rgba(255,255,255,0.1); font-weight: normal;">${category}</span>
+                            <input type="text" list="category-list-${safeId}" value="${category}" 
+                                onchange="saveModelCategory('${model}', this.value)"
+                                style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.1); color: var(--text); border-radius: 4px; padding: 4px 8px; font-size: 0.9em; width: 100%;">
+                            <datalist id="category-list-${safeId}">
+                                ${datalistOptions}
+                            </datalist>
                         </td>
                         <td style="padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.05);">
                             <input type="text" class="model-note-input" data-model="${model}" value="${savedNote}" placeholder="Add note..." 
@@ -2670,13 +3133,55 @@
             }
 
             updateBatchInfo();
+            filterModelList(); // Apply initial filters if any
         }
+
+        // Filter model list based on search and category
+        function filterModelList() {
+            const search = document.getElementById('modelSearchInput').value.toLowerCase();
+            const category = document.getElementById('modelCategoryFilterSelect').value.toLowerCase();
+            const rows = document.querySelectorAll('#modelSelectionTableBody tr[data-model]');
+            let visibleCount = 0;
+
+            rows.forEach(row => {
+                const model = row.getAttribute('data-model').toLowerCase();
+                const modelCategoryInput = row.querySelector('input[list^="category-list-"]');
+                const modelCategory = modelCategoryInput ? modelCategoryInput.value.toLowerCase() : '';
+                
+                const matchesSearch = model.includes(search);
+                const matchesCategory = category === '' || modelCategory === category || (category === 'specialist' && !['ops', 'coding', 'reasoning', 'generalist'].includes(modelCategory));
+
+                if (matchesSearch && matchesCategory) {
+                    row.style.display = '';
+                    visibleCount++;
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+
+            document.getElementById('modelCountDisplay').textContent = `${visibleCount} models shown`;
+        }
+
+        // Select/Deselect all visible models
+        function selectAllVisibleModels(select) {
+            const rows = document.querySelectorAll('#modelSelectionTableBody tr[data-model]');
+            rows.forEach(row => {
+                if (row.style.display !== 'none') {
+                    const checkbox = row.querySelector('.batch-model-checkbox');
+                    if (checkbox) checkbox.checked = select;
+                }
+            });
+            updateBatchInfo();
+        }
+
+        // Event listeners for filters
+        document.getElementById('modelSearchInput').addEventListener('input', filterModelList);
+        document.getElementById('modelCategoryFilterSelect').addEventListener('change', filterModelList);
 
         function updateModelSelectionBadges() {
             const offenders = window.benchmarkOffenders;
-            if (!offenders) return;
-
             const rows = document.querySelectorAll('#modelSelectionTableBody tr[data-model]');
+            
             rows.forEach(row => {
                 const model = row.getAttribute('data-model');
                 const badgeContainer = row.querySelector('.model-badges');
@@ -2684,17 +3189,93 @@
 
                 let badgesHtml = '';
 
-                if (model === offenders.slowest) {
-                    badgesHtml += `<span title="Slowest Latency" style="color: #e74c3c; font-size: 0.9em;"><i class="fas fa-hourglass-end"></i></span>`;
+                // Category Badge
+                if (modelRegistryCache[model] && modelRegistryCache[model].categories && modelRegistryCache[model].categories.length > 0) {
+                    const cat = modelRegistryCache[model].categories[0];
+                    let icon = 'fa-tag';
+                    let color = '#95a5a6'; // Default gray
+                    let bg = 'rgba(149, 165, 166, 0.15)';
+                    
+                    const lowerCat = cat.toLowerCase();
+                    if (lowerCat.includes('ops') || lowerCat.includes('glue')) { 
+                        icon = 'fa-bolt'; 
+                        color = '#f1c40f'; 
+                        bg = 'rgba(241, 196, 15, 0.15)';
+                    }
+                    else if (lowerCat.includes('code') || lowerCat.includes('dev')) { 
+                        icon = 'fa-code'; 
+                        color = '#9b59b6'; 
+                        bg = 'rgba(155, 89, 182, 0.15)';
+                    }
+                    else if (lowerCat.includes('reason') || lowerCat.includes('think')) { 
+                        icon = 'fa-brain'; 
+                        color = '#e91e63'; 
+                        bg = 'rgba(233, 30, 99, 0.15)';
+                    }
+                    else if (lowerCat.includes('special')) { 
+                        icon = 'fa-star'; 
+                        color = '#f39c12'; 
+                        bg = 'rgba(243, 156, 18, 0.15)';
+                    }
+                    else if (lowerCat.includes('general')) { 
+                        icon = 'fa-cubes'; 
+                        color = '#3498db'; 
+                        bg = 'rgba(52, 152, 219, 0.15)';
+                    }
+                    
+                    const catDisplay = cat.charAt(0).toUpperCase() + cat.slice(1);
+                    
+                    badgesHtml += `<span title="Category: ${catDisplay}" style="
+                        color: ${color}; 
+                        background: ${bg};
+                        border: 1px solid ${color}40;
+                        font-size: 0.75rem; 
+                        font-weight: 600;
+                        padding: 2px 8px; 
+                        border-radius: 12px; 
+                        margin-right: 6px;
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 5px;
+                        text-transform: uppercase;
+                        letter-spacing: 0.05em;
+                    ">
+                        <i class="fas ${icon}" style="font-size: 0.9em;"></i> ${catDisplay}
+                    </span>`;
                 }
-                if (model === offenders.lowestTps) {
-                    badgesHtml += `<span title="Lowest Throughput" style="color: #e67e22; font-size: 0.9em;"><i class="fas fa-tachometer-alt"></i></span>`;
-                }
-                if (model === offenders.lowestQuality) {
-                    badgesHtml += `<span title="Lowest Quality" style="color: #f39c12; font-size: 0.9em;"><i class="fas fa-star-half-alt"></i></span>`;
-                }
-                if (model === offenders.mostFailures) {
-                    badgesHtml += `<span title="Most Failures" style="color: #c0392b; font-size: 0.9em;"><i class="fas fa-exclamation-triangle"></i></span>`;
+
+                // Offender Badges
+                if (offenders) {
+                    const currentHost = document.getElementById('host') ? document.getElementById('host').value : null;
+                    const badgeStyle = "font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; margin-right: 4px; font-weight: bold; display: inline-flex; align-items: center; gap: 4px;";
+                    
+                    const isOffender = (offenderObj) => {
+                        if (!offenderObj) return false;
+                        // Handle both old format (string) and new format (object)
+                        if (typeof offenderObj === 'string') return model === offenderObj;
+                        return model === offenderObj.model && (!currentHost || currentHost === offenderObj.host);
+                    };
+
+                    if (isOffender(offenders.slowest)) {
+                        badgesHtml += `<span title="Slowest Latency" style="${badgeStyle} color: #e74c3c; background: rgba(231, 76, 60, 0.15); border: 1px solid rgba(231, 76, 60, 0.3);">
+                            <i class="fas fa-hourglass-end"></i> SLOW
+                        </span>`;
+                    }
+                    if (isOffender(offenders.lowestTps)) {
+                        badgesHtml += `<span title="Lowest Throughput" style="${badgeStyle} color: #e67e22; background: rgba(230, 126, 34, 0.15); border: 1px solid rgba(230, 126, 34, 0.3);">
+                            <i class="fas fa-tachometer-alt"></i> SLUG
+                        </span>`;
+                    }
+                    if (isOffender(offenders.lowestQuality)) {
+                        badgesHtml += `<span title="Lowest Quality" style="${badgeStyle} color: #f39c12; background: rgba(243, 156, 18, 0.15); border: 1px solid rgba(243, 156, 18, 0.3);">
+                            <i class="fas fa-star-half-alt"></i> POOR
+                        </span>`;
+                    }
+                    if (isOffender(offenders.mostFailures)) {
+                        badgesHtml += `<span title="Most Failures" style="${badgeStyle} color: #c0392b; background: rgba(192, 57, 43, 0.15); border: 1px solid rgba(192, 57, 43, 0.3);">
+                            <i class="fas fa-exclamation-triangle"></i> UNSTABLE
+                        </span>`;
+                    }
                 }
 
                 badgeContainer.innerHTML = badgesHtml;
@@ -2704,13 +3285,7 @@
         // Expose to window
         window.updateModelSelectionBadges = updateModelSelectionBadges;
 
-        function saveModelNote(model, note) {
-            const noteKey = `agentx_model_note_${model}`;
-            localStorage.setItem(noteKey, note);
-        }
-        
-        // Expose to window for onblur
-        window.saveModelNote = saveModelNote;
+
 
         // Select all models checkbox
         document.getElementById('selectAllModelsTable').addEventListener('change', (e) => {
@@ -2755,7 +3330,7 @@
             const execProgressBar = document.getElementById('execProgressBar');
             const judgeProgressBar = document.getElementById('judgeProgressBar');
             const status = document.getElementById('batchStatus');
-            const judgeStatsContainer = document.getElementById('judgeStatsContainer');
+            const judgeHealthContainer = document.getElementById('judgeHealthContainer');
             const perModelContainer = document.getElementById('perModelProgressContainer');
             const advancedDetails = document.getElementById('advancedBatchDetails');
             const hyperDetails = document.getElementById('hyperBatchDetails');
@@ -2770,7 +3345,7 @@
             execProgressBar.classList.remove('active');
             judgeProgressBar.classList.remove('active');
             status.style.display = 'none';
-            if (judgeStatsContainer) judgeStatsContainer.style.display = 'none';
+            if (judgeHealthContainer) judgeHealthContainer.style.display = 'none';
             if (perModelContainer) perModelContainer.style.display = 'none';
 
             if (batchLastUpdated) batchLastUpdated.textContent = '';
@@ -2808,14 +3383,14 @@
             const hyperDetails = document.getElementById('hyperBatchDetails');
             const toggleAdvancedBtn = document.getElementById('toggleAdvancedBtn');
             const toggleHyperBtn = document.getElementById('toggleHyperBtn');
-            const judgeStatsContainer = document.getElementById('judgeStatsContainer');
+            const judgeHealthContainer = document.getElementById('judgeHealthContainer');
             const perModelContainer = document.getElementById('perModelProgressContainer');
 
             if (toggleAdvancedBtn) toggleAdvancedBtn.textContent = showAdvanced ? 'Hide details' : 'Show details';
             if (toggleHyperBtn) toggleHyperBtn.style.display = showAdvanced ? 'inline-block' : 'none';
             if (advancedDetails) advancedDetails.style.display = showAdvanced ? 'block' : 'none';
             if (!showAdvanced) {
-                if (judgeStatsContainer) judgeStatsContainer.style.display = 'none';
+                if (judgeHealthContainer) judgeHealthContainer.style.display = 'none';
                 if (perModelContainer) perModelContainer.style.display = 'none';
             }
 
@@ -3200,6 +3775,33 @@
 
                     // Poll for progress
                     batchPollInterval = setInterval(pollBatchProgress, 2000);
+
+                    // Hide active batch warning since we're now tracking it
+                    refreshActiveBatch();
+                } else if (res.status === 409) {
+                    // Another batch is already running
+                    btn.disabled = false;
+                    btn.textContent = 'Start Batch Test';
+                    stopBtn.style.display = 'none';
+                    execProgressBar.classList.remove('active');
+                    judgeProgressBar.classList.remove('active');
+
+                    const activeBatch = json.active_batch;
+                    const message = json.message || 'Another batch is already running';
+
+                    if (activeBatch && activeBatch.is_stuck) {
+                        // Offer to recover stuck batch
+                        if (confirm(`${message}\n\nWould you like to recover the stuck batch and try again?`)) {
+                            await recoverBatch(activeBatch.id);
+                            // Retry after a brief delay
+                            setTimeout(() => document.getElementById('runBatchBtn').click(), 1000);
+                        }
+                    } else {
+                        alert(message + '\n\nYou can view the running batch by clicking "View This Batch" in the warning banner above.');
+                    }
+
+                    // Show the active batch warning
+                    refreshActiveBatch();
                 } else {
                     throw new Error(json.error || 'Failed to start batch');
                 }
@@ -3449,6 +4051,276 @@
             }
         }
 
+        async function refreshActiveBatch() {
+            try {
+                const res = await fetch(`${BENCHMARK_API}/batches/active`);
+                const json = await res.json();
+
+                if (json.status === 'success' && Array.isArray(json.data) && json.data.length > 0) {
+                    const warning = document.getElementById('activeBatchWarning');
+                    const info = document.getElementById('activeBatchInfo');
+
+                    const batch = json.data[0]; // Single batch system
+
+                    // If this is OUR current batch, don't show the warning
+                    if (batch._id === currentBatchId) {
+                        warning.style.display = 'none';
+                        return;
+                    }
+
+                    warning.style.display = 'block';
+                    const inactiveSeconds = batch.inactive_seconds || 0;
+                    const activityStatus = batch.activity_status || 'active';
+                    const isStuck = batch.is_stuck || false;
+
+                    const statusColor = isStuck ? '#e74c3c' : (activityStatus === 'slow' ? '#f39c12' : '#2ecc71');
+                    const statusIcon = isStuck ? 'fa-exclamation-circle' : (activityStatus === 'slow' ? 'fa-clock' : 'fa-circle');
+                    const statusText = isStuck ? 'STUCK' : (activityStatus === 'slow' ? 'SLOW' : 'ACTIVE');
+
+                    const progress = batch.progress || 0;
+                    const judgeProgress = batch.judge_progress || 0;
+
+                    info.innerHTML = `
+                        <div style="padding: 12px; background: rgba(0,0,0,0.2); border-radius: 8px; border-left: 4px solid ${statusColor};">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <div style="font-weight: 600; color: var(--text); margin-bottom: 4px;">
+                                        ${batch.run_name || 'Untitled Batch'}
+                                    </div>
+                                    <div style="font-size: 0.85em; color: var(--muted);">
+                                        ${batch.models ? batch.models.length : 0} models • ${batch.completed}/${batch.total_tests} tests
+                                        ${batch.judge_total > 0 ? ` • ${batch.judge_completed}/${batch.judge_total} judged` : ''}
+                                    </div>
+                                    <div style="font-size: 0.8em; color: var(--muted); margin-top: 2px;">
+                                        Last activity: ${inactiveSeconds < 60 ? `${inactiveSeconds}s ago` : `${Math.floor(inactiveSeconds / 60)}m ago`}
+                                    </div>
+                                    ${batch.current_test && batch.current_test.model ? `
+                                        <div style="margin-top: 8px; padding: 8px; background: rgba(0,0,0,0.3); border-radius: 6px;">
+                                            <div style="font-size: 0.85em; color: var(--accent); font-weight: 500;">
+                                                <i class="fas fa-cogs"></i> Currently testing: <strong>${batch.current_test.model}</strong>
+                                            </div>
+                                            <div style="font-size: 0.8em; color: var(--muted); margin-top: 2px;">
+                                                ${batch.current_test.prompt_name || batch.current_test.prompt_id || 'Unknown prompt'}
+                                            </div>
+                                        </div>
+                                    ` : ''}
+                                </div>
+                                <div style="text-align: right;">
+                                    <div style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; background: rgba(0,0,0,0.3); border-radius: 16px; margin-bottom: 8px;">
+                                        <i class="fas ${statusIcon}" style="color: ${statusColor}; font-size: 0.9em;"></i>
+                                        <span style="color: ${statusColor}; font-weight: 600; font-size: 0.85em;">${statusText}</span>
+                                    </div>
+                                    <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                                        <button class="btn-secondary btn-sm" onclick="attachToBatch('${batch._id}')" style="padding: 6px 12px; font-size: 0.85em;">
+                                            <i class="fas fa-link"></i> View This Batch
+                                        </button>
+                                        ${isStuck ? `<button class="btn-secondary btn-sm" onclick="recoverBatch('${batch._id}')" style="padding: 6px 12px; font-size: 0.85em; background: rgba(231, 76, 60, 0.2); border-color: rgba(231, 76, 60, 0.5); color: #e74c3c;">
+                                            <i class="fas fa-life-ring"></i> Recover
+                                        </button>` : ''}
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="margin-top: 8px; display: flex; gap: 10px;">
+                                <div style="flex: 1;">
+                                    <div style="height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden;">
+                                        <div style="height: 100%; width: ${progress}%; background: var(--accent); transition: width 0.3s;"></div>
+                                    </div>
+                                    <div style="font-size: 0.75em; color: var(--muted); margin-top: 2px;">Exec: ${progress}%</div>
+                                </div>
+                                ${batch.judge_total > 0 ? `<div style="flex: 1;">
+                                    <div style="height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden;">
+                                        <div style="height: 100%; width: ${judgeProgress}%; background: #9b59b6; transition: width 0.3s;"></div>
+                                    </div>
+                                    <div style="font-size: 0.75em; color: var(--muted); margin-top: 2px;">Judge: ${judgeProgress}%</div>
+                                </div>` : ''}
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    document.getElementById('activeBatchWarning').style.display = 'none';
+                }
+            } catch (err) {
+                console.error('Failed to fetch active batch:', err);
+            }
+        }
+
+        // Keep the old function name for compatibility but redirect to single batch
+        const refreshActiveBatches = refreshActiveBatch;
+
+        async function attachToBatch(batchId) {
+            if (!currentBatchId || confirm('Switch to viewing this batch? Your current view will be replaced.')) {
+                currentBatchId = batchId;
+                localStorage.setItem('currentBatchId', batchId);
+                await loadBatchDetails(batchId);
+                refreshActiveBatch(); // Hide warning once attached
+            }
+        }
+
+        async function recoverBatch(batchId) {
+            if (!confirm('Mark this batch as stopped? This will allow you to start a new batch.')) {
+                return;
+            }
+
+            try {
+                const res = await fetch(`${BENCHMARK_API}/batch/${batchId}/recover`, {
+                    method: 'POST'
+                });
+                const json = await res.json();
+
+                if (json.status === 'success') {
+                    alert('Batch marked as stopped successfully. You can now start a new batch.');
+                    refreshActiveBatch();
+                    loadBatchHistory();
+                } else {
+                    alert(`Failed to recover batch: ${json.error || 'Unknown error'}`);
+                }
+            } catch (err) {
+                console.error('Failed to recover batch:', err);
+                alert(`Error: ${err.message}`);
+            }
+        }
+
+        // Remove the old multi-batch functions
+        const oldRefreshActiveBatches = async () => {
+            try {
+                const res = await fetch(`${BENCHMARK_API}/batches/active`);
+                const json = await res.json();
+
+                if (json.status === 'success' && Array.isArray(json.data) && json.data.length > 0) {
+                    const batch = json.data[0];
+                    // Just update the current batch if it's not ours
+                    if (batch._id !== currentBatchId) {
+                        refreshActiveBatch();
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to check active batches:', err);
+            }
+        };
+
+        // Replace all references
+        window.refreshActiveBatches = refreshActiveBatch;
+
+        // OLD CODE - REMOVED
+        /*
+        async function refreshActiveBatches() {
+            try {
+                const res = await fetch(`${BENCHMARK_API}/batches/active`);
+                const json = await res.json();
+
+                if (json.status === 'success' && Array.isArray(json.data) && json.data.length > 0) {
+                    const discovery = document.getElementById('activeBatchesDiscovery');
+                    const list = document.getElementById('activeBatchesList');
+
+                    // Filter out current batch if we're tracking it
+                    const otherBatches = json.data.filter(b => b._id !== currentBatchId);
+
+                    if (otherBatches.length === 0) {
+                        discovery.style.display = 'none';
+                        return;
+                    }
+
+                    discovery.style.display = 'block';
+                    list.innerHTML = otherBatches.map(batch => {
+                        const inactiveSeconds = batch.inactive_seconds || 0;
+                        const activityStatus = batch.activity_status || 'active';
+                        const isStuck = batch.is_stuck || false;
+
+                        const statusColor = isStuck ? '#e74c3c' : (activityStatus === 'slow' ? '#f39c12' : '#2ecc71');
+                        const statusIcon = isStuck ? 'fa-exclamation-circle' : (activityStatus === 'slow' ? 'fa-clock' : 'fa-circle');
+                        const statusText = isStuck ? 'STUCK' : (activityStatus === 'slow' ? 'SLOW' : 'ACTIVE');
+
+                        const progress = batch.progress || 0;
+                        const judgeProgress = batch.judge_progress || 0;
+
+                        return `
+                            <div style="padding: 12px; background: rgba(0,0,0,0.2); border-radius: 8px; border-left: 4px solid ${statusColor};">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <div>
+                                        <div style="font-weight: 600; color: var(--text); margin-bottom: 4px;">
+                                            ${batch.run_name || 'Untitled Batch'}
+                                        </div>
+                                        <div style="font-size: 0.85em; color: var(--muted);">
+                                            ${batch.models ? batch.models.length : 0} models • ${batch.completed}/${batch.total_tests} tests
+                                            ${batch.judge_total > 0 ? ` • ${batch.judge_completed}/${batch.judge_total} judged` : ''}
+                                        </div>
+                                        <div style="font-size: 0.8em; color: var(--muted); margin-top: 2px;">
+                                            Last activity: ${inactiveSeconds < 60 ? `${inactiveSeconds}s ago` : `${Math.floor(inactiveSeconds / 60)}m ago`}
+                                        </div>
+                                    </div>
+                                    <div style="text-align: right;">
+                                        <div style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; background: rgba(0,0,0,0.3); border-radius: 16px; margin-bottom: 8px;">
+                                            <i class="fas ${statusIcon}" style="color: ${statusColor}; font-size: 0.9em;"></i>
+                                            <span style="color: ${statusColor}; font-weight: 600; font-size: 0.85em;">${statusText}</span>
+                                        </div>
+                                        <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                                            <button class="btn-secondary btn-sm" onclick="attachToBatch('${batch._id}')" style="padding: 6px 12px; font-size: 0.85em;">
+                                                <i class="fas fa-link"></i> Attach
+                                            </button>
+                                            ${isStuck ? `<button class="btn-secondary btn-sm" onclick="recoverBatch('${batch._id}')" style="padding: 6px 12px; font-size: 0.85em; background: rgba(231, 76, 60, 0.2); border-color: rgba(231, 76, 60, 0.5); color: #e74c3c;">
+                                                <i class="fas fa-life-ring"></i> Recover
+                                            </button>` : ''}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div style="margin-top: 8px; display: flex; gap: 10px;">
+                                    <div style="flex: 1;">
+                                        <div style="height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden;">
+                                            <div style="height: 100%; width: ${progress}%; background: var(--accent); transition: width 0.3s;"></div>
+                                        </div>
+                                        <div style="font-size: 0.75em; color: var(--muted); margin-top: 2px;">Exec: ${progress}%</div>
+                                    </div>
+                                    ${batch.judge_total > 0 ? `<div style="flex: 1;">
+                                        <div style="height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden;">
+                                            <div style="height: 100%; width: ${judgeProgress}%; background: #9b59b6; transition: width 0.3s;"></div>
+                                        </div>
+                                        <div style="font-size: 0.75em; color: var(--muted); margin-top: 2px;">Judge: ${judgeProgress}%</div>
+                                    </div>` : ''}
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                } else {
+                    document.getElementById('activeBatchesDiscovery').style.display = 'none';
+                }
+            } catch (err) {
+                console.error('Failed to fetch active batches:', err);
+            }
+        }
+
+        async function attachToBatch(batchId) {
+            if (confirm('Attach to this batch? Your current session will be replaced.')) {
+                currentBatchId = batchId;
+                localStorage.setItem('currentBatchId', batchId);
+                await loadBatchDetails(batchId);
+                refreshActiveBatches(); // Hide it from discovery once attached
+            }
+        }
+
+        async function recoverBatch(batchId) {
+            if (!confirm('Mark this batch as stopped? This will stop tracking it but preserve results.')) {
+                return;
+            }
+
+            try {
+                const res = await fetch(`${BENCHMARK_API}/batch/${batchId}/recover`, {
+                    method: 'POST'
+                });
+                const json = await res.json();
+
+                if (json.status === 'success') {
+                    alert('Batch marked as stopped successfully');
+                    refreshActiveBatches();
+                    loadBatchHistory();
+                } else {
+                    alert(`Failed to recover batch: ${json.error || 'Unknown error'}`);
+                }
+            } catch (err) {
+                console.error('Failed to recover batch:', err);
+                alert(`Error: ${err.message}`);
+            }
+        }
+
         async function loadBatchDetails(batchId) {
             if (currentBatchId === batchId) return; // Already viewing
             
@@ -3548,8 +4420,61 @@
                     batchLastUpdated.textContent = `Updated: ${new Date().toLocaleTimeString()}`;
                 }
 
+                // Update Current Test Indicator with Enhanced Details
+                const currentTestIndicator = document.getElementById('currentTestIndicator');
+                const currentTest = batch.current_test;
+                if (currentTest && currentTest.model && currentTest.stage !== 'idle' && batch.status === 'running') {
+                    currentTestIndicator.style.display = 'block';
+
+                    const stageIcon = currentTest.stage === 'judging' ? '<i class="fas fa-gavel"></i>' : '<i class="fas fa-cogs"></i>';
+                    const stageText = currentTest.stage === 'judging' ? 'Judging Response' : 'Executing Test';
+
+                    // Add test number and level info
+                    const testNum = currentTest.test_number || (batch.completed + 1);
+                    const totalTests = batch.total_tests || 0;
+                    const levelBadge = currentTest.prompt_level ? ` <span style="background: rgba(46, 204, 113, 0.2); color: #2ecc71; padding: 2px 8px; border-radius: 12px; font-size: 0.8em; font-weight: 600;">L${currentTest.prompt_level}</span>` : '';
+
+                    document.getElementById('currentTestStage').innerHTML = `${stageIcon} ${stageText} <span style="color: var(--muted); font-weight: 400;">(${testNum}/${totalTests})</span>${levelBadge}`;
+                    document.getElementById('currentTestModel').textContent = currentTest.model || '';
+                    document.getElementById('currentTestPrompt').textContent = currentTest.prompt_name || currentTest.prompt_id || 'Unknown';
+
+                    // Calculate duration with sub-second precision
+                    if (currentTest.started_at) {
+                        const duration = (Date.now() - new Date(currentTest.started_at).getTime()) / 1000;
+                        const durationText = duration < 10
+                            ? `${duration.toFixed(1)}s`
+                            : `${Math.floor(duration)}s`;
+                        document.getElementById('currentTestDuration').textContent = durationText;
+
+                        // Add warning if test is taking too long (> 60s)
+                        if (duration > 60) {
+                            document.getElementById('currentTestDuration').innerHTML = `${durationText} <span style="color: #f39c12; margin-left: 4px;"><i class="fas fa-exclamation-triangle"></i></span>`;
+                        }
+                    }
+                } else if (batch.status === 'judging') {
+                    // Show that we're in judging phase
+                    currentTestIndicator.style.display = 'block';
+                    document.getElementById('currentTestStage').innerHTML = '<i class="fas fa-gavel"></i> Judging Responses';
+                    document.getElementById('currentTestModel').textContent = '';
+                    document.getElementById('currentTestPrompt').textContent = `${judgeCompleted}/${judgeTotal} scored`;
+                    document.getElementById('currentTestDuration').textContent = '';
+                } else {
+                    currentTestIndicator.style.display = 'none';
+                }
+
+                // Update Timeline (if running or has events)
+                const timelineContainer = document.getElementById('timelineContainer');
+                if (batch.status === 'running' || batch.status === 'judging' || batch.status === 'completed') {
+                    if (batch.timeline && batch.timeline.length > 0) {
+                        timelineContainer.style.display = 'block';
+                        updateTimeline(batch);
+                    }
+                } else {
+                    timelineContainer.style.display = 'none';
+                }
+
                 // Update Judge Health Stats
-                const judgeStatsContainer = document.getElementById('judgeStatsContainer');
+                const judgeHealthContainer = document.getElementById('judgeHealthContainer');
                 if (batch.judge_stats && judgeTotal > 0 && showAdvanced) {
                     const stats = batch.judge_stats;
                     const lag = stats.lag || 0;
@@ -3655,9 +4580,9 @@
                            </div>`
                         : '';
 
-                    judgeStatsContainer.style.display = 'block';
-                    judgeStatsContainer.classList.add('judge-health-grid');
-                    judgeStatsContainer.innerHTML = `
+                    judgeHealthContainer.style.display = 'block';
+                    judgeHealthContainer.classList.add('judge-health-grid');
+                    judgeHealthContainer.innerHTML = `
                         <div class="judge-health-main">
                             <div style="color: ${healthColor}; font-weight: 600;">
                                 ${healthIcon} Judge Status: ${healthText}
@@ -3728,8 +4653,8 @@
                         </div>
                     `;
 
-                    if (!judgeStatsContainer.dataset.bound) {
-                        judgeStatsContainer.addEventListener('click', (e) => {
+                    if (!judgeHealthContainer.dataset.bound) {
+                        judgeHealthContainer.addEventListener('click', (e) => {
                             const btn = e.target && e.target.closest && e.target.closest('[data-action="inspect-model"]');
                             if (!btn) return;
                             const model = btn.getAttribute('data-model');
@@ -3739,10 +4664,10 @@
                                 window.showJudgeDetails(idOrIndex);
                             }
                         });
-                        judgeStatsContainer.dataset.bound = 'true';
+                        judgeHealthContainer.dataset.bound = 'true';
                     }
                 } else {
-                    judgeStatsContainer.style.display = 'none';
+                    judgeHealthContainer.style.display = 'none';
                 }
 
                 // Per-model progress table (exec + judge)
@@ -4729,6 +5654,7 @@
         }
 
         // Load dashboard data
+        console.log('[DEBUG] Defining loadDashboard function...');
         async function loadDashboard() {
             try {
                 const params = new URLSearchParams();
@@ -4775,6 +5701,12 @@
 
                 const statsForCharts = (data.model_stats || []).filter(m => Number(m && m.tests) > 0);
 
+                // Define profileKey and currentProfile in a broader scope
+                const currentProfile = document.getElementById('scoringProfile') ? document.getElementById('scoringProfile').value : 'interactive';
+                let profileKey = 'interactive_score';
+                if (currentProfile === 'reasoning') profileKey = 'reasoning_score';
+                if (currentProfile === 'coding') profileKey = 'coding_score';
+
                 if (statsForCharts.length > 0) {
                     const fastest = statsForCharts[0];
                     document.getElementById('avgLatency').innerHTML =
@@ -4802,27 +5734,41 @@
 
                     // Update composite chart
                     compositeChart.data.labels = chartLabels;
-                    const currentProfile = document.getElementById('scoringProfile') ? document.getElementById('scoringProfile').value : 'interactive';
-                    let profileKey = 'interactive_score';
-                    if (currentProfile === 'reasoning') profileKey = 'reasoning_score';
-                    if (currentProfile === 'coding') profileKey = 'coding_score';
                     
                     compositeChart.data.datasets[0].data = statsForCharts.map(m => parseFloat(m[profileKey]) || 0);
                     compositeChart.update();
+                } else {
+                    // Clear charts if no data
+                    document.getElementById('avgLatency').innerHTML = '-<span class="stat-unit">ms</span>';
+                    
+                    [latencyChart, tokensChart, qualityChart, compositeChart].forEach(chart => {
+                        if (chart) {
+                            chart.data.labels = [];
+                            chart.data.datasets.forEach(ds => ds.data = []);
+                            chart.update();
+                        }
+                    });
+                }
 
-                    // Update Judge Stats
+                // Update Judge Stats
                     const judgeContainer = document.getElementById('judgeStatsContainer');
                     const judgeGrid = document.getElementById('judgeStatsGrid');
                     
                     if (data.judge_stats && data.judge_stats.length > 0 && judgeContainer && judgeGrid) {
                         judgeContainer.style.display = 'block';
-                        judgeGrid.innerHTML = data.judge_stats.map(stat => `
+                        judgeGrid.innerHTML = data.judge_stats.map(stat => {
+                            const model = stat._id.model || stat._id || 'Unknown Judge';
+                            const host = stat._id.host ? formatHostLabel(stat._id.host) : '';
+                            return `
                             <div class="stat-card" style="padding: 16px;">
-                                <div class="stat-label" style="margin-bottom: 8px;">${stat._id || 'Unknown Judge'}</div>
+                                <div class="stat-label" style="margin-bottom: 8px;">
+                                    ${model}
+                                    ${host ? `<div style="font-size: 0.8em; opacity: 0.7; margin-top: 2px;">${host}</div>` : ''}
+                                </div>
                                 <div class="stat-value" style="font-size: 1.8em;">${Math.round(stat.avg_latency)}<span class="stat-unit">ms</span></div>
                                 <div style="font-size: 0.8em; color: var(--muted); margin-top: 4px;">${stat.count} evaluations</div>
                             </div>
-                        `).join('');
+                        `}).join('');
                     } else if (judgeContainer) {
                         judgeContainer.style.display = 'none';
                     }
@@ -4869,7 +5815,15 @@
                         const qualityVal = parseFloat(model.avg_quality);
                         const compositeVal = parseFloat(model[profileKey]);
                         const qualityDisplay = !isNaN(qualityVal) ? model.avg_quality : '-';
-                        const compositeDisplay = !isNaN(compositeVal) ? compositeVal : '-';
+
+                        // Debug: Log what we're getting
+                        if (idx === 0) {
+                            console.log('First model data:', model);
+                            console.log('Profile:', currentProfile, 'Key:', profileKey);
+                            console.log('Composite value:', model[profileKey], 'Parsed:', compositeVal);
+                        }
+
+                        const compositeDisplay = !isNaN(compositeVal) ? compositeVal.toFixed(1) : '-';
                         const qualityClass = qualityVal >= 70 ? 'quality-high' : qualityVal >= 40 ? 'quality-mid' : (qualityVal > 0 ? 'quality-low' : '');
 
                         const hasSuccessSamples = Number(model.tests) > 0;
@@ -4966,21 +5920,21 @@
 
                     // Store offenders globally for the model selection table
                     window.benchmarkOffenders = {
-                        slowest: slowestLatency ? slowestLatency.model : null,
-                        lowestTps: lowestTps ? lowestTps.model : null,
-                        lowestQuality: lowestQuality ? lowestQuality.model : null,
-                        mostFailures: mostFailures ? mostFailures.item.model : null
+                        slowest: slowestLatency ? { model: slowestLatency.model, host: slowestLatency.host } : null,
+                        lowestTps: lowestTps ? { model: lowestTps.model, host: lowestTps.host } : null,
+                        lowestQuality: lowestQuality ? { model: lowestQuality.model, host: lowestQuality.host } : null,
+                        mostFailures: mostFailures ? { model: mostFailures.item.model, host: mostFailures.item.host } : null
                     };
 
                     // Update Model Selection Table if it exists
                     if (typeof updateModelSelectionBadges === 'function') {
                         updateModelSelectionBadges();
                     }
-                }
             } catch (err) {
                 console.error('Failed to load dashboard:', err);
             }
         }
+        console.log('[DEBUG] loadDashboard function defined! Type:', typeof loadDashboard);
 
         // Profile selector change handler
         const profileSelector = document.getElementById('scoringProfile');
@@ -5078,6 +6032,20 @@
                 toggleHyperBtn.addEventListener('click', () => {
                     const current = localStorage.getItem('benchmarkShowHyper') === 'true';
                     setHyperMode(!current);
+                });
+            }
+
+            // Timeline toggle
+            const toggleTimelineBtn = document.getElementById('toggleTimelineBtn');
+            if (toggleTimelineBtn) {
+                toggleTimelineBtn.addEventListener('click', () => {
+                    const content = document.getElementById('timelineContent');
+                    const chevron = document.getElementById('timelineChevron');
+                    if (content && chevron) {
+                        const isHidden = content.style.display === 'none';
+                        content.style.display = isHidden ? 'block' : 'none';
+                        chevron.className = isHidden ? 'fas fa-chevron-up' : 'fas fa-chevron-down';
+                    }
                 });
             }
 
@@ -5214,6 +6182,10 @@
             // Load history
             loadBatchHistory();
             document.getElementById('refreshHistoryBtn').addEventListener('click', loadBatchHistory);
+
+            // Check for active batches (not just own)
+            refreshActiveBatches();
+            setInterval(refreshActiveBatches, 15000); // Check every 15 seconds
         });
         initCharts();
         /**
@@ -5260,39 +6232,19 @@
             const headerText = document.querySelector('.leaderboard h2');
             const bestOverallText = document.getElementById('bestOverallText');
 
-            const categoryInfo = {
-                '': {
-                    title: 'Model Leaderboard',
-                    subtitle: 'All models ranked across all task types'
-                },
-                'ops': {
-                    title: 'Ops/Glue Specialists',
-                    subtitle: 'Fast, lightweight models for routing and classification'
-                },
-                'coding': {
-                    title: 'Coding Specialists',
-                    subtitle: 'Models optimized for code generation and debugging'
-                },
-                'reasoning': {
-                    title: 'Reasoning Specialists',
-                    subtitle: 'Deep thinking models for complex problem-solving'
-                },
-                'specialist': {
-                    title: 'Domain Specialists',
-                    subtitle: 'Fine-tuned models for specific tasks'
-                },
-                'generalist': {
-                    title: 'General-Purpose Models',
-                    subtitle: 'Balanced models for broad task coverage'
-                }
-            };
+            let title = 'Model Leaderboard';
+            let subtitle = 'All models ranked across all task types';
 
-            const info = categoryInfo[category] || categoryInfo[''];
+            if (category) {
+                title = `${category.charAt(0).toUpperCase() + category.slice(1)} Specialists`;
+                subtitle = `Models in the '${category}' category`;
+            }
+
             if (headerText) {
-                headerText.innerHTML = `<i class="fas fa-trophy" style="color: var(--accent);"></i> ${info.title}`;
+                headerText.innerHTML = `<i class="fas fa-trophy" style="color: var(--accent);"></i> ${title}`;
             }
             if (bestOverallText) {
-                bestOverallText.textContent = info.subtitle;
+                bestOverallText.textContent = subtitle;
             }
         }
 
@@ -5304,50 +6256,24 @@
             const insightsTitle = document.getElementById('insightsTitle');
             const insightsContent = document.getElementById('insightsContent');
 
-            const categoryInsights = {
-                '': {
-                    show: false
-                },
-                'ops': {
-                    title: '⚡ Ops/Glue Models - Speed is King',
-                    content: '<strong>Use For:</strong> Query classification, routing decisions, simple validation, quick checks<br><strong>Key Metric:</strong> Latency < 500ms preferred. Quality matters less than speed.<br><strong>💡 Tip:</strong> Models like smollm2:1.7b excel here despite lower quality scores on complex tasks.',
-                    show: true
-                },
-                'coding': {
-                    title: '💻 Coding Specialists - Precision & Context',
-                    content: '<strong>Use For:</strong> Code generation, refactoring, debugging, architecture design<br><strong>Key Metric:</strong> Quality > 80, Context window > 8K tokens<br><strong>💡 Tip:</strong> Use qwen2.5-coder:14b for complex tasks, :7b for quick snippets. Filter by "Coding Tasks" to see domain-specific scores.',
-                    show: true
-                },
-                'reasoning': {
-                    title: '🧠 Reasoning Models - Depth Over Speed',
-                    content: '<strong>Use For:</strong> Complex problem-solving, multi-step logic, deep analysis<br><strong>Key Metric:</strong> Quality score is paramount, latency acceptable up to 10s<br><strong>💡 Tip:</strong> Thinking models (deepseek-r1, qwen2.5) show reasoning process. Use for tasks where correctness > speed.',
-                    show: true
-                },
-                'specialist': {
-                    title: '⭐ Domain Specialists - Fine-Tuned Excellence',
-                    content: '<strong>Use For:</strong> Tasks matching their specific training domain<br><strong>Key Metric:</strong> Check "bestCategory" field - specialists excel in their niche<br><strong>💡 Tip:</strong> Specialists may rank low on universal benchmarks but dominate in their category. Use category-filtered view for accurate comparison.',
-                    show: true
-                },
-                'generalist': {
-                    title: '🧊 Generalists - Balanced & Versatile',
-                    content: '<strong>Use For:</strong> Broad task coverage, unpredictable queries, general chat<br><strong>Key Metric:</strong> Balanced scores across all categories<br><strong>💡 Tip:</strong> Models like llama3.3:70b and qwen2.5-7b-instruct offer best "all-around" performance. Good for production front-door models.',
-                    show: true
-                }
-            };
-
-            const insights = categoryInsights[category] || categoryInsights[''];
-
-            if (insights.show) {
-                insightsTitle.textContent = insights.title;
-                insightsContent.innerHTML = insights.content;
-                insightsPanel.style.display = 'block';
-            } else {
-                insightsPanel.style.display = 'none';
+            if (!category) {
+                // Universal view
+                if (insightsTitle) insightsTitle.textContent = '🌐 Universal Leaderboard - All Models';
+                if (insightsContent) insightsContent.innerHTML = '<strong>Overview:</strong> All models ranked across all task types using composite scoring<br><strong>Key Metric:</strong> Composite score balances quality (40%), speed (40%), and reliability (20%)<br><strong>💡 Tip:</strong> This view is useful for general comparison, but use category tabs for task-specific rankings to avoid misleading results (e.g., fast models ranking high on easy tasks).';
+                if (insightsPanel) insightsPanel.style.display = 'block';
+                return;
             }
+
+            // Dynamic category view
+            if (insightsTitle) insightsTitle.textContent = `📂 ${category.charAt(0).toUpperCase() + category.slice(1)} Category`;
+            if (insightsContent) insightsContent.innerHTML = `<strong>Overview:</strong> Showing models tagged with <code>${category}</code>.<br><strong>Tip:</strong> Use this view to compare models within this specific domain.`;
+            if (insightsPanel) insightsPanel.style.display = 'block';
         }
 
+        console.log('[DEBUG] About to assign window.loadDashboard. Type of loadDashboard:', typeof loadDashboard);
         window.loadDashboard = loadDashboard;
         window.switchCategoryTab = switchCategoryTab;
+        console.log('[DEBUG] Successfully assigned window.loadDashboard, now calling it...');
         loadDashboard();
         setupModals();
 

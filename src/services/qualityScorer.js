@@ -376,8 +376,18 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
  * @returns {Object} Composite scores
  */
 function calculateCompositeScore(metrics, profile = 'interactive') {
-    const { latency, tokens_per_sec, quality_score } = metrics;
+    let { latency, tokens_per_sec, quality_score } = metrics;
     
+    // Ensure inputs are valid numbers
+    latency = Number(latency);
+    if (isNaN(latency)) latency = 0;
+    
+    tokens_per_sec = parseFloat(tokens_per_sec);
+    if (isNaN(tokens_per_sec)) tokens_per_sec = 0;
+    
+    quality_score = Number(quality_score);
+    if (isNaN(quality_score)) quality_score = 0;
+
     const PROFILES = {
         interactive: {
             weights: { quality: 0.4, latency: 0.4, speed: 0.2 },

@@ -54,6 +54,11 @@ compareBatches()                // POST /api/benchmark/compare-batches
 loadTagStats()                  // Fetch /api/benchmark/stats-by-tag
 filterByTag(tag)                // Filter batches by selected tag
 
+// Judge Analytics ("The Courthouse")
+loadJudgeStats()                // Fetch /api/benchmark/judge-leaderboard
+                                // Renders Leaderboard, Strictness Chart, Activity Feed
+                                // Calculates "Gavel Score" (Speed/Reliability/Diligence)
+
 // Utility Functions
 formatDuration(ms)              // Human-readable duration (e.g., "2h 15m")
 calculateDelta(items, field)    // Calculate difference between two values
@@ -98,6 +103,16 @@ showToast(message, type)        // Toast notifications (success/error/info)
 .active-stats-header            /* Title + ETA badge */
 .eta-badge                      /* Green rounded pill with icon */
 .active-batches-grid            /* Responsive batch cards grid */
+
+**The Courthouse (Judge Analytics) (85 lines)**
+```css
+.courthouse-section             /* Main container panel */
+.judge-leaderboard-table        /* Ranking table with Gavel Score */
+.gavel-score                    /* Accent-colored composite score */
+.strictness-chart-container     /* Histogram wrapper */
+.judge-activity-feed            /* Scrollable recent judgments list */
+.activity-item                  /* Individual judgment card */
+```
 .active-batch-card              /* Individual batch progress */
 .batch-progress-bar             /* 8px height progress track */
 .progress-fill                  /* Gradient fill (accent → green) */

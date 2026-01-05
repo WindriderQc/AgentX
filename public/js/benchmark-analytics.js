@@ -14,6 +14,24 @@ const BenchmarkAnalytics = (() => {
     let poller = null;
     let trendsChart = null;
     let comparisonChart = null;
+    let judgeStrictnessChart = null;
+    let lastComparisonData = null;
+
+    // Compare charts
+    let capabilityChart = null;
+    let judgeRadarChart = null;
+
+    // Compare selections
+    const capabilitySelections = []; // { model, host }
+    const judgeSelections = []; // { judge_model, judge_host }
+
+    // Cache
+    let judgeLeaderboardCache = null;
+
+    const STORAGE_KEYS = {
+        capability: 'agentx_benchmark_capability_compare_v1',
+        judges: 'agentx_benchmark_judge_compare_v1'
+    };
     
     let currentFilters = {
         modelCategory: null,
@@ -26,11 +44,76 @@ const BenchmarkAnalytics = (() => {
      * Initialize all analytics components
      */
     function init() {
+        restoreCompareSelections();
         loadPresets();
         startActiveMonitoring();
         loadTrends();
         loadTagStats();
+        loadJudgeStats();
         setupEventListeners();
+
+        // New compare UIs
+        setupCapabilityCompareUI();
+        setupJudgeCompareUI();
+    }
+
+    function restoreCompareSelections() {
+        // Capability
+        try {
+            const raw = localStorage.getItem(STORAGE_KEYS.capability);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed)) {
+                    parsed.forEach(item => {
+                        const model = item?.model;
+                        const host = item?.host;
+                        if (typeof model === 'string' && model && typeof host === 'string' && host) {
+                            capabilitySelections.push({ model, host });
+                        }
+                    });
+                }
+            }
+        } catch (_) {
+            // ignore
+        }
+
+        // Judges
+        try {
+            const raw = localStorage.getItem(STORAGE_KEYS.judges);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed)) {
+                    parsed.forEach(item => {
+                        const judge_model = item?.judge_model;
+                        const judge_host = item?.judge_host;
+                        if (typeof judge_model === 'string' && judge_model) {
+                            judgeSelections.push({
+                                judge_model,
+                                judge_host: typeof judge_host === 'string' && judge_host ? judge_host : null
+                            });
+                        }
+                    });
+                }
+            }
+        } catch (_) {
+            // ignore
+        }
+    }
+
+    function persistCapabilitySelections() {
+        try {
+            localStorage.setItem(STORAGE_KEYS.capability, JSON.stringify(capabilitySelections));
+        } catch (_) {
+            // ignore
+        }
+    }
+
+    function persistJudgeSelections() {
+        try {
+            localStorage.setItem(STORAGE_KEYS.judges, JSON.stringify(judgeSelections));
+        } catch (_) {
+            // ignore
+        }
     }
 
     /**
@@ -43,16 +126,34 @@ const BenchmarkAnalytics = (() => {
             periodSelector.addEventListener('change', () => loadTrends());
         }
 
+        // Refresh Judge Stats
+        const refreshJudgeBtn = document.getElementById('refreshJudgeStatsBtn');
+        if (refreshJudgeBtn) {
+            refreshJudgeBtn.addEventListener('click', () => loadJudgeStats());
+        }
+
         // Trend model filter
         const modelFilter = document.getElementById('trendsModelFilter');
         if (modelFilter) {
             modelFilter.addEventListener('change', () => loadTrends());
         }
 
+        // Capability model selector
+        const capabilitySelect = document.getElementById('capabilityModelSelect');
+        if (capabilitySelect) {
+            capabilitySelect.addEventListener('change', (e) => loadCapabilityAnalysis(e.target.value));
+        }
+
         // Batch comparison selector
         const compareBtn = document.getElementById('compareBatchesBtn');
         if (compareBtn) {
             compareBtn.addEventListener('click', compareBatches);
+        }
+
+        // Export comparison button
+        const exportBtn = document.getElementById('exportComparisonBtn');
+        if (exportBtn) {
+            exportBtn.addEventListener('click', exportComparisonCSV);
         }
 
         // Tag filter chips
@@ -62,6 +163,403 @@ const BenchmarkAnalytics = (() => {
                 filterByTag(tag);
             }
         });
+    }
+
+    function getSelectedHost() {
+        const hostEl = document.getElementById('host');
+        return hostEl ? hostEl.value : '';
+    }
+
+    function getActiveProfileKey() {
+        const profileEl = document.getElementById('scoringProfile');
+        const profile = profileEl ? profileEl.value : 'interactive';
+        if (profile === 'reasoning') return 'reasoning_score';
+        if (profile === 'coding') return 'coding_score';
+        return 'interactive_score';
+    }
+
+    async function ensureDashboardLoaded() {
+        if (window.latestBenchmarkData && Array.isArray(window.latestBenchmarkData.model_stats)) return;
+        if (typeof window.loadDashboard === 'function') {
+            try {
+                await window.loadDashboard();
+            } catch (_) {
+                // ignore
+            }
+        }
+    }
+
+    function selectionKeyModel(sel) {
+        return `${sel.model}@@${sel.host || ''}`;
+    }
+
+    function selectionKeyJudge(sel) {
+        return `${sel.judge_model}@@${sel.judge_host || ''}`;
+    }
+
+    function getPaletteColor(index) {
+        const palette = [
+            { border: '#00FF9F', bg: 'rgba(0, 255, 159, 0.18)' },
+            { border: '#7CF0FF', bg: 'rgba(124, 240, 255, 0.16)' },
+            { border: '#FF6B9D', bg: 'rgba(255, 107, 157, 0.14)' },
+            { border: '#FFD700', bg: 'rgba(255, 215, 0, 0.14)' },
+            { border: '#A78BFA', bg: 'rgba(167, 139, 250, 0.14)' },
+            { border: '#34D399', bg: 'rgba(52, 211, 153, 0.14)' }
+        ];
+        return palette[index % palette.length];
+    }
+
+    function renderChipList(containerId, items, onRemove) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+
+        if (!items.length) {
+            container.innerHTML = '';
+            return;
+        }
+
+        container.innerHTML = items.map((item, idx) => {
+            const label = item.label;
+            const meta = item.meta;
+            return `
+                <span class="compare-chip" data-idx="${idx}">
+                    <span>${escapeHtml(label)}</span>
+                    ${meta ? `<span class="meta">${escapeHtml(meta)}</span>` : ''}
+                    <button type="button" class="compare-chip-remove" title="Remove" aria-label="Remove">×</button>
+                </span>
+            `;
+        }).join('');
+
+        // delegate
+        container.onclick = (e) => {
+            const btn = e.target.closest('.compare-chip-remove');
+            if (!btn) return;
+            const chip = e.target.closest('.compare-chip');
+            const idxStr = chip?.dataset?.idx;
+            const idx = idxStr ? parseInt(idxStr, 10) : -1;
+            if (Number.isFinite(idx) && idx >= 0) onRemove(idx);
+        };
+    }
+
+    function escapeHtml(str) {
+        if (str === null || str === undefined) return '';
+        const div = document.createElement('div');
+        div.textContent = String(str);
+        return div.innerHTML;
+    }
+
+    function setupCapabilityCompareUI() {
+        const addBtn = document.getElementById('capabilityAddSelectedBtn');
+        const addTopBtn = document.getElementById('capabilityAddTopBtn');
+        const clearBtn = document.getElementById('capabilityClearBtn');
+        const refreshBtn = document.getElementById('capabilityRefreshBtn');
+
+        function updateAddButtonState() {
+            if (!addBtn) return;
+            const host = getSelectedHost();
+            const checkedCount = document.querySelectorAll('.batch-model-checkbox:checked').length;
+            addBtn.disabled = !host;
+            addBtn.title = host
+                ? `Adds ${checkedCount} checked model(s) using ${host}`
+                : 'Select an Ollama Host first';
+            addBtn.innerHTML = `<i class="fas fa-plus"></i> Add Checked (${checkedCount}) @ Host`;
+
+            if (addTopBtn) {
+                addTopBtn.disabled = !host;
+                addTopBtn.title = host
+                    ? `Adds top leaderboard models using ${host}`
+                    : 'Select an Ollama Host first';
+            }
+        }
+
+        if (addBtn) {
+            addBtn.addEventListener('click', () => {
+                addCheckedModelsToCapabilityCompare();
+                updateAddButtonState();
+            });
+        }
+
+        if (addTopBtn) {
+            addTopBtn.addEventListener('click', async () => {
+                await addTopModelsToCapabilityCompare(3);
+                updateAddButtonState();
+            });
+        }
+        if (clearBtn) {
+            clearBtn.addEventListener('click', () => {
+                capabilitySelections.splice(0, capabilitySelections.length);
+                refreshCapabilityCompare();
+                updateAddButtonState();
+            });
+        }
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', () => {
+                refreshCapabilityCompare();
+                updateAddButtonState();
+            });
+        }
+
+        const hostEl = document.getElementById('host');
+        if (hostEl) {
+            hostEl.addEventListener('change', () => {
+                updateAddButtonState();
+            });
+        }
+
+        document.addEventListener('change', (e) => {
+            const target = e.target;
+            if (target && target.classList && target.classList.contains('batch-model-checkbox')) {
+                updateAddButtonState();
+            }
+        });
+
+        // initial state
+        refreshCapabilityCompare();
+        updateAddButtonState();
+    }
+
+    async function addTopModelsToCapabilityCompare(topN = 3) {
+        const host = getSelectedHost();
+        if (!host) {
+            showToast('Select an Ollama host first', 'warning');
+            return;
+        }
+
+        await ensureDashboardLoaded();
+        const rows = Array.isArray(window.latestBenchmarkData?.model_stats)
+            ? window.latestBenchmarkData.model_stats
+            : [];
+
+        if (!rows.length) {
+            showToast('No leaderboard data yet — try Refresh or run a batch', 'warning');
+            return;
+        }
+
+        const profileKey = getActiveProfileKey();
+        const hostRows = rows
+            .filter(r => r && r.host === host)
+            .filter(r => Number(r.tests) > 0);
+
+        if (!hostRows.length) {
+            showToast('No leaderboard entries for this host yet', 'warning');
+            return;
+        }
+
+        const scored = hostRows
+            .map(r => {
+                const primary = Number.parseFloat(r[profileKey]);
+                const fallback = Number.parseFloat(r.composite);
+                const score = Number.isFinite(primary) ? primary : (Number.isFinite(fallback) ? fallback : null);
+                return { r, score };
+            })
+            .filter(x => x.score !== null)
+            .sort((a, b) => b.score - a.score)
+            .slice(0, Math.max(1, Number(topN) || 1));
+
+        if (!scored.length) {
+            showToast('No usable scores found for this host yet', 'warning');
+            return;
+        }
+
+        const existing = new Set(capabilitySelections.map(selectionKeyModel));
+        let added = 0;
+
+        for (const { r } of scored) {
+            const model = r?.model;
+            if (!model) continue;
+            const sel = { model, host };
+            const key = selectionKeyModel(sel);
+            if (existing.has(key)) continue;
+            capabilitySelections.push(sel);
+            existing.add(key);
+            added++;
+        }
+
+        if (added > 0) showToast(`Added top ${added} model(s)`, 'success');
+        refreshCapabilityCompare();
+    }
+
+    function addCheckedModelsToCapabilityCompare() {
+        const host = getSelectedHost();
+        if (!host) {
+            showToast('Select an Ollama host first', 'warning');
+            return;
+        }
+
+        const checked = Array.from(document.querySelectorAll('.batch-model-checkbox:checked'))
+            .map(cb => cb.value)
+            .filter(Boolean);
+
+        if (!checked.length) {
+            showToast('Check one or more models to add', 'warning');
+            return;
+        }
+
+        const existing = new Set(capabilitySelections.map(selectionKeyModel));
+        let added = 0;
+
+        for (const model of checked) {
+            const sel = { model, host };
+            const key = selectionKeyModel(sel);
+            if (existing.has(key)) continue;
+            capabilitySelections.push(sel);
+            existing.add(key);
+            added++;
+        }
+
+        if (added > 0) {
+            showToast(`Added ${added} model(s)`, 'success');
+        }
+        refreshCapabilityCompare();
+    }
+
+    async function refreshCapabilityCompare() {
+        persistCapabilitySelections();
+        // chips
+        renderChipList(
+            'capabilityCompareList',
+            capabilitySelections.map(sel => ({
+                label: sel.model,
+                meta: sel.host ? `@ ${sel.host}` : ''
+            })),
+            (idx) => {
+                capabilitySelections.splice(idx, 1);
+                refreshCapabilityCompare();
+            }
+        );
+
+        const emptyEl = document.getElementById('capabilityEmpty');
+        const insightsEl = document.getElementById('capabilityInsights');
+        if (insightsEl) insightsEl.innerHTML = '';
+
+        if (!capabilitySelections.length) {
+            if (emptyEl) emptyEl.style.display = 'block';
+            if (capabilityChart) {
+                capabilityChart.destroy();
+                capabilityChart = null;
+            }
+            return;
+        }
+        if (emptyEl) emptyEl.style.display = 'none';
+
+        const ctx = document.getElementById('capabilityRadarChart');
+        if (!ctx) return;
+
+        try {
+            const breakdowns = await Promise.all(
+                capabilitySelections.map(async sel => {
+                    const res = await fetch(`${BENCHMARK_API}/quality-breakdown?model=${encodeURIComponent(sel.model)}&host=${encodeURIComponent(sel.host)}`);
+                    const json = await res.json();
+                    return { sel, data: json.data };
+                })
+            );
+
+            // Derive categories from API response (fixed list today)
+            const categories = (breakdowns[0]?.data?.categories || []).slice();
+            const labels = categories.map(c => c.charAt(0).toUpperCase() + c.slice(1));
+
+            const datasets = breakdowns.map((b, idx) => {
+                const byModel = b.data?.by_category?.[b.sel.model] || {};
+                const values = categories.map(cat => {
+                    const raw = byModel?.[cat]?.avg_quality ?? byModel?.[cat]?.avg_score;
+                    const num = raw === null || raw === undefined ? 0 : parseFloat(raw);
+                    return Number.isFinite(num) ? num : 0;
+                });
+
+                const c = getPaletteColor(idx);
+                const label = `${b.sel.model} @ ${b.sel.host}`;
+
+                return {
+                    label,
+                    data: values,
+                    fill: true,
+                    backgroundColor: c.bg,
+                    borderColor: c.border,
+                    pointBackgroundColor: c.border,
+                    pointBorderColor: '#fff',
+                    pointHoverBackgroundColor: '#fff',
+                    pointHoverBorderColor: c.border
+                };
+            });
+
+            if (capabilityChart) capabilityChart.destroy();
+            capabilityChart = new Chart(ctx, {
+                type: 'radar',
+                data: { labels, datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        r: {
+                            angleLines: { color: 'rgba(255, 255, 255, 0.1)' },
+                            grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                            pointLabels: {
+                                color: '#fff',
+                                font: { size: 12, weight: 'bold' }
+                            },
+                            ticks: {
+                                backdropColor: 'transparent',
+                                color: 'rgba(255, 255, 255, 0.5)',
+                                min: 0,
+                                max: 10,
+                                stepSize: 2
+                            },
+                            suggestedMin: 0,
+                            suggestedMax: 10
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: { color: '#E0E7FF' }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(10, 14, 39, 0.9)',
+                            titleColor: '#fff',
+                            bodyColor: '#ccc',
+                            borderColor: 'rgba(255, 255, 255, 0.1)',
+                            borderWidth: 1,
+                            padding: 10,
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: ${context.raw.toFixed(1)} / 10`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Insights: best/worst per dataset
+            if (insightsEl) {
+                const insightRows = datasets.map(ds => {
+                    const values = ds.data;
+                    let bestIdx = 0;
+                    let worstIdx = 0;
+                    values.forEach((v, i) => {
+                        if (v > values[bestIdx]) bestIdx = i;
+                        if (v < values[worstIdx]) worstIdx = i;
+                    });
+                    return `
+                        <div style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; margin-bottom: 10px;">
+                            <div style="font-weight: 600; color: var(--text); margin-bottom: 6px;">${escapeHtml(ds.label)}</div>
+                            <div style="color: var(--muted); font-size: 0.9em; line-height: 1.5;">
+                                Strongest: <strong>${escapeHtml(labels[bestIdx])}</strong> (${values[bestIdx].toFixed(1)})<br>
+                                Weakest: <strong>${escapeHtml(labels[worstIdx])}</strong> (${values[worstIdx].toFixed(1)})
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+                insightsEl.innerHTML = `
+                    <h4 style="margin: 0 0 12px; color: var(--accent);"><i class="fas fa-lightbulb"></i> Compare Insights</h4>
+                    ${insightRows}
+                `;
+            }
+        } catch (err) {
+            console.error('Failed to refresh capability compare:', err);
+            showToast('Failed to load capability data', 'error');
+        }
     }
 
     /**
@@ -125,7 +623,7 @@ const BenchmarkAnalytics = (() => {
             });
 
             // Apply quality scoring
-            const qualityCheckbox = document.getElementById('enableQualityScoring');
+            const qualityCheckbox = document.getElementById('qualityScoring');
             if (qualityCheckbox) {
                 qualityCheckbox.checked = preset.config.quality_scoring;
             }
@@ -181,6 +679,9 @@ const BenchmarkAnalytics = (() => {
                     <div class="no-active-batches">
                         <i class="fas fa-check-circle"></i>
                         <p>No active batches</p>
+                        <button class="btn-secondary btn-sm" onclick="document.querySelector('.batch-section')?.scrollIntoView({ behavior: 'smooth' })" style="margin-top: 12px;">
+                            <i class="fas fa-plus"></i> Start New Batch
+                        </button>
                     </div>
                 `;
                 return;
@@ -202,7 +703,7 @@ const BenchmarkAnalytics = (() => {
                         <div class="active-batch-card">
                             <div class="batch-name">${batch.run_name}</div>
                             <div class="batch-progress-bar">
-                                <div class="progress-fill" style="width: ${batch.progress}%"></div>
+                                <div class="batch-progress-fill" style="width: ${batch.progress}%"></div>
                             </div>
                             <div class="batch-stats">
                                 <span>${batch.completed} / ${batch.total}</span>
@@ -255,8 +756,8 @@ const BenchmarkAnalytics = (() => {
                     tension: 0.3
                 },
                 {
-                    label: 'Avg Quality Score',
-                    data: data.trends.map(t => t.avg_quality || null),
+                    label: 'Avg Quality Score (x10)',
+                    data: data.trends.map(t => t.avg_quality ? t.avg_quality * 10 : null),
                     borderColor: '#00FF9F',
                     backgroundColor: 'rgba(0, 255, 159, 0.1)',
                     yAxisID: 'y1',
@@ -329,6 +830,355 @@ const BenchmarkAnalytics = (() => {
     }
 
     /**
+     * Load capability radar chart for a model
+     */
+    async function loadCapabilityAnalysis(modelName) {
+        if (!modelName) return;
+
+        try {
+            const host = getSelectedHost();
+            const res = await fetch(`${BENCHMARK_API}/quality-breakdown?model=${encodeURIComponent(modelName)}${host ? `&host=${encodeURIComponent(host)}` : ''}`);
+            const json = await res.json();
+            const data = json.data;
+
+            const ctx = document.getElementById('capabilityRadarChart');
+            const insightsContainer = document.getElementById('capabilityInsights');
+            
+            if (!ctx || !insightsContainer) return;
+
+            // Process data for chart (API shape: by_category[model][category])
+            const categories = data.categories || [];
+            const byModel = data.by_category?.[modelName] || {};
+            const scores = categories.map(cat => {
+                const raw = byModel?.[cat]?.avg_quality ?? byModel?.[cat]?.avg_score;
+                const num = raw === null || raw === undefined ? 0 : parseFloat(raw);
+                return Number.isFinite(num) ? num : 0;
+            });
+
+            // Destroy existing chart
+            if (capabilityChart) {
+                capabilityChart.destroy();
+            }
+
+            // Create Radar Chart
+            capabilityChart = new Chart(ctx, {
+                type: 'radar',
+                data: {
+                    labels: categories.map(c => c.charAt(0).toUpperCase() + c.slice(1)),
+                    datasets: [{
+                        label: host ? `${modelName} @ ${host}` : modelName,
+                        data: scores,
+                        fill: true,
+                        backgroundColor: 'rgba(0, 255, 159, 0.2)',
+                        borderColor: '#00FF9F',
+                        pointBackgroundColor: '#00FF9F',
+                        pointBorderColor: '#fff',
+                        pointHoverBackgroundColor: '#fff',
+                        pointHoverBorderColor: '#00FF9F'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        r: {
+                            angleLines: { color: 'rgba(255, 255, 255, 0.1)' },
+                            grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                            pointLabels: {
+                                color: '#fff',
+                                font: { size: 12, weight: 'bold' }
+                            },
+                            ticks: {
+                                backdropColor: 'transparent',
+                                color: 'rgba(255, 255, 255, 0.5)',
+                                min: 0,
+                                max: 10,
+                                stepSize: 2
+                            },
+                            suggestedMin: 0,
+                            suggestedMax: 10
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: 'rgba(10, 14, 39, 0.9)',
+                            titleColor: '#fff',
+                            bodyColor: '#ccc',
+                            borderColor: 'rgba(255, 255, 255, 0.1)',
+                            borderWidth: 1,
+                            padding: 10,
+                            callbacks: {
+                                label: function(context) {
+                                    return `Score: ${context.raw.toFixed(1)} / 10`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Generate Insights
+            const bestCat = categories.reduce((a, b) =>
+                (byModel?.[a]?.avg_quality || 0) > (byModel?.[b]?.avg_quality || 0) ? a : b
+            , categories[0]);
+            
+            const worstCat = categories.reduce((a, b) => 
+                (byModel?.[a]?.avg_quality || 0) < (byModel?.[b]?.avg_quality || 0) ? a : b
+            , categories[0]);
+
+            const bestScore = (byModel?.[bestCat]?.avg_quality !== undefined && byModel?.[bestCat]?.avg_quality !== null)
+                ? parseFloat(byModel[bestCat].avg_quality).toFixed(1)
+                : 'N/A';
+            const worstScore = (byModel?.[worstCat]?.avg_quality !== undefined && byModel?.[worstCat]?.avg_quality !== null)
+                ? parseFloat(byModel[worstCat].avg_quality).toFixed(1)
+                : 'N/A';
+            const totalTests = data.overall.length;
+
+            insightsContainer.innerHTML = `
+                <h4 style="margin: 0 0 16px; color: var(--accent);"><i class="fas fa-lightbulb"></i> Capability Insights</h4>
+                <div style="display: grid; gap: 12px;">
+                    <div style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px;">
+                        <div style="color: var(--muted); font-size: 0.9em;">Strongest Category</div>
+                        <div style="font-size: 1.1em; font-weight: 600; color: #fff;">
+                            ${bestCat.charAt(0).toUpperCase() + bestCat.slice(1)} 
+                            <span style="color: #00FF9F;">(${bestScore})</span>
+                        </div>
+                    </div>
+                    <div style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px;">
+                        <div style="color: var(--muted); font-size: 0.9em;">Weakest Category</div>
+                        <div style="font-size: 1.1em; font-weight: 600; color: #fff;">
+                            ${worstCat.charAt(0).toUpperCase() + worstCat.slice(1)} 
+                            <span style="color: #FF6B9D;">(${worstScore})</span>
+                        </div>
+                    </div>
+                    <div style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px;">
+                        <div style="color: var(--muted); font-size: 0.9em;">Data Points</div>
+                        <div style="font-size: 1.1em; font-weight: 600; color: #fff;">
+                            ${totalTests} tests analyzed
+                        </div>
+                    </div>
+                </div>
+                <div style="margin-top: 20px; font-size: 0.9em; color: var(--muted); line-height: 1.5;">
+                    This model excels at <strong>${bestCat}</strong> tasks but may struggle with <strong>${worstCat}</strong>. 
+                    ${totalTests < 5 ? '<br><br><i class="fas fa-exclamation-triangle" style="color: #FFD700;"></i> Low sample size - run more tests for accurate analysis.' : ''}
+                </div>
+            `;
+
+        } catch (err) {
+            console.error('Failed to load capability analysis:', err);
+        }
+    }
+
+    function setupJudgeCompareUI() {
+        const addBtn = document.getElementById('judgeAddCompareBtn');
+        const addTopBtn = document.getElementById('judgeAddTopCompareBtn');
+        const clearBtn = document.getElementById('judgeClearCompareBtn');
+        const refreshBtn = document.getElementById('judgeRefreshCompareBtn');
+        const selectEl = document.getElementById('judgeCompareSelect');
+
+        if (addBtn) {
+            addBtn.addEventListener('click', () => {
+                const raw = selectEl?.value || '';
+                if (!raw) {
+                    showToast('Select a judge to add', 'warning');
+                    return;
+                }
+                const [judge_model, judge_host] = raw.split('@@');
+                const sel = { judge_model, judge_host: judge_host || null };
+                const key = selectionKeyJudge(sel);
+                const existing = new Set(judgeSelections.map(selectionKeyJudge));
+                if (!existing.has(key)) {
+                    judgeSelections.push(sel);
+                    refreshJudgeCompare();
+                }
+            });
+        }
+
+        if (addTopBtn) {
+            addTopBtn.addEventListener('click', async () => {
+                await addTopJudgeToCompare();
+            });
+        }
+
+        if (clearBtn) {
+            clearBtn.addEventListener('click', () => {
+                judgeSelections.splice(0, judgeSelections.length);
+                refreshJudgeCompare();
+            });
+        }
+
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', () => refreshJudgeCompare());
+        }
+
+        refreshJudgeCompare();
+    }
+
+    async function ensureJudgeLeaderboardLoaded() {
+        if (Array.isArray(judgeLeaderboardCache) && judgeLeaderboardCache.length) return judgeLeaderboardCache;
+        try {
+            await loadJudgeStats();
+        } catch (_) {
+            // ignore
+        }
+        return Array.isArray(judgeLeaderboardCache) ? judgeLeaderboardCache : [];
+    }
+
+    async function addTopJudgeToCompare() {
+        const leaderboard = await ensureJudgeLeaderboardLoaded();
+        if (!leaderboard.length) {
+            showToast('No judge leaderboard data yet', 'warning');
+            return;
+        }
+
+        const top = leaderboard[0];
+        const sel = { judge_model: top.judge_model, judge_host: top.judge_host || null };
+        const key = selectionKeyJudge(sel);
+        const existing = new Set(judgeSelections.map(selectionKeyJudge));
+        if (existing.has(key)) {
+            showToast('Top judge is already in compare', 'warning');
+            return;
+        }
+
+        judgeSelections.push(sel);
+        showToast('Added top judge', 'success');
+        refreshJudgeCompare();
+    }
+
+    function populateJudgeCompareSelect(leaderboard) {
+        const container = document.getElementById('judgeCompareContainer');
+        const selectEl = document.getElementById('judgeCompareSelect');
+        if (!selectEl) return;
+
+        if (!leaderboard || leaderboard.length === 0) {
+            selectEl.innerHTML = '<option value="">No judges available</option>';
+            if (container) container.style.display = 'none';
+            return;
+        }
+
+        if (container) container.style.display = 'block';
+
+        selectEl.innerHTML = '<option value="">Select judge...</option>' +
+            leaderboard.map(j => {
+                const key = `${j.judge_model}@@${j.judge_host || ''}`;
+                const label = `${j.judge_model} @ ${j.judge_host || 'N/A'}`;
+                return `<option value="${escapeHtml(key)}">${escapeHtml(label)}</option>`;
+            }).join('');
+    }
+
+    async function refreshJudgeCompare() {
+        persistJudgeSelections();
+        renderChipList(
+            'judgeCompareList',
+            judgeSelections.map(sel => ({
+                label: sel.judge_model,
+                meta: sel.judge_host ? `@ ${sel.judge_host}` : '@ N/A'
+            })),
+            (idx) => {
+                judgeSelections.splice(idx, 1);
+                refreshJudgeCompare();
+            }
+        );
+
+        const emptyEl = document.getElementById('judgeRadarEmpty');
+        const ctx = document.getElementById('judgeRadarChart');
+        if (!ctx) return;
+
+        if (!judgeSelections.length) {
+            if (emptyEl) emptyEl.style.display = 'block';
+            if (judgeRadarChart) {
+                judgeRadarChart.destroy();
+                judgeRadarChart = null;
+            }
+            return;
+        }
+        if (emptyEl) emptyEl.style.display = 'none';
+
+        try {
+            const leaderboard = judgeLeaderboardCache || (await (async () => {
+                const res = await fetch(`${BENCHMARK_API}/judge-leaderboard`);
+                const { data } = await res.json();
+                judgeLeaderboardCache = data.leaderboard || [];
+                populateJudgeCompareSelect(judgeLeaderboardCache);
+                return judgeLeaderboardCache;
+            })());
+
+            const labels = ['Speed', 'Reliability', 'Diligence', 'Avg Score Given'];
+
+            const datasets = judgeSelections.map((sel, idx) => {
+                const row = leaderboard.find(j => j.judge_model === sel.judge_model && (j.judge_host || null) === (sel.judge_host || null));
+                const avgLatency = row?.avg_latency || 0;
+                const successRate = row?.success_rate || 0;
+                const avgExplanationLen = row?.avg_explanation_len || 0;
+                const avgScoreGiven = row?.avg_score_given || 0;
+
+                const speedScore = Math.max(0, 100 - (avgLatency / 10000 * 100));
+                const diligenceScore = Math.min(100, (avgExplanationLen / 500 * 100));
+                const avgScorePct = Math.max(0, Math.min(100, (avgScoreGiven / 10) * 100));
+
+                const c = getPaletteColor(idx);
+                return {
+                    label: `${sel.judge_model} @ ${sel.judge_host || 'N/A'}`,
+                    data: [speedScore, successRate, diligenceScore, avgScorePct],
+                    fill: true,
+                    backgroundColor: c.bg,
+                    borderColor: c.border,
+                    pointBackgroundColor: c.border,
+                    pointBorderColor: '#fff',
+                    pointHoverBackgroundColor: '#fff',
+                    pointHoverBorderColor: c.border
+                };
+            });
+
+            if (judgeRadarChart) judgeRadarChart.destroy();
+            judgeRadarChart = new Chart(ctx, {
+                type: 'radar',
+                data: { labels, datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        r: {
+                            angleLines: { color: 'rgba(255, 255, 255, 0.1)' },
+                            grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                            pointLabels: { color: '#fff', font: { size: 12, weight: 'bold' } },
+                            ticks: {
+                                backdropColor: 'transparent',
+                                color: 'rgba(255, 255, 255, 0.5)',
+                                min: 0,
+                                max: 100,
+                                stepSize: 20
+                            },
+                            suggestedMin: 0,
+                            suggestedMax: 100
+                        }
+                    },
+                    plugins: {
+                        legend: { display: true, position: 'top', labels: { color: '#E0E7FF' } },
+                        tooltip: {
+                            backgroundColor: 'rgba(10, 14, 39, 0.9)',
+                            titleColor: '#fff',
+                            bodyColor: '#ccc',
+                            borderColor: 'rgba(255, 255, 255, 0.1)',
+                            borderWidth: 1,
+                            padding: 10,
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: ${context.raw.toFixed(0)} / 100`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        } catch (err) {
+            console.error('Failed to refresh judge compare:', err);
+            showToast('Failed to load judge compare data', 'error');
+        }
+    }
+
+    /**
      * Compare multiple batches
      */
     async function compareBatches() {
@@ -348,6 +1198,11 @@ const BenchmarkAnalytics = (() => {
             });
 
             const { data } = await res.json();
+            lastComparisonData = data;
+
+            // Show export button
+            const exportBtn = document.getElementById('exportComparisonBtn');
+            if (exportBtn) exportBtn.style.display = 'inline-block';
 
             // Display comparison table
             const container = document.getElementById('comparisonResults');
@@ -396,6 +1251,20 @@ const BenchmarkAnalytics = (() => {
                             </td>
                         </tr>
                         <tr>
+                            <td>Avg Quality</td>
+                            ${data.comparison.map(b => `<td>${b.avg_quality !== null ? b.avg_quality : 'N/A'}</td>`).join('')}
+                            <td class="${getDeltaClass(data.comparison, 'avg_quality')}">
+                                ${calculateDelta(data.comparison, 'avg_quality')}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>Avg Composite</td>
+                            ${data.comparison.map(b => `<td>${b.avg_composite !== null ? b.avg_composite : 'N/A'}</td>`).join('')}
+                            <td class="${getDeltaClass(data.comparison, 'avg_composite')}">
+                                ${calculateDelta(data.comparison, 'avg_composite')}
+                            </td>
+                        </tr>
+                        <tr>
                             <td>Duration</td>
                             ${data.comparison.map(b => `
                                 <td>${b.execution_metrics?.total_duration_ms
@@ -430,6 +1299,64 @@ const BenchmarkAnalytics = (() => {
     }
 
     /**
+     * Export comparison data as CSV
+     */
+    function exportComparisonCSV() {
+        if (!lastComparisonData || !lastComparisonData.comparison) {
+            showToast('No comparison data to export', 'warning');
+            return;
+        }
+
+        const data = lastComparisonData.comparison;
+        const headers = ['Metric', ...data.map(b => b.run_name), 'Delta'];
+        const rows = [];
+
+        // Helper to get delta
+        const getDelta = (field) => calculateDelta(data, field);
+
+        // Total Tests
+        rows.push(['Total Tests', ...data.map(b => b.total_tests), getDelta('total_tests')]);
+        
+        // Success Rate
+        rows.push(['Success Rate', ...data.map(b => b.success_rate + '%'), getDelta('success_rate') + '%']);
+        
+        // Avg Quality
+        rows.push(['Avg Quality', ...data.map(b => b.avg_quality !== null ? b.avg_quality : 'N/A'), getDelta('avg_quality')]);
+        
+        // Avg Composite
+        rows.push(['Avg Composite', ...data.map(b => b.avg_composite !== null ? b.avg_composite : 'N/A'), getDelta('avg_composite')]);
+        
+        // Duration
+        rows.push(['Duration', ...data.map(b => b.execution_metrics?.total_duration_ms ? formatDuration(b.execution_metrics.total_duration_ms) : 'N/A'), 
+            data[0].execution_metrics && data[1].execution_metrics 
+                ? formatDuration(Math.abs(data[0].execution_metrics.total_duration_ms - data[1].execution_metrics.total_duration_ms)) 
+                : 'N/A'
+        ]);
+
+        // Tests/min
+        rows.push(['Tests/min', ...data.map(b => b.execution_metrics?.tests_per_minute || 'N/A'), 
+            calculateDelta(data.map(b => ({ tests_per_minute: b.execution_metrics?.tests_per_minute || 0 })), 'tests_per_minute')
+        ]);
+
+        // Convert to CSV
+        const csvContent = [
+            headers.join(','),
+            ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+        ].join('\n');
+
+        // Download
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', `benchmark_comparison_${new Date().toISOString().slice(0,10)}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+
+    /**
      * Load tag statistics
      */
     async function loadTagStats() {
@@ -447,8 +1374,13 @@ const BenchmarkAnalytics = (() => {
 
             container.innerHTML = `
                 <div class="tag-chips">
-                    ${data.tags.map(tag => `
-                        <div class="tag-chip" data-tag="${tag.tag}">
+                    ${data.tags.map(tag => {
+                        const isActive = currentFilters.tag === tag.tag;
+                        return `
+                        <div class="tag-chip ${isActive ? 'active' : ''}" 
+                             data-tag="${tag.tag}"
+                             onclick="BenchmarkAnalytics.filterByTag('${tag.tag}')"
+                             style="${isActive ? 'border-color: var(--accent); background: rgba(124, 240, 255, 0.1);' : ''}">
                             <span class="tag-name">${tag.tag}</span>
                             <span class="tag-count">${tag.count}</span>
                             <div class="tag-details">
@@ -456,7 +1388,7 @@ const BenchmarkAnalytics = (() => {
                                 <small>⚡ ${tag.avg_success_rate} success</small>
                             </div>
                         </div>
-                    `).join('')}
+                    `}).join('')}
                 </div>
             `;
         } catch (err) {
@@ -512,7 +1444,10 @@ const BenchmarkAnalytics = (() => {
      */
     function getDeltaClass(items, field) {
         const delta = calculateDelta(items, field);
-        return parseFloat(delta) > 0 ? 'delta-positive' : 'delta-negative';
+        const val = parseFloat(delta);
+        if (val > 0) return 'delta-positive';
+        if (val < 0) return 'delta-negative';
+        return '';
     }
 
     /**
@@ -569,6 +1504,152 @@ const BenchmarkAnalytics = (() => {
         }, 3000);
     }
 
+    /**
+     * Load Judge Leaderboard and Stats
+     */
+    async function loadJudgeStats() {
+        try {
+            const res = await fetch(`${BENCHMARK_API}/judge-leaderboard`);
+            const { data } = await res.json();
+            
+            const { leaderboard, activity } = data;
+
+            judgeLeaderboardCache = leaderboard || [];
+            populateJudgeCompareSelect(judgeLeaderboardCache);
+
+            // 1. Render Leaderboard Table
+            const tableBody = document.getElementById('judgeLeaderboardBody');
+            const container = document.getElementById('judgeLeaderboardContainer');
+            
+            if (container) container.style.display = 'block';
+
+            if (tableBody) {
+                if (leaderboard.length === 0) {
+                    tableBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: var(--muted);">No judge data available</td></tr>';
+                } else {
+                    tableBody.innerHTML = leaderboard.map(judge => {
+                        // Calculate "Gavel Score" (Composite)
+                        // Speed (0-100, lower is better, cap at 10s)
+                        const speedScore = Math.max(0, 100 - (judge.avg_latency / 10000 * 100));
+                        // Reliability (0-100)
+                        const reliabilityScore = judge.success_rate;
+                        // Diligence (0-100, cap at 500 chars)
+                        const diligenceScore = Math.min(100, (judge.avg_explanation_len / 500 * 100));
+                        
+                        const gavelScore = Math.round((speedScore * 0.3) + (reliabilityScore * 0.5) + (diligenceScore * 0.2));
+                        
+                        return `
+                            <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                                <td style="padding: 12px 8px;">
+                                    <div style="font-weight: 600; color: var(--text);">${judge.judge_model}</div>
+                                    <div style="font-size: 0.8em; color: var(--muted);" title="Composite score: Speed (30%) + Reliability (50%) + Diligence (20%)">
+                                        Gavel Score: <span style="color: var(--accent);">${gavelScore}</span>
+                                    </div>
+                                </td>
+                                <td style="padding: 12px 8px; font-size: 0.9em; color: var(--muted);">${judge.judge_host || 'N/A'}</td>
+                                <td style="padding: 12px 8px; text-align: center;">${judge.count}</td>
+                                <td style="padding: 12px 8px; text-align: center;">
+                                    ${(judge.avg_latency / 1000).toFixed(2)}s
+                                </td>
+                                <td style="padding: 12px 8px; text-align: center;">
+                                    <span style="color: ${judge.success_rate > 95 ? '#2ecc71' : judge.success_rate > 80 ? '#f1c40f' : '#e74c3c'}">
+                                        ${Math.round(judge.success_rate)}%
+                                    </span>
+                                </td>
+                                <td style="padding: 12px 8px; text-align: center;">
+                                    ${judge.avg_score_given.toFixed(1)}
+                                </td>
+                            </tr>
+                        `;
+                    }).join('');
+                }
+            }
+
+            // 2. Render Activity Feed
+            const feedContainer = document.getElementById('judgeActivityFeed');
+            if (feedContainer) {
+                if (activity.length === 0) {
+                    feedContainer.innerHTML = '<div style="text-align: center; color: var(--muted); padding: 10px;">No recent activity</div>';
+                } else {
+                    feedContainer.innerHTML = activity.map(act => {
+                        const timeAgo = Math.round((Date.now() - new Date(act.timestamp).getTime()) / 1000);
+                        const timeText = timeAgo < 60 ? `${timeAgo}s ago` : `${Math.round(timeAgo/60)}m ago`;
+                        return `
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: rgba(255,255,255,0.03); border-radius: 4px;">
+                                <div>
+                                    <div style="color: var(--text); font-weight: 500;">${act.judge_model} <span style="color: var(--muted); font-weight: 400;">judged</span> ${act.model}</div>
+                                    <div style="color: var(--muted); font-size: 0.9em;">${act.prompt_category || 'general'} • ${(act.scoring_time_ms/1000).toFixed(1)}s</div>
+                                </div>
+                                <div style="text-align: right;">
+                                    <div style="font-weight: 700; color: ${act.quality_score >= 8 ? '#2ecc71' : act.quality_score >= 5 ? '#f1c40f' : '#e74c3c'};">
+                                        ${act.quality_score !== null ? act.quality_score.toFixed(1) : '-'}
+                                    </div>
+                                    <div style="color: var(--muted); font-size: 0.8em;">${timeText}</div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                }
+            }
+
+            // 3. Render Strictness Chart (using the most active judge)
+            if (leaderboard.length > 0) {
+                const topJudge = leaderboard[0];
+                const ctx = document.getElementById('judgeStrictnessChart');
+                
+                if (ctx) {
+                    if (judgeStrictnessChart) {
+                        judgeStrictnessChart.destroy();
+                    }
+
+                    const dist = topJudge.score_distribution || {};
+                    const labels = ['0-2', '2-4', '4-6', '6-8', '8-10'];
+                    const data = labels.map(l => dist[l] || 0);
+
+                    judgeStrictnessChart = new Chart(ctx, {
+                        type: 'bar',
+                        data: {
+                            labels: labels,
+                            datasets: [{
+                                label: `Score Dist (${topJudge.judge_model})`,
+                                data: data,
+                                backgroundColor: 'rgba(124, 240, 255, 0.5)',
+                                borderColor: '#7CF0FF',
+                                borderWidth: 1
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { display: false },
+                                tooltip: {
+                                    callbacks: {
+                                        title: () => `Judge: ${topJudge.judge_model}`
+                                    }
+                                }
+                            },
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    grid: { color: 'rgba(255,255,255,0.05)' },
+                                    ticks: { color: '#888' }
+                                },
+                                x: {
+                                    grid: { display: false },
+                                    ticks: { color: '#888' }
+                                }
+                            }
+                        }
+                    });
+                }
+            }
+
+        } catch (err) {
+            console.error('Failed to load judge stats:', err);
+        }
+    }
+
     // Public API
     return {
         init,
@@ -576,12 +1657,16 @@ const BenchmarkAnalytics = (() => {
         loadTrends,
         loadActiveStats,
         loadTagStats,
+        loadJudgeStats,
+        loadCapabilityAnalysis,
         compareBatches,
         stopActiveMonitoring,
         filterByModelCategory,
         filterByPromptCategory,
+        filterByTag,
         getActiveFilters,
-        clearAllFilters
+        clearAllFilters,
+        showToast
     };
 })();
 

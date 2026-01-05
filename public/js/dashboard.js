@@ -4,6 +4,10 @@ import { API, PollingController } from './utils/index.js';
 
 let poller = null;
 
+let dashboardSummaryCooldownUntil = 0;
+let dashboardSummaryBackoffMs = 0;
+let dashboardSummaryLast429LogAt = 0;
+
 // --- UTILITIES ---
 
 function formatBytes(bytes) {
@@ -506,6 +510,9 @@ function applyScans(result) {
 }
 
 async function refreshDashboardSummary() {
+    const now = Date.now();
+    if (now < dashboardSummaryCooldownUntil) return;
+
     try {
         const response = await API.get('/api/dashboard/summary?eventsLimit=15&scansLimit=5');
         const payload = response.data;
@@ -514,7 +521,23 @@ async function refreshDashboardSummary() {
         refreshSystemMetrics(payload.metrics);
         applySystemEvents(payload.events);
         applyScans(payload.scans);
+
+        dashboardSummaryBackoffMs = 0;
+        dashboardSummaryCooldownUntil = 0;
     } catch (error) {
+        const status = error?.status;
+        if (status === 429) {
+            const retryAfterMs = Number.isFinite(error?.retryAfterMs) ? error.retryAfterMs : null;
+            const nextBackoff = retryAfterMs ?? (dashboardSummaryBackoffMs ? dashboardSummaryBackoffMs * 2 : 15000);
+            dashboardSummaryBackoffMs = Math.min(Math.max(nextBackoff, 15000), 120000);
+            dashboardSummaryCooldownUntil = Date.now() + dashboardSummaryBackoffMs;
+
+            if (Date.now() - dashboardSummaryLast429LogAt > 10000) {
+                console.warn(`Dashboard summary rate-limited (429). Backing off for ${Math.round(dashboardSummaryBackoffMs / 1000)}s`);
+                dashboardSummaryLast429LogAt = Date.now();
+            }
+            return;
+        }
         console.error('Dashboard summary refresh failed:', error);
     }
 }

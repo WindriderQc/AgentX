@@ -258,16 +258,24 @@ class AlertAnalytics {
             const fromDate = new Date();
             fromDate.setDate(fromDate.getDate() - this.timeRange);
 
-            // Fetch comprehensive statistics from new endpoint
-            const response = await apiClient.get('/alerts/statistics', {
+            // Fetch comprehensive statistics from API endpoint
+            // NOTE: apiClient has baseUrl '/api' so this must be relative (no leading '/').
+            const response = await apiClient.get('alerts/statistics', {
                 from: fromDate.toISOString()
             });
 
-            this.cache.statistics = response.data;
+            // Handle response structure (response may be wrapped or unwrapped)
+            const data = response.data || response;
+
+            if (!data || typeof data !== 'object') {
+                throw new Error('Invalid response structure from statistics endpoint');
+            }
+
+            this.cache.statistics = data;
             this.cache.lastUpdate = new Date();
 
             console.log('Analytics data loaded:', {
-                summary: this.cache.statistics.summary,
+                summary: this.cache.statistics.summary || 'No summary data',
                 dataPoints: {
                     timeSeries: this.cache.statistics.timeSeries?.length || 0,
                     heatmap: this.cache.statistics.heatmap?.length || 0

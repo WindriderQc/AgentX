@@ -8,6 +8,16 @@ class ApiClient {
         this.baseUrl = baseUrl;
     }
 
+    parseRetryAfterMs(response) {
+        const retryAfter = response?.headers?.get?.('retry-after');
+        if (!retryAfter) return null;
+        const seconds = Number(retryAfter);
+        if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+        const asDate = Date.parse(retryAfter);
+        if (!Number.isNaN(asDate)) return Math.max(0, asDate - Date.now());
+        return null;
+    }
+
     async request(endpoint, options = {}) {
         const url = endpoint.startsWith('/') ? endpoint : `${this.baseUrl}/${endpoint}`;
 
@@ -49,7 +59,10 @@ class ApiClient {
             }
 
             if (!response.ok) {
-                throw new Error(data.message || data.error || `Request failed with status ${response.status}`);
+                const error = new Error(data?.message || data?.error || `Request failed with status ${response.status}`);
+                error.status = response.status;
+                error.retryAfterMs = this.parseRetryAfterMs(response);
+                throw error;
             }
 
             return data;

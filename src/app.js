@@ -22,6 +22,7 @@ const IN_TEST = process.env.NODE_ENV === 'test';
 const systemHealth = {
   mongodb: { status: 'checking', lastCheck: null, error: null },
   ollama: { status: 'checking', lastCheck: null, error: null },
+  qdrant: { status: 'checking', lastCheck: null, error: null },
   startup: new Date().toISOString()
 };
 

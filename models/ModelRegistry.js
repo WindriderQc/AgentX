@@ -116,6 +116,12 @@ const ModelRegistrySchema = new mongoose.Schema({
     default: ''
   },
 
+  // User comments/notes
+  userNote: {
+    type: String,
+    default: ''
+  },
+
   // Categorization (Multi-select)
   categories: [{
     type: String,

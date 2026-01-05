@@ -94,6 +94,54 @@ router.get('/models/health', async (req, res) => {
     }
 });
 
+// QDRANT HEALTH: Dedicated endpoint for Qdrant vector database health check
+router.get('/health/qdrant', async (req, res) => {
+    const QDRANT_URL = process.env.QDRANT_URL || 'http://localhost:6333';
+    const VECTOR_STORE_TYPE = process.env.VECTOR_STORE_TYPE;
+
+    if (VECTOR_STORE_TYPE !== 'qdrant') {
+        return res.json({
+            status: 'not_configured',
+            message: 'Qdrant not configured as vector store',
+            vectorStoreType: VECTOR_STORE_TYPE || 'memory',
+            healthy: false
+        });
+    }
+
+    try {
+        const response = await fetch(`${QDRANT_URL}/healthz`);
+        if (response.ok) {
+            res.json({
+                status: 'connected',
+                message: 'Vector database operational',
+                url: QDRANT_URL,
+                vectorStoreType: VECTOR_STORE_TYPE,
+                healthy: true,
+                lastCheck: new Date().toISOString()
+            });
+        } else {
+            res.json({
+                status: 'error',
+                message: `HTTP ${response.status}`,
+                url: QDRANT_URL,
+                vectorStoreType: VECTOR_STORE_TYPE,
+                healthy: false,
+                lastCheck: new Date().toISOString()
+            });
+        }
+    } catch (err) {
+        logger.error('Qdrant health check failed', { error: err.message, url: QDRANT_URL });
+        res.json({
+            status: 'error',
+            message: err.message,
+            url: QDRANT_URL,
+            vectorStoreType: VECTOR_STORE_TYPE,
+            healthy: false,
+            lastCheck: new Date().toISOString()
+        });
+    }
+});
+
 // CHAT: Delegated to chatService
 router.post('/chat', optionalAuth, async (req, res) => {
   const { 

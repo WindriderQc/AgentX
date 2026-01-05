@@ -100,6 +100,29 @@ description: string                     // Human-readable notes
 
 ---
 
+#### 3. GET /api/benchmark/judge-leaderboard
+**Judge model performance ranking**
+
+```json
+{
+  "leaderboard": [
+    {
+      "judge_model": "llama3:8b",
+      "judge_host": "http://localhost:11434",
+      "count": 150,
+      "avg_latency": 4500,
+      "success_rate": 98.5,
+      "avg_explanation_len": 320
+    }
+  ],
+  "activity": [...]
+}
+```
+
+**UI Use:** "The Courthouse" dashboard, judge ranking, strictness analysis
+
+---
+
 #### 3. POST /api/benchmark/compare-batches
 **Side-by-side batch comparison**
 

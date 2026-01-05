@@ -239,19 +239,43 @@ Three-layer design: **Ingestion** (Document → Chunks → Embeddings → Vector
 
 **Complete Guide:** [docs/QDRANT_DEPLOYMENT.md](docs/QDRANT_DEPLOYMENT.md) (comprehensive 600+ line deployment guide)
 
+**Production Status:** ✅ **OPERATIONAL** (as of 2026-01-05)
+- Running via PM2 (process ID 5, port 6333, 128MB RAM)
+- Health check: `curl http://localhost:6333/healthz` → "healthz check passed"
+- Auto-start on reboot: `pm2 save` (configured)
+- Integrated with system health monitoring
+
 **Quick Start:**
 ```bash
+# Start via PM2 (recommended)
+pm2 start ecosystem.config.js --only qdrant
+pm2 save
+
+# Or run directly
 ./qdrant --config-path qdrant_config.yaml  # Local binary
-# OR
+
+# Or via Docker
 docker run -d --name qdrant -p 6333:6333 -v qdrant_storage:/qdrant/storage qdrant/qdrant:latest
 ```
 
 **Configuration:**
 ```bash
-VECTOR_STORE_TYPE=qdrant
-QDRANT_URL=http://localhost:6333
-QDRANT_COLLECTION=agentx_rag
+VECTOR_STORE_TYPE=qdrant                    # Enabled in production
+QDRANT_URL=http://localhost:6333           # Local instance
+QDRANT_COLLECTION=agentx_embeddings        # Collection name
 ```
+
+**System Integration:**
+- Health monitoring: Added to `systemHealth` object ([src/app.js:25](src/app.js#L25))
+- Startup checks: Validates Qdrant connection ([server.js:144-168](server.js#L144-L168))
+- API endpoint: `/health/detailed` includes Qdrant status
+- UI monitoring: n8n Workflow Monitor shows Qdrant health card
+
+**Backup & Recovery:**
+- Backup script: `/home/yb/codes/DataAPI/scripts/backup-qdrant.sh`
+- Backup location: `/home/yb/backups/qdrant/`
+- Latest snapshot: `agentx_embeddings_20260104_232946.snapshot` (23MB)
+- API endpoint: `POST /api/backup/qdrant`
 
 **Migration:** `node scripts/migrate-vector-store.js --from in-memory --to qdrant`
 

@@ -102,8 +102,49 @@
         // Health Dashboard Functions
         async function refreshHealth() {
             try {
+                // Fetch main health data from n8n
                 const response = await fetch(`${N8N_BASE}/webhook/sbqc-health`);
                 healthData = await response.json();
+
+                // Also check Qdrant via AgentX dedicated API endpoint (avoids CORS issues)
+                try {
+                    const qdrantHealthResponse = await fetch(`${AGENTX_BASE}/api/health/qdrant`);
+                    const qdrantHealth = await qdrantHealthResponse.json();
+
+                    const qdrantHealthy = qdrantHealth.healthy === true;
+
+                    // Add Qdrant to health checks
+                    if (!healthData.checks) healthData.checks = [];
+                    healthData.checks.push({
+                        component: 'qdrant',
+                        status: qdrantHealthy ? 'pass' : 'fail',
+                        message: qdrantHealth.message || 'Vector database status unknown',
+                        endpoint: qdrantHealth.url || 'http://localhost:6333',
+                        details: qdrantHealth.vectorStoreType ? `Vector Store: ${qdrantHealth.vectorStoreType}` : null
+                    });
+
+                    // Update health percentage if Qdrant is down
+                    if (!qdrantHealthy && healthData.summary) {
+                        const totalChecks = healthData.checks.length;
+                        const passedChecks = healthData.checks.filter(c => c.status === 'pass').length;
+                        healthData.summary.health_percentage = Math.round((passedChecks / totalChecks) * 100);
+
+                        if (healthData.overall_status === 'healthy') {
+                            healthData.overall_status = 'degraded';
+                        }
+                    }
+                } catch (qdrantErr) {
+                    // Qdrant check failed - add as failed component
+                    if (!healthData.checks) healthData.checks = [];
+                    healthData.checks.push({
+                        component: 'qdrant',
+                        status: 'fail',
+                        message: 'Could not retrieve Qdrant status from AgentX',
+                        endpoint: AGENTX_BASE + '/api/health/qdrant'
+                    });
+                    console.warn('Qdrant health check failed:', qdrantErr);
+                }
+
                 renderHealth();
             } catch (err) {
                 console.error('Failed to load health data:', err);
@@ -183,7 +224,8 @@
                 'n8n_workflows': 'n8n Workflows',
                 'agentx_api': 'AgentX API',
                 'dataapi': 'DataAPI',
-                'webhooks': 'Webhook Registry'
+                'webhooks': 'Webhook Registry',
+                'qdrant': 'Qdrant Vector DB'
             };
             return names[name] || name;
         }

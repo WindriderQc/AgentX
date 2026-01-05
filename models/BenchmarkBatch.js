@@ -145,6 +145,33 @@ const BenchmarkBatchSchema = new mongoose.Schema({
         type: Number,
         default: null
     },
+    last_activity_at: {
+        type: Date,
+        default: null,
+        index: true
+    },
+
+    // Current test being executed (for real-time visibility)
+    current_test: {
+        model: { type: String, default: null },
+        prompt_id: { type: String, default: null },
+        prompt_name: { type: String, default: null },
+        prompt_level: { type: Number, default: null },
+        stage: { type: String, enum: ['executing', 'judging', 'idle'], default: 'idle' },
+        started_at: { type: Date, default: null },
+        test_number: { type: Number, default: null }  // Which test # out of total
+    },
+
+    // Execution timeline (for detailed progress tracking)
+    timeline: [{
+        timestamp: { type: Date, default: Date.now },
+        event: { type: String, required: true },  // 'test_start', 'test_complete', 'judge_start', 'judge_complete', 'error'
+        model: String,
+        prompt_id: String,
+        duration_ms: Number,
+        success: Boolean,
+        error: String
+    }],
 
     // Detailed execution metrics
     execution_metrics: {
@@ -241,6 +268,17 @@ BenchmarkBatchSchema.statics.cleanupStale = async function() {
     return result.modifiedCount;
 };
 
+BenchmarkBatchSchema.statics.findStuck = async function(inactivityThresholdSeconds = 300) {
+    const threshold = new Date(Date.now() - (inactivityThresholdSeconds * 1000));
+    return this.find({
+        status: { $in: ['running', 'judging'] },
+        $or: [
+            { last_activity_at: { $lt: threshold } },
+            { last_activity_at: null }
+        ]
+    }).sort({ last_activity_at: 1 });
+};
+
 // Instance methods for state transitions
 BenchmarkBatchSchema.methods.markAsRunning = function() {
     this.status = 'running';
@@ -295,6 +333,79 @@ BenchmarkBatchSchema.methods.incrementJudgeProgress = function(success = true) {
     if (!success) {
         this.judge_failed += 1;
     }
+    this.last_activity_at = new Date();
+    return this.save();
+};
+
+BenchmarkBatchSchema.methods.updateCurrentTest = function(model, promptId, promptName, stage = 'executing', options = {}) {
+    const testNumber = options.testNumber || this.completed + 1;
+    const promptLevel = options.promptLevel || null;
+
+    this.current_test = {
+        model,
+        prompt_id: promptId,
+        prompt_name: promptName,
+        prompt_level: promptLevel,
+        stage,
+        started_at: new Date(),
+        test_number: testNumber
+    };
+    this.last_activity_at = new Date();
+
+    // Add timeline event
+    this.timeline.push({
+        timestamp: new Date(),
+        event: stage === 'executing' ? 'test_start' : 'judge_start',
+        model,
+        prompt_id: promptId,
+        success: null
+    });
+
+    return this.save();
+};
+
+BenchmarkBatchSchema.methods.recordTestComplete = function(model, promptId, durationMs, success = true, error = null) {
+    this.timeline.push({
+        timestamp: new Date(),
+        event: success ? 'test_complete' : 'error',
+        model,
+        prompt_id: promptId,
+        duration_ms: durationMs,
+        success,
+        error: error ? error.message || error.toString() : null
+    });
+
+    this.last_activity_at = new Date();
+    return this.save();
+};
+
+BenchmarkBatchSchema.methods.recordJudgeComplete = function(model, promptId, durationMs, success = true) {
+    this.timeline.push({
+        timestamp: new Date(),
+        event: 'judge_complete',
+        model,
+        prompt_id: promptId,
+        duration_ms: durationMs,
+        success
+    });
+
+    this.last_activity_at = new Date();
+    return this.save();
+};
+
+BenchmarkBatchSchema.methods.clearCurrentTest = function() {
+    this.current_test = {
+        model: null,
+        prompt_id: null,
+        prompt_name: null,
+        stage: 'idle',
+        started_at: null
+    };
+    return this.save();
+};
+
+BenchmarkBatchSchema.methods.heartbeat = function() {
+    this.last_activity_at = new Date();
     return this.save();
 };
 

@@ -244,6 +244,34 @@ router.post('/batch', async (req, res) => {
     }
 
     try {
+        // ENFORCE SINGLE BATCH: Check for existing active batches
+        const BenchmarkBatch = require('../models/BenchmarkBatch');
+        const activeBatches = await BenchmarkBatch.getActive();
+
+        if (activeBatches.length > 0) {
+            const active = activeBatches[0];
+            const inactiveSeconds = active.last_activity_at
+                ? Math.floor((Date.now() - new Date(active.last_activity_at).getTime()) / 1000)
+                : 0;
+
+            return res.status(409).json({
+                status: 'error',
+                error: 'Another batch is already running',
+                active_batch: {
+                    id: active._id,
+                    run_name: active.run_name,
+                    status: active.status,
+                    progress: active.progress,
+                    inactive_seconds: inactiveSeconds,
+                    is_stuck: inactiveSeconds > 300,
+                    started_at: active.started_at
+                },
+                message: inactiveSeconds > 300
+                    ? 'The active batch appears stuck. Use the "Recover" button to stop it before starting a new batch.'
+                    : `Batch "${active.run_name}" is currently running (${active.progress}% complete). Please wait for it to finish or stop it first.`
+            });
+        }
+
         const data = await benchmarkService.startBatch({
             host,
             models,
@@ -324,14 +352,165 @@ router.get('/batches', async (req, res) => {
 });
 
 /**
+ * GET /api/benchmark/batches/active
+ * Get all currently running batches across all clients
+ */
+router.get('/batches/active', async (req, res) => {
+    try {
+        const BenchmarkBatch = require('../models/BenchmarkBatch');
+        const batches = await BenchmarkBatch.getActive();
+
+        // Add activity status and stuck detection
+        const now = Date.now();
+        const enriched = batches.map(batch => {
+            const lastActivity = batch.last_activity_at ? new Date(batch.last_activity_at).getTime() : batch.started_at ? new Date(batch.started_at).getTime() : now;
+            const inactiveSeconds = Math.floor((now - lastActivity) / 1000);
+            const isStuck = inactiveSeconds > 300; // 5 minutes
+
+            return {
+                ...batch.toJSON(),
+                inactive_seconds: inactiveSeconds,
+                is_stuck: isStuck,
+                activity_status: isStuck ? 'stuck' : (inactiveSeconds > 60 ? 'slow' : 'active')
+            };
+        });
+
+        res.json({
+            status: 'success',
+            data: enriched
+        });
+    } catch (err) {
+        logger.error('Failed to fetch active batches', { error: err.message });
+        res.status(500).json({ status: 'error', error: err.message });
+    }
+});
+
+/**
+ * GET /api/benchmark/batches/stuck
+ * Get stuck batches (no activity for >5 minutes)
+ */
+router.get('/batches/stuck', async (req, res) => {
+    try {
+        const BenchmarkBatch = require('../models/BenchmarkBatch');
+        const thresholdSeconds = parseInt(req.query.threshold) || 300;
+        const stuck = await BenchmarkBatch.findStuck(thresholdSeconds);
+
+        res.json({
+            status: 'success',
+            data: stuck,
+            threshold_seconds: thresholdSeconds
+        });
+    } catch (err) {
+        logger.error('Failed to fetch stuck batches', { error: err.message });
+        res.status(500).json({ status: 'error', error: err.message });
+    }
+});
+
+/**
+ * GET /api/benchmark/batch/:id/timeline
+ * Get detailed execution timeline for a batch
+ */
+router.get('/batch/:id/timeline', async (req, res) => {
+    try {
+        const BenchmarkBatch = require('../models/BenchmarkBatch');
+        const batch = await BenchmarkBatch.findById(req.params.id);
+
+        if (!batch) {
+            return res.status(404).json({ status: 'error', error: 'Batch not found' });
+        }
+
+        // Get timeline events with calculated metrics
+        const timeline = batch.timeline || [];
+        const enriched = timeline.map((event, index) => {
+            const timeSinceStart = batch.started_at
+                ? event.timestamp - batch.started_at
+                : 0;
+
+            return {
+                ...event.toObject(),
+                time_since_start_ms: timeSinceStart,
+                index
+            };
+        });
+
+        // Calculate summary statistics
+        const testEvents = timeline.filter(e => e.event === 'test_complete');
+        const judgeEvents = timeline.filter(e => e.event === 'judge_complete');
+        const errorEvents = timeline.filter(e => e.event === 'error');
+
+        const avgTestDuration = testEvents.length > 0
+            ? testEvents.reduce((sum, e) => sum + (e.duration_ms || 0), 0) / testEvents.length
+            : null;
+
+        const avgJudgeDuration = judgeEvents.length > 0
+            ? judgeEvents.reduce((sum, e) => sum + (e.duration_ms || 0), 0) / judgeEvents.length
+            : null;
+
+        res.json({
+            status: 'success',
+            data: {
+                batch_id: batch._id,
+                timeline: enriched,
+                summary: {
+                    total_events: timeline.length,
+                    tests_completed: testEvents.length,
+                    tests_failed: errorEvents.length,
+                    judges_completed: judgeEvents.length,
+                    avg_test_duration_ms: avgTestDuration ? Math.round(avgTestDuration) : null,
+                    avg_judge_duration_ms: avgJudgeDuration ? Math.round(avgJudgeDuration) : null,
+                    started_at: batch.started_at,
+                    last_event_at: timeline.length > 0 ? timeline[timeline.length - 1].timestamp : null
+                }
+            }
+        });
+    } catch (err) {
+        logger.error('Failed to fetch batch timeline', { error: err.message, batchId: req.params.id });
+        res.status(500).json({ status: 'error', error: err.message });
+    }
+});
+
+/**
+ * POST /api/benchmark/batch/:id/recover
+ * Recover a stuck batch by marking it as interrupted
+ */
+router.post('/batch/:id/recover', async (req, res) => {
+    try {
+        const BenchmarkBatch = require('../models/BenchmarkBatch');
+        const batch = await BenchmarkBatch.findById(req.params.id);
+
+        if (!batch) {
+            return res.status(404).json({ status: 'error', error: 'Batch not found' });
+        }
+
+        if (!['running', 'judging'].includes(batch.status)) {
+            return res.status(400).json({
+                status: 'error',
+                error: `Batch is ${batch.status}, cannot recover`
+            });
+        }
+
+        await batch.markAsStopped();
+
+        res.json({
+            status: 'success',
+            message: 'Batch marked as stopped',
+            data: batch
+        });
+    } catch (err) {
+        logger.error('Failed to recover batch', { error: err.message, batchId: req.params.id });
+        res.status(500).json({ status: 'error', error: err.message });
+    }
+});
+
+/**
  * GET /api/benchmark/quality-breakdown
  * Get quality scores broken down by category and level
  */
 router.get('/quality-breakdown', async (req, res) => {
     try {
-        const { model } = req.query;
+        const { model, host } = req.query;
 
-        const data = await benchmarkService.getQualityBreakdown(model);
+        const data = await benchmarkService.getQualityBreakdown(model, host);
 
         res.json({
             status: 'success',
@@ -363,6 +542,28 @@ router.get('/trends', async (req, res) => {
         });
     } catch (err) {
         logger.error('Failed to fetch trends', { error: err.message });
+        res.status(500).json({ status: 'error', error: err.message });
+    }
+});
+
+/**
+ * GET /api/benchmark/judge-leaderboard
+ * Get judge performance statistics
+ */
+router.get('/judge-leaderboard', async (req, res) => {
+    try {
+        const leaderboard = await benchmarkService.getJudgeLeaderboard();
+        const activity = await benchmarkService.getJudgeActivity(5);
+
+        res.json({
+            status: 'success',
+            data: {
+                leaderboard,
+                activity
+            }
+        });
+    } catch (err) {
+        logger.error('Failed to fetch judge leaderboard', { error: err.message });
         res.status(500).json({ status: 'error', error: err.message });
     }
 });

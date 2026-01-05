@@ -153,24 +153,31 @@ AgentX development is organized across **six parallel development tracks**, each
 
 **Components:**
 - Backup scripts (`/home/yb/codes/DataAPI/scripts/`)
-  - `backup-mongodb.sh` - MongoDB dumps with compression
-  - `backup-qdrant.sh` - Vector store snapshots
-  - `restore-mongodb.sh` - MongoDB restoration
-  - `restore-qdrant.sh` - Vector store restoration
-  - `setup-backup-cron.sh` - Automated scheduling
+  - `backup-mongodb.sh` - MongoDB dumps with compression and retention
+  - `backup-qdrant.sh` - Vector store snapshots via Qdrant API
+  - `restore-mongodb.sh` - MongoDB restoration from archives
+  - `restore-qdrant.sh` - Vector store restoration from snapshots
+  - `setup-backup-cron.sh` - Automated daily scheduling (2 AM)
 - Backup management dashboard (`/public/backup.html`)
-- API routes (`/routes/backup.js`)
+- API routes (`/routes/backup.js` - 489 lines) - 15 endpoints
 - Workflow version control (Git integration for AgentC)
+- Backup directory: `/home/yb/backups/{mongodb,qdrant}/`
 
 **Features:**
-- MongoDB backup/restore interface
-- Qdrant snapshot management
-- Workflow version control with Git
-- Cron automation setup/removal
-- Backup list/delete functionality
-- Navigation integration in main UI
+- ✅ MongoDB backup/restore interface with API
+- ✅ Qdrant snapshot management (23MB snapshots working)
+- ✅ Workflow version control with Git history
+- ✅ Cron automation setup/removal via UI
+- ✅ Backup list/delete functionality
+- ✅ Navigation integration in main UI
+- ✅ **Fixed:** Backup directory permissions (moved from `/mnt/backups` to `/home/yb/backups`)
+- ✅ **Fixed:** Backup routes now pass directory paths to shell scripts
 
-**Status:** Production-ready with full UI
+**Verified Backups:**
+- MongoDB: `agentx_20260104_231529.tar.gz` (1.2MB) ✓
+- Qdrant: `agentx_embeddings_20260104_232946.snapshot` (23MB) ✓
+
+**Status:** Production-ready with verified working backups
 
 ---
 
@@ -182,7 +189,7 @@ AgentX development is organized across **six parallel development tracks**, each
 
 **Tasks:**
 - [x] Merge CONTRIBUTING.md into CLAUDE.md (unified reference)
-- [ ] Create new ROADMAP.md (this file) with current status
+- [x] Create new ROADMAP.md (this file) with current status
 - [ ] Archive old planning docs to `docs/archive/`
 - [ ] Update `docs/INDEX.md` to reflect new structure
 - [ ] Verify all cross-references are valid
@@ -191,12 +198,48 @@ AgentX development is organized across **six parallel development tracks**, each
 
 ---
 
-### 2. Track 6 Wiring Gaps (Backup & DR)
+### 2. Track 6 Wiring Gaps (Backup & DR) ✅ RESOLVED
 
-**Known Issues:**
-- [ ] **Qdrant backup listing mismatch** - Route expects `qdrant_*.tar.gz` but script outputs `*.snapshot`
-- [ ] **Script ownership** - Decide whether backup scripts belong in AgentX or DataAPI `/scripts/`
-- [ ] **Workflow automation artifacts** - Verify `N4.5.json` and `commit-workflows.sh` status
+**Completed Fixes (2026-01-05):**
+- [x] **Qdrant backup listing mismatch** - Updated routes to support both `.snapshot` and `.tar.gz` patterns
+- [x] **Backup directory permissions** - Moved from `/mnt/backups` (root-only) to `/home/yb/backups` (user-writable)
+- [x] **Backup script integration** - Routes now correctly pass directory paths as arguments
+- [x] **Verified working backups** - Both MongoDB and Qdrant backups tested and functional
+- [x] **Script ownership** - Keeping in DataAPI `/scripts/` (shared between AgentX and DataAPI)
+
+**Status:** All Track 6 wiring complete and tested ✓
+
+---
+
+### 3. Qdrant Vector Database Integration ✅ COMPLETE
+
+**Completed (2026-01-05):**
+- [x] **Started Qdrant service** - Running via PM2 (process ID 5, port 6333)
+- [x] **Health monitoring** - Added to system health checks in `server.js` and `src/app.js`
+- [x] **Backup integration** - Qdrant snapshots working (23MB verified)
+- [x] **UI Integration** - Added Qdrant status to n8n Workflow Monitor dashboard
+- [x] **Auto-start configuration** - PM2 saved for reboot persistence
+- [x] **Environment configuration** - `.env` updated with `VECTOR_STORE_TYPE=qdrant`
+
+**n8n Monitor Enhancements:**
+- Direct Qdrant health check at `http://localhost:6333/healthz`
+- Auto-updates health percentage when Qdrant status changes
+- Visual indicator: "Qdrant Vector DB" component card
+- Degrades overall status to "degraded" if Qdrant fails
+
+**Status:** Qdrant fully operational and monitored ✓
+
+---
+
+### 4. Dashboard JavaScript Error Fixes ✅ COMPLETE
+
+**All Critical Fixes (2026-01-05):**
+- [x] **Benchmark Dashboard** - Fixed syntax error (extra closing brace) and `ReferenceError: profileKey`
+- [x] **Alert Analytics** - Fixed route ordering (`/statistics` before `/:id`) and removed duplicate route
+- [x] **Backup Dashboard** - Fixed directory permissions and API endpoints
+- [x] **Benchmark Service** - Fixed nested `$cond` MongoDB aggregation syntax
+
+**Status:** All dashboards load without JavaScript errors ✓
 
 **Impact:** Low (functionality works, but inconsistencies exist)
 

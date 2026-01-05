@@ -80,6 +80,10 @@ export class TimeSeriesChart {
     this.cache = new Map();
     this.poller = null;
 
+    this.cooldownUntil = 0;
+    this.backoffMs = 0;
+    this.last429LogAt = 0;
+
     this._onResize = this.handleResize.bind(this);
   }
 
@@ -183,6 +187,9 @@ export class TimeSeriesChart {
   }
 
   async refresh() {
+    const now = Date.now();
+    if (now < this.cooldownUntil) return;
+
     this.showMessage('');
     this.showLoading(true);
 
@@ -197,6 +204,21 @@ export class TimeSeriesChart {
 
       this.renderChart(datasets);
     } catch (error) {
+      const status = error?.status;
+      if (status === 429) {
+        const retryAfterMs = Number.isFinite(error?.retryAfterMs) ? error.retryAfterMs : null;
+        const nextBackoff = retryAfterMs ?? (this.backoffMs ? this.backoffMs * 2 : 15000);
+        this.backoffMs = Math.min(Math.max(nextBackoff, 15000), 120000);
+        this.cooldownUntil = Date.now() + this.backoffMs;
+
+        if (Date.now() - this.last429LogAt > 10000) {
+          console.warn(`Metrics chart rate-limited (429). Backing off for ${Math.round(this.backoffMs / 1000)}s`);
+          this.last429LogAt = Date.now();
+        }
+        this.showMessage('Metrics rate-limited. Retrying soon.');
+        return;
+      }
+
       console.error('Failed to load time-series data:', error);
       this.showMessage('Failed to load metrics. Please try again.');
     } finally {

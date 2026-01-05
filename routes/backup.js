@@ -7,7 +7,7 @@ const logger = require('../config/logger');
 
 // Path to DataAPI backup scripts
 const DATAAPI_SCRIPTS = '/home/yb/codes/DataAPI/scripts';
-const BACKUP_DIR = '/mnt/backups'; // Default backup directory
+const BACKUP_DIR = process.env.BACKUP_DIR || '/home/yb/backups'; // Default backup directory
 
 /**
  * Execute shell command with promise
@@ -72,7 +72,8 @@ function resolveBackupPath(backupType, inputPathOrName) {
 router.post('/mongodb', async (req, res) => {
     try {
         const script = path.join(DATAAPI_SCRIPTS, 'backup-mongodb.sh');
-        const result = await executeCommand(script, 'MongoDB backup');
+        const mongoBackupDir = path.join(BACKUP_DIR, 'mongodb');
+        const result = await executeCommand(`${script} ${mongoBackupDir}`, 'MongoDB backup');
 
         res.json({
             success: true,
@@ -171,7 +172,8 @@ router.post('/mongodb/delete', async (req, res) => {
 router.post('/qdrant', async (req, res) => {
     try {
         const script = path.join(DATAAPI_SCRIPTS, 'backup-qdrant.sh');
-        const result = await executeCommand(script, 'Qdrant snapshot');
+        const qdrantBackupDir = path.join(BACKUP_DIR, 'qdrant');
+        const result = await executeCommand(`${script} ${qdrantBackupDir}`, 'Qdrant snapshot');
 
         res.json({
             success: true,

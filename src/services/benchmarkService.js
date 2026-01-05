@@ -256,8 +256,7 @@ class BenchmarkService {
     async getDashboard({ sortBy = 'latency', modelCategory, promptCategory, tag } = {}) {
         // Build match query for filtering
         const matchQuery = { 
-            success: true,
-            model: { $not: /diagnostic/i } // Exclude diagnostic models
+            success: true
         };
 
         // Filter by prompt category
@@ -293,7 +292,7 @@ class BenchmarkService {
         }
 
         const [totalTests, successCount, recentTests, modelStats, failureStats, judgeStats] = await Promise.all([
-            BenchmarkResult.countDocuments({ model: { $not: /diagnostic/i } }),
+            BenchmarkResult.countDocuments({}),
             BenchmarkResult.countDocuments(matchQuery),
             BenchmarkResult.find(matchQuery).sort({ timestamp: -1 }).limit(10),
             BenchmarkResult.aggregate([
@@ -352,8 +351,7 @@ class BenchmarkService {
             ]),
             BenchmarkResult.aggregate([
                 { $match: { 
-                    success: false,
-                    model: { $not: /diagnostic/i } // Exclude diagnostic models from failure stats too
+                    success: false
                 } },
                 {
                     $group: {
@@ -366,7 +364,7 @@ class BenchmarkService {
                 { $match: { scoring_time_ms: { $ne: null } } },
                 {
                     $group: {
-                        _id: '$judge_model',
+                        _id: { model: '$judge_model', host: '$judge_host' },
                         avg_latency: { $avg: '$scoring_time_ms' },
                         count: { $sum: 1 }
                     }
@@ -387,7 +385,7 @@ class BenchmarkService {
             let rawQuality = m.avg_quality || 0;
             if (rawQuality > 10) rawQuality = rawQuality / 10;
 
-            const avgLatency = m.avg_latency || 0;
+            const avgLatency = Number(m.avg_latency) || 0;
             const avgTokens = parseFloat(m.avg_tokens_per_sec) || 0;
 
             // Calculate profiles dynamically
@@ -553,8 +551,8 @@ class BenchmarkService {
     /**
      * Get quality score breakdown by category and level
      */
-    async getQualityBreakdown(model = null) {
-        const { byCategory, byLevel, byModel } = await BenchmarkResult.getQualityBreakdown(model);
+    async getQualityBreakdown(model = null, host = null) {
+        const { byCategory, byLevel, byModel } = await BenchmarkResult.getQualityBreakdown(model, host);
 
         // Restructure category data by model
         const categoryByModel = {};
@@ -755,6 +753,20 @@ class BenchmarkService {
         const judgeConcurrency = judgeConfig.concurrency || 2;
         const judgeQueue = new ConcurrencyQueue(judgeConcurrency);
 
+        // Set up periodic heartbeat to update last_activity_at (every 10 seconds)
+        const heartbeatInterval = setInterval(async () => {
+            try {
+                const currentBatch = await BenchmarkBatch.findById(batchId);
+                if (currentBatch && ['running', 'judging'].includes(currentBatch.status)) {
+                    await currentBatch.heartbeat();
+                } else {
+                    clearInterval(heartbeatInterval);
+                }
+            } catch (err) {
+                logger.warn('Heartbeat failed', { batchId, error: err.message });
+            }
+        }, 10000);
+
         // Sync total_tests to actual plan
         const plannedTotalTests = models.length * prompts.length;
         if (plannedTotalTests > 0) {
@@ -795,8 +807,21 @@ class BenchmarkService {
                         return;
                     }
 
+                    // Update current test indicator with detailed info
+                    const testNumber = (currentBatch.completed || 0) + 1;
+                    const start = Date.now();
+
                     try {
-                        const start = Date.now();
+                        await currentBatch.updateCurrentTest(
+                            model,
+                            prompt._id ? prompt._id.toString() : null,
+                            prompt.name,
+                            'executing',
+                            {
+                                testNumber,
+                                promptLevel: prompt.level
+                            }
+                        );
                         const response = await fetch(`${hostUrl}/api/generate`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
@@ -834,6 +859,15 @@ class BenchmarkService {
                         await result.save();
                         const resultId = result._id;
 
+                        // Record test completion with timeline tracking
+                        await currentBatch.recordTestComplete(
+                            model,
+                            prompt._id ? prompt._id.toString() : null,
+                            latency,
+                            true,
+                            null
+                        );
+
                         // Update batch progress
                         await BenchmarkBatch.updateOne(
                             { _id: batchId },
@@ -857,6 +891,22 @@ class BenchmarkService {
                         if (enableQualityScoring) {
                             judgeQueue.add(async () => {
                                 try {
+                                    // Update current test to judging stage
+                                    const batchForJudge = await BenchmarkBatch.findById(batchId);
+                                    if (batchForJudge) {
+                                        await batchForJudge.updateCurrentTest(
+                                            model,
+                                            prompt._id ? prompt._id.toString() : null,
+                                            prompt.name,
+                                            'judging',
+                                            {
+                                                testNumber,
+                                                promptLevel: prompt.level
+                                            }
+                                        );
+                                    }
+
+                                    const judgeStart = Date.now();
                                     const scores = await scoreResponse({
                                         response: data.response || '',
                                         prompt: prompt,
@@ -865,6 +915,7 @@ class BenchmarkService {
                                             host: judgeHostUrl
                                         }
                                     });
+                                    const judgeDuration = Date.now() - judgeStart;
 
                                     const composite = calculateCompositeScore({
                                         latency,
@@ -890,6 +941,16 @@ class BenchmarkService {
                                             }
                                         }
                                     );
+
+                                    // Record judge completion with timeline tracking
+                                    if (batchForJudge) {
+                                        await batchForJudge.recordJudgeComplete(
+                                            model,
+                                            prompt._id ? prompt._id.toString() : null,
+                                            judgeDuration,
+                                            true
+                                        );
+                                    }
 
                                     await BenchmarkBatch.updateOne(
                                         { _id: batchId },
@@ -931,6 +992,8 @@ class BenchmarkService {
                         logger.info('Batch test completed', { batchId, model, prompt: prompt.name, latency });
 
                     } catch (err) {
+                        const errorDuration = Date.now() - start;
+
                         const result = new BenchmarkResult({
                             model,
                             host: hostUrl,
@@ -949,6 +1012,15 @@ class BenchmarkService {
                         });
 
                         await result.save();
+
+                        // Record test failure with timeline tracking
+                        await currentBatch.recordTestComplete(
+                            model,
+                            prompt._id ? prompt._id.toString() : null,
+                            errorDuration,
+                            false,
+                            err
+                        );
 
                         await BenchmarkBatch.updateOne(
                             { _id: batchId },
@@ -1021,9 +1093,13 @@ class BenchmarkService {
             }
         }
 
+        // Clear heartbeat interval
+        clearInterval(heartbeatInterval);
+
         // Mark batch as completed and calculate metrics
         const finalBatch = await BenchmarkBatch.findById(batchId);
         if (finalBatch) {
+            await finalBatch.clearCurrentTest();
             await finalBatch.markAsCompleted();
             await finalBatch.calculateMetrics();
             logger.info('Batch completed with metrics', {
@@ -1283,19 +1359,44 @@ class BenchmarkService {
             throw new Error('No valid batches found');
         }
 
-        const comparison = validBatches.map(batch => ({
-            batch_id: batch._id.toString(),
-            run_name: batch.run_name,
-            models: batch.models,
-            status: batch.status,
-            total_tests: batch.total_tests,
-            completed: batch.completed,
-            success_rate: batch.success_rate,
-            execution_metrics: batch.execution_metrics,
-            config_snapshot: batch.config_snapshot,
-            created_at: batch.created_at,
-            completed_at: batch.completed_at,
-            quality_scoring: batch.quality_scoring
+        const comparison = await Promise.all(validBatches.map(async batch => {
+            // Calculate aggregated scores for this batch
+            let avg_quality = null;
+            let avg_composite = null;
+
+            if (batch.quality_scoring) {
+                const scores = await BenchmarkResult.aggregate([
+                    { $match: { batch_id: batch._id.toString() } },
+                    {
+                        $group: {
+                            _id: null,
+                            avg_quality: { $avg: '$quality_score' },
+                            avg_composite: { $avg: '$composite_score' }
+                        }
+                    }
+                ]);
+                if (scores.length > 0) {
+                    avg_quality = scores[0].avg_quality !== null ? parseFloat(scores[0].avg_quality.toFixed(1)) : null;
+                    avg_composite = scores[0].avg_composite !== null ? parseFloat(scores[0].avg_composite.toFixed(1)) : null;
+                }
+            }
+
+            return {
+                batch_id: batch._id.toString(),
+                run_name: batch.run_name,
+                models: batch.models,
+                status: batch.status,
+                total_tests: batch.total_tests,
+                completed: batch.completed,
+                success_rate: batch.success_rate,
+                execution_metrics: batch.execution_metrics,
+                config_snapshot: batch.config_snapshot,
+                created_at: batch.created_at,
+                completed_at: batch.completed_at,
+                quality_scoring: batch.quality_scoring,
+                avg_quality,
+                avg_composite
+            };
         }));
 
         // Calculate comparative statistics
@@ -1344,6 +1445,124 @@ class BenchmarkService {
         }
 
         return { comparison, stats };
+    }
+
+    /**
+     * Get Judge Leaderboard
+     * Aggregates performance stats for judge models
+     */
+    async getJudgeLeaderboard() {
+        const leaderboard = await BenchmarkResult.aggregate([
+            { 
+                $match: { 
+                    judge_model: { $ne: null },
+                    scoring_method: { $ne: 'skipped' }
+                } 
+            },
+            {
+                $group: {
+                    _id: {
+                        judge_model: '$judge_model',
+                        judge_host: '$judge_host'
+                    },
+                    count: { $sum: 1 },
+                    avg_latency: { $avg: '$scoring_time_ms' },
+                    success_count: {
+                        $sum: {
+                            $cond: [{ $ne: ['$scoring_method', 'llm_failed'] }, 1, 0]
+                        }
+                    },
+                    avg_score_given: { $avg: '$quality_score' },
+                    avg_explanation_len: {
+                        $avg: {
+                            $cond: [
+                                { $ifNull: ['$quality_explanation', false] },
+                                { $strLenCP: '$quality_explanation' },
+                                0
+                            ]
+                        }
+                    },
+                    // Collect score distribution for histogram
+                    scores: { $push: '$quality_score' }
+                }
+            },
+            {
+                $project: {
+                    _id: 0,
+                    judge_model: '$_id.judge_model',
+                    judge_host: '$_id.judge_host',
+                    count: 1,
+                    avg_latency: { $round: ['$avg_latency', 0] },
+                    success_rate: {
+                        $multiply: [
+                            { $divide: ['$success_count', '$count'] },
+                            100
+                        ]
+                    },
+                    avg_score_given: { $round: ['$avg_score_given', 1] },
+                    avg_explanation_len: { $round: ['$avg_explanation_len', 0] },
+                    // Calculate score distribution buckets (0-2, 2-4, 4-6, 6-8, 8-10)
+                    score_distribution: {
+                        $reduce: {
+                            input: '$scores',
+                            initialValue: { '0-2': 0, '2-4': 0, '4-6': 0, '6-8': 0, '8-10': 0 },
+                            in: {
+                                $let: {
+                                    vars: { score: '$$this' },
+                                    in: {
+                                        $cond: [
+                                            { $eq: ['$$score', null] },
+                                            '$$value',
+                                            {
+                                                $cond: [
+                                                    { $lte: ['$$score', 2] },
+                                                    { $mergeObjects: ['$$value', { '0-2': { $add: ['$$value.0-2', 1] } }] },
+                                                    {
+                                                        $cond: [
+                                                            { $lte: ['$$score', 4] },
+                                                            { $mergeObjects: ['$$value', { '2-4': { $add: ['$$value.2-4', 1] } }] },
+                                                            {
+                                                                $cond: [
+                                                                    { $lte: ['$$score', 6] },
+                                                                    { $mergeObjects: ['$$value', { '4-6': { $add: ['$$value.4-6', 1] } }] },
+                                                                    {
+                                                                        $cond: [
+                                                                            { $lte: ['$$score', 8] },
+                                                                            { $mergeObjects: ['$$value', { '6-8': { $add: ['$$value.6-8', 1] } }] },
+                                                                            { $mergeObjects: ['$$value', { '8-10': { $add: ['$$value.8-10', 1] } }] }
+                                                                        ]
+                                                                    }
+                                                                ]
+                                                            }
+                                                        ]
+                                                    }
+                                                ]
+                                            }
+                                        ]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            { $sort: { count: -1 } }
+        ]);
+
+        return leaderboard;
+    }
+
+    /**
+     * Get recent judge activity
+     */
+    async getJudgeActivity(limit = 10) {
+        return BenchmarkResult.find({ 
+            judge_model: { $ne: null },
+            scoring_method: { $ne: 'skipped' }
+        })
+        .sort({ timestamp: -1 })
+        .limit(limit)
+        .select('judge_model judge_host model quality_score scoring_time_ms timestamp prompt_category');
     }
 
     /**

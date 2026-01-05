@@ -192,7 +192,7 @@ BenchmarkResultSchema.statics.getModelStats = async function(model) {
     };
 };
 
-BenchmarkResultSchema.statics.getQualityBreakdown = async function(model = null) {
+BenchmarkResultSchema.statics.getQualityBreakdown = async function(model = null, host = null) {
     const matchStage = {
         success: true,
         quality_score: { $ne: null }
@@ -201,6 +201,9 @@ BenchmarkResultSchema.statics.getQualityBreakdown = async function(model = null)
         matchStage.model = model;
     } else {
         matchStage.model = { $not: /diagnostic/i };
+    }
+    if (host) {
+        matchStage.host = host;
     }
 
     const [byCategory, byLevel, byModel] = await Promise.all([
