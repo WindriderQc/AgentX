@@ -1553,6 +1553,91 @@ class BenchmarkService {
     }
 
     /**
+     * Get Judge Breakdown
+     * Break down judge performance by prompt level or model-under-test.
+     *
+     * @param {Object} opts
+     * @param {string} opts.judge_model - Judge model name (required)
+     * @param {string|null} [opts.judge_host] - Optional judge host filter
+     * @param {'level'|'model'} [opts.groupBy='level'] - Breakdown dimension
+     * @param {number} [opts.limit=25] - Max groups to return (applies to model grouping)
+     */
+    async getJudgeBreakdown({ judge_model, judge_host = null, groupBy = 'level', limit = 25 } = {}) {
+        if (!judge_model || typeof judge_model !== 'string') {
+            throw new Error('judge_model is required');
+        }
+
+        const normalizedGroupBy = groupBy === 'model' ? 'model' : 'level';
+        const safeLimit = Math.max(1, Math.min(200, Number(limit) || 25));
+
+        const match = {
+            judge_model,
+            scoring_method: { $ne: 'skipped' }
+        };
+
+        if (typeof judge_host === 'string' && judge_host.trim()) {
+            match.judge_host = judge_host.trim();
+        }
+
+        if (normalizedGroupBy === 'level') {
+            match.prompt_level = { $ne: null };
+        } else {
+            match.model = { $ne: null };
+        }
+
+        const groupKey = normalizedGroupBy === 'level' ? '$prompt_level' : '$model';
+
+        const pipeline = [
+            { $match: match },
+            {
+                $group: {
+                    _id: groupKey,
+                    count: { $sum: 1 },
+                    avg_latency: { $avg: '$scoring_time_ms' },
+                    success_count: {
+                        $sum: {
+                            $cond: [{ $ne: ['$scoring_method', 'llm_failed'] }, 1, 0]
+                        }
+                    },
+                    avg_score_given: { $avg: '$quality_score' },
+                    avg_test_tokens: { $avg: '$tokens' }
+                }
+            },
+            {
+                $project: {
+                    _id: 0,
+                    key: '$_id',
+                    count: 1,
+                    avg_latency: { $round: ['$avg_latency', 0] },
+                    success_rate: {
+                        $multiply: [
+                            { $divide: ['$success_count', '$count'] },
+                            100
+                        ]
+                    },
+                    avg_score_given: { $round: ['$avg_score_given', 1] },
+                    avg_test_tokens: { $round: ['$avg_test_tokens', 0] }
+                }
+            },
+            { $sort: { count: -1 } }
+        ];
+
+        if (normalizedGroupBy === 'model') {
+            pipeline.push({ $limit: safeLimit });
+        }
+
+        const groups = await BenchmarkResult.aggregate(pipeline);
+
+        return {
+            judge_model,
+            judge_host: (typeof judge_host === 'string' && judge_host.trim()) ? judge_host.trim() : null,
+            groupBy: normalizedGroupBy,
+            limit: normalizedGroupBy === 'model' ? safeLimit : null,
+            groups
+        };
+    }
+
+    /**
      * Get recent judge activity
      */
     async getJudgeActivity(limit = 10) {

@@ -1605,6 +1605,69 @@
             </div>
         </div>
 
+        <!-- Judge Breakdown (By Level / By Model) -->
+        <div class="judge-leaderboard-section" style="margin-bottom: 32px; display: none;" id="judgeBreakdownContainer">
+            <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px;">
+                <h3 style="font-size: 1.2em; color: var(--text); display: flex; align-items: center; gap: 10px; margin: 0;">
+                    <i class="fas fa-gavel" style="color: var(--accent);"></i> Judge Breakdown
+                </h3>
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <span id="judgeBreakdownStatus" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px; border: 1px solid var(--panel-border); background: rgba(255,255,255,0.03); color: var(--muted); font-size: 0.85em;">
+                        <span style="width: 8px; height: 8px; border-radius: 999px; background: var(--muted);"></span>
+                        <span>API: idle</span>
+                    </span>
+                    <select id="judgeBreakdownSelect" style="padding: 8px 12px; border-radius: 6px; border: 1px solid var(--panel-border); background: rgba(0,0,0,0.2); color: var(--text); font-size: 0.9em; min-width: 320px;">
+                        <option value="">Loading judges...</option>
+                    </select>
+                    <select id="judgeBreakdownGroupBy" style="padding: 8px 12px; border-radius: 6px; border: 1px solid var(--panel-border); background: rgba(0,0,0,0.2); color: var(--text); font-size: 0.9em;">
+                        <option value="level" selected>By Level</option>
+                        <option value="model">By Model Tested</option>
+                    </select>
+                    <select id="judgeBreakdownSort" style="padding: 8px 12px; border-radius: 6px; border: 1px solid var(--panel-border); background: rgba(0,0,0,0.2); color: var(--text); font-size: 0.9em;">
+                        <option value="count" selected>Sort: Evaluations</option>
+                        <option value="latency">Sort: Judge Latency</option>
+                        <option value="tokens">Sort: Test Tokens</option>
+                        <option value="success">Sort: Success Rate</option>
+                    </select>
+                    <button id="judgeBreakdownRefreshBtn" class="btn-secondary btn-sm">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                </div>
+            </div>
+            <div style="color: var(--muted); font-size: 0.9em; margin-bottom: 14px;">
+                Helps confirm whether higher judge latency is driven by harder prompts (levels) or longer model outputs (tokens).
+            </div>
+
+            <div class="capability-compare-grid" style="display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 16px; align-items: stretch; margin-bottom: 16px;">
+                <div class="chart-card" style="margin: 0; padding: 18px;">
+                    <div style="height: 320px;">
+                        <canvas id="judgeBreakdownChart"></canvas>
+                    </div>
+                    <div id="judgeBreakdownChartEmpty" class="chart-empty" style="display: none; margin-top: 10px;">Select a judge to view breakdown.</div>
+                </div>
+                <div class="chart-card" style="margin: 0; padding: 18px;">
+                    <div id="judgeBreakdownInsights" style="height: 100%;"></div>
+                </div>
+            </div>
+            <div class="table-container">
+                <table class="data-table">
+                    <thead id="judgeBreakdownHead">
+                        <tr>
+                            <th>Group</th>
+                            <th>Evaluations</th>
+                            <th>Avg Judge Latency</th>
+                            <th>Success Rate</th>
+                            <th>Avg Score Given</th>
+                            <th>Avg Test Tokens</th>
+                        </tr>
+                    </thead>
+                    <tbody id="judgeBreakdownBody">
+                        <tr><td colspan="6" style="text-align: center; padding: 20px; color: var(--muted);">Loading breakdown...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
         <div class="leaderboard">
             <div
                 style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
@@ -2265,6 +2328,24 @@
         let lastRecentTests = [];
         let showSuccessRateDetails = false;
 
+        // Debug logging (opt-in via ?debug=1 or localStorage.benchmarkDebug=true)
+        const BENCHMARK_DEBUG = (
+            new URLSearchParams(window.location.search).get('debug') === '1' ||
+            localStorage.getItem('benchmarkDebug') === 'true'
+        );
+        const __debugLastLogAt = Object.create(null);
+        function debugLog(...args) {
+            if (BENCHMARK_DEBUG) console.log(...args);
+        }
+        function debugLogThrottled(key, intervalMs, ...args) {
+            if (!BENCHMARK_DEBUG) return;
+            const now = Date.now();
+            const last = __debugLastLogAt[key] || 0;
+            if (now - last < intervalMs) return;
+            __debugLastLogAt[key] = now;
+            console.log(...args);
+        }
+
         function buildRecentTestsModelOptions(recentTests) {
             const select = document.getElementById('recentTestsModelFilter');
             if (!select) return;
@@ -2786,7 +2867,7 @@
 
         // Fetch Ollama hosts from AgentX config
         async function loadOllamaHosts() {
-            console.log('Loading Ollama hosts...');
+            debugLogThrottled('loadOllamaHosts', 30000, 'Loading Ollama hosts...');
             const select = document.getElementById('host');
 
             try {
@@ -5804,11 +5885,22 @@
                         const compositeVal = parseFloat(model[profileKey]);
                         const qualityDisplay = !isNaN(qualityVal) ? model.avg_quality : '-';
 
-                        // Debug: Log what we're getting
+                        // Debug: avoid spamming console during 10s dashboard refresh polling
                         if (idx === 0) {
-                            console.log('First model data:', model);
-                            console.log('Profile:', currentProfile, 'Key:', profileKey);
-                            console.log('Composite value:', model[profileKey], 'Parsed:', compositeVal);
+                            debugLogThrottled(
+                                'dashboardFirstModel',
+                                30000,
+                                'First model data:',
+                                model,
+                                'Profile:',
+                                currentProfile,
+                                'Key:',
+                                profileKey,
+                                'Composite value:',
+                                model[profileKey],
+                                'Parsed:',
+                                compositeVal
+                            );
                         }
 
                         const compositeDisplay = !isNaN(compositeVal) ? compositeVal.toFixed(1) : '-';
@@ -6139,7 +6231,7 @@
             // Check for active batch
             const savedBatchId = localStorage.getItem('currentBatchId');
             if (savedBatchId) {
-                console.log('Resuming batch:', savedBatchId);
+                debugLog('Resuming batch:', savedBatchId);
                 currentBatchId = savedBatchId;
 
                 const btn = document.getElementById('runBatchBtn');

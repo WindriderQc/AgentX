@@ -569,6 +569,44 @@ router.get('/judge-leaderboard', async (req, res) => {
 });
 
 /**
+ * GET /api/benchmark/judge-breakdown
+ * Break down judge performance by prompt level or model-under-test.
+ *
+ * Query params:
+ *  - judge_model: required
+ *  - judge_host: optional
+ *  - groupBy: 'level' | 'model' (default: level)
+ *  - limit: max groups (only applies to groupBy=model)
+ */
+router.get('/judge-breakdown', async (req, res) => {
+    try {
+        const { judge_model, judge_host, groupBy, limit } = req.query;
+
+        if (!judge_model) {
+            return res.status(400).json({
+                status: 'error',
+                error: 'judge_model query parameter is required'
+            });
+        }
+
+        const data = await benchmarkService.getJudgeBreakdown({
+            judge_model: String(judge_model),
+            judge_host: (judge_host !== undefined ? String(judge_host) : null),
+            groupBy: groupBy ? String(groupBy) : 'level',
+            limit: limit !== undefined ? Number(limit) : undefined
+        });
+
+        res.json({
+            status: 'success',
+            data
+        });
+    } catch (err) {
+        logger.error('Failed to fetch judge breakdown', { error: err.message });
+        res.status(500).json({ status: 'error', error: err.message });
+    }
+});
+
+/**
  * POST /api/benchmark/compare-batches
  * Compare multiple batches side-by-side
  */

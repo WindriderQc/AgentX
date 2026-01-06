@@ -17,6 +17,9 @@ const BenchmarkAnalytics = (() => {
     let judgeStrictnessChart = null;
     let lastComparisonData = null;
 
+    // Judge breakdown chart
+    let judgeBreakdownChart = null;
+
     // Compare charts
     let capabilityChart = null;
     let judgeRadarChart = null;
@@ -132,6 +135,16 @@ const BenchmarkAnalytics = (() => {
             refreshJudgeBtn.addEventListener('click', () => loadJudgeStats());
         }
 
+        // Judge breakdown controls
+        const breakdownSelect = document.getElementById('judgeBreakdownSelect');
+        const breakdownGroupBy = document.getElementById('judgeBreakdownGroupBy');
+        const breakdownSort = document.getElementById('judgeBreakdownSort');
+        const breakdownRefresh = document.getElementById('judgeBreakdownRefreshBtn');
+        if (breakdownSelect) breakdownSelect.addEventListener('change', () => loadJudgeBreakdown());
+        if (breakdownGroupBy) breakdownGroupBy.addEventListener('change', () => loadJudgeBreakdown());
+        if (breakdownSort) breakdownSort.addEventListener('change', () => loadJudgeBreakdown());
+        if (breakdownRefresh) breakdownRefresh.addEventListener('click', () => loadJudgeBreakdown());
+
         // Trend model filter
         const modelFilter = document.getElementById('trendsModelFilter');
         if (modelFilter) {
@@ -163,6 +176,188 @@ const BenchmarkAnalytics = (() => {
                 filterByTag(tag);
             }
         });
+    }
+
+    function computePearsonCorrelation(xs, ys) {
+        if (!Array.isArray(xs) || !Array.isArray(ys) || xs.length !== ys.length || xs.length < 2) return null;
+        const pairs = xs
+            .map((x, i) => ({ x: Number(x), y: Number(ys[i]) }))
+            .filter(p => Number.isFinite(p.x) && Number.isFinite(p.y));
+        if (pairs.length < 2) return null;
+
+        const n = pairs.length;
+        const meanX = pairs.reduce((a, p) => a + p.x, 0) / n;
+        const meanY = pairs.reduce((a, p) => a + p.y, 0) / n;
+
+        let num = 0;
+        let denX = 0;
+        let denY = 0;
+        for (const p of pairs) {
+            const dx = p.x - meanX;
+            const dy = p.y - meanY;
+            num += dx * dy;
+            denX += dx * dx;
+            denY += dy * dy;
+        }
+        const den = Math.sqrt(denX * denY);
+        if (!Number.isFinite(den) || den === 0) return null;
+        const r = num / den;
+        if (!Number.isFinite(r)) return null;
+        return Math.max(-1, Math.min(1, r));
+    }
+
+    function renderJudgeBreakdownChart({ groupBy, groups }) {
+        const ctx = document.getElementById('judgeBreakdownChart');
+        const emptyEl = document.getElementById('judgeBreakdownChartEmpty');
+        if (!ctx) return;
+
+        if (!Array.isArray(groups) || groups.length === 0) {
+            if (emptyEl) emptyEl.style.display = 'block';
+            if (judgeBreakdownChart) {
+                judgeBreakdownChart.destroy();
+                judgeBreakdownChart = null;
+            }
+            return;
+        }
+        if (emptyEl) emptyEl.style.display = 'none';
+
+        const labels = groups.map(g => {
+            const key = g.key === null || g.key === undefined ? 'N/A' : String(g.key);
+            if (groupBy === 'model' && key.length > 22) return key.slice(0, 19) + '…';
+            return key;
+        });
+
+        const fullLabels = groups.map(g => (g.key === null || g.key === undefined ? 'N/A' : String(g.key)));
+        const latencySeconds = groups.map(g => (Number(g.avg_latency) || 0) / 1000);
+        const tokens = groups.map(g => Number(g.avg_test_tokens) || 0);
+
+        const c1 = getPaletteColor(0);
+        const c2 = getPaletteColor(1);
+
+        if (judgeBreakdownChart) judgeBreakdownChart.destroy();
+        judgeBreakdownChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [
+                    {
+                        type: 'bar',
+                        label: 'Avg Judge Latency (s)',
+                        data: latencySeconds,
+                        backgroundColor: c1.bg,
+                        borderColor: c1.border,
+                        borderWidth: 1,
+                        yAxisID: 'yLatency'
+                    },
+                    {
+                        type: 'line',
+                        label: 'Avg Test Tokens',
+                        data: tokens,
+                        borderColor: c2.border,
+                        backgroundColor: c2.bg,
+                        tension: 0.25,
+                        pointRadius: 2,
+                        pointHoverRadius: 4,
+                        yAxisID: 'yTokens'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        labels: { color: '#888' }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            title: (items) => {
+                                const idx = items?.[0]?.dataIndex;
+                                if (idx === null || idx === undefined) return '';
+                                return groupBy === 'model' ? fullLabels[idx] : `Level ${fullLabels[idx]}`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: { color: '#888' }
+                    },
+                    yLatency: {
+                        position: 'left',
+                        beginAtZero: true,
+                        grid: { color: 'rgba(255,255,255,0.05)' },
+                        ticks: { color: '#888' },
+                        title: { display: true, text: 'Seconds', color: '#888' }
+                    },
+                    yTokens: {
+                        position: 'right',
+                        beginAtZero: true,
+                        grid: { display: false },
+                        ticks: { color: '#888' },
+                        title: { display: true, text: 'Tokens', color: '#888' }
+                    }
+                }
+            }
+        });
+    }
+
+    function renderJudgeBreakdownInsights({ groupBy, groups }) {
+        const insightsEl = document.getElementById('judgeBreakdownInsights');
+        if (!insightsEl) return;
+
+        if (!Array.isArray(groups) || groups.length === 0) {
+            insightsEl.innerHTML = '<div style="color: var(--muted);">No insights yet.</div>';
+            return;
+        }
+
+        const byLatency = [...groups].sort((a, b) => (Number(b.avg_latency) || 0) - (Number(a.avg_latency) || 0));
+        const slowest = byLatency[0];
+        const fastest = byLatency[byLatency.length - 1];
+
+        const xs = groups.map(g => Number(g.avg_test_tokens) || 0);
+        const ys = groups.map(g => Number(g.avg_latency) || 0);
+        const r = computePearsonCorrelation(xs, ys);
+
+        const rText = (r === null)
+            ? 'N/A'
+            : `${r.toFixed(2)} (${Math.abs(r) >= 0.6 ? 'strong' : Math.abs(r) >= 0.3 ? 'moderate' : 'weak'})`;
+
+        const label = (row) => {
+            const key = row?.key === null || row?.key === undefined ? 'N/A' : String(row.key);
+            return groupBy === 'model' ? key : `Level ${key}`;
+        };
+
+        insightsEl.innerHTML = `
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                <div style="font-weight: 700; color: var(--text);">Summary</div>
+                <div style="display: grid; grid-template-columns: 1fr; gap: 10px;">
+                    <div style="display: flex; justify-content: space-between; gap: 10px;">
+                        <div style="color: var(--muted);">Slowest group</div>
+                        <div style="color: var(--text); font-weight: 600; text-align: right;">
+                            ${escapeHtml(label(slowest))} • ${(((Number(slowest.avg_latency) || 0) / 1000)).toFixed(2)}s
+                        </div>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; gap: 10px;">
+                        <div style="color: var(--muted);">Fastest group</div>
+                        <div style="color: var(--text); font-weight: 600; text-align: right;">
+                            ${escapeHtml(label(fastest))} • ${(((Number(fastest.avg_latency) || 0) / 1000)).toFixed(2)}s
+                        </div>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; gap: 10px;">
+                        <div style="color: var(--muted);">Tokens ↔ Judge latency correlation</div>
+                        <div style="color: var(--text); font-weight: 600; text-align: right;">${escapeHtml(rText)}</div>
+                    </div>
+                </div>
+
+                <div style="margin-top: 6px; padding: 10px; border-radius: 10px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);">
+                    <div style="color: var(--muted); font-size: 0.9em; line-height: 1.4;">
+                        If correlation is positive, higher judge ms is usually explained by longer answers (more tokens) and/or higher-level prompts.
+                    </div>
+                </div>
+            </div>
+        `;
     }
 
     function getSelectedHost() {
@@ -1067,6 +1262,194 @@ const BenchmarkAnalytics = (() => {
             }).join('');
     }
 
+    function populateJudgeBreakdownSelect(leaderboard) {
+        const container = document.getElementById('judgeBreakdownContainer');
+        const selectEl = document.getElementById('judgeBreakdownSelect');
+        if (!selectEl) return;
+
+        if (!leaderboard || leaderboard.length === 0) {
+            selectEl.innerHTML = '<option value="">No judges available</option>';
+            if (container) container.style.display = 'none';
+            return;
+        }
+
+        if (container) container.style.display = 'block';
+
+        const current = selectEl.value;
+        selectEl.innerHTML = '<option value="">Select judge...</option>' +
+            leaderboard.map(j => {
+                const key = `${j.judge_model}@@${j.judge_host || ''}`;
+                const label = `${j.judge_model} @ ${j.judge_host || 'N/A'}`;
+                return `<option value="${escapeHtml(key)}">${escapeHtml(label)}</option>`;
+            }).join('');
+
+        // Preserve selection if possible; else default to top judge.
+        if (current) {
+            selectEl.value = current;
+        }
+        if (!selectEl.value && leaderboard.length > 0) {
+            selectEl.value = `${leaderboard[0].judge_model}@@${leaderboard[0].judge_host || ''}`;
+        }
+    }
+
+    function parseJudgeKey(raw) {
+        if (!raw || typeof raw !== 'string') return null;
+        const parts = raw.split('@@');
+        const judge_model = (parts[0] || '').trim();
+        const judge_host = (parts[1] || '').trim();
+        if (!judge_model) return null;
+        return { judge_model, judge_host: judge_host ? judge_host : null };
+    }
+
+    function setJudgeBreakdownStatus(state, message) {
+        const el = document.getElementById('judgeBreakdownStatus');
+        if (!el) return;
+
+        const spans = el.querySelectorAll('span');
+        const dot = spans[0] || null;
+        const text = spans[1] || null;
+
+        const msg = message ? String(message) : '';
+        if (text) text.textContent = msg ? `API: ${msg}` : 'API: idle';
+
+        // Use existing theme primitives (no new hard-coded colors)
+        let color = 'var(--muted)';
+        if (state === 'ok') color = 'var(--accent)';
+        if (state === 'warn') color = 'var(--accent-2)';
+        if (dot) dot.style.background = color;
+
+        el.style.borderColor = (state === 'error') ? 'rgba(255,255,255,0.12)' : 'var(--panel-border)';
+    }
+
+    function renderJudgeBreakdownTable({ groupBy, groups }) {
+        const tbody = document.getElementById('judgeBreakdownBody');
+        const thead = document.getElementById('judgeBreakdownHead');
+        if (!tbody || !thead) return;
+
+        const groupLabel = groupBy === 'model' ? 'Model' : 'Level';
+        thead.innerHTML = `
+            <tr>
+                <th>${escapeHtml(groupLabel)}</th>
+                <th>Evaluations</th>
+                <th>Avg Judge Latency</th>
+                <th>Success Rate</th>
+                <th>Avg Score Given</th>
+                <th>Avg Test Tokens</th>
+            </tr>
+        `;
+
+        if (!Array.isArray(groups) || groups.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: var(--muted);">No breakdown data available</td></tr>';
+            renderJudgeBreakdownChart({ groupBy, groups: [] });
+            renderJudgeBreakdownInsights({ groupBy, groups: [] });
+            return;
+        }
+
+        tbody.innerHTML = groups.map(row => {
+            const key = row.key === null || row.key === undefined ? 'N/A' : String(row.key);
+            const count = Number(row.count) || 0;
+            const avgLatencyMs = Number(row.avg_latency) || 0;
+            const successRate = Number(row.success_rate) || 0;
+            const avgScore = (row.avg_score_given === null || row.avg_score_given === undefined) ? null : Number(row.avg_score_given);
+            const avgTokens = (row.avg_test_tokens === null || row.avg_test_tokens === undefined) ? null : Number(row.avg_test_tokens);
+
+            return `
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                    <td style="padding: 12px 8px; font-weight: 600; color: var(--text);">${escapeHtml(key)}</td>
+                    <td style="padding: 12px 8px; text-align: center;">${count}</td>
+                    <td style="padding: 12px 8px; text-align: center;">${(avgLatencyMs / 1000).toFixed(2)}s</td>
+                    <td style="padding: 12px 8px; text-align: center;">
+                        <span style="color: ${successRate > 95 ? '#2ecc71' : successRate > 80 ? '#f1c40f' : '#e74c3c'}">${Math.round(successRate)}%</span>
+                    </td>
+                    <td style="padding: 12px 8px; text-align: center;">${avgScore === null || Number.isNaN(avgScore) ? '-' : avgScore.toFixed(1)}</td>
+                    <td style="padding: 12px 8px; text-align: center;">${avgTokens === null || Number.isNaN(avgTokens) ? '-' : Math.round(avgTokens)}</td>
+                </tr>
+            `;
+        }).join('');
+
+        renderJudgeBreakdownChart({ groupBy, groups });
+        renderJudgeBreakdownInsights({ groupBy, groups });
+    }
+
+    async function loadJudgeBreakdown() {
+        const selectEl = document.getElementById('judgeBreakdownSelect');
+        const groupByEl = document.getElementById('judgeBreakdownGroupBy');
+        const sortEl = document.getElementById('judgeBreakdownSort');
+        const tbody = document.getElementById('judgeBreakdownBody');
+        const container = document.getElementById('judgeBreakdownContainer');
+        if (!selectEl || !groupByEl || !tbody) return;
+
+        const parsed = parseJudgeKey(selectEl.value);
+        if (!parsed) {
+            setJudgeBreakdownStatus('warn', 'select judge');
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: var(--muted);">Select a judge to view breakdown</td></tr>';
+            return;
+        }
+
+        const groupBy = groupByEl.value === 'model' ? 'model' : 'level';
+        const sortBy = sortEl ? String(sortEl.value || 'count') : 'count';
+        const params = new URLSearchParams({
+            judge_model: parsed.judge_model,
+            groupBy
+        });
+        if (parsed.judge_host) params.set('judge_host', parsed.judge_host);
+        if (groupBy === 'model') params.set('limit', '25');
+
+        try {
+            if (container) container.style.display = 'block';
+            setJudgeBreakdownStatus('warn', 'loading');
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: var(--muted);">Loading breakdown...</td></tr>';
+            const res = await fetch(`${BENCHMARK_API}/judge-breakdown?${params.toString()}`);
+            const contentType = res.headers.get('content-type') || '';
+            if (!res.ok) {
+                const text = await res.text().catch(() => '');
+                throw new Error(`HTTP ${res.status} ${res.statusText}${text ? `: ${text.slice(0, 180)}` : ''}`);
+            }
+            if (!contentType.includes('application/json')) {
+                const text = await res.text().catch(() => '');
+                // Common failure mode: API route missing → static HTML fallback
+                if (text && text.trim().startsWith('<!DOCTYPE')) {
+                    throw new Error('Server returned HTML instead of JSON (API route missing or server not restarted)');
+                }
+                throw new Error(`Unexpected content-type for breakdown: ${contentType || 'unknown'}`);
+            }
+            const payload = await res.json();
+            const data = payload?.data;
+            const effectiveGroupBy = data?.groupBy || groupBy;
+            let groups = Array.isArray(data?.groups) ? data.groups : [];
+
+            // Client-side sorting for a richer UX
+            const sorter = {
+                count: (a, b) => (Number(b.count) || 0) - (Number(a.count) || 0),
+                latency: (a, b) => (Number(b.avg_latency) || 0) - (Number(a.avg_latency) || 0),
+                tokens: (a, b) => (Number(b.avg_test_tokens) || 0) - (Number(a.avg_test_tokens) || 0),
+                success: (a, b) => (Number(b.success_rate) || 0) - (Number(a.success_rate) || 0)
+            };
+            groups = [...groups].sort(sorter[sortBy] || sorter.count);
+
+            renderJudgeBreakdownTable({ groupBy: effectiveGroupBy, groups });
+
+            const groupsCount = Array.isArray(groups) ? groups.length : 0;
+            setJudgeBreakdownStatus('ok', `ok • ${groupsCount} groups`);
+        } catch (err) {
+            console.error('Failed to load judge breakdown:', err);
+            try {
+                showToast(err?.message ? `Judge breakdown: ${err.message}` : 'Judge breakdown failed', 'error');
+            } catch (_) {
+                // ignore
+            }
+
+            const msg = (err?.message && String(err.message).includes('HTML instead of JSON'))
+                ? 'HTML fallback'
+                : 'error';
+            setJudgeBreakdownStatus('error', msg);
+
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: var(--muted);">Failed to load breakdown</td></tr>';
+            renderJudgeBreakdownChart({ groupBy, groups: [] });
+            renderJudgeBreakdownInsights({ groupBy, groups: [] });
+        }
+    }
+
     async function refreshJudgeCompare() {
         persistJudgeSelections();
         renderChipList(
@@ -1516,6 +1899,7 @@ const BenchmarkAnalytics = (() => {
 
             judgeLeaderboardCache = leaderboard || [];
             populateJudgeCompareSelect(judgeLeaderboardCache);
+            populateJudgeBreakdownSelect(judgeLeaderboardCache);
 
             // 1. Render Leaderboard Table
             const tableBody = document.getElementById('judgeLeaderboardBody');
@@ -1644,6 +2028,9 @@ const BenchmarkAnalytics = (() => {
                     });
                 }
             }
+
+            // 4. Render breakdown for selected (or top) judge
+            await loadJudgeBreakdown();
 
         } catch (err) {
             console.error('Failed to load judge stats:', err);

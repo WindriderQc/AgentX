@@ -243,6 +243,111 @@ describe('Benchmark System - Integration Tests', () => {
         });
     });
 
+    describe('GET /api/benchmark/judge-breakdown', () => {
+        it('should require judge_model', async () => {
+            const response = await request(app).get('/api/benchmark/judge-breakdown');
+            expect(response.status).toBe(400);
+            expect(response.body.status).toBe('error');
+            expect(response.body.error).toContain('judge_model');
+        });
+
+        it('should break down judge latency by prompt level', async () => {
+            await BenchmarkResult.create([
+                {
+                    model: 'small-model',
+                    host: 'http://localhost:11434',
+                    prompt: 'P1',
+                    prompt_level: 1,
+                    tokens: 50,
+                    success: true,
+                    judge_model: 'judge-a',
+                    judge_host: 'http://localhost:11435',
+                    scoring_method: 'reasoning',
+                    scoring_time_ms: 1000,
+                    quality_score: 7.5
+                },
+                {
+                    model: 'big-model',
+                    host: 'http://localhost:11434',
+                    prompt: 'P2',
+                    prompt_level: 3,
+                    tokens: 200,
+                    success: true,
+                    judge_model: 'judge-a',
+                    judge_host: 'http://localhost:11435',
+                    scoring_method: 'reasoning',
+                    scoring_time_ms: 2000,
+                    quality_score: 6.0
+                },
+                {
+                    model: 'big-model',
+                    host: 'http://localhost:11434',
+                    prompt: 'P3',
+                    prompt_level: 3,
+                    tokens: 220,
+                    success: true,
+                    judge_model: 'judge-a',
+                    judge_host: 'http://localhost:11435',
+                    scoring_method: 'llm_failed',
+                    scoring_time_ms: 2500,
+                    quality_score: null
+                }
+            ]);
+
+            const response = await request(app).get('/api/benchmark/judge-breakdown')
+                .query({ judge_model: 'judge-a', judge_host: 'http://localhost:11435', groupBy: 'level' });
+
+            expect(response.status).toBe(200);
+            expect(response.body.status).toBe('success');
+            expect(response.body.data.groupBy).toBe('level');
+            expect(Array.isArray(response.body.data.groups)).toBe(true);
+
+            const levels = response.body.data.groups.map(g => g.key);
+            expect(levels).toEqual(expect.arrayContaining([1, 3]));
+        });
+
+        it('should break down judge latency by model-under-test (limited)', async () => {
+            await BenchmarkResult.create([
+                {
+                    model: 'm1',
+                    host: 'http://localhost:11434',
+                    prompt: 'P1',
+                    prompt_level: 1,
+                    tokens: 10,
+                    success: true,
+                    judge_model: 'judge-b',
+                    judge_host: null,
+                    scoring_method: 'reasoning',
+                    scoring_time_ms: 500,
+                    quality_score: 8.0
+                },
+                {
+                    model: 'm2',
+                    host: 'http://localhost:11434',
+                    prompt: 'P2',
+                    prompt_level: 2,
+                    tokens: 20,
+                    success: true,
+                    judge_model: 'judge-b',
+                    judge_host: null,
+                    scoring_method: 'reasoning',
+                    scoring_time_ms: 700,
+                    quality_score: 7.0
+                }
+            ]);
+
+            const response = await request(app).get('/api/benchmark/judge-breakdown')
+                .query({ judge_model: 'judge-b', groupBy: 'model', limit: 10 });
+
+            expect(response.status).toBe(200);
+            expect(response.body.status).toBe('success');
+            expect(response.body.data.groupBy).toBe('model');
+            expect(response.body.data.limit).toBe(10);
+            const keys = response.body.data.groups.map(g => g.key);
+            expect(keys).toEqual(expect.arrayContaining(['m1', 'm2']));
+        });
+    });
+
     describe('GET /api/benchmark/compare', () => {
         it('should require models parameter', async () => {
             const response = await request(app).get('/api/benchmark/compare');
