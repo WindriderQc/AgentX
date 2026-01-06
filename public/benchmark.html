@@ -1077,97 +1077,6 @@
                     <select id="host" required>
                         <option value="">Loading...</option>
                     </select>
-                </div>
-
-                <!-- 2. Quick Single Test -->
-                <div class="quick-test-compact">
-                    <h2>⚡ Quick Single Test</h2>
-                    <form id="testForm">
-                        <div class="quick-test-form-row">
-                            <div class="form-group model-select">
-                                <label for="model">Model</label>
-                                <select id="model" required>
-                                    <option value="">Select host first...</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label for="prompt">Prompt</label>
-                                <input type="text" id="prompt" placeholder="Write a hello world function" required>
-                            </div>
-                            <button type="submit" class="btn-primary" id="runBtn">Run Test</button>
-                        </div>
-                    </form>
-                    <div id="status" class="status"></div>
-                </div>
-            </div>
-
-            <div class="model-selection-section" style="margin-bottom: 32px; background: var(--card-bg); border: 1px solid var(--panel-border); border-radius: 12px; padding: 24px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 16px;">
-                    <div>
-                        <h2 style="margin: 0; display: flex; align-items: center; gap: 10px;"><i class="fas fa-list-check" style="color: var(--accent);"></i> Model Selection</h2>
-                        <p style="color: var(--muted); margin: 4px 0 0 0; font-size: 0.9em;">Select models for batch testing and manage model notes.</p>
-                    </div>
-                    <div style="display: flex; gap: 12px; align-items: center;">
-                        <div class="search-wrapper" style="position: relative;">
-                            <i class="fas fa-search" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--muted);"></i>
-                            <input type="text" id="modelSearchInput" placeholder="Search models..." 
-                                style="padding: 8px 12px 8px 32px; border-radius: 6px; border: 1px solid var(--panel-border); background: rgba(0,0,0,0.2); color: var(--text); width: 200px; font-size: 0.9em;">
-                        </div>
-                        <select id="modelCategoryFilterSelect" style="padding: 8px 12px; border-radius: 6px; border: 1px solid var(--panel-border); background: rgba(0,0,0,0.2); color: var(--text); font-size: 0.9em;">
-                            <option value="">All Categories</option>
-                            <option value="ops">Ops/Glue</option>
-                            <option value="coding">Coding</option>
-                            <option value="reasoning">Reasoning</option>
-                            <option value="specialist">Specialist</option>
-                            <option value="generalist">Generalist</option>
-                        </select>
-                    </div>
-                </div>
-                
-                <div style="overflow-x: auto; border: 1px solid var(--panel-border); border-radius: 8px; max-height: 500px; overflow-y: auto;">
-                    <table class="model-selection-table" style="width: 100%; border-collapse: collapse; font-size: 0.95em;">
-                        <thead style="background: rgba(0,0,0,0.2); position: sticky; top: 0; z-index: 10; backdrop-filter: blur(5px);">
-                            <tr>
-                                <th style="width: 40px; text-align: center; padding: 12px;"><input type="checkbox" id="selectAllModelsTable"></th>
-                                <th style="padding: 12px; text-align: left;">Model</th>
-                                <th style="padding: 12px; text-align: center; width: 80px;">Tests</th>
-                                <th style="padding: 12px; text-align: left; width: 150px;">Category</th>
-                                <th style="padding: 12px; text-align: left;">Notes</th>
-                            </tr>
-                        </thead>
-                        <tbody id="modelSelectionTableBody">
-                            <tr><td colspan="5" style="text-align: center; padding: 20px; color: var(--muted);">Select a host to load models</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-                <div style="margin-top: 12px; display: flex; justify-content: space-between; align-items: center; font-size: 0.85em; color: var(--muted);">
-                    <span id="modelCountDisplay">0 models shown</span>
-                    <div style="display: flex; gap: 8px;">
-                        <button class="btn-secondary btn-sm" onclick="selectAllVisibleModels(true)">Select All Visible</button>
-                        <button class="btn-secondary btn-sm" onclick="selectAllVisibleModels(false)">Deselect All Visible</button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Capability / Aspect Radar Compare (Models) -->
-            <div class="capability-compare-section" style="margin-bottom: 32px; background: var(--card-bg); border: 1px solid var(--panel-border); border-radius: 12px; padding: 24px;">
-                <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px;">
-                    <h2 style="margin: 0; display: flex; align-items: center; gap: 10px;">
-                        <i class="fas fa-chart-area" style="color: var(--accent);"></i> Capability Radar Compare
-                    </h2>
-                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                        <button id="capabilityAddSelectedBtn" class="btn-secondary btn-sm" title="Adds checked models using the selected Ollama Host">
-                            <i class="fas fa-plus"></i> Add Checked Models (@ Host)
-                        </button>
-                        <button id="capabilityAddTopBtn" class="btn-secondary btn-sm" title="Adds top leaderboard models for the selected host">
-                            <i class="fas fa-trophy"></i> Add Top 3 (@ Host)
-                        </button>
-                        <button id="capabilityClearBtn" class="btn-secondary btn-sm" title="Clear compare selection">
-                            <i class="fas fa-trash"></i> Clear
-                        </button>
-                        <button id="capabilityRefreshBtn" class="btn-secondary btn-sm" title="Refresh chart data">
-                            <i class="fas fa-sync-alt"></i> Refresh
-                        </button>
                     </div>
                 </div>
                 <div style="color: var(--muted); font-size: 0.9em; margin-bottom: 14px;">
@@ -2856,8 +2765,16 @@
                         }
 
                         // Load models for default host
-                        loadModelsForHost(select.value);
-                        loadBatchModels(select.value);
+                        try {
+                            loadModelsForHost(select.value);
+                        } catch (e) {
+                            console.error('Failed to load models for host:', e);
+                        }
+                        try {
+                            loadBatchModels(select.value);
+                        } catch (e) {
+                            console.error('Failed to load batch models for host:', e);
+                        }
                     }
                 } else {
                     throw new Error('No hosts configured');
@@ -2876,6 +2793,8 @@
             const host = ollamaHosts.find(h => h.url === hostUrl);
             const modelSelect = document.getElementById('model');
 
+            if (!modelSelect) return;
+
             if (host && host.models && host.models.length > 0) {
                 // Populate model dropdown
                 modelSelect.innerHTML = host.models.map(model =>
@@ -2891,8 +2810,16 @@
 
         // Update models when host changes
         document.getElementById('host').addEventListener('change', (e) => {
-            loadModelsForHost(e.target.value);
-            loadBatchModels(e.target.value); // Also update batch model checkboxes
+            try {
+                loadModelsForHost(e.target.value);
+            } catch (err) {
+                console.error('Failed to load models for selected host:', err);
+            }
+            try {
+                loadBatchModels(e.target.value); // Also update batch model checkboxes
+            } catch (err) {
+                console.error('Failed to load batch models for selected host:', err);
+            }
         });
 
         let modelRegistryCache = {};
@@ -3175,8 +3102,10 @@
         }
 
         // Event listeners for filters
-        document.getElementById('modelSearchInput').addEventListener('input', filterModelList);
-        document.getElementById('modelCategoryFilterSelect').addEventListener('change', filterModelList);
+        const modelSearchInput = document.getElementById('modelSearchInput');
+        if (modelSearchInput) modelSearchInput.addEventListener('input', filterModelList);
+        const modelCategoryFilterSelect = document.getElementById('modelCategoryFilterSelect');
+        if (modelCategoryFilterSelect) modelCategoryFilterSelect.addEventListener('change', filterModelList);
 
         function updateModelSelectionBadges() {
             const offenders = window.benchmarkOffenders;
@@ -3288,11 +3217,14 @@
 
 
         // Select all models checkbox
-        document.getElementById('selectAllModelsTable').addEventListener('change', (e) => {
-            const checkboxes = document.querySelectorAll('.batch-model-checkbox');
-            checkboxes.forEach(cb => cb.checked = e.target.checked);
-            updateBatchInfo();
-        });
+        const selectAllModelsTable = document.getElementById('selectAllModelsTable');
+        if (selectAllModelsTable) {
+            selectAllModelsTable.addEventListener('change', (e) => {
+                const checkboxes = document.querySelectorAll('.batch-model-checkbox');
+                checkboxes.forEach(cb => cb.checked = e.target.checked);
+                updateBatchInfo();
+            });
+        }
 
         // Update batch info when selections change
         document.addEventListener('change', (e) => {
@@ -3303,9 +3235,10 @@
         });
 
         function updateBatchInfo() {
-            const selectedLevels = [1, 2, 3, 4, 5].filter(l =>
-                document.getElementById(`level${l}`).checked
-            );
+            const selectedLevels = [1, 2, 3, 4, 5].filter(l => {
+                const el = document.getElementById(`level${l}`);
+                return !!(el && el.checked);
+            });
             const selectedModels = Array.from(document.querySelectorAll('.batch-model-checkbox:checked'));
 
             // Each level has 4 prompts (from our seed data)
@@ -4287,6 +4220,8 @@
                 console.error('Failed to fetch active batches:', err);
             }
         }
+
+        */
 
         async function attachToBatch(batchId) {
             if (confirm('Attach to this batch? Your current session will be replaced.')) {
@@ -5654,7 +5589,6 @@
         }
 
         // Load dashboard data
-        console.log('[DEBUG] Defining loadDashboard function...');
         async function loadDashboard() {
             try {
                 const params = new URLSearchParams();
@@ -5934,7 +5868,9 @@
                 console.error('Failed to load dashboard:', err);
             }
         }
-        console.log('[DEBUG] loadDashboard function defined! Type:', typeof loadDashboard);
+
+        // Expose dashboard loader globally for UI handlers defined outside this scope
+        window.loadDashboard = loadDashboard;
 
         // Profile selector change handler
         const profileSelector = document.getElementById('scoringProfile');
@@ -5953,20 +5889,24 @@
         }
 
         // Sort selector change handler
-        document.getElementById('sortBy').addEventListener('change', (e) => {
-            const val = e.target.value;
-            if (val === 'composite') {
-                // If user selects "Composite", use the current profile
-                const profile = document.getElementById('scoringProfile') ? document.getElementById('scoringProfile').value : 'interactive';
-                currentSortBy = profile;
-            } else {
-                currentSortBy = val;
-            }
-            loadDashboard();
-        });
+        const sortBy = document.getElementById('sortBy');
+        if (sortBy) {
+            sortBy.addEventListener('change', (e) => {
+                const val = e.target.value;
+                if (val === 'composite') {
+                    // If user selects "Composite", use the current profile
+                    const profile = document.getElementById('scoringProfile') ? document.getElementById('scoringProfile').value : 'interactive';
+                    currentSortBy = profile;
+                } else {
+                    currentSortBy = val;
+                }
+                loadDashboard();
+            });
+        }
 
         // Run test
-        document.getElementById('testForm').addEventListener('submit', async (e) => {
+        const testForm = document.getElementById('testForm');
+        if (testForm) testForm.addEventListener('submit', async (e) => {
             e.preventDefault();
 
             const btn = document.getElementById('runBtn');
@@ -6011,7 +5951,11 @@
         });
 
         // Initialize
-        loadOllamaHosts().then(() => {
+        loadOllamaHosts()
+            .catch((err) => {
+                console.error('Failed to load Ollama hosts:', err);
+            })
+            .finally(() => {
             // Disclosure defaults
             if (localStorage.getItem('benchmarkShowAdvanced') === null) {
                 localStorage.setItem('benchmarkShowAdvanced', 'false');
@@ -6186,8 +6130,12 @@
             // Check for active batches (not just own)
             refreshActiveBatches();
             setInterval(refreshActiveBatches, 15000); // Check every 15 seconds
+
         });
         initCharts();
+        if (typeof loadDashboard === 'function') {
+            loadDashboard();
+        }
         /**
          * Switch between category tabs
          */
@@ -6270,11 +6218,7 @@
             if (insightsPanel) insightsPanel.style.display = 'block';
         }
 
-        console.log('[DEBUG] About to assign window.loadDashboard. Type of loadDashboard:', typeof loadDashboard);
-        window.loadDashboard = loadDashboard;
         window.switchCategoryTab = switchCategoryTab;
-        console.log('[DEBUG] Successfully assigned window.loadDashboard, now calling it...');
-        loadDashboard();
         setupModals();
 
         const recentTestsFailuresOnly = document.getElementById('recentTestsFailuresOnly');
@@ -6313,7 +6257,9 @@
                         throw new Error(msg);
                     }
 
-                    await loadDashboard();
+                    if (typeof window.loadDashboard === 'function') {
+                        await window.loadDashboard();
+                    }
                     // Keep button responsive
                     resetLeaderboardBtn.textContent = 'Reset Tests';
                     resetLeaderboardBtn.disabled = false;
@@ -6346,7 +6292,9 @@
                         throw new Error(msg);
                     }
 
-                    await loadDashboard();
+                    if (typeof window.loadDashboard === 'function') {
+                        await window.loadDashboard();
+                    }
                     resetFailedLeaderboardBtn.textContent = 'Reset Failed';
                     resetFailedLeaderboardBtn.disabled = false;
                 } catch (err) {
@@ -6358,7 +6306,11 @@
             });
         }
 
-        setInterval(loadDashboard, 10000); // Refresh every 10s
+        setInterval(() => {
+            if (typeof window.loadDashboard === 'function') {
+                window.loadDashboard();
+            }
+        }, 10000); // Refresh every 10s
     </script>
 
     <!-- Benchmark Analytics Module -->
