@@ -495,6 +495,36 @@
             </div>
         </div>
 
+        <div class="filters-bar" style="align-items: end; flex-wrap: wrap;">
+            <div class="filter-group" style="min-width: 260px;">
+                <label>Ollama Host (for Compare)</label>
+                <select id="ollamaCompareHost"></select>
+            </div>
+            <div class="filter-group" style="flex: 1; min-width: 280px;">
+                <label>Select Model(s) to Add</label>
+                <select id="ollamaCompareModelSelect" multiple size="8" aria-label="Select models to compare"></select>
+            </div>
+            <div class="filter-group" style="min-width: 240px;">
+                <label>Compare Actions</label>
+                <div style="display:flex; gap: 0.75rem; flex-wrap: wrap;">
+                    <button id="ollamaCompareAddBtn" class="btn-secondary" type="button">
+                        <i class="fas fa-plus"></i> Add Selected
+                    </button>
+                    <button id="ollamaCompareClearBtn" class="btn-secondary" type="button">
+                        <i class="fas fa-trash"></i> Clear
+                    </button>
+                    <button id="ollamaCompareRefreshBtn" class="btn-secondary" type="button">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                </div>
+            </div>
+            <div class="filter-group" style="flex: 1; min-width: 280px;">
+                <label>Current Compare Set</label>
+                <div id="ollamaCompareList" style="display:flex; flex-direction: column; gap: 0.5rem;"></div>
+                <div id="ollamaCompareEmpty" style="color:#64748b; font-size: 0.875rem;">No models selected for comparison yet.</div>
+            </div>
+        </div>
+
         <div id="modelsContainer">
             <div class="loading">
                 <div class="spinner"></div>
@@ -611,5 +641,6 @@
     <script src="/js/components/nav.js"></script>
     <script>injectNav('models');</script>
     <script src="js/models.js"></script>
+    <script src="js/models-ollama-compare.js"></script>
 </body>
 </html>
