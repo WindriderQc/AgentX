@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const FeatureUsageSchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true },
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'UserProfile', index: true },
   feature: { type: String, required: true, index: true },
   page: String,
   action: {

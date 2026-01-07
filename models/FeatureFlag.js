@@ -13,8 +13,8 @@ const FeatureFlagSchema = new mongoose.Schema({
 
   config: {
     rolloutPercentage: { type: Number, min: 0, max: 100, default: 100 },
-    enabledFor: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
-    disabledFor: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    enabledFor: [{ type: mongoose.Schema.Types.ObjectId, ref: 'UserProfile' }],
+    disabledFor: [{ type: mongoose.Schema.Types.ObjectId, ref: 'UserProfile' }],
     environment: {
       type: String,
       enum: ['development', 'staging', 'production', 'all'],

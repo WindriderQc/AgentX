@@ -158,7 +158,7 @@ const CustomModelSchema = new mongoose.Schema({
   // Metadata
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
+    ref: 'UserProfile'
   },
   tags: [{
     type: String,
