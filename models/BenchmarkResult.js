@@ -12,6 +12,15 @@ const BenchmarkResultSchema = new mongoose.Schema({
         default: null,
         index: true
     },
+
+    // Week 4: Multi-tenancy support
+    workspaceId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Workspace',
+        required: false, // Optional for backward compatibility
+        index: true
+    },
+
     model: {
         type: String,
         required: true,

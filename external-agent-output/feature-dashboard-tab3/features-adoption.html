@@ -1,0 +1,158 @@
+<div id="tab-3-adoption" class="tab-pane active">
+    <!-- Top Stats Cards -->
+    <div class="row mb-4" id="adoption-stats-cards">
+        <div class="col-md-3">
+            <div class="card stat-card">
+                <div class="card-body">
+                    <h6 class="card-title text-muted">Total Features</h6>
+                    <h2 class="card-text" id="stat-total-features">0</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stat-card">
+                <div class="card-body">
+                    <h6 class="card-title text-muted">Adopted (>50%)</h6>
+                    <h2 class="card-text text-success" id="stat-adopted">0</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stat-card">
+                <div class="card-body">
+                    <h6 class="card-title text-muted">Underutilized (<10%)</h6>
+                    <h2 class="card-text text-danger" id="stat-underutilized">0</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stat-card">
+                <div class="card-body">
+                    <h6 class="card-title text-muted">Avg Engagement</h6>
+                    <h2 class="card-text" id="stat-avg-engagement">0m</h2>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filters Toolbar -->
+    <div class="row mb-3 align-items-center">
+        <div class="col-md-8">
+            <div class="d-flex gap-2">
+                <select class="form-select form-select-sm" id="filter-time-range" style="max-width: 150px;">
+                    <option value="7d">Last 7 Days</option>
+                    <option value="30d" selected>Last 30 Days</option>
+                    <option value="90d">Last 90 Days</option>
+                </select>
+                <select class="form-select form-select-sm" id="filter-category" style="max-width: 150px;">
+                    <option value="all">All Categories</option>
+                    <option value="core">Core</option>
+                    <option value="analytics">Analytics</option>
+                    <option value="operations">Operations</option>
+                </select>
+                <select class="form-select form-select-sm" id="filter-min-adoption" style="max-width: 150px;">
+                    <option value="0">Min Adoption: 0%</option>
+                    <option value="10">Min Adoption: 10%</option>
+                    <option value="25">Min Adoption: 25%</option>
+                    <option value="50">Min Adoption: 50%</option>
+                </select>
+                <button class="btn btn-sm btn-outline-primary" onclick="window.featuresAdoption.loadAdoption()">Refresh</button>
+            </div>
+        </div>
+        <div class="col-md-4 text-end">
+             <!-- Placeholder for any right-aligned actions -->
+        </div>
+    </div>
+
+    <!-- Main Content Grid -->
+    <div class="row">
+        <!-- Feature Table -->
+        <div class="col-lg-8 mb-4">
+            <div class="card h-100">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Feature Adoption Details</h5>
+                    <small class="text-muted">Click row for details</small>
+                </div>
+                <div class="card-body p-0 table-responsive">
+                    <table class="table table-hover table-striped mb-0" id="adoption-table">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Feature</th>
+                                <th>Page</th>
+                                <th>Users</th>
+                                <th>Adoption</th>
+                                <th>Trend (7d)</th>
+                                <th>Avg Duration</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="adoption-table-body">
+                            <!-- Rows rendered by JS -->
+                            <tr><td colspan="7" class="text-center p-3">Loading adoption data...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts Column -->
+        <div class="col-lg-4 mb-4">
+            <!-- Category Distribution Donut -->
+            <div class="card mb-3">
+                <div class="card-header bg-white">
+                    <h6 class="mb-0">Distribution by Category</h6>
+                </div>
+                <div class="card-body">
+                    <canvas id="chart-category-dist" height="200"></canvas>
+                </div>
+            </div>
+            
+            <!-- Adoption Trends Line -->
+            <div class="card">
+                <div class="card-header bg-white">
+                    <h6 class="mb-0">Top 5 Adoption Trends</h6>
+                </div>
+                <div class="card-body">
+                    <canvas id="chart-adoption-trends" height="200"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom Row: Heatmap & Insights -->
+    <div class="row">
+        <!-- Engagement Heatmap -->
+        <div class="col-lg-8 mb-4">
+            <div class="card">
+                <div class="card-header bg-white">
+                    <h6 class="mb-0">Engagement Heatmap (Day x Hour)</h6>
+                </div>
+                <div class="card-body">
+                    <div id="heatmap-container" style="height: 300px; position: relative;">
+                        <!-- Custom grid rendering or chart.js heatmap (we'll implement a simple grid in JS/CSS or placeholder if library missing) -->
+                        <canvas id="chart-heatmap" height="300"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Insights Panel -->
+        <div class="col-lg-4 mb-4">
+            <div class="card h-100">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center" data-bs-toggle="collapse" href="#insights-collapse" role="button" aria-expanded="true" aria-controls="insights-collapse">
+                    <h6 class="mb-0">🤖 Automated Insights</h6>
+                    <i class="bi bi-chevron-down"></i>
+                </div>
+                <div class="collapse show" id="insights-collapse">
+                    <div class="card-body" id="insights-list">
+                        <!-- Insights rendered by JS -->
+                        <p class="text-muted small">Generating insights...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Dependencies (assumed to be loaded in main layout, but listed here for context) -->
+<!-- <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> -->

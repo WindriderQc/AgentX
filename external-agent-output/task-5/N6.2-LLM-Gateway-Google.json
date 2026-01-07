@@ -1,0 +1,119 @@
+{
+  "name": "N6.2 LLM Gateway - Google",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "llm-gateway-google",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ],
+      "webhookId": "llm-gateway-google"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Extract prompt and options from request\nconst { prompt, max_tokens = 1000, temperature = 0.7 } = $json.body;\nreturn { prompt, max_tokens, temperature };"
+      },
+      "name": "Extract Prompt",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        450,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "model": "gemini-pro",
+        "prompt": "={{ $json.prompt }}",
+        "maxOutputTokens": "={{ $json.max_tokens }}",
+        "temperature": "={{ $json.temperature }}"
+      },
+      "name": "Google Gemini Chat",
+      "type": "n8n-nodes-base.googleGemini",
+      "typeVersion": 1,
+      "position": [
+        650,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Format response to match AgentX contract\n// Google Gemini node response structure assumption\nconst text = $json.content?.parts?.[0]?.text || $json.candidates?.[0]?.content?.parts?.[0]?.text || \"\";\nconst usage = $json.usageMetadata || {};\n\nreturn {\n  completion: text,\n  usage: {\n    promptTokens: usage.promptTokenCount || 0,\n    completionTokens: usage.candidatesTokenCount || 0,\n    totalTokens: usage.totalTokenCount || 0\n  },\n  model: \"gemini-pro\"\n};"
+      },
+      "name": "Format Response",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        850,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1050,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Prompt": {
+      "main": [
+        [
+          {
+            "node": "Google Gemini Chat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

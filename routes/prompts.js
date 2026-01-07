@@ -7,16 +7,25 @@ const express = require('express');
 const router = express.Router();
 const PromptConfig = require('../models/PromptConfig');
 const { requireAuth, optionalAuth } = require('../src/middleware/auth');
+const { attachWorkspace } = require('../src/middleware/workspace');
+const { logPromptAction } = require('../src/middleware/workspaceAudit');
 const logger = require('../config/logger');
 
 /**
  * GET /api/prompts
- * List all prompts (grouped by name)
+ * List all prompts (grouped by name) - workspace-aware
  */
-router.get('/', optionalAuth, async (req, res) => {
+router.get('/', optionalAuth, attachWorkspace, async (req, res) => {
     try {
-        const prompts = await PromptConfig.find().sort({ name: 1, version: -1 });
-        
+        const query = {};
+
+        // Week 4: Multi-tenancy - Filter by workspace if available
+        if (req.workspace) {
+            query.workspaceId = req.workspace._id;
+        }
+
+        const prompts = await PromptConfig.find(query).sort({ name: 1, version: -1 });
+
         // Group by name
         const grouped = {};
         prompts.forEach(p => {
@@ -34,7 +43,7 @@ router.get('/', optionalAuth, async (req, res) => {
                 updatedAt: p.updatedAt
             });
         });
-        
+
         res.json({
             status: 'success',
             data: grouped
@@ -47,16 +56,23 @@ router.get('/', optionalAuth, async (req, res) => {
 
 /**
  * GET /api/prompts/:name
- * Get all versions of a prompt
+ * Get all versions of a prompt - workspace-aware
  */
-router.get('/:name', optionalAuth, async (req, res) => {
+router.get('/:name', optionalAuth, attachWorkspace, async (req, res) => {
     try {
-        const prompts = await PromptConfig.getVersions(req.params.name);
-        
+        const query = { name: req.params.name };
+
+        // Week 4: Multi-tenancy - Filter by workspace if available
+        if (req.workspace) {
+            query.workspaceId = req.workspace._id;
+        }
+
+        const prompts = await PromptConfig.find(query).sort({ version: -1 });
+
         if (prompts.length === 0) {
             return res.status(404).json({ status: 'error', message: 'Prompt not found' });
         }
-        
+
         res.json({
             status: 'success',
             data: prompts
@@ -69,37 +85,53 @@ router.get('/:name', optionalAuth, async (req, res) => {
 
 /**
  * POST /api/prompts
- * Create a new prompt or new version
+ * Create a new prompt or new version - workspace-aware
  * Body: { name, systemPrompt, description?, isActive?, trafficWeight? }
  */
-router.post('/', optionalAuth, async (req, res) => {
+router.post('/', optionalAuth, attachWorkspace, async (req, res) => {
     const { name, systemPrompt, description, isActive = false, trafficWeight = 100 } = req.body;
-    
+
     if (!name || !systemPrompt) {
-        return res.status(400).json({ 
-            status: 'error', 
-            message: 'name and systemPrompt are required' 
+        return res.status(400).json({
+            status: 'error',
+            message: 'name and systemPrompt are required'
         });
     }
-    
+
     try {
-        // Find highest version for this name
-        const existing = await PromptConfig.findOne({ name }).sort({ version: -1 });
+        const query = { name };
+
+        // Week 4: Multi-tenancy - Scope version numbering to workspace
+        if (req.workspace) {
+            query.workspaceId = req.workspace._id;
+        }
+
+        // Find highest version for this name in this workspace
+        const existing = await PromptConfig.findOne(query).sort({ version: -1 });
         const newVersion = existing ? existing.version + 1 : 1;
-        
+
         const prompt = new PromptConfig({
             name,
             systemPrompt,
             description: description || `${name} v${newVersion}`,
             version: newVersion,
             isActive,
-            trafficWeight
+            trafficWeight,
+            workspaceId: req.workspace ? req.workspace._id : null  // Week 4: Multi-tenancy
         });
-        
+
         await prompt.save();
-        
-        logger.info('Prompt created', { name, version: newVersion });
-        
+
+        // Audit log
+        if (req.workspace) {
+            await logPromptAction(req, 'prompt.created', prompt, {
+                before: null,
+                after: { name: prompt.name, version: prompt.version, isActive: prompt.isActive }
+            });
+        }
+
+        logger.info('Prompt created', { name, version: newVersion, workspaceId: prompt.workspaceId });
+
         res.status(201).json({
             status: 'success',
             data: prompt
@@ -112,27 +144,51 @@ router.post('/', optionalAuth, async (req, res) => {
 
 /**
  * PUT /api/prompts/:id
- * Update a prompt (not the systemPrompt - create new version for that)
+ * Update a prompt (not the systemPrompt - create new version for that) - workspace-aware
  * Body: { isActive?, trafficWeight?, description? }
  */
-router.put('/:id', optionalAuth, async (req, res) => {
+router.put('/:id', optionalAuth, attachWorkspace, async (req, res) => {
     const { isActive, trafficWeight, description } = req.body;
-    
+
     try {
         const prompt = await PromptConfig.findById(req.params.id);
-        
+
         if (!prompt) {
             return res.status(404).json({ status: 'error', message: 'Prompt not found' });
         }
-        
+
+        // Week 4: Verify workspace access
+        if (req.workspace && prompt.workspaceId &&
+            prompt.workspaceId.toString() !== req.workspace._id.toString()) {
+            return res.status(403).json({ status: 'error', message: 'Access denied - wrong workspace' });
+        }
+
+        // Capture before state for audit log
+        const beforeState = {
+            isActive: prompt.isActive,
+            trafficWeight: prompt.trafficWeight,
+            description: prompt.description
+        };
+
         if (typeof isActive === 'boolean') prompt.isActive = isActive;
         if (typeof trafficWeight === 'number') prompt.trafficWeight = trafficWeight;
         if (description) prompt.description = description;
-        
+
         await prompt.save();
-        
+
+        // Audit log - log as activated if isActive changed to true
+        if (req.workspace) {
+            const action = (isActive === true && beforeState.isActive === false)
+                ? 'prompt.activated'
+                : 'prompt.updated';
+            await logPromptAction(req, action, prompt, {
+                before: beforeState,
+                after: { isActive: prompt.isActive, trafficWeight: prompt.trafficWeight, description: prompt.description }
+            });
+        }
+
         logger.info('Prompt updated', { name: prompt.name, version: prompt.version });
-        
+
         res.json({
             status: 'success',
             data: prompt
@@ -145,48 +201,54 @@ router.put('/:id', optionalAuth, async (req, res) => {
 
 /**
  * POST /api/prompts/:name/ab-test
- * Configure A/B test between versions
+ * Configure A/B test between versions - workspace-aware
  * Body: { versions: [{ version: number, weight: number }] }
  */
-router.post('/:name/ab-test', optionalAuth, async (req, res) => {
+router.post('/:name/ab-test', optionalAuth, attachWorkspace, async (req, res) => {
     const { versions } = req.body;
-    
+
     if (!versions || !Array.isArray(versions)) {
-        return res.status(400).json({ 
-            status: 'error', 
-            message: 'versions array is required' 
+        return res.status(400).json({
+            status: 'error',
+            message: 'versions array is required'
         });
     }
-    
+
     const totalWeight = versions.reduce((sum, v) => sum + (v.weight || 0), 0);
     if (totalWeight !== 100) {
-        return res.status(400).json({ 
-            status: 'error', 
-            message: `Weights must sum to 100 (got ${totalWeight})` 
+        return res.status(400).json({
+            status: 'error',
+            message: `Weights must sum to 100 (got ${totalWeight})`
         });
     }
-    
+
     try {
         const abTestGroup = `ab_${req.params.name}_${Date.now()}`;
-        
-        // First, deactivate all versions
+        const query = { name: req.params.name };
+
+        // Week 4: Multi-tenancy - Scope to workspace
+        if (req.workspace) {
+            query.workspaceId = req.workspace._id;
+        }
+
+        // First, deactivate all versions in this workspace
         await PromptConfig.updateMany(
-            { name: req.params.name },
+            query,
             { isActive: false, abTestGroup: null, trafficWeight: 0 }
         );
-        
+
         // Then activate and set weights for specified versions
         for (const v of versions) {
             await PromptConfig.findOneAndUpdate(
-                { name: req.params.name, version: v.version },
+                { ...query, version: v.version },
                 { isActive: true, trafficWeight: v.weight, abTestGroup }
             );
         }
-        
-        const updated = await PromptConfig.getVersions(req.params.name);
-        
+
+        const updated = await PromptConfig.find(query).sort({ version: -1 });
+
         logger.info('A/B test configured', { name: req.params.name, versions, abTestGroup });
-        
+
         res.json({
             status: 'success',
             message: 'A/B test configured',
@@ -203,27 +265,41 @@ router.post('/:name/ab-test', optionalAuth, async (req, res) => {
 
 /**
  * DELETE /api/prompts/:id
- * Delete a prompt version (only if not active)
+ * Delete a prompt version (only if not active) - workspace-aware
  */
-router.delete('/:id', optionalAuth, async (req, res) => {
+router.delete('/:id', optionalAuth, attachWorkspace, async (req, res) => {
     try {
         const prompt = await PromptConfig.findById(req.params.id);
-        
+
         if (!prompt) {
             return res.status(404).json({ status: 'error', message: 'Prompt not found' });
         }
-        
+
+        // Week 4: Verify workspace access
+        if (req.workspace && prompt.workspaceId &&
+            prompt.workspaceId.toString() !== req.workspace._id.toString()) {
+            return res.status(403).json({ status: 'error', message: 'Access denied - wrong workspace' });
+        }
+
         if (prompt.isActive) {
-            return res.status(400).json({ 
-                status: 'error', 
-                message: 'Cannot delete active prompt. Deactivate first.' 
+            return res.status(400).json({
+                status: 'error',
+                message: 'Cannot delete active prompt. Deactivate first.'
             });
         }
-        
+
         await prompt.deleteOne();
-        
+
+        // Audit log
+        if (req.workspace) {
+            await logPromptAction(req, 'prompt.deleted', prompt, {
+                before: { name: prompt.name, version: prompt.version, isActive: prompt.isActive },
+                after: null
+            });
+        }
+
         logger.info('Prompt deleted', { name: prompt.name, version: prompt.version });
-        
+
         res.json({
             status: 'success',
             message: 'Prompt deleted'
@@ -236,10 +312,10 @@ router.delete('/:id', optionalAuth, async (req, res) => {
 
 /**
  * POST /api/prompts/render
- * Render a prompt template with variables
+ * Render a prompt template with variables - workspace-aware
  * Supports Handlebars-like syntax: {{variable}}, {{#if condition}}...{{/if}}, {{#each items}}...{{/each}}
  */
-router.post('/render', optionalAuth, async (req, res) => {
+router.post('/render', optionalAuth, attachWorkspace, async (req, res) => {
     const { name, version, variables } = req.body;
 
     if (!name) {
@@ -247,12 +323,19 @@ router.post('/render', optionalAuth, async (req, res) => {
     }
 
     try {
+        const query = { name };
+
+        // Week 4: Multi-tenancy - Scope to workspace
+        if (req.workspace) {
+            query.workspaceId = req.workspace._id;
+        }
+
         // Find the prompt (specific version or active version)
         let prompt;
         if (version) {
-            prompt = await PromptConfig.findOne({ name, version });
+            prompt = await PromptConfig.findOne({ ...query, version });
         } else {
-            prompt = await PromptConfig.findOne({ name, isActive: true });
+            prompt = await PromptConfig.findOne({ ...query, isActive: true });
         }
 
         if (!prompt) {
@@ -328,43 +411,56 @@ function renderTemplate(template, variables) {
 
 /**
  * POST /api/prompts/:name/analyze-failures
- * Analyze negative feedback conversations and suggest improvements
+ * Analyze negative feedback conversations and suggest improvements - workspace-aware
  * Body: { version?: number, limit?: number }
  */
-router.post('/:name/analyze-failures', optionalAuth, async (req, res) => {
+router.post('/:name/analyze-failures', optionalAuth, attachWorkspace, async (req, res) => {
     const Conversation = require('../models/Conversation');
     const { analyzeFailurePatterns, callOllamaForAnalysis } = require('../src/helpers/promptAnalysis');
-    
+
     try {
         const { name } = req.params;
         const { version, limit = 20 } = req.body;
-        
+
+        const query = { name };
+
+        // Week 4: Multi-tenancy - Scope to workspace
+        if (req.workspace) {
+            query.workspaceId = req.workspace._id;
+        }
+
         // Find the prompt
         let prompt;
         if (version) {
-            prompt = await PromptConfig.findOne({ name, version: parseInt(version) });
+            prompt = await PromptConfig.findOne({ ...query, version: parseInt(version) });
         } else {
-            prompt = await PromptConfig.getActive(name);
+            prompt = await PromptConfig.findOne({ ...query, isActive: true });
         }
-        
+
         if (!prompt) {
-            return res.status(404).json({ 
-                status: 'error', 
-                message: 'Prompt not found' 
+            return res.status(404).json({
+                status: 'error',
+                message: 'Prompt not found'
             });
         }
-        
+
         logger.info('Analyzing prompt failures', { name, version: prompt.version, limit });
-        
-        // Fetch conversations with negative feedback
-        const conversations = await Conversation.find({
+
+        // Week 4: Fetch conversations with negative feedback (workspace-scoped)
+        const convQuery = {
             promptName: name,
             promptVersion: prompt.version,
             'messages.feedback.rating': -1
-        })
-        .sort({ createdAt: -1 })
-        .limit(parseInt(limit))
-        .lean();
+        };
+
+        if (req.workspace) {
+            convQuery.workspaceId = req.workspace._id;
+        }
+
+        const conversations = await Conversation.find(convQuery)
+            .sort({ createdAt: -1 })
+            .limit(parseInt(limit))
+            .lean();
         
         if (conversations.length === 0) {
             const emptyAnalysis = analyzeFailurePatterns([]);

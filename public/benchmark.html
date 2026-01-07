@@ -1499,6 +1499,27 @@
             </div>
         </div>
 
+        <!-- Task Execution Timeline Section -->
+        <div class="timeline-section" style="margin-top: 32px; background: var(--panel); border: 1px solid var(--panel-border); border-radius: var(--radius); padding: 24px;">
+            <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+                <h3 style="margin: 0; font-size: 1.25em; display: flex; align-items: center; gap: 10px;">
+                    <i class="fas fa-stream" style="color: var(--accent);"></i> Task Execution Timeline
+                </h3>
+                <div class="timeline-controls">
+                    <select id="timelineBatchSelect" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); color: var(--text); padding: 8px 12px; border-radius: 6px; min-width: 250px;">
+                        <option value="">Select a batch...</option>
+                    </select>
+                </div>
+            </div>
+            <div id="timelineContainer" style="position: relative; height: 500px; display: none;">
+                <canvas id="timelineChart"></canvas>
+            </div>
+            <div id="timelineEmptyState" style="text-align: center; padding: 48px; color: var(--muted); background: rgba(0,0,0,0.2); border-radius: var(--radius); border: 1px dashed var(--panel-border);">
+                <i class="fas fa-chart-gantt" style="font-size: 2em; margin-bottom: 16px; opacity: 0.5;"></i>
+                <p>Select a batch above to view the task execution timeline and variance.</p>
+            </div>
+        </div>
+
         <!-- Tag Statistics Section -->
         <div class="tags-section">
             <div class="section-header">

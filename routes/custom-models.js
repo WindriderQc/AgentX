@@ -1,14 +1,16 @@
 const express = require('express');
 const router = express.Router();
+const { attachWorkspace } = require('../src/middleware/workspace');
+const { logModelAction } = require('../src/middleware/workspaceAudit');
 const customModelService = require('../src/services/customModelService');
 const CustomModel = require('../models/CustomModel');
 const logger = require('../config/logger');
 
 /**
  * GET /api/custom-models
- * List all custom models with optional filters
+ * List all custom models with optional filters - workspace-aware
  */
-router.get('/', async (req, res) => {
+router.get('/', attachWorkspace, async (req, res) => {
   try {
     const { status, baseModel, tag } = req.query;
 
@@ -16,6 +18,11 @@ router.get('/', async (req, res) => {
     if (status) filters.status = status;
     if (baseModel) filters.baseModel = baseModel;
     if (tag) filters.tag = tag;
+
+    // Week 4: Multi-tenancy - Filter by workspace
+    if (req.workspace) {
+      filters.workspaceId = req.workspace._id;
+    }
 
     const models = await customModelService.listModels(filters);
 
@@ -35,13 +42,19 @@ router.get('/', async (req, res) => {
 
 /**
  * GET /api/custom-models/:id
- * Get model details by modelId
+ * Get model details by modelId - workspace-aware
  */
-router.get('/:id', async (req, res) => {
+router.get('/:id', attachWorkspace, async (req, res) => {
   try {
     const { id } = req.params;
+    const query = { modelId: id };
 
-    const model = await CustomModel.findOne({ modelId: id });
+    // Week 4: Multi-tenancy - Verify workspace access
+    if (req.workspace) {
+      query.workspaceId = req.workspace._id;
+    }
+
+    const model = await CustomModel.findOne(query);
 
     if (!model) {
       return res.status(404).json({
@@ -65,9 +78,9 @@ router.get('/:id', async (req, res) => {
 
 /**
  * POST /api/custom-models
- * Register a new custom model
+ * Register a new custom model - workspace-aware
  */
-router.post('/', async (req, res) => {
+router.post('/', attachWorkspace, async (req, res) => {
   try {
     const modelData = req.body;
 
@@ -79,7 +92,20 @@ router.post('/', async (req, res) => {
       });
     }
 
+    // Week 4: Multi-tenancy - Add workspace context
+    if (req.workspace) {
+      modelData.workspaceId = req.workspace._id;
+    }
+
     const model = await customModelService.registerModel(modelData);
+
+    // Audit log
+    if (req.workspace) {
+      await logModelAction(req, 'model.registered', model, {
+        before: null,
+        after: { modelId: model.modelId, displayName: model.displayName, status: model.status }
+      });
+    }
 
     res.status(201).json({
       success: true,
@@ -104,14 +130,20 @@ router.post('/', async (req, res) => {
 
 /**
  * PUT /api/custom-models/:id
- * Update model metadata
+ * Update model metadata - workspace-aware
  */
-router.put('/:id', async (req, res) => {
+router.put('/:id', attachWorkspace, async (req, res) => {
   try {
     const { id } = req.params;
     const updates = req.body;
+    const query = { modelId: id };
 
-    const model = await CustomModel.findOne({ modelId: id });
+    // Week 4: Multi-tenancy - Verify workspace access
+    if (req.workspace) {
+      query.workspaceId = req.workspace._id;
+    }
+
+    const model = await CustomModel.findOne(query);
 
     if (!model) {
       return res.status(404).json({
@@ -164,6 +196,14 @@ router.delete('/:id', async (req, res) => {
 
     const model = await customModelService.archiveModel(id, reason || 'User requested');
 
+    // Audit log
+    if (model && req.workspace) {
+      await logModelAction(req, 'model.deleted', model, {
+        before: { status: 'active' },
+        after: { status: 'archived', reason: reason || 'User requested' }
+      });
+    }
+
     res.json({
       success: true,
       message: 'Model archived successfully',
@@ -188,6 +228,15 @@ router.post('/:id/deploy', async (req, res) => {
     const { ollamaHost } = req.body;
 
     const result = await customModelService.deployToOllama(id, ollamaHost);
+
+    // Get model for audit logging
+    const model = await CustomModel.findOne({ modelId: id });
+    if (model && req.workspace) {
+      await logModelAction(req, 'model.deployed', model, {
+        before: { status: model.status },
+        after: { status: 'deployed', ollamaHost }
+      });
+    }
 
     res.json({
       success: true,

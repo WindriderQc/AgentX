@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workspace Audit Logs - AgentX</title>
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        .audit-page {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+
+        .page-header-actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+
+        .workspace-selector {
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 8px;
+            padding: 10px 16px;
+            color: var(--text);
+            font-size: 14px;
+            cursor: pointer;
+            min-width: 200px;
+        }
+
+        .btn-export {
+            background: rgba(76, 175, 80, 0.1);
+            color: #4caf50;
+            border: 1px solid rgba(76, 175, 80, 0.3);
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-export:hover {
+            background: rgba(76, 175, 80, 0.2);
+            border-color: rgba(76, 175, 80, 0.5);
+        }
+
+        /* Filters Panel */
+        .filters-panel {
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 24px;
+        }
+
+        .filters-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .filter-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .filter-input, .filter-select {
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--panel-border);
+            border-radius: 8px;
+            padding: 10px 12px;
+            color: var(--text);
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .filter-input:focus, .filter-select:focus {
+            outline: none;
+            border-color: var(--accent);
+            background: rgba(0, 0, 0, 0.3);
+        }
+
+        .filter-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn-filter {
+            background: var(--accent);
+            color: var(--bg);
+            border: none;
+            border-radius: 8px;
+            padding: 10px 20px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            flex: 1;
+        }
+
+        .btn-filter:hover {
+            background: #5ee2f3;
+            transform: translateY(-1px);
+        }
+
+        .btn-reset {
+            background: rgba(124, 240, 255, 0.1);
+            color: var(--accent);
+            border: 1px solid rgba(124, 240, 255, 0.3);
+            border-radius: 8px;
+            padding: 10px 20px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-reset:hover {
+            background: rgba(124, 240, 255, 0.2);
+            border-color: rgba(124, 240, 255, 0.5);
+        }
+
+        /* Audit Timeline */
+        .audit-timeline {
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 12px;
+            padding: 24px;
+        }
+
+        .timeline-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .timeline-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .timeline-count {
+            font-size: 14px;
+            color: var(--muted);
+        }
+
+        .audit-entry {
+            border-left: 3px solid var(--accent);
+            padding: 16px;
+            padding-left: 20px;
+            margin-bottom: 12px;
+            background: rgba(124, 240, 255, 0.03);
+            border-radius: 8px;
+            transition: all 0.2s;
+            position: relative;
+        }
+
+        .audit-entry:hover {
+            background: rgba(124, 240, 255, 0.08);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .entry-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 8px;
+        }
+
+        .entry-icon {
+            font-size: 20px;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            background: rgba(124, 240, 255, 0.15);
+        }
+
+        .entry-timestamp {
+            color: var(--muted);
+            font-size: 13px;
+            margin-left: auto;
+        }
+
+        .entry-content {
+            margin-bottom: 8px;
+            line-height: 1.6;
+        }
+
+        .entry-user {
+            font-weight: 700;
+            color: var(--accent);
+        }
+
+        .entry-description {
+            color: var(--text);
+        }
+
+        .entry-metadata {
+            display: flex;
+            gap: 16px;
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .entry-metadata span {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .entry-actions {
+            margin-top: 8px;
+        }
+
+        .btn-details {
+            background: rgba(124, 240, 255, 0.1);
+            border: 1px solid rgba(124, 240, 255, 0.2);
+            color: var(--accent);
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-details:hover {
+            background: rgba(124, 240, 255, 0.2);
+            border-color: rgba(124, 240, 255, 0.4);
+        }
+
+        /* Load More */
+        .load-more-container {
+            text-align: center;
+            margin-top: 24px;
+        }
+
+        .btn-load-more {
+            background: rgba(124, 240, 255, 0.1);
+            color: var(--accent);
+            border: 1px solid rgba(124, 240, 255, 0.3);
+            padding: 12px 32px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-load-more:hover {
+            background: rgba(124, 240, 255, 0.2);
+            border-color: rgba(124, 240, 255, 0.5);
+        }
+
+        /* Modal - Detail View */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 2000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(4px);
+        }
+
+        .modal.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 12px;
+            padding: 24px;
+            max-width: 700px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--panel-border);
+        }
+
+        .modal-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: var(--muted);
+            font-size: 24px;
+            cursor: pointer;
+            padding: 0;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-close:hover {
+            color: var(--text);
+        }
+
+        .detail-section {
+            margin-bottom: 20px;
+        }
+
+        .detail-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+
+        .detail-value {
+            color: var(--text);
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .code-block {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--panel-border);
+            border-radius: 8px;
+            padding: 12px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            color: var(--accent);
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 64px 24px;
+            color: var(--muted);
+        }
+
+        .empty-state i {
+            font-size: 64px;
+            margin-bottom: 16px;
+            opacity: 0.3;
+        }
+
+        .empty-state h3 {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: var(--text);
+        }
+
+        .empty-state p {
+            font-size: 14px;
+        }
+
+        .loading-spinner {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 48px;
+            color: var(--accent);
+            font-size: 32px;
+        }
+
+        /* Action Badge Colors */
+        .action-member { border-left-color: #4caf50; }
+        .action-settings { border-left-color: #2196f3; }
+        .action-model { border-left-color: #ff9800; }
+        .action-prompt { border-left-color: #9c27b0; }
+        .action-ownership { border-left-color: #ffc107; }
+        .action-invitation { border-left-color: #00bcd4; }
+    </style>
+</head>
+<body>
+    <div id="nav-container"></div>
+
+    <div class="audit-page">
+        <div class="page-header-actions">
+            <div>
+                <h1>Audit Logs</h1>
+                <p class="page-description">Track all workspace activity and changes</p>
+            </div>
+            <div style="display: flex; gap: 12px;">
+                <select id="workspaceSelector" class="workspace-selector" onchange="onWorkspaceChange()">
+                    <option value="">Loading workspaces...</option>
+                </select>
+                <button class="btn-export" onclick="exportCSV()">
+                    <i class="fas fa-download"></i> Export CSV
+                </button>
+            </div>
+        </div>
+
+        <!-- Filters Panel -->
+        <div class="filters-panel">
+            <div class="filters-row">
+                <div class="filter-group">
+                    <label class="filter-label">Action Type</label>
+                    <select id="filterAction" class="filter-select">
+                        <option value="">All Actions</option>
+                        <option value="member.added">Member Added</option>
+                        <option value="member.removed">Member Removed</option>
+                        <option value="member.role_changed">Role Changed</option>
+                        <option value="member.invited">Member Invited</option>
+                        <option value="invitation.revoked">Invitation Revoked</option>
+                        <option value="invitation.accepted">Invitation Accepted</option>
+                        <option value="settings.changed">Settings Changed</option>
+                        <option value="ownership.transferred">Ownership Transferred</option>
+                        <option value="model.registered">Model Registered</option>
+                        <option value="model.deployed">Model Deployed</option>
+                        <option value="model.deleted">Model Deleted</option>
+                        <option value="prompt.created">Prompt Created</option>
+                        <option value="prompt.activated">Prompt Activated</option>
+                        <option value="prompt.deleted">Prompt Deleted</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label class="filter-label">Date From</label>
+                    <input type="date" id="filterFrom" class="filter-input">
+                </div>
+
+                <div class="filter-group">
+                    <label class="filter-label">Date To</label>
+                    <input type="date" id="filterTo" class="filter-input">
+                </div>
+            </div>
+
+            <div class="filter-actions">
+                <button class="btn-filter" onclick="applyFilters()">
+                    <i class="fas fa-filter"></i> Apply Filters
+                </button>
+                <button class="btn-reset" onclick="resetFilters()">
+                    <i class="fas fa-times"></i> Reset
+                </button>
+            </div>
+        </div>
+
+        <!-- Audit Timeline -->
+        <div class="audit-timeline">
+            <div class="timeline-header">
+                <h2 class="timeline-title">Activity Timeline</h2>
+                <span class="timeline-count" id="timelineCount">0 events</span>
+            </div>
+
+            <div id="auditTimeline">
+                <div class="loading-spinner">
+                    <i class="fas fa-spinner fa-spin"></i>
+                </div>
+            </div>
+
+            <div id="loadMoreContainer" class="load-more-container" style="display: none;">
+                <button class="btn-load-more" onclick="loadMore()">
+                    <i class="fas fa-chevron-down"></i> Load More
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Detail Modal -->
+    <div id="detailModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Action Details</h3>
+                <button class="modal-close" onclick="closeDetailModal()">&times;</button>
+            </div>
+
+            <div class="detail-section">
+                <div class="detail-label">Action</div>
+                <div class="detail-value" id="detailAction">-</div>
+            </div>
+
+            <div class="detail-section">
+                <div class="detail-label">Performed By</div>
+                <div class="detail-value" id="detailUser">-</div>
+            </div>
+
+            <div class="detail-section">
+                <div class="detail-label">Timestamp</div>
+                <div class="detail-value" id="detailTimestamp">-</div>
+            </div>
+
+            <div class="detail-section">
+                <div class="detail-label">IP Address</div>
+                <div class="detail-value" id="detailIP">-</div>
+            </div>
+
+            <div class="detail-section">
+                <div class="detail-label">Changes</div>
+                <div class="code-block" id="detailChanges">-</div>
+            </div>
+
+            <div class="detail-section" id="detailMetadataSection" style="display: none;">
+                <div class="detail-label">Additional Metadata</div>
+                <div class="code-block" id="detailMetadata">-</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/components/nav.js"></script>
+    <script src="/js/workspace.js"></script>
+    <script>
+        injectNav('features-admin');
+
+        let workspaces = [];
+        let currentWorkspace = null;
+        let auditLogs = [];
+        let currentPage = 0;
+        let hasMore = false;
+        const LIMIT = 20;
+
+        // Initialize
+        async function init() {
+            await loadWorkspaces();
+
+            // Auto-select current workspace
+            if (window.WorkspaceManager && window.WorkspaceManager.currentWorkspace) {
+                const workspace = workspaces.find(w => w.slug === window.WorkspaceManager.currentWorkspace);
+                if (workspace) {
+                    currentWorkspace = workspace;
+                    document.getElementById('workspaceSelector').value = workspace.slug;
+                    await loadAuditLogs();
+                }
+            } else if (workspaces.length > 0) {
+                currentWorkspace = workspaces[0];
+                document.getElementById('workspaceSelector').value = workspaces[0].slug;
+                await loadAuditLogs();
+            }
+        }
+
+        // Load workspaces
+        async function loadWorkspaces() {
+            try {
+                const res = await fetch('/api/workspaces', { credentials: 'include' });
+                const data = await res.json();
+
+                if (data.status === 'success') {
+                    workspaces = data.data;
+                    renderWorkspaceSelector();
+                } else {
+                    showError('Failed to load workspaces');
+                }
+            } catch (error) {
+                console.error('Error loading workspaces:', error);
+                showError('Failed to load workspaces');
+            }
+        }
+
+        // Render workspace selector
+        function renderWorkspaceSelector() {
+            const selector = document.getElementById('workspaceSelector');
+
+            if (workspaces.length === 0) {
+                selector.innerHTML = '<option value="">No workspaces available</option>';
+                return;
+            }
+
+            selector.innerHTML = workspaces.map(w =>
+                `<option value="${w.slug}">${w.name} (${w.role})</option>`
+            ).join('');
+        }
+
+        // Workspace change handler
+        async function onWorkspaceChange() {
+            const slug = document.getElementById('workspaceSelector').value;
+            const workspace = workspaces.find(w => w.slug === slug);
+
+            if (workspace) {
+                currentWorkspace = workspace;
+                currentPage = 0;
+                auditLogs = [];
+                await loadAuditLogs();
+            }
+        }
+
+        // Load audit logs
+        async function loadAuditLogs() {
+            if (!currentWorkspace) {
+                renderEmptyState('No workspace selected');
+                return;
+            }
+
+            try {
+                const params = new URLSearchParams({
+                    limit: LIMIT,
+                    skip: currentPage * LIMIT
+                });
+
+                // Add filters
+                const action = document.getElementById('filterAction').value;
+                const from = document.getElementById('filterFrom').value;
+                const to = document.getElementById('filterTo').value;
+
+                if (action) params.append('action', action);
+                if (from) params.append('from', new Date(from).toISOString());
+                if (to) params.append('to', new Date(to).toISOString());
+
+                const res = await fetch(
+                    `/api/workspaces/${currentWorkspace.slug}/audit-logs?${params}`,
+                    { credentials: 'include' }
+                );
+                const data = await res.json();
+
+                if (data.status === 'success') {
+                    if (currentPage === 0) {
+                        auditLogs = data.data.logs;
+                    } else {
+                        auditLogs = [...auditLogs, ...data.data.logs];
+                    }
+
+                    hasMore = data.data.pagination.hasMore;
+                    document.getElementById('timelineCount').textContent =
+                        `${data.data.pagination.total} events`;
+
+                    renderAuditTimeline();
+                    document.getElementById('loadMoreContainer').style.display =
+                        hasMore ? 'block' : 'none';
+                } else {
+                    showError('Failed to load audit logs');
+                }
+            } catch (error) {
+                console.error('Error loading audit logs:', error);
+                showError('Failed to load audit logs');
+            }
+        }
+
+        // Render audit timeline
+        function renderAuditTimeline() {
+            const container = document.getElementById('auditTimeline');
+
+            if (auditLogs.length === 0) {
+                renderEmptyState('No audit logs found');
+                return;
+            }
+
+            container.innerHTML = auditLogs.map(log => {
+                const icon = getActionIcon(log.action);
+                const category = getActionCategory(log.action);
+                const timestamp = formatTimestamp(log.timestamp);
+
+                return `
+                    <div class="audit-entry action-${category}">
+                        <div class="entry-header">
+                            <div class="entry-icon">${icon}</div>
+                            <div class="entry-timestamp">${timestamp}</div>
+                        </div>
+                        <div class="entry-content">
+                            <span class="entry-user">${log.user.username}</span>
+                            <span class="entry-description">${log.description}</span>
+                        </div>
+                        <div class="entry-metadata">
+                            <span><i class="fas fa-tag"></i> ${log.targetType}</span>
+                            ${log.ipAddress ? `<span><i class="fas fa-network-wired"></i> ${log.ipAddress}</span>` : ''}
+                        </div>
+                        <div class="entry-actions">
+                            <button class="btn-details" onclick="viewDetails('${log._id}')">
+                                View Details
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Get action icon
+        function getActionIcon(action) {
+            const icons = {
+                'member.added': '🟢',
+                'member.removed': '🔴',
+                'member.role_changed': '🟡',
+                'member.invited': '📧',
+                'invitation.revoked': '🚫',
+                'invitation.accepted': '✅',
+                'settings.changed': '⚙️',
+                'settings.feature_toggled': '🔄',
+                'ownership.transferred': '👑',
+                'model.registered': '📦',
+                'model.deployed': '🚀',
+                'model.deleted': '🗑️',
+                'prompt.created': '📝',
+                'prompt.activated': '✨',
+                'prompt.deleted': '❌',
+                'workspace.created': '🏗️',
+                'workspace.deleted': '💥'
+            };
+            return icons[action] || '📝';
+        }
+
+        // Get action category
+        function getActionCategory(action) {
+            if (action.startsWith('member') || action.startsWith('invitation')) return 'member';
+            if (action.startsWith('settings') || action.startsWith('ownership')) return 'settings';
+            if (action.startsWith('model')) return 'model';
+            if (action.startsWith('prompt')) return 'prompt';
+            return 'default';
+        }
+
+        // Format timestamp
+        function formatTimestamp(timestamp) {
+            const date = new Date(timestamp);
+            const now = new Date();
+            const diff = now - date;
+            const seconds = Math.floor(diff / 1000);
+            const minutes = Math.floor(seconds / 60);
+            const hours = Math.floor(minutes / 60);
+            const days = Math.floor(hours / 24);
+
+            if (days > 7) {
+                return date.toLocaleString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+            } else if (days > 0) {
+                return `${days} day${days > 1 ? 's' : ''} ago`;
+            } else if (hours > 0) {
+                return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+            } else if (minutes > 0) {
+                return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
+            } else {
+                return 'Just now';
+            }
+        }
+
+        // View details modal
+        function viewDetails(logId) {
+            const log = auditLogs.find(l => l._id === logId);
+            if (!log) return;
+
+            document.getElementById('detailAction').textContent = log.action;
+            document.getElementById('detailUser').textContent =
+                `${log.user.username} (${log.user.email})`;
+            document.getElementById('detailTimestamp').textContent =
+                new Date(log.timestamp).toLocaleString();
+            document.getElementById('detailIP').textContent = log.ipAddress || 'Not recorded';
+
+            // Format changes
+            const changes = {
+                before: log.changes.before,
+                after: log.changes.after
+            };
+            document.getElementById('detailChanges').textContent =
+                JSON.stringify(changes, null, 2);
+
+            // Metadata
+            if (log.metadata && Object.keys(log.metadata).length > 0) {
+                document.getElementById('detailMetadataSection').style.display = 'block';
+                document.getElementById('detailMetadata').textContent =
+                    JSON.stringify(log.metadata, null, 2);
+            } else {
+                document.getElementById('detailMetadataSection').style.display = 'none';
+            }
+
+            document.getElementById('detailModal').classList.add('active');
+        }
+
+        function closeDetailModal() {
+            document.getElementById('detailModal').classList.remove('active');
+        }
+
+        // Load more
+        async function loadMore() {
+            currentPage++;
+            await loadAuditLogs();
+        }
+
+        // Apply filters
+        async function applyFilters() {
+            currentPage = 0;
+            auditLogs = [];
+            await loadAuditLogs();
+        }
+
+        // Reset filters
+        function resetFilters() {
+            document.getElementById('filterAction').value = '';
+            document.getElementById('filterFrom').value = '';
+            document.getElementById('filterTo').value = '';
+            applyFilters();
+        }
+
+        // Export CSV
+        async function exportCSV() {
+            if (!currentWorkspace) {
+                showError('No workspace selected');
+                return;
+            }
+
+            try {
+                const params = new URLSearchParams();
+
+                const action = document.getElementById('filterAction').value;
+                const from = document.getElementById('filterFrom').value;
+                const to = document.getElementById('filterTo').value;
+
+                if (action) params.append('action', action);
+                if (from) params.append('from', new Date(from).toISOString());
+                if (to) params.append('to', new Date(to).toISOString());
+
+                const url = `/api/workspaces/${currentWorkspace.slug}/audit-logs/export?${params}`;
+                window.location.href = url;
+            } catch (error) {
+                console.error('Error exporting CSV:', error);
+                showError('Failed to export CSV');
+            }
+        }
+
+        // Empty state
+        function renderEmptyState(message) {
+            document.getElementById('auditTimeline').innerHTML = `
+                <div class="empty-state">
+                    <i class="fas fa-file-alt"></i>
+                    <h3>No Audit Logs</h3>
+                    <p>${message}</p>
+                </div>
+            `;
+        }
+
+        // Utility functions
+        function showError(message) {
+            alert('❌ ' + message);
+        }
+
+        // Initialize on load
+        document.addEventListener('DOMContentLoaded', init);
+
+        // Close modal on background click
+        document.getElementById('detailModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeDetailModal();
+            }
+        });
+    </script>
+</body>
+</html>

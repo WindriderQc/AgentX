@@ -75,6 +75,56 @@ npx artillery report \
 echo -e "${GREEN}✅ Report generated: ${REPORT_DIR}/stress-test-${TIMESTAMP}.html${NC}"
 echo ""
 
+# Wait between tests
+echo -e "${YELLOW}⏳ Cooling down (10s)...${NC}"
+sleep 10
+echo ""
+
+# Test 3: Model Router Load Test
+echo -e "${YELLOW}📊 Test 3: Model Router Test (90s)${NC}"
+echo "   Testing classification and routing logic..."
+echo ""
+npx artillery run tests/load/model-router-load.yml \
+    --output "${REPORT_DIR}/model-router-${TIMESTAMP}.json" \
+    2>&1 | tee "${REPORT_DIR}/model-router-${TIMESTAMP}.log"
+
+echo ""
+echo -e "${GREEN}✅ Model Router test complete${NC}"
+echo ""
+
+# Generate HTML report for model router
+echo -e "${YELLOW}📈 Generating HTML report...${NC}"
+npx artillery report \
+    "${REPORT_DIR}/model-router-${TIMESTAMP}.json" \
+    --output "${REPORT_DIR}/model-router-${TIMESTAMP}.html"
+echo -e "${GREEN}✅ Report generated: ${REPORT_DIR}/model-router-${TIMESTAMP}.html${NC}"
+echo ""
+
+# Wait between tests
+echo -e "${YELLOW}⏳ Cooling down (10s)...${NC}"
+sleep 10
+echo ""
+
+# Test 4: Embeddings (RAG) Load Test
+echo -e "${YELLOW}📊 Test 4: Embeddings/RAG Test (90s)${NC}"
+echo "   Testing semantic search and embeddings throughput..."
+echo ""
+npx artillery run tests/load/embeddings-load.yml \
+    --output "${REPORT_DIR}/embeddings-${TIMESTAMP}.json" \
+    2>&1 | tee "${REPORT_DIR}/embeddings-${TIMESTAMP}.log"
+
+echo ""
+echo -e "${GREEN}✅ Embeddings test complete${NC}"
+echo ""
+
+# Generate HTML report for embeddings
+echo -e "${YELLOW}📈 Generating HTML report...${NC}"
+npx artillery report \
+    "${REPORT_DIR}/embeddings-${TIMESTAMP}.json" \
+    --output "${REPORT_DIR}/embeddings-${TIMESTAMP}.html"
+echo -e "${GREEN}✅ Report generated: ${REPORT_DIR}/embeddings-${TIMESTAMP}.html${NC}"
+echo ""
+
 # Summary
 echo -e "${GREEN}╔════════════════════════════════════════════════════════╗${NC}"
 echo -e "${GREEN}║          Load Testing Complete!                        ║${NC}"

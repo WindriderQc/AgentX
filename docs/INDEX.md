@@ -11,7 +11,7 @@
 - **[CONTRIBUTING.md](../CONTRIBUTING.md)** - Developer workflow and contribution guidelines
   - Git conventions, testing standards, PR process, code review checklist
 - **[ROADMAP.md](../ROADMAP.md)** - Project status and priorities
-  - Six development tracks (all complete)
+  - Seven development tracks (all complete, including Week 4 multi-tenancy)
   - Immediate priorities and backlog items
 
 **Documentation:**
@@ -54,11 +54,22 @@
 - Self-healing quick start: [SELF_HEALING_QUICK_START.md](SELF_HEALING_QUICK_START.md)
 - Alerts dashboard: [ALERTS_DASHBOARD_IMPLEMENTATION.md](ALERTS_DASHBOARD_IMPLEMENTATION.md)
 - Benchmark quality scoring + dashboard: [BENCHMARK_QUALITY_SCORING.md](BENCHMARK_QUALITY_SCORING.md)
+- RAG search features: [features/RAG_SEARCH_FEATURES.md](features/RAG_SEARCH_FEATURES.md)
+- RAG metrics guide (ingestion monitoring): [RAG_METRICS_GUIDE.md](RAG_METRICS_GUIDE.md)
 
 ## Testing & Validation
 - Testing hub: [testing/README.md](testing/README.md)
 - Troubleshooting: [TROUBLESHOOTING_README.md](TROUBLESHOOTING_README.md)
+- Alerts integration verification: [testing/ALERTS_INTEGRATION_VERIFICATION.md](testing/ALERTS_INTEGRATION_VERIFICATION.md)
 - Latest validation report: [VALIDATION_REPORT_2026-01-03.md](VALIDATION_REPORT_2026-01-03.md)
+
+## Week 4 Progress (Multi-Tenancy & Workspaces)
+- Week 4 complete summary: [WEEK4_COMPLETE_SUMMARY.md](../WEEK4_COMPLETE_SUMMARY.md)
+- Day 1: Data models & architecture: [WEEK4_DAY1_PROGRESS.md](../WEEK4_DAY1_PROGRESS.md)
+- Day 2: Backend API & middleware: [WEEK4_DAY2_PROGRESS.md](../WEEK4_DAY2_PROGRESS.md)
+- Day 3: UI integration: [WEEK4_DAY3_PROGRESS.md](../WEEK4_DAY3_PROGRESS.md)
+- Day 4: Settings UI & testing: [WEEK4_DAY4_PROGRESS.md](../WEEK4_DAY4_PROGRESS.md)
+- Post-Week 4 progress: [POST_WEEK4_PROGRESS.md](../POST_WEEK4_PROGRESS.md)
 
 ## Reports & Archive
 - Reports (historical, but kept for reference): [reports/](reports/)

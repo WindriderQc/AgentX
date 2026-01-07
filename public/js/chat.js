@@ -522,7 +522,11 @@ document.addEventListener('DOMContentLoaded', () => {
   async function fetchModels(showStatus = true) {
     if (showStatus) setStatus('Connecting…');
     try {
-      const res = await fetch(`/api/ollama/models?target=${encodeURIComponent(targetHost())}`);
+      const fetchOptions = {};
+      const res = await fetch(
+        `/api/ollama/models?target=${encodeURIComponent(targetHost())}`,
+        window.WorkspaceManager ? WorkspaceManager.addWorkspaceHeader(fetchOptions) : fetchOptions
+      );
       if (!res.ok) {
         throw new Error(`Server returned ${res.status}`);
       }
@@ -604,6 +608,178 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // Streaming message handler (SSE)
+  async function sendMessageStream() {
+    const message = elements.messageInput.value.trim();
+    const model = elements.modelSelect.value;
+
+    const payload = {
+      target: targetHost(),
+      model,
+      system: elements.systemPrompt.value.trim(),
+      options: {
+        ...readOptions(),
+        persona: elements.promptSelect?.value || 'default_chat'
+      },
+      useRag: elements.ragToggle.checked,
+      threadId: state.threadId,
+      message,
+      profile: readProfileInputs(),
+      messages: state.history,
+      conversationId: state.conversationId
+    };
+
+    // Create placeholder assistant message for progressive rendering
+    const assistantMessageId = `a-${Date.now()}`;
+    const assistantMessageDiv = document.createElement('div');
+    assistantMessageDiv.className = 'message assistant';
+    assistantMessageDiv.dataset.messageId = assistantMessageId;
+
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'message-content';
+    assistantMessageDiv.appendChild(contentDiv);
+
+    const thinkingDiv = document.createElement('div');
+    thinkingDiv.className = 'thinking-content';
+    thinkingDiv.style.display = 'none';
+    thinkingDiv.innerHTML = '<strong>Thinking:</strong><br>';
+    assistantMessageDiv.appendChild(thinkingDiv);
+
+    elements.chatWindow.appendChild(assistantMessageDiv);
+    elements.chatWindow.scrollTop = elements.chatWindow.scrollHeight;
+
+    // Change button to "Stop"
+    elements.sendBtn.textContent = 'Stop';
+    elements.sendBtn.onclick = () => {
+      if (state.eventSource) {
+        state.eventSource.close();
+        state.eventSource = null;
+      }
+      state.sending = false;
+      elements.sendBtn.textContent = 'Send';
+      elements.sendBtn.onclick = () => sendMessage();
+      setFeedback('Streaming stopped.', 'warning');
+    };
+
+    let fullContent = '';
+    let thinkingContent = '';
+    let finalData = null;
+
+    try {
+      // Use fetch with streaming body for SSE-style POST
+      // Week 4 Day 3: Add workspace context
+      const fetchOptions = {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'text/event-stream'
+        },
+        body: JSON.stringify(payload),
+        credentials: 'include'
+      };
+
+      // Add workspace header if WorkspaceManager is available
+      const response = await fetch('/api/chat/stream',
+        window.WorkspaceManager ? WorkspaceManager.addWorkspaceHeader(fetchOptions) : fetchOptions
+      );
+
+      if (!response.ok) {
+        throw new Error(`Streaming failed: ${response.statusText}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('event:')) {
+            const event = line.substring(7).trim();
+            continue;
+          }
+
+          if (line.startsWith('data:')) {
+            const dataStr = line.substring(5).trim();
+            if (!dataStr) continue;
+
+            try {
+              const data = JSON.parse(dataStr);
+
+              if (event === 'token') {
+                // Progressive token rendering
+                fullContent += data.content;
+                contentDiv.innerHTML = marked.parse(fullContent);
+                elements.chatWindow.scrollTop = elements.chatWindow.scrollHeight;
+              } else if (event === 'thinking') {
+                // Show thinking section
+                thinkingContent += data.content;
+                thinkingDiv.innerHTML = `<strong>Thinking:</strong><br>${marked.parse(thinkingContent)}`;
+                thinkingDiv.style.display = 'block';
+                elements.chatWindow.scrollTop = elements.chatWindow.scrollHeight;
+              } else if (event === 'done') {
+                // Stream complete
+                finalData = data;
+                state.conversationId = data.conversationId || state.conversationId;
+
+                // Update message with final data
+                const assistantMessage = {
+                  role: 'assistant',
+                  content: fullContent,
+                  createdAt: new Date().toISOString(),
+                  id: data.messageId || null,
+                  stats: data.stats || null,
+                  thinking: thinkingContent || null
+                };
+
+                // Replace placeholder with final message
+                elements.chatWindow.removeChild(assistantMessageDiv);
+                appendMessage(assistantMessage);
+
+                speakText(fullContent);
+                setFeedback('Response received.', 'success');
+                loadHistoryList();
+
+                // Reload conversation to sync message IDs
+                if (state.conversationId) {
+                  loadConversation(state.conversationId, true);
+                }
+
+                // Update setup checklist
+                if (window.checkSetupProgress) {
+                  setTimeout(() => window.checkSetupProgress(), 500);
+                }
+              } else if (event === 'error') {
+                throw new Error(data.message || 'Streaming error');
+              }
+            } catch (parseErr) {
+              console.warn('Failed to parse SSE data:', parseErr);
+            }
+          }
+        }
+
+        let event = 'token'; // default event
+      }
+
+    } catch (err) {
+      console.error('Streaming error:', err);
+      elements.chatWindow.removeChild(assistantMessageDiv);
+      appendMessage(
+        { role: 'assistant', content: `⚠️ ${err.message || 'Streaming failed.'}`, createdAt: new Date().toISOString() },
+        { persist: false }
+      );
+      setFeedback(err.message, 'error');
+    } finally {
+      state.sending = false;
+      elements.sendBtn.textContent = 'Send';
+      elements.sendBtn.onclick = () => sendMessage();
+    }
+  }
+
   async function sendMessage() {
     if (state.sending) return;
     const message = elements.messageInput.value.trim();
@@ -620,6 +796,12 @@ document.addEventListener('DOMContentLoaded', () => {
     state.sending = true;
     elements.sendBtn.textContent = 'Sending…';
 
+    // Check if streaming is enabled
+    if (elements.streamToggle && elements.streamToggle.checked) {
+      await sendMessageStream();
+      return;
+    }
+
     try {
       const payload = {
         target: targetHost(),
@@ -629,7 +811,7 @@ document.addEventListener('DOMContentLoaded', () => {
           ...readOptions(),
           persona: elements.promptSelect?.value || 'default_chat'  // Phase 2.1: Include selected prompt
         },
-        stream: elements.streamToggle.checked,
+        stream: false,
         useRag: elements.ragToggle.checked,
         threadId: state.threadId,
         message,
@@ -638,12 +820,17 @@ document.addEventListener('DOMContentLoaded', () => {
         conversationId: state.conversationId
       };
 
-      const res = await fetch('/api/chat', {
+      // Week 4 Day 3: Add workspace context
+      const fetchOptions = {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
         credentials: 'include'
-      });
+      };
+
+      const res = await fetch('/api/chat',
+        window.WorkspaceManager ? WorkspaceManager.addWorkspaceHeader(fetchOptions) : fetchOptions
+      );
       const data = await res.json();
       if (!res.ok || data.status !== 'success') {
         throw new Error(data.message || 'Chat failed');
@@ -707,7 +894,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function loadHistoryList() {
       try {
-          const res = await fetch('/api/history');
+          // Week 4 Day 3: Add workspace context
+          const url = window.WorkspaceManager ?
+            WorkspaceManager.addWorkspaceParam('/api/history') : '/api/history';
+          const res = await fetch(url);
           const { data } = await res.json();
           elements.historyList.innerHTML = '';
           data.forEach(item => {
@@ -729,7 +919,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function loadConversation(id, preserveModelSelection = false) {
       try {
-          const res = await fetch(`/api/history/${id}`);
+          // Week 4 Day 3: Add workspace context
+          const url = window.WorkspaceManager ?
+            WorkspaceManager.addWorkspaceParam(`/api/history/${id}`) : `/api/history/${id}`;
+          const res = await fetch(url);
           const { data } = await res.json();
           state.conversationId = data._id;
           state.history = []; // We will rebuild history from DB
@@ -831,7 +1024,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function loadActivePrompt() {
       try {
-          const res = await fetch('/api/prompts/default_chat', { credentials: 'include' });
+          // Week 4 Day 3: Add workspace context
+          const url = window.WorkspaceManager ?
+            WorkspaceManager.addWorkspaceParam('/api/prompts/default_chat') : '/api/prompts/default_chat';
+          const res = await fetch(url, { credentials: 'include' });
           if (res.ok) {
               const result = await res.json();
               const activePromptNameEl = document.getElementById('activePromptName');
@@ -866,7 +1062,10 @@ document.addEventListener('DOMContentLoaded', () => {
   // Load available prompts into selector dropdown
   async function loadPromptSelector() {
       try {
-          const res = await fetch('/api/prompts', { credentials: 'include' });
+          const fetchOptions = { credentials: 'include' };
+          const res = await fetch('/api/prompts',
+             window.WorkspaceManager ? WorkspaceManager.addWorkspaceHeader(fetchOptions) : fetchOptions
+          );
           if (!res.ok) {
               console.error('Failed to load prompts:', res.status);
               return;
@@ -933,7 +1132,10 @@ document.addEventListener('DOMContentLoaded', () => {
       const selectedPrompt = promptSelect.value;
 
       try {
-          const res = await fetch(`/api/prompts/${selectedPrompt}`, { credentials: 'include' });
+          const fetchOptions = { credentials: 'include' };
+          const res = await fetch(`/api/prompts/${selectedPrompt}`, 
+            window.WorkspaceManager ? WorkspaceManager.addWorkspaceHeader(fetchOptions) : fetchOptions
+          );
           if (!res.ok) {
               alert('Failed to load prompt details');
               return;

@@ -17,20 +17,43 @@ function injectNav(activePageId = '') {
         { label: 'Benchmark', href: 'benchmark.html', icon: 'fa-rocket', id: 'benchmark' },
         { label: 'Performance', href: 'performance.html', icon: 'fa-gauge-high', id: 'performance' },
         { label: 'Analytics', href: 'analytics.html', icon: 'fa-chart-line', id: 'analytics' },
+        { label: 'Dashboards', href: 'custom-dashboard.html', icon: 'fa-columns', id: 'custom-dashboards' },
+        { label: 'Features', href: 'features-inventory.html', icon: 'fa-list-check', id: 'features-inventory' },
+        { label: 'Telemetry', href: 'features-telemetry.html', icon: 'fa-chart-bar', id: 'features-telemetry' },
+        { label: 'Adoption', href: 'features-adoption.html', icon: 'fa-users', id: 'features-adoption' },
+        { label: 'Admin', href: 'features-admin.html', icon: 'fa-cogs', id: 'features-admin' },
         { label: 'RAG', href: 'rag.html', icon: 'fa-database', id: 'rag' },
         // Prompt management UI lives at prompts.html.
         { label: 'Prompts', href: 'prompts.html', icon: 'fa-users', id: 'personas' },
         { label: 'Profile', href: 'profile.html', icon: 'fa-user-circle', id: 'profile' }
     ];
 
-    // Build nav HTML
+    // Build nav HTML with workspace switcher (Week 4 Day 3: Multi-Tenancy UI)
     let navHTML = '<nav class="top-nav">\n';
+
+    // Add workspace dropdown button (left side)
+    navHTML += `
+        <div class="nav-left">
+            <div class="workspace-dropdown">
+                <button id="workspaceDropdownBtn" class="workspace-btn">
+                    <i class="fas fa-building"></i> Loading...
+                </button>
+                <div id="workspaceDropdownMenu" class="dropdown-menu">
+                    <!-- Workspaces will be populated by workspace.js -->
+                </div>
+            </div>
+        </div>
+    `;
+
+    // Add navigation links (right side)
+    navHTML += '<div class="nav-right">\n';
 
     navItems.forEach(item => {
         const activeClass = (activePageId === item.id) ? ' class="active"' : '';
         navHTML += `    <a href="${item.href}"${activeClass}><i class="fas ${item.icon}"></i> ${item.label}</a>\n`;
     });
 
+    navHTML += '  </div>\n';
     navHTML += '  </nav>';
 
     // Find the nav container and inject

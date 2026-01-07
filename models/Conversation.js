@@ -43,6 +43,15 @@ const MessageSchema = new mongoose.Schema({
 
 const ConversationSchema = new mongoose.Schema({
   userId: { type: String, default: 'default' },
+
+  // Week 4: Multi-tenancy support
+  workspaceId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Workspace',
+    required: false, // Optional for backward compatibility (will be required after migration)
+    index: true
+  },
+
   model: String,
   systemPrompt: String,
   messages: [MessageSchema],
@@ -84,6 +93,10 @@ const ConversationSchema = new mongoose.Schema({
 ConversationSchema.index({ createdAt: 1 });
 ConversationSchema.index({ model: 1, createdAt: 1 });
 ConversationSchema.index({ promptConfigId: 1 });
+
+// Week 4: Multi-tenancy indexes (workspace isolation)
+ConversationSchema.index({ workspaceId: 1, createdAt: -1 });
+ConversationSchema.index({ workspaceId: 1, userId: 1, createdAt: -1 });
 ConversationSchema.index({ promptName: 1, promptVersion: 1 });
 ConversationSchema.index({ ragRequested: 1 });
 ConversationSchema.index({ ragUsed: 1 });

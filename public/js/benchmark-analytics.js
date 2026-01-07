@@ -53,6 +53,7 @@ const BenchmarkAnalytics = (() => {
         loadTrends();
         loadTagStats();
         loadJudgeStats();
+        loadBatchHistory(); // Populate batch dropdowns
         setupEventListeners();
 
         // New compare UIs
@@ -149,6 +150,12 @@ const BenchmarkAnalytics = (() => {
         const modelFilter = document.getElementById('trendsModelFilter');
         if (modelFilter) {
             modelFilter.addEventListener('change', () => loadTrends());
+        }
+
+        // Timeline batch selector
+        const timelineSelect = document.getElementById('timelineBatchSelect');
+        if (timelineSelect) {
+            timelineSelect.addEventListener('change', (e) => loadTimeline(e.target.value));
         }
 
         // Capability model selector
@@ -2034,6 +2041,154 @@ const BenchmarkAnalytics = (() => {
 
         } catch (err) {
             console.error('Failed to load judge stats:', err);
+        }
+    }
+
+    /**
+     * Load batch history for dropdowns
+     */
+    async function loadBatchHistory() {
+        try {
+            const res = await fetch(`${BENCHMARK_API}/batches?limit=50`);
+            const json = await res.json();
+            const batches = json.data?.batches || []; 
+
+            const populate = (id) => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                const current = el.value;
+                el.innerHTML = '<option value="">Select batch...</option>' + 
+                    batches.map(b => `<option value="${b._id}">${b.run_name || 'Batch ' + b._id.substring(0,8)} (${new Date(b.started_at).toLocaleString()})</option>`).join('');
+                if (current) el.value = current;
+            };
+
+            populate('compareBatch1');
+            populate('compareBatch2');
+            populate('timelineBatchSelect');
+
+        } catch (err) {
+            console.error('Failed to load batch history:', err);
+        }
+    }
+
+    let timelineChartInstance = null;
+
+    /**
+     * Load and render execution timeline for a batch
+     */
+    async function loadTimeline(batchId) {
+        const container = document.getElementById('timelineContainer');
+        const emptyState = document.getElementById('timelineEmptyState');
+        const canvas = document.getElementById('timelineChart');
+
+        if (!batchId) {
+            if (container) container.style.display = 'none';
+            if (emptyState) emptyState.style.display = 'block';
+            return;
+        }
+
+        try {
+            const res = await fetch(`${BENCHMARK_API}/batch/${batchId}/timeline`);
+            const json = await res.json();
+            
+            if (!json.data || !json.data.timeline) {
+               throw new Error('No timeline data found');
+            }
+            
+            const timeline = json.data.timeline;
+
+            if (container) container.style.display = 'block';
+            if (emptyState) emptyState.style.display = 'none';
+
+            if (!canvas) return;
+
+            // Filter for completed tests and judges which have duration
+            const tasks = timeline.filter(e => (e.event === 'test_complete' || e.event === 'judge_complete') && e.duration_ms);
+            
+            // Create data points [start, end]
+            const chartData = tasks.map((t, index) => {
+                const end = t.time_since_start_ms;
+                const start = Math.max(0, end - t.duration_ms);
+                // Use prompt text or ID for label if available, otherwise generic
+                let label = `Task ${index + 1}`;
+                if (t.event === 'judge_complete') label += ' (Judge)';
+                
+                return {
+                    x: [start, end],
+                    y: label, 
+                    type: t.event === 'test_complete' ? 'Test' : 'Judge',
+                    details: t
+                };
+            });
+
+            if (timelineChartInstance) {
+                timelineChartInstance.destroy();
+            }
+
+            timelineChartInstance = new Chart(canvas, {
+                type: 'bar',
+                data: {
+                    labels: chartData.map(d => d.y),
+                    datasets: [
+                        {
+                            label: 'Execution Duration',
+                            data: chartData.map(d => d.x),
+                            backgroundColor: chartData.map(d => d.type === 'Test' ? 'rgba(124, 240, 255, 0.6)' : 'rgba(255, 107, 157, 0.6)'),
+                            borderColor: chartData.map(d => d.type === 'Test' ? '#7CF0FF' : '#FF6B9D'),
+                            borderWidth: 1,
+                            borderSkipped: false,
+                            barPercentage: 0.8,
+                            categoryPercentage: 0.8
+                        }
+                    ]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const raw = context.raw; // [start, end]
+                                    const duration = raw[1] - raw[0];
+                                    const item = chartData[context.dataIndex];
+                                    return `${item.type}: ${duration.toFixed(0)}ms (Start: ${raw[0].toFixed(0)}ms)`;
+                                }
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: `Timeline - ${json.data.batch_id}`,
+                            color: '#E0E7FF'
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: 'linear',
+                            position: 'bottom',
+                            title: { display: true, text: 'Time since start (ms)', color: '#94A3B8' },
+                            ticks: { color: '#94A3B8' },
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                            min: 0
+                        },
+                        y: {
+                            ticks: { 
+                                color: '#E0E7FF',
+                                font: { size: 10 }
+                            },
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' }
+                        }
+                    }
+                }
+            });
+
+        } catch (err) {
+            console.error('Failed to load timeline:', err);
+            // Don't overwrite container if it failed, just log
         }
     }
 

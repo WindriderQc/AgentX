@@ -1,0 +1,1305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workspace Settings - AgentX</title>
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        .workspace-settings {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+
+        .settings-grid {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            gap: 24px;
+            margin-top: 24px;
+        }
+
+        @media (max-width: 1024px) {
+            .settings-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Sidebar Navigation */
+        .settings-sidebar {
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 12px;
+            padding: 16px;
+            height: fit-content;
+            position: sticky;
+            top: 80px;
+        }
+
+        .sidebar-section {
+            margin-bottom: 24px;
+        }
+
+        .sidebar-section h3 {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+        }
+
+        .workspace-card {
+            background: rgba(124, 240, 255, 0.05);
+            border: 1px solid rgba(124, 240, 255, 0.2);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .workspace-card:hover {
+            background: rgba(124, 240, 255, 0.1);
+            border-color: rgba(124, 240, 255, 0.4);
+        }
+
+        .workspace-card.active {
+            background: rgba(124, 240, 255, 0.15);
+            border-color: var(--accent);
+        }
+
+        .workspace-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 4px;
+        }
+
+        .workspace-card-name {
+            font-weight: 600;
+            color: var(--text);
+            font-size: 14px;
+        }
+
+        .workspace-card-role {
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+
+        .role-owner { background: rgba(255, 193, 7, 0.2); color: #ffc107; }
+        .role-admin { background: rgba(76, 175, 80, 0.2); color: #4caf50; }
+        .role-member { background: rgba(33, 150, 243, 0.2); color: #2196f3; }
+        .role-viewer { background: rgba(158, 158, 158, 0.2); color: #9e9e9e; }
+
+        .workspace-card-desc {
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .btn-new-workspace {
+            width: 100%;
+            padding: 10px;
+            background: var(--accent);
+            color: var(--bg);
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-new-workspace:hover {
+            background: #5ee2f3;
+            transform: translateY(-1px);
+        }
+
+        /* Main Content */
+        .settings-content {
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 12px;
+            padding: 24px;
+        }
+
+        .content-section {
+            margin-bottom: 32px;
+            padding-bottom: 32px;
+            border-bottom: 1px solid var(--panel-border);
+        }
+
+        .content-section:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .section-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 6px;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 10px 12px;
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--panel-border);
+            border-radius: 8px;
+            color: var(--text);
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--accent);
+            background: rgba(0, 0, 0, 0.3);
+        }
+
+        .form-textarea {
+            min-height: 80px;
+            resize: vertical;
+        }
+
+        .form-help {
+            font-size: 12px;
+            color: var(--muted);
+            margin-top: 4px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 14px;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: var(--bg);
+        }
+
+        .btn-primary:hover {
+            background: #5ee2f3;
+            transform: translateY(-1px);
+        }
+
+        .btn-secondary {
+            background: rgba(124, 240, 255, 0.1);
+            color: var(--accent);
+            border: 1px solid rgba(124, 240, 255, 0.3);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(124, 240, 255, 0.2);
+            border-color: rgba(124, 240, 255, 0.5);
+        }
+
+        .btn-danger {
+            background: rgba(244, 67, 54, 0.1);
+            color: #f44336;
+            border: 1px solid rgba(244, 67, 54, 0.3);
+        }
+
+        .btn-danger:hover {
+            background: rgba(244, 67, 54, 0.2);
+            border-color: rgba(244, 67, 54, 0.5);
+        }
+
+        /* Members Table */
+        .members-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .members-table th {
+            text-align: left;
+            padding: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--panel-border);
+        }
+
+        .members-table td {
+            padding: 12px;
+            border-bottom: 1px solid rgba(124, 240, 255, 0.1);
+        }
+
+        .members-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .member-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .member-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: var(--accent);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            color: var(--bg);
+        }
+
+        .member-details {
+            flex: 1;
+        }
+
+        .member-name {
+            font-weight: 600;
+            color: var(--text);
+            font-size: 14px;
+        }
+
+        .member-email {
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .member-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn-icon {
+            padding: 6px 10px;
+            background: rgba(124, 240, 255, 0.1);
+            border: 1px solid rgba(124, 240, 255, 0.2);
+            border-radius: 6px;
+            color: var(--accent);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-icon:hover {
+            background: rgba(124, 240, 255, 0.2);
+            border-color: rgba(124, 240, 255, 0.4);
+        }
+
+        /* Feature Toggles */
+        .feature-toggle {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+            margin-bottom: 8px;
+        }
+
+        .toggle-info h4 {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 2px;
+        }
+
+        .toggle-info p {
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .toggle-switch {
+            position: relative;
+            width: 48px;
+            height: 24px;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(255, 255, 255, 0.1);
+            transition: 0.3s;
+            border-radius: 24px;
+        }
+
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: 0.3s;
+            border-radius: 50%;
+        }
+
+        input:checked + .toggle-slider {
+            background-color: var(--accent);
+        }
+
+        input:checked + .toggle-slider:before {
+            transform: translateX(24px);
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+        }
+
+        .stat-card {
+            background: rgba(124, 240, 255, 0.05);
+            border: 1px solid rgba(124, 240, 255, 0.2);
+            border-radius: 8px;
+            padding: 16px;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+
+        .stat-value {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--accent);
+        }
+
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 2000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(4px);
+        }
+
+        .modal.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 12px;
+            padding: 24px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .modal-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: var(--muted);
+            font-size: 24px;
+            cursor: pointer;
+            padding: 0;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-close:hover {
+            color: var(--text);
+        }
+
+        .alert {
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            font-size: 14px;
+        }
+
+        .alert-success {
+            background: rgba(76, 175, 80, 0.1);
+            color: #4caf50;
+            border: 1px solid rgba(76, 175, 80, 0.3);
+        }
+
+        .alert-error {
+            background: rgba(244, 67, 54, 0.1);
+            color: #f44336;
+            border: 1px solid rgba(244, 67, 54, 0.3);
+        }
+
+        .alert-warning {
+            background: rgba(255, 193, 7, 0.1);
+            color: #ffc107;
+            border: 1px solid rgba(255, 193, 7, 0.3);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 48px 24px;
+            color: var(--muted);
+        }
+
+        .empty-state i {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+
+        .empty-state h3 {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .empty-state p {
+            font-size: 14px;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+    <div id="nav-container"></div>
+
+    <div class="workspace-settings">
+        <div class="page-header">
+            <h1>Workspace Settings</h1>
+            <p class="page-description">Manage your workspaces, members, and permissions</p>
+        </div>
+
+        <div class="settings-grid">
+            <!-- Sidebar: Workspace List -->
+            <div class="settings-sidebar">
+                <div class="sidebar-section">
+                    <h3>Your Workspaces</h3>
+                    <div id="workspaceList">
+                        <div class="empty-state">
+                            <i class="fas fa-spinner fa-spin"></i>
+                            <p>Loading workspaces...</p>
+                        </div>
+                    </div>
+                </div>
+                <button class="btn-new-workspace" onclick="openCreateWorkspaceModal()">
+                    <i class="fas fa-plus"></i> New Workspace
+                </button>
+            </div>
+
+            <!-- Main Content -->
+            <div class="settings-content">
+                <div id="noWorkspaceSelected" class="empty-state">
+                    <i class="fas fa-arrow-left"></i>
+                    <h3>Select a Workspace</h3>
+                    <p>Choose a workspace from the sidebar to view and manage its settings</p>
+                </div>
+
+                <div id="workspaceDetails" class="hidden">
+                    <!-- Workspace Details Section -->
+                    <div class="content-section">
+                        <div class="section-header">
+                            <h2 class="section-title">Workspace Details</h2>
+                            <button class="btn btn-secondary" id="btnEditDetails" onclick="toggleEditMode()">
+                                <i class="fas fa-edit"></i> Edit
+                            </button>
+                        </div>
+
+                        <div id="detailsView">
+                            <div class="form-group">
+                                <label class="form-label">Workspace Name</label>
+                                <p id="displayName" class="form-input" style="background: transparent; border: none; padding-left: 0;">-</p>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Slug (URL)</label>
+                                <p id="displaySlug" class="form-input" style="background: transparent; border: none; padding-left: 0;">-</p>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Description</label>
+                                <p id="displayDescription" class="form-input" style="background: transparent; border: none; padding-left: 0;">-</p>
+                            </div>
+                        </div>
+
+                        <div id="detailsEdit" class="hidden">
+                            <form id="formEditWorkspace" onsubmit="saveWorkspaceDetails(event)">
+                                <div class="form-group">
+                                    <label class="form-label">Workspace Name</label>
+                                    <input type="text" id="editName" class="form-input" required>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Description</label>
+                                    <textarea id="editDescription" class="form-input form-textarea"></textarea>
+                                </div>
+                                <div style="display: flex; gap: 8px;">
+                                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                                    <button type="button" class="btn btn-secondary" onclick="cancelEditMode()">Cancel</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Feature Toggles Section (Admin only) -->
+                    <div class="content-section" id="featureTogglesSection">
+                        <div class="section-header">
+                            <h2 class="section-title">Feature Toggles</h2>
+                        </div>
+
+                        <div class="feature-toggle">
+                            <div class="toggle-info">
+                                <h4>RAG (Retrieval-Augmented Generation)</h4>
+                                <p>Enable semantic search and context injection</p>
+                            </div>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="toggleRag" onchange="updateFeature('ragEnabled', this.checked)">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+
+                        <div class="feature-toggle">
+                            <div class="toggle-info">
+                                <h4>Custom Models</h4>
+                                <p>Allow custom model creation and deployment</p>
+                            </div>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="toggleCustomModels" onchange="updateFeature('customModelsEnabled', this.checked)">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+
+                        <div class="feature-toggle">
+                            <div class="toggle-info">
+                                <h4>Benchmarking</h4>
+                                <p>Enable model benchmarking and quality scoring</p>
+                            </div>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="toggleBenchmarking" onchange="updateFeature('benchmarkingEnabled', this.checked)">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+
+                        <div class="feature-toggle">
+                            <div class="toggle-info">
+                                <h4>Alerts</h4>
+                                <p>Enable system monitoring and alerting</p>
+                            </div>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="toggleAlerts" onchange="updateFeature('alertsEnabled', this.checked)">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Members Section (Admin only) -->
+                    <div class="content-section" id="membersSection">
+                        <div class="section-header">
+                            <h2 class="section-title">Members</h2>
+                            <button class="btn btn-secondary" onclick="openInviteMemberModal()">
+                                <i class="fas fa-user-plus"></i> Invite Member
+                            </button>
+                        </div>
+
+                        <table class="members-table">
+                            <thead>
+                                <tr>
+                                    <th>Member</th>
+                                    <th>Role</th>
+                                    <th>Joined</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="membersTableBody">
+                                <tr>
+                                    <td colspan="4" class="empty-state">
+                                        <i class="fas fa-spinner fa-spin"></i>
+                                        <p>Loading members...</p>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Statistics Section (Admin only) -->
+                    <div class="content-section" id="statsSection">
+                        <div class="section-header">
+                            <h2 class="section-title">Usage Statistics</h2>
+                        </div>
+
+                        <div class="stats-grid" id="statsGrid">
+                            <div class="stat-card">
+                                <div class="stat-label">Members</div>
+                                <div class="stat-value" id="statMembers">-</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">Conversations</div>
+                                <div class="stat-value" id="statConversations">-</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">API Keys</div>
+                                <div class="stat-value" id="statApiKeys">-</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">Custom Models</div>
+                                <div class="stat-value" id="statModels">-</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">Active Alerts</div>
+                                <div class="stat-value" id="statAlerts">-</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Danger Zone (Owner only) -->
+                    <div class="content-section" id="dangerZoneSection">
+                        <div class="section-header">
+                            <h2 class="section-title" style="color: #f44336;">Danger Zone</h2>
+                        </div>
+
+                        <div class="alert alert-warning">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            Deleting a workspace is permanent and cannot be undone. All data will be lost.
+                        </div>
+
+                        <button class="btn btn-danger" onclick="openDeleteWorkspaceModal()">
+                            <i class="fas fa-trash"></i> Delete Workspace
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Workspace Modal -->
+    <div id="createWorkspaceModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Create New Workspace</h3>
+                <button class="modal-close" onclick="closeCreateWorkspaceModal()">&times;</button>
+            </div>
+            <form id="formCreateWorkspace" onsubmit="createWorkspace(event)">
+                <div class="form-group">
+                    <label class="form-label">Workspace Name *</label>
+                    <input type="text" id="createName" class="form-input" required>
+                    <div class="form-help">Choose a descriptive name for your workspace</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Slug (URL) *</label>
+                    <input type="text" id="createSlug" class="form-input" pattern="[a-z0-9-]+" required>
+                    <div class="form-help">Lowercase letters, numbers, and hyphens only (e.g., my-workspace)</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Description</label>
+                    <textarea id="createDescription" class="form-input form-textarea"></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%;">Create Workspace</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Invite Member Modal -->
+    <div id="inviteMemberModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Invite Member</h3>
+                <button class="modal-close" onclick="closeInviteMemberModal()">&times;</button>
+            </div>
+            <form id="formInviteMember" onsubmit="inviteMember(event)">
+                <div class="form-group">
+                    <label class="form-label">Email Address *</label>
+                    <input type="email" id="inviteEmail" class="form-input" required>
+                    <div class="form-help">User must already have an AgentX account</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Role *</label>
+                    <select id="inviteRole" class="form-input" required>
+                        <option value="member">Member - Can chat and use RAG</option>
+                        <option value="admin">Admin - Full access except ownership transfer</option>
+                        <option value="viewer">Viewer - Read-only access</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%;">Send Invitation</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Delete Workspace Confirmation Modal -->
+    <div id="deleteWorkspaceModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title" style="color: #f44336;">Delete Workspace</h3>
+                <button class="modal-close" onclick="closeDeleteWorkspaceModal()">&times;</button>
+            </div>
+            <div class="alert alert-error">
+                <i class="fas fa-exclamation-triangle"></i>
+                This action cannot be undone. All conversations, prompts, models, and data will be permanently deleted.
+            </div>
+            <p style="margin-bottom: 16px; color: var(--muted);">Type the workspace slug to confirm deletion:</p>
+            <form id="formDeleteWorkspace" onsubmit="deleteWorkspace(event)">
+                <div class="form-group">
+                    <input type="text" id="deleteConfirmSlug" class="form-input" placeholder="workspace-slug" required>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button type="submit" class="btn btn-danger" style="flex: 1;">Delete Permanently</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeDeleteWorkspaceModal()" style="flex: 1;">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="/js/components/nav.js"></script>
+    <script src="/js/workspace.js"></script>
+    <script>
+        injectNav('features-admin');
+
+        let workspaces = [];
+        let currentWorkspace = null;
+        let currentMember = null;
+
+        // Initialize
+        async function init() {
+            await loadWorkspaces();
+
+            // Auto-select current workspace from WorkspaceManager
+            if (window.WorkspaceManager && window.WorkspaceManager.currentWorkspace) {
+                const workspace = workspaces.find(w => w.slug === window.WorkspaceManager.currentWorkspace);
+                if (workspace) {
+                    selectWorkspace(workspace);
+                }
+            }
+        }
+
+        // Load all workspaces
+        async function loadWorkspaces() {
+            try {
+                const res = await fetch('/api/workspaces', { credentials: 'include' });
+                const data = await res.json();
+
+                if (data.status === 'success') {
+                    workspaces = data.data;
+                    renderWorkspaceList();
+                } else {
+                    showError('Failed to load workspaces');
+                }
+            } catch (error) {
+                console.error('Error loading workspaces:', error);
+                showError('Failed to load workspaces');
+            }
+        }
+
+        // Render workspace list in sidebar
+        function renderWorkspaceList() {
+            const container = document.getElementById('workspaceList');
+
+            if (workspaces.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <i class="fas fa-building"></i>
+                        <p>No workspaces yet</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = workspaces.map(w => {
+                const isActive = currentWorkspace && currentWorkspace.slug === w.slug;
+                return `
+                    <div class="workspace-card ${isActive ? 'active' : ''}" onclick="selectWorkspaceBySlug('${w.slug}')">
+                        <div class="workspace-card-header">
+                            <div class="workspace-card-name">${w.name}</div>
+                            <span class="workspace-card-role role-${w.role}">${w.role}</span>
+                        </div>
+                        ${w.description ? `<div class="workspace-card-desc">${w.description}</div>` : ''}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Select workspace by slug
+        async function selectWorkspaceBySlug(slug) {
+            const workspace = workspaces.find(w => w.slug === slug);
+            if (workspace) {
+                await selectWorkspace(workspace);
+            }
+        }
+
+        // Select and load workspace details
+        async function selectWorkspace(workspace) {
+            currentWorkspace = workspace;
+            currentMember = {
+                role: workspace.role,
+                permissions: workspace.permissions
+            };
+
+            // Update UI
+            document.getElementById('noWorkspaceSelected').classList.add('hidden');
+            document.getElementById('workspaceDetails').classList.remove('hidden');
+
+            renderWorkspaceList();
+            loadWorkspaceDetails();
+            loadMembers();
+            loadStats();
+
+            // Show/hide sections based on role
+            const isAdmin = currentMember.role === 'owner' || currentMember.role === 'admin';
+            const isOwner = currentMember.role === 'owner';
+
+            document.getElementById('btnEditDetails').style.display = isAdmin ? 'block' : 'none';
+            document.getElementById('featureTogglesSection').style.display = isAdmin ? 'block' : 'none';
+            document.getElementById('membersSection').style.display = isAdmin ? 'block' : 'none';
+            document.getElementById('statsSection').style.display = isAdmin ? 'block' : 'none';
+            document.getElementById('dangerZoneSection').style.display = isOwner ? 'block' : 'none';
+        }
+
+        // Load workspace details
+        function loadWorkspaceDetails() {
+            document.getElementById('displayName').textContent = currentWorkspace.name;
+            document.getElementById('displaySlug').textContent = currentWorkspace.slug;
+            document.getElementById('displayDescription').textContent = currentWorkspace.description || 'No description';
+
+            // Feature toggles
+            if (currentWorkspace.settings) {
+                document.getElementById('toggleRag').checked = currentWorkspace.settings.ragEnabled !== false;
+                document.getElementById('toggleCustomModels').checked = currentWorkspace.settings.customModelsEnabled === true;
+                document.getElementById('toggleBenchmarking').checked = currentWorkspace.settings.benchmarkingEnabled !== false;
+                document.getElementById('toggleAlerts').checked = currentWorkspace.settings.alertsEnabled !== false;
+            }
+        }
+
+        // Toggle edit mode
+        function toggleEditMode() {
+            document.getElementById('detailsView').classList.add('hidden');
+            document.getElementById('detailsEdit').classList.remove('hidden');
+
+            document.getElementById('editName').value = currentWorkspace.name;
+            document.getElementById('editDescription').value = currentWorkspace.description || '';
+        }
+
+        function cancelEditMode() {
+            document.getElementById('detailsView').classList.remove('hidden');
+            document.getElementById('detailsEdit').classList.add('hidden');
+        }
+
+        // Save workspace details
+        async function saveWorkspaceDetails(e) {
+            e.preventDefault();
+
+            const name = document.getElementById('editName').value;
+            const description = document.getElementById('editDescription').value;
+
+            try {
+                const res = await fetch(`/api/workspaces/${currentWorkspace.slug}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ name, description })
+                });
+
+                const data = await res.json();
+
+                if (data.status === 'success') {
+                    showSuccess('Workspace updated successfully');
+                    currentWorkspace.name = data.data.name;
+                    currentWorkspace.description = data.data.description;
+                    loadWorkspaceDetails();
+                    cancelEditMode();
+                    await loadWorkspaces(); // Refresh list
+                } else {
+                    showError(data.message || 'Failed to update workspace');
+                }
+            } catch (error) {
+                console.error('Error updating workspace:', error);
+                showError('Failed to update workspace');
+            }
+        }
+
+        // Update feature toggle
+        async function updateFeature(feature, enabled) {
+            try {
+                const settings = { ...currentWorkspace.settings, [feature]: enabled };
+
+                const res = await fetch(`/api/workspaces/${currentWorkspace.slug}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ settings })
+                });
+
+                const data = await res.json();
+
+                if (data.status === 'success') {
+                    currentWorkspace.settings = data.data.settings;
+                    showSuccess('Feature settings updated');
+                } else {
+                    showError(data.message || 'Failed to update settings');
+                    loadWorkspaceDetails(); // Revert UI
+                }
+            } catch (error) {
+                console.error('Error updating feature:', error);
+                showError('Failed to update settings');
+                loadWorkspaceDetails(); // Revert UI
+            }
+        }
+
+        // Load members
+        async function loadMembers() {
+            try {
+                const res = await fetch(`/api/workspaces/${currentWorkspace.slug}/members`, {
+                    credentials: 'include'
+                });
+                const data = await res.json();
+
+                if (data.status === 'success') {
+                    renderMembers(data.data);
+                } else {
+                    showError('Failed to load members');
+                }
+            } catch (error) {
+                console.error('Error loading members:', error);
+                showError('Failed to load members');
+            }
+        }
+
+        // Render members table
+        function renderMembers(members) {
+            const tbody = document.getElementById('membersTableBody');
+
+            if (members.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="4" class="empty-state">
+                            <i class="fas fa-users"></i>
+                            <p>No members yet</p>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = members.map(m => {
+                const user = m.userId;
+                const initials = user.username ? user.username.substring(0, 2).toUpperCase() : '??';
+                const joinedDate = new Date(m.joinedAt).toLocaleDateString();
+
+                const canModify = currentMember.role === 'owner' ||
+                                 (currentMember.role === 'admin' && m.role !== 'owner');
+
+                return `
+                    <tr>
+                        <td>
+                            <div class="member-info">
+                                <div class="member-avatar">${initials}</div>
+                                <div class="member-details">
+                                    <div class="member-name">${user.username || 'Unknown'}</div>
+                                    <div class="member-email">${user.email || ''}</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td><span class="workspace-card-role role-${m.role}">${m.role}</span></td>
+                        <td>${joinedDate}</td>
+                        <td>
+                            <div class="member-actions">
+                                ${canModify && m.role !== 'owner' ? `
+                                    <button class="btn-icon" onclick="changeMemberRole('${m._id}')" title="Change Role">
+                                        <i class="fas fa-user-edit"></i>
+                                    </button>
+                                    <button class="btn-icon" onclick="removeMember('${m._id}')" title="Remove Member">
+                                        <i class="fas fa-user-times"></i>
+                                    </button>
+                                ` : '-'}
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // Load stats
+        async function loadStats() {
+            try {
+                const res = await fetch(`/api/workspaces/${currentWorkspace.slug}/stats`, {
+                    credentials: 'include'
+                });
+                const data = await res.json();
+
+                if (data.status === 'success') {
+                    const stats = data.data;
+                    document.getElementById('statMembers').textContent = stats.members;
+                    document.getElementById('statConversations').textContent = stats.conversations;
+                    document.getElementById('statApiKeys').textContent = stats.apiKeys;
+                    document.getElementById('statModels').textContent = stats.customModels;
+                    document.getElementById('statAlerts').textContent = stats.activeAlerts;
+                } else {
+                    console.error('Failed to load stats');
+                }
+            } catch (error) {
+                console.error('Error loading stats:', error);
+            }
+        }
+
+        // Create workspace modal
+        function openCreateWorkspaceModal() {
+            document.getElementById('createWorkspaceModal').classList.add('active');
+            document.getElementById('formCreateWorkspace').reset();
+        }
+
+        function closeCreateWorkspaceModal() {
+            document.getElementById('createWorkspaceModal').classList.remove('active');
+        }
+
+        async function createWorkspace(e) {
+            e.preventDefault();
+
+            const name = document.getElementById('createName').value;
+            const slug = document.getElementById('createSlug').value;
+            const description = document.getElementById('createDescription').value;
+
+            try {
+                const res = await fetch('/api/workspaces', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ name, slug, description })
+                });
+
+                const data = await res.json();
+
+                if (data.status === 'success') {
+                    showSuccess('Workspace created successfully!');
+                    closeCreateWorkspaceModal();
+                    await loadWorkspaces();
+
+                    // Auto-select new workspace
+                    const newWorkspace = workspaces.find(w => w.slug === slug);
+                    if (newWorkspace) {
+                        await selectWorkspace(newWorkspace);
+                    }
+                } else {
+                    showError(data.message || 'Failed to create workspace');
+                }
+            } catch (error) {
+                console.error('Error creating workspace:', error);
+                showError('Failed to create workspace');
+            }
+        }
+
+        // Invite member modal
+        function openInviteMemberModal() {
+            document.getElementById('inviteMemberModal').classList.add('active');
+            document.getElementById('formInviteMember').reset();
+        }
+
+        function closeInviteMemberModal() {
+            document.getElementById('inviteMemberModal').classList.remove('active');
+        }
+
+        async function inviteMember(e) {
+            e.preventDefault();
+
+            const email = document.getElementById('inviteEmail').value;
+            const role = document.getElementById('inviteRole').value;
+
+            try {
+                const res = await fetch(`/api/workspaces/${currentWorkspace.slug}/members`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ email, role })
+                });
+
+                const data = await res.json();
+
+                if (data.status === 'success') {
+                    showSuccess('Member invited successfully!');
+                    closeInviteMemberModal();
+                    loadMembers();
+                    loadStats();
+                } else {
+                    showError(data.message || 'Failed to invite member');
+                }
+            } catch (error) {
+                console.error('Error inviting member:', error);
+                showError('Failed to invite member');
+            }
+        }
+
+        // Change member role
+        async function changeMemberRole(memberId) {
+            const newRole = prompt('Enter new role (admin, member, viewer):');
+            if (!newRole) return;
+
+            if (!['admin', 'member', 'viewer'].includes(newRole)) {
+                showError('Invalid role');
+                return;
+            }
+
+            try {
+                const res = await fetch(`/api/workspaces/${currentWorkspace.slug}/members/${memberId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ role: newRole })
+                });
+
+                const data = await res.json();
+
+                if (data.status === 'success') {
+                    showSuccess('Member role updated');
+                    loadMembers();
+                } else {
+                    showError(data.message || 'Failed to update role');
+                }
+            } catch (error) {
+                console.error('Error updating role:', error);
+                showError('Failed to update role');
+            }
+        }
+
+        // Remove member
+        async function removeMember(memberId) {
+            if (!confirm('Are you sure you want to remove this member?')) return;
+
+            try {
+                const res = await fetch(`/api/workspaces/${currentWorkspace.slug}/members/${memberId}`, {
+                    method: 'DELETE',
+                    credentials: 'include'
+                });
+
+                const data = await res.json();
+
+                if (data.status === 'success') {
+                    showSuccess('Member removed');
+                    loadMembers();
+                    loadStats();
+                } else {
+                    showError(data.message || 'Failed to remove member');
+                }
+            } catch (error) {
+                console.error('Error removing member:', error);
+                showError('Failed to remove member');
+            }
+        }
+
+        // Delete workspace modal
+        function openDeleteWorkspaceModal() {
+            document.getElementById('deleteWorkspaceModal').classList.add('active');
+            document.getElementById('formDeleteWorkspace').reset();
+        }
+
+        function closeDeleteWorkspaceModal() {
+            document.getElementById('deleteWorkspaceModal').classList.remove('active');
+        }
+
+        async function deleteWorkspace(e) {
+            e.preventDefault();
+
+            const confirmSlug = document.getElementById('deleteConfirmSlug').value;
+
+            if (confirmSlug !== currentWorkspace.slug) {
+                showError('Slug does not match. Deletion cancelled.');
+                return;
+            }
+
+            try {
+                const res = await fetch(`/api/workspaces/${currentWorkspace.slug}`, {
+                    method: 'DELETE',
+                    credentials: 'include'
+                });
+
+                const data = await res.json();
+
+                if (data.status === 'success') {
+                    showSuccess('Workspace deleted successfully');
+                    closeDeleteWorkspaceModal();
+
+                    // Reload workspaces and clear selection
+                    await loadWorkspaces();
+                    currentWorkspace = null;
+                    document.getElementById('noWorkspaceSelected').classList.remove('hidden');
+                    document.getElementById('workspaceDetails').classList.add('hidden');
+
+                    // Update WorkspaceManager
+                    if (window.WorkspaceManager) {
+                        window.WorkspaceManager.currentWorkspace = null;
+                        localStorage.removeItem(window.WorkspaceManager.STORAGE_KEY);
+                    }
+                } else {
+                    showError(data.message || 'Failed to delete workspace');
+                }
+            } catch (error) {
+                console.error('Error deleting workspace:', error);
+                showError('Failed to delete workspace');
+            }
+        }
+
+        // Utility functions
+        function showSuccess(message) {
+            // Simple alert for now (could be replaced with toast notifications)
+            alert('✅ ' + message);
+        }
+
+        function showError(message) {
+            alert('❌ ' + message);
+        }
+
+        // Initialize on load
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

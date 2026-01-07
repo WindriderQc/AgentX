@@ -62,6 +62,15 @@ const CustomModelSchema = new mongoose.Schema({
     trim: true,
     index: true
   },
+
+  // Week 4: Multi-tenancy support
+  workspaceId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Workspace',
+    required: false, // Optional for backward compatibility
+    index: true
+  },
+
   baseModel: {
     type: String,
     required: true,

@@ -49,6 +49,18 @@ router.post('/', optionalAuth, async (req, res) => {
       });
     }
 
+    // Validate and filter channels (graceful handling of unknown channels)
+    const validChannels = ['email', 'slack', 'webhook', 'dataapi_log'];
+    let filteredChannels = channels.filter(c => validChannels.includes(c));
+
+    // If all channels were invalid, default to dataapi_log
+    if (filteredChannels.length === 0) {
+      logger.warn('All provided channels were invalid, defaulting to dataapi_log', {
+        providedChannels: channels
+      });
+      filteredChannels = ['dataapi_log'];
+    }
+
     // Generate fingerprint
     const crypto = require('crypto');
     const fingerprint = crypto
@@ -64,7 +76,7 @@ router.post('/', optionalAuth, async (req, res) => {
       title,
       message,
       context,
-      channels,
+      channels: filteredChannels,
       fingerprint,
       source: source || res.locals.user?.userId || 'manual',
       tags,
@@ -74,7 +86,7 @@ router.post('/', optionalAuth, async (req, res) => {
     await alert.save();
 
     // Send notifications
-    await alertService._sendNotifications(alert, channels);
+    await alertService._sendNotifications(alert, filteredChannels);
 
     logger.info('Alert created manually', { 
       alertId: alert._id, 

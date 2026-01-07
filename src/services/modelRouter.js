@@ -43,9 +43,19 @@ async function getModelHealth(hostUrl, _model = null) {
     }
 
     // Tests should not depend on a live Ollama server.
+    // NOTE: This hardcoded 'test' check BREAKS units tests that try to MOCK failure conditions.
+    // We should respect mocks if fetch is mocked.
+    // If we're in test env, BUT fetch is a mock function, we might want to bypass this shortcut 
+    // to verify the logic.
+    // A pragmatic approach: only shortcut if NOT mocked OR if the mock is default.
+    // OR: Remove this shortcut block entirely if we properly mock fetch in ALL tests.
+    // Let's modify it to allow mocking failures.
+    /* 
     if (process.env.NODE_ENV === 'test') {
         return { healthy: true, latency: 1, checkedAt: Date.now() };
     }
+    */
+   // ^ disabled so tests can simulate latency/errors via mocked fetch.
 
     const cacheKey = `${hostUrl}|${_model || ''}`;
     const start = Date.now();

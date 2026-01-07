@@ -1,254 +1,826 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AgentX • Operations Center</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap"
-        rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-</head>
+    <style>
+        /* Tab styles */
+        .ops-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 24px;
+            border-bottom: 2px solid var(--panel-border);
+            padding-bottom: 0;
+        }
+        .ops-tab {
+            padding: 12px 24px;
+            background: transparent;
+            border: none;
+            color: var(--muted);
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            position: relative;
+            transition: all 0.2s;
+        }
+        .ops-tab:hover {
+            color: var(--text);
+            background: rgba(255,255,255,0.03);
+        }
+        .ops-tab.active {
+            color: var(--accent);
+        }
+        .ops-tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: var(--accent);
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
 
+        /* Workflow table */
+        .workflow-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .workflow-table th {
+            text-align: left;
+            padding: 12px;
+            border-bottom: 1px solid var(--panel-border);
+            color: var(--muted);
+            font-size: 12px;
+            font-weight: 500;
+            text-transform: uppercase;
+        }
+        .workflow-table td {
+            padding: 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.03);
+        }
+        .workflow-table tr:hover {
+            background: rgba(255,255,255,0.02);
+        }
+        .workflow-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 500;
+            text-transform: uppercase;
+        }
+        .workflow-badge.get {
+            background: rgba(34, 197, 94, 0.1);
+            color: #22c55e;
+        }
+        .workflow-badge.post {
+            background: rgba(59, 130, 246, 0.1);
+            color: #3b82f6;
+        }
+        .workflow-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        /* Activity timeline */
+        .activity-feed {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .activity-item {
+            display: flex;
+            gap: 12px;
+            padding: 12px;
+            background: rgba(255,255,255,0.02);
+            border-radius: 8px;
+            border-left: 3px solid var(--accent);
+        }
+        .activity-icon {
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(var(--accent-rgb), 0.1);
+            border-radius: 6px;
+            flex-shrink: 0;
+        }
+        .activity-content {
+            flex: 1;
+        }
+        .activity-title {
+            font-weight: 500;
+            margin-bottom: 4px;
+        }
+        .activity-meta {
+            font-size: 12px;
+            color: var(--muted);
+        }
+        .activity-status {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 500;
+        }
+        .activity-status.success {
+            background: rgba(34, 197, 94, 0.1);
+            color: #22c55e;
+        }
+        .activity-status.failure {
+            background: rgba(239, 68, 68, 0.1);
+            color: #ef4444;
+        }
+    </style>
+</head>
 <body>
     <div id="nav-container"></div>
     <script src="/js/components/nav.js"></script>
     <script>injectNav('operations');</script>
+
     <div class="bg-grid"></div>
     <div class="page ops-page" style="padding-top: 80px;">
-        
+
         <!-- Header -->
         <header class="ops-header">
             <div>
                 <div class="eyebrow">AgentX • Operations</div>
                 <h1><i class="fas fa-tachometer-alt"></i><span class="title-separator"></span>Operations Center</h1>
-                <p class="lede">Monitor health, trigger workflows, and track system metrics — all in one view.</p>
+                <p class="lede">Monitor health, manage workflows, and track system activity — all in one unified view.</p>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <span id="auto-refresh-indicator" style="font-size: 12px; color: var(--muted);">
+                    <i class="fas fa-plug"></i> Real-time
+                </span>
+                <button class="btn-sm" id="toggle-auto-refresh" title="Toggle auto-refresh">
+                    <i class="fas fa-pause"></i>
+                </button>
+                <button class="btn-sm" id="manual-refresh" title="Refresh now">
+                    <i class="fas fa-sync-alt"></i>
+                </button>
             </div>
         </header>
 
-        <!-- Health Strip -->
-        <div class="health-strip">
-            <span class="health-strip-title"><i class="fas fa-heartbeat"></i> System Health</span>
-            <div class="health-strip-item" id="health-agentx">
-                <span class="dot"></span>
-                <span>AgentX</span>
-            </div>
-            <div class="health-strip-item" id="health-mongodb">
-                <span class="dot"></span>
-                <span>MongoDB</span>
-            </div>
-            <div class="health-strip-item" id="health-dataapi">
-                <span class="dot"></span>
-                <span>DataAPI</span>
-            </div>
-            <div class="health-strip-item" id="health-ollama">
-                <span class="dot"></span>
-                <span>Ollama</span>
-            </div>
-            <div class="health-strip-item" id="health-n8n">
-                <span class="dot"></span>
-                <span>n8n</span>
-            </div>
-            <div class="uptime-info">
-                <i class="fas fa-clock"></i>
-                <span>Uptime:</span>
-                <span class="value" id="sys-uptime">—</span>
-            </div>
+        <!-- Tabs -->
+        <div class="ops-tabs">
+            <button class="ops-tab active" data-tab="health">
+                <i class="fas fa-heartbeat"></i> System Health
+            </button>
+            <button class="ops-tab" data-tab="workflows">
+                <i class="fas fa-network-wired"></i> n8n Workflows
+            </button>
+            <button class="ops-tab" data-tab="activity">
+                <i class="fas fa-stream"></i> Activity Timeline
+            </button>
         </div>
 
-        <!-- Metrics Grid -->
-        <div class="metrics-grid">
-            <div class="metric-card" data-tooltip="Percentage of embedding cache hits vs misses. Higher is better - means fewer expensive API calls to the embedding service.">
-                <div class="metric-label">Cache Hit Rate</div>
-                <div class="metric-value">
-                    <span class="status-dot healthy" id="cacheStatus"></span>
-                    <span id="cache-hit-rate">0%</span>
+        <!-- Tab 1: System Health -->
+        <div class="tab-content active" id="tab-health">
+            <!-- Health Strip -->
+            <div class="health-strip">
+                <span class="health-strip-title"><i class="fas fa-heartbeat"></i> Service Status</span>
+                <div class="health-strip-item" id="health-agentx">
+                    <span class="dot"></span>
+                    <span>AgentX</span>
                 </div>
-                <div class="metric-bar"><div class="metric-fill" id="cacheBar" style="width: 0%"></div></div>
-                <div class="metric-detail"><span id="cacheHits">0</span> hits / <span id="cacheMisses">0</span> miss</div>
-            </div>
-            <div class="metric-card" data-tooltip="Total number of documents stored across all MongoDB collections (conversations, configs, user profiles, etc.)">
-                <div class="metric-label">DB Documents</div>
-                <div class="metric-value">
-                    <span class="status-dot healthy"></span>
-                    <span id="db-total-docs">0</span>
+                <div class="health-strip-item" id="health-mongodb">
+                    <span class="dot"></span>
+                    <span>MongoDB</span>
                 </div>
-                <div class="metric-detail">Across all collections</div>
-            </div>
-            <div class="metric-card" data-tooltip="Active database connections out of maximum pool size. Monitor to detect connection leaks or pool exhaustion.">
-                <div class="metric-label">Connections</div>
-                <div class="metric-value">
-                    <span class="status-dot healthy" id="connStatus"></span>
-                    <span id="connActive">0</span>/<span id="connMax">0</span>
+                <div class="health-strip-item" id="health-ollama">
+                    <span class="dot"></span>
+                    <span>Ollama</span>
                 </div>
-                <div class="metric-bar"><div class="metric-fill" id="connBar" style="width: 0%"></div></div>
-                <div class="metric-detail"><span id="connAvail">0</span> available</div>
-            </div>
-            <div class="metric-card" data-tooltip="Node.js heap memory usage. Shows V8 JavaScript heap allocation. Warning at >80%, critical at >90%.">
-                <div class="metric-label">Memory (Heap)</div>
-                <div class="metric-value">
-                    <span class="status-dot healthy" id="sysStatus"></span>
-                    <span id="sys-mem">0 MB</span>
+                <div class="health-strip-item" id="health-dataapi">
+                    <span class="dot"></span>
+                    <span>DataAPI</span>
                 </div>
-                <div class="metric-bar"><div class="metric-fill" id="sysBar" style="width: 0%"></div></div>
-                <div class="metric-detail">of <span id="sysTotalMem">0</span></div>
+                <div class="health-strip-item" id="health-n8n">
+                    <span class="dot"></span>
+                    <span>n8n</span>
+                </div>
+                <div class="health-strip-item" id="health-qdrant">
+                    <span class="dot"></span>
+                    <span>Qdrant</span>
+                </div>
+                <div class="uptime-info">
+                    <i class="fas fa-clock"></i>
+                    <span>Uptime:</span>
+                    <span class="value" id="sys-uptime">—</span>
+                </div>
             </div>
-        </div>
 
-        <!-- Main Grid: 3 Sections -->
-        <div class="ops-grid">
-            
-
-            <!-- Section 3: Collections + DataAPI Scans -->
-            <div class="section-card">
-                <!-- Collections Sub-section -->
-                <div class="section-header" style="margin-top: 0; border-top: 1px solid var(--panel-border);">
-                    <h2><i class="fas fa-database"></i> Collections</h2>
-                </div>
-                <div class="section-body">
-                    <div class="collections-list" id="collections-list">
-                        <div class="collection-item">
-                            <span style="color: var(--muted);">Loading...</span>
-                        </div>
+            <!-- Metrics Grid -->
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-label">Requests (24h)</div>
+                    <div class="metric-value">
+                        <span class="status-dot healthy"></span>
+                        <span id="metric-requests">0</span>
                     </div>
+                    <div class="metric-detail">Avg latency: <span id="metric-latency">0</span>ms</div>
                 </div>
-
-                <!-- DataAPI Scans Sub-section -->
-                <div class="section-header" style="margin-top: 0; border-top: 1px solid var(--panel-border);">
-                    <h2><i class="fas fa-hdd"></i> DataAPI Scans</h2>
-                    <button class="btn-sm" id="refreshScansBtn" title="Refresh Scans"><i class="fas fa-sync-alt"></i></button>
-                </div>
-                <div class="section-body">
-                    <div class="scans-list" id="scans-list" style="max-height: 200px; overflow-y: auto;">
-                        <div class="scan-item"><span style="color: var(--muted);">Loading...</span></div>
+                <div class="metric-card">
+                    <div class="metric-label">Error Rate</div>
+                    <div class="metric-value">
+                        <span class="status-dot healthy" id="error-status"></span>
+                        <span id="metric-error-rate">0</span>%
                     </div>
+                    <div class="metric-detail"><span id="metric-errors">0</span> errors</div>
                 </div>
-
-
+                <div class="metric-card">
+                    <div class="metric-label">Memory (Heap)</div>
+                    <div class="metric-value">
+                        <span class="status-dot healthy" id="memory-status"></span>
+                        <span id="metric-memory">0</span> MB
+                    </div>
+                    <div class="metric-bar"><div class="metric-fill" id="memory-bar" style="width: 0%"></div></div>
+                    <div class="metric-detail">of <span id="metric-memory-total">0</span> MB</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">MongoDB</div>
+                    <div class="metric-value">
+                        <span class="status-dot healthy"></span>
+                        <span id="metric-collections">0</span> collections
+                    </div>
+                    <div class="metric-detail"><span id="metric-documents">0</span> docs</div>
+                </div>
             </div>
 
-            <!-- Section 2: n8n Webhook Trigger -->
+            <!-- System Info -->
             <div class="section-card">
                 <div class="section-header">
-                    <h2><i class="fas fa-bolt"></i> n8n Webhook</h2>
-                    <button class="btn-sm" id="n8nHelpBtn" title="Show help"><i class="fas fa-question-circle"></i></button>
-                </div>
-                <div class="help-banner" id="n8nHelpBanner" style="display: none;">
-                    <div class="help-content">
-                        <strong><i class="fas fa-info-circle"></i> n8n Webhook Testing</strong>
-                        <p>Trigger n8n workflows directly from this dashboard. Select a pre-configured workflow or enter a custom webhook UUID/URL.</p>
-                        <ul>
-                            <li><strong>N1.3 Ops AI Diagnostic:</strong> Diagnose system health using AgentX (Ops Persona)</li>
-                            <li><strong>N2.3 RAG Ingestion:</strong> Trigger RAG ingestion for documents</li>
-                            <li><strong>N3.2 AI Gateway:</strong> Gateway for external tools to query AgentX</li>
-                            <li><strong>N5.1 Feedback Analysis:</strong> Analyze feedback and optimize prompts</li>
-                            <li><strong>Custom:</strong> Use any n8n webhook UUID or full URL</li>
-                        </ul>
-                        <p class="help-note">💡 <strong>Tip:</strong> Find webhook IDs in n8n at <a href="https://n8n.specialblend.icu" target="_blank">n8n.specialblend.icu</a></p>
-                    </div>
+                    <h2><i class="fas fa-info-circle"></i> System Information</h2>
                 </div>
                 <div class="section-body">
-                    <div class="webhook-form">
-                        <div class="field-group">
-                            <label>Workflow <span class="field-help" title="Select a pre-configured workflow or choose Custom to enter your own webhook"><i class="fas fa-info-circle"></i></span></label>
-                            <select id="workflowSelector">
-                                <option value="n1-1">N1.1 System Health Check</option>
-                                <option value="n1-3">N1.3 Ops AI Diagnostic</option>
-                                <option value="n2-1">N2.1 NAS File Scanner</option>
-                                <option value="n2-2">N2.2 NAS Full/Other Scan</option>
-                                <option value="n2-3">N2.3 RAG Ingestion</option>
-                                <option value="n3-1">N3.1 Model Health Monitor</option>
-                                <option value="n3-2">N3.2 AI Gateway</option>
-                                <option value="n5-1">N5.1 Feedback Analysis</option>
-                                <option value="custom">Custom Webhook...</option>
-                            </select>
-                            <div class="field-hint" id="workflowUrlDisplay" style="margin-top: 4px; font-family: monospace; color: var(--accent); font-size: 12px;"></div>
-                            <div class="workflow-description" id="workflowDescription">Processes email using AI agent with Gmail integration</div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+                        <div>
+                            <div style="color: var(--muted); font-size: 12px; margin-bottom: 4px;">Platform</div>
+                            <div id="sys-platform">—</div>
                         </div>
-                        <div class="field-group" id="customWebhookDiv" style="display: none;">
-                            <label>Custom URL <span class="field-help" title="Enter n8n webhook UUID (e.g., c1deca83-ecb4-...) or full URL"><i class="fas fa-info-circle"></i></span></label>
-                            <input type="text" id="customWebhookId" placeholder="e.g., c1deca83-ecb4-48ad-b485-59195cee9a61">
-                            <small class="field-hint">Enter UUID or full webhook URL from n8n</small>
+                        <div>
+                            <div style="color: var(--muted); font-size: 12px; margin-bottom: 4px;">Node Version</div>
+                            <div id="sys-node-version">—</div>
                         </div>
-                        <div class="field-group">
-                            <label>Payload (JSON) <span class="field-help" title="JSON data to send to the webhook. Edit as needed for your test."><i class="fas fa-info-circle"></i></span></label>
-                            <textarea id="webhookPayload" rows="4">{
-  "event": "test_trigger",
-  "source": "ops-center"
-}</textarea>
-                            <div class="payload-actions">
-                                <button class="btn-xs" id="formatJsonBtn" title="Format JSON"><i class="fas fa-align-left"></i> Format</button>
-                                <button class="btn-xs" id="examplePayloadBtn" title="Load example payload"><i class="fas fa-lightbulb"></i> Example</button>
-                                <button class="btn-xs" id="clearPayloadBtn" title="Clear payload"><i class="fas fa-eraser"></i> Clear</button>
-                            </div>
+                        <div>
+                            <div style="color: var(--muted); font-size: 12px; margin-bottom: 4px;">AgentX Version</div>
+                            <div id="sys-agentx-version">—</div>
                         </div>
-                        <button class="btn-sm btn-primary" id="triggerWebhookBtn" style="width: 100%; justify-content: center;">
-                            <i class="fas fa-paper-plane"></i> Trigger Webhook
+                        <div>
+                            <div style="color: var(--muted); font-size: 12px; margin-bottom: 4px;">Process ID</div>
+                            <div id="sys-pid">—</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab 2: n8n Workflows -->
+        <div class="tab-content" id="tab-workflows">
+            <div class="section-card">
+                <div class="section-header">
+                    <h2><i class="fas fa-network-wired"></i> n8n Workflows</h2>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn-sm" id="test-all-workflows" title="Test all workflows">
+                            <i class="fas fa-play-circle"></i> Test All
                         </button>
-                        
-                        <div class="result-header" id="resultHeader">
-                            <span class="result-label">Response</span>
-                            <div class="payload-actions">
-                                <button class="btn-xs" id="expandResultBtn" title="Expand view"><i class="fas fa-expand"></i></button>
-                                <button class="btn-xs" id="copyResultBtn" title="Copy to clipboard"><i class="fas fa-copy"></i></button>
-                            </div>
-                        </div>
-                        <div class="webhook-result" id="triggerResult"></div>
                     </div>
-                </div>
-
-                <!-- RAG Ingestion Sub-section -->
-                <div class="section-header" style="margin-top: 0; border-top: 1px solid var(--panel-border);">
-                    <h2><i class="fas fa-book"></i> RAG Ingestion</h2>
                 </div>
                 <div class="section-body">
-                    <div class="field-group">
-                        <label>Target Directory <span class="field-help" title="Directory on server to scan for documents"><i class="fas fa-info-circle"></i></span></label>
-                        <input type="text" id="ragTargetDir" value="/mnt/datalake/RAG" placeholder="/mnt/datalake/RAG">
-                    </div>
-                    <button class="btn-sm btn-primary" id="triggerRagBtn" style="width: 100%; justify-content: center;">
-                        <i class="fas fa-file-import"></i> Trigger Ingestion
-                    </button>
-                    <div id="ragResult" style="margin-top: 8px; font-size: 11px; color: var(--muted); display: none;"></div>
+                    <table class="workflow-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Name</th>
+                                <th>Type</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="workflows-table-body">
+                            <tr>
+                                <td colspan="5" style="text-align: center; color: var(--muted);">Loading workflows...</td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
 
-            <!-- Section 3: System Events -->
-            <div class="section-card" style="grid-column: 1 / -1;">
+            <!-- Workflow Test Result -->
+            <div class="section-card" id="workflow-result-card" style="display: none;">
                 <div class="section-header">
-                    <h2><i class="fas fa-stream"></i> Recent Events</h2>
-                    <button class="btn-sm" id="refreshEventsBtn"><i class="fas fa-sync-alt"></i></button>
+                    <h2><i class="fas fa-vial"></i> Test Result</h2>
+                    <button class="btn-sm" id="close-result" title="Close">
+                        <i class="fas fa-times"></i>
+                    </button>
                 </div>
                 <div class="section-body">
-                    <div class="events-list" id="system-events-list">
-                        <div class="event-row">
-                            <div class="event-content">
-                                <div class="event-message" style="color: var(--muted);">Loading events...</div>
-                            </div>
+                    <div id="workflow-result-content"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab 3: Activity Timeline -->
+        <div class="tab-content" id="tab-activity">
+            <div class="section-card">
+                <div class="section-header">
+                    <h2><i class="fas fa-stream"></i> Recent Activity</h2>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <select id="activity-period" class="btn-sm" style="padding: 6px 12px;">
+                            <option value="6">Last 6 hours</option>
+                            <option value="24" selected>Last 24 hours</option>
+                            <option value="72">Last 3 days</option>
+                            <option value="168">Last week</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="section-body">
+                    <div class="activity-feed" id="activity-feed">
+                        <div style="text-align: center; color: var(--muted); padding: 32px;">
+                            Loading activity...
                         </div>
                     </div>
                 </div>
             </div>
-
         </div>
 
     </div>
 
-    <!-- Scan Report Modal -->
-    <div id="scanReportModal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 2000; align-items: center; justify-content: center;">
-        <div class="modal-content" style="background: #1e293b; padding: 24px; border-radius: 12px; width: 80%; max-width: 800px; max-height: 80vh; overflow-y: auto; border: 1px solid var(--panel-border);">
-            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                <h2 style="margin: 0; font-size: 20px;">Scan Report</h2>
-                <button class="btn-sm" id="closeScanReportBtn"><i class="fas fa-times"></i></button>
-            </div>
-            <pre id="scanReportContent" style="background: rgba(0,0,0,0.3); padding: 16px; border-radius: 8px; overflow-x: auto; font-family: monospace; font-size: 12px; color: #e2e8f0;"></pre>
-        </div>
-    </div>
+    <script>
+        // Unified Operations Dashboard JS
+        const API_BASE = '';
+        let autoRefresh = true;
+        let refreshInterval = null;
+        let countdown = 30;
+        let countdownInterval = null;
 
-    <script type="module" src="/js/dashboard.js"></script>
+        // SSE (Server-Sent Events) for real-time updates
+        let eventSource = null;
+        let reconnectAttempts = 0;
+        const MAX_RECONNECT_DELAY = 30000; // Max 30 seconds
+
+        function connectSSE() {
+            if (eventSource) {
+                eventSource.close();
+            }
+
+            eventSource = new EventSource('/api/operations/events');
+
+            eventSource.addEventListener('connected', (e) => {
+                const data = JSON.parse(e.data);
+                console.log('✅ Connected to operations SSE:', data.message);
+                reconnectAttempts = 0;
+                updateConnectionIndicator(true);
+                // Load initial data
+                refreshAll();
+            });
+
+            eventSource.addEventListener('health-change', (e) => {
+                const data = JSON.parse(e.data);
+                console.log('🔄 Health change:', data);
+                loadHealth();
+            });
+
+            eventSource.addEventListener('activity', (e) => {
+                const data = JSON.parse(e.data);
+                console.log('📝 New activity:', data);
+                const activeTab = document.querySelector('.ops-tab.active')?.dataset.tab;
+                if (activeTab === 'activity') {
+                    loadActivity();
+                }
+            });
+
+            eventSource.addEventListener('alert', (e) => {
+                const data = JSON.parse(e.data);
+                console.log('⚠️ Alert:', data);
+                showNotification(`Alert: ${data.message}`, 'warning');
+            });
+
+            eventSource.addEventListener('workflow-test', (e) => {
+                const data = JSON.parse(e.data);
+                console.log('🔧 Workflow test result:', data);
+                const activeTab = document.querySelector('.ops-tab.active')?.dataset.tab;
+                if (activeTab === 'workflows') {
+                    loadWorkflows();
+                }
+            });
+
+            eventSource.addEventListener('heartbeat', (e) => {
+                // Silent heartbeat to keep connection alive
+                updateConnectionIndicator(true);
+            });
+
+            eventSource.onerror = (error) => {
+                console.error('❌ SSE connection error:', error);
+                updateConnectionIndicator(false);
+                eventSource.close();
+
+                // Reconnect with exponential backoff
+                reconnectAttempts++;
+                const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), MAX_RECONNECT_DELAY);
+                console.log(`🔄 Reconnecting in ${delay}ms (attempt ${reconnectAttempts})...`);
+                setTimeout(() => connectSSE(), delay);
+            };
+
+            console.log('🔌 Attempting SSE connection...');
+        }
+
+        function updateConnectionIndicator(connected) {
+            const indicator = document.getElementById('auto-refresh-indicator');
+            const icon = indicator?.querySelector('i');
+            if (icon) {
+                if (connected) {
+                    icon.className = 'fas fa-plug';
+                    icon.style.color = 'var(--accent)';
+                } else {
+                    icon.className = 'fas fa-plug-circle-xmark';
+                    icon.style.color = 'var(--muted)';
+                }
+            }
+        }
+
+        function showNotification(message, type = 'info') {
+            // Simple notification (can be enhanced with toast library)
+            console.log(`[${type.toUpperCase()}] ${message}`);
+        }
+
+        function disconnectSSE() {
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+                updateConnectionIndicator(false);
+            }
+        }
+
+        // Tab switching
+        document.querySelectorAll('.ops-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                const targetTab = tab.dataset.tab;
+
+                // Update tab buttons
+                document.querySelectorAll('.ops-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+
+                // Update tab content
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                document.getElementById(`tab-${targetTab}`).classList.add('active');
+
+                // Load tab-specific data
+                if (targetTab === 'workflows') {
+                    loadWorkflows();
+                } else if (targetTab === 'activity') {
+                    loadActivity();
+                }
+            });
+        });
+
+        // Auto-refresh controls (now controls SSE)
+        document.getElementById('toggle-auto-refresh').addEventListener('click', () => {
+            autoRefresh = !autoRefresh;
+            const btn = document.getElementById('toggle-auto-refresh');
+            const icon = btn.querySelector('i');
+
+            if (autoRefresh) {
+                icon.className = 'fas fa-pause';
+                connectSSE();
+            } else {
+                icon.className = 'fas fa-play';
+                disconnectSSE();
+            }
+        });
+
+        document.getElementById('manual-refresh').addEventListener('click', () => {
+            refreshAll();
+        });
+
+        function startAutoRefresh() {
+            stopAutoRefresh();
+            countdown = 30;
+            countdownInterval = setInterval(() => {
+                countdown--;
+                document.getElementById('refresh-countdown').textContent = countdown;
+                if (countdown <= 0) {
+                    refreshAll();
+                    countdown = 30;
+                }
+            }, 1000);
+            refreshInterval = setInterval(refreshAll, 30000);
+        }
+
+        function stopAutoRefresh() {
+            if (refreshInterval) clearInterval(refreshInterval);
+            if (countdownInterval) clearInterval(countdownInterval);
+        }
+
+        function refreshAll() {
+            const activeTab = document.querySelector('.ops-tab.active').dataset.tab;
+            if (activeTab === 'health') {
+                loadHealth();
+            } else if (activeTab === 'workflows') {
+                loadWorkflows();
+            } else if (activeTab === 'activity') {
+                loadActivity();
+            }
+        }
+
+        // Load health data
+        async function loadHealth() {
+            try {
+                const response = await fetch('/api/operations/health');
+                const data = await response.json();
+
+                // Update service health indicators
+                const services = ['agentx', 'mongodb', 'ollama', 'dataapi', 'n8n', 'qdrant'];
+                services.forEach(service => {
+                    const element = document.getElementById(`health-${service}`);
+                    if (element && data.services[service]) {
+                        const status = data.services[service].status;
+                        const dot = element.querySelector('.dot');
+                        dot.className = 'dot';
+                        if (status === 'up') dot.classList.add('healthy');
+                        else if (status === 'down') dot.classList.add('error');
+                        else dot.classList.add('warning');
+                    }
+                });
+
+                // Update uptime
+                if (data.services.agentx) {
+                    const uptime = formatUptime(data.services.agentx.uptime);
+                    document.getElementById('sys-uptime').textContent = uptime;
+                }
+
+                // Update metrics
+                if (data.metrics) {
+                    document.getElementById('metric-requests').textContent = data.metrics.requests24h || 0;
+                    document.getElementById('metric-latency').textContent = Math.round(data.metrics.avgLatency || 0);
+                    document.getElementById('metric-error-rate').textContent = (data.metrics.errorRate || 0).toFixed(2);
+                    document.getElementById('metric-errors').textContent = data.metrics.errorCount || 0;
+
+                    // Update error status indicator
+                    const errorStatus = document.getElementById('error-status');
+                    if (data.metrics.errorRate > 5) {
+                        errorStatus.className = 'status-dot error';
+                    } else if (data.metrics.errorRate > 1) {
+                        errorStatus.className = 'status-dot warning';
+                    } else {
+                        errorStatus.className = 'status-dot healthy';
+                    }
+                }
+
+                // Update system memory
+                if (data.system && data.system.memory) {
+                    const heapUsed = data.system.memory.heapUsed;
+                    const heapTotal = data.system.memory.heapTotal;
+                    const percentage = (heapUsed / heapTotal) * 100;
+
+                    document.getElementById('metric-memory').textContent = heapUsed.toFixed(1);
+                    document.getElementById('metric-memory-total').textContent = heapTotal.toFixed(1);
+                    document.getElementById('memory-bar').style.width = `${percentage}%`;
+
+                    const memoryStatus = document.getElementById('memory-status');
+                    if (percentage > 90) {
+                        memoryStatus.className = 'status-dot error';
+                    } else if (percentage > 80) {
+                        memoryStatus.className = 'status-dot warning';
+                    } else {
+                        memoryStatus.className = 'status-dot healthy';
+                    }
+                }
+
+                // Update MongoDB stats
+                if (data.services.mongodb) {
+                    document.getElementById('metric-collections').textContent = data.services.mongodb.collections || 0;
+                    document.getElementById('metric-documents').textContent = data.services.mongodb.documents || 0;
+                }
+
+                // Update system info
+                if (data.system) {
+                    document.getElementById('sys-platform').textContent = `${data.system.platform} (${data.system.arch})`;
+                    document.getElementById('sys-node-version').textContent = data.system.nodeVersion || '—';
+                }
+                if (data.services.agentx) {
+                    document.getElementById('sys-agentx-version').textContent = data.services.agentx.version || '—';
+                    document.getElementById('sys-pid').textContent = data.services.agentx.pid || '—';
+                }
+
+            } catch (error) {
+                console.error('Failed to load health data:', error);
+            }
+        }
+
+        // Load workflows
+        async function loadWorkflows() {
+            try {
+                const response = await fetch('/api/operations/workflows');
+                const data = await response.json();
+
+                const tbody = document.getElementById('workflows-table-body');
+                tbody.innerHTML = '';
+
+                data.data.forEach(workflow => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td><strong>${workflow.id}</strong></td>
+                        <td>${workflow.name}</td>
+                        <td><span class="workflow-badge ${workflow.type.toLowerCase()}">${workflow.type}</span></td>
+                        <td><span class="status-dot"></span> <span id="status-${workflow.id}">Unknown</span></td>
+                        <td>
+                            <div class="workflow-actions">
+                                <button class="btn-xs" onclick="testWorkflow('${workflow.id}')" title="Test workflow">
+                                    <i class="fas fa-play"></i> Test
+                                </button>
+                                <button class="btn-xs" onclick="copyWebhookUrl('${workflow.webhookUrl}')" title="Copy webhook URL">
+                                    <i class="fas fa-copy"></i>
+                                </button>
+                            </div>
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                });
+
+            } catch (error) {
+                console.error('Failed to load workflows:', error);
+                document.getElementById('workflows-table-body').innerHTML =
+                    '<tr><td colspan="5" style="text-align: center; color: var(--error);">Failed to load workflows</td></tr>';
+            }
+        }
+
+        // Test workflow
+        async function testWorkflow(workflowId) {
+            const statusCell = document.getElementById(`status-${workflowId}`);
+            statusCell.textContent = 'Testing...';
+
+            try {
+                const response = await fetch(`/api/operations/workflows/${workflowId}/test`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ payload: { source: 'ops-center', test: true } })
+                });
+
+                const data = await response.json();
+
+                if (data.status === 'success' && data.response.ok) {
+                    statusCell.innerHTML = '<span style="color: var(--success);">✓ OK</span>';
+                    showWorkflowResult(data);
+                } else {
+                    statusCell.innerHTML = '<span style="color: var(--error);">✗ Failed</span>';
+                    showWorkflowResult(data);
+                }
+            } catch (error) {
+                statusCell.innerHTML = '<span style="color: var(--error);">✗ Error</span>';
+                console.error('Workflow test failed:', error);
+            }
+        }
+
+        // Show workflow result
+        function showWorkflowResult(data) {
+            const card = document.getElementById('workflow-result-card');
+            const content = document.getElementById('workflow-result-content');
+
+            const latency = data.response.latency;
+            const statusColor = data.response.ok ? 'var(--success)' : 'var(--error)';
+
+            content.innerHTML = `
+                <div style="margin-bottom: 16px;">
+                    <strong>${data.workflow.name}</strong> (${data.workflow.id})
+                    <div style="font-size: 12px; color: var(--muted); margin-top: 4px;">${data.workflow.webhookUrl}</div>
+                </div>
+                <div style="display: flex; gap: 16px; margin-bottom: 16px;">
+                    <div>
+                        <div style="color: var(--muted); font-size: 12px;">Status</div>
+                        <div style="color: ${statusColor}; font-weight: 500;">${data.response.statusCode} ${data.response.statusText}</div>
+                    </div>
+                    <div>
+                        <div style="color: var(--muted); font-size: 12px;">Latency</div>
+                        <div style="font-weight: 500;">${latency}ms</div>
+                    </div>
+                </div>
+                <div>
+                    <div style="color: var(--muted); font-size: 12px; margin-bottom: 8px;">Response Data</div>
+                    <pre style="background: rgba(0,0,0,0.3); padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 12px;">${JSON.stringify(data.response.data, null, 2)}</pre>
+                </div>
+            `;
+
+            card.style.display = 'block';
+        }
+
+        document.getElementById('close-result').addEventListener('click', () => {
+            document.getElementById('workflow-result-card').style.display = 'none';
+        });
+
+        // Copy webhook URL
+        function copyWebhookUrl(url) {
+            navigator.clipboard.writeText(url).then(() => {
+                // Could add a toast notification here
+                console.log('Webhook URL copied:', url);
+            });
+        }
+
+        // Test all workflows
+        document.getElementById('test-all-workflows').addEventListener('click', async () => {
+            const response = await fetch('/api/operations/workflows');
+            const data = await response.json();
+
+            for (const workflow of data.data) {
+                await testWorkflow(workflow.id);
+                await new Promise(resolve => setTimeout(resolve, 500)); // Delay between tests
+            }
+        });
+
+        // Load activity
+        async function loadActivity() {
+            const hours = document.getElementById('activity-period').value;
+
+            try {
+                const response = await fetch(`/api/operations/activity?hours=${hours}`);
+                const data = await response.json();
+
+                const feed = document.getElementById('activity-feed');
+
+                if (data.data.length === 0) {
+                    feed.innerHTML = '<div style="text-align: center; color: var(--muted); padding: 32px;">No recent activity</div>';
+                    return;
+                }
+
+                feed.innerHTML = data.data.map(item => {
+                    const icon = item.type === 'alert' ? 'fa-bell' : 'fa-cog';
+                    const statusClass = item.status === 'success' ? 'success' : 'failure';
+                    const timeAgo = formatTimeAgo(new Date(item.timestamp));
+
+                    return `
+                        <div class="activity-item">
+                            <div class="activity-icon">
+                                <i class="fas ${icon}" style="color: var(--accent);"></i>
+                            </div>
+                            <div class="activity-content">
+                                <div class="activity-title">
+                                    ${item.type === 'alert' ? item.message : item.action}
+                                    ${item.status ? `<span class="activity-status ${statusClass}">${item.status}</span>` : ''}
+                                </div>
+                                <div class="activity-meta">
+                                    ${item.username ? `by ${item.username} • ` : ''}
+                                    ${item.target ? `${item.target} • ` : ''}
+                                    ${timeAgo}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+            } catch (error) {
+                console.error('Failed to load activity:', error);
+                document.getElementById('activity-feed').innerHTML =
+                    '<div style="text-align: center; color: var(--error); padding: 32px;">Failed to load activity</div>';
+            }
+        }
+
+        document.getElementById('activity-period').addEventListener('change', loadActivity);
+
+        // Utility functions
+        function formatUptime(seconds) {
+            const days = Math.floor(seconds / 86400);
+            const hours = Math.floor((seconds % 86400) / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+
+            if (days > 0) return `${days}d ${hours}h`;
+            if (hours > 0) return `${hours}h ${minutes}m`;
+            return `${minutes}m`;
+        }
+
+        function formatTimeAgo(date) {
+            const seconds = Math.floor((new Date() - date) / 1000);
+
+            if (seconds < 60) return 'just now';
+            if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+            if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+            return `${Math.floor(seconds / 86400)}d ago`;
+        }
+
+        // Initialize
+        loadHealth();
+        // Start SSE connection for real-time updates
+        if (autoRefresh) {
+            connectSSE();
+        }
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            disconnectSSE();
+        });
+    </script>
+
+    <script src="/js/components/nav.js"></script>
 </body>
-
 </html>

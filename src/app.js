@@ -18,6 +18,10 @@ const app = express();
 const IN_PROD = process.env.NODE_ENV === 'production';
 const IN_TEST = process.env.NODE_ENV === 'test';
 
+// EventEmitter for system events (SSE broadcasting)
+const EventEmitter = require('events');
+const systemEvents = new EventEmitter();
+
 // System Health State (exported for updates)
 const systemHealth = {
   mongodb: { status: 'checking', lastCheck: null, error: null },
@@ -26,13 +30,70 @@ const systemHealth = {
   startup: new Date().toISOString()
 };
 
-// Basic security headers only (removed helmet for local network compatibility)
-app.use((req, res, next) => {
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('X-XSS-Protection', '1; mode=block');
-  next();
-});
+// Security Headers Configuration
+if (process.env.NODE_ENV === 'production') {
+  // Production: Use Helmet with strict CSP
+  app.use(helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: [
+          "'self'",
+          "'unsafe-inline'", // TODO: Remove after refactoring inline scripts
+          "https://cdn.jsdelivr.net" // marked.js, Chart.js
+        ],
+        styleSrc: [
+          "'self'",
+          "'unsafe-inline'", // TODO: Remove after refactoring inline styles
+          "https://fonts.googleapis.com"
+        ],
+        fontSrc: [
+          "'self'",
+          "https://fonts.gstatic.com"
+        ],
+        imgSrc: [
+          "'self'",
+          "data:", // Base64 images
+          "https:" // Allow external images (user avatars, etc.)
+        ],
+        connectSrc: [
+          "'self'"
+          // Add Ollama hosts if external
+          // process.env.OLLAMA_HOST ? new URL(process.env.OLLAMA_HOST).origin : null
+        ].filter(Boolean),
+        objectSrc: ["'none'"],
+        baseUri: ["'self'"],
+        formAction: ["'self'"],
+        frameAncestors: ["'none'"], // Equivalent to X-Frame-Options: DENY
+        upgradeInsecureRequests: [] // Force HTTPS
+      }
+    },
+    hsts: {
+      maxAge: 31536000, // 1 year
+      includeSubDomains: true,
+      preload: true
+    },
+    referrerPolicy: {
+      policy: 'strict-origin-when-cross-origin'
+    },
+    noSniff: true, // X-Content-Type-Options: nosniff
+    xssFilter: true, // X-XSS-Protection: 1; mode=block
+    hidePoweredBy: true // Remove X-Powered-By header
+  }));
+
+  logger.info('Production security headers enabled (Helmet + CSP)');
+} else {
+  // Development: Basic security headers only (for local network compatibility)
+  app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    next();
+  });
+
+  logger.info('Development security headers enabled (basic)');
+}
 
 // Middleware Setup
 const allowedOrigins = process.env.CORS_ORIGINS
@@ -44,6 +105,19 @@ app.use(cors({
   credentials: true
 }));
 app.use(cookieParser());
+
+// Response Compression (Week 3 Day 12: Performance Optimization)
+const compression = require('compression');
+app.use(compression({
+  level: 6, // Balance between speed and compression ratio
+  threshold: 1024, // Only compress responses > 1KB
+  filter: (req, res) => {
+    if (req.headers['x-no-compression']) {
+      return false; // Skip compression if client requests it
+    }
+    return compression.filter(req, res);
+  }
+}));
 
 // Janitor Proxy (DataAPI) - Must be before body parser
 const janitorRoutes = require('../routes/janitor');
@@ -133,6 +207,30 @@ app.use('/api/prompts/:name/analyze-failures', strictLimiter);
 const authRoutes = require('../routes/auth');
 app.use('/api/auth', authLimiter, authRoutes);
 
+// API Key Management routes (Week 3 Day 7: Security Hardening)
+const apiKeysRoutes = require('../routes/api-keys');
+app.use('/api/keys', apiKeysRoutes);
+
+// Audit Log routes (Week 3 Day 8: Audit Logging)
+const auditLogsRoutes = require('../routes/audit-logs');
+app.use('/api/audit-logs', auditLogsRoutes);
+
+// Cache Management routes (Week 3 Day 10: Redis Caching)
+const cacheRoutes = require('../routes/cache');
+app.use('/api/cache', cacheRoutes);
+
+// Workspace Management routes (Week 4 Day 2: Multi-Tenancy)
+const workspaceRoutes = require('../routes/workspaces');
+app.use('/api/workspaces', workspaceRoutes);
+
+// Workspace Invitations routes (Post-Week 4: Email Invitations)
+const invitationRoutes = require('../routes/invitations');
+app.use('/api/invitations', invitationRoutes);
+
+// Workspace Audit Logs routes (Post-Week 4: Activity Audit Logs)
+const workspaceAuditRoutes = require('../routes/workspace-audit');
+app.use('/api/workspaces', workspaceAuditRoutes);
+
 // V3: Mount RAG routes
 const ragRoutes = require('../routes/rag');
 app.use('/api/rag', ragRoutes);
@@ -140,6 +238,10 @@ app.use('/api/rag', ragRoutes);
 // V4: Mount Analytics & Dataset routes
 const analyticsRoutes = require('../routes/analytics');
 app.use('/api/analytics', analyticsRoutes);
+
+// Custom Dashboards (Week 4 Day 4)
+const customDashboardRoutes = require('../routes/dashboards');
+app.use('/api/dashboards', customDashboardRoutes);
 
 const datasetRoutes = require('../routes/dataset');
 app.use('/api/dataset', datasetRoutes);
@@ -191,6 +293,10 @@ app.use('/api/workflow', workflowGeneratorRoutes);
 const backupRoutes = require('../routes/backup');
 app.use('/api/backup', backupRoutes);
 
+// Feature Dashboard routes (Tracks 3 & 4)
+const featureRoutes = require('../routes/features');
+app.use('/api/features', featureRoutes);
+
 // Custom Model Management routes (Track 3)
 const customModelsRoutes = require('../routes/custom-models');
 app.use('/api/custom-models', customModelsRoutes);
@@ -199,6 +305,14 @@ app.use('/api/custom-models', customModelsRoutes);
 const modelRegistryRoutes = require('../routes/model-registry');
 app.use('/api/models/registry', modelRegistryRoutes);
 
+// Unified Models API (Aggregates Ollama + n8n + custom + registry)
+const modelsUnifiedRoutes = require('../routes/models-unified');
+app.use('/api/models', modelsUnifiedRoutes);
+
+// Feature Dashboard routes (Feature Inventory, Telemetry, Usage, Flags)
+const featuresRoutes = require('../routes/features');
+app.use('/api/features', featuresRoutes);
+
 // Performance routes
 const performanceRoutes = require('../routes/performance');
 app.use('/api/performance', performanceRoutes);
@@ -206,6 +320,10 @@ app.use('/api/performance', performanceRoutes);
 // Dashboard routes
 const dashboardRoutes = require('../routes/dashboard');
 app.use('/api/dashboard', dashboardRoutes);
+
+// Operations Center routes (unified health, workflows, activity)
+const operationsRoutes = require('../routes/operations');
+app.use('/api/operations', operationsRoutes);
 
 // Legacy/Compatibility routes
 // Map /conversations -> history
@@ -341,4 +459,4 @@ app.get('*', (_req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
 });
 
-module.exports = { app, systemHealth };
+module.exports = { app, systemHealth, systemEvents };

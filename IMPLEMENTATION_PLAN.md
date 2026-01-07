@@ -1132,78 +1132,164 @@ async function sendChatRequest(model, messages, options) {
 
 ## Implementation Phases
 
-### Phase 1: Feature Alignment Dashboard (2-3 weeks)
-**Priority**: HIGH - Enables data-driven decision making for all other work
+### Phase 0: Truth Pass - Validation Only (1-2 hours) 🔍
+**Priority**: CRITICAL - Turn "UNCERTAIN" into "CONFIRMED" before any refactoring
 
-**Week 1**:
-- Create database models (FeatureInventory, ApiTelemetry, FeatureUsage, FeatureFlag)
-- Implement apiTelemetryService + middleware
-- Add telemetry to all API routes
-- Implement featureFlagService
+**Goal**: Produce EVIDENCE, not assumptions. No code changes, only validation.
 
-**Week 2**:
-- Implement featureInventoryService (scan codebase)
-- Implement featureUsageService
-- Create API endpoints (/api/features/*)
-- Run initial codebase scan, seed FeatureInventory
+**Validation Checklist**:
 
-**Week 3**:
-- Build features.html page (4-tab UI)
-- Build features-dashboard.js
-- Integrate with existing pages (add feature tracking)
-- Test and validate alignment report
+**1. Cost Tracking Reality Check** (30 min):
+- [ ] Pick 1 conversation with known token usage from MongoDB
+- [ ] Check if `Conversation.messages[].cost` fields are populated (non-zero)
+- [ ] Check if `Conversation.totalCost.sum` exists and is calculated
+- [ ] Verify `/api/analytics/costs` returns actual cost data from DB
+- [ ] Open analytics.html and verify cost charts render with real data
+- **Evidence needed**: Screenshot of cost data OR confirmation costs are all $0.00 (which is valid for free local Ollama)
+
+**2. Feedback Model Truth** (15 min):
+- [ ] Grep `routes/analytics.js` for `Feedback` model imports/queries
+- [ ] Run `db.feedbacks.count()` in MongoDB (compare to `db.conversations.count()`)
+- [ ] Check if analytics uses `Conversation.messages[].feedback` OR standalone `Feedback` collection
+- **Evidence needed**: Which collection(s) analytics actually queries
+
+**3. models.html Current State** (15 min):
+- [ ] Open models.html in browser, note exact error/empty state message
+- [ ] Check network tab: which API endpoint does it call?
+- [ ] Verify if it queries CustomModel DB only OR also calls Ollama `/api/tags`
+- [ ] Confirm whether live Ollama models appear anywhere in UI
+- **Evidence needed**: Screenshot + API endpoint path
+
+**4. Headless Features Audit** (20 min):
+- [ ] Check if n8n workflows call `/api/workflow/generate` (grep AgentC folder)
+- [ ] Check if any UI calls `/api/voice/*` endpoints (grep public/js/)
+- [ ] Check if `/api/janitor/*` proxy is used by dashboard or n8n
+- **Evidence needed**: List of endpoints with 0 UI consumers but valid n8n/automation use
+
+**5. chatService.js Test Coverage** (10 min):
+- [ ] Check if `tests/unit/chatService.test.js` exists
+- [ ] If exists, count test cases and coverage %
+- [ ] List critical untested paths (RAG, routing, error handling)
+- **Evidence needed**: Test file status + coverage report
 
 **Deliverables**:
-- Feature Alignment Dashboard live
-- API telemetry tracking all endpoints
-- Feature inventory showing 45+ features
-- Admin controls for feature flags
+- Truth table document: `VALIDATION_RESULTS.md` with evidence for each claim
+- Risk-ranked list: "These 5 things need fixing before features"
+- Green light to proceed OR "stop, fix X first"
 
-**Success Metrics**:
-- All 150+ API endpoints tracked
-- 45+ features inventoried
-- Feature matrix shows alignment status (frontend/backend/docs)
-- 5+ feature flags created (e.g., voice, workflow generator)
+**Success Criteria**:
+- Every "UNCERTAIN" from validation report becomes "CONFIRMED TRUE/FALSE"
+- Zero assumptions in Phase 1+ planning
+- chatService.js test gap quantified (if it exists)
 
 ---
 
-### Phase 2: Unified Model Catalog (2-3 weeks)
-**Priority**: HIGH - Core user-facing feature, eliminates confusion
+### Phase 1: Unified Model Catalog + chatService Hardening (2-3 weeks)
+**Priority**: CRITICAL - Highest user-facing value + highest technical risk
 
-**Week 1**:
-- Create N8nLLMSource model
-- Implement n8nLLMService
-- Implement modelAggregator service
-- Create API endpoints (/api/models/all, /api/models/sources/n8n/*)
+**Week 1: Foundation + Testing (PARALLEL TRACKS)**
 
-**Week 2**:
-- Redesign models.html (unified catalog UI)
-- Build models-unified.js
-- Implement model comparison view
-- Add n8n LLM registration modal
+**Track A: chatService.js Test Suite** (Priority #1 - Toxic debt elimination):
+- [ ] Create `tests/unit/chatService.test.js` with mocked dependencies
+- [ ] Test routing logic (primary/secondary host selection)
+- [ ] Test RAG integration (with/without vector store)
+- [ ] Test cost calculation (message-level + conversation-level)
+- [ ] Test error handling (Ollama down, timeout, malformed response)
+- [ ] Test tool execution flow (DataAPI slash commands)
+- [ ] Target: 80% line coverage minimum
+- **Why first**: Unlocks safe refactoring for everything else
 
-**Week 3**:
-- Integrate with chatService (route to n8n webhooks)
-- Create n8n workflow template (N6.0 LLM Gateway)
-- Test end-to-end flow (register n8n LLM, use in chat)
-- Documentation (n8n-llm-gateway.md)
+**Track B: Model Aggregation Backend**:
+- [ ] Create N8nLLMSource model (webhook LLM configs)
+- [ ] Implement n8nLLMService (call webhook LLMs)
+- [ ] Implement modelAggregator service (merge Ollama + custom + n8n + registry)
+- [ ] Create API endpoints:
+  - `GET /api/models/all` (unified catalog)
+  - `GET /api/models/sources` (list sources)
+  - `POST /api/models/sources/n8n` (register webhook LLM)
+
+**Week 2: Frontend Redesign**:
+- [ ] Redesign models.html (4-section layout per wireframe)
+- [ ] Build models-unified.js (model cards, filters, comparison view)
+- [ ] Implement n8n LLM registration modal (webhook URL, auth config)
+- [ ] Add model comparison drawer (2-4 models side-by-side)
+- [ ] Wire to new `/api/models/all` endpoint
+
+**Week 3: Integration + Documentation**:
+- [ ] Integrate chatService with n8nLLMService (route to webhooks)
+- [ ] Update chat UI model selector (show all sources)
+- [ ] Create n8n workflow template (N6.0 LLM Gateway)
+- [ ] Write docs: `docs/n8n-llm-gateway.md`, update CLAUDE.md
+- [ ] End-to-end test: Register n8n webhook → Select in chat → Get response
 
 **Deliverables**:
-- models.html redesigned with 4-section layout
-- n8n webhook LLMs registered and usable
-- Model comparison view working
-- Unified model catalog showing all sources
+- ✅ chatService.js test suite (80%+ coverage) - BLOCKS all future work if skipped
+- ✅ models.html unified catalog (Ollama + n8n + custom + registry)
+- ✅ n8n webhook LLMs usable in chat
+- ✅ Model comparison view functional
 
 **Success Metrics**:
+- chatService tests prevent regressions (run in CI)
 - All Ollama models (11+) visible in catalog
-- 2+ n8n webhook LLMs registered (test OpenAI/Anthropic)
-- Model comparison works for 4 models side-by-side
-- Chat interface can select and use n8n LLMs
+- 2+ n8n webhook LLMs registered and working
+- Model comparison shows 4 models side-by-side with highlighted differences
+- Chat interface routes to n8n webhooks correctly
+
+---
+
+### Phase 2: Feature Alignment Dashboard (2-3 weeks)
+**Priority**: HIGH - Enables data-driven decisions for all future work
+
+**Dependencies**: Phase 0 complete (validation results guide what to track)
+
+**Week 1: Backend Infrastructure**:
+- [ ] Create database models:
+  - FeatureInventory (feature × frontend × backend × docs × roadmap)
+  - ApiTelemetry (endpoint × hits × latency × errors)
+  - FeatureUsage (userId × feature × action × timestamp)
+  - FeatureFlag (name × enabled × rollout config)
+- [ ] Implement apiTelemetryMiddleware (global, all `/api/*` routes)
+- [ ] Implement featureFlagService (check flags, evaluate rollout rules)
+- [ ] Test middleware overhead (must be < 5ms per request)
+
+**Week 2: Feature Scanning + APIs**:
+- [ ] Implement featureInventoryService:
+  - `scanFrontend()` - Parse public/*.html for features
+  - `scanBackend()` - Parse routes/*.js, services/*.js for APIs
+  - `scanDocumentation()` - Parse docs/**/*.md, CLAUDE.md, ROADMAP.md
+  - `generateAlignmentReport()` - Cross-reference all sources
+- [ ] Implement featureUsageService (track usage events)
+- [ ] Create API endpoints (`/api/features/*`, 15 total)
+- [ ] Run initial scan, seed FeatureInventory with ~45 features
+
+**Week 3: Frontend Dashboard**:
+- [ ] Create features.html (4-tab layout)
+  - Tab 1: Feature Inventory (matrix view, frontend × backend × docs × roadmap)
+  - Tab 2: API Telemetry (endpoint stats, latency charts, unused endpoints)
+  - Tab 3: Feature Adoption (user engagement, adoption rates)
+  - Tab 4: Admin Controls (feature flags toggles, scan triggers)
+- [ ] Build features-dashboard.js (~600 lines)
+- [ ] Integrate feature tracking into existing pages (add `data-feature` attributes)
+- [ ] Test alignment report accuracy (compare to manual audit)
+
+**Deliverables**:
+- ✅ Feature Alignment Dashboard live at `/features.html`
+- ✅ API telemetry tracking 150+ endpoints in real-time
+- ✅ Feature inventory showing 45+ features with alignment status
+- ✅ Admin controls for feature flags (5+ flags created)
+- ✅ Roadmap sync (auto-detect drift between ROADMAP.md and reality)
+
+**Success Metrics**:
+- Telemetry middleware adds < 5ms overhead
+- Feature matrix shows "complete/partial/missing" for all features
+- Unused endpoints identified (candidates for deprecation)
+- Feature adoption tracked (e.g., "RAG used by 45% of users")
+- Alignment report used to update CLAUDE.md and ROADMAP.md
 
 ---
 
 ### Phase 3: Operations Center Consolidation (1-2 weeks)
-**Priority**: MEDIUM - Improves UX but not blocking
+**Priority**: MEDIUM - Improves UX, no critical blockers
 
 **Week 1**:
 - Redesign dashboard.html (6-section layout)
@@ -1241,24 +1327,101 @@ async function sendChatRequest(model, messages, options) {
 
 ## Migration & Deprecation Strategy
 
-### Files to Deprecate (with redirects)
+### Quarantine First, Delete Never (Unless Proven Unused)
+
+**Philosophy**: Per validation report, avoid "oops, that was used by automation" pain.
+
+### Files to Quarantine (NOT delete)
+
+**Move to `/src/experimental/` or `/docs/legacy/` with README explaining status:**
+
+1. **Voice Routes** (`routes/voice.js`):
+   - Status: UNCERTAIN - might be called by n8n/AgentC
+   - Action: Move to `/src/experimental/voice.js` with note: "Future feature, not wired to UI yet"
+   - Evidence needed: Grep AgentC workflows for `/api/voice/*` calls
+
+2. **Workflow Generator Routes** (`routes/workflowGenerator.js`):
+   - Status: Headless API (intentional, used by automation)
+   - Action: Keep but add comment: "Headless API for n8n automation, no UI needed"
+   - Evidence: n8n workflows call these endpoints
+
+3. **Example Files** (`src/services/metricsCleanup.example.js`):
+   - Action: Move to `/docs/examples/metrics-cleanup.md` (convert to documentation)
+
+### Files to Deprecate (with redirects, keep for 30 days)
 
 1. **n8n-monitor.html**:
    - Add redirect to `/dashboard.html#n8n`
-   - Show deprecation notice for 30 days
-   - Remove file after users migrated
+   - Show deprecation notice: "This page has moved to Operations Center"
+   - Keep file for bookmark compatibility
+   - Remove after 30 days if no usage logged
 
 ### Files to Keep (but modify)
 
 1. **models.html**: Complete redesign (keep filename, replace content)
 2. **dashboard.html**: Expand (merge n8n-monitor features)
+3. **analytics.html**: Keep as-is (cost tracking already exists, just validate)
+
+### Safe to Archive (proven unused in Phase 0)
+
+**ONLY after Phase 0 validation proves these have 0 consumers:**
+
+1. **api.routes.js** (if just a wrapper with no imports)
+2. **AgentPrompt.js model** (if 0 imports in codebase)
+3. **MetricsHourly.js model** (if rollup system never wired)
+
+**Action**: Move to `/archive/2026-01-06/` with manifest explaining why
 
 ### Backward Compatibility
 
-- All existing API endpoints remain functional
-- Bookmarks to old pages redirect automatically
+- All existing API endpoints remain functional (no breaking changes)
+- Bookmarks to old pages redirect automatically with notice
 - Session data preserved across changes
-- No breaking changes to external integrations (n8n workflows)
+- No breaking changes to external integrations (n8n workflows, DataAPI)
+- Headless APIs stay headless (document as such, don't force-add UI)
+
+---
+
+## Acknowledged Uncertainties (Resolved in Phase 0)
+
+**Per Architecture Validation Report, these claims are UNCERTAIN until proven with runtime evidence:**
+
+### 1. Cost Tracking Completeness
+**Claim**: "100% complete, previous review FALSE"
+**Reality**: UNCERTAIN - UI and backend exist, but needs proof that:
+- chatService computes costs at runtime (not just defaults to $0)
+- Costs persist to `Conversation.messages[].cost` fields
+- Analytics aggregates from actual populated DB fields (not just empty schema)
+- UI displays real data (not just placeholder em-dashes)
+
+**Phase 0 Action**: Query 1 conversation, verify cost fields populated OR confirm $0 is correct (free local Ollama)
+
+### 2. Feedback Model Duality
+**Claim**: "Standalone Feedback model is zombie code"
+**Reality**: UNCERTAIN - Might be intentionally dual:
+- Embedded: `Conversation.messages[].feedback` (per-message thumbs up/down)
+- Standalone: `Feedback` collection (might be for aggregated analytics)
+
+**Phase 0 Action**: Grep `routes/analytics.js` for Feedback imports, check DB counts
+
+### 3. models.html Empty State
+**Claim**: "Shows 'No models found' because it only queries CustomModel DB"
+**Reality**: UNCERTAIN - Needs confirmation:
+- Which API endpoint does it actually call?
+- Does it attempt to fetch live Ollama models?
+- Where do live Ollama models appear in UI (if anywhere)?
+
+**Phase 0 Action**: Open models.html in browser, check network tab, verify API calls
+
+### 4. Headless Features Status
+**Claim**: "Voice and workflow generator are unused orphans"
+**Reality**: UNCERTAIN - Might be intentionally headless:
+- Workflow generator: Used by n8n/AgentC automation (no UI needed)
+- Voice: Future feature stub (roadmap item, not active)
+
+**Phase 0 Action**: Grep AgentC workflows for endpoint usage, check n8n health monitor logs
+
+**Principle**: Phase 0 turns all "UNCERTAIN" into "CONFIRMED TRUE/FALSE" before any refactoring begins.
 
 ---
 

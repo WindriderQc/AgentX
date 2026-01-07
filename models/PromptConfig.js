@@ -1,6 +1,14 @@
 const mongoose = require('mongoose');
 
 const PromptConfigSchema = new mongoose.Schema({
+  // Week 4: Multi-tenancy support
+  workspaceId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Workspace',
+    required: false, // Optional for backward compatibility (will be required after migration)
+    index: true
+  },
+
   name: {
     type: String,
     required: true,
@@ -52,6 +60,9 @@ const PromptConfigSchema = new mongoose.Schema({
 // Compound index for name + version (unique combination)
 PromptConfigSchema.index({ name: 1, version: 1 }, { unique: true });
 
+// Week 4: Multi-tenancy index (workspace-scoped prompts)
+PromptConfigSchema.index({ workspaceId: 1, name: 1, isActive: 1 });
+
 PromptConfigSchema.pre('save', function(next) {
   this.updatedAt = Date.now();
   if (typeof next === 'function') {
@@ -60,22 +71,31 @@ PromptConfigSchema.pre('save', function(next) {
 });
 
 // Static method to get active prompt by name (random selection for A/B)
-PromptConfigSchema.statics.getActive = async function(name = 'default_chat') {
+// Week 4: Now supports workspace filtering
+PromptConfigSchema.statics.getActive = async function(name = 'default_chat', workspaceId = null) {
+  // Build query
+  const query = { name, isActive: true };
+
+  // Week 4: Filter by workspace if provided
+  if (workspaceId) {
+    query.workspaceId = workspaceId;
+  }
+
   // Find all active versions for this persona
-  const activePrompts = await this.find({ name, isActive: true }).sort({ version: -1 });
-  
+  const activePrompts = await this.find(query).sort({ version: -1 });
+
   if (activePrompts.length === 0) return null;
   if (activePrompts.length === 1) return activePrompts[0];
-  
+
   // Weighted random selection for A/B testing
   const totalWeight = activePrompts.reduce((sum, p) => sum + (p.trafficWeight || 100), 0);
   let random = Math.random() * totalWeight;
-  
+
   for (const prompt of activePrompts) {
     random -= prompt.trafficWeight || 100;
     if (random <= 0) return prompt;
   }
-  
+
   return activePrompts[0];  // Fallback
 };
 

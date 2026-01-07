@@ -7,6 +7,14 @@ const mongoose = require('mongoose');
  * Used by AlertService to evaluate rules and trigger notifications
  */
 const AlertSchema = new mongoose.Schema({
+  // Week 4: Multi-tenancy support
+  workspaceId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Workspace',
+    required: false, // Optional for backward compatibility
+    index: true
+  },
+
   // Alert identification
   ruleId: {
     type: String,
@@ -17,7 +25,7 @@ const AlertSchema = new mongoose.Schema({
     type: String,
     default: 'Manual Alert'
   },
-  
+
   // Severity and status
   severity: { 
     type: String, 

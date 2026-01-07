@@ -1,6 +1,6 @@
 # AgentX Project Roadmap
 
-**Last Updated:** 2026-01-04
+**Last Updated:** 2026-01-06
 
 This roadmap tracks the development status and priorities for the AgentX project - a robust, self-healing, and intelligent monitoring and automation stack built on the SBQC architecture.
 
@@ -8,9 +8,9 @@ This roadmap tracks the development status and priorities for the AgentX project
 
 ## Overview
 
-AgentX development is organized across **six parallel development tracks**, each focusing on a specific aspect of the system's capabilities. All six tracks are now **COMPLETE** with production-ready implementations.
+AgentX development is organized across **seven development tracks**, each focusing on a specific aspect of the system's capabilities. All seven tracks are now **COMPLETE** with production-ready implementations.
 
-### Six Development Tracks
+### Seven Development Tracks
 
 1. **Track 1: Alerts & Notifications** - Real-time proactive monitoring and alerting
 2. **Track 2: Historical Metrics & Analytics** - Time-series data collection and insights
@@ -18,6 +18,7 @@ AgentX development is organized across **six parallel development tracks**, each
 4. **Track 4: Self-Healing & Automation** - Automated issue detection and remediation
 5. **Track 5: Advanced Testing & CI/CD** - Production-quality assurance and deployment
 6. **Track 6: Backup & Disaster Recovery** - Data and workflow safeguarding
+7. **Track 7: Multi-Tenancy & Workspaces** - Team collaboration with data isolation (Week 4)
 
 ---
 
@@ -181,6 +182,96 @@ AgentX development is organized across **six parallel development tracks**, each
 
 ---
 
+### Track 7: Multi-Tenancy & Workspaces ✅ COMPLETE
+
+**Purpose:** Team collaboration with complete data isolation and role-based access control
+
+**Week 4 Implementation (2026-01-02 to 2026-01-06):**
+
+**Day 1: Data Models & Architecture**
+- `Workspace` model (`/models/Workspace.js`) - Team workspace with settings and features
+- `WorkspaceMember` model (`/models/WorkspaceMember.js`) - RBAC with 4 tiers (Owner/Admin/Member/Viewer)
+- Schema design with compound indexes for performance
+- Virtual fields for member counts and role names
+
+**Day 2: Backend API & Middleware**
+- Workspace API routes (`/routes/workspaces.js` - 11 endpoints, 786 lines)
+  - CRUD operations for workspaces
+  - Member management (invite, role changes, removal)
+  - Transfer ownership (owner only)
+  - Statistics dashboard endpoint
+- Workspace middleware (`/src/middleware/workspace.js` - 4 functions)
+  - `attachWorkspace` - Extract workspace context from URL/headers
+  - `requireWorkspaceAccess` - Verify membership
+  - `requireAdmin` - Admin-only routes
+  - `requireOwner` - Owner-only routes
+
+**Day 3: UI Integration**
+- Workspace switcher component (`/public/js/workspace.js` - 233 lines)
+  - localStorage persistence
+  - Auto-initialization
+  - Helper methods for adding workspace context to API calls
+  - Custom event broadcasting
+- Navigation integration (`/public/js/components/nav.js`)
+  - Workspace dropdown in navigation bar
+  - Visual role badges
+- Frontend API integration (`/public/js/chat.js`)
+  - All chat API calls include workspace context
+  - Dual pattern: query params (GET) vs headers (POST)
+- Route updates (4 files, 19 routes):
+  - `/routes/history.js` - Conversation filtering
+  - `/routes/prompts.js` - Workspace-scoped versioning
+  - `/routes/benchmark.js` - Benchmark tagging
+  - `/routes/custom-models.js` - Model isolation
+
+**Day 4: Settings UI & Testing**
+- Workspace settings page (`/public/workspace-settings.html` - 1,119 lines)
+  - Workspace list sidebar with role badges
+  - Details view/edit (admin only)
+  - Feature toggles (RAG, custom models, benchmarking, alerts)
+  - Members table with invite/role management
+  - Statistics dashboard (5 metrics)
+  - Danger Zone (delete workspace - owner only)
+  - 3 modals: create workspace, invite member, delete confirmation
+- Integration testing (`/tests/integration/workspace-isolation.test.js` - 386 lines, 21 tests)
+  - Conversation isolation (4 tests)
+  - Prompt isolation with independent versioning (4 tests)
+  - Custom model isolation (3 tests)
+  - Cross-workspace access prevention (3 tests)
+  - Member permissions (3 tests)
+  - Statistics isolation (2 tests)
+  - Settings isolation (2 tests)
+  - **Result:** 21/21 passing (100%)
+
+**Key Features:**
+- **Complete Data Isolation** - Conversations, prompts, custom models, settings scoped to workspaces
+- **Role-Based Access Control** - 4 tiers with granular permissions
+- **Workspace-Scoped Prompt Versioning** - Independent version numbers per workspace
+- **Member Management** - Invite, role changes, removal, ownership transfer
+- **Feature Toggles** - Enable/disable features per workspace
+- **Statistics Dashboard** - Real-time workspace usage metrics
+- **Settings Management** - Model restrictions, usage limits, plan types
+
+**Code Metrics:**
+- **Total Files Modified/Created:** 28
+- **Total Lines Added:** 4,260+
+- **Models:** 2 (Workspace, WorkspaceMember)
+- **API Endpoints:** 11
+- **Middleware Functions:** 4
+- **UI Pages:** 2 (switcher + settings)
+- **Integration Tests:** 21 (all passing)
+- **Development Time:** 4 days
+
+**Status:** Production-ready with comprehensive testing and full UI integration
+
+**Documentation:**
+- `WEEK4_DAY1_PROGRESS.md` - Models and architecture
+- `WEEK4_DAY2_PROGRESS.md` - API routes and middleware
+- `WEEK4_DAY3_PROGRESS.md` - UI integration
+- `WEEK4_DAY4_PROGRESS.md` - Settings UI and testing (630 lines)
+
+---
+
 ## Immediate Priorities
 
 ### 1. Documentation Normalization ✅ IN PROGRESS
@@ -245,14 +336,26 @@ AgentX development is organized across **six parallel development tracks**, each
 
 ---
 
-### 3. Alerts End-to-End Connection
+### 3. Alerts End-to-End Connection ✅ VERIFIED (2026-01-06)
 
-**Verification Needed:**
-- [ ] Confirm N1.1 (Janitor) and N5.1 (Analyst) workflows actively call `/api/alerts`
-- [ ] Add smoke test for workflow → AgentX → UI alert creation path
-- [ ] Verify Slack/email notification delivery
+**Completed Verification:**
+- [x] Confirmed N1.1 (Janitor) and N5.1 (Analyst) workflows call `/api/alerts` ✓
+- [x] Added smoke test suite: 17/17 tests passing (100%) ✓
+- [x] Verified API → Database → UI path working ✓
+- [x] Added graceful channel validation with fallback ✓
 
-**Impact:** Medium (alerts work manually, need automated workflow verification)
+**Known Limitations:**
+- ⚠️ n8n workflows not currently active (require manual activation in n8n UI)
+- ⚠️ Slack/email/webhook channels not implemented (log warnings, default to dataapi_log)
+- ✅ Alert creation, persistence, and retrieval fully functional
+
+**Documentation:** `/docs/testing/ALERTS_INTEGRATION_VERIFICATION.md` (180 lines)
+
+**Next Steps:**
+- [ ] Activate N1.1/N5.1 workflows in n8n UI (operational task)
+- [ ] Implement Slack webhook integration
+- [ ] Implement email notifications (SMTP/nodemailer)
+- [ ] Implement generic webhook delivery
 
 ---
 
@@ -277,10 +380,17 @@ AgentX development is organized across **six parallel development tracks**, each
 
 **Lower Priority Enhancements:**
 - [ ] Streaming response support (SSE) for chat interface
-- [ ] Multi-tenant support with user isolation
-- [ ] Advanced RAG features (query expansion, re-ranking, hybrid search)
+- [x] Multi-tenant support with workspace isolation ✅ COMPLETE (Week 4)
+- [x] Email invitations for workspace members ✅ COMPLETE (Post-Week 4, A1)
+- [x] Workspace activity audit logs ✅ COMPLETE (Post-Week 4, A2 - Full implementation with UI)
+- [x] Advanced RAG features (query expansion, re-ranking, hybrid search) ✅ COMPLETE (already implemented)
+- [ ] Expose RAG advanced options in chat UI (query expansion, hybrid search, re-ranking toggles)
+- [ ] RAG contextual compression (LLM extracts relevant sentences from chunks)
+- [ ] RAG citation tracking (source references in LLM responses)
 - [ ] Custom dashboard builder for metrics visualization
 - [ ] Webhook retry logic with exponential backoff
+
+**RAG Features Note:** Advanced RAG features (query expansion, hybrid search, re-ranking) are fully implemented in `/src/services/ragStore.js` (647 lines) but not yet exposed in the UI. See `/docs/features/RAG_ENHANCEMENT_STATUS.md` for details.
 
 ---
 

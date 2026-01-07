@@ -7,6 +7,7 @@
 const express = require('express');
 const router = express.Router();
 const logger = require('../config/logger');
+const { attachWorkspace } = require('../src/middleware/workspace');
 const benchmarkService = require('../src/services/benchmarkService');
 const { JUDGE_CONFIG, SCORING_CONFIGS } = require('../src/services/qualityScorer');
 
@@ -43,9 +44,9 @@ router.get('/config', (req, res) => {
 
 /**
  * POST /api/benchmark/test
- * Run a single benchmark test
+ * Run a single benchmark test - workspace-aware
  */
-router.post('/test', async (req, res) => {
+router.post('/test', attachWorkspace, async (req, res) => {
     const { model, host, prompt } = req.body;
 
     // Validation
@@ -57,7 +58,13 @@ router.post('/test', async (req, res) => {
     }
 
     try {
-        const result = await benchmarkService.runTest({ model, host, prompt });
+        // Week 4: Pass workspace context to service
+        const result = await benchmarkService.runTest({
+            model,
+            host,
+            prompt,
+            workspaceId: req.workspace ? req.workspace._id : null
+        });
 
         res.json({
             status: 'success',
@@ -230,9 +237,9 @@ router.get('/prompts', async (req, res) => {
 
 /**
  * POST /api/benchmark/batch
- * Start a batch benchmark test with optional quality scoring
+ * Start a batch benchmark test with optional quality scoring - workspace-aware
  */
-router.post('/batch', async (req, res) => {
+router.post('/batch', attachWorkspace, async (req, res) => {
     const { host, models, levels, run_name, quality_scoring, judge_config } = req.body;
 
     // Validation
@@ -272,13 +279,15 @@ router.post('/batch', async (req, res) => {
             });
         }
 
+        // Week 4: Pass workspace context to service
         const data = await benchmarkService.startBatch({
             host,
             models,
             levels,
             run_name,
             quality_scoring,
-            judge_config
+            judge_config,
+            workspaceId: req.workspace ? req.workspace._id : null
         });
 
         res.json({

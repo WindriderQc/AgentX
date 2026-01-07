@@ -32,6 +32,7 @@
     "test:load:import": "./scripts/import-artillery-results.sh basic-load",
     "perf:baseline": "./scripts/create-performance-baseline.sh",
     "perf:check": "./scripts/check-performance-regression.sh",
+    "db:optimize": "node scripts/optimize-database-indexes.js",
     "lint": "eslint . --ext .js",
     "lint:fix": "eslint . --ext .js --fix",
     "seed:ops": "node scripts/seed-sbqc-ops.js"
@@ -42,6 +43,7 @@
     "@qdrant/js-client-rest": "^1.16.2",
     "ajv": "^8.17.1",
     "bcryptjs": "^3.0.3",
+    "compression": "^1.8.1",
     "connect-mongodb-session": "^5.0.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
@@ -51,6 +53,7 @@
     "express-session": "^1.18.2",
     "helmet": "^8.1.0",
     "http-proxy-middleware": "^3.0.5",
+    "ioredis": "^5.9.0",
     "mongoose": "^8.9.5",
     "multer": "^2.0.2",
     "node-fetch": "^2.7.0",

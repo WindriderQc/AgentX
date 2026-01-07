@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Feature Adoption Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="css/features-adoption.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div id="nav-container"></div>
+
+    <div class="dashboard-container">
+        <!-- Top Stats Cards -->
+        <div class="stats-grid mb-4" id="adoption-stats-cards">
+            <div class="stat-card">
+                <h3>Total Features</h3>
+                <div class="stat-value" id="stat-total-features">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>Adopted (>50%)</h3>
+                <div class="stat-value text-success" id="stat-adopted">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>Underutilized (<10%)</h3>
+                <div class="stat-value text-danger" id="stat-underutilized">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>Avg Engagement</h3>
+                <div class="stat-value" id="stat-avg-engagement">0m</div>
+            </div>
+        </div>
+
+        <!-- Filters Toolbar -->
+        <div class="filters-bar mb-3">
+            <div class="filter-group">
+                <select class="filter-select" id="filter-time-range">
+                    <option value="7d">Last 7 Days</option>
+                    <option value="30d" selected>Last 30 Days</option>
+                    <option value="90d">Last 90 Days</option>
+                </select>
+                <select class="filter-select" id="filter-category">
+                    <option value="all">All Categories</option>
+                    <option value="core">Core</option>
+                    <option value="analytics">Analytics</option>
+                    <option value="operations">Operations</option>
+                </select>
+                <select class="filter-select" id="filter-min-adoption">
+                    <option value="0">Min Adoption: 0%</option>
+                    <option value="10">Min Adoption: 10%</option>
+                    <option value="25">Min Adoption: 25%</option>
+                    <option value="50">Min Adoption: 50%</option>
+                </select>
+                <button class="btn" onclick="window.featuresAdoption.loadAdoption()">Refresh</button>
+            </div>
+        </div>
+
+        <!-- Main Content Grid -->
+        <div class="dashboard-grid">
+            <!-- Feature Table -->
+            <div class="dashboard-card col-span-2">
+                <div class="card-header">
+                    <h5>Feature Adoption Details</h5>
+                    <small class="text-muted">Click row for details</small>
+                </div>
+                <div class="table-container">
+                    <table class="adoption-table" id="adoption-table">
+                        <thead>
+                            <tr>
+                                <th>Feature</th>
+                                <th>Page</th>
+                                <th>Users</th>
+                                <th>Adoption</th>
+                                <th>Trend (7d)</th>
+                                <th>Avg Duration</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="adoption-table-body">
+                            <tr><td colspan="7" class="text-center p-3">Loading adoption data...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Charts Column -->
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <h6>Distribution by Category</h6>
+                </div>
+                <div class="chart-container">
+                    <canvas id="chart-category-dist" height="200"></canvas>
+                </div>
+            </div>
+
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <h6>Top 5 Adoption Trends</h6>
+                </div>
+                <div class="chart-container">
+                    <canvas id="chart-adoption-trends" height="200"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Row: Heatmap & Insights -->
+        <div class="dashboard-grid mt-4">
+            <!-- Engagement Heatmap -->
+            <div class="dashboard-card col-span-2">
+                <div class="card-header">
+                    <h6>Engagement Heatmap (Day x Hour)</h6>
+                </div>
+                <div class="chart-container">
+                    <canvas id="chart-heatmap" height="300"></canvas>
+                </div>
+            </div>
+
+            <!-- Insights Panel -->
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <h6>🤖 Automated Insights</h6>
+                </div>
+                <div class="card-body" id="insights-list">
+                    <p class="text-muted small">Generating insights...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/components/nav.js"></script>
+    <script>injectNav('features-adoption');</script>
+    <script src="js/features-adoption.js"></script>
+</body>
+</html>

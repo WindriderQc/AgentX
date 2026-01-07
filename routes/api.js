@@ -207,6 +207,96 @@ router.post('/chat', optionalAuth, async (req, res) => {
   }
 });
 
+// CHAT STREAMING: SSE endpoint for real-time token streaming
+router.post('/chat/stream', optionalAuth, async (req, res) => {
+  const {
+    target = process.env.OLLAMA_HOST,
+    model,
+    message,
+    messages = [],
+    system,
+    persona,
+    options = {},
+    conversationId,
+    useRag,
+    ragTopK,
+    ragFilters,
+    autoRoute = false,
+    taskType = null
+  } = req.body;
+
+  if (!target) {
+    return res.status(500).json({ status: 'error', message: 'OLLAMA_HOST not configured and no target provided' });
+  }
+  const userId = getUserId(res);
+
+  if (!model && !autoRoute && !taskType) {
+    return res.status(400).json({ status: 'error', message: 'Model is required (or enable autoRoute/taskType)' });
+  }
+  if (!message) {
+    return res.status(400).json({ status: 'error', message: 'Message is required' });
+  }
+
+  // Set SSE headers
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // Disable Nginx buffering
+
+  // Helper to send SSE event
+  const sendEvent = (event, data) => {
+    res.write(`event: ${event}\n`);
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  };
+
+  try {
+    const { handleChatRequestStream } = require('../src/services/chatService');
+
+    // Stream handler receives tokens progressively
+    await handleChatRequestStream({
+      userId,
+      model,
+      message,
+      messages,
+      system,
+      persona,
+      options,
+      conversationId,
+      useRag,
+      ragTopK,
+      ragFilters,
+      target,
+      ragStore,
+      autoRoute,
+      taskType,
+      onToken: (token) => {
+        sendEvent('token', { content: token });
+      },
+      onThinking: (thinking) => {
+        sendEvent('thinking', { content: thinking });
+      },
+      onComplete: (result) => {
+        sendEvent('done', result);
+        res.end();
+      },
+      onError: (error) => {
+        sendEvent('error', { message: error.message });
+        res.end();
+      }
+    });
+
+  } catch (err) {
+    logger.error('Chat streaming error', { error: err.message, stack: err.stack });
+    sendEvent('error', { message: err.message });
+    res.end();
+  }
+
+  // Handle client disconnect
+  req.on('close', () => {
+    logger.info('Client disconnected from streaming');
+  });
+});
+
 // FEEDBACK
 router.post('/feedback', async (req, res) => {
     const { conversationId, messageId, rating, comment } = req.body;

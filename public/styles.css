@@ -1193,6 +1193,118 @@ button:active {
   background: rgba(124, 240, 255, 0.1);
 }
 
+/* Week 4 Day 3: Workspace Switcher Styles */
+.top-nav .nav-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-right: auto;
+}
+
+.top-nav .nav-right {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+}
+
+.workspace-dropdown {
+  position: relative;
+}
+
+.workspace-btn {
+  background: rgba(124, 240, 255, 0.08);
+  border: 1px solid rgba(124, 240, 255, 0.2);
+  color: var(--text);
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.workspace-btn:hover {
+  background: rgba(124, 240, 255, 0.15);
+  border-color: rgba(124, 240, 255, 0.4);
+  transform: translateY(-1px);
+}
+
+.workspace-btn i {
+  font-size: 14px;
+  color: var(--accent);
+}
+
+.dropdown-menu {
+  display: none;
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  min-width: 280px;
+  background: rgba(18, 23, 38, 0.98);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  padding: 8px;
+  z-index: 1001;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.workspace-dropdown:hover .dropdown-menu,
+.workspace-dropdown:focus-within .dropdown-menu {
+  display: block;
+}
+
+.dropdown-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  color: var(--muted);
+  text-decoration: none;
+  border-radius: 8px;
+  transition: all 0.2s;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.dropdown-item:hover {
+  background: rgba(124, 240, 255, 0.1);
+  color: var(--text);
+}
+
+.dropdown-item.active {
+  background: rgba(124, 240, 255, 0.15);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.dropdown-item i.fa-check {
+  color: var(--accent);
+  margin-right: 8px;
+}
+
+.dropdown-item i.fa-cog {
+  color: var(--muted);
+  margin-right: 8px;
+}
+
+.workspace-desc {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.dropdown-divider {
+  height: 1px;
+  background: var(--panel-border);
+  margin: 8px 0;
+}
+
 /* ========================================
    DASHBOARD PAGE STYLES
    ======================================== */
@@ -2901,5 +3013,35 @@ button:active {
 
   .health-components {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Streaming Chat: Thinking Section */
+.thinking-content {
+  margin-top: 12px;
+  padding: 12px 16px;
+  background: rgba(124, 240, 255, 0.08);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--muted);
+  animation: fadeIn 0.3s ease;
+}
+
+.thinking-content strong {
+  color: var(--accent);
+  font-weight: 600;
+  display: block;
+  margin-bottom: 8px;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
