@@ -533,6 +533,66 @@ expect(conversationsB).toHaveLength(1);
 expect(conversationsA[0]._id).not.toBe(conversationsB[0]._id);
 ```
 
+### Workspace Activity Audit Logs (Post-Week 4)
+
+**Status:** ✅ COMPLETE (Backend + UI)
+
+Comprehensive activity tracking system for workspace operations with before/after state capture.
+
+**Backend Files:**
+- `/models/WorkspaceAuditLog.js` (234 lines) - Data model
+- `/src/middleware/workspaceAudit.js` (175 lines) - Logging middleware
+- `/routes/workspace-audit.js` (170 lines) - API endpoints
+
+**UI:** `/public/workspace-audit.html` (550 lines)
+
+**15 Tracked Actions:**
+- **Member Management:** added, removed, role_changed, invited, invitation.revoked, invitation.accepted
+- **Settings:** settings.changed, ownership.transferred
+- **Models:** model.registered, model.deployed, model.deleted
+- **Prompts:** prompt.created, prompt.activated, prompt.deleted
+
+**Key Features:**
+- Before/after state capture for all changes
+- 90-day auto-expiration (TTL index)
+- Graceful failure (never breaks main requests)
+- Activity timeline UI with filtering
+- CSV export (max 10,000 records)
+- IP address tracking
+- User attribution
+
+**API Endpoints:**
+```bash
+GET /api/workspaces/:slug/audit-logs
+  ?limit=20&skip=0&action=member.added&from=2026-01-01&to=2026-01-06
+
+GET /api/workspaces/:slug/audit-logs/statistics
+  ?from=2026-01-01&to=2026-01-06
+
+GET /api/workspaces/:slug/audit-logs/export
+  ?action=member.added&from=2026-01-01
+```
+
+**Integration Pattern:**
+```javascript
+// Capture before state
+const beforeState = { field: entity.field };
+
+// Perform operation
+await entity.update(...);
+
+// Log action (never throws)
+req.workspace = workspace;
+await logHelperFunction(req, 'action.name', entity, {
+  before: beforeState,
+  after: { field: entity.field }
+});
+```
+
+**Documentation:**
+- Backend guide: `/AUDIT_LOGGING_COMPLETE.md`
+- UI guide: `/AUDIT_LOGS_UI_COMPLETE.md`
+
 ### Critical Patterns
 
 **1. Optional Workspace Filtering**

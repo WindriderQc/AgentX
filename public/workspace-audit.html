@@ -530,7 +530,7 @@
     <script src="/js/components/nav.js"></script>
     <script src="/js/workspace.js"></script>
     <script>
-        injectNav('features-admin');
+        injectNav('audit-logs');
 
         let workspaces = [];
         let currentWorkspace = null;
@@ -543,6 +543,12 @@
         async function init() {
             await loadWorkspaces();
 
+            // Check if we have workspaces
+            if (workspaces.length === 0) {
+                renderEmptyState('No workspaces available. Create a workspace first.');
+                return;
+            }
+
             // Auto-select current workspace
             if (window.WorkspaceManager && window.WorkspaceManager.currentWorkspace) {
                 const workspace = workspaces.find(w => w.slug === window.WorkspaceManager.currentWorkspace);
@@ -550,8 +556,12 @@
                     currentWorkspace = workspace;
                     document.getElementById('workspaceSelector').value = workspace.slug;
                     await loadAuditLogs();
+                    return;
                 }
-            } else if (workspaces.length > 0) {
+            }
+
+            // Fallback to first workspace
+            if (workspaces.length > 0) {
                 currentWorkspace = workspaces[0];
                 document.getElementById('workspaceSelector').value = workspaces[0].slug;
                 await loadAuditLogs();
@@ -562,17 +572,31 @@
         async function loadWorkspaces() {
             try {
                 const res = await fetch('/api/workspaces', { credentials: 'include' });
+
+                if (!res.ok) {
+                    console.error('Workspace API error:', res.status, res.statusText);
+                    if (res.status === 401) {
+                        showError('Please log in to view workspaces');
+                        renderEmptyState('Authentication required. Please log in.');
+                        return;
+                    }
+                    throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+                }
+
                 const data = await res.json();
 
                 if (data.status === 'success') {
-                    workspaces = data.data;
+                    workspaces = data.data || [];
                     renderWorkspaceSelector();
                 } else {
-                    showError('Failed to load workspaces');
+                    console.error('Workspace API returned error:', data);
+                    showError(data.message || 'Failed to load workspaces');
+                    renderEmptyState(data.message || 'Failed to load workspaces');
                 }
             } catch (error) {
                 console.error('Error loading workspaces:', error);
-                showError('Failed to load workspaces');
+                showError('Failed to load workspaces: ' + error.message);
+                renderEmptyState('Failed to load workspaces. Check console for details.');
             }
         }
 

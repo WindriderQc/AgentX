@@ -6,7 +6,19 @@
  */
 
 const WorkspaceAuditLog = require('../../models/WorkspaceAuditLog');
+const UserProfile = require('../../models/UserProfile');
 const logger = require('../../config/logger');
+
+/**
+ * Helper: Get UserProfile ObjectId from session userId (which might be username string)
+ */
+async function getUserProfileId(sessionUserId) {
+  const userProfile = await UserProfile.findOne({ userId: sessionUserId });
+  if (!userProfile) {
+    return null;
+  }
+  return userProfile._id;
+}
 
 /**
  * Log workspace action
@@ -28,10 +40,21 @@ async function logWorkspaceAction(req, action, targetType, targetId, changes = {
     }
 
     // Extract user context
-    const userId = req.user?.userId || req.user?._id;
+    const sessionUserId = req.user?.userId || req.user?._id;
+
+    if (!sessionUserId) {
+      logger.warn('Audit log skipped: no userId', { action });
+      return null;
+    }
+
+    // Convert username string to UserProfile ObjectId
+    const userId = await getUserProfileId(sessionUserId);
 
     if (!userId) {
-      logger.warn('Audit log skipped: no userId', { action });
+      logger.warn('Audit log skipped: UserProfile not found', {
+        action,
+        sessionUserId
+      });
       return null;
     }
 

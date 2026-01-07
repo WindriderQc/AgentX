@@ -6,6 +6,7 @@
 
 const express = require('express');
 const router = express.Router();
+const fetch = require('node-fetch');
 const modelAggregator = require('../src/services/modelAggregator');
 const N8nLLMSource = require('../models/N8nLLMSource');
 const { requireAuth } = require('../src/middleware/auth');
@@ -426,6 +427,111 @@ router.post('/sources/n8n/:id/test', async (req, res) => {
       message: 'Failed to test n8n LLM source',
       error: error.message
     });
+  }
+});
+
+// ========================================
+// Ollama Management
+// ========================================
+
+/**
+ * POST /api/models/ollama/pull
+ * Pull a model from Ollama library
+ */
+router.post('/ollama/pull', requireAuth, async (req, res) => {
+  try {
+    const { name, host } = req.body;
+    
+    if (!name) {
+      return res.status(400).json({ status: 'error', message: 'Model name required' });
+    }
+
+    const targetHost = host || process.env.OLLAMA_HOST || 'http://localhost:11434';
+    
+    // Start pull (async)
+    // Note: This endpoint triggers the pull but doesn't wait for completion in this basic version
+    // A production version might stream the response.
+    fetch(`${targetHost}/api/pull`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, stream: false })
+    }).then(async (pullRes) => {
+        const data = await pullRes.json();
+        if(data.error) {
+           logger.error('Ollama pull failed', { error: data.error, name, host: targetHost });
+        } else {
+           logger.info('Ollama pull complete', { name, host: targetHost });
+           modelAggregator.clearCache();
+        }
+    }).catch(err => {
+        logger.error('Ollama pull request failed', { error: err.message });
+    });
+
+    res.json({
+      status: 'success',
+      message: `Pulling ${name} started. It may take a while to appear.`
+    });
+
+  } catch (error) {
+    logger.error('Failed to init pull', { error: error.message });
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
+/**
+ * POST /api/models/ollama/stop
+ * Unload a model from memory
+ */
+router.post('/ollama/stop', requireAuth, async (req, res) => {
+  try {
+    const { name, host } = req.body;
+    if (!name) return res.status(400).json({ status: 'error', message: 'Name required' });
+    
+    const targetHost = host || process.env.OLLAMA_HOST || 'http://localhost:11434';
+
+    // To unload: generate with empty prompt and keep_alive: 0
+    const response = await fetch(`${targetHost}/api/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: name, prompt: '', keep_alive: 0 })
+    });
+    
+    if (response.ok) {
+        res.json({ status: 'success', message: `Model ${name} unloaded.` });
+    } else {
+        throw new Error(`Ollama API error: ${response.statusText}`);
+    }
+  } catch(error) {
+     res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
+/**
+ * DELETE /api/models/ollama/:name
+ * Delete a model
+ */
+router.delete('/ollama/:name', requireAuth, async (req, res) => {
+  try {
+    const { name } = req.params;
+    const { host } = req.query;
+    
+    const targetHost = host || process.env.OLLAMA_HOST || 'http://localhost:11434';
+    
+    const response = await fetch(`${targetHost}/api/delete`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
+    });
+
+    if(response.ok) {
+        modelAggregator.clearCache();
+        res.json({ status: 'success', message: `Model ${name} deleted` });
+    } else {
+         const err = await response.text();
+         throw new Error(err);
+    }
+  } catch(error) {
+    res.status(500).json({ status: 'error', message: error.message });
   }
 });
 

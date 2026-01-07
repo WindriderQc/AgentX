@@ -8,7 +8,19 @@
 
 const Workspace = require('../../models/Workspace');
 const WorkspaceMember = require('../../models/WorkspaceMember');
+const UserProfile = require('../../models/UserProfile');
 const logger = require('../../config/logger');
+
+/**
+ * Helper: Get UserProfile ObjectId from session userId (which might be username string)
+ */
+async function getUserProfileId(sessionUserId) {
+  const userProfile = await UserProfile.findOne({ userId: sessionUserId });
+  if (!userProfile) {
+    return null;
+  }
+  return userProfile._id;
+}
 
 /**
  * Extract workspace from request context
@@ -42,35 +54,39 @@ async function attachWorkspace(req, res, next) {
 
     // Priority 4: User's default workspace
     else if (req.user) {
-      // Get user's first workspace (most recently joined)
-      const membership = await WorkspaceMember.findOne({
-        userId: req.user.userId,
-        status: 'active'
-      })
-        .sort({ joinedAt: -1 })
-        .populate('workspaceId');
+      // Get UserProfile ObjectId
+      const userProfileId = await getUserProfileId(req.user.userId);
 
-      if (membership && membership.workspaceId) {
-        req.workspace = membership.workspaceId;
-        req.workspaceSlug = membership.workspaceId.slug;
-        return next();
+      if (userProfileId) {
+        // Get user's first workspace (most recently joined)
+        const membership = await WorkspaceMember.findOne({
+          userId: userProfileId,
+          status: 'active'
+        })
+          .sort({ joinedAt: -1 })
+          .populate('workspaceId');
+
+        if (membership && membership.workspaceId) {
+          req.workspace = membership.workspaceId;
+          req.workspaceSlug = membership.workspaceId.slug;
+          return next();
+        }
       }
 
       // No workspace found - create default
-      const User = require('../../models/User');
-      const user = await User.findById(req.user.userId);
+      const userProfile = await UserProfile.findOne({ userId: req.user.userId });
 
-      if (user) {
+      if (userProfile) {
         const defaultWorkspace = await Workspace.createDefault(
-          user._id,
-          user.username || user.email.split('@')[0]
+          userProfile._id,
+          userProfile.username || userProfile.email?.split('@')[0] || req.user.userId
         );
 
         req.workspace = defaultWorkspace;
         req.workspaceSlug = defaultWorkspace.slug;
 
         logger.info('Created default workspace for user', {
-          userId: user._id,
+          userId: userProfile._id,
           workspaceSlug: defaultWorkspace.slug
         });
 
@@ -135,10 +151,19 @@ async function requireWorkspaceAccess(req, res, next) {
       });
     }
 
+    // Get UserProfile ObjectId
+    const userProfileId = await getUserProfileId(req.user.userId);
+    if (!userProfileId) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'User profile not found'
+      });
+    }
+
     // Check if user is a member of this workspace
     const member = await WorkspaceMember.getMember(
       req.workspace._id,
-      req.user.userId
+      userProfileId
     );
 
     if (!member) {

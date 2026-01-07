@@ -427,6 +427,44 @@
           <div class="hint">Retrieve context from vector store.</div>
         </div>
 
+        <!-- RAG Advanced Options Panel -->
+        <div class="rag-options-panel" id="ragOptionsPanel" style="display: none;">
+          <div class="rag-panel-header" id="ragPanelHeader">
+            <span>RAG Advanced Options</span>
+            <i class="fas fa-chevron-down" id="ragChevron"></i>
+          </div>
+          <div class="rag-panel-content" id="ragOptionsContent" style="display: none;">
+            <div class="rag-option-row">
+              <label class="rag-toggle-label">
+                <input type="checkbox" id="ragExpandQuery">
+                <span>Query Expansion</span>
+              </label>
+              <p class="rag-option-help">Generate multiple search variations (+300ms)</p>
+            </div>
+            <div class="rag-option-row">
+              <label class="rag-toggle-label">
+                <input type="checkbox" id="ragHybridSearch">
+                <span>Hybrid Search</span>
+              </label>
+              <p class="rag-option-help">Combine vector + keyword search (+75ms)</p>
+            </div>
+            <div class="rag-option-row">
+              <label class="rag-toggle-label">
+                <input type="checkbox" id="ragRerankResults">
+                <span>Re-ranking</span>
+              </label>
+              <p class="rag-option-help">LLM-based relevance scoring (+1000ms)</p>
+            </div>
+            <div class="rag-option-row">
+              <label class="rag-slider-label">
+                <span>Top K Results: <span id="ragTopKValue">5</span></span>
+                <input type="range" id="ragTopK" min="1" max="20" value="5">
+              </label>
+              <p class="rag-option-help">Number of context chunks to retrieve (1-20)</p>
+            </div>
+          </div>
+        </div>
+
         <div class="field inline-toggle">
           <label>TTS Output</label>
           <label class="switch">

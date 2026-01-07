@@ -38,7 +38,7 @@ const WorkspaceSchema = new mongoose.Schema({
   // Ownership
   ownerId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
+    ref: 'UserProfile',
     required: true,
     index: true
   },

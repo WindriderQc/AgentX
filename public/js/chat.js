@@ -86,6 +86,16 @@ document.addEventListener('DOMContentLoaded', () => {
     quickActions: document.querySelectorAll('[data-quick]'),
     streamToggle: document.getElementById('streamToggle'),
     ragToggle: document.getElementById('ragToggle'),
+    // RAG Advanced Options
+    ragOptionsPanel: document.getElementById('ragOptionsPanel'),
+    ragOptionsContent: document.getElementById('ragOptionsContent'),
+    ragPanelHeader: document.getElementById('ragPanelHeader'),
+    ragChevron: document.getElementById('ragChevron'),
+    ragExpandQuery: document.getElementById('ragExpandQuery'),
+    ragHybridSearch: document.getElementById('ragHybridSearch'),
+    ragRerankResults: document.getElementById('ragRerankResults'),
+    ragTopK: document.getElementById('ragTopK'),
+    ragTopKValue: document.getElementById('ragTopKValue'),
     statsToggle: document.getElementById('statsToggle'), // V4: New toggle
     logWindow: document.getElementById('logWindow'),
     threadId: document.getElementById('threadId'),
@@ -243,6 +253,57 @@ document.addEventListener('DOMContentLoaded', () => {
       stop: elements.stopSequences.value,
       keep_alive: elements.keepAlive.value,
     };
+  }
+
+  // RAG Advanced Options Toggle
+  function toggleRagOptions() {
+    const content = elements.ragOptionsContent;
+    const chevron = elements.ragChevron;
+    if (!content || !chevron) return;
+
+    const isOpen = content.style.display === 'block';
+    content.style.display = isOpen ? 'none' : 'block';
+    chevron.className = isOpen ? 'fas fa-chevron-down' : 'fas fa-chevron-up';
+  }
+
+  // Get RAG advanced options from UI
+  function getRagOptions() {
+    const useRag = elements.ragToggle?.checked;
+    if (!useRag) {
+      return { useRag: false };
+    }
+
+    return {
+      useRag: true,
+      ragExpand: elements.ragExpandQuery?.checked || false,
+      ragHybrid: elements.ragHybridSearch?.checked || false,
+      ragRerank: elements.ragRerankResults?.checked || false,
+      ragTopK: parseInt(elements.ragTopK?.value || '5', 10)
+    };
+  }
+
+  // Check RAG availability and show/hide panel
+  async function checkRagAvailability() {
+    try {
+      const response = await fetch('/api/rag/metrics', { credentials: 'include' });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.status === 'success' && data.stats?.totalDocuments > 0) {
+          if (elements.ragOptionsPanel) {
+            elements.ragOptionsPanel.style.display = 'block';
+          }
+        } else {
+          if (elements.ragOptionsPanel) {
+            elements.ragOptionsPanel.style.display = 'none';
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('RAG availability check failed:', error);
+      if (elements.ragOptionsPanel) {
+        elements.ragOptionsPanel.style.display = 'none';
+      }
+    }
   }
 
   function hydrateForm() {
@@ -613,15 +674,23 @@ document.addEventListener('DOMContentLoaded', () => {
     const message = elements.messageInput.value.trim();
     const model = elements.modelSelect.value;
 
+    // Get RAG options including advanced settings
+    const ragOpts = getRagOptions();
+
     const payload = {
       target: targetHost(),
       model,
       system: elements.systemPrompt.value.trim(),
       options: {
         ...readOptions(),
-        persona: elements.promptSelect?.value || 'default_chat'
+        persona: elements.promptSelect?.value || 'default_chat',
+        // RAG advanced options (backend expects these in options object)
+        ragExpand: ragOpts.ragExpand,
+        ragHybrid: ragOpts.ragHybrid,
+        ragRerank: ragOpts.ragRerank
       },
-      useRag: elements.ragToggle.checked,
+      useRag: ragOpts.useRag,
+      ragTopK: ragOpts.ragTopK,
       threadId: state.threadId,
       message,
       profile: readProfileInputs(),
@@ -803,16 +872,24 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     try {
+      // Get RAG options including advanced settings
+      const ragOpts = getRagOptions();
+
       const payload = {
         target: targetHost(),
         model,
         system: elements.systemPrompt.value.trim(),
         options: {
           ...readOptions(),
-          persona: elements.promptSelect?.value || 'default_chat'  // Phase 2.1: Include selected prompt
+          persona: elements.promptSelect?.value || 'default_chat',  // Phase 2.1: Include selected prompt
+          // RAG advanced options (backend expects these in options object)
+          ragExpand: ragOpts.ragExpand,
+          ragHybrid: ragOpts.ragHybrid,
+          ragRerank: ragOpts.ragRerank
         },
         stream: false,
-        useRag: elements.ragToggle.checked,
+        useRag: ragOpts.useRag,
+        ragTopK: ragOpts.ragTopK,
         threadId: state.threadId,
         message,
         profile: readProfileInputs(),
@@ -1332,6 +1409,18 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.refreshModels.addEventListener('click', () => fetchModels(true));
     elements.saveDefaults.addEventListener('click', persistSettings);
     
+    // RAG Advanced Options Panel
+    if (elements.ragPanelHeader) {
+      elements.ragPanelHeader.addEventListener('click', toggleRagOptions);
+    }
+    if (elements.ragTopK) {
+      elements.ragTopK.addEventListener('input', () => {
+        if (elements.ragTopKValue) {
+          elements.ragTopKValue.textContent = elements.ragTopK.value;
+        }
+      });
+    }
+
     // Auth events
     if (elements.logoutBtn) {
       elements.logoutBtn.addEventListener('click', logout);
@@ -1463,6 +1552,9 @@ document.addEventListener('DOMContentLoaded', () => {
     loadActivePrompt();
     loadPromptSelector();
     await fetchModels();
+
+    // Check RAG availability and show/hide advanced options panel
+    checkRagAvailability();
 
     // Set initial UI toggle states
     if (elements.toggleLogBtn) {

@@ -806,7 +806,7 @@
     <script src="/js/components/nav.js"></script>
     <script src="/js/workspace.js"></script>
     <script>
-        injectNav('features-admin');
+        injectNav('workspaces');
 
         let workspaces = [];
         let currentWorkspace = null;
@@ -1101,6 +1101,8 @@
 
         function closeCreateWorkspaceModal() {
             document.getElementById('createWorkspaceModal').classList.remove('active');
+            // Reset form fields
+            document.getElementById('formCreateWorkspace').reset();
         }
 
         async function createWorkspace(e) {
@@ -1123,7 +1125,15 @@
                 if (data.status === 'success') {
                     showSuccess('Workspace created successfully!');
                     closeCreateWorkspaceModal();
+
+                    // Reload workspaces in both local list and global WorkspaceManager
                     await loadWorkspaces();
+
+                    // Update global WorkspaceManager dropdown
+                    if (window.WorkspaceManager) {
+                        await window.WorkspaceManager.loadWorkspaces();
+                        window.WorkspaceManager.updateUI();
+                    }
 
                     // Auto-select new workspace
                     const newWorkspace = workspaces.find(w => w.slug === slug);

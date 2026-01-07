@@ -1,17 +1,9 @@
 const mongoose = require('mongoose');
 const { MongoMemoryServer } = require('mongodb-memory-server');
 const CustomDashboard = require('../../models/CustomDashboard');
-const Conversation = require('../../models/Conversation'); // Assuming this exists for data source testing
+const Alert = require('../../models/Alert');
 const User = require('../../models/UserProfile');
 const Workspace = require('../../models/Workspace');
-
-// Mock request/app handling is tricky without full setup, 
-// so we will test the logic by manually invoking the logic or just Model behavior.
-// But the user asked for Backend Tests "Table widget creation with valid dataSource".
-// And "Data retrieval returns columns + rows format".
-// To test data retrieval, we need to invoke the route logic. 
-// Since Route logic is in `routes/dashboards.js` and not exported as a standalone function easily,
-// we can test the Model schema validation here, and maybe try to simulate the aggregation logic.
 
 describe('Table Widget Integration', () => {
     let mongod;
@@ -19,9 +11,9 @@ describe('Table Widget Integration', () => {
     let user;
 
     beforeAll(async () => {
-        if (mongoose.connection.readyState !== 0) {
-            await mongoose.disconnect();
-        }
+        // Ensure no previous connections
+        await mongoose.disconnect();
+        
         mongod = await MongoMemoryServer.create();
         await mongoose.connect(mongod.getUri());
         
@@ -31,19 +23,19 @@ describe('Table Widget Integration', () => {
 
     afterAll(async () => {
         await mongoose.disconnect();
-        await mongod.stop();
+        if (mongod) await mongod.stop();
     });
 
     it('should allow creating a dashboard with a TABLE widget and PIPELINE', async () => {
         const layout = [{
             id: 't1', x: 0, y: 0, w: 4, h: 3,
             type: 'table',
-            title: 'Top Models',
+            title: 'Active Alerts',
             dataSource: { 
-                collection: 'conversations',
+                collection: 'alerts', // Using alerts as they have status
                 pipeline: [
-                    { $match: { status: 'completed' } },
-                    { $group: { _id: '$model', count: { $sum: 1 } } }
+                    { $match: { status: 'active' } },
+                    { $project: { title: 1, severity: 1, createdAt: 1 } }
                 ]
             }
         }];
@@ -57,33 +49,34 @@ describe('Table Widget Integration', () => {
 
         expect(dash.layout[0].type).toBe('table');
         expect(dash.layout[0].dataSource.pipeline).toBeDefined();
+        // Since pipeline is mixed/array, it should persist
         expect(dash.layout[0].dataSource.pipeline).toHaveLength(2);
-        expect(dash.layout[0].dataSource.pipeline[0].$match.status).toBe('completed');
+        expect(dash.layout[0].dataSource.pipeline[0].$match.status).toBe('active');
     });
 
-    it('should validate table widget structure', async () => {
-         // Create dummy conversations
-         await Conversation.create([
-             { workspaceId: workspace._id, model: 'gpt-4', status: 'completed' },
-             { workspaceId: workspace._id, model: 'gpt-3.5', status: 'completed' },
-             { workspaceId: workspace._id, model: 'gpt-4', status: 'failed' }
+    it('should validate aggregate pipeline execution on seeded data', async () => {
+         // Create dummy alerts
+         await Alert.create([
+             { workspaceId: workspace._id, title: 'High CPU', message: 'CPU > 90%', severity: 'critical', status: 'active', fingerprint: 'cpu-high' },
+             { workspaceId: workspace._id, title: 'Low Memory', message: 'RAM < 10%', severity: 'warning', status: 'active', fingerprint: 'mem-low' },
+             { workspaceId: workspace._id, title: 'Backup Success', message: 'Done', severity: 'info', status: 'resolved', fingerprint: 'backup-ok' }
          ]);
 
-         // Here we would ideally test the route's executeWidgetQuery logic.
-         // But since we can't easily import that function (it's internal to the route module),
-         // we verify that the Model.aggregate works with the pipeline structure we intended.
+         // Simulate the pipeline logic used in dash
+         // The route appends workspaceId match to the front
          
          const pipeline = [
-             { $match: { workspaceId: workspace._id } }, // The route adds this
-             { $match: { status: 'completed' } },
-             { $group: { _id: '$model', count: { $sum: 1 } } },
-             { $sort: { _id: 1 } } // Ensure order for test
+             { $match: { workspaceId: workspace._id } },
+             { $match: { status: 'active' } },
+             { $group: { _id: '$severity', count: { $sum: 1 } } },
+             { $sort: { _id: 1 } }
          ];
 
-         const results = await Conversation.aggregate(pipeline);
+         const results = await Alert.aggregate(pipeline);
          
-         // Top Models: gpt-3.5 (1), gpt-4 (1)
+         // expect critial(1) and warning(1)
          expect(results).toHaveLength(2);
-         expect(results.find(r => r._id === 'gpt-4').count).toBe(1);
+         expect(results.find(r => r._id === 'critical').count).toBe(1);
+         expect(results.find(r => r._id === 'warning').count).toBe(1);
     });
 });

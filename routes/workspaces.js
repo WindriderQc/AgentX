@@ -24,6 +24,21 @@ const {
 } = require('../src/middleware/workspace');
 
 // ============================================
+// HELPER FUNCTIONS
+// ============================================
+
+/**
+ * Get UserProfile ObjectId from session userId (which might be username string)
+ */
+async function getUserProfileId(sessionUserId) {
+  const userProfile = await UserProfile.findOne({ userId: sessionUserId });
+  if (!userProfile) {
+    throw new Error('User profile not found');
+  }
+  return userProfile._id;
+}
+
+// ============================================
 // WORKSPACE CRUD OPERATIONS
 // ============================================
 
@@ -33,11 +48,11 @@ const {
  */
 router.get('/', requireAuth, async (req, res) => {
   try {
-    const userId = req.user.userId;
+    const userProfileId = await getUserProfileId(req.user.userId);
 
     // Get user's workspace memberships
     const memberships = await WorkspaceMember.find({
-      userId,
+      userId: userProfileId,
       status: 'active'
     })
       .populate('workspaceId')
@@ -63,6 +78,13 @@ router.get('/', requireAuth, async (req, res) => {
       userId: req.user?.userId
     });
 
+    if (error.message === 'User profile not found') {
+      return res.status(404).json({
+        status: 'error',
+        message: 'User profile not found. Please create a profile first.'
+      });
+    }
+
     res.status(500).json({
       status: 'error',
       message: 'Failed to retrieve workspaces'
@@ -77,7 +99,7 @@ router.get('/', requireAuth, async (req, res) => {
 router.post('/', requireAuth, async (req, res) => {
   try {
     const { name, slug, description } = req.body;
-    const userId = req.user.userId;
+    const userProfileId = await getUserProfileId(req.user.userId);
 
     // Validation
     if (!name || !slug) {
@@ -109,13 +131,13 @@ router.post('/', requireAuth, async (req, res) => {
       name,
       slug,
       description: description || '',
-      ownerId: userId
+      ownerId: userProfileId
     });
 
     // Create owner membership
     await WorkspaceMember.create({
       workspaceId: workspace._id,
-      userId,
+      userId: userProfileId,
       role: 'owner',
       permissions: {
         chat: true,
@@ -130,7 +152,7 @@ router.post('/', requireAuth, async (req, res) => {
     logger.info('Workspace created', {
       workspaceId: workspace._id,
       slug: workspace.slug,
-      ownerId: userId
+      ownerId: userProfileId
     });
 
     res.status(201).json({
@@ -142,6 +164,13 @@ router.post('/', requireAuth, async (req, res) => {
       error: error.message,
       userId: req.user?.userId
     });
+
+    if (error.message === 'User profile not found') {
+      return res.status(404).json({
+        status: 'error',
+        message: 'User profile not found. Please create a profile first.'
+      });
+    }
 
     res.status(500).json({
       status: 'error',
@@ -157,13 +186,13 @@ router.post('/', requireAuth, async (req, res) => {
 router.get('/:slug', requireAuth, async (req, res) => {
   try {
     const { slug } = req.params;
-    const userId = req.user.userId;
+    const userProfileId = await getUserProfileId(req.user.userId);
 
     // Get workspace
     const workspace = await Workspace.getBySlug(slug);
 
     // Check if user is a member
-    const member = await WorkspaceMember.getMember(workspace._id, userId);
+    const member = await WorkspaceMember.getMember(workspace._id, userProfileId);
 
     if (!member) {
       return res.status(403).json({
@@ -189,6 +218,13 @@ router.get('/:slug', requireAuth, async (req, res) => {
       slug: req.params.slug
     });
 
+    if (error.message === 'User profile not found') {
+      return res.status(404).json({
+        status: 'error',
+        message: 'User profile not found. Please create a profile first.'
+      });
+    }
+
     if (error.statusCode === 404) {
       return res.status(404).json({
         status: 'error',
@@ -210,11 +246,11 @@ router.get('/:slug', requireAuth, async (req, res) => {
 router.patch('/:slug', requireAuth, async (req, res) => {
   try {
     const { slug } = req.params;
-    const userId = req.user.userId;
+    const userProfileId = await getUserProfileId(req.user.userId);
 
     // Get workspace and member
     const workspace = await Workspace.getBySlug(slug);
-    const member = await WorkspaceMember.getMember(workspace._id, userId);
+    const member = await WorkspaceMember.getMember(workspace._id, userProfileId);
 
     if (!member || !member.isAdmin()) {
       return res.status(403).json({
@@ -261,7 +297,7 @@ router.patch('/:slug', requireAuth, async (req, res) => {
     logger.info('Workspace updated', {
       workspaceId: workspace._id,
       slug: workspace.slug,
-      updatedBy: userId
+      updatedBy: userProfileId
     });
 
     res.json({
@@ -273,6 +309,13 @@ router.patch('/:slug', requireAuth, async (req, res) => {
       error: error.message,
       slug: req.params.slug
     });
+
+    if (error.message === 'User profile not found') {
+      return res.status(404).json({
+        status: 'error',
+        message: 'User profile not found. Please create a profile first.'
+      });
+    }
 
     res.status(500).json({
       status: 'error',
@@ -288,11 +331,11 @@ router.patch('/:slug', requireAuth, async (req, res) => {
 router.delete('/:slug', requireAuth, async (req, res) => {
   try {
     const { slug } = req.params;
-    const userId = req.user.userId;
+    const userProfileId = await getUserProfileId(req.user.userId);
 
     // Get workspace and member
     const workspace = await Workspace.getBySlug(slug);
-    const member = await WorkspaceMember.getMember(workspace._id, userId);
+    const member = await WorkspaceMember.getMember(workspace._id, userProfileId);
 
     if (!member || !member.isOwner()) {
       return res.status(403).json({
@@ -307,7 +350,7 @@ router.delete('/:slug', requireAuth, async (req, res) => {
     logger.warn('Workspace deleted', {
       workspaceId: workspace._id,
       slug: workspace.slug,
-      deletedBy: userId
+      deletedBy: userProfileId
     });
 
     res.json({
@@ -319,6 +362,13 @@ router.delete('/:slug', requireAuth, async (req, res) => {
       error: error.message,
       slug: req.params.slug
     });
+
+    if (error.message === 'User profile not found') {
+      return res.status(404).json({
+        status: 'error',
+        message: 'User profile not found. Please create a profile first.'
+      });
+    }
 
     res.status(500).json({
       status: 'error',
@@ -338,13 +388,13 @@ router.delete('/:slug', requireAuth, async (req, res) => {
 router.get('/:slug/members', requireAuth, async (req, res) => {
   try {
     const { slug } = req.params;
-    const userId = req.user.userId;
+    const userProfileId = await getUserProfileId(req.user.userId);
 
     // Get workspace
     const workspace = await Workspace.getBySlug(slug);
 
     // Check if user is a member
-    const member = await WorkspaceMember.getMember(workspace._id, userId);
+    const member = await WorkspaceMember.getMember(workspace._id, userProfileId);
     if (!member) {
       return res.status(403).json({
         status: 'error',
@@ -365,6 +415,13 @@ router.get('/:slug/members', requireAuth, async (req, res) => {
       slug: req.params.slug
     });
 
+    if (error.message === 'User profile not found') {
+      return res.status(404).json({
+        status: 'error',
+        message: 'User profile not found. Please create a profile first.'
+      });
+    }
+
     res.status(500).json({
       status: 'error',
       message: 'Failed to retrieve members'
@@ -380,7 +437,7 @@ router.post('/:slug/members', requireAuth, async (req, res) => {
   try {
     const { slug } = req.params;
     const { email, role } = req.body;
-    const userId = req.user.userId;
+    const userProfileId = await getUserProfileId(req.user.userId);
 
     // Validation
     if (!email || !role) {
@@ -401,7 +458,7 @@ router.post('/:slug/members', requireAuth, async (req, res) => {
     const workspace = await Workspace.getBySlug(slug);
 
     // Check if requester is admin
-    const requester = await WorkspaceMember.getMember(workspace._id, userId);
+    const requester = await WorkspaceMember.getMember(workspace._id, userProfileId);
     if (!requester || !requester.isAdmin()) {
       return res.status(403).json({
         status: 'error',
@@ -436,7 +493,7 @@ router.post('/:slug/members', requireAuth, async (req, res) => {
       workspace._id,
       invitedUser._id,
       role,
-      userId
+      userProfileId
     );
 
     // Activate immediately (future: send email invitation)
@@ -454,7 +511,7 @@ router.post('/:slug/members', requireAuth, async (req, res) => {
       workspaceId: workspace._id,
       invitedUserId: invitedUser._id,
       role,
-      invitedBy: userId
+      invitedBy: userProfileId
     });
 
     res.status(201).json({
@@ -467,6 +524,13 @@ router.post('/:slug/members', requireAuth, async (req, res) => {
       error: error.message,
       slug: req.params.slug
     });
+
+    if (error.message === 'User profile not found') {
+      return res.status(404).json({
+        status: 'error',
+        message: 'User profile not found. Please create a profile first.'
+      });
+    }
 
     res.status(500).json({
       status: 'error',
@@ -483,13 +547,13 @@ router.patch('/:slug/members/:memberId', requireAuth, async (req, res) => {
   try {
     const { slug, memberId } = req.params;
     const { role, permissions } = req.body;
-    const userId = req.user.userId;
+    const userProfileId = await getUserProfileId(req.user.userId);
 
     // Get workspace
     const workspace = await Workspace.getBySlug(slug);
 
     // Check if requester is admin
-    const requester = await WorkspaceMember.getMember(workspace._id, userId);
+    const requester = await WorkspaceMember.getMember(workspace._id, userProfileId);
     if (!requester || !requester.isAdmin()) {
       return res.status(403).json({
         status: 'error',
@@ -549,7 +613,7 @@ router.patch('/:slug/members/:memberId', requireAuth, async (req, res) => {
       workspaceId: workspace._id,
       memberId: member._id,
       role: member.role,
-      updatedBy: userId
+      updatedBy: userProfileId
     });
 
     res.json({
@@ -562,6 +626,13 @@ router.patch('/:slug/members/:memberId', requireAuth, async (req, res) => {
       slug: req.params.slug,
       memberId: req.params.memberId
     });
+
+    if (error.message === 'User profile not found') {
+      return res.status(404).json({
+        status: 'error',
+        message: 'User profile not found. Please create a profile first.'
+      });
+    }
 
     res.status(500).json({
       status: 'error',
@@ -577,13 +648,13 @@ router.patch('/:slug/members/:memberId', requireAuth, async (req, res) => {
 router.delete('/:slug/members/:memberId', requireAuth, async (req, res) => {
   try {
     const { slug, memberId } = req.params;
-    const userId = req.user.userId;
+    const userProfileId = await getUserProfileId(req.user.userId);
 
     // Get workspace
     const workspace = await Workspace.getBySlug(slug);
 
     // Check if requester is admin
-    const requester = await WorkspaceMember.getMember(workspace._id, userId);
+    const requester = await WorkspaceMember.getMember(workspace._id, userProfileId);
     if (!requester || !requester.isAdmin()) {
       return res.status(403).json({
         status: 'error',
@@ -614,7 +685,7 @@ router.delete('/:slug/members/:memberId', requireAuth, async (req, res) => {
     logger.info('Member removed from workspace', {
       workspaceId: workspace._id,
       removedUserId: member.userId,
-      removedBy: userId
+      removedBy: userProfileId
     });
 
     res.json({
@@ -627,6 +698,13 @@ router.delete('/:slug/members/:memberId', requireAuth, async (req, res) => {
       slug: req.params.slug,
       memberId: req.params.memberId
     });
+
+    if (error.message === 'User profile not found') {
+      return res.status(404).json({
+        status: 'error',
+        message: 'User profile not found. Please create a profile first.'
+      });
+    }
 
     res.status(500).json({
       status: 'error',
@@ -642,13 +720,13 @@ router.delete('/:slug/members/:memberId', requireAuth, async (req, res) => {
 router.post('/:slug/leave', requireAuth, async (req, res) => {
   try {
     const { slug } = req.params;
-    const userId = req.user.userId;
+    const userProfileId = await getUserProfileId(req.user.userId);
 
     // Get workspace
     const workspace = await Workspace.getBySlug(slug);
 
     // Get member
-    const member = await WorkspaceMember.getMember(workspace._id, userId);
+    const member = await WorkspaceMember.getMember(workspace._id, userProfileId);
     if (!member) {
       return res.status(404).json({
         status: 'error',
@@ -669,7 +747,7 @@ router.post('/:slug/leave', requireAuth, async (req, res) => {
 
     logger.info('User left workspace', {
       workspaceId: workspace._id,
-      userId
+      userId: userProfileId
     });
 
     res.json({
@@ -681,6 +759,13 @@ router.post('/:slug/leave', requireAuth, async (req, res) => {
       error: error.message,
       slug: req.params.slug
     });
+
+    if (error.message === 'User profile not found') {
+      return res.status(404).json({
+        status: 'error',
+        message: 'User profile not found. Please create a profile first.'
+      });
+    }
 
     res.status(500).json({
       status: 'error',
@@ -697,7 +782,7 @@ router.post('/:slug/transfer', requireAuth, async (req, res) => {
   try {
     const { slug } = req.params;
     const { newOwnerId } = req.body;
-    const userId = req.user.userId;
+    const userProfileId = await getUserProfileId(req.user.userId);
 
     if (!newOwnerId) {
       return res.status(400).json({
@@ -710,7 +795,7 @@ router.post('/:slug/transfer', requireAuth, async (req, res) => {
     const workspace = await Workspace.getBySlug(slug);
 
     // Check if requester is owner
-    const requester = await WorkspaceMember.getMember(workspace._id, userId);
+    const requester = await WorkspaceMember.getMember(workspace._id, userProfileId);
     if (!requester || !requester.isOwner()) {
       return res.status(403).json({
         status: 'error',
@@ -719,13 +804,13 @@ router.post('/:slug/transfer', requireAuth, async (req, res) => {
     }
 
     // Get old and new owner profiles for audit log
-    const oldOwnerProfile = await UserProfile.findOne({ userId });
+    const oldOwnerProfile = await UserProfile.findOne({ userId: req.user.userId });
     const newOwnerProfile = await UserProfile.findOne({ userId: newOwnerId });
 
     // Transfer ownership
     await WorkspaceMember.transferOwnership(
       workspace._id,
-      userId,
+      userProfileId,
       newOwnerId
     );
 
@@ -735,13 +820,13 @@ router.post('/:slug/transfer', requireAuth, async (req, res) => {
       before: { ownerId: oldOwnerProfile?._id, ownerEmail: oldOwnerProfile?.email },
       after: { ownerId: newOwnerProfile?._id, ownerEmail: newOwnerProfile?.email }
     }, {
-      fromUserId: userId,
+      fromUserId: userProfileId,
       toUserId: newOwnerId
     });
 
     logger.warn('Workspace ownership transferred', {
       workspaceId: workspace._id,
-      fromUserId: userId,
+      fromUserId: userProfileId,
       toUserId: newOwnerId
     });
 
@@ -754,6 +839,13 @@ router.post('/:slug/transfer', requireAuth, async (req, res) => {
       error: error.message,
       slug: req.params.slug
     });
+
+    if (error.message === 'User profile not found') {
+      return res.status(404).json({
+        status: 'error',
+        message: 'User profile not found. Please create a profile first.'
+      });
+    }
 
     res.status(500).json({
       status: 'error',
@@ -773,13 +865,13 @@ router.post('/:slug/transfer', requireAuth, async (req, res) => {
 router.get('/:slug/stats', requireAuth, async (req, res) => {
   try {
     const { slug } = req.params;
-    const userId = req.user.userId;
+    const userProfileId = await getUserProfileId(req.user.userId);
 
     // Get workspace
     const workspace = await Workspace.getBySlug(slug);
 
     // Check if user is admin
-    const member = await WorkspaceMember.getMember(workspace._id, userId);
+    const member = await WorkspaceMember.getMember(workspace._id, userProfileId);
     if (!member || !member.isAdmin()) {
       return res.status(403).json({
         status: 'error',
@@ -824,6 +916,13 @@ router.get('/:slug/stats', requireAuth, async (req, res) => {
       error: error.message,
       slug: req.params.slug
     });
+
+    if (error.message === 'User profile not found') {
+      return res.status(404).json({
+        status: 'error',
+        message: 'User profile not found. Please create a profile first.'
+      });
+    }
 
     res.status(500).json({
       status: 'error',

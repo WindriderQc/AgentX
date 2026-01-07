@@ -20,7 +20,7 @@ const WorkspaceMemberSchema = new mongoose.Schema({
 
   userId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
+    ref: 'UserProfile',
     required: true,
     index: true
   },
@@ -83,7 +83,7 @@ const WorkspaceMemberSchema = new mongoose.Schema({
   // Invitation tracking
   invitedBy: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
+    ref: 'UserProfile'
   },
 
   invitedAt: {
