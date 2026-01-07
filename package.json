@@ -5,6 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "scan:features": "node scripts/feature-alignment-scan.js --root .",
     "test": "jest --silent",
     "test:ci": "jest --silent --detectOpenHandles",
     "test:debug:handles": "jest --detectOpenHandles --runInBand",

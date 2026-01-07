@@ -24,7 +24,17 @@ router.get('/', optionalAuth, attachWorkspace, async (req, res) => {
             query.workspaceId = req.workspace._id;
         }
 
-        const prompts = await PromptConfig.find(query).sort({ name: 1, version: -1 });
+        // Backward compatibility: if workspace-scoped prompts are empty, fall back to legacy prompts
+        // that have no workspaceId (pre-multi-tenancy).
+        let prompts = await PromptConfig.find(query).sort({ name: 1, version: -1 });
+        if (req.workspace && prompts.length === 0) {
+            prompts = await PromptConfig.find({
+                $or: [
+                    { workspaceId: null },
+                    { workspaceId: { $exists: false } }
+                ]
+            }).sort({ name: 1, version: -1 });
+        }
 
         // Group by name
         const grouped = {};
@@ -60,16 +70,34 @@ router.get('/', optionalAuth, attachWorkspace, async (req, res) => {
  */
 router.get('/:name', optionalAuth, attachWorkspace, async (req, res) => {
     try {
-        const query = { name: req.params.name };
+        const name = req.params.name;
+
+        const query = { name };
 
         // Week 4: Multi-tenancy - Filter by workspace if available
         if (req.workspace) {
             query.workspaceId = req.workspace._id;
         }
 
-        const prompts = await PromptConfig.find(query).sort({ version: -1 });
+        // Backward compatibility: if workspace-scoped prompt is missing, fall back to legacy prompts
+        // that have no workspaceId (pre-multi-tenancy).
+        let prompts = await PromptConfig.find(query).sort({ version: -1 });
+        if (req.workspace && prompts.length === 0) {
+            prompts = await PromptConfig.find({
+                name,
+                $or: [
+                    { workspaceId: null },
+                    { workspaceId: { $exists: false } }
+                ]
+            }).sort({ version: -1 });
+        }
 
         if (prompts.length === 0) {
+            // The chat UI polls for default_chat during init; returning a 404 is noisy and not actionable.
+            // Treat "missing default" as a valid state.
+            if (name === 'default_chat') {
+                return res.json({ status: 'success', data: [] });
+            }
             return res.status(404).json({ status: 'error', message: 'Prompt not found' });
         }
 

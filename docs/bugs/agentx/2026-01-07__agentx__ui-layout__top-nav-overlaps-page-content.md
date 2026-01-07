@@ -40,8 +40,8 @@ Page content should start below the top nav consistently on all pages.
 - Per-page padding-top (undesirable; causes drift).
 
 ## Fix Summary (filled after fix)
-- Root cause:
-- Fix:
-- Tests added/updated:
-- Rule added/updated:
-- Verified by:
+- Root cause: `.top-nav` is `position: fixed` (does not occupy layout space), and many pages were relying on ad-hoc `padding-top`/`margin-top` hacks (or none at all), so new pages frequently rendered content under the nav.
+- Fix: `injectNav()` now reserves layout space by setting `#nav-container` height to the actual nav height (and updates it on load/resize). This makes the offset consistent across pages without per-page CSS.
+- Tests added/updated: None.
+- Rule added/updated: Rule: Never add per-page top padding to compensate for the top nav. Always include `<div id="nav-container"></div>` + `/js/components/nav.js` and rely on the shared injector to reserve the correct header space.
+- Verified by: Manual inspection of affected pages after removing page-level padding hacks.

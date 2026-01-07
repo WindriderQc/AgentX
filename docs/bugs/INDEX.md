@@ -16,4 +16,5 @@ Every fixed bug should add at least one durable rule under **Fix Summary** in th
 - "Rule: <what to always do / never do>"
 
 ## Open bugs
-- (add entries as files are created)
+- [2026-01-07__agentx__ui-layout__top-nav-overlaps-page-content.md](agentx/2026-01-07__agentx__ui-layout__top-nav-overlaps-page-content.md)
+- [2026-01-07__agentx__prompts__default-chat-404.md](agentx/2026-01-07__agentx__prompts__default-chat-404.md)

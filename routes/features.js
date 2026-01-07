@@ -6,6 +6,8 @@
 
 const express = require('express');
 const mongoose = require('mongoose');
+const fs = require('fs');
+const path = require('path');
 const router = express.Router();
 const FeatureInventory = require('../models/FeatureInventory');
 const ApiTelemetry = require('../models/ApiTelemetry');
@@ -15,9 +17,29 @@ const ActivityLog = require('../models/ActivityLog');
 const { requireAuth } = require('../src/middleware/auth');
 const logger = require('../config/logger');
 
+const featureAlignmentScanner = require('../src/services/featureAlignmentScanner');
+const { calculatePriority } = require('../src/services/featureAlignmentPriority');
+
 // ========================================
 // Feature Inventory Endpoints
 // ========================================
+
+/**
+ * GET /api/features/reports/latest
+ * Serve the latest JSON scan report from disk
+ */
+router.get('/reports/latest', (req, res) => {
+  const reportPath = path.join(process.cwd(), 'reports', 'feature-alignment.json');
+  if (fs.existsSync(reportPath)) {
+    res.sendFile(reportPath);
+  } else {
+    res.status(404).json({ 
+      status: 'error', 
+      message: 'Report not found. Please run a scan first.' 
+    });
+  }
+});
+
 
 /**
  * GET /api/features/inventory
@@ -72,24 +94,95 @@ router.get('/inventory/alignment', async (req, res) => {
  */
 router.post('/inventory/scan', requireAuth, async (req, res) => {
   try {
-    // TODO: Implement codebase scanning logic
-    // This would involve:
-    // 1. Scanning frontend files (public/*.html, public/js/*.js)
-    // 2. Scanning backend files (routes/*.js, src/services/*.js, models/*.js)
-    // 3. Scanning documentation (docs/*.md, *.md)
-    // 4. Updating FeatureInventory records
+    // Implement codebase scanning logic
+    const scanResult = featureAlignmentScanner.scanWorkspace(process.cwd());
 
-    logger.info('Feature scan triggered', { user: req.user?.username });
+    // Update DB with results
+    const results = {
+      updated: 0,
+      created: 0,
+      errors: 0
+    };
+
+    // Process each detected feature
+    for (const detectedFeature of scanResult.features) {
+      try {
+        const query = { name: detectedFeature.key };
+        
+        let feature = await FeatureInventory.findOne(query);
+        
+        const updateData = {
+          name: detectedFeature.key,
+          // Map to enum core/analytics/operations/experimental/deprecated based on keyword checks or default to 'experimental'
+          category: detectedFeature.key.includes('analytic') ? 'analytics' : 
+                   detectedFeature.key.includes('op') || detectedFeature.key.includes('monitor') ? 'operations' : 
+                   detectedFeature.key.includes('core') || detectedFeature.key.includes('chat') ? 'core' : 'experimental',
+          
+          status: detectedFeature.status, // already matches 'complete'|'partial'|'missing' etc.
+          
+          frontend: {
+            exists: detectedFeature.present.frontend,
+            pages: detectedFeature.frontend.map(p => p.split('/').pop()), // simplify path
+            lastVerified: new Date()
+          },
+          
+          backend: {
+            exists: detectedFeature.present.backend,
+            endpoints: detectedFeature.backendHits.map(e => `${e.method} ${e.path}`),
+            services: detectedFeature.backendServices.map(s => s.split('/').pop()),
+            lastVerified: new Date()
+          },
+          
+          documentation: {
+            exists: detectedFeature.present.docs,
+            files: detectedFeature.docs.map(d => d.split('/').pop()),
+            completeness: detectedFeature.score, // Use score as proxy for completeness
+            lastVerified: new Date()
+          },
+          
+          metadata: {
+             description: `Auto-detected from ${detectedFeature.frontend.length} UI files and ${detectedFeature.backendHits.length} API endpoints`,
+             updatedBy: 'system-scanner'
+          }
+        };
+
+        if (feature) {
+          // preserve existing category/roadmap info if manually set
+          if (feature.roadmap && feature.roadmap.status !== 'planned') {
+             updateData.roadmap = feature.roadmap;
+          }
+          if (feature.category) {
+             updateData.category = feature.category;
+          }
+          
+          Object.assign(feature, updateData);
+          await feature.save();
+          results.updated++;
+        } else {
+          await FeatureInventory.create(updateData);
+          results.created++;
+        }
+      } catch (err) {
+        logger.warn(`Failed to sync feature ${detectedFeature.key}`, { error: err.message });
+        results.errors++;
+      }
+    }
+
+    logger.info('Feature scan completed', { 
+      user: req.user?.username,
+      stats: results,
+      summary: scanResult.summary.counts
+    });
 
     res.json({
       status: 'success',
-      message: 'Codebase scan initiated (placeholder - scanning logic not yet implemented)',
+      message: 'Codebase scan completed successfully',
       data: {
         scanned: {
-          frontend: 0,
-          backend: 0,
-          documentation: 0
+          features: scanResult.summary.counts.features,
+          files: scanResult.summary.counts.frontendFiles + scanResult.summary.counts.routeFiles
         },
+        db: results,
         timestamp: new Date()
       }
     });

@@ -1,0 +1,119 @@
+{
+  "name": "N6.0 LLM Gateway - OpenAI",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "llm-gateway-openai",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ],
+      "webhookId": "llm-gateway-openai"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Extract prompt and options from request\nconst { prompt, max_tokens = 1000, temperature = 0.7 } = $json.body;\nreturn { prompt, max_tokens, temperature };"
+      },
+      "name": "Extract Prompt",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        450,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4-turbo",
+        "prompt": "={{ $json.prompt }}",
+        "maxTokens": "={{ $json.max_tokens }}",
+        "temperature": "={{ $json.temperature }}"
+      },
+      "name": "OpenAI Chat",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [
+        650,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Format response to match AgentX contract\nreturn {\n  completion: $json.choices[0].message.content,\n  usage: {\n    promptTokens: $json.usage.prompt_tokens,\n    completionTokens: $json.usage.completion_tokens,\n    totalTokens: $json.usage.total_tokens\n  },\n  model: $json.model\n};"
+      },
+      "name": "Format Response",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        850,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1050,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Prompt": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Chat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

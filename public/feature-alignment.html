@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Feature Alignment Dashboard - AgentX</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            gap: 20px;
+            padding: 20px;
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+        
+        @media (max-width: 1024px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .stats-panel {
+            background: var(--card-bg, #fff);
+            border-radius: 8px;
+            border: 1px solid var(--border-color, #e2e8f0);
+            padding: 20px;
+            height: fit-content;
+        }
+
+        .main-content {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .card {
+            background: var(--card-bg, #fff);
+            border-radius: 8px;
+            border: 1px solid var(--border-color, #e2e8f0);
+            padding: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .card h3 {
+            margin-top: 0;
+            border-bottom: 1px solid var(--border-color, #e2e8f0);
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-size: 0.95rem;
+        }
+
+        .stat-val {
+            font-weight: 600;
+        }
+
+        .priority-badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        .priority-high { background: #fee2e2; color: #991b1b; }
+        .priority-medium { background: #fef3c7; color: #92400e; }
+        .priority-low { background: #f0fdf4; color: #166534; }
+
+        .status-dot {
+            height: 10px;
+            width: 10px;
+            background-color: #bbb;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 5px;
+        }
+        .status-complete { background-color: #10b981; }
+        .status-partial { background-color: #f59e0b; }
+        .status-headless { background-color: #ef4444; }
+        .status-orphan { background-color: #1e293b; }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        th, td {
+            text-align: left;
+            padding: 12px;
+            border-bottom: 1px solid var(--border-color, #eee);
+        }
+        
+        th {
+            background: var(--bg-secondary, #f8fafc);
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            color: #64748b;
+        }
+
+        tr:hover {
+            background-color: var(--hover-bg, #f8fafc);
+        }
+
+        .actions-cell {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn-sm {
+            padding: 4px 8px;
+            font-size: 0.8rem; 
+        }
+
+        /* Modal specific */
+        .modal {
+            display: none; 
+            position: fixed; 
+            z-index: 1000; 
+            left: 0; top: 0; 
+            width: 100%; height: 100%; 
+            background-color: rgba(0,0,0,0.5);
+        }
+        
+        .modal.show { 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+        }
+        
+        .modal-content {
+            background-color: #fff;
+            padding: 24px;
+            border-radius: 8px;
+            width: 800px;
+            max-width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        .close-modal {
+            position: absolute;
+            right: 20px;
+            top: 20px;
+            font-size: 24px;
+            cursor: pointer;
+        }
+
+        .detail-section {
+            margin-bottom: 20px;
+        }
+        .detail-section h4 {
+            margin-bottom: 8px;
+            color: #475569;
+        }
+        .file-list {
+            list-style: none;
+            padding: 0;
+            background: #f1f5f9;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .file-list li {
+            font-family: monospace;
+            margin-bottom: 4px;
+            font-size: 0.9rem;
+        }
+        
+        .filter-bar {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .search-box {
+            flex-grow: 1;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        
+        select {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div id="nav-container"></div>
+
+    <div class="dashboard-grid">
+        <!-- Sidebar Stats -->
+        <aside class="stats-panel">
+            <h3>Feature Alignment</h3>
+            <div style="width: 200px; height: 200px; margin: 0 auto;">
+                <canvas id="statusChart"></canvas>
+            </div>
+            
+            <div style="margin-top: 20px;">
+                <div class="stat-row">
+                    <span><span class="status-dot status-complete"></span>Complete</span>
+                    <span class="stat-val" id="count-complete">0</span>
+                </div>
+                <div class="stat-row">
+                    <span><span class="status-dot status-partial"></span>Partial</span>
+                    <span class="stat-val" id="count-partial">0</span>
+                </div>
+                <div class="stat-row">
+                    <span><span class="status-dot status-headless"></span>Headless</span>
+                    <span class="stat-val" id="count-headless">0</span>
+                </div>
+                <div class="stat-row">
+                    <span><span class="status-dot status-orphan"></span>Orphan API</span>
+                    <span class="stat-val" id="count-orphan">0</span>
+                </div>
+                <hr style="border: 0; border-top: 1px solid #eee; margin: 10px 0;">
+                <div class="stat-row">
+                    <span>Total Features</span>
+                    <span class="stat-val" id="count-total">0</span>
+                </div>
+                <div class="stat-row">
+                    <span>API Endpoints</span>
+                    <span class="stat-val" id="count-endpoints">0</span>
+                </div>
+            </div>
+            
+            <div style="margin-top: 30px;">
+                <button class="btn btn-secondary w-100" onclick="refreshScan()"><i class="fas fa-sync"></i> Re-scan Codebase</button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            
+            <!-- Recommendations Card -->
+            <div class="card" id="recommendations-card">
+                <h3><i class="fas fa-clipboard-check"></i> Actionable Next Steps</h3>
+                <div id="action-items">
+                    <p class="text-muted">Loading recommendations...</p>
+                </div>
+            </div>
+
+            <!-- Orphan Endpoints -->
+            <div class="card">
+                <h3>
+                    <span><i class="fas fa-ghost"></i> Orphan Endpoints</span>
+                    <span class="badge" id="orphan-badge">0</span>
+                </h3>
+                <p class="text-sm text-muted">Endpoints detected in backend routes but not referenced in Frontend or Documentation.</p>
+                
+                <div style="overflow-x: auto;">
+                    <table id="orphans-table">
+                        <thead>
+                            <tr>
+                                <th>Method</th>
+                                <th>Path</th>
+                                <th>Source File</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Headless Features -->
+            <div class="card">
+                <h3>
+                    <span><i class="fas fa-brain"></i> Headless Features (Documented, No UI)</span>
+                    <div class="filter-bar">
+                        <input type="text" id="search-input" class="search-box" placeholder="Search features...">
+                        <select id="priority-filter">
+                            <option value="all">All Priorities</option>
+                            <option value="HIGH">High Priority</option>
+                            <option value="MEDIUM">Medium Priority</option>
+                            <option value="LOW">Low Priority</option>
+                        </select>
+                    </div>
+                </h3>
+                
+                <div style="overflow-x: auto;">
+                    <table id="headless-table">
+                        <thead>
+                            <tr>
+                                <th>Feature Name</th>
+                                <th>Docs</th>
+                                <th>Endpoints</th>
+                                <th>Priority</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+            
+        </main>
+    </div>
+
+    <!-- Details Modal -->
+    <div id="feature-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <h2 id="modal-feature-name">Feature Details</h2>
+            <div id="modal-body"></div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="js/components/nav.js"></script>
+    <script>injectNav('features-admin');</script>
+    <script src="js/feature-alignment.js"></script>
+</body>
+</html>

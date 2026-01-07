@@ -59,6 +59,7 @@
 
 ## Testing & Validation
 - Testing hub: [testing/README.md](testing/README.md)
+- Bugs (intake + prevention rules): [bugs/INDEX.md](bugs/INDEX.md)
 - Troubleshooting: [TROUBLESHOOTING_README.md](TROUBLESHOOTING_README.md)
 - Alerts integration verification: [testing/ALERTS_INTEGRATION_VERIFICATION.md](testing/ALERTS_INTEGRATION_VERIFICATION.md)
 - Latest validation report: [VALIDATION_REPORT_2026-01-03.md](VALIDATION_REPORT_2026-01-03.md)

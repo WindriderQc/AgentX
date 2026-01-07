@@ -62,6 +62,21 @@ function injectNav(activePageId = '') {
     const navContainer = document.getElementById('nav-container');
     if (navContainer) {
         navContainer.innerHTML = navHTML;
+
+        // The nav uses position: fixed, so it does not take up space in normal flow.
+        // Reserve the correct amount of space at the top of the page so content never
+        // renders under the nav (common regression when creating new pages).
+        const updateNavContainerHeight = () => {
+            const navEl = navContainer.querySelector('nav.top-nav');
+            if (!navEl) return;
+            navContainer.style.height = `${navEl.offsetHeight}px`;
+        };
+
+        updateNavContainerHeight();
+        window.addEventListener('resize', () => {
+            window.requestAnimationFrame(updateNavContainerHeight);
+        });
+        window.addEventListener('load', updateNavContainerHeight);
     } else {
         console.error('nav.js: #nav-container element not found. Add <div id="nav-container"></div> to your HTML.');
     }
