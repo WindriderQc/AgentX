@@ -22,6 +22,7 @@ function injectNav(activePageId = '') {
         { label: 'Telemetry', href: 'features-telemetry.html', icon: 'fa-chart-bar', id: 'features-telemetry' },
         { label: 'Adoption', href: 'features-adoption.html', icon: 'fa-users', id: 'features-adoption' },
         { label: 'Admin', href: 'features-admin.html', icon: 'fa-cogs', id: 'features-admin' },
+        { label: 'Alignment', href: 'feature-alignment.html', icon: 'fa-diagram-project', id: 'feature-alignment' },
         { label: 'Workspaces', href: 'workspace-settings.html', icon: 'fa-building', id: 'workspaces' },
         { label: 'Audit Logs', href: 'workspace-audit.html', icon: 'fa-history', id: 'audit-logs' },
         { label: 'RAG', href: 'rag.html', icon: 'fa-database', id: 'rag' },

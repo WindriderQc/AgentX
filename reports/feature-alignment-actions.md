@@ -2,73 +2,46 @@
 
 ## 1. Executive Summary
 
-- **Total Features:** 225
-- **Complete Features:** 215
-- **Truly Headless Features:** 49
+- **Total Features:** 179
+- **Complete Features:** 179
+- **Truly Headless Features:** 42
 - **API-Only Features:** 0
-- **Orphan Endpoints:** 10
+- **Orphan Endpoints:** 0
 
 ## 2. High-Priority Headless Features (Top 10)
 
 _Features that need UI development, excluding API-only endpoints_
 
-### deployment (Score: 45/100)
+### invitations (Score: 85/100)
 
 **Status:** headless-documented
-**Priority:** MEDIUM (medium)
+**Priority:** CRITICAL (critical)
 
-**Endpoints (0):**
-- (No exact endpoint hits, matched via service/model files)
-
-**Score Breakdown:**
-- n8n Workflow Usage: ✅ (+30)
-- Endpoint Count: 0 pts
-- Documentation: 15 pts
-- Security/Admin: 0 pts
-- Recent Activity: 0 pts
-
-**Why Build UI:** Moderate priority. Consider if users frequently request this functionality.
-
-**Suggested UI location:** /public/deployment.html
-
----
-
-### model-registry (Score: 40/100)
-
-**Status:** headless-documented
-**Priority:** MEDIUM (medium)
-
-**Endpoints (12):**
-- GET /api/models/registry/ (`model-registry.js`)
-- GET /api/models/registry/stats (`model-registry.js`)
-- GET /api/models/registry/grouped (`model-registry.js`)
-- GET /api/models/registry/category/:category (`model-registry.js`)
-- GET /api/models/registry/tag/:tag (`model-registry.js`)
-- GET /api/models/registry/:name (`model-registry.js`)
-- POST /api/models/registry/ (`model-registry.js`)
-- PATCH /api/models/registry/:name (`model-registry.js`)
-- DELETE /api/models/registry/:name (`model-registry.js`)
-- POST /api/models/registry/:name/sync (`model-registry.js`)
-- POST /api/models/registry/:name/categories (`model-registry.js`)
-- DELETE /api/models/registry/:name/categories/:category (`model-registry.js`)
+**Endpoints (6):**
+- GET /api/invitations/validate/:token (`invitations.js`)
+- POST /api/invitations/accept (`invitations.js`)
+- GET /api/invitations/my-invitations (`invitations.js`)
+- POST /api/workspaces/:slug/invitations (`workspaces.js`)
+- GET /api/workspaces/:slug/invitations (`workspaces.js`)
+- DELETE /api/workspaces/:slug/invitations/:invitationId (`workspaces.js`)
 
 **Score Breakdown:**
 - n8n Workflow Usage: ➖ (0)
-- Endpoint Count: 20 pts
-- Documentation: 20 pts
-- Security/Admin: 0 pts
-- Recent Activity: 0 pts
+- Endpoint Count: 40 pts
+- Documentation: 15 pts
+- Security/Admin: 15 pts
+- Recent Activity: 15 pts
 
-**Why Build UI:** Moderate priority. Consider if users frequently request this functionality.
+**Why Build UI:** Critical feature with 6 endpoints and strong documentation. High priority for user accessibility.
 
-**Suggested UI location:** /public/model-registry.html
+**Suggested UI location:** /public/invitations.html
 
 ---
 
-### models-unified (Score: 40/100)
+### models-unified (Score: 85/100)
 
 **Status:** headless-documented
-**Priority:** MEDIUM (medium)
+**Priority:** CRITICAL (critical)
 
 **Endpoints (13):**
 - GET /api/models/all (`models-unified.js`)
@@ -87,21 +60,21 @@ _Features that need UI development, excluding API-only endpoints_
 
 **Score Breakdown:**
 - n8n Workflow Usage: ➖ (0)
-- Endpoint Count: 20 pts
-- Documentation: 20 pts
-- Security/Admin: 0 pts
-- Recent Activity: 0 pts
+- Endpoint Count: 40 pts
+- Documentation: 15 pts
+- Security/Admin: 15 pts
+- Recent Activity: 15 pts
 
-**Why Build UI:** Moderate priority. Consider if users frequently request this functionality.
+**Why Build UI:** Critical feature with 13 endpoints and strong documentation. High priority for user accessibility.
 
 **Suggested UI location:** /public/models-unified.html
 
 ---
 
-### dataset (Score: 30/100)
+### dataset (Score: 80/100)
 
 **Status:** headless-documented
-**Priority:** MEDIUM (medium)
+**Priority:** CRITICAL (critical)
 
 **Endpoints (4):**
 - GET /api/dataset/conversations (`dataset.js`)
@@ -111,21 +84,53 @@ _Features that need UI development, excluding API-only endpoints_
 
 **Score Breakdown:**
 - n8n Workflow Usage: ➖ (0)
-- Endpoint Count: 10 pts
-- Documentation: 20 pts
-- Security/Admin: 0 pts
-- Recent Activity: 0 pts
+- Endpoint Count: 40 pts
+- Documentation: 15 pts
+- Security/Admin: 10 pts
+- Recent Activity: 15 pts
 
-**Why Build UI:** Moderate priority. Consider if users frequently request this functionality.
+**Why Build UI:** Critical feature with 4 endpoints and strong documentation. High priority for user accessibility.
 
 **Suggested UI location:** /public/dataset.html
 
 ---
 
-### voice (Score: 30/100)
+### model-registry (Score: 80/100)
 
 **Status:** headless-documented
-**Priority:** MEDIUM (medium)
+**Priority:** CRITICAL (critical)
+
+**Endpoints (12):**
+- GET /api/models/registry/ (`model-registry.js`)
+- GET /api/models/registry/stats (`model-registry.js`)
+- GET /api/models/registry/grouped (`model-registry.js`)
+- GET /api/models/registry/category/:category (`model-registry.js`)
+- GET /api/models/registry/tag/:tag (`model-registry.js`)
+- GET /api/models/registry/:name (`model-registry.js`)
+- POST /api/models/registry/ (`model-registry.js`)
+- PATCH /api/models/registry/:name (`model-registry.js`)
+- DELETE /api/models/registry/:name (`model-registry.js`)
+- POST /api/models/registry/:name/sync (`model-registry.js`)
+- POST /api/models/registry/:name/categories (`model-registry.js`)
+- DELETE /api/models/registry/:name/categories/:category (`model-registry.js`)
+
+**Score Breakdown:**
+- n8n Workflow Usage: ➖ (0)
+- Endpoint Count: 40 pts
+- Documentation: 15 pts
+- Security/Admin: 10 pts
+- Recent Activity: 15 pts
+
+**Why Build UI:** Critical feature with 12 endpoints and strong documentation. High priority for user accessibility.
+
+**Suggested UI location:** /public/model-registry.html
+
+---
+
+### voice (Score: 70/100)
+
+**Status:** headless-documented
+**Priority:** CRITICAL (critical)
 
 **Endpoints (4):**
 - GET /api/voice/health (`voice.js`)
@@ -135,42 +140,45 @@ _Features that need UI development, excluding API-only endpoints_
 
 **Score Breakdown:**
 - n8n Workflow Usage: ➖ (0)
-- Endpoint Count: 10 pts
-- Documentation: 20 pts
+- Endpoint Count: 40 pts
+- Documentation: 15 pts
 - Security/Admin: 0 pts
-- Recent Activity: 0 pts
+- Recent Activity: 15 pts
 
-**Why Build UI:** Moderate priority. Consider if users frequently request this functionality.
+**Why Build UI:** Critical feature with 4 endpoints and strong documentation. High priority for user accessibility.
 
 **Suggested UI location:** /public/voice.html
 
 ---
 
-### database (Score: 25/100)
+### workflowgenerator (Score: 70/100)
 
 **Status:** headless-documented
-**Priority:** LOW (low)
+**Priority:** CRITICAL (critical)
 
-**Endpoints (1):**
-- GET /api/metrics/database (`metrics.js`)
+**Endpoints (4):**
+- POST /api/workflow/generate (`workflowGenerator.js`)
+- POST /api/workflow/validate (`workflowGenerator.js`)
+- POST /api/workflow/deploy (`workflowGenerator.js`)
+- GET /api/workflow/examples (`workflowGenerator.js`)
 
 **Score Breakdown:**
 - n8n Workflow Usage: ➖ (0)
-- Endpoint Count: 5 pts
-- Documentation: 20 pts
+- Endpoint Count: 40 pts
+- Documentation: 15 pts
 - Security/Admin: 0 pts
-- Recent Activity: 0 pts
+- Recent Activity: 15 pts
 
-**Why Build UI:** Moderate priority. Consider if users frequently request this functionality.
+**Why Build UI:** Critical feature with 4 endpoints and strong documentation. High priority for user accessibility.
 
-**Suggested UI location:** /public/database.html
+**Suggested UI location:** /public/workflowgenerator.html
 
 ---
 
-### e2e-test-completion-report (Score: 25/100)
+### e2e-test-completion-report (Score: 65/100)
 
 **Status:** headless-documented
-**Priority:** LOW (low)
+**Priority:** HIGH (high)
 
 **Endpoints (2):**
 - GET /api/dashboard/scans/:id/report (`dashboard.js`)
@@ -178,68 +186,21 @@ _Features that need UI development, excluding API-only endpoints_
 
 **Score Breakdown:**
 - n8n Workflow Usage: ➖ (0)
-- Endpoint Count: 5 pts
-- Documentation: 20 pts
-- Security/Admin: 0 pts
-- Recent Activity: 0 pts
+- Endpoint Count: 20 pts
+- Documentation: 15 pts
+- Security/Admin: 15 pts
+- Recent Activity: 15 pts
 
-**Why Build UI:** Moderate priority. Consider if users frequently request this functionality.
+**Why Build UI:** High-value feature that would benefit from user-friendly interface for non-technical users.
 
 **Suggested UI location:** /public/e2e-test-completion-report.html
 
 ---
 
-### integration-examples (Score: 25/100)
+### phase3-test-report (Score: 65/100)
 
 **Status:** headless-documented
-**Priority:** LOW (low)
-
-**Endpoints (1):**
-- GET /api/workflow/examples (`workflowGenerator.js`)
-
-**Score Breakdown:**
-- n8n Workflow Usage: ➖ (0)
-- Endpoint Count: 5 pts
-- Documentation: 20 pts
-- Security/Admin: 0 pts
-- Recent Activity: 0 pts
-
-**Why Build UI:** Moderate priority. Consider if users frequently request this functionality.
-
-**Suggested UI location:** /public/integration-examples.html
-
----
-
-### invitations (Score: 25/100)
-
-**Status:** headless-documented
-**Priority:** LOW (low)
-
-**Endpoints (6):**
-- GET /api/invitations/validate/:token (`invitations.js`)
-- POST /api/invitations/accept (`invitations.js`)
-- GET /api/invitations/my-invitations (`invitations.js`)
-- POST /api/workspaces/:slug/invitations (`workspaces.js`)
-- GET /api/workspaces/:slug/invitations (`workspaces.js`)
-- DELETE /api/workspaces/:slug/invitations/:invitationId (`workspaces.js`)
-
-**Score Breakdown:**
-- n8n Workflow Usage: ➖ (0)
-- Endpoint Count: 15 pts
-- Documentation: 10 pts
-- Security/Admin: 0 pts
-- Recent Activity: 0 pts
-
-**Why Build UI:** Moderate priority. Consider if users frequently request this functionality.
-
-**Suggested UI location:** /public/invitations.html
-
----
-
-### phase0-validation-report (Score: 25/100)
-
-**Status:** headless-documented
-**Priority:** LOW (low)
+**Priority:** HIGH (high)
 
 **Endpoints (2):**
 - GET /api/dashboard/scans/:id/report (`dashboard.js`)
@@ -247,14 +208,58 @@ _Features that need UI development, excluding API-only endpoints_
 
 **Score Breakdown:**
 - n8n Workflow Usage: ➖ (0)
-- Endpoint Count: 5 pts
-- Documentation: 20 pts
-- Security/Admin: 0 pts
-- Recent Activity: 0 pts
+- Endpoint Count: 20 pts
+- Documentation: 15 pts
+- Security/Admin: 15 pts
+- Recent Activity: 15 pts
 
-**Why Build UI:** Moderate priority. Consider if users frequently request this functionality.
+**Why Build UI:** High-value feature that would benefit from user-friendly interface for non-technical users.
 
-**Suggested UI location:** /public/phase0-validation-report.html
+**Suggested UI location:** /public/phase3-test-report.html
+
+---
+
+### validation-report-2025-12-31-1622 (Score: 65/100)
+
+**Status:** headless-documented
+**Priority:** HIGH (high)
+
+**Endpoints (2):**
+- GET /api/dashboard/scans/:id/report (`dashboard.js`)
+- GET /api/features/reports/latest (`features.js`)
+
+**Score Breakdown:**
+- n8n Workflow Usage: ➖ (0)
+- Endpoint Count: 20 pts
+- Documentation: 15 pts
+- Security/Admin: 15 pts
+- Recent Activity: 15 pts
+
+**Why Build UI:** High-value feature that would benefit from user-friendly interface for non-technical users.
+
+**Suggested UI location:** /public/validation-report-2025-12-31-1622.html
+
+---
+
+### validation-report-2026-01-03 (Score: 65/100)
+
+**Status:** headless-documented
+**Priority:** HIGH (high)
+
+**Endpoints (2):**
+- GET /api/dashboard/scans/:id/report (`dashboard.js`)
+- GET /api/features/reports/latest (`features.js`)
+
+**Score Breakdown:**
+- n8n Workflow Usage: ➖ (0)
+- Endpoint Count: 20 pts
+- Documentation: 15 pts
+- Security/Admin: 15 pts
+- Recent Activity: 15 pts
+
+**Why Build UI:** High-value feature that would benefit from user-friendly interface for non-technical users.
+
+**Suggested UI location:** /public/validation-report-2026-01-03.html
 
 ---
 
@@ -266,27 +271,5 @@ _No API-only features identified._
 
 ## 4. Orphan Endpoints Analysis
 
-### False Positives (Scanner Missed Usage)
-
-| Status | Method | Path | Source File | Action |
-|--------|--------|------|-------------|--------|
-| ✅ In Use | POST | /api/feedback | `api.js` | Link to existing feature |
-| ✅ In Use | POST | /register | `auth.js` | Link to existing feature |
-| ✅ In Use | POST | /logout | `auth.js` | Link to existing feature |
-| ✅ In Use | GET | /me | `auth.js` | Link to existing feature |
-| ✅ In Use | GET | /api/dashboard/health | `dashboard.js` | Link to existing feature |
-| ✅ In Use | GET | /api/dashboard/stats | `dashboard.js` | Link to existing feature |
-| ✅ In Use | GET | /api/dashboard/scans | `dashboard.js` | Link to existing feature |
-
-### API-Only Endpoints
-
-| Status | Method | Path | Source File | Action |
-|--------|--------|------|-------------|--------|
-| 🔧 API-Only | GET | /api/models/routing | `api.js` | Document in API reference |
-| 🔧 API-Only | POST | /api/models/classify | `api.js` | Document in API reference |
-| 🔧 API-Only | GET | /api/models/health | `api.js` | Document in API reference |
-
-### Needs Review
-
-_None - All orphans categorized!_
+_No orphan endpoints found._
 

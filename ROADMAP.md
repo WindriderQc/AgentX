@@ -8,21 +8,22 @@ This roadmap tracks the development status and priorities for the AgentX project
 
 ## Overview
 
-AgentX development is organized across **seven development tracks**, each focusing on a specific aspect of the system's capabilities. All seven tracks are now **COMPLETE** with production-ready implementations.
+AgentX development is organized across **eight development tracks**, each focusing on a specific aspect of the system's capabilities. Seven tracks are **COMPLETE** with production-ready implementations, and Track 8 (Feature Alignment Dashboard) is actively in development.
 
-### Seven Development Tracks
+### Eight Development Tracks
 
-1. **Track 1: Alerts & Notifications** - Real-time proactive monitoring and alerting
-2. **Track 2: Historical Metrics & Analytics** - Time-series data collection and insights
-3. **Track 3: Custom Model Management** - Fine-tuned LLM lifecycle oversight
-4. **Track 4: Self-Healing & Automation** - Automated issue detection and remediation
-5. **Track 5: Advanced Testing & CI/CD** - Production-quality assurance and deployment
-6. **Track 6: Backup & Disaster Recovery** - Data and workflow safeguarding
-7. **Track 7: Multi-Tenancy & Workspaces** - Team collaboration with data isolation (Week 4)
+1. **Track 1: Alerts & Notifications** - Real-time proactive monitoring and alerting ✅
+2. **Track 2: Historical Metrics & Analytics** - Time-series data collection and insights ✅
+3. **Track 3: Custom Model Management** - Fine-tuned LLM lifecycle oversight ✅
+4. **Track 4: Self-Healing & Automation** - Automated issue detection and remediation ✅
+5. **Track 5: Advanced Testing & CI/CD** - Production-quality assurance and deployment ✅
+6. **Track 6: Backup & Disaster Recovery** - Data and workflow safeguarding ✅
+7. **Track 7: Multi-Tenancy & Workspaces** - Team collaboration with data isolation ✅
+8. **Track 8: Feature Alignment Dashboard** - Feature coverage visibility and UI prioritization 🔄
 
 ---
 
-## Current Status: All Tracks Complete ✅
+## Current Status: Track 8 In Active Development 🔄
 
 ### Track 1: Alerts & Notifications ✅ COMPLETE
 
@@ -272,15 +273,99 @@ AgentX development is organized across **seven development tracks**, each focusi
 
 ---
 
+### Track 8: Feature Alignment Dashboard 🔄 IN PROGRESS
+
+**Purpose:** Comprehensive feature coverage visibility and UI development prioritization
+
+**Current Status:** Backend complete, UI in development
+
+**Components:**
+- ✅ Feature scanner (`/src/services/featureAlignmentScanner.js`)
+  - Scans 225 features across frontend, backend, and documentation
+  - Maps 254 backend endpoints
+  - Identifies orphan endpoints and headless features
+- ✅ Priority algorithm (`/src/services/featureAlignmentPriority.js`)
+  - 7-criteria scoring system (0-100 points)
+  - n8n workflow detection (±30 points)
+  - False positive handling (-15 points)
+  - UI implementation detection (-20 points)
+- ✅ Actionable reports (`/reports/feature-alignment-actions.md`)
+  - Top 5 medium-priority features identified
+  - Orphan endpoint categorization (7 false positives, 3 API-only)
+  - Recommendations for UI development
+- 🔄 Interactive dashboard (`/public/feature-alignment.html`) - IN DEVELOPMENT
+  - Overview stats panel
+  - Orphan endpoints table with false positive badges
+  - Features priority table with filtering/sorting
+  - Feature details modal with score breakdown
+  - Actionable recommendations panel
+
+**Scanner Results (2026-01-07):**
+- 225 features detected
+- 165 complete features (already have UIs - 73%)
+- 5 medium-priority features (score 40-69, consider UI)
+- 55 low-priority features (defer or API-only)
+- 10 orphan endpoints: 7 false positives, 3 API-only
+
+**Priority Algorithm (7 Criteria):**
+1. **n8n Workflow Usage (±30pts):** Negative for n8n endpoints (API-only), positive for monitoring needs
+2. **Endpoint Count (20pts):** More endpoints = more complex = higher priority
+3. **Documentation (20pts):** Well-documented features get higher scores
+4. **Security (15pts):** Auth-required features need admin UI
+5. **Recent Activity (15pts):** Active development = current priority
+6. **False Positive Penalty (-15pts):** Already has UI but marked as orphan
+7. **UI Detection (-20pts):** Has frontend files (not truly headless)
+
+**Next Steps:**
+- [ ] Complete dashboard HTML/JS (external agent, 5-6 hours)
+- [ ] Add to navigation (30 minutes)
+- [ ] Update documentation (1 hour)
+- [ ] Review 5 medium-priority features for UI development
+- [ ] Scanner improvements (Phase 1: API helper detection, form parsing)
+
+**Documentation:**
+- `ORPHAN_ENDPOINTS_ANALYSIS.md` - False positives analysis
+- `EXTERNAL_AGENT_RECOMMENDATIONS.md` - Dashboard specifications
+- `FEATURE_ALIGNMENT_FIX_SUMMARY.md` - Data mapping fixes
+- `docs/FEATURE_ALIGNMENT_PRIORITY_ALGORITHM.md` - Algorithm documentation
+
+**Status:** Backend complete, UI in active development. Dashboard will provide visibility into feature coverage and prioritize future UI development work.
+
+---
+
 ## Immediate Priorities
 
-### 1. Documentation Normalization ✅ IN PROGRESS
+### 1. Complete Feature Alignment Dashboard (Track 8) 🔄 IN PROGRESS
+
+**Goal:** Finish interactive dashboard UI for feature coverage visibility
+
+**Current Status:**
+- ✅ Backend complete (scanner + priority algorithm)
+- 🔄 UI in development (external agent building HTML/JS)
+- ⏳ Navigation integration pending
+
+**Tasks:**
+- [x] Implement feature scanner (225 features detected)
+- [x] Build priority algorithm (7-criteria scoring)
+- [x] Generate actionable reports
+- [ ] Complete dashboard HTML/JS (external agent, 5-6 hours)
+- [ ] Add to navigation (30 minutes)
+- [ ] Update documentation (1 hour)
+- [ ] Review 5 medium-priority features for UI development
+
+**Outcome:** Comprehensive dashboard showing which features are complete, which need UI development, and orphan endpoint resolution.
+
+---
+
+### 2. Documentation Normalization ✅ IN PROGRESS
 
 **Goal:** Consolidate scattered documentation into canonical references
 
 **Tasks:**
 - [x] Merge CONTRIBUTING.md into CLAUDE.md (unified reference)
 - [x] Create new ROADMAP.md (this file) with current status
+- [x] Update IMPLEMENTATION_PLAN.md with Feature Alignment progress
+- [x] Update ROADMAP.md with Track 8 information
 - [ ] Archive old planning docs to `docs/archive/`
 - [ ] Update `docs/INDEX.md` to reflect new structure
 - [ ] Verify all cross-references are valid
@@ -289,7 +374,7 @@ AgentX development is organized across **seven development tracks**, each focusi
 
 ---
 
-### 2. Track 6 Wiring Gaps (Backup & DR) ✅ RESOLVED
+### 3. Track 6 Wiring Gaps (Backup & DR) ✅ RESOLVED
 
 **Completed Fixes (2026-01-05):**
 - [x] **Qdrant backup listing mismatch** - Updated routes to support both `.snapshot` and `.tar.gz` patterns

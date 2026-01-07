@@ -1,6 +1,8 @@
 const fs = require('fs');
 const path = require('path');
 
+const { FALSE_POSITIVE_ENDPOINTS, API_ONLY_ENDPOINTS } = require('./featureAlignmentPriority');
+
 function normalizeToken(token) {
   return String(token || '')
     .toLowerCase()
@@ -26,6 +28,45 @@ function readTextSafe(filePath) {
   }
 }
 
+function normalizeEndpointPath(p) {
+  const raw = String(p || '').trim();
+  if (!raw) return '';
+  const noQuery = raw.split('?')[0];
+  if (noQuery !== '/' && noQuery.endsWith('/')) return noQuery.slice(0, -1);
+  return noQuery;
+}
+
+function endpointKey(method, endpointPath) {
+  return `${String(method || '').toUpperCase()} ${normalizeEndpointPath(endpointPath)}`;
+}
+
+function shouldExcludeFile(filePath) {
+  const fp = String(filePath || '').replace(/\\/g, '/');
+
+  // common backup / build outputs
+  const excludedPathFragments = [
+    '/archive/',
+    '/archives/',
+    '/backup/',
+    '/backups/',
+    '/.next/',
+    '/dist/',
+    '/build/',
+    '/out/',
+    '/tmp/',
+    '/.cache/'
+  ];
+  if (excludedPathFragments.some((frag) => fp.includes(frag))) return true;
+
+  // editor backups
+  const base = path.basename(fp);
+  if (base.endsWith('~')) return true;
+  if (base.toLowerCase().endsWith('.bak')) return true;
+  if (base.toLowerCase().endsWith('.swp')) return true;
+
+  return false;
+}
+
 function isUnderDir(filePath, dirPath) {
   const rel = path.relative(dirPath, filePath);
   return !!rel && !rel.startsWith('..') && !path.isAbsolute(rel);
@@ -43,6 +84,8 @@ function walkFiles(rootDir, { includeExtensions, excludeDirs }) {
         walk(full);
         continue;
       }
+
+      if (shouldExcludeFile(full)) continue;
 
       const ext = path.extname(entry.name).toLowerCase();
       if (includeExtensions.includes(ext)) out.push(full);
@@ -75,6 +118,100 @@ function parseHtmlSignals(htmlText) {
   }
 
   return uniq(signals.filter(Boolean));
+}
+
+function parseHtmlEndpointRefs(htmlText) {
+  const refs = [];
+  const html = String(htmlText || '');
+
+  for (const m of html.matchAll(/\baction\s*=\s*['"]([^'"]+)['"]/gi)) {
+    const href = normalizeEndpointPath(m[1]);
+    if (!href) continue;
+    if (href.startsWith('/')) refs.push({ method: 'ANY', path: href, kind: 'form-action' });
+  }
+
+  for (const m of html.matchAll(/\bhref\s*=\s*['"]([^'"]+)['"]/gi)) {
+    const href = normalizeEndpointPath(m[1]);
+    if (!href) continue;
+    if (href.startsWith('/')) refs.push({ method: 'ANY', path: href, kind: 'href' });
+  }
+
+  return refs;
+}
+
+function extractTemplateLiteralAsPath(s) {
+  // Replace any ${...} with a stable placeholder so we can still match /api/foo/:param
+  return String(s || '')
+    .replace(/\$\{[^}]+\}/g, ':param')
+    .trim();
+}
+
+function parseJsEndpointRefs(jsText) {
+  const refs = [];
+  const text = String(jsText || '');
+
+  // fetch('/path', { method: 'POST' })
+  for (const m of text.matchAll(/\bfetch\s*\(\s*([`'"])([\s\S]*?)\1\s*(?:,\s*\{[\s\S]*?\})?\s*\)/gi)) {
+    const rawPath = normalizeEndpointPath(extractTemplateLiteralAsPath(m[2]));
+    if (!rawPath || !rawPath.startsWith('/')) continue;
+
+    // best-effort method detection near the call
+    const callStart = m.index ?? 0;
+    const callWindow = text.slice(callStart, Math.min(callStart + 500, text.length));
+    const methodMatch = callWindow.match(/\bmethod\s*:\s*['"](GET|POST|PUT|DELETE|PATCH)['"]/i);
+    const method = methodMatch ? methodMatch[1].toUpperCase() : 'ANY';
+
+    refs.push({ method, path: rawPath, kind: 'fetch' });
+  }
+
+  // axios.get('/path'), API.post('/path')
+  for (const m of text.matchAll(/\b(axios|API|api|client)\.(get|post|put|delete|patch)\s*\(\s*([`'"])([\s\S]*?)\3/gi)) {
+    const rawPath = normalizeEndpointPath(extractTemplateLiteralAsPath(m[4]));
+    if (!rawPath || !rawPath.startsWith('/')) continue;
+    refs.push({ method: m[2].toUpperCase(), path: rawPath, kind: `${m[1].toLowerCase()}.${m[2].toLowerCase()}` });
+  }
+
+  return refs;
+}
+
+function endpointPathToLooseRegex(endpointPath) {
+  const p = normalizeEndpointPath(endpointPath);
+  if (!p) return null;
+  const escaped = p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // :id or {id} style placeholders
+  const withWildcards = escaped
+    .replace(/\\:[a-zA-Z0-9_]+/g, '[^\\s/]+')
+    .replace(/\\\{[a-zA-Z0-9_]+\\\}/g, '[^\\s/]+');
+
+  try {
+    return new RegExp(`^${withWildcards}$`);
+  } catch {
+    return null;
+  }
+}
+
+function pathsMatch(a, b) {
+  const pa = normalizeEndpointPath(a);
+  const pb = normalizeEndpointPath(b);
+  if (!pa || !pb) return false;
+  if (pa === pb) return true;
+
+  const ra = endpointPathToLooseRegex(pa);
+  if (ra && ra.test(pb)) return true;
+  const rb = endpointPathToLooseRegex(pb);
+  if (rb && rb.test(pa)) return true;
+  return false;
+}
+
+function isAuthishPath(p) {
+  const ep = normalizeEndpointPath(p);
+  // Common auth routes that might be handled via form actions or direct navigation
+  return (
+    ep === '/login' ||
+    ep === '/logout' ||
+    ep === '/register' ||
+    ep === '/me'
+  );
 }
 
 function parseExpressRouterEndpoints(jsText) {
@@ -188,7 +325,21 @@ function scanWorkspace(options) {
   const modelDirs = options.modelDirs || ['models'];
   const docsDirs = options.docsDirs || ['docs'];
 
-  const excludeDirs = ['node_modules', '.git', 'coverage'];
+  const excludeDirs = [
+    'node_modules',
+    '.git',
+    'coverage',
+    'archive',
+    'archives',
+    'backup',
+    'backups',
+    'dist',
+    'build',
+    'out',
+    '.next',
+    'tmp',
+    '.cache'
+  ];
 
   const appJsPath = path.join(rootDir, 'src', 'app.js');
   const appJsText = readTextSafe(appJsPath);
@@ -196,11 +347,26 @@ function scanWorkspace(options) {
 
   // ---------- Frontend ----------
   const frontendFiles = [];
+  const frontendJsFiles = [];
   for (const d of frontendDirs) {
     const dirPath = path.join(rootDir, d);
     if (fs.existsSync(dirPath)) {
       frontendFiles.push(...walkFiles(dirPath, { includeExtensions: ['.html'], excludeDirs }));
+      frontendJsFiles.push(...walkFiles(dirPath, { includeExtensions: ['.js'], excludeDirs }));
     }
+  }
+
+  // endpoint references in frontend assets (helps reduce orphan endpoint false positives)
+  const frontendEndpointRefs = [];
+  for (const filePath of frontendFiles) {
+    const html = readTextSafe(filePath);
+    const refs = parseHtmlEndpointRefs(html).map((r) => ({ ...r, filePath }));
+    frontendEndpointRefs.push(...refs);
+  }
+  for (const filePath of frontendJsFiles) {
+    const js = readTextSafe(filePath);
+    const refs = parseJsEndpointRefs(js).map((r) => ({ ...r, filePath }));
+    frontendEndpointRefs.push(...refs);
   }
 
   const frontendIndex = frontendFiles.map((filePath) => {
@@ -275,6 +441,12 @@ function scanWorkspace(options) {
   }
 
   const docsIndex = docFiles.map((filePath) => ({ filePath, text: readTextSafe(filePath) }));
+
+  // build a cheap docs search corpus for endpoint mentions
+  const docsCorpus = docsIndex
+    .map((d) => d.text)
+    .filter(Boolean)
+    .join('\n');
 
   // ---------- Candidate features ----------
   const candidateKeys = new Map();
@@ -357,15 +529,56 @@ function scanWorkspace(options) {
     .filter((f) => f.present.frontend || f.present.docs)
     .map((f) => ({ key: f.key, tokens: tokenize(f.key) }));
 
+  function isReferencedInFrontend(ep) {
+    const epPath = normalizeEndpointPath(ep.path);
+    for (const r of frontendEndpointRefs) {
+      if (r.method !== 'ANY' && r.method !== ep.method) continue;
+      if (pathsMatch(r.path, epPath)) return true;
+    }
+    return false;
+  }
+
+  function isMentionedInDocs(ep) {
+    const epPath = normalizeEndpointPath(ep.path);
+    if (!docsCorpus) return false;
+    if (docsCorpus.includes(epPath)) return true;
+    const loose = endpointPathToLooseRegex(epPath);
+    if (loose && loose.test(docsCorpus)) return true;
+    return false;
+  }
+
   const orphanEndpoints = backendEndpoints
     .filter((ep) => {
+      const epKey = endpointKey(ep.method, ep.path);
+
+      // If we already know it's not an orphan by policy, do not report it as an orphan.
+      if (FALSE_POSITIVE_ENDPOINTS.includes(epKey)) return false;
+      if (API_ONLY_ENDPOINTS.includes(epKey)) return false;
+
+      // If the endpoint is referenced directly in frontend assets or docs, it's not an orphan.
+      if (isReferencedInFrontend(ep)) return false;
+      if (isMentionedInDocs(ep)) return false;
+
+      // Heuristic: auth-ish and dashboard endpoints are often referenced indirectly.
+      if (isAuthishPath(ep.path)) return false;
+
+      // Fallback: token-match to any visible feature.
       const hay = ep.path + ' ' + ep.routeKey;
       for (const ft of visibleFeatureTokenSets) {
         if (scoreMatch(ft.tokens, hay, { minHits: 1 }) > 0) return false;
       }
       return true;
     })
-    .map((ep) => ({ method: ep.method, path: ep.path, sourceFile: ep.sourceFile }));
+    .map((ep) => ({
+      method: ep.method,
+      path: ep.path,
+      sourceFile: ep.sourceFile,
+      evidence: {
+        checkedFrontend: true,
+        checkedDocs: true
+      },
+      usageEvidenceScore: 0
+    }));
 
   const summary = {
     generatedAt: new Date().toISOString(),
@@ -397,6 +610,8 @@ module.exports = {
     normalizeToken,
     tokenize,
     parseHtmlSignals,
+    parseHtmlEndpointRefs,
+    parseJsEndpointRefs,
     parseExpressRouterEndpoints,
     parseAppMounts,
     joinPaths

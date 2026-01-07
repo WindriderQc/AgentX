@@ -8,11 +8,9 @@
 - **[CLAUDE.md](../CLAUDE.md)** - Architecture reference for agents and humans
   - Commands, architecture patterns, core components, critical conventions
   - Service-oriented architecture, RAG system, model routing, self-healing
-- **[CONTRIBUTING.md](../CONTRIBUTING.md)** - Developer workflow and contribution guidelines
-  - Git conventions, testing standards, PR process, code review checklist
 - **[ROADMAP.md](../ROADMAP.md)** - Project status and priorities
-  - Seven development tracks (all complete, including Week 4 multi-tenancy)
-  - Immediate priorities and backlog items
+  - Eight development tracks (7 complete, Track 8 Feature Alignment in progress)
+  - Immediate priorities and next steps
 
 **Documentation:**
 - User manual (recommended): [user-manual/README.md](user-manual/README.md)
@@ -64,22 +62,35 @@
 - Alerts integration verification: [testing/ALERTS_INTEGRATION_VERIFICATION.md](testing/ALERTS_INTEGRATION_VERIFICATION.md)
 - Latest validation report: [VALIDATION_REPORT_2026-01-03.md](VALIDATION_REPORT_2026-01-03.md)
 
-## Week 4 Progress (Multi-Tenancy & Workspaces)
-- Week 4 complete summary: [WEEK4_COMPLETE_SUMMARY.md](../WEEK4_COMPLETE_SUMMARY.md)
-- Day 1: Data models & architecture: [WEEK4_DAY1_PROGRESS.md](../WEEK4_DAY1_PROGRESS.md)
-- Day 2: Backend API & middleware: [WEEK4_DAY2_PROGRESS.md](../WEEK4_DAY2_PROGRESS.md)
-- Day 3: UI integration: [WEEK4_DAY3_PROGRESS.md](../WEEK4_DAY3_PROGRESS.md)
-- Day 4: Settings UI & testing: [WEEK4_DAY4_PROGRESS.md](../WEEK4_DAY4_PROGRESS.md)
-- Post-Week 4 progress: [POST_WEEK4_PROGRESS.md](../POST_WEEK4_PROGRESS.md)
+## Feature Alignment & Coverage
+- Feature alignment dashboard: `/public/feature-alignment.html` (Track 8, in development)
+- Priority algorithm documentation: [FEATURE_ALIGNMENT_PRIORITY_ALGORITHM.md](FEATURE_ALIGNMENT_PRIORITY_ALGORITHM.md)
+- Orphan endpoints analysis: [ORPHAN_ENDPOINTS_ANALYSIS.md](../ORPHAN_ENDPOINTS_ANALYSIS.md)
+- External agent recommendations: [EXTERNAL_AGENT_RECOMMENDATIONS.md](../EXTERNAL_AGENT_RECOMMENDATIONS.md)
+- Feature alignment fix summary: [FEATURE_ALIGNMENT_FIX_SUMMARY.md](../FEATURE_ALIGNMENT_FIX_SUMMARY.md)
+
+## Multi-Tenancy & Workspaces (Track 7)
+- Implementation complete - see ROADMAP.md Track 7 section
+- Workspace models: `Workspace`, `WorkspaceMember` with RBAC
+- Workspace audit logging: `WorkspaceAuditLog` with 15 tracked actions
+- Frontend integration: workspace switcher + settings UI
+- Historical progress reports: [archive/progress-reports/](archive/progress-reports/) (WEEK4_*.md files)
 
 ## Reports & Archive
-- Reports (historical, but kept for reference): [reports/](reports/)
-- Archive (deprecated / superseded docs): [archive/](archive/)
+- Active scanner reports: [../reports/](../reports/)
+  - `feature-alignment.json` - Current feature coverage scan
+  - `feature-alignment-actions.md` - Actionable recommendations
+- Historical documentation: [archive/](archive/)
+  - [archive/progress-reports/](archive/progress-reports/) - Weekly progress (WEEK1-4)
+  - [archive/validation-reports/](archive/validation-reports/) - Phase validations
+  - [archive/planning/](archive/planning/) - Historical plans and completion reports
+  - [archive/README.md](archive/README.md) - Archive guide
 
 ## Repo-Level References (Permanent)
 - Changelog (repo root): [CHANGELOG.md](../CHANGELOG.md)
-- Performance system implementation notes (repo root): [PERFORMANCE_SYSTEM_IMPLEMENTATION.md](../PERFORMANCE_SYSTEM_IMPLEMENTATION.md)
-- Setup snapshot (repo root): [SETUP_COMPLETE.md](../SETUP_COMPLETE.md)
+- CI/CD setup (repo root): [CI_CD_SETUP.md](../CI_CD_SETUP.md)
+- Deployment notes (repo root): [DEPLOYMENT.md](../DEPLOYMENT.md)
+- Implementation plan (repo root): [IMPLEMENTATION_PLAN.md](../IMPLEMENTATION_PLAN.md)
 
 ---
 

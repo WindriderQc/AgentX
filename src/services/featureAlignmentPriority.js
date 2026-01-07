@@ -6,13 +6,8 @@ let n8nWorkflowsCache = null;
 
 // Known false positive orphan endpoints - these ARE used
 const FALSE_POSITIVE_ENDPOINTS = [
-  'POST /api/feedback',
-  'POST /register',
-  'POST /logout',
-  'GET /me',
-  'GET /api/dashboard/health',
-  'GET /api/dashboard/stats',
-  'GET /api/dashboard/scans'
+  // Phase 1 Alignment: These are now detected dynamically by the scanner.
+  // Keeping list empty to verify dynamic detection.
 ];
 
 // Known API-only endpoints (by design, not orphaned)
@@ -196,18 +191,26 @@ function calculatePriority(feature, rootDir) {
   debug.docs = docScore;
 
   // 4. Security/Admin Requirements (Max 15 pts)
-  // Check for requireAuth (+10) and admin (+5)
-  // We need actual file paths from endpoints
-  const routeFiles = endpoints.map(ep => path.join(rootDir, ep.sourceFile));
-  // Also check services if we want, but usually security is on routes. 
-  // Let's stick to routeFiles for security checks on endpoints.
-  const securityScore = checkSecurityRequirements(routeFiles);
+  // Combine all backend files (services + endpoints)
+  const uniqueRelativeFiles = new Set();
+  endpoints.forEach(ep => {
+    if (ep.sourceFile) uniqueRelativeFiles.add(ep.sourceFile);
+  });
+  services.forEach(s => {
+    if (s) uniqueRelativeFiles.add(s);
+  });
+  
+  const allBackendFiles = Array.from(uniqueRelativeFiles)
+    .filter(f => !!f)
+    .map(f => path.isAbsolute(f) ? f : path.join(rootDir, f));
+
+  // Check for requireAuth (+10) and admin (+5) in ALL backend files
+  const securityScore = checkSecurityRequirements(allBackendFiles);
   score += securityScore;
   debug.security = securityScore;
 
   // 5. Recent Activity (Max 15 pts)
-  const allFiles = [...routeFiles, ...services.map(s => path.join(rootDir, s))];
-  const activityScore = getGitActivityScore(allFiles, rootDir);
+  const activityScore = getGitActivityScore(allBackendFiles, rootDir);
   score += activityScore;
   debug.activity = activityScore;
 

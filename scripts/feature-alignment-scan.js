@@ -34,8 +34,9 @@ function generateMarkdownReport(report, outFile, features) {
   const c = report.summary.counts;
 
   // Filter headless features to exclude API-only and complete
+  // We use the 'priority' object calculated in the main loop
   const trulyHeadless = features.filter(f =>
-    f.status === 'headless-documented' &&
+    (f.status === 'headless-documented' || f.status === 'orphan') &&
     f.priority &&
     f.priority.category !== 'api-only' &&
     f.priority.category !== 'complete'
@@ -47,10 +48,10 @@ function generateMarkdownReport(report, outFile, features) {
 
   md += '## 1. Executive Summary\n\n';
   md += `- **Total Features:** ${c.features}\n`;
-  md += `- **Complete Features:** ${c.features - c.orphanEndpoints}\n`;
+  md += `- **Complete Features:** ${c.features - c.orphanEndpoints}\n`; // This stat might be weird if orphanEndpoints is a count of endpoints, not features. Assuming c.orphanEndpoints is correct from scanner.
   md += `- **Truly Headless Features:** ${trulyHeadless.length}\n`;
   md += `- **API-Only Features:** ${apiOnlyFeatures.length}\n`;
-  md += `- **Orphan Endpoints:** ${c.orphanEndpoints}\n\n`;
+  md += `- **Orphan Endpoints:** ${report.orphanEndpoints ? report.orphanEndpoints.length : 0}\n\n`;
 
   // High Priority Headless (Top 10, exclude API-only)
   md += '## 2. High-Priority Headless Features (Top 10)\n\n';
@@ -65,7 +66,8 @@ function generateMarkdownReport(report, outFile, features) {
   }
 
   highPriority.forEach(f => {
-    const endpoints = f.backend?.endpoints || f.backendHits || [];
+    // Correctly access endpoints from the new structure
+    const endpoints = f.backend?.endpoints || [];
 
     md += `### ${f.key} (Score: ${f.priority.score}/100)\n\n`;
     md += `**Status:** ${f.status}\n`;
@@ -111,7 +113,7 @@ function generateMarkdownReport(report, outFile, features) {
     md += '_No API-only features identified._\n\n';
   } else {
     apiOnlyFeatures.slice(0, 10).forEach(f => {
-      const endpoints = f.backend?.endpoints || f.backendHits || [];
+      const endpoints = f.backend?.endpoints || [];
       md += `### ${f.key}\n\n`;
       md += `**Endpoints (${endpoints.length}):**\n`;
       endpoints.forEach(ep => md += `- ${ep.method} ${ep.path}\n`);
