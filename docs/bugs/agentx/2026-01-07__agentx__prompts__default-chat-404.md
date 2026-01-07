@@ -46,8 +46,8 @@ chat.js:1107  GET http://192.168.2.33:3080/api/prompts/default_chat?workspace=te
 - None needed for basic UI label fallback, but it creates noisy errors and can hide real prompt-loading issues.
 
 ## Fix Summary (filled after fix)
-- Root cause:
-- Fix:
-- Tests added/updated:
-- Rule added/updated:
-- Verified by:
+- Root cause: `attachWorkspace` middleware too strict for read-only routes. When workspace slug provided in query param (e.g., `?workspace=testing-workspace`) but workspace doesn't exist in database, middleware threw 404 error before route handler could execute its graceful fallback logic for `default_chat`.
+- Fix: Created new middleware `optionalWorkspaceContext` in `/src/middleware/workspace.js` that loads workspace if valid slug provided but sets `req.workspace = null` (instead of rejecting with 404) if workspace invalid or missing. Updated GET routes in `/routes/prompts.js` (lines 18 and 71) to use `optionalWorkspaceContext` instead of `attachWorkspace`. POST/PATCH/DELETE routes unchanged (still use strict `attachWorkspace`).
+- Tests added/updated: Manual testing confirmed invalid workspace slugs now return 200 with empty array for `default_chat`, chat UI loads without 404 errors.
+- Rule added/updated: Rule: For read-only routes that should gracefully handle missing workspace context, use `optionalWorkspaceContext` middleware instead of `attachWorkspace`. Reserve `attachWorkspace` for mutation operations (POST/PATCH/DELETE) that require valid workspace.
+- Verified by: Manual testing (invalid workspace slug returns 200, chat UI loads cleanly), syntax checks passed for both modified files (workspace.js, prompts.js), server logs clean (no 404 errors for default_chat requests).

@@ -130,6 +130,68 @@ async function attachWorkspace(req, res, next) {
 }
 
 /**
+ * optionalWorkspaceContext middleware
+ *
+ * Loads workspace context if provided but doesn't reject request if workspace is invalid.
+ * Use this for read-only routes that should gracefully handle missing workspace context.
+ *
+ * Behavior:
+ * - If workspace slug not provided -> req.workspace = null (continue)
+ * - If workspace slug provided and valid -> req.workspace = loaded workspace (continue)
+ * - If workspace slug provided but invalid -> req.workspace = null (continue, don't reject)
+ *
+ * Route handler must handle null workspace appropriately.
+ */
+async function optionalWorkspaceContext(req, res, next) {
+  try {
+    // Extract workspace slug from query, header, or default
+    // (same logic as attachWorkspace)
+    let workspaceSlug = req.query.workspace || req.header('X-Workspace-Slug'); // Matching attachWorkspace which uses X-Workspace-Slug
+
+    // If user exists, check for default workspace
+    if (!workspaceSlug && res.locals.user) {
+      // Future: Get user's default workspace from UserProfile
+      // For now, just continue without workspace
+      req.workspace = null;
+      return next();
+    }
+
+    // If no workspace slug provided, continue without workspace
+    if (!workspaceSlug) {
+      req.workspace = null;
+      return next();
+    }
+
+    // Try to load workspace
+    try {
+      const workspace = await Workspace.getBySlug(workspaceSlug);
+      req.workspace = workspace;
+    } catch (error) {
+      // If workspace not found or any error, set null and continue
+      // Route handler will decide if null workspace is acceptable
+      req.workspace = null;
+      logger.warn('Optional workspace context: workspace not found', {
+        slug: workspaceSlug,
+        error: error.message
+      });
+    }
+
+    next();
+
+  } catch (error) {
+    // Unexpected error in middleware itself
+    logger.error('optionalWorkspaceContext middleware error', {
+      error: error.message,
+      stack: error.stack
+    });
+
+    // Continue with null workspace rather than rejecting
+    req.workspace = null;
+    next();
+  }
+}
+
+/**
  * Ensure user has access to the workspace
  *
  * Requires: req.user, req.workspace
@@ -317,5 +379,6 @@ module.exports = {
   requirePermission,
   requireAdmin,
   requireOwner,
-  optionalWorkspace
+  optionalWorkspace,
+  optionalWorkspaceContext
 };

@@ -26,9 +26,40 @@
 - n8n deployment: [onboarding/n8n-deployment.md](onboarding/n8n-deployment.md)
 
 ## Architecture
+
+**Core Architecture Documentation:**
+- **[Multi-Tenancy & Workspaces](architecture/MULTI_TENANCY.md)** - Team collaboration, RBAC, data isolation
+- **[Model Registry](architecture/MODEL_REGISTRY.md)** - Model categorization, 7-tier category system
+- **[RAG System](architecture/RAG_SYSTEM.md)** - Vector store, retrieval, Qdrant integration
+- **[Model Routing](architecture/MODEL_ROUTING.md)** - Smart routing, failover, persistent state
+- **[Startup Sequence](architecture/STARTUP_SEQUENCE.md)** - Bootstrap order, graceful degradation
+
+**Foundation:**
 - Backend overview: [architecture/backend-overview.md](architecture/backend-overview.md)
 - Database: [architecture/database.md](architecture/database.md)
 - Diagrams: [architecture/diagrams.md](architecture/diagrams.md)
+
+## Integrations
+
+External system integrations and automation workflows:
+
+- **[N8N Workflows](integrations/N8N_WORKFLOWS.md)** - Document ingestion, prompt optimization
+
+## Patterns & Conventions
+
+Mandatory coding patterns and testing standards:
+
+- **[Critical Conventions](patterns/CRITICAL_CONVENTIONS.md)** - Error handling, logging, environment variables
+- **[Testing Patterns](patterns/TESTING_PATTERNS.md)** - Jest config, integration tests, coverage standards
+
+## Operations (Procedures & Systems)
+
+Operational guides and troubleshooting:
+
+- **[Authentication](operations/AUTHENTICATION.md)** - Dual auth system, API keys
+- **[Response Handling](operations/RESPONSE_HANDLING.md)** - LLM response processing
+- **[Benchmark System](operations/BENCHMARK_SYSTEM.md)** - Quality scoring, category filtering
+- **[Critical Gotchas](operations/CRITICAL_GOTCHAS.md)** - Known issues, pitfalls
 
 ## API
 - API reference: [api/reference.md](api/reference.md)
@@ -44,7 +75,8 @@
 
 ## Security
 - Security hardening: [SECURITY_HARDENING.md](SECURITY_HARDENING.md)
-- Authentication: [AUTHENTICATION.md](AUTHENTICATION.md)
+- Authentication (implementation details): [AUTHENTICATION_IMPLEMENTATION_DETAILS.md](AUTHENTICATION_IMPLEMENTATION_DETAILS.md)
+- Authentication (quick reference): [operations/AUTHENTICATION.md](operations/AUTHENTICATION.md)
 
 ## Feature Deep Dives
 - Cost tracking start: [COST_TRACKING_START_HERE.md](COST_TRACKING_START_HERE.md)
@@ -62,12 +94,30 @@
 - Alerts integration verification: [testing/ALERTS_INTEGRATION_VERIFICATION.md](testing/ALERTS_INTEGRATION_VERIFICATION.md)
 - Latest validation report: [VALIDATION_REPORT_2026-01-03.md](VALIDATION_REPORT_2026-01-03.md)
 
-## Feature Alignment & Coverage
-- Feature alignment dashboard: `/public/feature-alignment.html` (Track 8, in development)
+## Feature Alignment & Coverage (Track 8)
+
+**Phase 1: Dashboard** ✅ COMPLETE
+- Feature alignment dashboard: http://localhost:3080/feature-alignment.html (Production-ready)
+- Dashboard user guide: [FEATURE_ALIGNMENT_DASHBOARD_GUIDE.md](FEATURE_ALIGNMENT_DASHBOARD_GUIDE.md) (320+ lines)
+- Phase 1 completion report: [FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md](../FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md)
 - Priority algorithm documentation: [FEATURE_ALIGNMENT_PRIORITY_ALGORITHM.md](FEATURE_ALIGNMENT_PRIORITY_ALGORITHM.md)
+
+**Phase 2: UI Development** 🔄 IN PROGRESS
+- Feature prioritization analysis: [FEATURE_PRIORITIZATION_ANALYSIS.md](../FEATURE_PRIORITIZATION_ANALYSIS.md) (350+ lines)
+- Phase 2 progress tracking: [TRACK_8_PHASE_2_PROGRESS.md](../TRACK_8_PHASE_2_PROGRESS.md)
+- Invitation acceptance UI: `/public/accept-invitation.html` (Completed 2026-01-07)
+- UAT guide (invitations): [UAT_INVITATION_ACCEPTANCE.md](../UAT_INVITATION_ACCEPTANCE.md)
+- Demand validation survey: [DEMAND_VALIDATION_SURVEY.md](../DEMAND_VALIDATION_SURVEY.md)
+
+**External Agent Task Specifications:**
+- Invitation UI task: [EXTERNAL_AGENT_NEXT_INVITATION_UI.md](../EXTERNAL_AGENT_NEXT_INVITATION_UI.md) (700+ lines)
+- Scanner confidence scoring: [EXTERNAL_AGENT_NEXT_SCANNER_CONFIDENCE.md](../EXTERNAL_AGENT_NEXT_SCANNER_CONFIDENCE.md) (600+ lines)
+- Scanner improvements: [EXTERNAL_AGENT_NEXT_SCANNER_IMPROVEMENTS.md](../EXTERNAL_AGENT_NEXT_SCANNER_IMPROVEMENTS.md)
+
+**Historical (Phase 0-1):**
 - Orphan endpoints analysis: [ORPHAN_ENDPOINTS_ANALYSIS.md](../ORPHAN_ENDPOINTS_ANALYSIS.md)
 - External agent recommendations: [EXTERNAL_AGENT_RECOMMENDATIONS.md](../EXTERNAL_AGENT_RECOMMENDATIONS.md)
-- Feature alignment fix summary: [FEATURE_ALIGNMENT_FIX_SUMMARY.md](../FEATURE_ALIGNMENT_FIX_SUMMARY.md)
+- Data mapping fix summary: [FEATURE_ALIGNMENT_FIX_SUMMARY.md](../FEATURE_ALIGNMENT_FIX_SUMMARY.md)
 
 ## Multi-Tenancy & Workspaces (Track 7)
 - Implementation complete - see ROADMAP.md Track 7 section

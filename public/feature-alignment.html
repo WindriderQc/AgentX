@@ -275,6 +275,7 @@
                                 <th>Method + Path</th>
                                 <th>Source File</th>
                                 <th>Category</th>
+                                <th>Confidence</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -313,6 +314,16 @@
                         </select>
                     </div>
                     <div class="filter-group">
+                        <label>Confidence:</label>
+                        <select id="filter-confidence" class="filter-select" onchange="applyFilters()">
+                            <option value="all">All</option>
+                            <option value="high">High (80+)</option>
+                            <option value="medium">Medium (50-79)</option>
+                            <option value="low">Low (20-49)</option>
+                            <option value="very-low">Very Low (0-19)</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
                         <label>Endpoints:</label>
                         <select id="filter-endpoints" class="filter-select" onchange="applyFilters()">
                             <option value="all">All</option>
@@ -332,6 +343,7 @@
                             <tr onclick="handleSort(event)">
                                 <th data-sort="name">Feature Name <i class="fas fa-sort"></i></th>
                                 <th data-sort="score">Priority Score <i class="fas fa-sort"></i></th>
+                                <th data-sort="confidence">Confidence <i class="fas fa-sort"></i></th>
                                 <th data-sort="category">Category <i class="fas fa-sort"></i></th>
                                 <th data-sort="endpoints">Endpoints <i class="fas fa-sort"></i></th>
                                 <th data-sort="hasUI">Has UI? <i class="fas fa-sort"></i></th>

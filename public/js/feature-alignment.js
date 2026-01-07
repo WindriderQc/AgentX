@@ -77,6 +77,23 @@ function setText(id, value) {
   if (el) el.textContent = String(value);
 }
 
+function getConfidenceBadge(score) {
+  let color = '#ef4444'; // very-low (red)
+  let label = 'Very Low';
+  if (score >= 80) {
+    color = '#10b981'; // high (green)
+    label = 'High';
+  } else if (score >= 50) {
+    color = '#f59e0b'; // medium (yellow)
+    label = 'Medium';
+  } else if (score >= 20) {
+    color = '#3b82f6'; // low (blue)
+    label = 'Low';
+  }
+  
+  return `<span class="badge" style="background:${color}; color:white;">${score}% ${label}</span>`;
+}
+
 // --- Orphan Endpoints ---
 
 function classifyOrphanEndpoints(endpoints) {
@@ -132,6 +149,10 @@ function renderOrphanEndpoints() {
     const categoryTd = document.createElement('td');
     categoryTd.textContent = ep.isFalsePositive ? 'False Positive' : 'API-Only';
 
+    const confidenceTd = document.createElement('td');
+    const confScore = ep.confidence?.score || 0;
+    confidenceTd.innerHTML = getConfidenceBadge(confScore);
+
     const actionsTd = document.createElement('td');
     const src = escapeHtml(ep.sourceFile || '');
     const method = escapeHtml(ep.method || '');
@@ -147,6 +168,7 @@ function renderOrphanEndpoints() {
     tr.appendChild(methodTd);
     tr.appendChild(sourceTd);
     tr.appendChild(categoryTd);
+    tr.appendChild(confidenceTd);
     tr.appendChild(actionsTd);
     tbody.appendChild(tr);
   }
@@ -289,13 +311,23 @@ function calculatePriorityScore(feature) {
 function enrichFeature(feature) {
   const scoring = calculatePriorityScore(feature);
   const frontend = extractFrontendIntegration(feature);
+
+  // Calculate Average Confidence
+  let avgConfidence = 0;
+  const endpoints = feature.backend?.endpoints || [];
+  if (endpoints.length > 0) {
+    const total = endpoints.reduce((acc, ep) => acc + (ep.confidence?.score || 0), 0);
+    avgConfidence = Math.round(total / endpoints.length);
+  }
+
   return {
     ...feature,
     name: feature?.key || feature?.id || 'unknown',
     priorityScore: scoring.score,
     priorityBreakdown: scoring.breakdown,
     priorityCategory: scoring.category,
-    frontendIntegration: frontend
+    frontendIntegration: frontend,
+    avgConfidence
   };
 }
 
@@ -366,6 +398,7 @@ function renderStatusChart(complete, medium, low) {
 function applyFilters() {
   const category = document.getElementById('filter-category').value;
   const priority = document.getElementById('filter-priority').value;
+  const confidence = document.getElementById('filter-confidence').value;
   const endpointSize = document.getElementById('filter-endpoints').value;
   const searchTerm = (document.getElementById('filter-search').value || '').toLowerCase();
 
@@ -381,7 +414,13 @@ function applyFilters() {
     if (priority === 'medium' && (f.priorityScore < 40 || f.priorityScore > 69)) return false;
     if (priority === 'low' && (f.priorityScore < 0 || f.priorityScore > 39)) return false;
 
-    // 4. Endpoints Size
+    // 4. Confidence
+    if (confidence === 'high' && f.avgConfidence < 80) return false;
+    if (confidence === 'medium' && (f.avgConfidence < 50 || f.avgConfidence > 79)) return false;
+    if (confidence === 'low' && (f.avgConfidence < 20 || f.avgConfidence > 49)) return false;
+    if (confidence === 'very-low' && f.avgConfidence > 19) return false;
+
+    // 5. Endpoints Size
     const epCount = (f.backend?.endpoints || []).length;
     if (endpointSize === 'small' && epCount > 5) return false;
     if (endpointSize === 'medium' && (epCount <= 5 || epCount > 10)) return false;
@@ -406,6 +445,7 @@ function applyFilters() {
 function getSortValue(feature, column) {
   if (column === 'name') return feature.name;
   if (column === 'score') return feature.priorityScore;
+  if (column === 'confidence') return feature.avgConfidence || 0;
   if (column === 'category') return feature.priorityCategory;
   if (column === 'endpoints') return (feature.backend?.endpoints || []).length;
   if (column === 'hasUI') {
@@ -467,8 +507,13 @@ function renderFeaturesTable() {
     const actTd = document.createElement('td');
     actTd.innerHTML = `<button class="btn btn-sm btn-outline" onclick="openFeatureModal('${escapeHtml(f.name)}')">Details</button>`;
 
+    // Confidence
+    const confTd = document.createElement('td');
+    confTd.innerHTML = getConfidenceBadge(f.avgConfidence || 0);
+
     tr.appendChild(nameTd);
     tr.appendChild(scoreTd);
+    tr.appendChild(confTd);
     tr.appendChild(catTd);
     tr.appendChild(epTd);
     tr.appendChild(uiTd);

@@ -454,9 +454,33 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Fallback to Frontend
-app.get('*', (_req, res) => {
-  res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
+// 404 handler for API routes (catch API paths that don't exist)
+app.use('/api', (req, res) => {
+  res.status(404).json({
+    status: 'error',
+    message: `API endpoint not found: ${req.method} ${req.path}`,
+    code: 'API_NOT_FOUND'
+  });
+});
+
+// SPA Fallback for Frontend Routes
+// Serve index.html for all non-API, non-static routes
+// This allows client-side routing to work properly
+app.use((req, res) => {
+  // Check if it's a request for a static file that doesn't exist
+  const isStaticRequest = /\.\w+$/.test(req.path); // Has file extension
+  
+  if (isStaticRequest) {
+    // It's a static file request that wasn't found
+    res.status(404).json({
+      status: 'error',
+      message: `Resource not found: ${req.path}`,
+      code: 'NOT_FOUND'
+    });
+  } else {
+    // It's a navigation route - serve the SPA
+    res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
+  }
 });
 
 module.exports = { app, systemHealth, systemEvents };

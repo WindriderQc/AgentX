@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 const { FALSE_POSITIVE_ENDPOINTS, API_ONLY_ENDPOINTS } = require('./featureAlignmentPriority');
+const { calculateEndpointConfidence } = require('./scannerConfidence');
 
 function normalizeToken(token) {
   return String(token || '')
@@ -452,8 +453,67 @@ function scanWorkspace(options) {
     .filter(Boolean)
     .join('\n');
 
+  // ---------- Evidence Collection for Confidence Scoring ----------
+  const endpointEvidenceMap = new Map(); // endpointKey -> evidence
+
+  for (const ep of backendEndpoints) {
+    const epKey = endpointKey(ep.method, ep.path);
+    const evidence = {
+      frontend: { references: [], directFetch: false, apiHelper: false, htmlForm: false },
+      docs: { files: [], explicitMention: false },
+      lastModified: null,
+      detectionMethod: isAuthishPath(ep.path) ? 'auth-heuristic' : null
+    };
+
+    // Frontend refs
+    for (const ref of frontendEndpointRefs) {
+      if (ref.method !== 'ANY' && ref.method !== ep.method) continue;
+      if (pathsMatch(ref.path, ep.path)) {
+        evidence.frontend.references.push(ref.filePath);
+        if (ref.kind === 'fetch') evidence.frontend.directFetch = true;
+        else if (ref.kind === 'form-action') evidence.frontend.htmlForm = true;
+        else evidence.frontend.apiHelper = true;
+
+        // Recency
+        try {
+          const stats = fs.statSync(ref.filePath);
+          if (!evidence.lastModified || stats.mtime > evidence.lastModified) {
+            evidence.lastModified = stats.mtime;
+          }
+        } catch {}
+      }
+    }
+
+    // Docs refs
+    for (const doc of docsIndex) {
+      // Use tighter check for docs to avoid false positives on short paths
+      const epPath = normalizeEndpointPath(ep.path);
+      if (epPath.length > 1 && doc.text.includes(epPath)) {
+         evidence.docs.files.push(doc.filePath);
+         evidence.docs.explicitMention = true;
+         try {
+          const stats = fs.statSync(doc.filePath);
+          if (!evidence.lastModified || stats.mtime > evidence.lastModified) {
+            evidence.lastModified = stats.mtime;
+          }
+        } catch {}
+      }
+    }
+    
+    // Check backend source file for recency
+    try {
+        const stats = fs.statSync(ep.sourceFile);
+        if (!evidence.lastModified || stats.mtime > evidence.lastModified) {
+          evidence.lastModified = stats.mtime;
+        }
+    } catch {}
+
+    endpointEvidenceMap.set(epKey, evidence);
+  }
+
   // ---------- Candidate features ----------
   const candidateKeys = new Map();
+  const assignedEndpointKeys = new Set();
 
   for (const f of frontendIndex) {
     if (!candidateKeys.has(f.key)) candidateKeys.set(f.key, { from: new Set(['frontend']) });
@@ -486,7 +546,14 @@ function scanWorkspace(options) {
     // Backend evidence
     const endpointMatches = backendEndpoints
       .filter((ep) => scoreMatch(tokens, ep.path + ' ' + ep.routeKey) > 0)
-      .map((ep) => ({ method: ep.method, path: ep.path, sourceFile: ep.sourceFile }));
+      .map((ep) => {
+        const epKey = endpointKey(ep.method, ep.path);
+        const ev = endpointEvidenceMap.get(epKey) || {};
+        // Record assignment
+        assignedEndpointKeys.add(epKey);
+        const confidence = calculateEndpointConfidence(ep, { ...ev, featureKey: key });
+        return { method: ep.method, path: ep.path, sourceFile: ep.sourceFile, confidence };
+      });
 
     const serviceMatches = serviceFiles
       .filter((sf) => scoreMatch(tokens, path.basename(sf.filePath) + ' ' + sf.text.slice(0, 8000)) > 0)
@@ -563,26 +630,39 @@ function scanWorkspace(options) {
       if (isReferencedInFrontend(ep)) return false;
       if (isMentionedInDocs(ep)) return false;
 
+      // New: If assigned to a feature with reasonable confidence, it's not an orphan side-effect
+      if (assignedEndpointKeys.has(epKey)) return false;
+
       // Heuristic: auth-ish and dashboard endpoints are often referenced indirectly.
       if (isAuthishPath(ep.path)) return false;
 
       // Fallback: token-match to any visible feature.
+      // Now simpler because assignedEndpointKeys covers most cases.
+      // But if an endpoint was NOT assigned (maybe weak match?), we check again with stricter threshold
       const hay = ep.path + ' ' + ep.routeKey;
       for (const ft of visibleFeatureTokenSets) {
-        if (scoreMatch(ft.tokens, hay, { minHits: 1 }) > 0) return false;
+        // Only consider it 'used' if it matches decently (2 tokens, or full 1 token)
+        const threshold = ft.tokens.length > 1 ? 2 : 1;
+        if (scoreMatch(ft.tokens, hay, { minHits: threshold }) > 0) return false;
       }
       return true;
     })
-    .map((ep) => ({
-      method: ep.method,
-      path: ep.path,
-      sourceFile: ep.sourceFile,
-      evidence: {
-        checkedFrontend: true,
-        checkedDocs: true
-      },
-      usageEvidenceScore: 0
-    }));
+    .map((ep) => {
+      const epKey = endpointKey(ep.method, ep.path);
+      const ev = endpointEvidenceMap.get(epKey) || {};
+      const confidence = calculateEndpointConfidence(ep, ev);
+      
+      return {
+        method: ep.method,
+        path: ep.path,
+        sourceFile: ep.sourceFile,
+        evidence: {
+          checkedFrontend: true,
+          checkedDocs: true
+        },
+        confidence
+      };
+    });
 
   const summary = {
     generatedAt: new Date().toISOString(),

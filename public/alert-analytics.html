@@ -383,16 +383,21 @@
     </style>
 </head>
 <body>
+    <!-- Top Navigation (injected via nav.js) -->
+    <div id="nav-container"></div>
+    <script src="/js/components/nav.js"></script>
+    <script>injectNav('alerts');</script>
+    
     <div class="bg-grid"></div>
 
     <div class="alert-analytics">
-        <!-- Back Navigation -->
-        <div class="nav-back">
-            <a href="/alerts.html">
-                <i class="fas fa-arrow-left"></i>
-                Back to Alerts Dashboard
-            </a>
-        </div>
+        <!-- Page Header -->
+        <header class="alert-analytics-header">
+            <div>
+                <h1><i class="fas fa-chart-pie"></i> Alert Analytics</h1>
+                <p>Detailed analysis and trends of system alerts</p>
+            </div>
+        </header>
 
         <!-- Main Container -->
         <div id="alert-analytics-container">

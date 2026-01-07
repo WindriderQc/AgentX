@@ -55,21 +55,35 @@
             box-shadow: 0 10px 25px rgba(0,0,0,0.5); transition: transform 0.3s; z-index: 900;
         }
         .batch-toolbar.visible { transform: translateX(-50%) translateY(0); }
+        
+        /* Models page specific header adjustments */
+        .models-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 20px;
+            margin-bottom: 24px;
+        }
+        
+        .models-header .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        
+        .models-header .header-right {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
     </style>
 </head>
 <body class="bg-gray-900 text-white min-h-screen">
 
-    <!-- Top Navigation -->
-    <nav class="glass-header">
-        <div class="logo">
-            <i class="fas fa-robot text-accent"></i> AgentX <span class="text-sm opacity-50">Models</span>
-        </div>
-        <div class="nav-links">
-            <a href="/" class="nav-link"><i class="fas fa-arrow-left"></i> Dashboards</a>
-            <div class="separator"></div>
-            <button id="addModelBtn" class="btn-primary"><i class="fas fa-plus"></i> Add Source</button>
-        </div>
-    </nav>
+    <!-- Top Navigation (injected via nav.js) -->
+    <div id="nav-container"></div>
+    <script src="/js/components/nav.js"></script>
+    <script>injectNav('models');</script>
 
     <!-- Main Content -->
     <main class="container-fluid">

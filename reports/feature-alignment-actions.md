@@ -2,9 +2,9 @@
 
 ## 1. Executive Summary
 
-- **Total Features:** 182
-- **Complete Features:** 182
-- **Truly Headless Features:** 42
+- **Total Features:** 190
+- **Complete Features:** 190
+- **Truly Headless Features:** 43
 - **API-Only Features:** 0
 - **Orphan Endpoints:** 0
 
@@ -18,12 +18,12 @@ _Features that need UI development, excluding API-only endpoints_
 **Priority:** CRITICAL (critical)
 
 **Endpoints (6):**
-- GET /api/invitations/validate/:token (`invitations.js`)
-- POST /api/invitations/accept (`invitations.js`)
-- GET /api/invitations/my-invitations (`invitations.js`)
-- POST /api/workspaces/:slug/invitations (`workspaces.js`)
-- GET /api/workspaces/:slug/invitations (`workspaces.js`)
-- DELETE /api/workspaces/:slug/invitations/:invitationId (`workspaces.js`)
+- GET /api/invitations/validate/:token (`invitations.js`) [Conf: 60%]
+- POST /api/invitations/accept (`invitations.js`) [Conf: 60%]
+- GET /api/invitations/my-invitations (`invitations.js`) [Conf: 45%]
+- POST /api/workspaces/:slug/invitations (`workspaces.js`) [Conf: 45%]
+- GET /api/workspaces/:slug/invitations (`workspaces.js`) [Conf: 45%]
+- DELETE /api/workspaces/:slug/invitations/:invitationId (`workspaces.js`) [Conf: 0%]
 
 **Score Breakdown:**
 - n8n Workflow Usage: ➖ (0)
@@ -44,19 +44,19 @@ _Features that need UI development, excluding API-only endpoints_
 **Priority:** CRITICAL (critical)
 
 **Endpoints (13):**
-- GET /api/models/all (`models-unified.js`)
-- GET /api/models/sources (`models-unified.js`)
-- GET /api/models/:name/detail (`models-unified.js`)
-- POST /api/models/refresh-cache (`models-unified.js`)
-- POST /api/models/sources/n8n (`models-unified.js`)
-- GET /api/models/sources/n8n (`models-unified.js`)
-- GET /api/models/sources/n8n/:id (`models-unified.js`)
-- PUT /api/models/sources/n8n/:id (`models-unified.js`)
-- DELETE /api/models/sources/n8n/:id (`models-unified.js`)
-- POST /api/models/sources/n8n/:id/test (`models-unified.js`)
-- POST /api/models/ollama/pull (`models-unified.js`)
-- POST /api/models/ollama/stop (`models-unified.js`)
-- DELETE /api/models/ollama/:name (`models-unified.js`)
+- GET /api/models/all (`models-unified.js`) [Conf: 40%]
+- GET /api/models/sources (`models-unified.js`) [Conf: 0%]
+- GET /api/models/:name/detail (`models-unified.js`) [Conf: 0%]
+- POST /api/models/refresh-cache (`models-unified.js`) [Conf: 0%]
+- POST /api/models/sources/n8n (`models-unified.js`) [Conf: 45%]
+- GET /api/models/sources/n8n (`models-unified.js`) [Conf: 0%]
+- GET /api/models/sources/n8n/:id (`models-unified.js`) [Conf: 0%]
+- PUT /api/models/sources/n8n/:id (`models-unified.js`) [Conf: 0%]
+- DELETE /api/models/sources/n8n/:id (`models-unified.js`) [Conf: 0%]
+- POST /api/models/sources/n8n/:id/test (`models-unified.js`) [Conf: 0%]
+- POST /api/models/ollama/pull (`models-unified.js`) [Conf: 45%]
+- POST /api/models/ollama/stop (`models-unified.js`) [Conf: 35%]
+- DELETE /api/models/ollama/:name (`models-unified.js`) [Conf: 0%]
 
 **Score Breakdown:**
 - n8n Workflow Usage: ➖ (0)
@@ -77,10 +77,10 @@ _Features that need UI development, excluding API-only endpoints_
 **Priority:** CRITICAL (critical)
 
 **Endpoints (4):**
-- GET /api/dataset/conversations (`dataset.js`)
-- POST /api/dataset/prompts (`dataset.js`)
-- GET /api/dataset/prompts (`dataset.js`)
-- PATCH /api/dataset/prompts/:id/activate (`dataset.js`)
+- GET /api/dataset/conversations (`dataset.js`) [Conf: 80%]
+- POST /api/dataset/prompts (`dataset.js`) [Conf: 60%]
+- GET /api/dataset/prompts (`dataset.js`) [Conf: 60%]
+- PATCH /api/dataset/prompts/:id/activate (`dataset.js`) [Conf: 60%]
 
 **Score Breakdown:**
 - n8n Workflow Usage: ➖ (0)
@@ -101,18 +101,18 @@ _Features that need UI development, excluding API-only endpoints_
 **Priority:** CRITICAL (critical)
 
 **Endpoints (12):**
-- GET /api/models/registry/ (`model-registry.js`)
-- GET /api/models/registry/stats (`model-registry.js`)
-- GET /api/models/registry/grouped (`model-registry.js`)
-- GET /api/models/registry/category/:category (`model-registry.js`)
-- GET /api/models/registry/tag/:tag (`model-registry.js`)
-- GET /api/models/registry/:name (`model-registry.js`)
-- POST /api/models/registry/ (`model-registry.js`)
-- PATCH /api/models/registry/:name (`model-registry.js`)
-- DELETE /api/models/registry/:name (`model-registry.js`)
-- POST /api/models/registry/:name/sync (`model-registry.js`)
-- POST /api/models/registry/:name/categories (`model-registry.js`)
-- DELETE /api/models/registry/:name/categories/:category (`model-registry.js`)
+- GET /api/models/registry/ (`model-registry.js`) [Conf: 50%]
+- GET /api/models/registry/stats (`model-registry.js`) [Conf: 40%]
+- GET /api/models/registry/grouped (`model-registry.js`) [Conf: 40%]
+- GET /api/models/registry/category/:category (`model-registry.js`) [Conf: 35%]
+- GET /api/models/registry/tag/:tag (`model-registry.js`) [Conf: 35%]
+- GET /api/models/registry/:name (`model-registry.js`) [Conf: 40%]
+- POST /api/models/registry/ (`model-registry.js`) [Conf: 50%]
+- PATCH /api/models/registry/:name (`model-registry.js`) [Conf: 40%]
+- DELETE /api/models/registry/:name (`model-registry.js`) [Conf: 40%]
+- POST /api/models/registry/:name/sync (`model-registry.js`) [Conf: 40%]
+- POST /api/models/registry/:name/categories (`model-registry.js`) [Conf: 40%]
+- DELETE /api/models/registry/:name/categories/:category (`model-registry.js`) [Conf: 40%]
 
 **Score Breakdown:**
 - n8n Workflow Usage: ➖ (0)
@@ -133,10 +133,10 @@ _Features that need UI development, excluding API-only endpoints_
 **Priority:** CRITICAL (critical)
 
 **Endpoints (4):**
-- GET /api/voice/health (`voice.js`)
-- POST /api/voice/transcribe (`voice.js`)
-- POST /api/voice/synthesize (`voice.js`)
-- POST /api/voice/chat (`voice.js`)
+- GET /api/voice/health (`voice.js`) [Conf: 60%]
+- POST /api/voice/transcribe (`voice.js`) [Conf: 60%]
+- POST /api/voice/synthesize (`voice.js`) [Conf: 60%]
+- POST /api/voice/chat (`voice.js`) [Conf: 60%]
 
 **Score Breakdown:**
 - n8n Workflow Usage: ➖ (0)
@@ -157,10 +157,10 @@ _Features that need UI development, excluding API-only endpoints_
 **Priority:** CRITICAL (critical)
 
 **Endpoints (4):**
-- POST /api/workflow/generate (`workflowGenerator.js`)
-- POST /api/workflow/validate (`workflowGenerator.js`)
-- POST /api/workflow/deploy (`workflowGenerator.js`)
-- GET /api/workflow/examples (`workflowGenerator.js`)
+- POST /api/workflow/generate (`workflowGenerator.js`) [Conf: 40%]
+- POST /api/workflow/validate (`workflowGenerator.js`) [Conf: 40%]
+- POST /api/workflow/deploy (`workflowGenerator.js`) [Conf: 40%]
+- GET /api/workflow/examples (`workflowGenerator.js`) [Conf: 40%]
 
 **Score Breakdown:**
 - n8n Workflow Usage: ➖ (0)
@@ -181,8 +181,8 @@ _Features that need UI development, excluding API-only endpoints_
 **Priority:** HIGH (high)
 
 **Endpoints (2):**
-- GET /api/dashboard/scans/:id/report (`dashboard.js`)
-- GET /api/features/reports/latest (`features.js`)
+- GET /api/dashboard/scans/:id/report (`dashboard.js`) [Conf: 0%]
+- GET /api/features/reports/latest (`features.js`) [Conf: 0%]
 
 **Score Breakdown:**
 - n8n Workflow Usage: ➖ (0)
@@ -203,8 +203,8 @@ _Features that need UI development, excluding API-only endpoints_
 **Priority:** HIGH (high)
 
 **Endpoints (2):**
-- GET /api/dashboard/scans/:id/report (`dashboard.js`)
-- GET /api/features/reports/latest (`features.js`)
+- GET /api/dashboard/scans/:id/report (`dashboard.js`) [Conf: 0%]
+- GET /api/features/reports/latest (`features.js`) [Conf: 0%]
 
 **Score Breakdown:**
 - n8n Workflow Usage: ➖ (0)
@@ -225,8 +225,8 @@ _Features that need UI development, excluding API-only endpoints_
 **Priority:** HIGH (high)
 
 **Endpoints (2):**
-- GET /api/dashboard/scans/:id/report (`dashboard.js`)
-- GET /api/features/reports/latest (`features.js`)
+- GET /api/dashboard/scans/:id/report (`dashboard.js`) [Conf: 0%]
+- GET /api/features/reports/latest (`features.js`) [Conf: 0%]
 
 **Score Breakdown:**
 - n8n Workflow Usage: ➖ (0)
@@ -247,8 +247,8 @@ _Features that need UI development, excluding API-only endpoints_
 **Priority:** HIGH (high)
 
 **Endpoints (2):**
-- GET /api/dashboard/scans/:id/report (`dashboard.js`)
-- GET /api/features/reports/latest (`features.js`)
+- GET /api/dashboard/scans/:id/report (`dashboard.js`) [Conf: 0%]
+- GET /api/features/reports/latest (`features.js`) [Conf: 0%]
 
 **Score Breakdown:**
 - n8n Workflow Usage: ➖ (0)

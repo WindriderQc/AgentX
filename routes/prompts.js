@@ -7,7 +7,7 @@ const express = require('express');
 const router = express.Router();
 const PromptConfig = require('../models/PromptConfig');
 const { requireAuth, optionalAuth } = require('../src/middleware/auth');
-const { attachWorkspace } = require('../src/middleware/workspace');
+const { attachWorkspace, optionalWorkspaceContext } = require('../src/middleware/workspace');
 const { logPromptAction } = require('../src/middleware/workspaceAudit');
 const logger = require('../config/logger');
 
@@ -15,7 +15,7 @@ const logger = require('../config/logger');
  * GET /api/prompts
  * List all prompts (grouped by name) - workspace-aware
  */
-router.get('/', optionalAuth, attachWorkspace, async (req, res) => {
+router.get('/', optionalAuth, optionalWorkspaceContext, async (req, res) => {
     try {
         const query = {};
 
@@ -68,7 +68,7 @@ router.get('/', optionalAuth, attachWorkspace, async (req, res) => {
  * GET /api/prompts/:name
  * Get all versions of a prompt - workspace-aware
  */
-router.get('/:name', optionalAuth, attachWorkspace, async (req, res) => {
+router.get('/:name', optionalAuth, optionalWorkspaceContext, async (req, res) => {
     try {
         const name = req.params.name;
 

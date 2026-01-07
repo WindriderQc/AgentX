@@ -385,20 +385,32 @@ AgentX development is organized across **eight development tracks**, each focusi
 - [x] Analyze top 10 high-priority features
 - [x] Filter false positives and existing UI
 - [x] Create prioritization analysis document
-- [ ] Build invitation acceptance UI (external agent, 4-6 hours)
-- [ ] Scanner Phase 1 improvements (external agent, 2.5-3 hours)
+- [x] Build invitation acceptance UI (external agent, 4-6 hours) ✅ COMPLETE
+- [x] Scanner Phase 1 improvements (external agent, 2.5-3 hours) ✅ COMPLETE
   - Detect API helper wrappers (`API.get()`, `axios.get()`)
   - Parse HTML form actions
   - Auth route pattern recognition
   - Exclude `/docs/archive/` from scans
+- [ ] Scanner Phase 1B: Confidence scoring (external agent, 2-3 hours) 🔄 NEXT UP
+  - 0-100 confidence scores for all endpoints
+  - Evidence tracking (frontend refs, docs, recency)
+  - Dashboard UI integration
+- [ ] User acceptance testing (invitations flow)
+- [ ] Demand validation (voice API, workflow generator)
 
 **Documentation:**
-- `ORPHAN_ENDPOINTS_ANALYSIS.md` - False positives analysis
-- `EXTERNAL_AGENT_RECOMMENDATIONS.md` - Dashboard specifications
+- `FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md` - Phase 1 completion report
+- `FEATURE_PRIORITIZATION_ANALYSIS.md` - Phase 2 feature analysis (350+ lines)
+- `TRACK_8_PHASE_2_PROGRESS.md` - Phase 2 progress tracking
+- `/docs/FEATURE_ALIGNMENT_DASHBOARD_GUIDE.md` - User guide (320+ lines)
+- `EXTERNAL_AGENT_NEXT_INVITATION_UI.md` - Invitation UI task spec
+- `EXTERNAL_AGENT_NEXT_SCANNER_CONFIDENCE.md` - Confidence scoring task spec
 - `FEATURE_ALIGNMENT_FIX_SUMMARY.md` - Data mapping fixes
 - `docs/FEATURE_ALIGNMENT_PRIORITY_ALGORITHM.md` - Algorithm documentation
 
-**Status:** Backend complete, UI in active development. Dashboard will provide visibility into feature coverage and prioritize future UI development work.
+**Status:**
+- **Phase 1 (Dashboard):** ✅ COMPLETE - Production-ready at http://localhost:3080/feature-alignment.html
+- **Phase 2 (UI Development):** 🔄 IN PROGRESS - Invitation UI complete, confidence scoring next
 
 ---
 

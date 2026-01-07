@@ -75,7 +75,10 @@ function generateMarkdownReport(report, outFile, features) {
 
     md += `**Endpoints (${endpoints.length}):**\n`;
     if (endpoints.length > 0) {
-      endpoints.forEach(ep => md += `- ${ep.method} ${ep.path} (\`${path.basename(ep.sourceFile)}\`)\n`);
+      endpoints.forEach(ep => {
+        const conf = ep.confidence ? ep.confidence.score : 0;
+        md += `- ${ep.method} ${ep.path} (\`${path.basename(ep.sourceFile)}\`) [Conf: ${conf}%]\n`;
+      });
     } else {
       md += `- (No exact endpoint hits, matched via service/model files)\n`;
     }
@@ -148,10 +151,11 @@ function generateMarkdownReport(report, outFile, features) {
     if (falsePositives.length === 0) {
       md += '_None_\n\n';
     } else {
-      md += '| Status | Method | Path | Source File | Action |\n';
-      md += '|--------|--------|------|-------------|--------|\n';
+      md += '| Status | Method | Path | Source File | Confidence | Action |\n';
+      md += '|--------|--------|------|-------------|------------|--------|\n';
       falsePositives.forEach(op => {
-        md += `| ${op.status} | ${op.method} | ${op.path} | \`${path.basename(op.sourceFile)}\` | Link to existing feature |\n`;
+        const conf = op.confidence ? op.confidence.score : 0;
+        md += `| ${op.status} | ${op.method} | ${op.path} | \`${path.basename(op.sourceFile)}\` | ${conf}% | Link to existing feature |\n`;
       });
       md += '\n';
     }
@@ -160,10 +164,11 @@ function generateMarkdownReport(report, outFile, features) {
     if (apiOnly.length === 0) {
       md += '_None_\n\n';
     } else {
-      md += '| Status | Method | Path | Source File | Action |\n';
-      md += '|--------|--------|------|-------------|--------|\n';
+      md += '| Status | Method | Path | Source File | Confidence | Action |\n';
+      md += '|--------|--------|------|-------------|------------|--------|\n';
       apiOnly.forEach(op => {
-        md += `| ${op.status} | ${op.method} | ${op.path} | \`${path.basename(op.sourceFile)}\` | Document in API reference |\n`;
+        const conf = op.confidence ? op.confidence.score : 0;
+        md += `| ${op.status} | ${op.method} | ${op.path} | \`${path.basename(op.sourceFile)}\` | ${conf}% | Document in API reference |\n`;
       });
       md += '\n';
     }
@@ -172,10 +177,11 @@ function generateMarkdownReport(report, outFile, features) {
     if (needsReview.length === 0) {
       md += '_None - All orphans categorized!_\n\n';
     } else {
-      md += '| Status | Method | Path | Source File | Action |\n';
-      md += '|--------|--------|------|-------------|--------|\n';
+      md += '| Status | Method | Path | Source File | Confidence | Action |\n';
+      md += '|--------|--------|------|-------------|------------|--------|\n';
       needsReview.forEach(op => {
-        md += `| ${op.status} | ${op.method} | ${op.path} | \`${path.basename(op.sourceFile)}\` | Review code for actual usage |\n`;
+        const conf = op.confidence ? op.confidence.score : 0;
+        md += `| ${op.status} | ${op.method} | ${op.path} | \`${path.basename(op.sourceFile)}\` | ${conf}% | Review code for actual usage |\n`;
       });
       md += '\n';
     }

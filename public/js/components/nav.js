@@ -11,7 +11,6 @@ function injectNav(activePageId = '') {
         { label: 'Chat', href: 'index.html', icon: 'fa-comments', id: 'chat' },
         { label: 'Operations', href: 'dashboard.html', icon: 'fa-tachometer-alt', id: 'operations' },
         { label: 'Alerts', href: 'alerts.html', icon: 'fa-bell', id: 'alerts' },
-        { label: 'n8n Monitor', href: 'n8n-monitor.html', icon: 'fa-network-wired', id: 'n8n' },
         { label: 'Backup', href: 'backup.html', icon: 'fa-shield-alt', id: 'backup' },
         { label: 'Models', href: 'models.html', icon: 'fa-cube', id: 'models' },
         { label: 'Benchmark', href: 'benchmark.html', icon: 'fa-rocket', id: 'benchmark' },
