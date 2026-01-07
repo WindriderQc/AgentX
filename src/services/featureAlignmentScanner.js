@@ -203,15 +203,19 @@ function pathsMatch(a, b) {
   return false;
 }
 
+const COMMON_AUTH_ROUTES = [
+  '/login',
+  '/logout',
+  '/register',
+  '/me',
+  '/auth/callback',
+  '/auth/verify'
+];
+
 function isAuthishPath(p) {
   const ep = normalizeEndpointPath(p);
   // Common auth routes that might be handled via form actions or direct navigation
-  return (
-    ep === '/login' ||
-    ep === '/logout' ||
-    ep === '/register' ||
-    ep === '/me'
-  );
+  return COMMON_AUTH_ROUTES.some(route => ep === route || ep.endsWith(route));
 }
 
 function parseExpressRouterEndpoints(jsText) {

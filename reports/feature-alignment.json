@@ -1,18 +1,19 @@
 {
   "summary": {
-    "generatedAt": "2026-01-07T13:52:23.236Z",
+    "generatedAt": "2026-01-07T13:59:32.327Z",
     "rootDir": "/home/yb/codes/AgentX",
     "counts": {
-      "features": 179,
+      "features": 182,
       "frontendFiles": 24,
-      "routeFiles": 33,
-      "backendEndpoints": 254,
-      "docsFiles": 149,
+      "routeFiles": 35,
+      "backendEndpoints": 256,
+      "docsFiles": 150,
       "orphanEndpoints": 0
     },
     "statusCounts": {
-      "complete": 127,
+      "complete": 129,
       "headless-documented": 42,
+      "orphan-backend": 1,
       "partial": 10
     }
   },
@@ -215,6 +216,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
@@ -869,6 +871,7 @@
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_TASKS.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md",
@@ -973,6 +976,7 @@
           "/home/yb/codes/AgentX/CONTRIBUTING.md",
           "/home/yb/codes/AgentX/DEPLOYMENT.md",
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_TASKS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/QDRANT_README.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md",
@@ -1257,6 +1261,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md",
@@ -1391,6 +1396,7 @@
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_TASKS.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md"
         ]
@@ -1536,6 +1542,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
@@ -1854,6 +1861,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md",
@@ -2094,6 +2102,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md",
@@ -2394,6 +2403,7 @@
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_TASKS.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QDRANT_README.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
@@ -2555,6 +2565,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/QDRANT_README.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md",
@@ -2939,6 +2950,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QDRANT_README.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
@@ -3376,6 +3388,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md",
@@ -3630,6 +3643,7 @@
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_TASKS.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
         ]
@@ -3882,6 +3896,7 @@
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_TASKS.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
         ]
@@ -4022,6 +4037,7 @@
           "/home/yb/codes/AgentX/docs/user-manual/README.md",
           "/home/yb/codes/AgentX/CHANGELOG.md",
           "/home/yb/codes/AgentX/CLAUDE.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
         ]
@@ -4221,6 +4237,7 @@
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_TASKS.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
@@ -4442,6 +4459,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
@@ -4609,6 +4627,7 @@
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_TASKS.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
         ]
@@ -4825,6 +4844,7 @@
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_TASKS.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
@@ -5351,6 +5371,7 @@
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_TASKS.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
@@ -5556,6 +5577,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
@@ -5701,6 +5723,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
@@ -6054,6 +6077,7 @@
           "/home/yb/codes/AgentX/CLAUDE.md",
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_NEXT_MODELS_PHASE2.md",
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_TASKS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
         ]
@@ -6274,6 +6298,7 @@
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_TASKS.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
         ]
@@ -6533,6 +6558,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
@@ -6771,6 +6797,7 @@
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_TASKS.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md",
@@ -7190,6 +7217,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md",
@@ -7311,6 +7339,7 @@
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_RECOMMENDATIONS.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md"
         ]
       },
@@ -7675,6 +7704,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md",
@@ -8220,6 +8250,7 @@
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_TASKS.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
         ]
@@ -8398,6 +8429,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
         ]
@@ -8557,6 +8589,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
@@ -8751,6 +8784,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QDRANT_README.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
@@ -9154,6 +9188,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QDRANT_README.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
@@ -9345,6 +9380,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QDRANT_README.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
@@ -9872,6 +9908,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
@@ -10045,6 +10082,7 @@
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_NEXT_MODELS_PHASE2.md",
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_TASKS.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
@@ -10316,6 +10354,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md",
@@ -10490,6 +10529,7 @@
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_NEXT_MODELS_PHASE2.md",
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_TASKS.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
@@ -10786,6 +10826,7 @@
           "/home/yb/codes/AgentX/docs/testing/PHASE3_TEST_REPORT.md",
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_DASHBOARD_RECOMMENDATIONS.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md"
         ]
@@ -10888,6 +10929,7 @@
           "/home/yb/codes/AgentX/CONTRIBUTING.md",
           "/home/yb/codes/AgentX/DEPLOYMENT.md",
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_TASKS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/QDRANT_README.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md",
@@ -11082,6 +11124,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
@@ -11299,6 +11342,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md",
@@ -11635,6 +11679,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md",
@@ -11865,6 +11910,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md",
@@ -12148,6 +12194,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QDRANT_README.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
@@ -12214,6 +12261,7 @@
           "/home/yb/codes/AgentX/src/services/emailService.js",
           "/home/yb/codes/AgentX/src/services/embeddingCache.js",
           "/home/yb/codes/AgentX/src/services/embeddings.js",
+          "/home/yb/codes/AgentX/src/services/featureAlignmentPriority.js",
           "/home/yb/codes/AgentX/src/services/featureAlignmentScanner.js",
           "/home/yb/codes/AgentX/src/services/metricsCleanup.example.js",
           "/home/yb/codes/AgentX/src/services/metricsCleanup.js",
@@ -12381,6 +12429,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md",
@@ -12388,14 +12437,14 @@
         ]
       },
       "priority": {
-        "score": 15,
+        "score": 25,
         "level": "COMPLETE",
         "category": "complete",
         "breakdown": {
           "n8n": 0,
           "endpoints": 0,
           "docs": 15,
-          "security": 5,
+          "security": 15,
           "activity": 15,
           "falsePositive": 0,
           "ui": -20
@@ -12599,6 +12648,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md",
@@ -12818,6 +12868,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md",
@@ -13046,6 +13097,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md",
@@ -13317,6 +13369,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QDRANT_README.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
@@ -13579,6 +13632,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QDRANT_README.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
@@ -13889,6 +13943,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md",
@@ -14126,6 +14181,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md",
@@ -14391,6 +14447,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md",
@@ -14714,6 +14771,255 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
+          "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
+          "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
+          "/home/yb/codes/AgentX/README.md",
+          "/home/yb/codes/AgentX/ROADMAP.md"
+        ]
+      },
+      "priority": {
+        "score": 65,
+        "level": "COMPLETE",
+        "category": "complete",
+        "breakdown": {
+          "n8n": 0,
+          "endpoints": 40,
+          "docs": 15,
+          "security": 15,
+          "activity": 15,
+          "falsePositive": 0,
+          "ui": -20
+        }
+      }
+    },
+    {
+      "key": "feature-prioritization-analysis",
+      "sources": [
+        "docs"
+      ],
+      "present": {
+        "frontend": true,
+        "backend": true,
+        "docs": true
+      },
+      "status": "complete",
+      "frontend": {
+        "files": [
+          "/home/yb/codes/AgentX/public/feature-alignment.html",
+          "/home/yb/codes/AgentX/public/features-admin.html",
+          "/home/yb/codes/AgentX/public/features-adoption.html",
+          "/home/yb/codes/AgentX/public/features-inventory.html",
+          "/home/yb/codes/AgentX/public/features-telemetry.html",
+          "/home/yb/codes/AgentX/public/workspace-settings.html"
+        ]
+      },
+      "backend": {
+        "endpoints": [
+          {
+            "method": "GET",
+            "path": "/api/features/reports/latest",
+            "sourceFile": "/home/yb/codes/AgentX/routes/features.js"
+          },
+          {
+            "method": "GET",
+            "path": "/api/features/inventory",
+            "sourceFile": "/home/yb/codes/AgentX/routes/features.js"
+          },
+          {
+            "method": "GET",
+            "path": "/api/features/inventory/alignment",
+            "sourceFile": "/home/yb/codes/AgentX/routes/features.js"
+          },
+          {
+            "method": "POST",
+            "path": "/api/features/inventory/scan",
+            "sourceFile": "/home/yb/codes/AgentX/routes/features.js"
+          },
+          {
+            "method": "POST",
+            "path": "/api/features/inventory",
+            "sourceFile": "/home/yb/codes/AgentX/routes/features.js"
+          },
+          {
+            "method": "DELETE",
+            "path": "/api/features/inventory/:name",
+            "sourceFile": "/home/yb/codes/AgentX/routes/features.js"
+          },
+          {
+            "method": "GET",
+            "path": "/api/features/telemetry",
+            "sourceFile": "/home/yb/codes/AgentX/routes/features.js"
+          },
+          {
+            "method": "GET",
+            "path": "/api/features/telemetry/summary",
+            "sourceFile": "/home/yb/codes/AgentX/routes/features.js"
+          },
+          {
+            "method": "GET",
+            "path": "/api/features/adoption",
+            "sourceFile": "/home/yb/codes/AgentX/routes/features.js"
+          },
+          {
+            "method": "GET",
+            "path": "/api/features/usage",
+            "sourceFile": "/home/yb/codes/AgentX/routes/features.js"
+          },
+          {
+            "method": "GET",
+            "path": "/api/features/flags",
+            "sourceFile": "/home/yb/codes/AgentX/routes/features.js"
+          },
+          {
+            "method": "GET",
+            "path": "/api/features/flags/:name",
+            "sourceFile": "/home/yb/codes/AgentX/routes/features.js"
+          },
+          {
+            "method": "POST",
+            "path": "/api/features/flags",
+            "sourceFile": "/home/yb/codes/AgentX/routes/features.js"
+          },
+          {
+            "method": "PUT",
+            "path": "/api/features/flags/:name/toggle",
+            "sourceFile": "/home/yb/codes/AgentX/routes/features.js"
+          },
+          {
+            "method": "DELETE",
+            "path": "/api/features/flags/:name",
+            "sourceFile": "/home/yb/codes/AgentX/routes/features.js"
+          },
+          {
+            "method": "GET",
+            "path": "/api/features/adoption",
+            "sourceFile": "/home/yb/codes/AgentX/routes/features.js"
+          },
+          {
+            "method": "GET",
+            "path": "/api/features/activity",
+            "sourceFile": "/home/yb/codes/AgentX/routes/features.js"
+          },
+          {
+            "method": "POST",
+            "path": "/api/features/system-actions",
+            "sourceFile": "/home/yb/codes/AgentX/routes/features.js"
+          }
+        ],
+        "services": [
+          "/home/yb/codes/AgentX/src/services/costCalculator.js",
+          "/home/yb/codes/AgentX/src/services/embeddings.js",
+          "/home/yb/codes/AgentX/src/services/featureAlignmentPriority.js",
+          "/home/yb/codes/AgentX/src/services/featureAlignmentScanner.js",
+          "/home/yb/codes/AgentX/src/services/metricsCleanup.js",
+          "/home/yb/codes/AgentX/src/services/modelRouter.js",
+          "/home/yb/codes/AgentX/src/services/selfHealingEngine.js"
+        ],
+        "models": [
+          "/home/yb/codes/AgentX/models/ActivityLog.js",
+          "/home/yb/codes/AgentX/models/FeatureFlag.js",
+          "/home/yb/codes/AgentX/models/FeatureInventory.js",
+          "/home/yb/codes/AgentX/models/FeatureUsage.js",
+          "/home/yb/codes/AgentX/models/PerformanceLoadTest.js",
+          "/home/yb/codes/AgentX/models/PerformanceSnapshot.js",
+          "/home/yb/codes/AgentX/models/Workspace.js",
+          "/home/yb/codes/AgentX/models/WorkspaceAuditLog.js"
+        ]
+      },
+      "docs": {
+        "files": [
+          "/home/yb/codes/AgentX/docs/AB_Test_Configuration_Quick_Reference.md",
+          "/home/yb/codes/AgentX/docs/ALERTS_DASHBOARD_IMPLEMENTATION.md",
+          "/home/yb/codes/AgentX/docs/ALERT_ANALYTICS_DASHBOARD.md",
+          "/home/yb/codes/AgentX/docs/API.md",
+          "/home/yb/codes/AgentX/docs/AUTHENTICATION.md",
+          "/home/yb/codes/AgentX/docs/BENCHMARK_QUALITY_SCORING.md",
+          "/home/yb/codes/AgentX/docs/COST_TRACKING_QUICK_REFERENCE.md",
+          "/home/yb/codes/AgentX/docs/COST_TRACKING_START_HERE.md",
+          "/home/yb/codes/AgentX/docs/FEATURE_ALIGNMENT_DASHBOARD_GUIDE.md",
+          "/home/yb/codes/AgentX/docs/FEATURE_ALIGNMENT_PRIORITY_ALGORITHM.md",
+          "/home/yb/codes/AgentX/docs/FIXES_2026-01-05.md",
+          "/home/yb/codes/AgentX/docs/IMPLEMENTATION_SUMMARY_2026-01-02.md",
+          "/home/yb/codes/AgentX/docs/INDEX.md",
+          "/home/yb/codes/AgentX/docs/INTEGRATION_EXAMPLES.md",
+          "/home/yb/codes/AgentX/docs/N6.1-ARCHITECTURE.md",
+          "/home/yb/codes/AgentX/docs/PEER_REVIEW_FINAL_2026-01-04.md",
+          "/home/yb/codes/AgentX/docs/QUERY_OPTIMIZATION.md",
+          "/home/yb/codes/AgentX/docs/SBQC-Stack-Final/00-AUDIT-SUMMARY.md",
+          "/home/yb/codes/AgentX/docs/SBQC-Stack-Final/00-OVERVIEW.md",
+          "/home/yb/codes/AgentX/docs/SBQC-Stack-Final/01-ARCHITECTURE.md",
+          "/home/yb/codes/AgentX/docs/SBQC-Stack-Final/02-DATAAPI-TASKS.md",
+          "/home/yb/codes/AgentX/docs/SBQC-Stack-Final/03-AGENTX-TASKS.md",
+          "/home/yb/codes/AgentX/docs/SBQC-Stack-Final/04-N8N-WORKFLOWS.md",
+          "/home/yb/codes/AgentX/docs/SBQC-Stack-Final/06-AGENT-PROMPTS.md",
+          "/home/yb/codes/AgentX/docs/SBQC-Stack-Final/08-VALIDATION-PLAN.md",
+          "/home/yb/codes/AgentX/docs/SBQC-Stack-Final/AGENT-PROMPT-FOR-VALIDATION.md",
+          "/home/yb/codes/AgentX/docs/SBQC-Stack-Final/README.md",
+          "/home/yb/codes/AgentX/docs/SBQC-Stack-Final/SETUP-SUMMARY-2025-12-31.md",
+          "/home/yb/codes/AgentX/docs/SBQC-Stack-Final/VALIDATION-REPORT-2025-12-31-1622.md",
+          "/home/yb/codes/AgentX/docs/SBQC_EXPANSION_ARCHITECTURE.md",
+          "/home/yb/codes/AgentX/docs/SELF_HEALING_DASHBOARD.md",
+          "/home/yb/codes/AgentX/docs/SELF_HEALING_DASHBOARD_SUMMARY.md",
+          "/home/yb/codes/AgentX/docs/SELF_HEALING_QUICK_REFERENCE.md",
+          "/home/yb/codes/AgentX/docs/SESSION_PROGRESS_2026-01-02.md",
+          "/home/yb/codes/AgentX/docs/TROUBLESHOOTING_README.md",
+          "/home/yb/codes/AgentX/docs/VALIDATION_REPORT_2026-01-03.md",
+          "/home/yb/codes/AgentX/docs/WORKFLOW_GENERATOR_IMPLEMENTATION.md",
+          "/home/yb/codes/AgentX/docs/api/BENCHMARK_API_ENHANCED.md",
+          "/home/yb/codes/AgentX/docs/api/contracts/v4-contract.md",
+          "/home/yb/codes/AgentX/docs/architecture/V4_ANALYTICS_ARCHITECTURE.md",
+          "/home/yb/codes/AgentX/docs/architecture/backend-overview.md",
+          "/home/yb/codes/AgentX/docs/architecture/database.md",
+          "/home/yb/codes/AgentX/docs/components/PerformanceMetricsDashboard.md",
+          "/home/yb/codes/AgentX/docs/components/TemplateTester.md",
+          "/home/yb/codes/AgentX/docs/features/CUSTOM_DASHBOARDS_NEXT_STEPS.md",
+          "/home/yb/codes/AgentX/docs/features/PERFORMANCE_DASHBOARD.md",
+          "/home/yb/codes/AgentX/docs/features/PERFORMANCE_MONITORING.md",
+          "/home/yb/codes/AgentX/docs/features/RAG_SEARCH_FEATURES.md",
+          "/home/yb/codes/AgentX/docs/features/TRACK_5_COMPLETION_SUMMARY.md",
+          "/home/yb/codes/AgentX/docs/future/SBQC-Agent-Personas.md",
+          "/home/yb/codes/AgentX/docs/future/brainx-deep-architecture.md",
+          "/home/yb/codes/AgentX/docs/future/n8n-heavy-orchestration.md",
+          "/home/yb/codes/AgentX/docs/guides/ab-testing-guide.md",
+          "/home/yb/codes/AgentX/docs/onboarding/n8n-deployment.md",
+          "/home/yb/codes/AgentX/docs/onboarding-wizard-guide.md",
+          "/home/yb/codes/AgentX/docs/planning/BENCHMARK_ENHANCEMENT_PLAN.md",
+          "/home/yb/codes/AgentX/docs/planning/FINAL_INTEGRATION_STATUS.md",
+          "/home/yb/codes/AgentX/docs/planning/ROADMAP_EVOLUTION_2026.md",
+          "/home/yb/codes/AgentX/docs/reports/AUTHENTICATION_IMPLEMENTATION.md",
+          "/home/yb/codes/AgentX/docs/reports/PARTNERSHIP_PROGRESS_WEEK1.md",
+          "/home/yb/codes/AgentX/docs/reports/PERFORMANCE_OPTIMIZATION.md",
+          "/home/yb/codes/AgentX/docs/reports/REVISED_PLAN_STATUS.md",
+          "/home/yb/codes/AgentX/docs/reports/V1.2_ENHANCEMENT_SUMMARY.md",
+          "/home/yb/codes/AgentX/docs/reports/WEEK2_COMPLETE_SUMMARY.md",
+          "/home/yb/codes/AgentX/docs/reports/WIZARD_CONSOLIDATION_FINAL_SUMMARY.md",
+          "/home/yb/codes/AgentX/docs/reports/n8n-prompt-improvement-v4.md",
+          "/home/yb/codes/AgentX/docs/reports/v4-implementation.md",
+          "/home/yb/codes/AgentX/docs/testing/ALERTS_INTEGRATION_VERIFICATION.md",
+          "/home/yb/codes/AgentX/docs/testing/CHAT_ONBOARDING_TEST_PLAN.md",
+          "/home/yb/codes/AgentX/docs/testing/E2E_TEST_COMPLETION_REPORT.md",
+          "/home/yb/codes/AgentX/docs/testing/MANUAL_TEST_NOW.md",
+          "/home/yb/codes/AgentX/docs/testing/N8N_DEPLOYMENT_TEST_RESULTS.md",
+          "/home/yb/codes/AgentX/docs/testing/PHASE3_TEST_REPORT.md",
+          "/home/yb/codes/AgentX/docs/testing/PROMPT_UI_TEST_REPORT.md",
+          "/home/yb/codes/AgentX/docs/user-manual/README.md",
+          "/home/yb/codes/AgentX/CHANGELOG.md",
+          "/home/yb/codes/AgentX/CI_CD_SETUP.md",
+          "/home/yb/codes/AgentX/CLAUDE.md",
+          "/home/yb/codes/AgentX/CONTRIBUTING.md",
+          "/home/yb/codes/AgentX/EXTERNAL_AGENT_DASHBOARD_RECOMMENDATIONS.md",
+          "/home/yb/codes/AgentX/EXTERNAL_AGENT_NEXT_FEATURE_ALIGNMENT.md",
+          "/home/yb/codes/AgentX/EXTERNAL_AGENT_NEXT_MODELS_PHASE2.md",
+          "/home/yb/codes/AgentX/EXTERNAL_AGENT_NEXT_RAG_UI.md",
+          "/home/yb/codes/AgentX/EXTERNAL_AGENT_NEXT_SCANNER_IMPROVEMENTS.md",
+          "/home/yb/codes/AgentX/EXTERNAL_AGENT_RECOMMENDATIONS.md",
+          "/home/yb/codes/AgentX/EXTERNAL_AGENT_TASKS.md",
+          "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
+          "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
+          "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
+          "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md",
@@ -14924,6 +15230,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
@@ -15133,6 +15440,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
@@ -15345,6 +15653,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
@@ -15555,6 +15864,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
@@ -15769,6 +16079,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
@@ -16009,6 +16320,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md",
@@ -16130,6 +16442,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
@@ -16281,6 +16594,7 @@
           "/home/yb/codes/AgentX/DEPLOYMENT.md",
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_DASHBOARD_RECOMMENDATIONS.md",
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_TASKS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
         ]
@@ -16489,6 +16803,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md",
@@ -16785,6 +17100,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
@@ -16946,6 +17262,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QDRANT_README.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
@@ -17024,7 +17341,8 @@
       },
       "docs": {
         "files": [
-          "/home/yb/codes/AgentX/EXTERNAL_AGENT_DASHBOARD_RECOMMENDATIONS.md"
+          "/home/yb/codes/AgentX/EXTERNAL_AGENT_DASHBOARD_RECOMMENDATIONS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md"
         ]
       },
       "priority": {
@@ -17154,6 +17472,7 @@
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_DASHBOARD_RECOMMENDATIONS.md",
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_NEXT_SCANNER_IMPROVEMENTS.md",
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_RECOMMENDATIONS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md"
         ]
       },
@@ -17361,6 +17680,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md",
@@ -17673,7 +17993,8 @@
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_NEXT_MODELS_PHASE2.md",
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_RECOMMENDATIONS.md",
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_TASKS.md",
-          "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md"
+          "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md"
         ]
       },
       "priority": {
@@ -17790,7 +18111,8 @@
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_DASHBOARD_RECOMMENDATIONS.md",
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_NEXT_MODELS_PHASE2.md",
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_TASKS.md",
-          "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md"
+          "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md"
         ]
       },
       "priority": {
@@ -18171,6 +18493,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/QDRANT_README.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md",
@@ -18485,6 +18808,7 @@
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_TASKS.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md",
@@ -18702,6 +19026,7 @@
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_TASKS.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md",
@@ -18929,6 +19254,7 @@
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_TASKS.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QDRANT_README.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
@@ -19203,6 +19529,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QDRANT_README.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
@@ -19411,6 +19738,7 @@
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_TASKS.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md",
@@ -19619,6 +19947,7 @@
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_TASKS.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md",
@@ -19842,6 +20171,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md",
@@ -20187,6 +20517,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md",
@@ -20603,6 +20934,7 @@
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_RECOMMENDATIONS.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
@@ -20646,6 +20978,11 @@
             "method": "GET",
             "path": "/api/performance/endpoints",
             "sourceFile": "/home/yb/codes/AgentX/routes/performance.js"
+          },
+          {
+            "method": "GET",
+            "path": "/orphan-test",
+            "sourceFile": "/home/yb/codes/AgentX/routes/test_orphan.js"
           }
         ],
         "services": [
@@ -20768,18 +21105,19 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
         ]
       },
       "priority": {
-        "score": 35,
+        "score": 45,
         "level": "COMPLETE",
         "category": "complete",
         "breakdown": {
           "n8n": 0,
-          "endpoints": 10,
+          "endpoints": 20,
           "docs": 15,
           "security": 15,
           "activity": 15,
@@ -21004,6 +21342,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md",
@@ -21589,6 +21928,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
@@ -22326,6 +22666,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md"
         ]
@@ -22719,6 +23060,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
@@ -22898,6 +23240,7 @@
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_DASHBOARD_RECOMMENDATIONS.md",
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_NEXT_MODELS_PHASE2.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
         ]
@@ -23040,6 +23383,7 @@
           "/home/yb/codes/AgentX/CONTRIBUTING.md",
           "/home/yb/codes/AgentX/DEPLOYMENT.md",
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_TASKS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/QDRANT_README.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md",
@@ -24326,6 +24670,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QDRANT_README.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
@@ -24461,6 +24806,7 @@
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_TASKS.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md"
         ]
@@ -24698,6 +25044,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md",
@@ -24765,6 +25112,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
         ]
@@ -24891,6 +25239,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md",
@@ -25009,6 +25358,7 @@
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_NEXT_FEATURE_ALIGNMENT.md",
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_NEXT_MODELS_PHASE2.md",
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_RECOMMENDATIONS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
@@ -25224,6 +25574,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md",
@@ -25467,6 +25818,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md",
@@ -26016,6 +26368,7 @@
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_TASKS.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
@@ -26646,6 +26999,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
@@ -26852,6 +27206,7 @@
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_TASKS.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QDRANT_README.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
@@ -27235,6 +27590,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md",
@@ -27420,6 +27776,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
@@ -27666,6 +28023,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
@@ -27678,6 +28036,72 @@
         "breakdown": {
           "n8n": 0,
           "endpoints": 40,
+          "docs": 15,
+          "security": 15,
+          "activity": 15,
+          "falsePositive": 0,
+          "ui": -20
+        }
+      }
+    },
+    {
+      "key": "test-orphan",
+      "sources": [
+        "backend"
+      ],
+      "present": {
+        "frontend": true,
+        "backend": true,
+        "docs": true
+      },
+      "status": "complete",
+      "frontend": {
+        "files": [
+          "/home/yb/codes/AgentX/public/feature-alignment.html"
+        ]
+      },
+      "backend": {
+        "endpoints": [
+          {
+            "method": "GET",
+            "path": "/orphan-test",
+            "sourceFile": "/home/yb/codes/AgentX/routes/test_orphan.js"
+          }
+        ],
+        "services": [
+          "/home/yb/codes/AgentX/src/services/featureAlignmentPriority.js"
+        ],
+        "models": [
+          "/home/yb/codes/AgentX/models/FeatureInventory.js"
+        ]
+      },
+      "docs": {
+        "files": [
+          "/home/yb/codes/AgentX/docs/FEATURE_ALIGNMENT_DASHBOARD_GUIDE.md",
+          "/home/yb/codes/AgentX/docs/FIXES_2026-01-05.md",
+          "/home/yb/codes/AgentX/docs/INDEX.md",
+          "/home/yb/codes/AgentX/docs/N6.1-ARCHITECTURE.md",
+          "/home/yb/codes/AgentX/docs/WORKFLOW_GENERATOR_IMPLEMENTATION.md",
+          "/home/yb/codes/AgentX/EXTERNAL_AGENT_DASHBOARD_RECOMMENDATIONS.md",
+          "/home/yb/codes/AgentX/EXTERNAL_AGENT_NEXT_FEATURE_ALIGNMENT.md",
+          "/home/yb/codes/AgentX/EXTERNAL_AGENT_NEXT_SCANNER_IMPROVEMENTS.md",
+          "/home/yb/codes/AgentX/EXTERNAL_AGENT_RECOMMENDATIONS.md",
+          "/home/yb/codes/AgentX/EXTERNAL_AGENT_TASKS.md",
+          "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
+          "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
+          "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
+          "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
+          "/home/yb/codes/AgentX/ROADMAP.md"
+        ]
+      },
+      "priority": {
+        "score": 35,
+        "level": "COMPLETE",
+        "category": "complete",
+        "breakdown": {
+          "n8n": 0,
+          "endpoints": 10,
           "docs": 15,
           "security": 15,
           "activity": 15,
@@ -27752,7 +28176,8 @@
           "/home/yb/codes/AgentX/CLAUDE.md",
           "/home/yb/codes/AgentX/CONTRIBUTING.md",
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_DASHBOARD_RECOMMENDATIONS.md",
-          "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md"
+          "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md"
         ]
       },
       "priority": {
@@ -27958,6 +28383,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md",
@@ -28252,6 +28678,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QDRANT_README.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
@@ -28499,6 +28926,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
@@ -28623,6 +29051,7 @@
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_TASKS.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
@@ -29147,6 +29576,7 @@
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_TASKS.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
@@ -29349,6 +29779,7 @@
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_TASKS.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
@@ -29500,6 +29931,7 @@
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_TASKS.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QDRANT_README.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
@@ -29661,6 +30093,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
@@ -29842,6 +30275,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/README.md",
@@ -29918,7 +30352,8 @@
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_DASHBOARD_RECOMMENDATIONS.md",
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_TASKS.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
-          "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md"
+          "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md"
         ]
       },
       "priority": {
@@ -30125,6 +30560,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_PROMPTS.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QDRANT_README.md",
           "/home/yb/codes/AgentX/README.md",
@@ -30303,6 +30739,7 @@
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
           "/home/yb/codes/AgentX/FEATURE_DASHBOARD_INTEGRATION.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
@@ -30515,6 +30952,7 @@
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_TASKS.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_FIX_SUMMARY.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
@@ -30795,6 +31233,7 @@
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_RECOMMENDATIONS.md",
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_TASKS.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/README.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
@@ -30977,6 +31416,7 @@
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_NEXT_RAG_UI.md",
           "/home/yb/codes/AgentX/EXTERNAL_AGENT_RECOMMENDATIONS.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ORPHAN_ENDPOINTS_ANALYSIS.md",
           "/home/yb/codes/AgentX/QUICKSTART_QDRANT.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
@@ -31122,6 +31562,7 @@
           "/home/yb/codes/AgentX/docs/bugs/agentx/2026-01-07__agentx__prompts__default-chat-404.md",
           "/home/yb/codes/AgentX/CLAUDE.md",
           "/home/yb/codes/AgentX/FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md",
+          "/home/yb/codes/AgentX/FEATURE_PRIORITIZATION_ANALYSIS.md",
           "/home/yb/codes/AgentX/ROADMAP.md"
         ]
       },
@@ -31137,6 +31578,49 @@
           "activity": 15,
           "falsePositive": 0,
           "ui": -20
+        }
+      }
+    },
+    {
+      "key": "zxyvq",
+      "sources": [
+        "backend"
+      ],
+      "present": {
+        "frontend": false,
+        "backend": true,
+        "docs": false
+      },
+      "status": "orphan-backend",
+      "frontend": {
+        "files": []
+      },
+      "backend": {
+        "endpoints": [
+          {
+            "method": "GET",
+            "path": "/zxyvq",
+            "sourceFile": "/home/yb/codes/AgentX/routes/zxyvq.js"
+          }
+        ],
+        "services": [],
+        "models": []
+      },
+      "docs": {
+        "files": []
+      },
+      "priority": {
+        "score": 10,
+        "level": "LOW",
+        "category": "low",
+        "breakdown": {
+          "n8n": 0,
+          "endpoints": 10,
+          "docs": 0,
+          "security": 0,
+          "activity": 0,
+          "falsePositive": 0,
+          "ui": 0
         }
       }
     }

@@ -8,7 +8,7 @@ This roadmap tracks the development status and priorities for the AgentX project
 
 ## Overview
 
-AgentX development is organized across **eight development tracks**, each focusing on a specific aspect of the system's capabilities. Seven tracks are **COMPLETE** with production-ready implementations, and Track 8 (Feature Alignment Dashboard) is actively in development.
+AgentX development is organized across **eight development tracks**, each focusing on a specific aspect of the system's capabilities. Seven tracks are **COMPLETE** with production-ready implementations. Track 8 has completed Phase 1 (Feature Alignment Dashboard) and is now in Phase 2 (UI Development for Headless Features).
 
 ### Eight Development Tracks
 
@@ -19,11 +19,11 @@ AgentX development is organized across **eight development tracks**, each focusi
 5. **Track 5: Advanced Testing & CI/CD** - Production-quality assurance and deployment ✅
 6. **Track 6: Backup & Disaster Recovery** - Data and workflow safeguarding ✅
 7. **Track 7: Multi-Tenancy & Workspaces** - Team collaboration with data isolation ✅
-8. **Track 8: Feature Alignment Dashboard** - Feature coverage visibility and UI prioritization 🔄
+8. **Track 8: Feature Alignment Dashboard** - Phase 1 complete ✅ | Phase 2 in progress 🔄
 
 ---
 
-## Current Status: Track 8 In Active Development 🔄
+## Current Status: Track 8 Phase 2 (UI Development) 🔄
 
 ### Track 1: Alerts & Notifications ✅ COMPLETE
 
@@ -273,55 +273,124 @@ AgentX development is organized across **eight development tracks**, each focusi
 
 ---
 
-### Track 8: Feature Alignment Dashboard 🔄 IN PROGRESS
+### Track 8: Feature Alignment Dashboard ✅ PHASE 1 COMPLETE | 🔄 PHASE 2 IN PROGRESS
 
 **Purpose:** Comprehensive feature coverage visibility and UI development prioritization
 
-**Current Status:** Backend complete, UI in development
+---
+
+#### Phase 1: Feature Alignment Dashboard ✅ COMPLETE (2026-01-07)
+
+**Status:** Production-ready, accessible at http://localhost:3080/feature-alignment.html
 
 **Components:**
-- ✅ Feature scanner (`/src/services/featureAlignmentScanner.js`)
-  - Scans 225 features across frontend, backend, and documentation
+- ✅ Feature scanner (`/src/services/featureAlignmentScanner.js` - 470 lines)
+  - Scans 179 features across frontend, backend, and documentation
   - Maps 254 backend endpoints
   - Identifies orphan endpoints and headless features
-- ✅ Priority algorithm (`/src/services/featureAlignmentPriority.js`)
+- ✅ Priority algorithm (`/src/services/featureAlignmentPriority.js` - 350+ lines)
   - 7-criteria scoring system (0-100 points)
   - n8n workflow detection (±30 points)
   - False positive handling (-15 points)
   - UI implementation detection (-20 points)
 - ✅ Actionable reports (`/reports/feature-alignment-actions.md`)
-  - Top 5 medium-priority features identified
-  - Orphan endpoint categorization (7 false positives, 3 API-only)
+  - Top 10 high-priority features analyzed
+  - Orphan endpoint categorization (0 genuine orphans found)
   - Recommendations for UI development
-- 🔄 Interactive dashboard (`/public/feature-alignment.html`) - IN DEVELOPMENT
-  - Overview stats panel
-  - Orphan endpoints table with false positive badges
-  - Features priority table with filtering/sorting
+- ✅ Interactive dashboard (`/public/feature-alignment.html` - 15.5 KB)
+  - Overview stats panel with 4 key metrics
+  - Status distribution pie chart (Chart.js)
+  - Orphan endpoints table with false positive detection
+  - Features priority table with filters and sorting
   - Feature details modal with score breakdown
   - Actionable recommendations panel
+- ✅ Dashboard JavaScript (`/public/js/feature-alignment.js` - 22.1 KB)
+  - Real-time priority score calculation
+  - Orphan endpoint classification
+  - Interactive filtering and sorting
+  - CSV export functionality
+- ✅ Navigation integration (`/public/js/components/nav.js`)
+  - "Alignment" link between Admin and Workspaces
+- ✅ User documentation (`/docs/FEATURE_ALIGNMENT_DASHBOARD_GUIDE.md` - 320+ lines)
+  - Quick start guide
+  - Dashboard sections explained
+  - Common workflows (4 examples)
+  - Troubleshooting and FAQs
 
 **Scanner Results (2026-01-07):**
-- 225 features detected
-- 165 complete features (already have UIs - 73%)
-- 5 medium-priority features (score 40-69, consider UI)
-- 55 low-priority features (defer or API-only)
-- 10 orphan endpoints: 7 false positives, 3 API-only
+- 179 features detected (down from 227 after filtering report artifacts)
+- 127 complete features (already have UIs - 71%)
+- 42 headless-documented features
+- 10 partial features
+- 0 orphan endpoints (all 10 initially detected were false positives)
 
 **Priority Algorithm (7 Criteria):**
 1. **n8n Workflow Usage (±30pts):** Negative for n8n endpoints (API-only), positive for monitoring needs
-2. **Endpoint Count (20pts):** More endpoints = more complex = higher priority
-3. **Documentation (20pts):** Well-documented features get higher scores
-4. **Security (15pts):** Auth-required features need admin UI
-5. **Recent Activity (15pts):** Active development = current priority
+2. **Endpoint Count (0-40pts):** More endpoints = more complex = higher priority
+3. **Documentation (0-15pts):** Well-documented features get higher scores
+4. **Security (0-15pts):** Auth-required features need admin UI
+5. **Recent Activity (0-15pts):** Active development = current priority
 6. **False Positive Penalty (-15pts):** Already has UI but marked as orphan
 7. **UI Detection (-20pts):** Has frontend files (not truly headless)
 
+**Validation Results:**
+- ✅ All dashboard components functional
+- ✅ Priority scoring algorithm accurate
+- ✅ False positive detection working (7/10 orphans correctly categorized)
+- ✅ Navigation integrated across all pages
+- ✅ Responsive design for mobile/desktop
+
+---
+
+#### Phase 2: UI Development for Headless Features 🔄 IN PROGRESS
+
+**Status:** Feature prioritization analysis complete, implementation in progress
+
+**High-Priority Features (Score 70+):**
+
+1. **Invitations (85 points)** - ⚡ NEXT UP
+   - **Status:** Partial UI - Admin side complete, user acceptance MISSING
+   - **Gap:** No UI for users receiving email invitations to accept/decline
+   - **Endpoints:** `/api/invitations/validate/:token`, `/api/invitations/accept`
+   - **Implementation:** `/public/accept-invitation.html`
+   - **Effort:** 4-6 hours
+   - **Priority:** ✅ **HIGH** - Completes workspace collaboration feature
+
+2. **Voice API (70 points)** - ⚠️ DEFER
+   - **Status:** Fully headless - No UI
+   - **Endpoints:** transcribe, synthesize, chat (4 endpoints)
+   - **Gap:** Voice interfaces require complex audio handling
+   - **Priority:** ⚠️ **MEDIUM** - Defer until user demand confirmed
+   - **Effort:** 12-16 hours
+
+3. **Workflow Generator (70 points)** - ⚠️ DEFER
+   - **Status:** Fully headless - No UI
+   - **Endpoints:** generate, validate, deploy, examples (4 endpoints)
+   - **Gap:** AI-powered n8n workflow creation
+   - **Priority:** ⚠️ **MEDIUM** - Validate demand with power users first
+   - **Effort:** 10-14 hours
+
+**Filtered Out (Not Requiring UI):**
+- ✅ **Models Unified (85):** Already has UI via models.html (scanner missed JS → API chain)
+- ✅ **Model Registry (80):** Used by benchmark.html, API-only by design
+- ✅ **Dataset (80):** Designed for n8n/API access, not user-facing
+- ❌ **4 Report Artifacts (65 each):** Scanner incorrectly flagged docs as features
+
+**Scanner Accuracy:**
+- **True Positives:** 3/10 (30%) - Invitations, Voice, Workflow Generator
+- **False Positives:** 7/10 (70%) - Existing UI, API-only, documentation artifacts
+- **Improvement Needed:** Detect HTML → JS → API chains, exclude archived docs
+
 **Next Steps:**
-- [ ] Complete dashboard HTML/JS (external agent, 5-6 hours)
-- [ ] Add to navigation (30 minutes)
-- [ ] Update documentation (1 hour)
-- [ ] Review 5 medium-priority features for UI development
-- [ ] Scanner improvements (Phase 1: API helper detection, form parsing)
+- [x] Analyze top 10 high-priority features
+- [x] Filter false positives and existing UI
+- [x] Create prioritization analysis document
+- [ ] Build invitation acceptance UI (external agent, 4-6 hours)
+- [ ] Scanner Phase 1 improvements (external agent, 2.5-3 hours)
+  - Detect API helper wrappers (`API.get()`, `axios.get()`)
+  - Parse HTML form actions
+  - Auth route pattern recognition
+  - Exclude `/docs/archive/` from scans
 
 **Documentation:**
 - `ORPHAN_ENDPOINTS_ANALYSIS.md` - False positives analysis

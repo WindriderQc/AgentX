@@ -259,7 +259,15 @@
                         <span style="margin-left: 0.5rem;">Hide False Positives (✅)</span>
                     </label>
                 </div>
-                <div class="table-container">
+                
+                <!-- Zero State / All Clear Message -->
+                <div id="orphan-empty-state" style="display: none; text-align: center; padding: 3rem; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px;">
+                    <i class="fas fa-check-circle" style="font-size: 3rem; color: #10b981; margin-bottom: 1rem;"></i>
+                    <h3 style="color: #065f46; margin: 0.5rem 0;">All Clear!</h3>
+                    <p style="color: #047857;">No visible orphan endpoints found.</p>
+                </div>
+
+                <div class="table-container" id="orphan-table-container">
                     <table id="orphan-table">
                         <thead>
                             <tr>
@@ -275,7 +283,7 @@
                         </tbody>
                     </table>
                 </div>
-                <div style="font-size: 0.9rem; color: #666; margin-top: 0.5rem; padding: 1rem; background: #f9f9f9; border-radius: 4px;">
+                <div id="orphan-legend" style="font-size: 0.9rem; color: #666; margin-top: 0.5rem; padding: 1rem; background: #f9f9f9; border-radius: 4px;">
                     <p><strong>Legend:</strong> ✅ In Use (False Positive) | 🔵 API-Only (Internal/Automation)</p>
                 </div>
             </section>
