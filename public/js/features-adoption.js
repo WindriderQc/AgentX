@@ -4,6 +4,16 @@
  */
 
 (function() {
+    // Helper: Get headers with workspace context
+    function getWorkspaceHeaders() {
+        const headers = { 'Content-Type': 'application/json' };
+        if (window.WorkspaceManager && typeof window.WorkspaceManager.addWorkspaceHeader === 'function') {
+            const workspaceHeaders = window.WorkspaceManager.addWorkspaceHeader({});
+            Object.assign(headers, workspaceHeaders);
+        }
+        return headers;
+    }
+
     // State
     const state = {
         features: [], // All loaded features
@@ -18,7 +28,9 @@
     // Fetch Data from API
     async function fetchFeatureData(timeRange) {
         try {
-            const res = await fetch(`/api/features/adoption?period=${timeRange}`);
+            const res = await fetch(`/api/features/adoption?period=${timeRange}`, {
+                headers: getWorkspaceHeaders()
+            });
             const json = await res.json();
             
             if (json.status !== 'success') {

@@ -811,6 +811,7 @@
 <body>
     <div id="nav-container"></div>
     <script src="/js/components/nav.js"></script>
+    <script src="/js/workspace.js"></script>
     <script>injectNav('performance');</script>
     <div class="bg-grid"></div>
 
@@ -1100,6 +1101,16 @@
     </div>
 
     <script>
+        // Helper: Get headers with workspace context
+        function getWorkspaceHeaders() {
+            const headers = { 'Content-Type': 'application/json' };
+            if (window.WorkspaceManager && typeof window.WorkspaceManager.addWorkspaceHeader === 'function') {
+                const workspaceHeaders = window.WorkspaceManager.addWorkspaceHeader({});
+                Object.assign(headers, workspaceHeaders);
+            }
+            return headers;
+        }
+
         // Performance Dashboard Controller
         const PerformanceDashboard = {
             // State
@@ -1197,7 +1208,9 @@
             // Load dashboard stats
             async loadDashboard() {
                 try {
-                    const response = await fetch(`/api/performance/dashboard?hours=${this.currentTimeRange}`);
+                    const response = await fetch(`/api/performance/dashboard?hours=${this.currentTimeRange}`, {
+                        headers: getWorkspaceHeaders()
+                    });
                     const result = await response.json();
 
                     if (result.status === 'success' && result.data) {
@@ -1406,7 +1419,9 @@
                         params.append('endpoint', this.currentEndpoint);
                     }
 
-                    const response = await fetch(`/api/performance/latency-trends?${params}`);
+                    const response = await fetch(`/api/performance/latency-trends?${params}`, {
+                        headers: getWorkspaceHeaders()
+                    });
                     const result = await response.json();
 
                     const trends = result?.data?.trends || [];
@@ -1528,7 +1543,9 @@
                         params.append('endpoint', this.currentEndpoint);
                     }
 
-                    const response = await fetch(`/api/performance/percentiles?${params}`);
+                    const response = await fetch(`/api/performance/percentiles?${params}`, {
+                        headers: getWorkspaceHeaders()
+                    });
                     const result = await response.json();
 
                     const percentiles = result?.data?.percentiles || result?.data;
@@ -1627,7 +1644,9 @@
                         params.append('endpoint', this.currentEndpoint);
                     }
 
-                    const response = await fetch(`/api/performance/throughput?${params}`);
+                    const response = await fetch(`/api/performance/throughput?${params}`, {
+                        headers: getWorkspaceHeaders()
+                    });
                     const result = await response.json();
 
                     const throughput = result?.data?.throughput || [];
@@ -1750,7 +1769,9 @@
                 try {
                     document.getElementById('loadTestsLoading').classList.add('active');
 
-                    const response = await fetch('/api/performance/load-tests?limit=50');
+                    const response = await fetch('/api/performance/load-tests?limit=50', {
+                        headers: getWorkspaceHeaders()
+                    });
                     const result = await response.json();
 
                     document.getElementById('loadTestsLoading').classList.remove('active');

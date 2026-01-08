@@ -28,7 +28,13 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function loadReport() {
-  fetch('/reports/feature-alignment.json')
+  const headers = {};
+  if (window.WorkspaceManager && typeof window.WorkspaceManager.addWorkspaceHeader === 'function') {
+    const workspaceHeaders = window.WorkspaceManager.addWorkspaceHeader({});
+    Object.assign(headers, workspaceHeaders);
+  }
+
+  fetch('/reports/feature-alignment.json', { headers })
     .then((res) => {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return res.json();

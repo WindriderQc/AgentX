@@ -228,6 +228,11 @@ document.addEventListener('DOMContentLoaded', () => {
       tts: elements.ttsToggle.checked,
       useRag: elements.ragToggle.checked,
       showStats: elements.statsToggle.checked, // V4: Save stats preference
+      // RAG Advanced Options
+      ragExpand: elements.ragExpandQuery?.checked || false,
+      ragHybrid: elements.ragHybridSearch?.checked || false,
+      ragRerank: elements.ragRerankResults?.checked || false,
+      ragTopK: parseInt(elements.ragTopK?.value || '5', 10),
       system: elements.systemPrompt.value.trim() || defaults.system,
       options: readOptions(),
     };
@@ -319,6 +324,12 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.ttsToggle.checked = cfg.tts || false;
     elements.ragToggle.checked = cfg.useRag !== undefined ? cfg.useRag : true;
     elements.statsToggle.checked = state.showStats; // V4
+    // RAG Advanced Options
+    if (elements.ragExpandQuery) elements.ragExpandQuery.checked = cfg.ragExpand || false;
+    if (elements.ragHybridSearch) elements.ragHybridSearch.checked = cfg.ragHybrid || false;
+    if (elements.ragRerankResults) elements.ragRerankResults.checked = cfg.ragRerank || false;
+    if (elements.ragTopK) elements.ragTopK.value = cfg.ragTopK || 5;
+    if (elements.ragTopKValue) elements.ragTopKValue.textContent = cfg.ragTopK || 5;
     elements.temperature.value = cfg.options.temperature;
     elements.topP.value = cfg.options.top_p;
     elements.topK.value = cfg.options.top_k;
@@ -393,6 +404,82 @@ document.addEventListener('DOMContentLoaded', () => {
 
     bubble.appendChild(meta);
     bubble.appendChild(body);
+    
+    // V6: RAG Citation Display (2026-01-07)
+    if (role === 'assistant' && message.ragSources && Array.isArray(message.ragSources) && message.ragSources.length > 0) {
+      const citationsDiv = document.createElement('div');
+      citationsDiv.className = 'message-citations';
+      citationsDiv.style.fontSize = '0.8rem';
+      citationsDiv.style.color = 'var(--muted)';
+      citationsDiv.style.marginTop = '0.75rem';
+      citationsDiv.style.paddingTop = '0.75rem';
+      citationsDiv.style.borderTop = '1px solid rgba(255,255,255,0.05)';
+      
+      const citationsTitle = document.createElement('div');
+      citationsTitle.style.fontWeight = '600';
+      citationsTitle.style.marginBottom = '0.5rem';
+      citationsTitle.innerHTML = '<i class="fas fa-book" style="margin-right: 0.5rem;"></i>Sources:';
+      citationsDiv.appendChild(citationsTitle);
+      
+      message.ragSources.forEach((source, idx) => {
+        const sourceItem = document.createElement('div');
+        sourceItem.style.marginBottom = '0.5rem';
+        sourceItem.style.padding = '0.5rem';
+        sourceItem.style.background = 'rgba(255,255,255,0.03)';
+        sourceItem.style.borderRadius = '4px';
+        sourceItem.style.cursor = 'pointer';
+        sourceItem.style.transition = 'background 0.2s';
+        
+        const sourceNum = document.createElement('span');
+        sourceNum.style.fontWeight = '700';
+        sourceNum.style.color = 'var(--primary)';
+        sourceNum.textContent = `[${idx + 1}] `;
+        
+        const sourceTitle = document.createElement('span');
+        sourceTitle.style.fontWeight = '600';
+        sourceTitle.textContent = source.metadata?.filename || 'Unknown Source';
+        
+        const sourceExcerpt = document.createElement('div');
+        sourceExcerpt.style.fontSize = '0.75rem';
+        sourceExcerpt.style.color = 'var(--muted)';
+        sourceExcerpt.style.marginTop = '0.25rem';
+        sourceExcerpt.textContent = source.excerpt ? `"${source.excerpt}..."` : '';
+        
+        const sourceScore = document.createElement('span');
+        sourceScore.style.fontSize = '0.7rem';
+        sourceScore.style.color = 'var(--muted)';
+        sourceScore.style.marginLeft = '0.5rem';
+        if (source.score) {
+          const scorePercent = (source.score * 100).toFixed(0);
+          sourceScore.textContent = `(${scorePercent}% match)`;
+        }
+        
+        sourceItem.appendChild(sourceNum);
+        sourceItem.appendChild(sourceTitle);
+        sourceItem.appendChild(sourceScore);
+        if (source.excerpt) {
+          sourceItem.appendChild(sourceExcerpt);
+        }
+        
+        // Add hover effect
+        sourceItem.addEventListener('mouseenter', () => {
+          sourceItem.style.background = 'rgba(255,255,255,0.08)';
+        });
+        sourceItem.addEventListener('mouseleave', () => {
+          sourceItem.style.background = 'rgba(255,255,255,0.03)';
+        });
+        
+        // TODO: Add click handler to view full document
+        sourceItem.addEventListener('click', () => {
+          console.log('View source:', source);
+          // Future: Open document viewer modal
+        });
+        
+        citationsDiv.appendChild(sourceItem);
+      });
+      
+      bubble.appendChild(citationsDiv);
+    }
 
     // V4: Stats Footer
     if (state.showStats && message.stats && role === 'assistant') {
@@ -1497,6 +1584,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     
     if (elements.statsToggle) elements.statsToggle.addEventListener('change', persistSettings);
+    
+    // RAG Advanced Options event listeners
+    if (elements.ragExpandQuery) elements.ragExpandQuery.addEventListener('change', persistSettings);
+    if (elements.ragHybridSearch) elements.ragHybridSearch.addEventListener('change', persistSettings);
+    if (elements.ragRerankResults) elements.ragRerankResults.addEventListener('change', persistSettings);
 
     // Auto-refresh models when host or port changes
     elements.hostInput.addEventListener('change', () => {

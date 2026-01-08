@@ -3,6 +3,18 @@ let featureFlags = [];
 
 let activityLog = []; // Will fetch from API if available or keep empty for now
 
+/**
+ * Helper: Get headers with workspace context
+ */
+function getWorkspaceHeaders() {
+    const headers = { 'Content-Type': 'application/json' };
+    if (window.WorkspaceManager && typeof window.WorkspaceManager.addWorkspaceHeader === 'function') {
+        const workspaceHeaders = window.WorkspaceManager.addWorkspaceHeader({});
+        Object.assign(headers, workspaceHeaders);
+    }
+    return headers;
+}
+
 // Initialization
 document.addEventListener('DOMContentLoaded', () => {
     loadFlags();
@@ -14,7 +26,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function loadFlags() {
     try {
-        const res = await fetch('/api/features/flags');
+        const res = await fetch('/api/features/flags', { headers: getWorkspaceHeaders() });
         const json = await res.json();
         if (json.status === 'success') {
             featureFlags = json.data;
@@ -165,7 +177,7 @@ async function saveFlag(e) {
         // Backend handles both Create and Update via POST (Upsert logic)
         const res = await fetch('/api/features/flags', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: getWorkspaceHeaders(),
             body: JSON.stringify(payload)
         });
 
@@ -236,7 +248,10 @@ function setupEventListeners() {
         btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Scanning...`;
         
         try {
-            const res = await fetch('/api/features/inventory/scan', { method: 'POST' });
+            const res = await fetch('/api/features/inventory/scan', { 
+                method: 'POST',
+                headers: getWorkspaceHeaders()
+            });
             const json = await res.json();
             if (json.status === 'success') {
                 addLog('Scanned codebase', '<i class="fas fa-search-code"></i>');

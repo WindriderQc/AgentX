@@ -146,7 +146,14 @@ function periodRange(days) {
 }
 
 async function fetchJSON(url, method = 'GET') {
-  const res = await fetch(url, { method, credentials: 'include' });
+  // Build headers with workspace context
+  const headers = { 'Content-Type': 'application/json' };
+  if (window.WorkspaceManager && typeof window.WorkspaceManager.addWorkspaceHeader === 'function') {
+    const workspaceHeaders = window.WorkspaceManager.addWorkspaceHeader({});
+    Object.assign(headers, workspaceHeaders);
+  }
+
+  const res = await fetch(url, { method, credentials: 'include', headers });
   if (res.status === 401) {
     window.location.href = '/login.html?redirect=' + encodeURIComponent(window.location.pathname);
     throw new Error('Unauthorized');
@@ -185,7 +192,14 @@ let systemMetricsLast429LogAt = 0;
 
 async function checkAuth() {
   try {
-    const res = await fetch('/api/auth/me', { credentials: 'include' });
+    // Build headers with workspace context
+    const headers = {};
+    if (window.WorkspaceManager && typeof window.WorkspaceManager.addWorkspaceHeader === 'function') {
+      const workspaceHeaders = window.WorkspaceManager.addWorkspaceHeader({});
+      Object.assign(headers, workspaceHeaders);
+    }
+
+    const res = await fetch('/api/auth/me', { credentials: 'include', headers });
     if (!res.ok) {
       window.location.href = '/login.html?redirect=' + encodeURIComponent(window.location.pathname);
       return false;

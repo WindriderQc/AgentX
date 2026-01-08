@@ -9,6 +9,24 @@ export class PromptsAPI {
   }
 
   /**
+   * Get headers with workspace context for multi-tenancy isolation
+   * @private
+   */
+  _getHeaders() {
+    const headers = {
+      'Content-Type': 'application/json'
+    };
+    
+    // Auto-inject workspace header
+    if (window.WorkspaceManager && typeof window.WorkspaceManager.addWorkspaceHeader === 'function') {
+      const workspaceHeaders = window.WorkspaceManager.addWorkspaceHeader({});
+      Object.assign(headers, workspaceHeaders);
+    }
+    
+    return headers;
+  }
+
+  /**
    * List all prompts grouped by name
    * @returns {Promise<Object>} { status: 'success', data: { [name]: [versions] } }
    */
@@ -17,9 +35,7 @@ export class PromptsAPI {
       const response = await fetch(this.baseUrl, {
         method: 'GET',
         credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json'
-        }
+        headers: this._getHeaders()
       });
 
       if (response.status === 401) {
@@ -48,9 +64,7 @@ export class PromptsAPI {
       const response = await fetch(`${this.baseUrl}/${encodeURIComponent(promptName)}`, {
         method: 'GET',
         credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json'
-        }
+        headers: this._getHeaders()
       });
 
       if (response.status === 404) {
@@ -80,9 +94,7 @@ export class PromptsAPI {
       const response = await fetch(this.baseUrl, {
         method: 'POST',
         credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: this._getHeaders(),
         body: JSON.stringify({
           name: data.name?.trim(),
           systemPrompt: data.systemPrompt?.trim(),
@@ -118,9 +130,7 @@ export class PromptsAPI {
       const response = await fetch(`${this.baseUrl}/${promptId}`, {
         method: 'PUT',
         credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: this._getHeaders(),
         body: JSON.stringify(updates)
       });
 
@@ -169,9 +179,7 @@ export class PromptsAPI {
       const response = await fetch(`${this.baseUrl}/${promptId}`, {
         method: 'DELETE',
         credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json'
-        }
+        headers: this._getHeaders()
       });
 
       if (response.status === 404) {
@@ -211,9 +219,7 @@ export class PromptsAPI {
       const response = await fetch(`${this.baseUrl}/${encodeURIComponent(promptName)}/ab-test`, {
         method: 'POST',
         credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: this._getHeaders(),
         body: JSON.stringify({ versions })
       });
 
@@ -247,9 +253,7 @@ export class PromptsAPI {
       const response = await fetch(`${this.baseUrl}/render`, {
         method: 'POST',
         credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: this._getHeaders(),
         body: JSON.stringify(body)
       });
 

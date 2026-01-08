@@ -1,6 +1,6 @@
 # AgentX Project Roadmap
 
-**Last Updated:** 2026-01-06
+**Last Updated:** 2026-01-07
 
 This roadmap tracks the development status and priorities for the AgentX project - a robust, self-healing, and intelligent monitoring and automation stack built on the SBQC architecture.
 
@@ -381,6 +381,77 @@ AgentX development is organized across **eight development tracks**, each focusi
 - **False Positives:** 7/10 (70%) - Existing UI, API-only, documentation artifacts
 - **Improvement Needed:** Detect HTML → JS → API chains, exclude archived docs
 
+---
+
+#### Phase 2 Follow-Up Tasks (2026-01-07)
+
+**Status:** 4 follow-up tasks initiated after invitation UI completion
+
+**Critical Bug Fix:**
+- ✅ **Workspace Loading Bug** - Fixed 16 HTML pages missing `workspace.js` script
+  - Pages affected: analytics, dashboard, models, alerts, prompts, rag, profile, features-*, backup, benchmark, performance
+  - Symptom: Navigation dropdown stuck on "Loading..."
+  - Root cause: Pages loaded `nav.js` but not `workspace.js` (required for WorkspaceManager global)
+  - Fix: Added `<script src="/js/workspace.js"></script>` between nav.js and injectNav()
+  - Verified: User confirmed "1 is tested and ok"
+
+**Task C: Low-Confidence Feature Review ✅ COMPLETE**
+- Analyzed 300 endpoints with 0 confidence score (expected ~21)
+- **Finding:** 94% had frontend pages but scanner couldn't detect API calls
+- **Root Cause:** Scanner missed custom wrappers, inline scripts, API client methods
+- **Categorization:**
+  - False negatives: ~280 endpoints (scanner detection gaps)
+  - API-only endpoints: ~15 endpoints (low confidence expected)
+  - Genuine orphans: ~5 endpoints (potential cleanup candidates)
+- **Documentation:** `/reports/low-confidence-review-2026-01.md`
+
+**Task D: Frontend Signal Detection Fixes ✅ COMPLETE**
+- Implemented 3 major scanner improvements in `featureAlignmentScanner.js`:
+  1. **Custom Fetch Wrapper Detection** (line 155)
+     - Added: fetchJSON(), workspaceFetch(), fetchWithWorkspace()
+     - Pattern: `/\b(fetch|fetchJSON|workspaceFetch|fetchWithWorkspace)\s*\(/gi`
+  2. **Case-Insensitive API Client Matching** (line 170)
+     - Added: apiClient, .request() method
+     - Pattern: `/\b(axios|API|api|client|apiClient)\.(get|post|put|delete|patch|request)\s*\(/gi`
+     - Method detection: Extracts HTTP method from `.request({ method: 'GET' })` calls
+  3. **Inline HTML Script Tag Scanning** (lines 384-393)
+     - Scans `<script>` tags within HTML files for API calls
+     - Affects: 16+ pages with inline JavaScript (workspace-audit.html, etc.)
+- **Additional Improvements:**
+  - Added string concatenation detection (3 patterns: '/api/...' + var, var + '/api/...', origin + '/api/...')
+  - Fixed duplicate nav.js in dashboard.html (line 825)
+- **Results:** Confidence improved from 34.6 → 36.5 (+5.5%)
+- **Documentation:** `/reports/frontend-signal-investigation-2026-01.md`
+
+**Task A: UAT Preparation ✅ MATERIALS READY**
+- Created UAT setup script: `/tmp/uat-setup-simple.sh`
+- Created UAT checklist: `/tmp/uat-checklist.md` (10 test scenarios)
+- **Status:** Ready for manual browser testing
+- **Effort:** 1-2 hours (user action required)
+- **Files to test:** accept-invitation.html, routes/invitations.js, models/WorkspaceInvitation.js
+
+**Task B: Survey Preparation ✅ MATERIALS READY**
+- Created Google Forms import CSV: `/tmp/survey-google-forms-import.csv` (27 questions)
+- Created email template: `/tmp/survey-distribution-email.html`
+- Created in-app banner: `/tmp/survey-distribution-banner.html`
+- Created analysis template: `/tmp/survey-analysis-template.md`
+- **Status:** Ready for distribution
+- **Goal:** Validate demand for Voice API UI (threshold ≥75/150) and Workflow Generator UI (≥70/140)
+- **Target:** 20-30 responses
+- **Effort:** 1 hour distribution + 1 week collection + 2 hours analysis
+
+**External Agent Task: API Workspace Integration 🔄 IN PROGRESS**
+- Created comprehensive task spec: `/EXTERNAL_AGENT_NEXT_API_WORKSPACE_INTEGRATION.md` (750+ lines)
+- **Goal:** Add `X-Workspace-Slug` headers to all API calls across 16+ pages
+- **Effort:** 8-10 hours
+- **Impact:** Prevents data leakage between workspaces
+- **Status:** External agent working on implementation
+
+**Scanner Confidence Metrics:**
+- Average confidence: 34.6 → 36.5 (+5.5% improvement)
+- Detection patterns: 4 → 10 (+150%)
+- Pages with workspace.js: 4 → 20 (+400%)
+
 **Next Steps:**
 - [x] Analyze top 10 high-priority features
 - [x] Filter false positives and existing UI
@@ -391,12 +462,16 @@ AgentX development is organized across **eight development tracks**, each focusi
   - Parse HTML form actions
   - Auth route pattern recognition
   - Exclude `/docs/archive/` from scans
-- [ ] Scanner Phase 1B: Confidence scoring (external agent, 2-3 hours) 🔄 NEXT UP
+- [x] Scanner Phase 1B: Confidence scoring (external agent, 2-3 hours) ✅ COMPLETE
   - 0-100 confidence scores for all endpoints
   - Evidence tracking (frontend refs, docs, recency)
   - Dashboard UI integration
-- [ ] User acceptance testing (invitations flow)
-- [ ] Demand validation (voice API, workflow generator)
+- [x] Low-confidence feature review (Task C) ✅ COMPLETE
+- [x] Frontend signal detection improvements (Task D) ✅ COMPLETE
+- [ ] User acceptance testing (invitations flow) - Task A (MANUAL - user action)
+- [ ] Distribute survey and analyze results - Task B (MANUAL - user action)
+- [ ] Review external agent's API workspace integration when complete
+- [ ] Demand validation (voice API, workflow generator) - depends on survey
 
 **Documentation:**
 - `FEATURE_ALIGNMENT_DASHBOARD_COMPLETE.md` - Phase 1 completion report
@@ -416,29 +491,40 @@ AgentX development is organized across **eight development tracks**, each focusi
 
 ## Immediate Priorities
 
-### 1. Complete Feature Alignment Dashboard (Track 8) 🔄 IN PROGRESS
+### 1. Track 8 Phase 2 Follow-Up Tasks 🔄 MOSTLY COMPLETE
 
-**Goal:** Finish interactive dashboard UI for feature coverage visibility
+**Goal:** Validate invitation UI, improve scanner accuracy, and validate demand for headless features
 
-**Current Status:**
-- ✅ Backend complete (scanner + priority algorithm)
-- 🔄 UI in development (external agent building HTML/JS)
-- ⏳ Navigation integration pending
+**Current Status (2026-01-07):**
+- ✅ Critical workspace loading bug fixed (16 HTML pages)
+- ✅ Task C: Low-confidence feature review complete (300 endpoints analyzed)
+- ✅ Task D: Frontend signal detection fixes complete (+5.5% confidence improvement)
+- ✅ External agent task created (API workspace integration, 8-10 hours)
+- ✅ UAT materials prepared (setup script + checklist)
+- ✅ Survey materials prepared (CSV, email, banner, analysis template)
+- ⏳ Task A: UAT execution pending (MANUAL - 1-2 hours)
+- ⏳ Task B: Survey distribution pending (MANUAL - 1 hour + 1 week collection)
+- 🔄 External agent working on API workspace integration
 
-**Tasks:**
-- [x] Implement feature scanner (225 features detected)
-- [x] Build priority algorithm (7-criteria scoring)
-- [x] Generate actionable reports
-- [ ] Complete dashboard HTML/JS (external agent, 5-6 hours)
-- [ ] Add to navigation (30 minutes)
-- [ ] Update documentation (1 hour)
-- [ ] Review 5 medium-priority features for UI development
+**Completed Tasks:**
+- [x] Build invitation acceptance UI (external agent, 4-6 hours)
+- [x] Scanner Phase 1 improvements (external agent, 2.5-3 hours)
+- [x] Scanner Phase 1B: Confidence scoring (external agent, 2-3 hours)
+- [x] Low-confidence feature review (Task C, 2-3 hours)
+- [x] Frontend signal detection improvements (Task D, 2-3 hours)
+- [x] Workspace loading bug fix (16 HTML pages)
 
-**Outcome:** Comprehensive dashboard showing which features are complete, which need UI development, and orphan endpoint resolution.
+**Pending Tasks (Manual User Action):**
+- [ ] Execute UAT for invitation acceptance UI (Task A, 1-2 hours)
+- [ ] Distribute demand validation survey (Task B, 1 hour + 1 week)
+- [ ] Review external agent's API workspace integration
+- [ ] Analyze survey results and make build/defer decisions
+
+**Outcome:** Invitation UI validated for production, scanner accuracy improved, demand validated for Voice API and Workflow Generator UIs.
 
 ---
 
-### 2. Documentation Normalization ✅ IN PROGRESS
+### 2. Documentation Normalization ✅ COMPLETE
 
 **Goal:** Consolidate scattered documentation into canonical references
 
@@ -447,11 +533,17 @@ AgentX development is organized across **eight development tracks**, each focusi
 - [x] Create new ROADMAP.md (this file) with current status
 - [x] Update IMPLEMENTATION_PLAN.md with Feature Alignment progress
 - [x] Update ROADMAP.md with Track 8 information
-- [ ] Archive old planning docs to `docs/archive/`
-- [ ] Update `docs/INDEX.md` to reflect new structure
-- [ ] Verify all cross-references are valid
+- [x] Archive old planning docs to `docs/archive/` ✅ 2026-01-07
+- [x] Update `docs/INDEX.md` to reflect new structure ✅ 2026-01-07
+- [x] Verify all cross-references are valid ✅ 2026-01-07
 
 **Outcome:** Single source of truth for project guidance (CLAUDE.md + ROADMAP.md)
+
+**Archived Files (2026-01-07):**
+- 4 planning docs: `BACKEND_IMPLEMENTATION_SUMMARY.md`, `BENCHMARK_ENHANCEMENT_PLAN.md`, `FINAL_INTEGRATION_STATUS.md`, `ROADMAP_EVOLUTION_2026.md`
+- 5 progress reports: `SESSION_PROGRESS_2026-01-02.md`, `IMPLEMENTATION_SUMMARY_2026-01-02.md`, `PEER_REVIEW_FINAL_2026-01-04.md`, `FIXES_2026-01-05.md`, `AGENT_PROMPTS_PARALLEL_WORK.md`
+- 4 redundant docs: `COST_TRACKING_QUICK_REF.md`, `TROUBLESHOOTING_QUICK_REF.md`, `SELF_HEALING_QUICK_REFERENCE.md`, `SELF_HEALING_DASHBOARD_SUMMARY.md`
+- 3 implementation guides: `API_ROUTES_IMPLEMENTATION.md`, `WORKFLOW_GENERATOR_IMPLEMENTATION.md`, `VALIDATION_REPORT_2026-01-03.md`
 
 ---
 
@@ -550,13 +642,13 @@ AgentX development is organized across **eight development tracks**, each focusi
 - [x] Email invitations for workspace members ✅ COMPLETE (Post-Week 4, A1)
 - [x] Workspace activity audit logs ✅ COMPLETE (Post-Week 4, A2 - Full implementation with UI)
 - [x] Advanced RAG features (query expansion, re-ranking, hybrid search) ✅ COMPLETE (already implemented)
-- [ ] Expose RAG advanced options in chat UI (query expansion, hybrid search, re-ranking toggles)
-- [ ] RAG contextual compression (LLM extracts relevant sentences from chunks)
-- [ ] RAG citation tracking (source references in LLM responses)
+- [x] Expose RAG advanced options in chat UI (query expansion, hybrid search, re-ranking toggles) ✅ COMPLETE (2026-01-07)
+- [x] RAG citation tracking (source references in LLM responses) ✅ COMPLETE (2026-01-07)
+- [ ] RAG contextual compression (LLM extracts relevant sentences from chunks) ⚡ NEXT UP
 - [ ] Custom dashboard builder for metrics visualization
 - [ ] Webhook retry logic with exponential backoff
 
-**RAG Features Note:** Advanced RAG features (query expansion, hybrid search, re-ranking) are fully implemented in `/src/services/ragStore.js` (647 lines) but not yet exposed in the UI. See `/docs/features/RAG_ENHANCEMENT_STATUS.md` for details.
+**RAG Features Note:** Advanced RAG features (query expansion, hybrid search, re-ranking) are fully implemented and exposed in UI as of 2026-01-07. Citation tracking and contextual compression remain as next enhancement opportunities.
 
 ---
 

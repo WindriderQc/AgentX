@@ -38,7 +38,22 @@ const MessageSchema = new mongoose.Schema({
       source: { type: String, enum: ['environment', 'database', 'default', 'unconfigured'] }
     },
     calculatedAt: Date
-  }
+  },
+  
+  // V6: RAG Citation Tracking (2026-01-07)
+  ragSources: [{
+    chunkId: { type: mongoose.Schema.Types.ObjectId, ref: 'RAGChunk' },
+    score: { type: Number },  // Relevance score (0-1)
+    excerpt: { type: String }, // First 200 chars of chunk for preview
+    metadata: {
+      filename: String,
+      source: String,
+      tags: [String],
+      timestamp: Date,
+      pageNumber: Number,
+      section: String
+    }
+  }]
 });
 
 const ConversationSchema = new mongoose.Schema({

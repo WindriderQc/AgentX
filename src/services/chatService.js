@@ -196,6 +196,7 @@ const handleChatRequest = async ({
             if (searchResults.length > 0) {
                 ragUsed = true;
                 ragContext = '\n\n=== Retrieved Context ===\n';
+                ragContext += 'IMPORTANT: When using information from these sources, cite them using [1], [2], etc. in your response.\n\n';
                 searchResults.forEach((result, idx) => {
                     ragContext += `\n[Source ${idx + 1}: ${result.metadata.title}]\n${result.text}\n`;
                     ragSources.push({
@@ -374,6 +375,20 @@ const handleChatRequest = async ({
             if (toolExecutionResult) {
                 assistantMsg.metadata = assistantMsg.metadata || {};
                 assistantMsg.metadata.toolExecution = toolExecutionResult;
+            }
+            
+            // V6: RAG Citation Tracking (2026-01-07)
+            if (ragUsed === true && Array.isArray(ragSources) && ragSources.length > 0) {
+                assistantMsg.ragSources = ragSources.map(source => ({
+                    chunkId: source.documentId, // Store document/chunk ID
+                    score: source.score,
+                    excerpt: source.text, // Already limited to 200 chars
+                    metadata: {
+                        filename: source.title,
+                        source: source.source,
+                        timestamp: new Date()
+                    }
+                }));
             }
 
             if (stats) {
@@ -740,6 +755,20 @@ const handleChatRequestStream = async ({
                     if (thinkingContent) {
                         assistantMsg.metadata = assistantMsg.metadata || {};
                         assistantMsg.metadata.thinking = thinkingContent;
+                    }
+                    
+                    // V6: RAG Citation Tracking (2026-01-07)
+                    if (ragUsed === true && Array.isArray(ragSources) && ragSources.length > 0) {
+                        assistantMsg.ragSources = ragSources.map(source => ({
+                            chunkId: source.documentId,
+                            score: source.score,
+                            excerpt: source.text,
+                            metadata: {
+                                filename: source.title,
+                                source: source.source,
+                                timestamp: new Date()
+                            }
+                        }));
                     }
 
                     if (stats) {

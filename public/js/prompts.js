@@ -806,7 +806,13 @@ function updateStats() {
  */
 async function checkAuth() {
   try {
-    const response = await fetch('/api/auth/me', { credentials: 'include' });
+    const headers = {};
+    if (window.WorkspaceManager && typeof window.WorkspaceManager.addWorkspaceHeader === 'function') {
+      const workspaceHeaders = window.WorkspaceManager.addWorkspaceHeader({});
+      Object.assign(headers, workspaceHeaders);
+    }
+    
+    const response = await fetch('/api/auth/me', { credentials: 'include', headers });
     if (!response.ok) {
       window.location.href = '/login.html?redirect=' + encodeURIComponent(window.location.pathname);
       return false;

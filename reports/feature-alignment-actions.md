@@ -2,10 +2,10 @@
 
 ## 1. Executive Summary
 
-- **Total Features:** 190
-- **Complete Features:** 190
-- **Truly Headless Features:** 43
-- **API-Only Features:** 0
+- **Total Features:** 211
+- **Complete Features:** 211
+- **Truly Headless Features:** 51
+- **API-Only Features:** 1
 - **Orphan Endpoints:** 0
 
 ## 2. High-Priority Headless Features (Top 10)
@@ -19,7 +19,7 @@ _Features that need UI development, excluding API-only endpoints_
 
 **Endpoints (6):**
 - GET /api/invitations/validate/:token (`invitations.js`) [Conf: 60%]
-- POST /api/invitations/accept (`invitations.js`) [Conf: 60%]
+- POST /api/invitations/accept (`invitations.js`) [Conf: 80%]
 - GET /api/invitations/my-invitations (`invitations.js`) [Conf: 45%]
 - POST /api/workspaces/:slug/invitations (`workspaces.js`) [Conf: 45%]
 - GET /api/workspaces/:slug/invitations (`workspaces.js`) [Conf: 45%]
@@ -101,13 +101,13 @@ _Features that need UI development, excluding API-only endpoints_
 **Priority:** CRITICAL (critical)
 
 **Endpoints (12):**
-- GET /api/models/registry/ (`model-registry.js`) [Conf: 50%]
+- GET /api/models/registry/ (`model-registry.js`) [Conf: 70%]
 - GET /api/models/registry/stats (`model-registry.js`) [Conf: 40%]
 - GET /api/models/registry/grouped (`model-registry.js`) [Conf: 40%]
 - GET /api/models/registry/category/:category (`model-registry.js`) [Conf: 35%]
 - GET /api/models/registry/tag/:tag (`model-registry.js`) [Conf: 35%]
 - GET /api/models/registry/:name (`model-registry.js`) [Conf: 40%]
-- POST /api/models/registry/ (`model-registry.js`) [Conf: 50%]
+- POST /api/models/registry/ (`model-registry.js`) [Conf: 70%]
 - PATCH /api/models/registry/:name (`model-registry.js`) [Conf: 40%]
 - DELETE /api/models/registry/:name (`model-registry.js`) [Conf: 40%]
 - POST /api/models/registry/:name/sync (`model-registry.js`) [Conf: 40%]
@@ -175,6 +175,28 @@ _Features that need UI development, excluding API-only endpoints_
 
 ---
 
+### claude-md-refactoring-report (Score: 65/100)
+
+**Status:** headless-documented
+**Priority:** HIGH (high)
+
+**Endpoints (2):**
+- GET /api/dashboard/scans/:id/report (`dashboard.js`) [Conf: 0%]
+- GET /api/features/reports/latest (`features.js`) [Conf: 0%]
+
+**Score Breakdown:**
+- n8n Workflow Usage: ➖ (0)
+- Endpoint Count: 20 pts
+- Documentation: 15 pts
+- Security/Admin: 15 pts
+- Recent Activity: 15 pts
+
+**Why Build UI:** High-value feature that would benefit from user-friendly interface for non-technical users.
+
+**Suggested UI location:** /public/claude-md-refactoring-report.html
+
+---
+
 ### e2e-test-completion-report (Score: 65/100)
 
 **Status:** headless-documented
@@ -194,6 +216,28 @@ _Features that need UI development, excluding API-only endpoints_
 **Why Build UI:** High-value feature that would benefit from user-friendly interface for non-technical users.
 
 **Suggested UI location:** /public/e2e-test-completion-report.html
+
+---
+
+### phase-2-accomplishments-report (Score: 65/100)
+
+**Status:** headless-documented
+**Priority:** HIGH (high)
+
+**Endpoints (2):**
+- GET /api/dashboard/scans/:id/report (`dashboard.js`) [Conf: 0%]
+- GET /api/features/reports/latest (`features.js`) [Conf: 0%]
+
+**Score Breakdown:**
+- n8n Workflow Usage: ➖ (0)
+- Endpoint Count: 20 pts
+- Documentation: 15 pts
+- Security/Admin: 15 pts
+- Recent Activity: 15 pts
+
+**Why Build UI:** High-value feature that would benefit from user-friendly interface for non-technical users.
+
+**Suggested UI location:** /public/phase-2-accomplishments-report.html
 
 ---
 
@@ -219,55 +263,16 @@ _Features that need UI development, excluding API-only endpoints_
 
 ---
 
-### validation-report-2025-12-31-1622 (Score: 65/100)
-
-**Status:** headless-documented
-**Priority:** HIGH (high)
-
-**Endpoints (2):**
-- GET /api/dashboard/scans/:id/report (`dashboard.js`) [Conf: 0%]
-- GET /api/features/reports/latest (`features.js`) [Conf: 0%]
-
-**Score Breakdown:**
-- n8n Workflow Usage: ➖ (0)
-- Endpoint Count: 20 pts
-- Documentation: 15 pts
-- Security/Admin: 15 pts
-- Recent Activity: 15 pts
-
-**Why Build UI:** High-value feature that would benefit from user-friendly interface for non-technical users.
-
-**Suggested UI location:** /public/validation-report-2025-12-31-1622.html
-
----
-
-### validation-report-2026-01-03 (Score: 65/100)
-
-**Status:** headless-documented
-**Priority:** HIGH (high)
-
-**Endpoints (2):**
-- GET /api/dashboard/scans/:id/report (`dashboard.js`) [Conf: 0%]
-- GET /api/features/reports/latest (`features.js`) [Conf: 0%]
-
-**Score Breakdown:**
-- n8n Workflow Usage: ➖ (0)
-- Endpoint Count: 20 pts
-- Documentation: 15 pts
-- Security/Admin: 15 pts
-- Recent Activity: 15 pts
-
-**Why Build UI:** High-value feature that would benefit from user-friendly interface for non-technical users.
-
-**Suggested UI location:** /public/validation-report-2026-01-03.html
-
----
-
 ## 3. API-Only Features
 
 _Features designed for programmatic access only (n8n workflows, backend integrations)_
 
-_No API-only features identified._
+### model-routing
+
+**Endpoints (1):**
+- GET /api/models/routing
+
+**Why API-Only:** Programmatic integration endpoint
 
 ## 4. Orphan Endpoints Analysis
 

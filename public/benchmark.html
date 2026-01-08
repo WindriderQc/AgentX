@@ -1145,6 +1145,7 @@
 <body>
     <div id="nav-container"></div>
     <script src="/js/components/nav.js"></script>
+    <script src="/js/workspace.js"></script>
     <script>injectNav('benchmark');</script>
     <div class="bg-grid"></div>
     <div class="benchmark-container">
@@ -2474,6 +2475,16 @@
         let lastRecentTests = [];
         let showSuccessRateDetails = false;
 
+        // Helper: Get headers with workspace context
+        function getWorkspaceHeaders() {
+            const headers = { 'Content-Type': 'application/json' };
+            if (window.WorkspaceManager && typeof window.WorkspaceManager.addWorkspaceHeader === 'function') {
+                const workspaceHeaders = window.WorkspaceManager.addWorkspaceHeader({});
+                Object.assign(headers, workspaceHeaders);
+            }
+            return headers;
+        }
+
         // Debug logging (opt-in via ?debug=1 or localStorage.benchmarkDebug=true)
         const BENCHMARK_DEBUG = (
             new URLSearchParams(window.location.search).get('debug') === '1' ||
@@ -2941,7 +2952,9 @@
 
         async function loadJudgeConfig() {
             try {
-                const res = await fetch(`${BENCHMARK_API}/config`);
+                const res = await fetch(`${BENCHMARK_API}/config`, {
+                    headers: getWorkspaceHeaders()
+                });
                 const json = await res.json();
                 if (json.status === 'success') {
                     const config = json.data.judge_config;
@@ -3021,7 +3034,10 @@
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
 
-                const res = await fetch('/api/ollama-hosts', { signal: controller.signal });
+                const res = await fetch('/api/ollama-hosts', { 
+                    signal: controller.signal,
+                    headers: getWorkspaceHeaders()
+                });
                 clearTimeout(timeoutId);
 
                 if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
@@ -3107,7 +3123,9 @@
 
         async function fetchModelRegistry() {
             try {
-                const res = await fetch('/api/models/registry');
+                const res = await fetch('/api/models/registry', {
+                    headers: getWorkspaceHeaders()
+                });
                 const json = await res.json();
                 if (json.status === 'success') {
                     modelRegistryCache = {};

@@ -25,6 +25,12 @@ class ApiClient {
             'Content-Type': 'application/json'
         };
 
+        // Auto-inject workspace header for multi-tenancy isolation
+        if (window.WorkspaceManager && typeof window.WorkspaceManager.addWorkspaceHeader === 'function') {
+            const workspaceHeaders = window.WorkspaceManager.addWorkspaceHeader({});
+            Object.assign(defaultHeaders, workspaceHeaders);
+        }
+
         const config = {
             ...options,
             headers: {

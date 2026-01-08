@@ -151,9 +151,9 @@ function parseJsEndpointRefs(jsText) {
   const refs = [];
   const text = String(jsText || '');
 
-  // fetch('/path', { method: 'POST' })
-  for (const m of text.matchAll(/\bfetch\s*\(\s*([`'"])([\s\S]*?)\1\s*(?:,\s*\{[\s\S]*?\})?\s*\)/gi)) {
-    const rawPath = normalizeEndpointPath(extractTemplateLiteralAsPath(m[2]));
+  // fetch('/path', { method: 'POST' }) - including custom wrappers like fetchJSON, workspaceFetch
+  for (const m of text.matchAll(/\b(fetch|fetchJSON|workspaceFetch|fetchWithWorkspace)\s*\(\s*([`'"])([\s\S]*?)\2\s*(?:,\s*\{[\s\S]*?\})?\s*\)/gi)) {
+    const rawPath = normalizeEndpointPath(extractTemplateLiteralAsPath(m[3]));
     if (!rawPath || !rawPath.startsWith('/')) continue;
 
     // best-effort method detection near the call
@@ -162,14 +162,50 @@ function parseJsEndpointRefs(jsText) {
     const methodMatch = callWindow.match(/\bmethod\s*:\s*['"](GET|POST|PUT|DELETE|PATCH)['"]/i);
     const method = methodMatch ? methodMatch[1].toUpperCase() : 'ANY';
 
-    refs.push({ method, path: rawPath, kind: 'fetch' });
+    refs.push({ method, path: rawPath, kind: m[1].toLowerCase() });
   }
 
-  // axios.get('/path'), API.post('/path')
-  for (const m of text.matchAll(/\b(axios|API|api|client)\.(get|post|put|delete|patch)\s*\(\s*([`'"])([\s\S]*?)\3/gi)) {
+  // axios.get('/path'), API.post('/path'), apiClient.get(), client.request()
+  // Case-insensitive matching for client variables
+  for (const m of text.matchAll(/\b(axios|API|api|client|apiClient)\.(get|post|put|delete|patch|request)\s*\(\s*([`'"])([\s\S]*?)\3/gi)) {
     const rawPath = normalizeEndpointPath(extractTemplateLiteralAsPath(m[4]));
     if (!rawPath || !rawPath.startsWith('/')) continue;
-    refs.push({ method: m[2].toUpperCase(), path: rawPath, kind: `${m[1].toLowerCase()}.${m[2].toLowerCase()}` });
+
+    // For .request() calls, try to detect method from options
+    let method = m[2].toUpperCase();
+    if (method === 'REQUEST') {
+      const callStart = m.index ?? 0;
+      const callWindow = text.slice(callStart, Math.min(callStart + 300, text.length));
+      const methodMatch = callWindow.match(/\bmethod\s*:\s*['"](GET|POST|PUT|DELETE|PATCH)['"]/i);
+      method = methodMatch ? methodMatch[1].toUpperCase() : 'ANY';
+    }
+
+    refs.push({ method, path: rawPath, kind: `${m[1].toLowerCase()}.${m[2].toLowerCase()}` });
+  }
+
+  // String concatenation patterns: '/api/' + var, baseUrl + '/path', origin + '/api/...'
+  // Pattern 1: '/api/...' + variable
+  for (const m of text.matchAll(/(['"`])(\/(api\/[^'"` +]+))\1\s*\+/gi)) {
+    const basePath = m[2];
+    if (basePath.startsWith('/api/')) {
+      refs.push({ method: 'ANY', path: basePath + ':param', kind: 'concat' });
+    }
+  }
+
+  // Pattern 2: variable + '/api/...'
+  for (const m of text.matchAll(/\+\s*(['"`])(\/(api\/[^'"` +]+))\1/gi)) {
+    const basePath = m[2];
+    if (basePath.startsWith('/api/')) {
+      refs.push({ method: 'ANY', path: basePath, kind: 'concat' });
+    }
+  }
+
+  // Pattern 3: origin/baseUrl + '/api/...'
+  for (const m of text.matchAll(/(origin|baseURL|baseUrl|API_BASE)\s*\+\s*(['"`])(\/(api\/[^'"` +]+))\2/gi)) {
+    const path = m[3];
+    if (path.startsWith('/api/')) {
+      refs.push({ method: 'ANY', path, kind: 'concat-origin' });
+    }
   }
 
   return refs;
@@ -365,8 +401,21 @@ function scanWorkspace(options) {
   const frontendEndpointRefs = [];
   for (const filePath of frontendFiles) {
     const html = readTextSafe(filePath);
-    const refs = parseHtmlEndpointRefs(html).map((r) => ({ ...r, filePath }));
-    frontendEndpointRefs.push(...refs);
+
+    // HTML form actions
+    const formRefs = parseHtmlEndpointRefs(html).map((r) => ({ ...r, filePath }));
+    frontendEndpointRefs.push(...formRefs);
+
+    // JavaScript in <script> tags
+    const scriptBlocks = html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi);
+    for (const match of scriptBlocks) {
+      const scriptContent = match[1];
+      // Skip if it's a src reference (external file, already scanned)
+      if (match[0].includes('src=')) continue;
+
+      const jsRefs = parseJsEndpointRefs(scriptContent).map((r) => ({ ...r, filePath }));
+      frontendEndpointRefs.push(...jsRefs);
+    }
   }
   for (const filePath of frontendJsFiles) {
     const js = readTextSafe(filePath);

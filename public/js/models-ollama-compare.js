@@ -46,7 +46,13 @@ function persistCompareSelections(selections) {
 }
 
 async function fetchOllamaHosts() {
-    const res = await fetch('/api/ollama-hosts');
+    const headers = {};
+    if (window.WorkspaceManager && typeof window.WorkspaceManager.addWorkspaceHeader === 'function') {
+        const workspaceHeaders = window.WorkspaceManager.addWorkspaceHeader({});
+        Object.assign(headers, workspaceHeaders);
+    }
+    
+    const res = await fetch('/api/ollama-hosts', { headers });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const json = await res.json();
     const data = json?.data || json;

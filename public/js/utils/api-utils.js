@@ -13,6 +13,26 @@ const parseRetryAfterMs = (response) => {
 };
 
 /**
+ * Get headers with workspace context for multi-tenancy isolation
+ * @param {object} additionalHeaders - Additional headers to merge
+ * @returns {object} Headers object with workspace context
+ */
+const getWorkspaceHeaders = (additionalHeaders = {}) => {
+  const headers = {
+    'Content-Type': 'application/json',
+    ...additionalHeaders
+  };
+  
+  // Auto-inject workspace header
+  if (window.WorkspaceManager && typeof window.WorkspaceManager.addWorkspaceHeader === 'function') {
+    const workspaceHeaders = window.WorkspaceManager.addWorkspaceHeader({});
+    Object.assign(headers, workspaceHeaders);
+  }
+  
+  return headers;
+};
+
+/**
  * Generic GET request wrapper
  * @param {string} url - The URL to fetch
  * @param {object} options - Fetch options
@@ -22,10 +42,7 @@ export const get = async (url, options = {}) => {
   try {
     const response = await fetch(url, {
       method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
-      },
+      headers: getWorkspaceHeaders(options.headers),
       credentials: options.credentials || 'include',
       ...options
     });
@@ -61,10 +78,7 @@ export const post = async (url, data = {}, options = {}) => {
   try {
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
-      },
+      headers: getWorkspaceHeaders(options.headers),
       body: JSON.stringify(data),
       credentials: options.credentials || 'include',
       ...options

@@ -2,7 +2,9 @@
  * Navigation Component
  * Injects the standard AgentX navigation bar with all pages.
  * Usage: injectNav('activePageId') where activePageId is one of:
- * 'chat', 'operations', 'alerts', 'n8n', 'backup', 'models', 'benchmark', 'performance', 'analytics', 'rag', 'personas', 'profile'
+ * 'chat', 'operations', 'self-healing', 'alerts', 'alert-analytics', 'backup', 'models', 'benchmark',
+ * 'performance', 'analytics', 'custom-dashboards', 'features-inventory', 'features-telemetry',
+ * 'features-adoption', 'features-admin', 'feature-alignment', 'workspaces', 'audit-logs', 'rag', 'personas', 'profile'
  */
 
 function injectNav(activePageId = '') {
@@ -10,7 +12,9 @@ function injectNav(activePageId = '') {
     const navItems = [
         { label: 'Chat', href: 'index.html', icon: 'fa-comments', id: 'chat' },
         { label: 'Operations', href: 'dashboard.html', icon: 'fa-tachometer-alt', id: 'operations' },
+        { label: 'Self-Healing', href: 'self-healing.html', icon: 'fa-heart-pulse', id: 'self-healing' },
         { label: 'Alerts', href: 'alerts.html', icon: 'fa-bell', id: 'alerts' },
+        { label: 'Alert Analytics', href: 'alert-analytics.html', icon: 'fa-chart-pie', id: 'alert-analytics' },
         { label: 'Backup', href: 'backup.html', icon: 'fa-shield-alt', id: 'backup' },
         { label: 'Models', href: 'models.html', icon: 'fa-cube', id: 'models' },
         { label: 'Benchmark', href: 'benchmark.html', icon: 'fa-rocket', id: 'benchmark' },

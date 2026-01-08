@@ -92,7 +92,7 @@ Operational guides and troubleshooting:
 - Bugs (intake + prevention rules): [bugs/INDEX.md](bugs/INDEX.md)
 - Troubleshooting: [TROUBLESHOOTING_README.md](TROUBLESHOOTING_README.md)
 - Alerts integration verification: [testing/ALERTS_INTEGRATION_VERIFICATION.md](testing/ALERTS_INTEGRATION_VERIFICATION.md)
-- Latest validation report: [VALIDATION_REPORT_2026-01-03.md](VALIDATION_REPORT_2026-01-03.md)
+- Historical validation reports: [archive/validation-reports/](archive/validation-reports/)
 
 ## Feature Alignment & Coverage (Track 8)
 
@@ -124,7 +124,16 @@ Operational guides and troubleshooting:
 - Workspace models: `Workspace`, `WorkspaceMember` with RBAC
 - Workspace audit logging: `WorkspaceAuditLog` with 15 tracked actions
 - Frontend integration: workspace switcher + settings UI
+- Workspace API integration: [WORKSPACE_API_GUIDE.md](WORKSPACE_API_GUIDE.md) - 60+ endpoints workspace-aware ✅
+- Workspace API completion report: [WORKSPACE_API_INTEGRATION_COMPLETE.md](../WORKSPACE_API_INTEGRATION_COMPLETE.md)
+- Workspace API testing checklist: [WORKSPACE_API_TESTING_CHECKLIST.md](../WORKSPACE_API_TESTING_CHECKLIST.md)
 - Historical progress reports: [archive/progress-reports/](archive/progress-reports/) (WEEK4_*.md files)
+
+## RAG Advanced Options (Track 8 Phase 2)
+- RAG advanced options implementation: [RAG_ADVANCED_OPTIONS_IMPLEMENTATION.md](../RAG_ADVANCED_OPTIONS_IMPLEMENTATION.md) - Completed 2026-01-07 ✅
+- RAG testing guide: [RAG_TESTING_GUIDE.md](../RAG_TESTING_GUIDE.md)
+- RAG citation tracking: [RAG_CITATIONS_IMPLEMENTATION.md](../RAG_CITATIONS_IMPLEMENTATION.md) - Completed 2026-01-07 ✅
+- External agent task spec: [EXTERNAL_AGENT_NEXT_RAG_UI_CONTROLS.md](../EXTERNAL_AGENT_NEXT_RAG_UI_CONTROLS.md)
 
 ## Reports & Archive
 - Active scanner reports: [../reports/](../reports/)

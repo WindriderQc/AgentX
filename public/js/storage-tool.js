@@ -3,6 +3,18 @@
 import { formatFileSize } from '/js/utils/general-utils.js';
 import { PollingController } from '/js/utils/polling-controller.js';
 
+/**
+ * Helper: Get headers with workspace context
+ */
+function getWorkspaceHeaders(additionalHeaders = {}) {
+    const headers = { 'Content-Type': 'application/json', ...additionalHeaders };
+    if (window.WorkspaceManager && typeof window.WorkspaceManager.addWorkspaceHeader === 'function') {
+        const workspaceHeaders = window.WorkspaceManager.addWorkspaceHeader({});
+        Object.assign(headers, workspaceHeaders);
+    }
+    return headers;
+}
+
 let currentScanId = null;
 let poller = null;
 
@@ -37,9 +49,7 @@ async function startScan() {
     try {
         const response = await fetch('/api/v1/storage/scan', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
+            headers: getWorkspaceHeaders(),
             body: JSON.stringify({
                 roots,
                 extensions,
@@ -81,7 +91,8 @@ async function stopCurrentScan() {
 
     try {
         const response = await fetch(`/api/v1/storage/stop/${currentScanId}`, {
-            method: 'POST'
+            method: 'POST',
+            headers: getWorkspaceHeaders()
         });
 
         const data = await response.json();
@@ -121,7 +132,9 @@ async function updateScanStatus() {
     if (!currentScanId) return;
 
     try {
-        const response = await fetch(`/api/v1/storage/status/${currentScanId}`);
+        const response = await fetch(`/api/v1/storage/status/${currentScanId}`, {
+            headers: getWorkspaceHeaders()
+        });
         const data = await response.json();
 
         if (data.status === 'success') {
@@ -213,7 +226,9 @@ function showCompletionNotification(scan) {
 // Load recent scans
 async function loadRecentScans() {
     try {
-        const response = await fetch('/api/v1/storage/scans?limit=20');
+        const response = await fetch('/api/v1/storage/scans?limit=20', {
+            headers: getWorkspaceHeaders()
+        });
         const data = await response.json();
         
         const tbody = document.getElementById('recentScansBody');
@@ -314,9 +329,7 @@ async function generateExport() {
     try {
         const response = await fetch('/api/v1/files/export', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
+            headers: getWorkspaceHeaders(),
             body: JSON.stringify({
                 type,
                 format
@@ -350,7 +363,9 @@ async function loadExportList() {
     const tbody = document.getElementById('exportsListBody');
     
     try {
-        const response = await fetch('/api/v1/files/exports');
+        const response = await fetch('/api/v1/files/exports', {
+            headers: getWorkspaceHeaders()
+        });
         const data = await response.json();
 
         if (data.status === 'success' && data.data.length > 0) {
@@ -401,7 +416,8 @@ async function deleteExport(filename) {
 
     try {
         const response = await fetch(`/api/v1/files/exports/${filename}`, {
-            method: 'DELETE'
+            method: 'DELETE',
+            headers: getWorkspaceHeaders()
         });
 
         const data = await response.json();

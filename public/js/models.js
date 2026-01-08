@@ -4,6 +4,18 @@ const API_BASE = window.location.origin;
 let allModels = [];
 let filteredModels = [];
 
+/**
+ * Helper: Get headers with workspace context
+ */
+function getWorkspaceHeaders() {
+    const headers = { 'Content-Type': 'application/json' };
+    if (window.WorkspaceManager && typeof window.WorkspaceManager.addWorkspaceHeader === 'function') {
+        const workspaceHeaders = window.WorkspaceManager.addWorkspaceHeader({});
+        Object.assign(headers, workspaceHeaders);
+    }
+    return headers;
+}
+
 // Initialize on load
 document.addEventListener('DOMContentLoaded', () => {
     loadModels();
@@ -14,7 +26,9 @@ document.addEventListener('DOMContentLoaded', () => {
  */
 async function loadModels() {
     try {
-        const response = await fetch(`${API_BASE}/api/custom-models`);
+        const response = await fetch(`${API_BASE}/api/custom-models`, {
+            headers: getWorkspaceHeaders()
+        });
         const data = await response.json();
 
         if (data.success) {
@@ -270,7 +284,7 @@ async function registerModel(event) {
     try {
         const response = await fetch(`${API_BASE}/api/custom-models`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: getWorkspaceHeaders(),
             body: JSON.stringify(modelData)
         });
 
@@ -317,7 +331,7 @@ async function deployModel(event) {
     try {
         const response = await fetch(`${API_BASE}/api/custom-models/${modelId}/deploy`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: getWorkspaceHeaders(),
             body: JSON.stringify({ ollamaHost: ollamaHost || undefined })
         });
 
@@ -350,7 +364,9 @@ async function viewStats(modelId) {
     `;
 
     try {
-        const response = await fetch(`${API_BASE}/api/custom-models/${modelId}/stats`);
+        const response = await fetch(`${API_BASE}/api/custom-models/${modelId}/stats`, {
+            headers: getWorkspaceHeaders()
+        });
         const data = await response.json();
 
         if (data.success) {
@@ -439,7 +455,9 @@ function closeStatsModal() {
  */
 async function viewHistory(modelId) {
     try {
-        const response = await fetch(`${API_BASE}/api/custom-models/${modelId}/history`);
+        const response = await fetch(`${API_BASE}/api/custom-models/${modelId}/history`, {
+            headers: getWorkspaceHeaders()
+        });
         const data = await response.json();
 
         if (data.success) {
@@ -473,7 +491,7 @@ async function archiveModel(modelId) {
     try {
         const response = await fetch(`${API_BASE}/api/custom-models/${modelId}`, {
             method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' },
+            headers: getWorkspaceHeaders(),
             body: JSON.stringify({ reason })
         });
 

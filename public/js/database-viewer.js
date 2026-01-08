@@ -118,8 +118,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const url = `${DATA_API}/${params.collection}?skip=${params.skip}&limit=${params.limit}&sort=${params.sort}`;
         console.log(url);
 
+        const headers = {};
+        if (window.WorkspaceManager && typeof window.WorkspaceManager.addWorkspaceHeader === 'function') {
+            const workspaceHeaders = window.WorkspaceManager.addWorkspaceHeader({});
+            Object.assign(headers, workspaceHeaders);
+        }
+
         try {
-            const response = await fetch(url);
+            const response = await fetch(url, { headers });
             
             // Check if the response is ok (status 200-299)
             if (!response.ok) {
