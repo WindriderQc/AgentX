@@ -247,6 +247,14 @@ class AlertService extends EventEmitter {
             if (result.error) {
                 updates[`delivery.${channel}.error`] = result.error;
             }
+            if (channel === 'webhook') {
+                if (typeof result.attempts === 'number') {
+                    updates[`delivery.${channel}.attempts`] = result.attempts;
+                }
+                if (result.lastError) {
+                    updates[`delivery.${channel}.lastError`] = result.lastError;
+                }
+            }
         }
         await Alert.findByIdAndUpdate(alert._id, { $set: updates });
     } catch (err) {
