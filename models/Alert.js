@@ -66,6 +66,20 @@ const AlertSchema = new mongoose.Schema({
     type: String,
     enum: ['email', 'slack', 'webhook', 'dataapi_log']
   }],
+  channelConfig: {
+    email: {
+      recipients: [String],
+      subject: String,
+      from: String,
+      replyTo: String
+    },
+    webhook: {
+      url: String,
+      method: { type: String, default: 'POST' },
+      headers: mongoose.Schema.Types.Mixed,
+      template: String
+    }
+  },
   delivery: {
     email: {
       sent: { type: Boolean, default: false },
