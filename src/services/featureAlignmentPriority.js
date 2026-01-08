@@ -92,7 +92,9 @@ function checkSecurityRequirements(files) {
         score += 10;
         break; // Max 10 here
       }
-    } catch (e) { }
+    } catch (err) {
+      console.error(`[featureAlignmentPriority] Failed to read file ${file}:`, err.message);
+    }
   }
 
   // Check for admin keywords loosely if we want extra
@@ -105,7 +107,9 @@ function checkSecurityRequirements(files) {
         score += 5;
         break; 
       }
-    } catch (e) { }
+    } catch (err) {
+      console.error(`[featureAlignmentPriority] Failed to read file ${file}:`, err.message);
+    }
   }
   
   return Math.min(score, 15); // Cap at 15

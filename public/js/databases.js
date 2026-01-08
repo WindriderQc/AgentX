@@ -237,7 +237,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 try {
                     const data = JSON.parse(e.data);
                     console.error('Copy error event:', data);
-                } catch (_) {}
+                } catch (err) {
+                    console.error('Failed to parse SSE error event data:', err.message);
+                }
                 alert('An error occurred during database copy. Check server logs.');
                 copyButton.disabled = false;
                 progressBarContainer.style.display = 'none';

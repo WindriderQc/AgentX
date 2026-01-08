@@ -529,7 +529,9 @@ function scanWorkspace(options) {
           if (!evidence.lastModified || stats.mtime > evidence.lastModified) {
             evidence.lastModified = stats.mtime;
           }
-        } catch {}
+        } catch (err) {
+          console.error(`[featureAlignmentScanner] Failed to stat file ${ref.filePath}:`, err.message);
+        }
       }
     }
 
@@ -545,7 +547,9 @@ function scanWorkspace(options) {
           if (!evidence.lastModified || stats.mtime > evidence.lastModified) {
             evidence.lastModified = stats.mtime;
           }
-        } catch {}
+        } catch (err) {
+          console.error(`[featureAlignmentScanner] Failed to stat doc file ${doc.filePath}:`, err.message);
+        }
       }
     }
     
@@ -555,7 +559,9 @@ function scanWorkspace(options) {
         if (!evidence.lastModified || stats.mtime > evidence.lastModified) {
           evidence.lastModified = stats.mtime;
         }
-    } catch {}
+    } catch (err) {
+        console.error(`[featureAlignmentScanner] Failed to stat source file ${ep.sourceFile}:`, err.message);
+    }
 
     endpointEvidenceMap.set(epKey, evidence);
   }

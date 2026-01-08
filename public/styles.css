@@ -5,10 +5,13 @@
   --text: #e8edf5;
   --muted: #93a0b5;
   --accent: #7cf0ff;
+  --primary: #7cf0ff;  /* Alias for accent */
   --accent-2: #eeb0ff;
   --accent-dark: #0b6470;
   --shadow: 0 20px 70px rgba(0, 0, 0, 0.35);
   --radius: 16px;
+  --panel-bg: rgba(18, 23, 38, 0.95);
+  --chat-bg: rgba(13, 17, 23, 0.95);
 }
 
 * {
@@ -1197,6 +1200,76 @@ button:active {
   transform: translate(-50%, -50%);
   font-size: 22px;
   font-weight: 700;
+}
+
+/* RAG Citation Display (V6) */
+.message-citations {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.message-citations .citations-title {
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text);
+}
+
+.message-citations .citation-item {
+  margin-bottom: 0.5rem;
+  padding: 0.75rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.message-citations .citation-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(124, 240, 255, 0.3);
+  transform: translateX(2px);
+}
+
+.message-citations .citation-item:last-child {
+  margin-bottom: 0;
+}
+
+.message-citations .citation-number {
+  font-weight: 700;
+  color: var(--accent);
+  margin-right: 0.5rem;
+}
+
+.message-citations .citation-title {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.message-citations .citation-score {
+  font-size: 0.7rem;
+  color: var(--muted);
+  margin-left: 0.5rem;
+  padding: 2px 6px;
+  background: rgba(124, 240, 255, 0.1);
+  border-radius: 4px;
+}
+
+.message-citations .citation-excerpt {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 4px;
+  border-left: 2px solid var(--accent);
+  font-style: italic;
+  line-height: 1.4;
 }
 
 .rag-metrics {

@@ -47,8 +47,37 @@ const executeWidgetQuery = async (widget, workspaceId) => {
             const count = await Model.countDocuments(matchStage);
             return { value: count };
         }
-        // TODO: Implement sum/avg
-        return { value: 0 };
+
+        if (dataSource.aggregation === 'sum' || dataSource.aggregation === 'avg') {
+            const field = dataSource.field;
+            if (!field) {
+                return { value: 0, error: 'Field required for sum/avg aggregation' };
+            }
+
+            const pipeline = [
+                { $match: matchStage },
+                {
+                    $group: {
+                        _id: null,
+                        result: dataSource.aggregation === 'sum'
+                            ? { $sum: `$${field}` }
+                            : { $avg: `$${field}` }
+                    }
+                }
+            ];
+
+            const results = await Model.aggregate(pipeline);
+            const value = results.length > 0 ? results[0].result : 0;
+
+            // Round avg to 2 decimal places
+            return {
+                value: dataSource.aggregation === 'avg'
+                    ? Math.round(value * 100) / 100
+                    : value
+            };
+        }
+
+        return { value: 0, error: 'Invalid aggregation type' };
     }
 
     // Chart (Grouped Data)

@@ -314,4 +314,9 @@ if (role === 'assistant' && message.ragSources && Array.isArray(message.ragSourc
 - External agent task spec: [EXTERNAL_AGENT_NEXT_RAG_CITATIONS.md](EXTERNAL_AGENT_NEXT_RAG_CITATIONS.md)
 - RAG search features: [docs/features/RAG_SEARCH_FEATURES.md](docs/features/RAG_SEARCH_FEATURES.md)
 - RAG advanced options: [RAG_ADVANCED_OPTIONS_IMPLEMENTATION.md](RAG_ADVANCED_OPTIONS_IMPLEMENTATION.md)
+- RAG UX enhancements: [RAG_UX_ENHANCEMENT_REPORT.md](RAG_UX_ENHANCEMENT_REPORT.md) - Bug fixes & UI polish (2026-01-08)
 - Conversation model: [models/Conversation.js](models/Conversation.js)
+
+---
+
+**Update (2026-01-08):** Citation display enhanced with professional styling, full accessibility support, and bug fixes. See [RAG_UX_ENHANCEMENT_REPORT.md](RAG_UX_ENHANCEMENT_REPORT.md) for details.

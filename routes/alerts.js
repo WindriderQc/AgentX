@@ -11,6 +11,7 @@ const alertService = require('../src/services/alertService');
 const Alert = require('../models/Alert');
 const { optionalAuth } = require('../src/middleware/auth');
 const logger = require('../config/logger');
+const { getNotificationService } = require('../src/services/notificationService');
 
 /**
  * POST /api/alerts
@@ -771,6 +772,142 @@ router.get('/test/config', optionalAuth, async (req, res) => {
     res.status(500).json({
       status: 'error',
       message: 'Failed to get alert config',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/alerts/notifications/status
+ * Get notification channels configuration status
+ */
+router.get('/notifications/status', optionalAuth, async (req, res) => {
+  try {
+    const notificationService = getNotificationService();
+    const status = notificationService.getStatus();
+
+    res.json({
+      status: 'success',
+      data: status
+    });
+  } catch (error) {
+    logger.error('Failed to get notification status', { error: error.message });
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to get notification status',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/alerts/notifications/test
+ * Test a notification channel
+ * Body: { channel: 'email' | 'slack' | 'webhook' }
+ */
+router.post('/notifications/test', optionalAuth, async (req, res) => {
+  try {
+    const { channel } = req.body;
+
+    if (!channel) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Channel parameter required'
+      });
+    }
+
+    const validChannels = ['email', 'slack', 'webhook'];
+    if (!validChannels.includes(channel)) {
+      return res.status(400).json({
+        status: 'error',
+        message: `Invalid channel. Must be one of: ${validChannels.join(', ')}`
+      });
+    }
+
+    const notificationService = getNotificationService();
+
+    // Create test alert
+    const testAlert = {
+      _id: 'test-alert-id',
+      title: 'Test Alert - AgentX Notification System',
+      message: 'This is a test alert to verify notification channel configuration.',
+      severity: 'info',
+      ruleName: 'Test Rule',
+      ruleId: 'test-rule',
+      source: 'agentx-test',
+      context: {
+        component: 'notification-test',
+        metric: 'test',
+        currentValue: 100,
+        threshold: 80
+      },
+      createdAt: new Date(),
+      status: 'active'
+    };
+
+    // Send test notification
+    const result = await notificationService.send(channel, testAlert);
+
+    res.json({
+      status: 'success',
+      data: {
+        channel,
+        sent: result.sent,
+        error: result.error,
+        message: result.sent
+          ? `Test notification sent successfully to ${channel}`
+          : `Failed to send test notification: ${result.error}`
+      }
+    });
+  } catch (error) {
+    logger.error('Failed to test notification', { error: error.message });
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to test notification',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/alerts/notifications/verify
+ * Verify notification channel configuration
+ * Body: { channel: 'email' | 'slack' | 'webhook' }
+ */
+router.post('/notifications/verify', optionalAuth, async (req, res) => {
+  try {
+    const { channel } = req.body;
+
+    if (!channel) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Channel parameter required'
+      });
+    }
+
+    const validChannels = ['email', 'slack', 'webhook'];
+    if (!validChannels.includes(channel)) {
+      return res.status(400).json({
+        status: 'error',
+        message: `Invalid channel. Must be one of: ${validChannels.join(', ')}`
+      });
+    }
+
+    const notificationService = getNotificationService();
+    const verificationResult = await notificationService.verifyChannel(channel);
+
+    res.json({
+      status: 'success',
+      data: {
+        channel,
+        ...verificationResult
+      }
+    });
+  } catch (error) {
+    logger.error('Failed to verify notification channel', { error: error.message });
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to verify notification channel',
       error: error.message
     });
   }

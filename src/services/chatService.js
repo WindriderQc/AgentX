@@ -195,8 +195,8 @@ const handleChatRequest = async ({
 
             if (searchResults.length > 0) {
                 ragUsed = true;
-                ragContext = '\n\n=== Retrieved Context ===\n';
-                ragContext += 'IMPORTANT: When using information from these sources, cite them using [1], [2], etc. in your response.\n\n';
+                ragContext = '\n\n=== RETRIEVED CONTEXT ===\n';
+                ragContext += 'When using information from these sources, cite them inline with [1], [2], etc.\n\n';
                 searchResults.forEach((result, idx) => {
                     ragContext += `\n[Source ${idx + 1}: ${result.metadata.title}]\n${result.text}\n`;
                     ragSources.push({
@@ -207,7 +207,7 @@ const handleChatRequest = async ({
                         documentId: result.metadata.documentId
                     });
                 });
-                ragContext += '\n=== End Context ===\n';
+                ragContext += '\n=== END CONTEXT ===\n';
             }
 
             // 2. Check for "List Files" Intent
@@ -560,7 +560,8 @@ const handleChatRequestStream = async ({
 
                 if (searchResults.length > 0) {
                     ragUsed = true;
-                    ragContext = '\n\n=== Retrieved Context ===\n';
+                    ragContext = '\n\n=== RETRIEVED CONTEXT ===\n';
+                    ragContext += 'When using information from these sources, cite them inline with [1], [2], etc.\n\n';
                     searchResults.forEach((result, idx) => {
                         ragContext += `\n[Source ${idx + 1}: ${result.metadata.title}]\n${result.text}\n`;
                         ragSources.push({
@@ -571,7 +572,7 @@ const handleChatRequestStream = async ({
                             documentId: result.metadata.documentId
                         });
                     });
-                    ragContext += '\n=== End Context ===\n';
+                    ragContext += '\n=== END CONTEXT ===\n';
                 }
 
                 const listFilesRegex = /list.*files|what.*files.*ingested|show.*documents|which.*files|what.*do.*you.*have/i;

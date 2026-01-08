@@ -3,6 +3,7 @@ const logger = require('../../config/logger');
 const EventEmitter = require('events');
 const crypto = require('crypto');
 const mongoose = require('mongoose');
+const { getNotificationService } = require('./notificationService');
 
 class AlertService extends EventEmitter {
   constructor() {
@@ -210,23 +211,28 @@ class AlertService extends EventEmitter {
 
   async _sendNotifications(alert, channels) {
     const results = {};
-    
+    const notificationService = getNotificationService();
+
     for (const channel of channels) {
       try {
         if (channel === 'dataapi_log') {
-           logger.info(`[AlertService] Sending to DataAPI Log: ${alert.title}`);
-           // In real impl, might call external API
-           results[channel] = { sent: true };
+          logger.info(`[AlertService] Sending to DataAPI Log: ${alert.title}`);
+          // In real impl, might call external API
+          results[channel] = { sent: true };
+        } else if (channel === 'email' || channel === 'slack' || channel === 'webhook') {
+          // Use notification service for external channels
+          logger.info(`[AlertService] Sending to ${channel}: ${alert.title}`);
+          results[channel] = await notificationService.send(channel, alert);
         } else {
-           logger.warn(`[AlertService] Channel ${channel} not implemented`);
-           results[channel] = { sent: false, error: 'Not implemented' };
+          logger.warn(`[AlertService] Channel ${channel} not implemented`);
+          results[channel] = { sent: false, error: 'Not implemented' };
         }
       } catch (err) {
         logger.error(`[AlertService] Failed to send to ${channel}`, err);
         results[channel] = { sent: false, error: err.message };
       }
     }
-    
+
     // Update alert delivery status
     // We need to update the alert document with the results
     try {

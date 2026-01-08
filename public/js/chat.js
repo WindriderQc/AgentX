@@ -409,70 +409,63 @@ document.addEventListener('DOMContentLoaded', () => {
     if (role === 'assistant' && message.ragSources && Array.isArray(message.ragSources) && message.ragSources.length > 0) {
       const citationsDiv = document.createElement('div');
       citationsDiv.className = 'message-citations';
-      citationsDiv.style.fontSize = '0.8rem';
-      citationsDiv.style.color = 'var(--muted)';
-      citationsDiv.style.marginTop = '0.75rem';
-      citationsDiv.style.paddingTop = '0.75rem';
-      citationsDiv.style.borderTop = '1px solid rgba(255,255,255,0.05)';
       
       const citationsTitle = document.createElement('div');
-      citationsTitle.style.fontWeight = '600';
-      citationsTitle.style.marginBottom = '0.5rem';
-      citationsTitle.innerHTML = '<i class="fas fa-book" style="margin-right: 0.5rem;"></i>Sources:';
+      citationsTitle.className = 'citations-title';
+      citationsTitle.innerHTML = '<i class="fas fa-book"></i><span>Sources</span>';
       citationsDiv.appendChild(citationsTitle);
       
       message.ragSources.forEach((source, idx) => {
         const sourceItem = document.createElement('div');
-        sourceItem.style.marginBottom = '0.5rem';
-        sourceItem.style.padding = '0.5rem';
-        sourceItem.style.background = 'rgba(255,255,255,0.03)';
-        sourceItem.style.borderRadius = '4px';
-        sourceItem.style.cursor = 'pointer';
-        sourceItem.style.transition = 'background 0.2s';
+        sourceItem.className = 'citation-item';
+        sourceItem.setAttribute('role', 'button');
+        sourceItem.setAttribute('tabindex', '0');
+        sourceItem.setAttribute('aria-label', `View source ${idx + 1}: ${source.metadata?.filename || 'Unknown Source'}`);
+        
+        const sourceHeader = document.createElement('div');
         
         const sourceNum = document.createElement('span');
-        sourceNum.style.fontWeight = '700';
-        sourceNum.style.color = 'var(--primary)';
-        sourceNum.textContent = `[${idx + 1}] `;
+        sourceNum.className = 'citation-number';
+        sourceNum.textContent = `[${idx + 1}]`;
         
         const sourceTitle = document.createElement('span');
-        sourceTitle.style.fontWeight = '600';
+        sourceTitle.className = 'citation-title';
         sourceTitle.textContent = source.metadata?.filename || 'Unknown Source';
         
-        const sourceExcerpt = document.createElement('div');
-        sourceExcerpt.style.fontSize = '0.75rem';
-        sourceExcerpt.style.color = 'var(--muted)';
-        sourceExcerpt.style.marginTop = '0.25rem';
-        sourceExcerpt.textContent = source.excerpt ? `"${source.excerpt}..."` : '';
-        
         const sourceScore = document.createElement('span');
-        sourceScore.style.fontSize = '0.7rem';
-        sourceScore.style.color = 'var(--muted)';
-        sourceScore.style.marginLeft = '0.5rem';
+        sourceScore.className = 'citation-score';
         if (source.score) {
           const scorePercent = (source.score * 100).toFixed(0);
-          sourceScore.textContent = `(${scorePercent}% match)`;
+          sourceScore.textContent = `${scorePercent}% match`;
         }
         
-        sourceItem.appendChild(sourceNum);
-        sourceItem.appendChild(sourceTitle);
-        sourceItem.appendChild(sourceScore);
+        sourceHeader.appendChild(sourceNum);
+        sourceHeader.appendChild(sourceTitle);
+        if (source.score) {
+          sourceHeader.appendChild(sourceScore);
+        }
+        sourceItem.appendChild(sourceHeader);
+        
         if (source.excerpt) {
+          const sourceExcerpt = document.createElement('div');
+          sourceExcerpt.className = 'citation-excerpt';
+          sourceExcerpt.textContent = `"${source.excerpt}${source.excerpt.length >= 200 ? '...' : ''}"`;
           sourceItem.appendChild(sourceExcerpt);
         }
         
-        // Add hover effect
-        sourceItem.addEventListener('mouseenter', () => {
-          sourceItem.style.background = 'rgba(255,255,255,0.08)';
-        });
-        sourceItem.addEventListener('mouseleave', () => {
-          sourceItem.style.background = 'rgba(255,255,255,0.03)';
-        });
-        
-        // TODO: Add click handler to view full document
-        sourceItem.addEventListener('click', () => {
+        // Click and keyboard handler
+        const viewSource = () => {
           console.log('View source:', source);
           // Future: Open document viewer modal
+          setFeedback(`Viewing source: ${source.metadata?.filename || 'Unknown'}`, 'info');
+        };
+        
+        sourceItem.addEventListener('click', viewSource);
+        sourceItem.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            viewSource();
+          }
         });
         
         citationsDiv.appendChild(sourceItem);
@@ -1096,14 +1089,15 @@ document.addEventListener('DOMContentLoaded', () => {
           state.stats.replies = 0;
 
             data.messages.forEach(msg => {
-                // Manually construct message object to include stats
+                // Manually construct message object to include stats and ragSources
                 const messageObj = {
                     role: msg.role,
                     content: msg.content,
                     createdAt: msg.createdAt,
                     id: msg._id,
                     feedback: msg.feedback,
-                    stats: msg.stats // V4: Pass stats to rendering
+                    stats: msg.stats, // V4: Pass stats to rendering
+                    ragSources: msg.ragSources // V6: Pass RAG sources for citations
                 };
 
                 // Use the object form of appendMessage

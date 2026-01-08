@@ -90,7 +90,9 @@ export const initFeed = (onNewEvent) => {
             if (url === privateUrl && fallback) {
                 try {
                     es.close();
-                } catch (e) {}
+                } catch (err) {
+                    console.error('[sse] Failed to close EventSource during fallback:', err.message);
+                }
                 connect(publicUrl, false);
             }
         };
