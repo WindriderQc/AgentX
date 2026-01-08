@@ -97,6 +97,22 @@ describe('POST /api/chat/stream - Streaming SSE Endpoint', () => {
             expect(response.headers['connection']).toBe('keep-alive');
         });
 
+        it('should return SSE headers for GET requests', async () => {
+            chatService.handleChatRequestStream = jest.fn(async ({ onComplete }) => {
+                onComplete({ response: 'Test', conversationId: 'conv123' });
+            });
+
+            const payload = Buffer.from(JSON.stringify({ model: 'llama2', message: 'Hello' })).toString('base64');
+
+            const response = await request(app)
+                .get('/api/chat/stream')
+                .query({ payload });
+
+            expect(response.headers['content-type']).toContain('text/event-stream');
+            expect(response.headers['cache-control']).toBe('no-cache');
+            expect(response.headers['connection']).toBe('keep-alive');
+        });
+
         it('should stream token events progressively', (done) => {
             chatService.handleChatRequestStream = jest.fn(async ({ onToken, onComplete }) => {
                 onToken('Hello');
