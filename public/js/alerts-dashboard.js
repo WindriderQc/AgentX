@@ -228,6 +228,7 @@ class AlertsDashboard {
         const config = this.severityConfig[alert.severity] || this.severityConfig.info;
         const timeAgo = this.formatTimeAgo(alert.createdAt);
         const isSelected = this.selectedAlerts.has(alert._id);
+        const deliveryBadges = this.renderDeliveryBadges(alert);
 
         return `
             <div class="alert alert-${config.class} mb-2 alert-card" data-alert-id="${alert._id}">
@@ -250,6 +251,7 @@ class AlertsDashboard {
                                 <span class="badge bg-secondary me-1">${this.escapeHtml(alert.source || 'unknown')}</span>
                                 ${alert.ruleName ? `<span class="badge bg-info">${this.escapeHtml(alert.ruleName)}</span>` : ''}
                                 <span class="badge bg-dark ms-1">${this.escapeHtml(alert.status || 'active')}</span>
+                                ${deliveryBadges}
                             </div>
                             <div class="btn-group btn-group-sm" role="group">
                                 ${alert.status === 'active' ? `
@@ -385,6 +387,9 @@ class AlertsDashboard {
             </div>
             <div class="row mb-3">
                 <div class="col-md-12">
+                    <button class="btn btn-outline-primary btn-sm me-2" onclick="window.alertsDashboard.showCreateAlertModal()">
+                        <i class="fas fa-plus"></i> Create Alert
+                    </button>
                     <button class="btn btn-primary btn-sm me-2" onclick="window.alertsDashboard.acknowledgeSelected()">
                         <i class="fas fa-check"></i> Acknowledge Selected
                     </button>
@@ -563,6 +568,8 @@ class AlertsDashboard {
             const alert = response.data || response;
             
             // Create modal with alert details
+            const deliveryDetails = this.renderDeliveryDetails(alert);
+            const channelConfigDetails = this.renderChannelConfigDetails(alert);
             const modalHtml = `
                 <div class="modal fade" id="alertDetailsModal" tabindex="-1">
                     <div class="modal-dialog modal-lg">
@@ -592,6 +599,9 @@ class AlertsDashboard {
                                     <h6>Context</h6>
                                     <pre class="bg-dark text-light p-3">${JSON.stringify(alert.context, null, 2)}</pre>
                                 ` : ''}
+
+                                ${deliveryDetails}
+                                ${channelConfigDetails}
                             </div>
                             <div class="modal-footer">
                                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
@@ -615,6 +625,248 @@ class AlertsDashboard {
         } catch (error) {
             console.error('Failed to load alert details:', error);
             this.showToast('Failed to load alert details', 'error');
+        }
+    }
+
+    renderDeliveryBadges(alert) {
+        if (!alert.delivery) return '';
+        const badges = ['email', 'webhook'].map(channel => {
+            const info = alert.delivery?.[channel];
+            if (!info) return '';
+            const statusClass = info.sent ? 'success' : info.error ? 'danger' : 'secondary';
+            const label = info.sent ? 'sent' : info.error ? 'failed' : 'pending';
+            return `<span class="badge bg-${statusClass} ms-1">${channel}:${label}</span>`;
+        }).filter(Boolean);
+        return badges.length ? badges.join('') : '';
+    }
+
+    renderDeliveryDetails(alert) {
+        if (!alert.delivery) return '';
+        const delivery = alert.delivery;
+        const rows = ['email', 'webhook', 'dataapi_log', 'slack']
+            .map(channel => {
+                const info = delivery?.[channel];
+                if (!info) return '';
+                const status = info.sent ? 'Sent' : info.error ? 'Failed' : 'Pending';
+                return `
+                    <tr>
+                        <td>${channel}</td>
+                        <td>${status}</td>
+                        <td>${info.sentAt ? new Date(info.sentAt).toLocaleString() : '-'}</td>
+                        <td>${this.escapeHtml(info.error || '-')}</td>
+                    </tr>
+                `;
+            })
+            .filter(Boolean)
+            .join('');
+
+        if (!rows) return '';
+
+        return `
+            <h6>Delivery Status</h6>
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>Channel</th>
+                        <th>Status</th>
+                        <th>Sent At</th>
+                        <th>Error</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${rows}
+                </tbody>
+            </table>
+        `;
+    }
+
+    renderChannelConfigDetails(alert) {
+        const channelConfig = alert.channelConfig || {};
+        const hasEmail = channelConfig.email && (channelConfig.email.recipients || channelConfig.email.subject);
+        const hasWebhook = channelConfig.webhook && (channelConfig.webhook.url || channelConfig.webhook.template);
+
+        if (!hasEmail && !hasWebhook) return '';
+
+        const emailRecipients = Array.isArray(channelConfig.email?.recipients)
+            ? channelConfig.email.recipients.join(', ')
+            : channelConfig.email?.recipients || '';
+
+        return `
+            <h6>Channel Configuration</h6>
+            <table class="table table-sm">
+                <tr>
+                    <td><strong>Email Recipients</strong></td>
+                    <td>${this.escapeHtml(emailRecipients || '-')}</td>
+                </tr>
+                <tr>
+                    <td><strong>Email Subject</strong></td>
+                    <td>${this.escapeHtml(channelConfig.email?.subject || '-')}</td>
+                </tr>
+                <tr>
+                    <td><strong>Webhook URL</strong></td>
+                    <td>${this.escapeHtml(channelConfig.webhook?.url || '-')}</td>
+                </tr>
+                <tr>
+                    <td><strong>Webhook Method</strong></td>
+                    <td>${this.escapeHtml(channelConfig.webhook?.method || '-')}</td>
+                </tr>
+            </table>
+        `;
+    }
+
+    showCreateAlertModal() {
+        const existingModal = document.getElementById('createAlertModal');
+        if (existingModal) existingModal.remove();
+
+        const modalHtml = `
+            <div class="modal fade" id="createAlertModal" tabindex="-1">
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Create Alert</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label">Title</label>
+                                    <input class="form-control" id="alert-title" placeholder="Alert title">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Source</label>
+                                    <input class="form-control" id="alert-source" placeholder="service-name">
+                                </div>
+                                <div class="col-md-12">
+                                    <label class="form-label">Message</label>
+                                    <textarea class="form-control" id="alert-message" rows="3" placeholder="Alert message"></textarea>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Severity</label>
+                                    <select class="form-select" id="alert-severity">
+                                        <option value="info">Info</option>
+                                        <option value="warning" selected>Warning</option>
+                                        <option value="critical">Critical</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-8">
+                                    <label class="form-label">Channels</label>
+                                    <div class="d-flex flex-wrap gap-3">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="channel-email">
+                                            <label class="form-check-label" for="channel-email">Email</label>
+                                        </div>
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="channel-webhook">
+                                            <label class="form-check-label" for="channel-webhook">Webhook</label>
+                                        </div>
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="channel-dataapi" checked>
+                                            <label class="form-check-label" for="channel-dataapi">Data API Log</label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <hr class="my-3">
+                            <h6>Email Configuration</h6>
+                            <div class="row g-3">
+                                <div class="col-md-8">
+                                    <label class="form-label">Recipients (comma separated)</label>
+                                    <input class="form-control" id="email-recipients" placeholder="ops@example.com, oncall@example.com">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Subject Template</label>
+                                    <input class="form-control" id="email-subject" placeholder="[{{severity}}] {{title}}">
+                                </div>
+                            </div>
+
+                            <hr class="my-3">
+                            <h6>Webhook Configuration</h6>
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label">Webhook URL</label>
+                                    <input class="form-control" id="webhook-url" placeholder="https://hooks.example.com/alerts">
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Method</label>
+                                    <input class="form-control" id="webhook-method" placeholder="POST">
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Headers (JSON or key:value)</label>
+                                    <input class="form-control" id="webhook-headers" placeholder='{"Authorization":"Bearer token"}'>
+                                </div>
+                                <div class="col-md-12">
+                                    <label class="form-label">Payload Template (JSON)</label>
+                                    <textarea class="form-control" id="webhook-template" rows="3" placeholder='{"title":"{{title}}","severity":"{{severity}}"}'></textarea>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button type="button" class="btn btn-primary" onclick="window.alertsDashboard.createAlert()">Create Alert</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        const modal = new bootstrap.Modal(document.getElementById('createAlertModal'));
+        modal.show();
+    }
+
+    async createAlert() {
+        try {
+            const title = document.getElementById('alert-title').value.trim();
+            const message = document.getElementById('alert-message').value.trim();
+            const severity = document.getElementById('alert-severity').value;
+            const source = document.getElementById('alert-source').value.trim() || 'manual';
+            const channels = [];
+
+            if (document.getElementById('channel-email').checked) channels.push('email');
+            if (document.getElementById('channel-webhook').checked) channels.push('webhook');
+            if (document.getElementById('channel-dataapi').checked) channels.push('dataapi_log');
+            if (channels.length === 0) channels.push('dataapi_log');
+
+            if (!title || !message) {
+                this.showToast('Title and message are required', 'error');
+                return;
+            }
+
+            const channelConfig = {
+                email: {
+                    recipients: document.getElementById('email-recipients').value.trim(),
+                    subject: document.getElementById('email-subject').value.trim()
+                },
+                webhook: {
+                    url: document.getElementById('webhook-url').value.trim(),
+                    method: document.getElementById('webhook-method').value.trim(),
+                    headers: document.getElementById('webhook-headers').value.trim(),
+                    template: document.getElementById('webhook-template').value.trim()
+                }
+            };
+
+            await apiClient.post('/alerts', {
+                title,
+                message,
+                severity,
+                source,
+                channels,
+                channelConfig
+            });
+
+            this.showToast('Alert created', 'success');
+            const modalEl = document.getElementById('createAlertModal');
+            if (modalEl) {
+                const modal = bootstrap.Modal.getInstance(modalEl);
+                modal?.hide();
+                modalEl.remove();
+            }
+            await this.loadAlerts();
+            await this.loadStatistics();
+        } catch (error) {
+            console.error('Failed to create alert:', error);
+            this.showToast('Failed to create alert', 'error');
         }
     }
 

@@ -99,10 +99,10 @@ async function flushToDatabase() {
     return;
   }
 
+  let requests = [];
   try {
     // Create copy and clear buffer atomically
-    const requests = [...requestBuffer];
-    requestBuffer.length = 0;
+    requests = requestBuffer.splice(0, requestBuffer.length);
 
     const hour = new Date();
     hour.setMinutes(0, 0, 0); // Truncate to hour
@@ -129,11 +129,13 @@ async function flushToDatabase() {
       existingSnapshot.requests_failed += summary.requests_failed;
 
       // Recalculate latency (merge new samples)
+      const previousCount = existingSnapshot.requests_total - summary.requests_total;
+      const previousAvg = existingSnapshot.latency.avg || 0;
       const allLatencies = [
-        ...Array(existingSnapshot.requests_total - summary.requests_total).fill(existingSnapshot.latency.avg || 0),
+        ...Array(previousCount).fill(previousAvg),
         ...requests.map(r => r.latency)
       ];
-      existingSnapshot.latency = calculateLatencyStats(requests.map(r => ({ latency: r.latency })));
+      existingSnapshot.latency = calculateLatencyStats(allLatencies.map(latency => ({ latency })));
 
       // Merge endpoint data
       summary.by_endpoint.forEach(newEndpoint => {
@@ -142,10 +144,12 @@ async function flushToDatabase() {
         );
 
         if (existing) {
+          const previousCount = existing.count;
+          const previousAvg = existing.avg_latency || 0;
           existing.count += newEndpoint.count;
           existing.error_count += newEndpoint.error_count;
-          // Recalculate average latency
-          existing.avg_latency = (existing.avg_latency * existing.count + newEndpoint.avg_latency * newEndpoint.count) / (existing.count + newEndpoint.count);
+          // Recalculate average latency using previous counts
+          existing.avg_latency = (previousAvg * previousCount + newEndpoint.avg_latency * newEndpoint.count) / (previousCount + newEndpoint.count);
         } else {
           existingSnapshot.by_endpoint.push(newEndpoint);
         }
@@ -168,6 +172,9 @@ async function flushToDatabase() {
       avg_latency: summary.latency.avg
     });
   } catch (err) {
+    if (requestBuffer.length === 0 && requests.length > 0) {
+      requestBuffer.unshift(...requests);
+    }
     logger.error('Performance snapshot flush failed', {
       error: err.message,
       buffer_size: requestBuffer.length

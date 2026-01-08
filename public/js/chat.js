@@ -216,7 +216,27 @@ document.addEventListener('DOMContentLoaded', () => {
     profile: { language: '', role: '', style: '' },
     conversationId: null, // Current conversation ID
     showStats: true, // V4: Toggle message stats
+    eventSource: null,
+    streamAbortController: null
   };
+
+  const streamParams = new URLSearchParams(window.location.search);
+
+  function resolveStreamEnabled() {
+    const override = streamParams.get('stream');
+    const fallback = elements.streamToggle ? elements.streamToggle.checked : false;
+    if (override === null) return fallback;
+    return !['0', 'false', 'off', 'disabled'].includes(override.toLowerCase());
+  }
+
+  function resolveStreamTransport() {
+    return (streamParams.get('streamTransport') || 'fetch').toLowerCase();
+  }
+
+  function encodeStreamPayload(payload) {
+    const json = JSON.stringify(payload);
+    return btoa(unescape(encodeURIComponent(json)));
+  }
 
   function buildThreadId() {
     return `t-${Date.now().toString(36)}`;
@@ -786,8 +806,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Streaming message handler (SSE)
-  async function sendMessageStream() {
+  // Streaming message handler (SSE via fetch)
+  async function sendMessageStreamFetch() {
     const message = elements.messageInput.value.trim();
     const model = elements.modelSelect.value;
 
@@ -838,9 +858,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Change button to "Stop"
     elements.sendBtn.textContent = 'Stop';
     elements.sendBtn.onclick = () => {
-      if (state.eventSource) {
-        state.eventSource.close();
-        state.eventSource = null;
+      if (state.streamAbortController) {
+        state.streamAbortController.abort();
+        state.streamAbortController = null;
       }
       state.sending = false;
       elements.sendBtn.textContent = 'Send';
@@ -855,6 +875,8 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       // Use fetch with streaming body for SSE-style POST
       // Week 4 Day 3: Add workspace context
+      const streamAbortController = new AbortController();
+      state.streamAbortController = streamAbortController;
       const fetchOptions = {
         method: 'POST',
         headers: {
@@ -862,7 +884,8 @@ document.addEventListener('DOMContentLoaded', () => {
           'Accept': 'text/event-stream'
         },
         body: JSON.stringify(payload),
-        credentials: 'include'
+        credentials: 'include',
+        signal: streamAbortController.signal
       };
 
       // Add workspace header if WorkspaceManager is available
@@ -953,8 +976,177 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
     } catch (err) {
+      if (err.name === 'AbortError') {
+        if (elements.chatWindow.contains(assistantMessageDiv)) {
+          elements.chatWindow.removeChild(assistantMessageDiv);
+        }
+        setFeedback('Streaming stopped.', 'warning');
+        return;
+      }
       console.error('Streaming error:', err);
-      elements.chatWindow.removeChild(assistantMessageDiv);
+      if (elements.chatWindow.contains(assistantMessageDiv)) {
+        elements.chatWindow.removeChild(assistantMessageDiv);
+      }
+      appendMessage(
+        { role: 'assistant', content: `⚠️ ${err.message || 'Streaming failed.'}`, createdAt: new Date().toISOString() },
+        { persist: false }
+      );
+      setFeedback(err.message, 'error');
+    } finally {
+      state.sending = false;
+      state.streamAbortController = null;
+      elements.sendBtn.textContent = 'Send';
+      elements.sendBtn.onclick = () => sendMessage();
+    }
+  }
+
+  // Streaming message handler (SSE via EventSource)
+  async function sendMessageStreamEventSource() {
+    const message = elements.messageInput.value.trim();
+    const model = elements.modelSelect.value;
+    const ragOpts = getRagOptions();
+
+    const payload = {
+      target: targetHost(),
+      model,
+      system: elements.systemPrompt.value.trim(),
+      options: {
+        ...readOptions(),
+        persona: elements.promptSelect?.value || 'default_chat',
+        ragExpand: ragOpts.ragExpand,
+        ragHybrid: ragOpts.ragHybrid,
+        ragRerank: ragOpts.ragRerank,
+        ragCompress: ragOpts.ragCompress
+      },
+      useRag: ragOpts.useRag,
+      ragTopK: ragOpts.ragTopK,
+      threadId: state.threadId,
+      message,
+      profile: readProfileInputs(),
+      messages: state.history,
+      conversationId: state.conversationId
+    };
+
+    // Create placeholder assistant message for progressive rendering
+    const assistantMessageId = `a-${Date.now()}`;
+    const assistantMessageDiv = document.createElement('div');
+    assistantMessageDiv.className = 'message assistant';
+    assistantMessageDiv.dataset.messageId = assistantMessageId;
+
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'message-content';
+    assistantMessageDiv.appendChild(contentDiv);
+
+    const thinkingDiv = document.createElement('div');
+    thinkingDiv.className = 'thinking-content';
+    thinkingDiv.style.display = 'none';
+    thinkingDiv.innerHTML = '<strong>Thinking:</strong><br>';
+    assistantMessageDiv.appendChild(thinkingDiv);
+
+    elements.chatWindow.appendChild(assistantMessageDiv);
+    elements.chatWindow.scrollTop = elements.chatWindow.scrollHeight;
+
+    // Change button to "Stop"
+    elements.sendBtn.textContent = 'Stop';
+    elements.sendBtn.onclick = () => {
+      if (state.eventSource) {
+        state.eventSource.close();
+        state.eventSource = null;
+      }
+      state.sending = false;
+      elements.sendBtn.textContent = 'Send';
+      elements.sendBtn.onclick = () => sendMessage();
+      setFeedback('Streaming stopped.', 'warning');
+    };
+
+    let fullContent = '';
+    let thinkingContent = '';
+
+    try {
+      const encodedPayload = encodeStreamPayload(payload);
+      let streamUrl = `/api/chat/stream?payload=${encodeURIComponent(encodedPayload)}`;
+      if (window.WorkspaceManager) {
+        streamUrl = WorkspaceManager.addWorkspaceParam(streamUrl);
+      }
+
+      const eventSource = new EventSource(streamUrl, { withCredentials: true });
+      state.eventSource = eventSource;
+
+      eventSource.addEventListener('token', (event) => {
+        const data = JSON.parse(event.data);
+        fullContent += data.content;
+        contentDiv.innerHTML = marked.parse(fullContent);
+        elements.chatWindow.scrollTop = elements.chatWindow.scrollHeight;
+      });
+
+      eventSource.addEventListener('thinking', (event) => {
+        const data = JSON.parse(event.data);
+        thinkingContent += data.content;
+        thinkingDiv.innerHTML = `<strong>Thinking:</strong><br>${marked.parse(thinkingContent)}`;
+        thinkingDiv.style.display = 'block';
+        elements.chatWindow.scrollTop = elements.chatWindow.scrollHeight;
+      });
+
+      eventSource.addEventListener('done', (event) => {
+        const finalData = JSON.parse(event.data);
+        state.conversationId = finalData.conversationId || state.conversationId;
+
+        const assistantMessage = {
+          role: 'assistant',
+          content: fullContent,
+          createdAt: new Date().toISOString(),
+          id: finalData.messageId || null,
+          stats: finalData.stats || null,
+          thinking: thinkingContent || null
+        };
+
+        if (elements.chatWindow.contains(assistantMessageDiv)) {
+          elements.chatWindow.removeChild(assistantMessageDiv);
+        }
+        appendMessage(assistantMessage);
+
+        if (state.eventSource) {
+          state.eventSource.close();
+          state.eventSource = null;
+        }
+
+        speakText(fullContent);
+        setFeedback('Response received.', 'success');
+        loadHistoryList();
+
+        if (state.conversationId) {
+          loadConversation(state.conversationId, true);
+        }
+
+        if (window.checkSetupProgress) {
+          setTimeout(() => window.checkSetupProgress(), 500);
+        }
+      });
+
+      eventSource.addEventListener('error', (event) => {
+        if (state.eventSource) {
+          state.eventSource.close();
+          state.eventSource = null;
+        }
+        const data = event?.data ? JSON.parse(event.data) : { message: 'Streaming failed.' };
+        if (elements.chatWindow.contains(assistantMessageDiv)) {
+          elements.chatWindow.removeChild(assistantMessageDiv);
+        }
+        appendMessage(
+          { role: 'assistant', content: `⚠️ ${data.message || 'Streaming failed.'}`, createdAt: new Date().toISOString() },
+          { persist: false }
+        );
+        setFeedback(data.message || 'Streaming failed.', 'error');
+        state.sending = false;
+        elements.sendBtn.textContent = 'Send';
+        elements.sendBtn.onclick = () => sendMessage();
+      });
+
+    } catch (err) {
+      console.error('Streaming error:', err);
+      if (elements.chatWindow.contains(assistantMessageDiv)) {
+        elements.chatWindow.removeChild(assistantMessageDiv);
+      }
       appendMessage(
         { role: 'assistant', content: `⚠️ ${err.message || 'Streaming failed.'}`, createdAt: new Date().toISOString() },
         { persist: false }
@@ -984,8 +1176,13 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.sendBtn.textContent = 'Sending…';
 
     // Check if streaming is enabled
-    if (elements.streamToggle && elements.streamToggle.checked) {
-      await sendMessageStream();
+    if (elements.streamToggle && resolveStreamEnabled()) {
+      const transport = resolveStreamTransport();
+      if (transport === 'eventsource') {
+        await sendMessageStreamEventSource();
+      } else {
+        await sendMessageStreamFetch();
+      }
       return;
     }
 

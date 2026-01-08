@@ -526,6 +526,7 @@ const handleChatRequestStream = async ({
     autoRoute = false,
     taskType = null,
     workspaceId = null,  // Week 4: Workspace context
+    abortSignal,
     onToken,
     onThinking,
     onComplete,
@@ -534,6 +535,9 @@ const handleChatRequestStream = async ({
     const personaName = persona || options.persona || 'default_chat';
 
     try {
+        if (abortSignal?.aborted) {
+            return;
+        }
         // 0. Smart Model Routing (if enabled)
         let effectiveModel = model;
         let effectiveTarget = target;
@@ -683,7 +687,9 @@ const handleChatRequestStream = async ({
             });
 
             // Send complete response as single token
-            onToken(n8nResponse.content);
+            if (!abortSignal?.aborted) {
+                onToken(n8nResponse.content);
+            }
 
             const stats = {
                 total_duration: n8nResponse._metadata.latency * 1000000,
@@ -693,15 +699,17 @@ const handleChatRequestStream = async ({
 
             await n8nModel.recordUsage();
 
-            onComplete({
-                response: n8nResponse.content,
-                conversationId: conversationId || null,
-                model: effectiveModel,
-                target: effectiveTarget,
-                stats,
-                ragUsed,
-                ragSources
-            });
+            if (!abortSignal?.aborted) {
+                onComplete({
+                    response: n8nResponse.content,
+                    conversationId: conversationId || null,
+                    model: effectiveModel,
+                    target: effectiveTarget,
+                    stats,
+                    ragUsed,
+                    ragSources
+                });
+            }
 
         } else {
             // Ollama Streaming
@@ -714,6 +722,10 @@ const handleChatRequestStream = async ({
 
             const url = `${resolveTarget(effectiveTarget)}/api/chat`;
             const controller = new AbortController();
+            const handleAbort = () => controller.abort();
+            if (abortSignal) {
+                abortSignal.addEventListener('abort', handleAbort);
+            }
             const timeout = setTimeout(() => controller.abort(), 120000);
 
             let response;
@@ -728,11 +740,17 @@ const handleChatRequestStream = async ({
             } catch (err) {
                 clearTimeout(timeout);
                 if (err.name === 'AbortError') {
+                    if (abortSignal?.aborted) {
+                        return;
+                    }
                     throw new Error('Ollama request timed out (2m limit).');
                 }
                 throw new Error(`Failed to connect to Ollama at ${url}: ${err.message}`);
             } finally {
                 clearTimeout(timeout);
+                if (abortSignal) {
+                    abortSignal.removeEventListener('abort', handleAbort);
+                }
             }
 
             // Parse NDJSON stream
@@ -746,6 +764,10 @@ const handleChatRequestStream = async ({
 
             try {
                 while (true) {
+                    if (abortSignal?.aborted) {
+                        await reader.cancel();
+                        return;
+                    }
                     const { done, value } = await reader.read();
                     if (done) break;
 
@@ -759,13 +781,17 @@ const handleChatRequestStream = async ({
                             // Handle thinking model content
                             if (data.message?.thinking) {
                                 thinkingContent += data.message.thinking;
-                                onThinking(data.message.thinking);
+                                if (!abortSignal?.aborted) {
+                                    onThinking(data.message.thinking);
+                                }
                             }
 
                             // Handle regular content
                             if (data.message?.content) {
                                 fullContent += data.message.content;
-                                onToken(data.message.content);
+                                if (!abortSignal?.aborted) {
+                                    onToken(data.message.content);
+                                }
                             }
 
                             // Capture stats on final message
@@ -886,27 +912,31 @@ const handleChatRequestStream = async ({
                 logger.error('Failed to save conversation', { error: err.message });
             }
 
-            onComplete({
-                response: fullContent,
-                conversationId: conversation?._id || null,
-                messageId: assistantMessageId,
-                model: effectiveModel,
-                target: effectiveTarget,
-                routing: routingInfo ? {
-                    taskType: routingInfo.taskType,
-                    routed: routingInfo.routed
-                } : null,
-                stats: stats || null,
-                ragUsed,
-                ragSources,
-                thinking: thinkingContent || null,
-                warning: isThinkingModel(effectiveModel) ? 'Streaming enabled for thinking model.' : undefined
-            });
+            if (!abortSignal?.aborted) {
+                onComplete({
+                    response: fullContent,
+                    conversationId: conversation?._id || null,
+                    messageId: assistantMessageId,
+                    model: effectiveModel,
+                    target: effectiveTarget,
+                    routing: routingInfo ? {
+                        taskType: routingInfo.taskType,
+                        routed: routingInfo.routed
+                    } : null,
+                    stats: stats || null,
+                    ragUsed,
+                    ragSources,
+                    thinking: thinkingContent || null,
+                    warning: isThinkingModel(effectiveModel) ? 'Streaming enabled for thinking model.' : undefined
+                });
+            }
         }
 
     } catch (err) {
-        logger.error('Streaming chat error', { error: err.message, stack: err.stack });
-        onError(err);
+        if (!abortSignal?.aborted) {
+            logger.error('Streaming chat error', { error: err.message, stack: err.stack });
+            onError(err);
+        }
     }
 };
 

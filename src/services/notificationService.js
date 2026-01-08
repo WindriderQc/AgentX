@@ -11,6 +11,7 @@ const logger = require('../../config/logger');
 
 class NotificationService {
   constructor() {
+    this.testMode = process.env.ALERT_TEST_MODE === 'true';
     this.config = {
       email: {
         enabled: process.env.EMAIL_ENABLED === 'true',
@@ -21,7 +22,7 @@ class NotificationService {
           user: process.env.SMTP_USER,
           pass: process.env.SMTP_PASS
         },
-        from: process.env.SMTP_FROM || 'alerts@agentx.local'
+        from: process.env.ALERT_EMAIL_FROM || process.env.SMTP_FROM || 'alerts@agentx.local'
       },
       slack: {
         enabled: process.env.SLACK_ENABLED === 'true',
@@ -31,7 +32,13 @@ class NotificationService {
         enabled: process.env.WEBHOOK_ENABLED === 'true',
         url: process.env.WEBHOOK_URL,
         method: process.env.WEBHOOK_METHOD || 'POST',
-        headers: this._parseHeaders(process.env.WEBHOOK_HEADERS)
+        headers: this._parseHeaders(process.env.WEBHOOK_HEADERS),
+        timeoutMs: parseInt(process.env.WEBHOOK_TIMEOUT_MS || '5000'),
+        retry: {
+          maxAttempts: parseInt(process.env.WEBHOOK_RETRY_MAX_ATTEMPTS || '3'),
+          baseDelayMs: parseInt(process.env.WEBHOOK_RETRY_BASE_DELAY_MS || '500'),
+          jitterMs: parseInt(process.env.WEBHOOK_RETRY_JITTER_MS || '250')
+        }
       }
     };
 
@@ -69,6 +76,64 @@ class NotificationService {
     }
   }
 
+  _normalizeHeaders(headers) {
+    if (!headers) return {};
+    if (typeof headers === 'string') {
+      return this._parseHeaders(headers);
+    }
+    if (typeof headers === 'object') {
+      return headers;
+    }
+    return {};
+  }
+
+  _buildTemplateData(alert) {
+    const base = typeof alert?.toObject === 'function' ? alert.toObject() : { ...alert };
+    return {
+      ...base,
+      context: base.context || alert.context || {},
+      delivery: base.delivery || alert.delivery || {}
+    };
+  }
+
+  _getTemplateValue(data, key) {
+    if (!key) return '';
+    const parts = key.split('.');
+    let value = data;
+    for (const part of parts) {
+      if (value && Object.prototype.hasOwnProperty.call(value, part)) {
+        value = value[part];
+      } else {
+        return '';
+      }
+    }
+    return value === null || value === undefined ? '' : value;
+  }
+
+  _renderTemplate(template, data) {
+    if (!template) return '';
+    return String(template).replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key) => {
+      const value = this._getTemplateValue(data, key);
+      return value === undefined || value === null ? '' : String(value);
+    });
+  }
+
+  _applyTemplateObject(template, data) {
+    if (Array.isArray(template)) {
+      return template.map(item => this._applyTemplateObject(item, data));
+    }
+    if (template && typeof template === 'object') {
+      return Object.entries(template).reduce((acc, [key, value]) => {
+        acc[key] = this._applyTemplateObject(value, data);
+        return acc;
+      }, {});
+    }
+    if (typeof template === 'string') {
+      return this._renderTemplate(template, data);
+    }
+    return template;
+  }
+
   /**
    * Send alert notification to specified channel
    */
@@ -97,6 +162,11 @@ class NotificationService {
    * Send email notification
    */
   async sendEmail(alert) {
+    if (this.testMode) {
+      const recipients = this._resolveEmailRecipients(alert);
+      return { sent: true, messageId: 'test-mode', recipients };
+    }
+
     if (!this.config.email.enabled) {
       return { sent: false, error: 'Email notifications not enabled' };
     }
@@ -105,15 +175,24 @@ class NotificationService {
       return { sent: false, error: 'Email transporter not initialized' };
     }
 
-    const recipients = alert.emailRecipients || process.env.ALERT_EMAIL_RECIPIENTS;
+    const recipients = this._resolveEmailRecipients(alert);
     if (!recipients) {
       return { sent: false, error: 'No email recipients configured' };
     }
 
+    const templateData = this._buildTemplateData(alert);
+    const subjectTemplate = alert.channelConfig?.email?.subject;
+    const subject = subjectTemplate
+      ? this._renderTemplate(subjectTemplate, templateData)
+      : `[${alert.severity.toUpperCase()}] ${alert.title}`;
+
+    const fromAddress = alert.channelConfig?.email?.from || this.config.email.from;
+    const replyTo = alert.channelConfig?.email?.replyTo;
     const mailOptions = {
-      from: this.config.email.from,
+      from: fromAddress,
+      replyTo,
       to: recipients,
-      subject: `[${alert.severity.toUpperCase()}] ${alert.title}`,
+      subject,
       text: this._formatAlertText(alert),
       html: this._formatAlertHtml(alert)
     };
@@ -124,7 +203,7 @@ class NotificationService {
         alertId: alert._id,
         messageId: info.messageId
       });
-      return { sent: true, messageId: info.messageId };
+      return { sent: true, messageId: info.messageId, recipients };
     } catch (err) {
       logger.error('[NotificationService] Failed to send email', {
         alertId: alert._id,
@@ -138,6 +217,10 @@ class NotificationService {
    * Send Slack notification
    */
   async sendSlack(alert) {
+    if (this.testMode) {
+      return { sent: true };
+    }
+
     if (!this.config.slack.enabled) {
       return { sent: false, error: 'Slack notifications not enabled' };
     }
@@ -214,58 +297,87 @@ class NotificationService {
    * Send generic webhook notification
    */
   async sendWebhook(alert) {
+    if (this.testMode) {
+      const webhookConfig = this._resolveWebhookConfig(alert);
+      return { sent: true, statusCode: 200, url: webhookConfig.url };
+    }
+
     if (!this.config.webhook.enabled) {
       return { sent: false, error: 'Webhook notifications not enabled' };
     }
 
-    if (!this.config.webhook.url) {
+    const webhookConfig = this._resolveWebhookConfig(alert);
+    if (!webhookConfig.url) {
       return { sent: false, error: 'Webhook URL not configured' };
     }
 
-    const payload = {
-      alert: {
-        id: alert._id,
-        title: alert.title,
-        message: alert.message,
-        severity: alert.severity,
-        ruleName: alert.ruleName,
-        ruleId: alert.ruleId,
-        source: alert.source,
-        context: alert.context,
-        createdAt: alert.createdAt,
-        status: alert.status
-      },
-      timestamp: new Date().toISOString(),
-      source: 'agentx'
-    };
+    const payload = this._buildWebhookPayload(alert, webhookConfig.template);
 
     try {
       const fetch = (await import('node-fetch')).default;
-      const response = await fetch(this.config.webhook.url, {
-        method: this.config.webhook.method,
+      const response = await fetch(webhookConfig.url, {
+        method: webhookConfig.method,
         headers: {
           'Content-Type': 'application/json',
-          ...this.config.webhook.headers
+          ...webhookConfig.headers
         },
         body: JSON.stringify(payload)
       });
+      const maxAttempts = Math.max(1, this.config.webhook.retry.maxAttempts);
+      let lastError = null;
 
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`Webhook error: ${response.status} ${text}`);
+      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        try {
+          const response = await this._fetchWithTimeout(fetch, this.config.webhook.url, {
+            method: this.config.webhook.method,
+            headers: {
+              'Content-Type': 'application/json',
+              ...this.config.webhook.headers
+            },
+            body: JSON.stringify(payload)
+          }, this.config.webhook.timeoutMs);
+
+          if (!response.ok) {
+            const text = await response.text();
+            throw new Error(`Webhook error: ${response.status} ${text}`);
+          }
+
+          logger.info('[NotificationService] Webhook notification sent', {
+            alertId: alert._id,
+            url: this.config.webhook.url,
+            attempts: attempt
+          });
+          return { sent: true, statusCode: response.status, attempts: attempt };
+        } catch (err) {
+          lastError = err.message;
+          if (attempt < maxAttempts) {
+            const delayMs = this._calculateWebhookRetryDelay(attempt - 1);
+            logger.warn('[NotificationService] Webhook retry scheduled', {
+              alertId: alert._id,
+              attempt,
+              nextDelayMs: delayMs,
+              error: err.message
+            });
+            await this._sleep(delayMs);
+            continue;
+          }
+        }
       }
 
-      logger.info('[NotificationService] Webhook notification sent', {
+      logger.error('[NotificationService] Failed to send webhook notification', {
         alertId: alert._id,
-        url: this.config.webhook.url
+        url: webhookConfig.url
       });
-      return { sent: true, statusCode: response.status };
+      return { sent: true, statusCode: response.status, url: webhookConfig.url };
+        error: lastError
+      });
+      return { sent: false, error: lastError, attempts: maxAttempts, lastError };
     } catch (err) {
       logger.error('[NotificationService] Failed to send webhook notification', {
         alertId: alert._id,
         error: err.message
       });
-      return { sent: false, error: err.message };
+      return { sent: false, error: err.message, lastError: err.message };
     }
   }
 
@@ -275,6 +387,9 @@ class NotificationService {
   async verifyChannel(channel) {
     switch (channel) {
       case 'email':
+        if (this.testMode) {
+          return { valid: true, message: 'Test mode enabled' };
+        }
         if (!this.config.email.enabled) {
           return { valid: false, error: 'Email not enabled' };
         }
@@ -289,6 +404,9 @@ class NotificationService {
         }
 
       case 'slack':
+        if (this.testMode) {
+          return { valid: true, message: 'Test mode enabled' };
+        }
         if (!this.config.slack.enabled) {
           return { valid: false, error: 'Slack not enabled' };
         }
@@ -309,6 +427,9 @@ class NotificationService {
         }
 
       case 'webhook':
+        if (this.testMode) {
+          return { valid: true, message: 'Test mode enabled' };
+        }
         if (!this.config.webhook.enabled) {
           return { valid: false, error: 'Webhook not enabled' };
         }
@@ -340,6 +461,29 @@ class NotificationService {
         configured: !!this.config.webhook.url
       }
     };
+  }
+
+  _calculateWebhookRetryDelay(attempt) {
+    const baseDelay = this.config.webhook.retry.baseDelayMs;
+    const jitterMs = this.config.webhook.retry.jitterMs;
+    const backoff = baseDelay * Math.pow(2, attempt);
+    const jitter = jitterMs > 0 ? Math.floor(Math.random() * jitterMs) : 0;
+    return backoff + jitter;
+  }
+
+  async _sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  async _fetchWithTimeout(fetch, url, options, timeoutMs) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      return await fetch(url, { ...options, signal: controller.signal });
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
 
   // Helper methods for formatting
@@ -435,6 +579,61 @@ AgentX Alert System
       info: '#6c757d'
     };
     return colors[severity] || colors.medium;
+  }
+
+  _resolveEmailRecipients(alert) {
+    const recipients = alert.channelConfig?.email?.recipients || alert.emailRecipients || process.env.ALERT_EMAIL_RECIPIENTS;
+    if (Array.isArray(recipients)) {
+      return recipients.filter(Boolean).join(', ');
+    }
+    return recipients;
+  }
+
+  _resolveWebhookConfig(alert) {
+    const normalizedHeaders = this._normalizeHeaders(alert.channelConfig?.webhook?.headers);
+    const resolvedHeaders = Object.keys(normalizedHeaders || {}).length > 0
+      ? normalizedHeaders
+      : this.config.webhook.headers;
+    return {
+      url: alert.channelConfig?.webhook?.url || this.config.webhook.url,
+      method: alert.channelConfig?.webhook?.method || this.config.webhook.method,
+      headers: resolvedHeaders,
+      template: alert.channelConfig?.webhook?.template
+    };
+  }
+
+  _buildWebhookPayload(alert, template) {
+    const templateData = this._buildTemplateData(alert);
+    if (template) {
+      if (typeof template === 'string') {
+        const rendered = this._renderTemplate(template, templateData);
+        try {
+          return JSON.parse(rendered);
+        } catch {
+          return { text: rendered };
+        }
+      }
+      if (typeof template === 'object') {
+        return this._applyTemplateObject(template, templateData);
+      }
+    }
+
+    return {
+      alert: {
+        id: alert._id,
+        title: alert.title,
+        message: alert.message,
+        severity: alert.severity,
+        ruleName: alert.ruleName,
+        ruleId: alert.ruleId,
+        source: alert.source,
+        context: alert.context,
+        createdAt: alert.createdAt,
+        status: alert.status
+      },
+      timestamp: new Date().toISOString(),
+      source: 'agentx'
+    };
   }
 }
 
