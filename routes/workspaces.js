@@ -440,10 +440,17 @@ router.post('/:slug/members', requireAuth, async (req, res) => {
     const userProfileId = await getUserProfileId(req.user.userId);
 
     // Validation
-    if (!email || !role) {
+    if (!email || !email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
       return res.status(400).json({
         status: 'error',
-        message: 'Email and role are required'
+        message: 'Valid email address is required'
+      });
+    }
+
+    if (!role) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Role is required'
       });
     }
 
@@ -806,6 +813,14 @@ router.post('/:slug/transfer', requireAuth, async (req, res) => {
     // Get old and new owner profiles for audit log
     const oldOwnerProfile = await UserProfile.findOne({ userId: req.user.userId });
     const newOwnerProfile = await UserProfile.findOne({ userId: newOwnerId });
+
+    // Validate new owner exists
+    if (!newOwnerProfile) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'New owner user not found'
+      });
+    }
 
     // Transfer ownership
     await WorkspaceMember.transferOwnership(

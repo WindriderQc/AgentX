@@ -236,8 +236,94 @@
           <button id="closeHistoryBtn" class="icon-btn" title="Hide history">×</button>
         </div>
       </div>
+
+      <!-- V7: Search Bar -->
+      <div class="search-bar-container">
+        <div class="search-input-wrapper">
+          <i class="fas fa-search search-icon"></i>
+          <input type="text" id="conversationSearchInput" class="search-input" placeholder="Search conversations..." autocomplete="off">
+          <button id="clearSearchBtn" class="clear-search-btn" title="Clear search" style="display: none;">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        <button id="toggleFiltersBtn" class="icon-btn filter-btn" title="Show filters">
+          <i class="fas fa-filter"></i>
+        </button>
+      </div>
+
+      <!-- V7: Filter Panel (collapsible) -->
+      <div id="filterPanel" class="filter-panel" style="display: none;">
+        <div class="filter-section">
+          <label class="filter-label">Model</label>
+          <select id="filterModel" class="filter-select" multiple size="3">
+            <option value="">All Models</option>
+          </select>
+        </div>
+
+        <div class="filter-section">
+          <label class="filter-label">Date Range</label>
+          <input type="date" id="filterDateFrom" class="filter-input" placeholder="From">
+          <input type="date" id="filterDateTo" class="filter-input" placeholder="To">
+        </div>
+
+        <div class="filter-section">
+          <label class="filter-label">
+            <input type="checkbox" id="filterRagOnly" class="filter-checkbox">
+            <span>RAG Only</span>
+          </label>
+        </div>
+
+        <div class="filter-section">
+          <label class="filter-label">Feedback</label>
+          <select id="filterFeedback" class="filter-select">
+            <option value="">All Feedback</option>
+            <option value="1">Positive</option>
+            <option value="-1">Negative</option>
+            <option value="0">Neutral</option>
+          </select>
+        </div>
+
+        <div class="filter-section">
+          <label class="filter-label">Tags</label>
+          <div class="tags-input-container">
+            <input type="text" id="filterTagsInput" class="filter-input" placeholder="Add tag and press Enter">
+            <div id="filterTagsChips" class="tags-chips"></div>
+          </div>
+          <div id="tagsSuggestions" class="tags-suggestions" style="display: none;"></div>
+        </div>
+
+        <div class="filter-section">
+          <label class="filter-label">Sort By</label>
+          <select id="filterSortBy" class="filter-select">
+            <option value="relevance">Relevance</option>
+            <option value="date_desc">Newest First</option>
+            <option value="date_asc">Oldest First</option>
+            <option value="model">Model</option>
+            <option value="feedback">Feedback</option>
+            <option value="messages">Message Count</option>
+          </select>
+        </div>
+
+        <div class="filter-actions">
+          <button id="applyFiltersBtn" class="primary small full">Apply</button>
+          <button id="clearFiltersBtn" class="ghost small full">Clear All</button>
+        </div>
+      </div>
+
+      <!-- History List -->
       <div id="historyList" class="history-list">
         <!-- History items will be injected here -->
+      </div>
+
+      <!-- V7: Pagination Controls -->
+      <div id="paginationControls" class="pagination-controls" style="display: none;">
+        <button id="prevPageBtn" class="pagination-btn" disabled>
+          <i class="fas fa-chevron-left"></i>
+        </button>
+        <span id="paginationInfo" class="pagination-info">Page 1 of 1</span>
+        <button id="nextPageBtn" class="pagination-btn" disabled>
+          <i class="fas fa-chevron-right"></i>
+        </button>
       </div>
     </aside>
 
@@ -454,6 +540,13 @@
                 <span><i class="fas fa-sort-amount-down" style="margin-right: 6px; font-size: 11px;"></i>Re-ranking</span>
               </label>
               <p class="rag-option-help">LLM judges relevance for maximum precision <span style="color: var(--accent-2);">+1000ms</span></p>
+            </div>
+            <div class="rag-option-row">
+              <label class="rag-toggle-label">
+                <input type="checkbox" id="ragCompress">
+                <span><i class="fas fa-compress-alt" style="margin-right: 6px; font-size: 11px;"></i>Contextual Compression</span>
+              </label>
+              <p class="rag-option-help">Extracts only relevant sentences from chunks <span style="color: var(--accent);">+500ms</span></p>
             </div>
             <div class="rag-option-row">
               <label class="rag-slider-label">

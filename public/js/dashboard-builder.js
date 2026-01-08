@@ -445,7 +445,7 @@ const DashboardManager = {
         // Construct widget object
         const type = document.getElementById('widgetType').value;
         const title = document.getElementById('widgetTitle').value;
-        const size = parseInt(document.getElementById('widgetSize').value);
+        const size = parseInt(document.getElementById('widgetSize').value, 10);
         const collection = document.getElementById('widgetCollection').value;
         
         const widgetConfig = {
@@ -462,7 +462,8 @@ const DashboardManager = {
         };
 
         if (type === 'chart') {
-            widgetConfig.chartType = document.querySelector('input[name="chartStyle"]:checked').value;
+            const checkedStyle = document.querySelector('input[name="chartStyle"]:checked');
+            widgetConfig.chartType = checkedStyle ? checkedStyle.value : 'line';
             widgetConfig.dataSource.groupBy = document.getElementById('widgetGroupBy').value;
         } else if (type === 'table') {
             const pipelineStr = document.getElementById('widgetPipeline').value;

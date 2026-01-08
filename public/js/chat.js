@@ -94,6 +94,7 @@ document.addEventListener('DOMContentLoaded', () => {
     ragExpandQuery: document.getElementById('ragExpandQuery'),
     ragHybridSearch: document.getElementById('ragHybridSearch'),
     ragRerankResults: document.getElementById('ragRerankResults'),
+    ragCompress: document.getElementById('ragCompress'), // NEW
     ragTopK: document.getElementById('ragTopK'),
     ragTopKValue: document.getElementById('ragTopKValue'),
     statsToggle: document.getElementById('statsToggle'), // V4: New toggle
@@ -232,6 +233,7 @@ document.addEventListener('DOMContentLoaded', () => {
       ragExpand: elements.ragExpandQuery?.checked || false,
       ragHybrid: elements.ragHybridSearch?.checked || false,
       ragRerank: elements.ragRerankResults?.checked || false,
+      ragCompress: elements.ragCompress?.checked || false, // NEW
       ragTopK: parseInt(elements.ragTopK?.value || '5', 10),
       system: elements.systemPrompt.value.trim() || defaults.system,
       options: readOptions(),
@@ -283,6 +285,7 @@ document.addEventListener('DOMContentLoaded', () => {
       ragExpand: elements.ragExpandQuery?.checked || false,
       ragHybrid: elements.ragHybridSearch?.checked || false,
       ragRerank: elements.ragRerankResults?.checked || false,
+      ragCompress: elements.ragCompress?.checked || false, // NEW
       ragTopK: parseInt(elements.ragTopK?.value || '5', 10)
     };
   }
@@ -328,6 +331,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (elements.ragExpandQuery) elements.ragExpandQuery.checked = cfg.ragExpand || false;
     if (elements.ragHybridSearch) elements.ragHybridSearch.checked = cfg.ragHybrid || false;
     if (elements.ragRerankResults) elements.ragRerankResults.checked = cfg.ragRerank || false;
+    if (elements.ragCompress) elements.ragCompress.checked = cfg.ragCompress || false; // NEW
     if (elements.ragTopK) elements.ragTopK.value = cfg.ragTopK || 5;
     if (elements.ragTopKValue) elements.ragTopKValue.textContent = cfg.ragTopK || 5;
     elements.temperature.value = cfg.options.temperature;
@@ -444,6 +448,16 @@ document.addEventListener('DOMContentLoaded', () => {
         if (source.score) {
           sourceHeader.appendChild(sourceScore);
         }
+        
+        // NEW: Compression Badge
+        if (source.wasCompressed) {
+            const compressBadge = document.createElement('span');
+            compressBadge.className = 'compression-badge';
+            compressBadge.innerHTML = `<i class="fas fa-compress-arrows-alt"></i> ${source.compressionRatio}%`;
+            compressBadge.title = 'Context compressed by ' + source.compressionRatio + '%';
+            sourceHeader.appendChild(compressBadge);
+        }
+
         sourceItem.appendChild(sourceHeader);
         
         if (source.excerpt) {
@@ -767,7 +781,8 @@ document.addEventListener('DOMContentLoaded', () => {
         // RAG advanced options (backend expects these in options object)
         ragExpand: ragOpts.ragExpand,
         ragHybrid: ragOpts.ragHybrid,
-        ragRerank: ragOpts.ragRerank
+        ragRerank: ragOpts.ragRerank,
+        ragCompress: ragOpts.ragCompress // NEW
       },
       useRag: ragOpts.useRag,
       ragTopK: ragOpts.ragTopK,
@@ -839,6 +854,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
 
+      let currentEvent = 'token'; // default SSE event type
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -848,7 +865,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         for (const line of lines) {
           if (line.startsWith('event:')) {
-            const event = line.substring(7).trim();
+            currentEvent = line.substring(7).trim();
             continue;
           }
 
@@ -859,18 +876,18 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
               const data = JSON.parse(dataStr);
 
-              if (event === 'token') {
+              if (currentEvent === 'token') {
                 // Progressive token rendering
                 fullContent += data.content;
                 contentDiv.innerHTML = marked.parse(fullContent);
                 elements.chatWindow.scrollTop = elements.chatWindow.scrollHeight;
-              } else if (event === 'thinking') {
+              } else if (currentEvent === 'thinking') {
                 // Show thinking section
                 thinkingContent += data.content;
                 thinkingDiv.innerHTML = `<strong>Thinking:</strong><br>${marked.parse(thinkingContent)}`;
                 thinkingDiv.style.display = 'block';
                 elements.chatWindow.scrollTop = elements.chatWindow.scrollHeight;
-              } else if (event === 'done') {
+              } else if (currentEvent === 'done') {
                 // Stream complete
                 finalData = data;
                 state.conversationId = data.conversationId || state.conversationId;
@@ -902,7 +919,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (window.checkSetupProgress) {
                   setTimeout(() => window.checkSetupProgress(), 500);
                 }
-              } else if (event === 'error') {
+              } else if (currentEvent === 'error') {
                 throw new Error(data.message || 'Streaming error');
               }
             } catch (parseErr) {
@@ -910,8 +927,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
           }
         }
-
-        let event = 'token'; // default event
       }
 
     } catch (err) {
@@ -965,7 +980,8 @@ document.addEventListener('DOMContentLoaded', () => {
           // RAG advanced options (backend expects these in options object)
           ragExpand: ragOpts.ragExpand,
           ragHybrid: ragOpts.ragHybrid,
-          ragRerank: ragOpts.ragRerank
+          ragRerank: ragOpts.ragRerank,
+          ragCompress: ragOpts.ragCompress // NEW
         },
         stream: false,
         useRag: ragOpts.useRag,
@@ -1583,6 +1599,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (elements.ragExpandQuery) elements.ragExpandQuery.addEventListener('change', persistSettings);
     if (elements.ragHybridSearch) elements.ragHybridSearch.addEventListener('change', persistSettings);
     if (elements.ragRerankResults) elements.ragRerankResults.addEventListener('change', persistSettings);
+    if (elements.ragCompress) elements.ragCompress.addEventListener('change', persistSettings); // NEW
 
     // Auto-refresh models when host or port changes
     elements.hostInput.addEventListener('change', () => {

@@ -242,7 +242,7 @@ class AlertAnalytics {
         const timeRangeSelect = document.getElementById('timeRangeSelect');
         if (timeRangeSelect) {
             timeRangeSelect.addEventListener('change', (e) => {
-                this.timeRange = parseInt(e.target.value);
+                this.timeRange = parseInt(e.target.value, 10);
                 this.refresh();
             });
         }
@@ -710,6 +710,8 @@ class AlertAnalytics {
                     tooltip: {
                         callbacks: {
                             title: (items) => {
+                                // Safety check: ensure items array has elements
+                                if (!items || items.length === 0) return 'No data';
                                 const item = items[0];
                                 return `${item.dataset.label} at ${item.label}:00`;
                             },

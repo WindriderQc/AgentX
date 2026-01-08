@@ -189,7 +189,7 @@ router.put('/:id', attachWorkspace, async (req, res) => {
  * DELETE /api/custom-models/:id
  * Archive a model (soft delete)
  */
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', attachWorkspace, async (req, res) => {
   try {
     const { id } = req.params;
     const { reason } = req.body;
@@ -222,10 +222,17 @@ router.delete('/:id', async (req, res) => {
  * POST /api/custom-models/:id/deploy
  * Deploy model to Ollama host
  */
-router.post('/:id/deploy', async (req, res) => {
+router.post('/:id/deploy', attachWorkspace, async (req, res) => {
   try {
     const { id } = req.params;
     const { ollamaHost } = req.body;
+
+    if (!ollamaHost) {
+      return res.status(400).json({
+        success: false,
+        error: 'ollamaHost is required'
+      });
+    }
 
     const result = await customModelService.deployToOllama(id, ollamaHost);
 

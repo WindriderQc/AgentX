@@ -9,17 +9,25 @@ const router = express.Router();
 const APIKey = require('../models/APIKey');
 const { requireAuth } = require('../src/middleware/auth');
 const { auditApiKeyOps } = require('../src/middleware/auditLogger');
+const { attachWorkspace } = require('../src/middleware/workspace');
 const logger = require('../config/logger');
 
 /**
  * GET /api/keys
  * List user's API keys (prefix only, never show full key)
+ * Workspace-aware: only shows keys for current workspace
  */
-router.get('/', requireAuth, async (req, res) => {
+router.get('/', requireAuth, attachWorkspace, async (req, res) => {
   try {
     const userId = res.locals.user.userId;
 
-    const keys = await APIKey.find({ userId })
+    // Build query with workspace filter
+    const query = { userId };
+    if (req.workspace) {
+      query.workspaceId = req.workspace._id;
+    }
+
+    const keys = await APIKey.find(query)
       .select('_id name keyPrefix scopes revokedAt expiresAt lastUsedAt usageCount createdAt')
       .sort({ createdAt: -1 });
 
@@ -47,8 +55,9 @@ router.get('/', requireAuth, async (req, res) => {
 /**
  * POST /api/keys
  * Create new API key
+ * Workspace-aware: creates key scoped to current workspace
  */
-router.post('/', requireAuth, auditApiKeyOps.created, async (req, res) => {
+router.post('/', requireAuth, attachWorkspace, auditApiKeyOps.created, async (req, res) => {
   try {
     const userId = res.locals.user.userId;
     const { name, scopes, expiresInDays } = req.body;
@@ -69,12 +78,13 @@ router.post('/', requireAuth, auditApiKeyOps.created, async (req, res) => {
       expiresAt.setDate(expiresAt.getDate() + expiresInDays);
     }
 
-    // Create key
+    // Create key with workspace context
     const { key, doc } = await APIKey.createKey({
       userId,
       name: name.trim(),
       scopes,
-      expiresAt
+      expiresAt,
+      workspaceId: req.workspace?._id || null
     });
 
     logger.info('API key created', {

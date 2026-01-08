@@ -92,25 +92,35 @@ router.get('/health', async (req, res) => {
     // Check both Ollama hosts in parallel
     const ollamaChecks = await Promise.allSettled([
         (async () => {
-            const tagsResponse = await checkUrl(`${OLLAMA_HOST}/api/tags`);
-            status.ollama_primary.status = tagsResponse.status;
-            if (tagsResponse.status === 'online') {
-                const modelsRes = await fetch(`${OLLAMA_HOST}/api/tags`);
-                if (modelsRes.ok) {
-                    const data = await modelsRes.json();
-                    status.ollama_primary.models = (data.models || []).map(m => m.name);
+            try {
+                const tagsResponse = await checkUrl(`${OLLAMA_HOST}/api/tags`);
+                status.ollama_primary.status = tagsResponse.status;
+                if (tagsResponse.status === 'online') {
+                    const modelsRes = await fetch(`${OLLAMA_HOST}/api/tags`);
+                    if (modelsRes.ok) {
+                        const data = await modelsRes.json();
+                        status.ollama_primary.models = (data.models || []).map(m => m.name);
+                    }
                 }
+            } catch (err) {
+                status.ollama_primary.status = 'error';
+                logger.warn('Failed to check Ollama primary', { error: err.message });
             }
         })(),
         (async () => {
-            const tagsResponse = await checkUrl(`${OLLAMA_HOST_2}/api/tags`);
-            status.ollama_secondary.status = tagsResponse.status;
-            if (tagsResponse.status === 'online') {
-                const modelsRes = await fetch(`${OLLAMA_HOST_2}/api/tags`);
-                if (modelsRes.ok) {
-                    const data = await modelsRes.json();
-                    status.ollama_secondary.models = (data.models || []).map(m => m.name);
+            try {
+                const tagsResponse = await checkUrl(`${OLLAMA_HOST_2}/api/tags`);
+                status.ollama_secondary.status = tagsResponse.status;
+                if (tagsResponse.status === 'online') {
+                    const modelsRes = await fetch(`${OLLAMA_HOST_2}/api/tags`);
+                    if (modelsRes.ok) {
+                        const data = await modelsRes.json();
+                        status.ollama_secondary.models = (data.models || []).map(m => m.name);
+                    }
                 }
+            } catch (err) {
+                status.ollama_secondary.status = 'error';
+                logger.warn('Failed to check Ollama secondary', { error: err.message });
             }
         })()
     ]);
@@ -296,6 +306,14 @@ router.get('/summary', async (req, res) => {
  */
 router.get('/stats', async (req, res) => {
     try {
+        // Verify database connection before accessing
+        if (mongoose.connection.readyState !== 1 || !mongoose.connection.db) {
+            return res.status(503).json({
+                status: 'error',
+                message: 'Database not connected'
+            });
+        }
+
         const db = mongoose.connection.db;
         const collections = await db.listCollections().toArray();
         const stats = await Promise.all(collections.map(async (col) => {

@@ -17,6 +17,11 @@ document.addEventListener('DOMContentLoaded', () => {
     async function loadCollections() {
         try {
             const response = await fetch('/api/dataapi/databases/stats');
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
             const result = await response.json();
             
             if (result.status === 'success' && result.data.collections) {

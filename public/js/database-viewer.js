@@ -180,12 +180,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (result.data.length > 0) {
                     // Populate header row if it's empty
-                    if (thead.querySelector('tr').children.length === 0) {
+                    const theadRow = thead.querySelector('tr');
+                    if (theadRow && theadRow.children.length === 0 && result.data.length > 0) {
                         const keys = Object.keys(result.data[0]);
                         keys.forEach(key => {
                             const th = document.createElement('th');
                             th.textContent = key;
-                            thead.querySelector('tr').appendChild(th);
+                            theadRow.appendChild(th);
                         });
                     }
 

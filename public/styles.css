@@ -1556,14 +1556,21 @@ button:active {
   transition: all 0.3s;
 }
 
-.health-strip-item .dot.online {
+.health-strip-item .dot.online,
+.health-strip-item .dot.healthy {
   background: #4ade80;
   box-shadow: 0 0 10px rgba(74, 222, 128, 0.6);
 }
 
-.health-strip-item .dot.offline {
+.health-strip-item .dot.offline,
+.health-strip-item .dot.error {
   background: #f87171;
   box-shadow: 0 0 10px rgba(248, 113, 113, 0.6);
+}
+
+.health-strip-item .dot.warning {
+  background: #fbbf24;
+  box-shadow: 0 0 10px rgba(251, 191, 36, 0.6);
 }
 
 .metrics-grid {
@@ -2560,43 +2567,7 @@ button:active {
   gap: 10px;
 }
 
-.btn {
-  padding: 10px 16px;
-  border-radius: 8px;
-  border: none;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-  font-size: 13px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.btn-primary {
-  background: linear-gradient(135deg, #7cf0ff 0%, #4facfe 100%);
-  color: #0a0e1a;
-}
-
-.btn-primary:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(124,240,255,0.3);
-}
-
-.btn-secondary {
-  background: rgba(148,163,184,0.1);
-  color: var(--text);
-  border: 1px solid var(--panel-border);
-}
-
-.btn-secondary:hover {
-  background: rgba(148,163,184,0.15);
-}
-
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
+/* Use base .btn and .btn-primary styles defined above */
 
 .detail-tabs {
   display: flex;

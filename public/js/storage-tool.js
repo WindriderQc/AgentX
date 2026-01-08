@@ -30,7 +30,7 @@ async function startScan() {
         .map(e => e.trim())
         .filter(e => e.length > 0);
     
-    const batchSize = parseInt(document.getElementById('batchSize').value);
+    const batchSize = parseInt(document.getElementById('batchSize').value, 10);
 
     if (roots.length === 0) {
         alert('Please enter at least one root directory');
@@ -56,6 +56,10 @@ async function startScan() {
                 batch_size: batchSize
             })
         });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
 
         const data = await response.json();
 
@@ -94,6 +98,10 @@ async function stopCurrentScan() {
             method: 'POST',
             headers: getWorkspaceHeaders()
         });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
 
         const data = await response.json();
 
@@ -135,6 +143,11 @@ async function updateScanStatus() {
         const response = await fetch(`/api/v1/storage/status/${currentScanId}`, {
             headers: getWorkspaceHeaders()
         });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
         const data = await response.json();
 
         if (data.status === 'success') {
@@ -229,6 +242,11 @@ async function loadRecentScans() {
         const response = await fetch('/api/v1/storage/scans?limit=20', {
             headers: getWorkspaceHeaders()
         });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
         const data = await response.json();
         
         const tbody = document.getElementById('recentScansBody');
@@ -336,6 +354,10 @@ async function generateExport() {
             })
         });
 
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
         const data = await response.json();
 
         if (data.status === 'success') {
@@ -366,6 +388,11 @@ async function loadExportList() {
         const response = await fetch('/api/v1/files/exports', {
             headers: getWorkspaceHeaders()
         });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
         const data = await response.json();
 
         if (data.status === 'success' && data.data.length > 0) {

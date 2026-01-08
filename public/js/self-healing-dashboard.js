@@ -101,7 +101,13 @@ class SelfHealingDashboard {
     async loadStatus() {
         try {
             const response = await apiClient.get('/self-healing/status');
-            this.engineStatus = response.data || response;
+            // Support both wrapped {data: ...} and direct response formats
+            this.engineStatus = (response && response.rules) ? response : (response.data || response);
+            
+            if (!this.engineStatus || !this.engineStatus.rules) {
+                console.warn('SelfHealingDashboard: Received unexpected status format', response);
+            }
+            
             this.renderStatus();
         } catch (error) {
             console.error('Failed to load status:', error);
@@ -145,6 +151,11 @@ class SelfHealingDashboard {
         if (!container || !this.engineStatus) return;
 
         const { enabled, rules, executions } = this.engineStatus;
+        
+        // Safety check for required data
+        const safeRules = rules || { total: 0, enabled: 0, byStrategy: {} };
+        const safeExecutions = executions || { total: 0, recentlyExecuted: 0 };
+        const strategiesCount = safeRules.byStrategy ? Object.keys(safeRules.byStrategy).length : 0;
 
         container.innerHTML = `
             <div class="row g-3 mb-4">
@@ -160,10 +171,10 @@ class SelfHealingDashboard {
                 <div class="col-md-2">
                     <div class="card bg-primary text-white">
                         <div class="card-body text-center">
-                            <h3 class="mb-0">${rules.total}</h3>
+                            <h3 class="mb-0">${safeRules.total}</h3>
                             <small>Total Rules</small>
                             <div class="mt-1">
-                                <small class="badge bg-light text-dark">${rules.enabled} active</small>
+                                <small class="badge bg-light text-dark">${safeRules.enabled} active</small>
                             </div>
                         </div>
                     </div>
@@ -171,7 +182,7 @@ class SelfHealingDashboard {
                 <div class="col-md-2">
                     <div class="card bg-info text-white">
                         <div class="card-body text-center">
-                            <h3 class="mb-0">${executions.total}</h3>
+                            <h3 class="mb-0">${safeExecutions.total}</h3>
                             <small>Total Executions</small>
                         </div>
                     </div>
@@ -179,7 +190,7 @@ class SelfHealingDashboard {
                 <div class="col-md-2">
                     <div class="card bg-warning text-dark">
                         <div class="card-body text-center">
-                            <h3 class="mb-0">${executions.recentlyExecuted || 0}</h3>
+                            <h3 class="mb-0">${safeExecutions.recentlyExecuted || 0}</h3>
                             <small>In Cooldown</small>
                         </div>
                     </div>
@@ -187,7 +198,7 @@ class SelfHealingDashboard {
                 <div class="col-md-2">
                     <div class="card bg-dark text-white">
                         <div class="card-body text-center">
-                            <h3 class="mb-0">${Object.keys(rules.byStrategy || {}).length}</h3>
+                            <h3 class="mb-0">${strategiesCount}</h3>
                             <small>Strategies</small>
                         </div>
                     </div>

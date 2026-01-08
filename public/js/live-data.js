@@ -224,9 +224,19 @@ function initFrontendMQTT(mqttConfig) {
             try { getISS_location(); } catch (e) { /* ignore if not available */ }
         } else if (topic === mqttConfig.pressureTopic) {
             const pressureElement = document.getElementById('pressure');
-            const pressure = payload.pressure.toFixed(2);
+            // Safety check: ensure pressure exists and is a number
+            if (payload.pressure === undefined || payload.pressure === null) {
+              console.warn('[live-data] Received pressure message without valid pressure value');
+              return;
+            }
+            const pressureNum = Number(payload.pressure);
+            if (isNaN(pressureNum)) {
+              console.warn('[live-data] Received non-numeric pressure value:', payload.pressure);
+              return;
+            }
+            const pressure = pressureNum.toFixed(2);
             const time = new Date(payload.timeStamp).toLocaleTimeString();
-            pressureElement.textContent = `${pressure} hPa`;
+            if (pressureElement) pressureElement.textContent = `${pressure} hPa`;
             updatePressureChart(time, pressure);
         }
       } catch (e) {

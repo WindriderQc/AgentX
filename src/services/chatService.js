@@ -7,6 +7,7 @@ const { tryHandleToolCommand } = require('./toolService');
 const { executeTool, parseToolCalls } = require('./toolExecutor');
 const { routeRequest, getTargetForModel } = require('./modelRouter');
 const { calculateMessageCost, calculateConversationCost } = require('./costCalculator');
+const { getCompressionService } = require('./ragCompression');
 const logger = require('../../config/logger');
 const fetch = require('node-fetch');
 
@@ -193,18 +194,41 @@ const handleChatRequest = async ({
                 hybridSearch: options?.ragHybrid === true // Enable hybrid search if requested
             });
 
-            if (searchResults.length > 0) {
+            // Contextual Compression
+            let processedChunks = searchResults;
+            if (options?.ragCompress === true && searchResults.length > 0) {
+                try {
+                    const compressionService = getCompressionService();
+                    processedChunks = await compressionService.compressChunks(
+                        message,
+                        searchResults,
+                        { 
+                            compressionModel: process.env.COMPRESSION_MODEL || 'gemma2:2b',
+                            minRelevanceScore: parseFloat(process.env.COMPRESSION_MIN_RELEVANCE) || 0.6,
+                            maxSentencesPerChunk: parseInt(process.env.COMPRESSION_MAX_SENTENCES) || 5
+                        }
+                    );
+                } catch (compErr) {
+                    logger.error('RAG Compression failed, using original chunks', { error: compErr.message });
+                    processedChunks = searchResults;
+                }
+            }
+
+            if (processedChunks.length > 0) {
                 ragUsed = true;
                 ragContext = '\n\n=== RETRIEVED CONTEXT ===\n';
                 ragContext += 'When using information from these sources, cite them inline with [1], [2], etc.\n\n';
-                searchResults.forEach((result, idx) => {
-                    ragContext += `\n[Source ${idx + 1}: ${result.metadata.title}]\n${result.text}\n`;
+                processedChunks.forEach((result, idx) => {
+                    const textToUse = result.compressedText !== undefined ? result.compressedText : result.text;
+                    ragContext += `\n[Source ${idx + 1}: ${result.metadata.title}]\n${textToUse}\n`;
                     ragSources.push({
                         text: result.text.substring(0, 200),
                         score: result.score,
                         source: result.metadata.source,
                         title: result.metadata.title,
-                        documentId: result.metadata.documentId
+                        documentId: result.metadata.documentId,
+                        wasCompressed: result.wasCompressed || false,
+                        compressionRatio: result.compressionRatio || 0
                     });
                 });
                 ragContext += '\n=== END CONTEXT ===\n';
@@ -558,18 +582,41 @@ const handleChatRequestStream = async ({
                     hybridSearch: options?.ragHybrid === true // Enable hybrid search if requested
                 });
 
-                if (searchResults.length > 0) {
+                // Contextual Compression
+                let processedChunks = searchResults;
+                if (options?.ragCompress === true && searchResults.length > 0) {
+                    try {
+                        const compressionService = getCompressionService();
+                        processedChunks = await compressionService.compressChunks(
+                            message,
+                            searchResults,
+                            { 
+                                compressionModel: process.env.COMPRESSION_MODEL || 'gemma2:2b',
+                                minRelevanceScore: parseFloat(process.env.COMPRESSION_MIN_RELEVANCE) || 0.6,
+                                maxSentencesPerChunk: parseInt(process.env.COMPRESSION_MAX_SENTENCES) || 5
+                            }
+                        );
+                    } catch (compErr) {
+                        logger.error('RAG Compression failed, using original chunks', { error: compErr.message });
+                        processedChunks = searchResults;
+                    }
+                }
+
+                if (processedChunks.length > 0) {
                     ragUsed = true;
                     ragContext = '\n\n=== RETRIEVED CONTEXT ===\n';
                     ragContext += 'When using information from these sources, cite them inline with [1], [2], etc.\n\n';
-                    searchResults.forEach((result, idx) => {
-                        ragContext += `\n[Source ${idx + 1}: ${result.metadata.title}]\n${result.text}\n`;
+                    processedChunks.forEach((result, idx) => {
+                        const textToUse = result.compressedText !== undefined ? result.compressedText : result.text;
+                        ragContext += `\n[Source ${idx + 1}: ${result.metadata.title}]\n${textToUse}\n`;
                         ragSources.push({
                             text: result.text.substring(0, 200),
                             score: result.score,
                             source: result.metadata.source,
                             title: result.metadata.title,
-                            documentId: result.metadata.documentId
+                            documentId: result.metadata.documentId,
+                            wasCompressed: result.wasCompressed || false,
+                            compressionRatio: result.compressionRatio || 0
                         });
                     });
                     ragContext += '\n=== END CONTEXT ===\n';

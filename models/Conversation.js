@@ -101,7 +101,10 @@ const ConversationSchema = new mongoose.Schema({
       embeddingTokens: { type: Number, default: 0 }
     },
     lastUpdated: Date
-  }
+  },
+
+  // V7: Search & Tagging (2026-01-08)
+  tags: [{ type: String, index: true }]
 });
 
 // Indexes for V4 analytics queries
@@ -120,6 +123,25 @@ ConversationSchema.index({ 'messages.feedback.rating': 1 });
 // V5: Indexes for cost tracking analytics
 ConversationSchema.index({ 'totalCost.sum': 1 });
 ConversationSchema.index({ model: 1, 'totalCost.sum': 1 });
+
+// V7: Search indexes (2026-01-08)
+// Text index for full-text search across title and message content
+ConversationSchema.index({
+  title: 'text',
+  'messages.content': 'text'
+}, {
+  weights: {
+    title: 10,              // Title matches are more relevant
+    'messages.content': 5   // Message content is important
+  },
+  name: 'conversation_text_search'
+});
+
+// Compound indexes for filtering combinations
+ConversationSchema.index({ workspaceId: 1, userId: 1, tags: 1 });
+ConversationSchema.index({ workspaceId: 1, userId: 1, model: 1, createdAt: -1 });
+ConversationSchema.index({ workspaceId: 1, userId: 1, ragUsed: 1, createdAt: -1 });
+ConversationSchema.index({ workspaceId: 1, userId: 1, 'messages.feedback.rating': 1 });
 
 // Update timestamp on save
 ConversationSchema.pre('save', function() {

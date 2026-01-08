@@ -149,9 +149,17 @@ router.post('/accept', requireAuth, async (req, res) => {
       userId: userProfile._id
     });
 
-    // Send notification to inviter
-    const emailService = getEmailService();
-    await emailService.sendAcceptedNotification(invitation, userProfile);
+    // Send notification to inviter (non-blocking - don't fail request if email fails)
+    try {
+      const emailService = getEmailService();
+      await emailService.sendAcceptedNotification(invitation, userProfile);
+    } catch (emailError) {
+      logger.warn('Failed to send invitation acceptance notification', {
+        error: emailError.message,
+        invitationId: invitation._id
+      });
+      // Continue - don't fail the request for email issues
+    }
 
     res.json({
       status: 'success',

@@ -156,6 +156,7 @@ router.post('/chat', optionalAuth, async (req, res) => {
     useRag, 
     ragTopK, 
     ragFilters,
+    ragCompress,
     autoRoute = false,  // Enable smart model routing
     taskType = null     // Override task classification (code_generation, deep_reasoning, etc.)
   } = req.body;
@@ -168,6 +169,11 @@ router.post('/chat', optionalAuth, async (req, res) => {
   // Model is optional if autoRoute or taskType is enabled
   if (!model && !autoRoute && !taskType) return res.status(400).json({ status: 'error', message: 'Model is required (or enable autoRoute/taskType)' });
   if (!message) return res.status(400).json({ status: 'error', message: 'Message is required' });
+
+  // Merge ragCompress into options
+  if (ragCompress !== undefined) {
+      options.ragCompress = ragCompress === true;
+  }
 
   try {
         const { handleChatRequest } = require('../src/services/chatService');
@@ -221,6 +227,7 @@ router.post('/chat/stream', optionalAuth, async (req, res) => {
     useRag,
     ragTopK,
     ragFilters,
+    ragCompress,
     autoRoute = false,
     taskType = null
   } = req.body;
@@ -235,6 +242,11 @@ router.post('/chat/stream', optionalAuth, async (req, res) => {
   }
   if (!message) {
     return res.status(400).json({ status: 'error', message: 'Message is required' });
+  }
+
+  // Merge ragCompress into options
+  if (ragCompress !== undefined) {
+      options.ragCompress = ragCompress === true;
   }
 
   // Set SSE headers

@@ -193,7 +193,10 @@ function attachEventListeners() {
   });
 
   document.getElementById('importFileInput').addEventListener('change', (e) => {
-    handleImportFile(e.target.files[0]);
+    // Safety check: ensure a file was selected
+    if (e.target.files && e.target.files.length > 0) {
+      handleImportFile(e.target.files[0]);
+    }
     e.target.value = ''; // Reset file input
   });
 
@@ -570,6 +573,10 @@ function filterAndRenderPrompts() {
       case 'name':
         return nameA.localeCompare(nameB);
       case 'version':
+        // Safety check: ensure arrays have elements before accessing [0]
+        if (versionsB.length === 0 && versionsA.length === 0) return 0;
+        if (versionsB.length === 0) return 1;
+        if (versionsA.length === 0) return -1;
         return versionsB[0].version - versionsA[0].version;
       case 'impressions':
         const impA = versionsA.reduce((sum, v) => sum + (v.stats?.impressions || 0), 0);
