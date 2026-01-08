@@ -213,8 +213,28 @@ router.post('/chat', optionalAuth, async (req, res) => {
   }
 });
 
-// CHAT STREAMING: SSE endpoint for real-time token streaming
-router.post('/chat/stream', optionalAuth, async (req, res) => {
+const decodeStreamPayload = (payload) => {
+  if (!payload) return null;
+  try {
+    const raw = Buffer.from(payload, 'base64').toString('utf8');
+    return JSON.parse(raw);
+  } catch (err) {
+    logger.warn('Failed to decode stream payload', { error: err.message });
+    return null;
+  }
+};
+
+const safeJsonParse = (value, fallback) => {
+  if (!value) return fallback;
+  try {
+    return JSON.parse(value);
+  } catch (err) {
+    logger.warn('Failed to parse stream query JSON', { error: err.message });
+    return fallback;
+  }
+};
+
+const handleChatStreamRequest = async (req, res, payload) => {
   const {
     target = process.env.OLLAMA_HOST,
     model,
@@ -230,7 +250,7 @@ router.post('/chat/stream', optionalAuth, async (req, res) => {
     ragCompress,
     autoRoute = false,
     taskType = null
-  } = req.body;
+  } = payload || {};
 
   if (!target) {
     return res.status(500).json({ status: 'error', message: 'OLLAMA_HOST not configured and no target provided' });
@@ -246,7 +266,7 @@ router.post('/chat/stream', optionalAuth, async (req, res) => {
 
   // Merge ragCompress into options
   if (ragCompress !== undefined) {
-      options.ragCompress = ragCompress === true;
+    options.ragCompress = ragCompress === true;
   }
 
   // Set SSE headers
@@ -257,9 +277,25 @@ router.post('/chat/stream', optionalAuth, async (req, res) => {
 
   // Helper to send SSE event
   const sendEvent = (event, data) => {
+    if (res.writableEnded) return;
     res.write(`event: ${event}\n`);
     res.write(`data: ${JSON.stringify(data)}\n\n`);
   };
+
+  const abortController = new AbortController();
+  const heartbeat = setInterval(() => {
+    if (!res.writableEnded) {
+      res.write(': ping\n\n');
+    }
+  }, 15000);
+
+  const handleClose = () => {
+    clearInterval(heartbeat);
+    abortController.abort();
+    logger.info('Client disconnected from streaming');
+  };
+
+  req.on('close', handleClose);
 
   try {
     const { handleChatRequestStream } = require('../src/services/chatService');
@@ -281,6 +317,7 @@ router.post('/chat/stream', optionalAuth, async (req, res) => {
       ragStore,
       autoRoute,
       taskType,
+      abortSignal: abortController.signal,
       onToken: (token) => {
         sendEvent('token', { content: token });
       },
@@ -288,11 +325,15 @@ router.post('/chat/stream', optionalAuth, async (req, res) => {
         sendEvent('thinking', { content: thinking });
       },
       onComplete: (result) => {
+        if (abortController.signal.aborted) return;
         sendEvent('done', result);
+        clearInterval(heartbeat);
         res.end();
       },
       onError: (error) => {
+        if (abortController.signal.aborted) return;
         sendEvent('error', { message: error.message });
+        clearInterval(heartbeat);
         res.end();
       }
     });
@@ -300,13 +341,35 @@ router.post('/chat/stream', optionalAuth, async (req, res) => {
   } catch (err) {
     logger.error('Chat streaming error', { error: err.message, stack: err.stack });
     sendEvent('error', { message: err.message });
+    clearInterval(heartbeat);
     res.end();
   }
+};
 
-  // Handle client disconnect
-  req.on('close', () => {
-    logger.info('Client disconnected from streaming');
-  });
+// CHAT STREAMING: SSE endpoint for real-time token streaming
+router.post('/chat/stream', optionalAuth, async (req, res) => {
+  await handleChatStreamRequest(req, res, req.body);
+});
+
+router.get('/chat/stream', optionalAuth, async (req, res) => {
+  const payload = decodeStreamPayload(req.query.payload) || {
+    target: req.query.target,
+    model: req.query.model,
+    message: req.query.message,
+    messages: safeJsonParse(req.query.messages, []),
+    system: req.query.system,
+    persona: req.query.persona,
+    options: safeJsonParse(req.query.options, {}),
+    conversationId: req.query.conversationId,
+    useRag: req.query.useRag === 'true',
+    ragTopK: req.query.ragTopK ? parseInt(req.query.ragTopK, 10) : undefined,
+    ragFilters: safeJsonParse(req.query.ragFilters, undefined),
+    ragCompress: req.query.ragCompress === 'true',
+    autoRoute: req.query.autoRoute === 'true',
+    taskType: req.query.taskType
+  };
+
+  await handleChatStreamRequest(req, res, payload);
 });
 
 // FEEDBACK

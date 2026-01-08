@@ -99,7 +99,9 @@ const AlertSchema = new mongoose.Schema({
       sentAt: Date,
       url: String,
       statusCode: Number,
-      error: String
+      error: String,
+      attempts: { type: Number, default: 0 },
+      lastError: String
     },
     dataapi_log: {
       sent: { type: Boolean, default: false },

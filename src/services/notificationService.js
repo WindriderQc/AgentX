@@ -32,7 +32,13 @@ class NotificationService {
         enabled: process.env.WEBHOOK_ENABLED === 'true',
         url: process.env.WEBHOOK_URL,
         method: process.env.WEBHOOK_METHOD || 'POST',
-        headers: this._parseHeaders(process.env.WEBHOOK_HEADERS)
+        headers: this._parseHeaders(process.env.WEBHOOK_HEADERS),
+        timeoutMs: parseInt(process.env.WEBHOOK_TIMEOUT_MS || '5000'),
+        retry: {
+          maxAttempts: parseInt(process.env.WEBHOOK_RETRY_MAX_ATTEMPTS || '3'),
+          baseDelayMs: parseInt(process.env.WEBHOOK_RETRY_BASE_DELAY_MS || '500'),
+          jitterMs: parseInt(process.env.WEBHOOK_RETRY_JITTER_MS || '250')
+        }
       }
     };
 
@@ -317,23 +323,61 @@ class NotificationService {
         },
         body: JSON.stringify(payload)
       });
+      const maxAttempts = Math.max(1, this.config.webhook.retry.maxAttempts);
+      let lastError = null;
 
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`Webhook error: ${response.status} ${text}`);
+      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        try {
+          const response = await this._fetchWithTimeout(fetch, this.config.webhook.url, {
+            method: this.config.webhook.method,
+            headers: {
+              'Content-Type': 'application/json',
+              ...this.config.webhook.headers
+            },
+            body: JSON.stringify(payload)
+          }, this.config.webhook.timeoutMs);
+
+          if (!response.ok) {
+            const text = await response.text();
+            throw new Error(`Webhook error: ${response.status} ${text}`);
+          }
+
+          logger.info('[NotificationService] Webhook notification sent', {
+            alertId: alert._id,
+            url: this.config.webhook.url,
+            attempts: attempt
+          });
+          return { sent: true, statusCode: response.status, attempts: attempt };
+        } catch (err) {
+          lastError = err.message;
+          if (attempt < maxAttempts) {
+            const delayMs = this._calculateWebhookRetryDelay(attempt - 1);
+            logger.warn('[NotificationService] Webhook retry scheduled', {
+              alertId: alert._id,
+              attempt,
+              nextDelayMs: delayMs,
+              error: err.message
+            });
+            await this._sleep(delayMs);
+            continue;
+          }
+        }
       }
 
-      logger.info('[NotificationService] Webhook notification sent', {
+      logger.error('[NotificationService] Failed to send webhook notification', {
         alertId: alert._id,
         url: webhookConfig.url
       });
       return { sent: true, statusCode: response.status, url: webhookConfig.url };
+        error: lastError
+      });
+      return { sent: false, error: lastError, attempts: maxAttempts, lastError };
     } catch (err) {
       logger.error('[NotificationService] Failed to send webhook notification', {
         alertId: alert._id,
         error: err.message
       });
-      return { sent: false, error: err.message };
+      return { sent: false, error: err.message, lastError: err.message };
     }
   }
 
@@ -417,6 +461,29 @@ class NotificationService {
         configured: !!this.config.webhook.url
       }
     };
+  }
+
+  _calculateWebhookRetryDelay(attempt) {
+    const baseDelay = this.config.webhook.retry.baseDelayMs;
+    const jitterMs = this.config.webhook.retry.jitterMs;
+    const backoff = baseDelay * Math.pow(2, attempt);
+    const jitter = jitterMs > 0 ? Math.floor(Math.random() * jitterMs) : 0;
+    return backoff + jitter;
+  }
+
+  async _sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  async _fetchWithTimeout(fetch, url, options, timeoutMs) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      return await fetch(url, { ...options, signal: controller.signal });
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
 
   // Helper methods for formatting
