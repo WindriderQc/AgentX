@@ -10,160 +10,24 @@ const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
 const CustomDashboard = require('../models/CustomDashboard');
-const Conversation = require('../models/Conversation');
-const PromptConfig = require('../models/PromptConfig');
-const Alert = require('../models/Alert');
 const logger = require('../config/logger');
 const { requireAuth } = require('../src/middleware/auth');
-const { attachWorkspace, requireWorkspaceAccess } = require('../src/middleware/workspace');
+const { attachWorkspace, requireWorkspaceAccess, requireAdmin } = require('../src/middleware/workspace');
+const {
+    executeWidgetQuery,
+    validateDashboardLayout,
+    validateWidgetDefinition
+} = require('../src/services/dashboardService');
 
 // Middleware: Authenticate & Attach Workspace
 router.use(requireAuth);
 router.use(attachWorkspace);
 router.use(requireWorkspaceAccess);
 
-// helper for widget data execution
-const executeWidgetQuery = async (widget, workspaceId) => {
-    const { dataSource } = widget;
-    if (!dataSource) return null;
-
-    const collectionMap = {
-        'conversations': Conversation,
-        'prompts': PromptConfig,
-        'alerts': Alert
-    };
-
-    const Model = collectionMap[dataSource.collection];
-    if (!Model) return { error: 'Invalid collection' };
-
-    const matchStage = { 
-        workspaceId,
-        ...dataSource.filter 
-    };
-
-    // Metric (Single Value)
-    if (widget.type === 'metric') {
-        if (dataSource.aggregation === 'count') {
-            const count = await Model.countDocuments(matchStage);
-            return { value: count };
-        }
-
-        if (dataSource.aggregation === 'sum' || dataSource.aggregation === 'avg') {
-            const field = dataSource.field;
-            if (!field) {
-                return { value: 0, error: 'Field required for sum/avg aggregation' };
-            }
-
-            const pipeline = [
-                { $match: matchStage },
-                {
-                    $group: {
-                        _id: null,
-                        result: dataSource.aggregation === 'sum'
-                            ? { $sum: `$${field}` }
-                            : { $avg: `$${field}` }
-                    }
-                }
-            ];
-
-            const results = await Model.aggregate(pipeline);
-            const value = results.length > 0 ? results[0].result : 0;
-
-            // Round avg to 2 decimal places
-            return {
-                value: dataSource.aggregation === 'avg'
-                    ? Math.round(value * 100) / 100
-                    : value
-            };
-        }
-
-        return { value: 0, error: 'Invalid aggregation type' };
-    }
-
-    // Chart (Grouped Data)
-    if (widget.type === 'chart') {
-        const pipeline = [
-            { $match: matchStage }
-        ];
-
-        if (dataSource.groupBy) {
-            // Group by date (assumed for now if groupBy is date-like) or field
-            // Simplified for MVP: Group by field value or Day
-            if (dataSource.groupBy === 'createdAt') {
-                pipeline.push({
-                    $group: {
-                        _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
-                        count: { $sum: 1 }
-                    }
-                });
-                pipeline.push({ $sort: { _id: 1 } }); // Sort by date
-            } else {
-                pipeline.push({
-                    $group: {
-                        _id: `$${dataSource.groupBy}`,
-                        count: { $sum: 1 }
-                    }
-                });
-            }
-        }
-
-        const results = await Model.aggregate(pipeline);
-        
-        // Format for Chart.js
-        return {
-            labels: results.map(r => r._id),
-            datasets: [{
-                label: widget.title || 'Count',
-                data: results.map(r => r.count)
-            }]
-        };
-    }
-
-    // Table Widget
-    if (widget.type === 'table') {
-        let results;
-        if (dataSource.pipeline && Array.isArray(dataSource.pipeline) && dataSource.pipeline.length > 0) {
-            // Use custom pipeline but ENFORCE workspace scope
-            const enforcedMatch = { $match: { workspaceId } };
-            // Prepend security enforcement
-            results = await Model.aggregate([enforcedMatch, ...dataSource.pipeline]);
-        } else {
-            // Default: List items with limit
-            const fields = dataSource.field ? { [dataSource.field]: 1 } : {};
-            // If specific fields aren't requested, maybe don't project?
-            // Or default to some reasonable fields?
-            // For now, return raw documents (excluding sensitive fields if any)
-            results = await Model.find(matchStage).limit(100).lean();
-        }
-
-        if (!results || results.length === 0) {
-            return { columns: [], rows: [], total: 0 };
-        }
-
-        // Extract columns from first result
-        // Flatten object? For now, top level keys
-        const columns = Object.keys(results[0]).filter(k => k !== '__v' && k !== 'workspaceId');
-        
-        // Format rows
-        const rows = results.map(doc => {
-            return columns.map(col => {
-                const val = doc[col];
-                if (val && typeof val === 'object' && !Array.isArray(val) && val instanceof Date) {
-                    return val.toISOString();
-                }
-                if (val && typeof val === 'object') return JSON.stringify(val);
-                return val;
-            });
-        });
-
-        return {
-            columns,
-            rows,
-            total: results.length
-        };
-    }
-
-    return null;
+const canEditDashboard = (req, dashboard) => {
+    if (!dashboard || !req.user) return false;
+    if (dashboard.createdBy.toString() === req.user._id.toString()) return true;
+    return req.workspaceMember?.isAdmin?.() === true;
 };
 
 // ============================================
@@ -195,9 +59,17 @@ router.get('/', async (req, res) => {
  * POST /api/dashboards
  * Create new dashboard
  */
-router.post('/', async (req, res) => {
+router.post('/', requireAdmin, async (req, res) => {
     try {
         const { name, description, layout, isPublic } = req.body;
+
+        const validation = validateDashboardLayout(layout || []);
+        if (!validation.isValid) {
+            return res.status(400).json({
+                status: 'error',
+                message: validation.errors.join(' ')
+            });
+        }
 
         const dashboard = await CustomDashboard.create({
             workspaceId: req.workspace._id,
@@ -248,15 +120,28 @@ router.get('/:id', async (req, res) => {
 router.patch('/:id', async (req, res) => {
     try {
         const { name, description, layout, isPublic } = req.body;
-        
+
         const dashboard = await CustomDashboard.findOne({
             _id: req.params.id,
-            workspaceId: req.workspace._id,
-            createdBy: req.user._id // Only creator can edit
+            workspaceId: req.workspace._id
         });
 
         if (!dashboard) {
-            return res.status(404).json({ status: 'error', message: 'Dashboard not found or access denied' });
+            return res.status(404).json({ status: 'error', message: 'Dashboard not found' });
+        }
+
+        if (!canEditDashboard(req, dashboard)) {
+            return res.status(403).json({ status: 'error', message: 'Access denied' });
+        }
+
+        if (layout) {
+            const validation = validateDashboardLayout(layout);
+            if (!validation.isValid) {
+                return res.status(400).json({
+                    status: 'error',
+                    message: validation.errors.join(' ')
+                });
+            }
         }
 
         if (name) dashboard.name = name;
@@ -273,21 +158,156 @@ router.patch('/:id', async (req, res) => {
 });
 
 /**
+ * POST /api/dashboards/:id/panels
+ * Add a panel to a dashboard
+ */
+router.post('/:id/panels', async (req, res) => {
+    try {
+        const dashboard = await CustomDashboard.findOne({
+            _id: req.params.id,
+            workspaceId: req.workspace._id
+        });
+
+        if (!dashboard) {
+            return res.status(404).json({ status: 'error', message: 'Dashboard not found' });
+        }
+
+        if (!canEditDashboard(req, dashboard)) {
+            return res.status(403).json({ status: 'error', message: 'Access denied' });
+        }
+
+        const panelInput = req.body || {};
+        const panel = {
+            x: 0,
+            y: 0,
+            w: 1,
+            h: 1,
+            ...panelInput,
+            id: panelInput.id || `panel_${new mongoose.Types.ObjectId().toString()}`
+        };
+
+        const validation = validateWidgetDefinition(panel);
+        if (!validation.isValid) {
+            return res.status(400).json({ status: 'error', message: validation.errors.join(' ') });
+        }
+
+        dashboard.layout.push(panel);
+        await dashboard.save();
+
+        res.status(201).json({ status: 'success', data: dashboard });
+    } catch (error) {
+        logger.error('Failed to add dashboard panel', { error: error.message });
+        res.status(500).json({ status: 'error', message: 'Internal server error' });
+    }
+});
+
+/**
+ * PATCH /api/dashboards/:id/panels/:panelId
+ * Update a panel in a dashboard
+ */
+router.patch('/:id/panels/:panelId', async (req, res) => {
+    try {
+        const dashboard = await CustomDashboard.findOne({
+            _id: req.params.id,
+            workspaceId: req.workspace._id
+        });
+
+        if (!dashboard) {
+            return res.status(404).json({ status: 'error', message: 'Dashboard not found' });
+        }
+
+        if (!canEditDashboard(req, dashboard)) {
+            return res.status(403).json({ status: 'error', message: 'Access denied' });
+        }
+
+        const panelIndex = dashboard.layout.findIndex(panel => panel.id === req.params.panelId);
+        if (panelIndex === -1) {
+            return res.status(404).json({ status: 'error', message: 'Panel not found' });
+        }
+
+        const existingPanel = dashboard.layout[panelIndex].toObject
+            ? dashboard.layout[panelIndex].toObject()
+            : dashboard.layout[panelIndex];
+
+        const updatedPanel = {
+            ...existingPanel,
+            ...req.body,
+            dataSource: {
+                ...existingPanel.dataSource,
+                ...(req.body?.dataSource || {})
+            },
+            id: existingPanel.id
+        };
+
+        const validation = validateWidgetDefinition(updatedPanel);
+        if (!validation.isValid) {
+            return res.status(400).json({ status: 'error', message: validation.errors.join(' ') });
+        }
+
+        dashboard.layout[panelIndex] = updatedPanel;
+        await dashboard.save();
+
+        res.json({ status: 'success', data: dashboard });
+    } catch (error) {
+        logger.error('Failed to update dashboard panel', { error: error.message });
+        res.status(500).json({ status: 'error', message: 'Internal server error' });
+    }
+});
+
+/**
+ * DELETE /api/dashboards/:id/panels/:panelId
+ * Remove a panel from a dashboard
+ */
+router.delete('/:id/panels/:panelId', async (req, res) => {
+    try {
+        const dashboard = await CustomDashboard.findOne({
+            _id: req.params.id,
+            workspaceId: req.workspace._id
+        });
+
+        if (!dashboard) {
+            return res.status(404).json({ status: 'error', message: 'Dashboard not found' });
+        }
+
+        if (!canEditDashboard(req, dashboard)) {
+            return res.status(403).json({ status: 'error', message: 'Access denied' });
+        }
+
+        const originalLength = dashboard.layout.length;
+        dashboard.layout = dashboard.layout.filter(panel => panel.id !== req.params.panelId);
+
+        if (dashboard.layout.length === originalLength) {
+            return res.status(404).json({ status: 'error', message: 'Panel not found' });
+        }
+
+        await dashboard.save();
+        res.json({ status: 'success', data: dashboard });
+    } catch (error) {
+        logger.error('Failed to delete dashboard panel', { error: error.message });
+        res.status(500).json({ status: 'error', message: 'Internal server error' });
+    }
+});
+
+/**
  * DELETE /api/dashboards/:id
  * Delete dashboard
  */
 router.delete('/:id', async (req, res) => {
     try {
-        const result = await CustomDashboard.deleteOne({
+        const dashboard = await CustomDashboard.findOne({
             _id: req.params.id,
-            workspaceId: req.workspace._id,
-            createdBy: req.user._id
+            workspaceId: req.workspace._id
         });
 
-        if (result.deletedCount === 0) {
-            return res.status(404).json({ status: 'error', message: 'Dashboard not found or access denied' });
+        if (!dashboard) {
+            return res.status(404).json({ status: 'error', message: 'Dashboard not found' });
         }
 
+        if (!canEditDashboard(req, dashboard)) {
+            return res.status(403).json({ status: 'error', message: 'Access denied' });
+        }
+
+        await dashboard.deleteOne();
         res.json({ status: 'success', message: 'Dashboard deleted' });
     } catch (error) {
         res.status(500).json({ status: 'error', message: 'Internal server error' });

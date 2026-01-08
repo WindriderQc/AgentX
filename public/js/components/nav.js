@@ -21,6 +21,7 @@ function injectNav(activePageId = '') {
         { label: 'Performance', href: 'performance.html', icon: 'fa-gauge-high', id: 'performance' },
         { label: 'Analytics', href: 'analytics.html', icon: 'fa-chart-line', id: 'analytics' },
         { label: 'Dashboards', href: 'custom-dashboard.html', icon: 'fa-columns', id: 'custom-dashboards' },
+        { label: 'Dashboard Builder', href: 'dashboard-builder.html', icon: 'fa-layer-group', id: 'dashboard-builder' },
         { label: 'Features', href: 'features-inventory.html', icon: 'fa-list-check', id: 'features-inventory' },
         { label: 'Telemetry', href: 'features-telemetry.html', icon: 'fa-chart-bar', id: 'features-telemetry' },
         { label: 'Adoption', href: 'features-adoption.html', icon: 'fa-users', id: 'features-adoption' },
