@@ -76,6 +76,21 @@ const CustomDashboardSchema = new mongoose.Schema({
     }
   }],
 
+  layoutMeta: {
+    columns: {
+      type: Number,
+      default: 4
+    },
+    rowHeight: {
+      type: Number,
+      default: 200
+    },
+    gap: {
+      type: Number,
+      default: 16
+    }
+  },
+
   // Access Control
   isPublic: {
     type: Boolean,
