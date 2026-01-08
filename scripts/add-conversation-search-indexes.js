@@ -22,7 +22,7 @@
 
 require('dotenv').config();
 const mongoose = require('mongoose');
-const logger = require('../src/helpers/logger');
+const logger = require('../config/logger');
 
 // ANSI color codes for terminal output
 const colors = {

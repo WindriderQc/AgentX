@@ -102,7 +102,7 @@ Rules:
 5. Maximum ${maxSentences} sentences
 6. Only include sentences with relevance score ≥${minScore}/1.0
 
-Format your response as:
+Format your response as a list of sentences. DO NOT include "Here are the sentences" or any conversational text.
 [Sentence 1]
 [Sentence 2]
 ...`;
@@ -137,8 +137,15 @@ Extract the most relevant sentences:`;
       const data = await response.json();
       let extractedText = data.response ? data.response.trim() : '';
 
+      // Post-processing cleanup
+      extractedText = extractedText.replace(/^(Here are|Sure|Here is|Below are).*?:\s*/im, '');
+      extractedText = extractedText.replace(/^["']|["']$/g, '');
+      extractedText = extractedText.replace(/\[Sentence \d+\]:?/gi, ''); // Remove [Sentence 1] markers
+      extractedText = extractedText.replace(/^[\*\-]\s*/gm, ''); // Remove bullets
+      extractedText = extractedText.replace(/\n\s*\n/g, '\n'); // Remove extra newlines
+
       // Handle "no content" case
-      if (extractedText === 'NO_RELEVANT_CONTENT' || extractedText.length < 10) {
+      if (extractedText.includes('NO_RELEVANT_CONTENT') || extractedText.length < 10) {
         logger.debug('No relevant content found in chunk', {
           chunkId: chunk._id,
           query: query.substring(0, 50)

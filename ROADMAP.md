@@ -706,6 +706,7 @@ AgentX development is organized across **eight development tracks**, each focusi
 - [x] Advanced RAG features (query expansion, re-ranking, hybrid search) ✅ COMPLETE (already implemented)
 - [x] Expose RAG advanced options in chat UI (query expansion, hybrid search, re-ranking toggles) ✅ COMPLETE (2026-01-08)
 - [x] RAG citation tracking (source references in LLM responses) ✅ COMPLETE (2026-01-08)
+- [x] Cost tracking & usage analytics (dashboard, token counting, cost by model) ✅ COMPLETE (2026-01-08)
 - [ ] RAG contextual compression (LLM extracts relevant sentences from chunks) ⚡ NEXT UP (Spec ready)
 - [ ] Custom dashboard builder for metrics visualization
 - [ ] Webhook retry logic with exponential backoff

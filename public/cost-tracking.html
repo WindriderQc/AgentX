@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AgentX • Cost Tracking</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    .dashboard-container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    .period-selector {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 24px;
+      padding: 4px;
+      background: var(--card-bg);
+      border-radius: 8px;
+      width: fit-content;
+      border: 1px solid var(--border);
+    }
+
+    .period-btn {
+      padding: 8px 16px;
+      border-radius: 6px;
+      background: transparent;
+      border: none;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-family: 'Space Grotesk', sans-serif;
+    }
+
+    .period-btn.active {
+      background: var(--accent);
+      color: var(--bg);
+      font-weight: 600;
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 24px;
+      margin-bottom: 32px;
+    }
+
+    .stat-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      transition: transform 0.2s ease;
+    }
+
+    .stat-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+    }
+
+    .stat-label {
+      font-size: 14px;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .stat-value {
+      font-size: 32px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .charts-row {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 24px;
+      margin-bottom: 32px;
+    }
+
+    .chart-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      height: 400px;
+    }
+
+    .table-container {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      overflow-x: auto;
+    }
+
+    h2 {
+      margin-bottom: 24px;
+      color: var(--text-primary);
+      font-size: 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th {
+      text-align: left;
+      padding: 12px;
+      color: var(--text-secondary);
+      font-weight: 500;
+      border-bottom: 1px solid var(--border);
+    }
+
+    td {
+      padding: 12px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-primary);
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    .model-badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 4px;
+      background: rgba(124, 240, 255, 0.1);
+      color: var(--accent);
+      font-size: 12px;
+    }
+
+    .nav-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 32px;
+    }
+
+    .back-link {
+      color: var(--text-secondary);
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: color 0.2s;
+    }
+
+    .back-link:hover {
+      color: var(--accent);
+    }
+
+    @media (max-width: 900px) {
+      .charts-row {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body class="dark-theme">
+  <div class="dashboard-container">
+    <div class="nav-header">
+      <a href="/" class="back-link">
+        <i class="fas fa-arrow-left"></i> Back to Chat
+      </a>
+      <h1>Cost Tracking & Analytics</h1>
+      <div style="width: 100px;"></div> <!-- Spacer -->
+    </div>
+
+    <!-- Period Selector -->
+    <div class="period-selector">
+      <button class="period-btn active" data-period="7d">Last 7 Days</button>
+      <button class="period-btn" data-period="30d">Last 30 Days</button>
+      <button class="period-btn" data-period="90d">Last 90 Days</button>
+      <button class="period-btn" data-period="all">All Time</button>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="summary-grid">
+      <div class="stat-card">
+        <div class="stat-label">
+          <i class="fas fa-comments"></i> Total Conversations
+        </div>
+        <div class="stat-value" id="totalConversations">-</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">
+          <i class="fas fa-chart-bar"></i> Total Tokens
+        </div>
+        <div class="stat-value" id="totalTokens">-</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">
+          <i class="fas fa-dollar-sign"></i> Estimated Cost
+        </div>
+        <div class="stat-value" id="totalCost">-</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">
+          <i class="fas fa-chart-line"></i> Avg Cost/Conv
+        </div>
+        <div class="stat-value" id="avgCost">-</div>
+      </div>
+    </div>
+
+    <!-- Charts -->
+    <div class="charts-row">
+      <div class="chart-card">
+        <h2>Daily Usage Trend</h2>
+        <canvas id="dailyUsageChart"></canvas>
+      </div>
+      <div class="chart-card">
+        <h2>Cost by Model</h2>
+        <canvas id="modelUsageChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Top Conversations -->
+    <div class="table-container">
+      <h2><i class="fas fa-trophy"></i> Top Expensive Conversations</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Title</th>
+            <th>Model</th>
+            <th>Tokens</th>
+            <th>Cost</th>
+            <th>Date</th>
+          </tr>
+        </thead>
+        <tbody id="topConversationsBody">
+          <!-- Rows injected by JS -->
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="js/cost-tracking.js"></script>
+</body>
+</html>

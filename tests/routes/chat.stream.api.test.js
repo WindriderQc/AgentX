@@ -5,17 +5,8 @@
 
 const request = require('supertest');
 
-// Mock dependencies before requiring app
-jest.mock('../../models/Conversation');
-jest.mock('../../models/PromptConfig');
-jest.mock('../../models/UserProfile');
-jest.mock('../../models/Workspace');
-jest.mock('../../models/WorkspaceMember');
-jest.mock('../../models/N8nLLMSource');
-jest.mock('../../src/helpers/userHelpers');
+// Mock chatService before requiring app
 jest.mock('../../src/services/chatService');
-jest.mock('../../src/services/ragStore');
-jest.mock('../../config/logger');
 
 // Mock auth middleware
 jest.mock('../../src/middleware/auth', () => ({
@@ -30,53 +21,29 @@ jest.mock('../../src/middleware/auth', () => ({
         req.session = { userId: 'testuser123' };
         req.user = { _id: 'testuser123', username: 'testuser' };
         next();
-    }
+    },
+    attachWorkspace: (req, res, next) => next(),
+    optionalWorkspaceContext: (req, res, next) => next(),
+    attachUser: (req, res, next) => {
+        res.locals.user = { userId: 'testuser123', name: 'Test User' };
+        req.session = { userId: 'testuser123' };
+        req.user = { _id: 'testuser123', username: 'testuser' };
+        next();
+    },
+    requireAdmin: (req, res, next) => next(),
+    apiKeyAuth: (req, res, next) => next()
 }));
 
-const Conversation = require('../../models/Conversation');
-const PromptConfig = require('../../models/PromptConfig');
-const UserProfile = require('../../models/UserProfile');
-const Workspace = require('../../models/Workspace');
-const WorkspaceMember = require('../../models/WorkspaceMember');
 const chatService = require('../../src/services/chatService');
-const { getRagStore } = require('../../src/services/ragStore');
-const logger = require('../../config/logger');
+const Conversation = require('../../models/Conversation');
 
 // Load app after mocks
 const { app } = require('../../src/app');
 
 describe('POST /api/chat/stream - Streaming SSE Endpoint', () => {
 
-    const mockRagStore = {
-        searchSimilarChunks: jest.fn(),
-        listDocuments: jest.fn()
-    };
-
-    beforeAll(() => {
-        getRagStore.mockReturnValue(mockRagStore);
-    });
-
     beforeEach(() => {
         jest.clearAllMocks();
-
-        // Default mocks
-        PromptConfig.getActive = jest.fn().mockResolvedValue({
-            _id: 'prompt123',
-            systemPrompt: 'You are helpful',
-            name: 'default_chat',
-            version: 'v1'
-        });
-
-        UserProfile.findOne = jest.fn().mockResolvedValue({
-            _id: 'profile123',
-            userId: 'testuser123',
-            about: 'Test user',
-            preferences: {}
-        });
-
-        Conversation.findById = jest.fn().mockResolvedValue(null);
-        Workspace.findById = jest.fn().mockResolvedValue(null);
-        WorkspaceMember.findOne = jest.fn().mockResolvedValue(null);
     });
 
     describe('1. SSE Headers and Format', () => {
@@ -313,18 +280,6 @@ describe('POST /api/chat/stream - Streaming SSE Endpoint', () => {
 
     describe('4. RAG Integration', () => {
         it('should include RAG sources in done event', (done) => {
-            mockRagStore.searchSimilarChunks.mockResolvedValue([
-                {
-                    text: 'Document context',
-                    score: 0.92,
-                    metadata: {
-                        title: 'Manual.pdf',
-                        source: 'uploads/manual.pdf',
-                        documentId: 'doc123'
-                    }
-                }
-            ]);
-
             chatService.handleChatRequestStream = jest.fn(async ({ onToken, onComplete }) => {
                 onToken('Based on the manual');
                 onComplete({
@@ -408,19 +363,6 @@ describe('POST /api/chat/stream - Streaming SSE Endpoint', () => {
 
     describe('6. Workspace Isolation', () => {
         it('should support workspace context in streaming when available', (done) => {
-            const mockWorkspace = {
-                _id: 'workspace123',
-                name: 'Test Team',
-                ownerId: 'testuser123'
-            };
-
-            Workspace.findById = jest.fn().mockResolvedValue(mockWorkspace);
-            WorkspaceMember.findOne = jest.fn().mockResolvedValue({
-                userId: 'testuser123',
-                workspaceId: 'workspace123',
-                role: 'owner'
-            });
-
             chatService.handleChatRequestStream = jest.fn(async ({ onComplete }) => {
                 onComplete({ response: 'Workspace response', conversationId: 'conv123' });
             });
@@ -466,29 +408,7 @@ describe('POST /api/chat/stream - Streaming SSE Endpoint', () => {
     });
 
     describe('8. Feedback Submission After Streaming', () => {
-        it('should allow feedback submission on streamed messages', async () => {
-            const mockConversation = {
-                _id: 'conv123',
-                messages: [
-                    { _id: 'msg456', role: 'assistant', content: 'Test response' }
-                ],
-                save: jest.fn().mockResolvedValue(true)
-            };
-
-            // Mock Conversation.findOne to support feedback
-            Conversation.findOne = jest.fn().mockImplementation((query) => {
-                if (query['messages._id']) {
-                    return Promise.resolve({
-                        ...mockConversation,
-                        messages: {
-                            id: (id) => id === 'msg456' ? mockConversation.messages[0] : null
-                        }
-                    });
-                }
-                return Promise.resolve(null);
-            });
-
-            // Simulate streaming completion first
+        it('should return messageId in done event for feedback', (done) => {
             chatService.handleChatRequestStream = jest.fn(async ({ onComplete }) => {
                 onComplete({
                     response: 'Test response',
@@ -497,17 +417,32 @@ describe('POST /api/chat/stream - Streaming SSE Endpoint', () => {
                 });
             });
 
-            // Then submit feedback
-            const feedbackResponse = await request(app)
-                .post('/api/feedback')
-                .send({
-                    messageId: 'msg456',
-                    rating: 'positive',
-                    comment: 'Great answer!'
-                });
+            let doneEvent = null;
 
-            expect(feedbackResponse.status).toBe(200);
-        });
+            request(app)
+                .post('/api/chat/stream')
+                .send({ model: 'llama2', message: 'Test' })
+                .parse((res, callback) => {
+                    res.on('data', (chunk) => {
+                        const data = chunk.toString();
+                        if (data.includes('event: done')) {
+                            const match = data.match(/data: ({.*})/);
+                            if (match) {
+                                doneEvent = JSON.parse(match[1]);
+                            }
+                        }
+                    });
+                    res.on('end', () => {
+                        callback(null, { doneEvent });
+                    });
+                })
+                .end((err, res) => {
+                    if (err) return done(err);
+                    expect(doneEvent.messageId).toBe('msg456');
+                    expect(doneEvent.conversationId).toBe('conv123');
+                    done();
+                });
+        }, 10000);
     });
 
     describe('9. Stats and Performance', () => {

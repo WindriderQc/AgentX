@@ -1,3 +1,26 @@
+/**
+ * Sanitize HTML content to prevent XSS attacks
+ * @param {string} dirty - Unsanitized HTML
+ * @returns {string} - Sanitized HTML
+ */
+function sanitizeHTML(dirty) {
+  if (typeof DOMPurify === 'undefined') {
+    console.error('DOMPurify not loaded - XSS protection disabled!');
+    return dirty; // Fallback (not ideal but prevents breaking)
+  }
+
+  return DOMPurify.sanitize(dirty, {
+    ALLOWED_TAGS: [
+      'p', 'br', 'strong', 'em', 'u', 'code', 'pre',
+      'a', 'ul', 'ol', 'li', 'blockquote', 'h1', 'h2',
+      'h3', 'h4', 'h5', 'h6', 'span', 'div', 'table',
+      'thead', 'tbody', 'tr', 'th', 'td', 'img'
+    ],
+    ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'class', 'id'],
+    ALLOW_DATA_ATTR: false
+  });
+}
+
 // Authentication check
 async function checkAuth() {
   try {
@@ -401,7 +424,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (typeof marked !== 'undefined') {
       // Configure marked options if needed
       // marked.setOptions({ breaks: true }); 
-      body.innerHTML = marked.parse(content);
+      body.innerHTML = sanitizeHTML(marked.parse(content));
     } else {
       body.textContent = content;
     }
@@ -879,12 +902,12 @@ document.addEventListener('DOMContentLoaded', () => {
               if (currentEvent === 'token') {
                 // Progressive token rendering
                 fullContent += data.content;
-                contentDiv.innerHTML = marked.parse(fullContent);
+                contentDiv.innerHTML = sanitizeHTML(marked.parse(fullContent));
                 elements.chatWindow.scrollTop = elements.chatWindow.scrollHeight;
               } else if (currentEvent === 'thinking') {
                 // Show thinking section
                 thinkingContent += data.content;
-                thinkingDiv.innerHTML = `<strong>Thinking:</strong><br>${marked.parse(thinkingContent)}`;
+                thinkingDiv.innerHTML = `<strong>Thinking:</strong><br>${sanitizeHTML(marked.parse(thinkingContent))}`;
                 thinkingDiv.style.display = 'block';
                 elements.chatWindow.scrollTop = elements.chatWindow.scrollHeight;
               } else if (currentEvent === 'done') {
@@ -1037,6 +1060,9 @@ document.addEventListener('DOMContentLoaded', () => {
         setFeedback('Response received.', 'success');
       }
       loadHistoryList();
+      
+      // V8: Update stats
+      if (state.conversationId) refreshStats(state.conversationId);
 
       // Reload conversation to sync message IDs for feedback
       if(state.conversationId) {
@@ -1077,7 +1103,7 @@ document.addEventListener('DOMContentLoaded', () => {
               const div = document.createElement('div');
               div.className = 'history-item';
               div.innerHTML = `
-                <div class="title">${item.title}</div>
+                <div class="title">${sanitizeHTML(item.title)}</div>
                 <div class="date">${new Date(item.date).toLocaleString()}</div>
               `;
               div.onclick = () => loadConversation(item.id);
@@ -1103,6 +1129,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
           state.stats.messages = 0;
           state.stats.replies = 0;
+
+          // V8: Update stats
+          updateConversationStats(data);
 
             data.messages.forEach(msg => {
                 // Manually construct message object to include stats and ragSources
@@ -1695,3 +1724,44 @@ document.addEventListener('DOMContentLoaded', () => {
     init();
   });
 });
+
+/**
+ * Update conversation statistics (tokens, cost) in the UI
+ * V8: Cost Tracking (2026-01-08)
+ */
+function updateConversationStats(conversation) {
+  if (conversation && conversation.usage) {
+    const tokensEl = document.getElementById('conversationTokens');
+    const costEl = document.getElementById('conversationCost');
+    
+    if (tokensEl) {
+      tokensEl.style.display = 'inline-flex';
+      const tokenCount = document.getElementById('tokenCount');
+      if (tokenCount) tokenCount.textContent = (conversation.usage.totalTokens || 0).toLocaleString();
+    }
+    
+    if (costEl) {
+      costEl.style.display = 'inline-flex';
+      const costAmount = document.getElementById('costAmount');
+      if (costAmount) costAmount.textContent = '$' + (conversation.usage.estimatedCost || 0).toFixed(4);
+    }
+  } else {
+    const tokensEl = document.getElementById('conversationTokens');
+    const costEl = document.getElementById('conversationCost');
+    if (tokensEl) tokensEl.style.display = 'none';
+    if (costEl) costEl.style.display = 'none';
+  }
+}
+
+async function refreshStats(conversationId) {
+    if (!conversationId) return;
+    try {
+        const url = window.WorkspaceManager ?
+          WorkspaceManager.addWorkspaceParam(`/api/history/${conversationId}`) : `/api/history/${conversationId}`;
+        const res = await fetch(url);
+        const { data } = await res.json();
+        if (data) updateConversationStats(data);
+    } catch (e) {
+        console.error('Failed to refresh stats', e);
+    }
+}

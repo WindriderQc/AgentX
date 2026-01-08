@@ -474,6 +474,18 @@ const handleChatRequest = async ({
             });
         }
 
+        // NEW: Token Usage Tracking (V8)
+        try {
+            conversation.updateUsage();
+            logger.info('Token usage updated', {
+              conversationId: conversation._id,
+              totalTokens: conversation.usage.totalTokens,
+              estimatedCost: conversation.usage.estimatedCost
+            });
+        } catch (err) {
+            logger.error('Token usage update failed', { error: err.message });
+        }
+
         await conversation.save();
     } catch (err) {
         logger.error('Failed to save conversation', { error: err.message });
@@ -855,6 +867,18 @@ const handleChatRequestStream = async ({
                     conversation.totalCost = totalCost;
                 } catch (err) {
                     logger.error('Conversation cost calculation failed', { error: err.message });
+                }
+
+                // NEW: Token Usage Tracking (V8)
+                try {
+                    conversation.updateUsage();
+                    logger.info('Token usage updated', {
+                      conversationId: conversation._id,
+                      totalTokens: conversation.usage.totalTokens,
+                      estimatedCost: conversation.usage.estimatedCost
+                    });
+                } catch (err) {
+                    logger.error('Token usage update failed', { error: err.message });
                 }
 
                 await conversation.save();

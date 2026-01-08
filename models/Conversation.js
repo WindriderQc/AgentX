@@ -78,6 +78,17 @@ const ConversationSchema = new mongoose.Schema({
   // ragRequested: user/client requested RAG (toggle on) even if retrieval returned no sources.
   ragRequested: { type: Boolean, default: false },
   ragUsed: { type: Boolean, default: false },
+
+  // V8: Token Usage & Cost Tracking (2026-01-08)
+  usage: {
+    promptTokens: { type: Number, default: 0 },
+    completionTokens: { type: Number, default: 0 },
+    totalTokens: { type: Number, default: 0 },
+    estimatedCost: { type: Number, default: 0 }  // USD
+  },
+
+  // NEW: Track last usage update
+  lastUsageUpdate: { type: Date, default: Date.now },
   ragSources: [{
     text: String,        // Truncated chunk preview (first 200 chars)
     score: Number,       // Similarity score
@@ -142,6 +153,27 @@ ConversationSchema.index({ workspaceId: 1, userId: 1, tags: 1 });
 ConversationSchema.index({ workspaceId: 1, userId: 1, model: 1, createdAt: -1 });
 ConversationSchema.index({ workspaceId: 1, userId: 1, ragUsed: 1, createdAt: -1 });
 ConversationSchema.index({ workspaceId: 1, userId: 1, 'messages.feedback.rating': 1 });
+
+ConversationSchema.methods.updateUsage = function() {
+  const { getTokenCounter } = require('../src/services/tokenCounter');
+  const tokenCounter = getTokenCounter();
+
+  const analysis = tokenCounter.analyzeConversation(this);
+
+  this.usage = {
+    promptTokens: analysis.promptTokens,
+    completionTokens: analysis.completionTokens,
+    totalTokens: analysis.totalTokens,
+    estimatedCost: analysis.cost
+  };
+  this.lastUsageUpdate = new Date();
+
+  return this.usage;
+};
+
+// V8 Indexes
+ConversationSchema.index({ 'usage.estimatedCost': -1 }); // For top conversations query
+ConversationSchema.index({ 'usage.totalTokens': -1 });
 
 // Update timestamp on save
 ConversationSchema.pre('save', function() {

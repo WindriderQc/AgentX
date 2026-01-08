@@ -376,6 +376,14 @@
               <span class="label">Messages</span>
               <strong id="statMessages">0</strong>
             </div>
+            <div class="pill inline" id="conversationTokens" style="display: none; margin-left: 12px;">
+              <span class="label">Tokens</span>
+              <strong id="tokenCount">0</strong>
+            </div>
+            <div class="pill inline" id="conversationCost" style="display: none; margin-left: 12px;">
+              <span class="label">Cost</span>
+              <strong id="costAmount">$0.00</strong>
+            </div>
             <button class="ghost small" id="toggleLogBtn">Show session log</button>
           </div>
         </div>
@@ -872,6 +880,8 @@
       }
     });
   </script>
+  <!-- DOMPurify for XSS protection -->
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js" integrity="sha384-7ZnXMgIS8rGZ+yKZPTLJRaHByOhf8v8IkYwk3CYrO/4L9c8KP4HvWp6yFjZGkNvq" crossorigin="anonymous"></script>
   <script src="/js/chat.js"></script>
 </body>
 </html>

@@ -749,6 +749,27 @@ class BenchmarkService {
 
         await batch.lockForExecution(process.pid);
 
+        // Helper for model warmup
+        const warmupModel = async (hostUrl, model) => {
+            try {
+                // Short timeout, don't block too long
+                await fetch(`${hostUrl}/api/generate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        model, 
+                        prompt: 'warmup', 
+                        stream: false, 
+                        options: { num_predict: 1 } 
+                    }),
+                    timeout: 20000 
+                });
+            } catch (err) {
+                // Non-fatal, just log debug
+                logger.debug('Warmup failed / timed out', { host: hostUrl, model, error: err.message });
+            }
+        };
+
         // Per-batch judge queue
         const judgeConcurrency = judgeConfig.concurrency || 2;
         const judgeQueue = new ConcurrencyQueue(judgeConcurrency);
@@ -798,7 +819,16 @@ class BenchmarkService {
                 }
             }
 
+            // Warmup judge if separate host (async background, don't block)
+            if (enableQualityScoring && !judgeSameHost) {
+                const jModel = judgeConfig.model || JUDGE_CONFIG.model;
+                warmupModel(judgeHostUrl, jModel).catch(() => {});
+            }
+
             for (const model of hostModels) {
+                // Warmup tested model (await ensures accurate latency for first prompt)
+                await warmupModel(hostUrl, model);
+
                 for (const prompt of prompts) {
                     // Check if batch was stopped
                     const currentBatch = await BenchmarkBatch.findById(batchId);
