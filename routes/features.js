@@ -440,7 +440,10 @@ router.get('/adoption', async (req, res) => {
     // Safe approach: Count unique users in FeatureUsage + buffer? 
     // Ideally we'd import UserProfile. 
     // Let's assume UserProfile is the canonical user list.
-    const UserProfile = mongoose.model('User') || mongoose.model('UserProfile');
+    const UserProfile = mongoose.models.User || mongoose.models.UserProfile;
+    if (!UserProfile) {
+      throw new Error('User model is not registered');
+    }
     const totalUsers = await UserProfile.countDocuments({});
 
     // 3. Aggregate Usage by Feature
@@ -733,108 +736,6 @@ router.delete('/flags/:name', requireAuth, async (req, res) => {
     res.status(500).json({
       status: 'error',
       message: 'Failed to delete feature flag',
-      error: error.message
-    });
-  }
-});
-
-// ========================================
-// Feature Adoption Endpoints (Tab 3)
-// ========================================
-
-/**
- * GET /api/features/adoption
- * Get feature adoption metrics with filtering
- */
-router.get('/adoption', async (req, res) => {
-  try {
-    const { timeRange = '30d', category = 'all', minAdoption = 0 } = req.query;
-
-    // Parse time range
-    const daysBack = parseInt(timeRange.replace('d', '')) || 30;
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - daysBack);
-
-    // Build aggregation pipeline
-    const matchStage = {
-      'metadata.timestamp': { $gte: cutoff }
-    };
-
-    const usageData = await FeatureUsage.aggregate([
-      { $match: matchStage },
-      {
-        $group: {
-          _id: '$feature',
-          uniqueUsers: { $addToSet: '$userId' },
-          totalUses: { $sum: 1 },
-          avgDuration: { $avg: '$metadata.duration' },
-          lastUsed: { $max: '$metadata.timestamp' }
-        }
-      }
-    ]);
-
-    // Get all features from inventory for category filtering
-    const allFeatures = category === 'all'
-      ? await FeatureInventory.find({})
-      : await FeatureInventory.find({ category });
-
-    // Calculate total users for adoption rate
-    const totalUsers = await FeatureUsage.distinct('userId', {
-      'metadata.timestamp': { $gte: cutoff }
-    });
-    const totalUserCount = totalUsers.length || 1; // Avoid division by zero
-
-    // Merge usage data with feature inventory
-    const adoptionData = usageData.map(usage => {
-      const feature = allFeatures.find(f => f.name === usage._id);
-      const activeUsers = usage.uniqueUsers.length;
-      const adoptionRate = Math.round((activeUsers / totalUserCount) * 100);
-
-      // Calculate 7-day trend (simplified - you could implement more sophisticated trend calculation)
-      const trend = Math.floor(Math.random() * 41) - 20; // Mock trend for now
-
-      return {
-        id: usage._id,
-        feature: usage._id,
-        page: feature?.frontend?.pages?.[0] || '-',
-        category: feature?.category || 'unknown',
-        metrics: {
-          totalUsers: totalUserCount,
-          activeUsers,
-          adoptionRate,
-          trend,
-          avgDuration: Math.round((usage.avgDuration || 0) / 60000), // Convert to minutes
-          lastWeekAdoption: Math.max(0, adoptionRate - Math.abs(trend))
-        },
-        history: Array.from({ length: 7 }, () => Math.floor(Math.random() * 100)) // Mock 7-day history
-      };
-    });
-
-    // Filter by minimum adoption rate
-    const filtered = adoptionData.filter(item => item.metrics.adoptionRate >= parseInt(minAdoption));
-
-    // Calculate summary stats
-    const stats = {
-      totalFeatures: filtered.length,
-      adopted: filtered.filter(f => f.metrics.adoptionRate > 50).length,
-      underutilized: filtered.filter(f => f.metrics.adoptionRate < 10).length,
-      avgEngagement: Math.round(
-        filtered.reduce((sum, f) => sum + f.metrics.avgDuration, 0) / filtered.length || 0
-      )
-    };
-
-    res.json({
-      status: 'success',
-      data: filtered,
-      stats,
-      filters: { timeRange, category, minAdoption }
-    });
-
-  } catch (error) {
-    logger.error('Failed to get feature adoption metrics', { error: error.message });
-    res.status(500).json({
-      status: 'error',
-      message: 'Failed to fetch adoption metrics',
       error: error.message
     });
   }
