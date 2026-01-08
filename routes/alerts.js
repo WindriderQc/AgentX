@@ -13,6 +13,50 @@ const { optionalAuth } = require('../src/middleware/auth');
 const logger = require('../config/logger');
 const { getNotificationService } = require('../src/services/notificationService');
 
+const normalizeChannelConfig = (channelConfig = {}) => {
+  const normalized = {};
+
+  if (channelConfig.email) {
+    const recipients = channelConfig.email.recipients;
+    const normalizedRecipients = Array.isArray(recipients)
+      ? recipients.filter(Boolean)
+      : typeof recipients === 'string'
+        ? recipients.split(',').map(recipient => recipient.trim()).filter(Boolean)
+        : undefined;
+
+    normalized.email = {
+      recipients: normalizedRecipients,
+      subject: channelConfig.email.subject,
+      from: channelConfig.email.from,
+      replyTo: channelConfig.email.replyTo
+    };
+  }
+
+  if (channelConfig.webhook) {
+    let headers = channelConfig.webhook.headers;
+    if (typeof headers === 'string') {
+      try {
+        headers = JSON.parse(headers);
+      } catch {
+        headers = headers.split(',').reduce((acc, pair) => {
+          const [key, value] = pair.split(':').map(part => part.trim());
+          if (key && value) acc[key] = value;
+          return acc;
+        }, {});
+      }
+    }
+
+    normalized.webhook = {
+      url: channelConfig.webhook.url,
+      method: channelConfig.webhook.method,
+      headers,
+      template: channelConfig.webhook.template
+    };
+  }
+
+  return normalized;
+};
+
 /**
  * POST /api/alerts
  * Create a new alert manually
@@ -29,6 +73,7 @@ router.post('/', optionalAuth, async (req, res) => {
       source,
       context = {},
       channels = ['dataapi_log'],
+      channelConfig = {},
       tags = [],
       metadata = {}
     } = req.body;
@@ -53,6 +98,14 @@ router.post('/', optionalAuth, async (req, res) => {
     // Validate and filter channels (graceful handling of unknown channels)
     const validChannels = ['email', 'slack', 'webhook', 'dataapi_log'];
     let filteredChannels = channels.filter(c => validChannels.includes(c));
+    const normalizedChannelConfig = normalizeChannelConfig(channelConfig);
+
+    if (normalizedChannelConfig.email && !filteredChannels.includes('email')) {
+      filteredChannels.push('email');
+    }
+    if (normalizedChannelConfig.webhook && !filteredChannels.includes('webhook')) {
+      filteredChannels.push('webhook');
+    }
 
     // If all channels were invalid, default to dataapi_log
     if (filteredChannels.length === 0) {
@@ -78,6 +131,7 @@ router.post('/', optionalAuth, async (req, res) => {
       message,
       context,
       channels: filteredChannels,
+      channelConfig: normalizedChannelConfig,
       fingerprint,
       source: source || res.locals.user?.userId || 'manual',
       tags,

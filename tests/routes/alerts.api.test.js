@@ -27,6 +27,10 @@ const alertRoutes = require('../../routes/alerts');
 app.use('/api/alerts', alertRoutes);
 
 describe('Alert API Routes', () => {
+  beforeAll(() => {
+    process.env.ALERT_TEST_MODE = 'true';
+  });
+
   beforeEach(async () => {
     // Clear alerts before each test
     await Alert.deleteMany({});
@@ -36,6 +40,7 @@ describe('Alert API Routes', () => {
 
   afterAll(async () => {
     await Alert.deleteMany({});
+    delete process.env.ALERT_TEST_MODE;
   });
 
   describe('POST /api/alerts', () => {
@@ -81,6 +86,40 @@ describe('Alert API Routes', () => {
         .expect(400);
 
       expect(response.body.status).toBe('error');
+    });
+
+    it('should create alert with channel configuration', async () => {
+      const alertData = {
+        title: 'Webhook alert',
+        message: 'Delivery test',
+        severity: 'warning',
+        source: 'manual-test',
+        channels: ['email', 'webhook'],
+        channelConfig: {
+          email: {
+            recipients: ['ops@example.com', 'oncall@example.com'],
+            subject: 'Alert {{title}}'
+          },
+          webhook: {
+            url: 'https://hooks.example.com/alerts',
+            method: 'POST',
+            headers: { Authorization: 'Bearer test' },
+            template: '{\"alert\":\"{{title}}\"}'
+          }
+        }
+      };
+
+      const response = await request(app)
+        .post('/api/alerts')
+        .send(alertData)
+        .expect(201);
+
+      const createdAlert = await Alert.findById(response.body.data.alert._id).lean();
+
+      expect(createdAlert.channelConfig.email.recipients).toEqual(['ops@example.com', 'oncall@example.com']);
+      expect(createdAlert.channelConfig.webhook.url).toBe('https://hooks.example.com/alerts');
+      expect(createdAlert.delivery.email.sent).toBe(true);
+      expect(createdAlert.delivery.webhook.sent).toBe(true);
     });
   });
 
