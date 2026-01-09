@@ -64,6 +64,7 @@ function injectNav(activePageId = '') {
         /* Parent container override to ensure overflow visibility */
         #nav-container {
             overflow: visible !important;
+            z-index: 9000 !important; /* Ensure it stays on top */
         }
 
         .top-nav {
@@ -77,9 +78,17 @@ function injectNav(activePageId = '') {
             width: 100%;
             /* Removed duplicate fixed positioning, handled by #nav-container */
             justify-content: space-between;
+            overflow: visible !important; /* Ensure dropdowns can escape */
         }
         .nav-left { display: flex; align-items: center; gap: 20px; }
-        .nav-right { display: flex; align-items: center; gap: 4px; height: 100%; position: relative; }
+        .nav-right { 
+            display: flex; 
+            align-items: center; 
+            gap: 4px; 
+            height: 100%; 
+            position: relative; 
+            overflow: visible !important; /* Ensure dropdowns can escape */
+        }
         
         .nav-item {
             position: relative;
@@ -125,19 +134,20 @@ function injectNav(activePageId = '') {
             box-shadow: 0 10px 40px rgba(0,0,0,0.5);
             min-width: 200px;
             padding: 8px;
-            opacity: 0;
-            visibility: hidden;
-            transform: translateY(10px);
-            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1), transform 0.2s;
-            z-index: 2000;
-            pointer-events: none; /* Default to none */
+            display: none; /* Force hidden by default */
+            z-index: 10000; /* Super high z-index */
+            margin-top: 8px; /* Slight gap */
         }
+        
         .nav-item:hover .nav-dropdown,
         .nav-item.open .nav-dropdown {
-            opacity: 1;
-            visibility: visible;
-            transform: translateY(0);
-            pointer-events: auto; /* Enable when open */
+            display: block; /* Force visible on interaction */
+            animation: fadeIn 0.2s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
         }
         
         /* Adjust last 2 dropdowns to align right to prevent overflow */
