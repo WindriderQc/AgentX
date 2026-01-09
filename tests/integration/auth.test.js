@@ -1,7 +1,20 @@
 const request = require('supertest');
+
+// Mock rate limit to prevent 429 in tests
+jest.mock('express-rate-limit', () => jest.fn(() => (req, res, next) => next()));
+
 const { app } = require('../../src/app');
 
 const bcrypt = require('bcryptjs'); // Needed to assert on mocks
+
+jest.mock('../../src/middleware/workspace', () => ({
+  attachWorkspace: (req, res, next) => next(),
+  requireWorkspaceAccess: (req, res, next) => next(),
+  optionalWorkspaceContext: (req, res, next) => next(),
+  requireAdmin: (req, res, next) => next(),
+  requireOwner: (req, res, next) => next(),
+  requirePermission: () => (req, res, next) => next()
+}));
 
 // Mock bcrypt
 jest.mock('bcryptjs', () => ({
@@ -62,7 +75,7 @@ describe('Auth Routes Integration', () => {
         .post('/api/auth/register')
         .send({
           email: 'test@example.com',
-          password: 'password123',
+          password: 'Password123456',
           name: 'Test User'
         });
 
@@ -80,7 +93,7 @@ describe('Auth Routes Integration', () => {
         .post('/api/auth/register')
         .send({
           email: 'test@example.com',
-          password: 'password123'
+          password: 'Password123456'
         });
 
       expect(res.statusCode).toBe(409);

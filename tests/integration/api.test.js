@@ -69,6 +69,12 @@ jest.mock('../../models/PromptConfig', () => {
   };
 });
 
+jest.mock('../../models/Workspace', () => {
+    return {
+        getBySlug: jest.fn().mockResolvedValue({ _id: 'mock-workspace-id', slug: 'mock-workspace' })
+    };
+});
+
 const Conversation = require('../../models/Conversation');
 const UserProfile = require('../../models/UserProfile');
 
@@ -100,13 +106,15 @@ describe('API Routes Integration', () => {
       const mockSort = jest.fn().mockReturnValue({ limit: mockLimit });
       mockFind.mockReturnValue({ sort: mockSort });
 
-      const res = await request(app).get('/api/history');
+      const res = await request(app)
+        .get('/api/history')
+        .set('X-Workspace-Slug', 'mock-workspace');
 
       expect(res.statusCode).toBe(200);
       expect(res.body.status).toBe('success');
       expect(res.body.data).toHaveLength(1);
       expect(res.body.data[0].id).toBe('conv1');
-      expect(mockFind).toHaveBeenCalledWith({ userId: 'default' });
+      expect(mockFind).toHaveBeenCalledWith({ userId: 'default', workspaceId: 'mock-workspace-id' });
     });
 
     it('should handle errors gracefully', async () => {
@@ -115,7 +123,9 @@ describe('API Routes Integration', () => {
         throw new Error('Database error');
       });
 
-      const res = await request(app).get('/api/history');
+      const res = await request(app)
+        .get('/api/history')
+        .set('X-Workspace-Slug', 'mock-workspace');
 
       expect(res.statusCode).toBe(500);
       expect(res.body.status).toBe('error');
@@ -125,23 +135,27 @@ describe('API Routes Integration', () => {
   describe('GET /api/history/:id', () => {
     it('should return a single conversation', async () => {
       const mockConversation = {
-        _id: 'conv1',
+        _id: '507f1f77bcf86cd799439011',
         title: 'Test Conv 1'
       };
-      const mockFindById = Conversation.__mocks.findById;
+      const mockFindById = Conversation.__mocks.findOne;
       mockFindById.mockResolvedValue(mockConversation);
 
-      const res = await request(app).get('/api/history/conv1');
+      const res = await request(app)
+        .get('/api/history/507f1f77bcf86cd799439011')
+        .set('X-Workspace-Slug', 'mock-workspace');
 
       expect(res.statusCode).toBe(200);
-      expect(res.body.data._id).toBe('conv1');
+      expect(res.body.data._id).toBe('507f1f77bcf86cd799439011');
     });
 
     it('should return 404 if not found', async () => {
-      const mockFindById = Conversation.__mocks.findById;
+      const mockFindById = Conversation.__mocks.findOne;
       mockFindById.mockResolvedValue(null);
 
-      const res = await request(app).get('/api/history/conv1');
+      const res = await request(app)
+        .get('/api/history/507f1f77bcf86cd799439011')
+        .set('X-Workspace-Slug', 'mock-workspace');
 
       expect(res.statusCode).toBe(404);
     });

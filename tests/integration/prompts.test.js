@@ -7,18 +7,29 @@ const request = require('supertest');
 const mongoose = require('mongoose');
 const { app } = require('../../src/app');
 const PromptConfig = require('../../models/PromptConfig');
+const Workspace = require('../../models/Workspace');
 const { createMockMongoDocument } = require('../helpers/testUtils');
 
 describe('Prompts API', () => {
     let testPrompt;
+    let testWorkspace;
 
     beforeAll(async () => {
+        // Create test workspace
+        testWorkspace = await Workspace.create({
+            name: 'Test Workspace',
+            slug: 'test-prompts-workspace',
+            plan: 'free',
+            ownerId: new mongoose.Types.ObjectId()
+        });
+
         // Clear test data
         await PromptConfig.deleteMany({ name: { $regex: /^test_/ } });
     });
 
     afterAll(async () => {
         await PromptConfig.deleteMany({ name: { $regex: /^test_/ } });
+        await Workspace.deleteMany({ _id: testWorkspace._id });
     });
 
     describe('POST /api/prompts', () => {
@@ -30,6 +41,7 @@ describe('Prompts API', () => {
 
             const res = await request(app)
                 .post('/api/prompts')
+                .set('X-Workspace-Slug', 'test-prompts-workspace')
                 .send(promptData)
                 .expect(201);
 
@@ -48,6 +60,7 @@ describe('Prompts API', () => {
 
             const res = await request(app)
                 .post('/api/prompts')
+                .set('X-Workspace-Slug', 'test-prompts-workspace')
                 .send(promptData)
                 .expect(201);
 
@@ -63,6 +76,7 @@ describe('Prompts API', () => {
 
             const res = await request(app)
                 .post('/api/prompts')
+                .set('X-Workspace-Slug', 'test-prompts-workspace')
                 .send(promptData)
                 .expect(201);
 
@@ -74,6 +88,7 @@ describe('Prompts API', () => {
         it('should list all prompts', async () => {
             const res = await request(app)
                 .get('/api/prompts')
+                .set('X-Workspace-Slug', 'test-prompts-workspace')
                 .expect(200);
 
             expect(res.body.status).toBe('success');
@@ -86,6 +101,7 @@ describe('Prompts API', () => {
         it('should get prompt by name', async () => {
             const res = await request(app)
                 .get('/api/prompts/test_prompt_1')
+                .set('X-Workspace-Slug', 'test-prompts-workspace')
                 .expect(200);
 
             expect(res.body.status).toBe('success');
@@ -96,6 +112,7 @@ describe('Prompts API', () => {
         it('should return 404 for non-existent prompt', async () => {
             const res = await request(app)
                 .get('/api/prompts/non_existent_prompt')
+                .set('X-Workspace-Slug', 'test-prompts-workspace')
                 .expect(404);
 
             expect(res.body.status).toBe('error');
@@ -107,6 +124,7 @@ describe('Prompts API', () => {
         it('should update prompt metadata', async () => {
             const res = await request(app)
                 .put(`/api/prompts/${testPrompt._id}`)
+                .set('X-Workspace-Slug', 'test-prompts-workspace')
                 .send({ description: 'Updated description', isActive: true })
                 .expect(200);
 
@@ -119,6 +137,7 @@ describe('Prompts API', () => {
             const fakeId = new mongoose.Types.ObjectId();
             const res = await request(app)
                 .put(`/api/prompts/${fakeId}`)
+                .set('X-Workspace-Slug', 'test-prompts-workspace')
                 .send({ description: 'Test' })
                 .expect(404);
 
@@ -135,14 +154,16 @@ describe('Prompts API', () => {
                 systemPrompt: 'Control version',
                 version: 1,
                 trafficWeight: 100,
-                isActive: true
+                isActive: true,
+                workspaceId: testWorkspace._id
             });
             await PromptConfig.create({
                 name: 'test_ab_prompt',
                 systemPrompt: 'Variant A',
                 version: 2,
                 trafficWeight: 0,
-                isActive: true
+                isActive: true,
+                workspaceId: testWorkspace._id
             });
         });
 
@@ -153,6 +174,7 @@ describe('Prompts API', () => {
         it('should configure A/B test weights', async () => {
             const res = await request(app)
                 .post('/api/prompts/test_ab_prompt/ab-test')
+                .set('X-Workspace-Slug', 'test-prompts-workspace')
                 .send({
                     versions: [
                         { version: 1, weight: 50 },
@@ -168,6 +190,7 @@ describe('Prompts API', () => {
         it('should reject weights not summing to 100', async () => {
             const res = await request(app)
                 .post('/api/prompts/test_ab_prompt/ab-test')
+                .set('X-Workspace-Slug', 'test-prompts-workspace')
                 .send({
                     versions: [
                         { version: 1, weight: 30 },
@@ -188,11 +211,13 @@ describe('Prompts API', () => {
                 name: 'test_delete_prompt',
                 systemPrompt: 'To be deleted',
                 version: 1,
+                workspaceId: testWorkspace._id,
                 isActive: false
             });
 
             const res = await request(app)
                 .delete(`/api/prompts/${prompt._id}`)
+                .set('X-Workspace-Slug', 'test-prompts-workspace')
                 .expect(200);
 
             expect(res.body.status).toBe('success');

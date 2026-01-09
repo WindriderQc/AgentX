@@ -7,13 +7,13 @@ const express = require('express');
 const mongoose = require('mongoose');
 const CustomDashboard = require('../../models/CustomDashboard');
 
-const workspaceId = new mongoose.Types.ObjectId();
-const userId = new mongoose.Types.ObjectId();
+const workspaceId = '507f191e810c19729de860ea';
+const userId = '507f1f77bcf86cd799439011';
 let mockIsAdmin = true;
 
 jest.mock('../../src/middleware/auth', () => ({
   requireAuth: (req, res, next) => {
-    req.user = { _id: userId, userId: 'test-user-123' };
+    req.user = { _id: '507f1f77bcf86cd799439011', userId: 'test-user-123' };
     res.locals.user = req.user;
     next();
   }
@@ -21,7 +21,7 @@ jest.mock('../../src/middleware/auth', () => ({
 
 jest.mock('../../src/middleware/workspace', () => ({
   attachWorkspace: (req, res, next) => {
-    req.workspace = { _id: workspaceId, slug: 'test-workspace' };
+    req.workspace = { _id: '507f191e810c19729de860ea', slug: 'test-workspace' };
     next();
   },
   requireWorkspaceAccess: (req, res, next) => {

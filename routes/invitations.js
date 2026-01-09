@@ -42,7 +42,7 @@ router.get('/validate/:token', async (req, res) => {
         },
         role: invitation.role,
         invitedBy: {
-          username: invitation.invitedBy.username || 'A team member'
+          name: invitation.invitedBy.name || 'A team member'
         },
         expiresAt: invitation.expiresAt,
         invitationStatus: invitation.status

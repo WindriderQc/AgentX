@@ -705,6 +705,11 @@ document.addEventListener('DOMContentLoaded', () => {
       { persist: false, count: false },
     );
     renderLogList([]);
+
+    // User feedback
+    if (typeof Toast !== 'undefined') {
+      Toast.success('New conversation started');
+    }
   }
 
   function targetHost() {
@@ -1533,17 +1538,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
       try {
           const fetchOptions = { credentials: 'include' };
-          const res = await fetch(`/api/prompts/${selectedPrompt}`, 
+          const res = await fetch(`/api/prompts/${selectedPrompt}`,
             window.WorkspaceManager ? WorkspaceManager.addWorkspaceHeader(fetchOptions) : fetchOptions
           );
           if (!res.ok) {
-              alert('Failed to load prompt details');
+              if (typeof Toast !== 'undefined') {
+                Toast.error('Failed to load prompt details. Please try again.');
+              } else {
+                alert('Failed to load prompt details');
+              }
               return;
           }
 
           const result = await res.json();
           if (result.status !== 'success' || result.data.length === 0) {
-              alert('No prompt data found');
+              if (typeof Toast !== 'undefined') {
+                Toast.warning('No prompt data found');
+              } else {
+                alert('No prompt data found');
+              }
               return;
           }
 

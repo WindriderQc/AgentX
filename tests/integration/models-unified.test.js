@@ -11,7 +11,7 @@
 
 const request = require('supertest');
 const mongoose = require('mongoose');
-const app = require('../../src/app');
+const { app } = require('../../src/app');
 const ModelRegistry = require('../../models/ModelRegistry');
 const N8nLLMSource = require('../../models/N8nLLMSource');
 const CustomModel = require('../../models/CustomModel');
@@ -19,6 +19,21 @@ const modelAggregator = require('../../src/services/modelAggregator');
 
 // Use existing MongoDB connection from app.js
 // No need for MongoMemoryServer since app already handles connection
+
+let originalOllamaHost;
+let originalOllamaHostSecondary;
+
+beforeAll(() => {
+  originalOllamaHost = process.env.OLLAMA_HOST;
+  originalOllamaHostSecondary = process.env.OLLAMA_HOST_SECONDARY;
+  delete process.env.OLLAMA_HOST;
+  delete process.env.OLLAMA_HOST_SECONDARY;
+});
+
+afterAll(() => {
+  process.env.OLLAMA_HOST = originalOllamaHost;
+  process.env.OLLAMA_HOST_SECONDARY = originalOllamaHostSecondary;
+});
 
 beforeEach(async () => {
   // Clear collections
@@ -129,6 +144,7 @@ describe('Model Aggregator Service', () => {
         modelId: 'custom-model',
         modelName: 'custom-model',
         baseModel: 'llama3',
+        displayName: 'Custom Model',
         status: 'deployed',
         createdBy: new mongoose.Types.ObjectId()
       });
@@ -153,6 +169,7 @@ describe('Model Aggregator Service', () => {
           modelName: 'coding-model',
           baseModel: 'qwen',
           categories: ['coding'],
+          displayName: 'Coding Model',
           status: 'deployed',
           createdBy: new mongoose.Types.ObjectId()
         },
@@ -161,6 +178,7 @@ describe('Model Aggregator Service', () => {
           modelName: 'reasoning-model',
           baseModel: 'llama',
           categories: ['reasoning'],
+          displayName: 'Reasoning Model',
           status: 'deployed',
           createdBy: new mongoose.Types.ObjectId()
         }
@@ -236,6 +254,7 @@ describe('Model Aggregator Service', () => {
         modelId: 'test-model',
         modelName: 'test-model',
         baseModel: 'llama3',
+        displayName: 'Test Model',
         status: 'deployed',
         createdBy: new mongoose.Types.ObjectId()
       });
@@ -251,6 +270,7 @@ describe('Model Aggregator Service', () => {
         modelId: 'test-model',
         modelName: 'test-model',
         baseModel: 'llama3',
+        displayName: 'Test Model',
         status: 'deployed',
         createdBy: new mongoose.Types.ObjectId()
       });
@@ -362,6 +382,7 @@ describe('Unified Model API Endpoints', () => {
         modelId: 'test-detail',
         modelName: 'test-detail',
         baseModel: 'llama3',
+        displayName: 'Test Detail',
         status: 'deployed',
         createdBy: new mongoose.Types.ObjectId()
       });

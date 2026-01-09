@@ -367,7 +367,7 @@ function scanWorkspace(options) {
   const modelDirs = options.modelDirs || ['models'];
   const docsDirs = options.docsDirs || ['docs'];
 
-  const excludeDirs = [
+  const excludeDirs = options.excludeDirs || [
     'node_modules',
     '.git',
     'coverage',

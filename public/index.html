@@ -336,10 +336,13 @@
           <span class="status-chip" id="statusChip">Idle</span>
         </div>
 
-        <div style="display: flex; gap: 10px; margin-top: 10px; align-items: center;">
+        <div style="display: flex; gap: 10px; margin-top: 10px; align-items: center; flex-wrap: wrap;">
              <button id="toggleHistoryBtn" class="ghost small">Show history</button>
              <button id="showChatTutorialBtn" class="ghost small" title="Show Tutorial">
                <i class="fas fa-graduation-cap"></i> Tutorial
+             </button>
+             <button id="showShortcutsBtn" class="ghost small" title="Keyboard Shortcuts (Ctrl+/)">
+               <i class="fas fa-keyboard"></i> Shortcuts
              </button>
              <button id="profileBtn" class="ghost small">User Profile</button>
              <button id="loginBtn" class="ghost small" style="display: none;">Login</button>
@@ -879,9 +882,25 @@
         localStorage.removeItem('agentx_profile_updated');
       }
     });
+
+    // Initialize Keyboard Shortcuts Help button
+    document.addEventListener('DOMContentLoaded', () => {
+      const shortcutsBtn = document.getElementById('showShortcutsBtn');
+      if (shortcutsBtn && typeof ShortcutsHelpModal !== 'undefined') {
+        shortcutsBtn.addEventListener('click', () => {
+          ShortcutsHelpModal.show();
+        });
+      }
+    });
   </script>
   <!-- DOMPurify for XSS protection -->
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js" integrity="sha384-7ZnXMgIS8rGZ+yKZPTLJRaHByOhf8v8IkYwk3CYrO/4L9c8KP4HvWp6yFjZGkNvq" crossorigin="anonymous"></script>
+  <!-- Toast Notifications for user feedback -->
+  <script src="/js/utils/toast.js"></script>
+  <!-- Keyboard Shortcut Hints -->
+  <script src="/js/utils/shortcut-hints.js"></script>
+  <!-- Keyboard Shortcuts Help Modal -->
+  <script src="/js/utils/shortcuts-modal.js"></script>
   <script src="/js/chat.js"></script>
 </body>
 </html>

@@ -68,7 +68,7 @@ describe('featureAlignmentScanner', () => {
       `const router = require('express').Router();\nrouter.get('/ping', ()=>{});\nrouter.get('/secret', ()=>{});\nmodule.exports = router;\n`
     );
 
-    const report = scanWorkspace({ rootDir: root });
+    const report = scanWorkspace({ rootDir: root, excludeDirs: ['node_modules'] });
 
     // Should have a foo-ish feature
     const foo = report.features.find((f) => f.key.includes('foo'));

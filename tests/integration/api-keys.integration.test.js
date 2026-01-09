@@ -14,6 +14,13 @@ describe('API Key Integration Tests', () => {
     app.post('/api/test-protected', apiKeyAuthV2, (req, res) => {
       res.json({ status: 'ok', user: res.locals.user });
     });
+
+    // HACK: Move the test route higher in the stack to bypass the 404 catch-all
+    if (app._router && app._router.stack) {
+        const lastLayer = app._router.stack.pop();
+        // Insert after initial middleware (usually body parsers) but before routes/404
+        app._router.stack.splice(10, 0, lastLayer);
+    }
   });
 
   afterEach(async () => {

@@ -1,9 +1,9 @@
 const mongoose = require('mongoose');
 const { MongoMemoryServer } = require('mongodb-memory-server');
-const FeatureInventory = require('../models/FeatureInventory');
-const ApiTelemetry = require('../models/ApiTelemetry');
-const FeatureUsage = require('../models/FeatureUsage');
-const FeatureFlag = require('../models/FeatureFlag');
+const FeatureInventory = require('../../models/FeatureInventory');
+const ApiTelemetry = require('../../models/ApiTelemetry');
+const FeatureUsage = require('../../models/FeatureUsage');
+const FeatureFlag = require('../../models/FeatureFlag');
 
 // Note: If mongodb-memory-server isn't available in the environment,
 // these tests might fail if run directly without mocking.

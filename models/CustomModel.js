@@ -160,6 +160,10 @@ const CustomModelSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'UserProfile'
   },
+  categories: [{
+    type: String,
+    trim: true
+  }],
   tags: [{
     type: String,
     trim: true

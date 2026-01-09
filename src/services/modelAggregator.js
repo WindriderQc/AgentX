@@ -162,8 +162,8 @@ async function getAllModels(options = {}) {
   for (const customModel of customModels) {
     const unified = {
       id: `custom:${customModel._id}`,
-      name: customModel.modelName,
-      displayName: `${customModel.displayName || customModel.modelName} (custom)`,
+      name: customModel.modelName || customModel.modelId,
+      displayName: `${customModel.displayName || customModel.modelName || customModel.modelId} (custom)`,
       provider: 'custom',
       source: {
         type: 'custom-modelfile',

@@ -5,6 +5,30 @@
 
 const request = require('supertest');
 const mongoose = require('mongoose');
+
+// Mock workspace middleware to bypass context/auth checks
+jest.mock('../../src/middleware/workspace', () => ({
+    attachWorkspace: (req, res, next) => {
+        req.workspace = { 
+            _id: '507f1f77bcf86cd799439011', 
+            slug: 'test-workspace',
+            name: 'Test Workspace'
+        };
+        next();
+    },
+    requireWorkspaceAccess: (req, res, next) => next(),
+    optionalWorkspaceContext: (req, res, next) => {
+        req.workspace = { 
+            _id: '507f1f77bcf86cd799439011', 
+            slug: 'test-workspace'
+        };
+        next();
+    },
+    requireAdmin: (req, res, next) => next(),
+    requireOwner: (req, res, next) => next(),
+    requirePermission: () => (req, res, next) => next()
+}));
+
 const { app } = require('../../src/app');
 
 const BenchmarkPrompt = require('../../models/BenchmarkPrompt');

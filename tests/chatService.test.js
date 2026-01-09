@@ -150,7 +150,7 @@ describe('chatService', () => {
             expect(result.model).toBe('llama2');
             
             // Verify dependencies called
-            expect(PromptConfig.getActive).toHaveBeenCalledWith('default_chat');
+            expect(PromptConfig.getActive).toHaveBeenCalledWith('default_chat', null);
             expect(getOrCreateProfile).toHaveBeenCalledWith('user123');
             expect(resolveTarget).toHaveBeenCalled();
             expect(mockFetch).toHaveBeenCalled();

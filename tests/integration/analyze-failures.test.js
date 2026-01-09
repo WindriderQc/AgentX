@@ -1,5 +1,8 @@
 const request = require('supertest');
 
+// Mock rate limit
+jest.mock('express-rate-limit', () => jest.fn(() => (req, res, next) => next()));
+
 jest.mock('../../src/helpers/promptAnalysis', () => ({
   analyzeFailurePatterns: jest.fn(() => ({
     patterns: [],
@@ -18,6 +21,18 @@ jest.mock('../../src/helpers/promptAnalysis', () => ({
     },
     raw_response: '{"suggested_prompt":"You are a concise assistant."}'
   }))
+}));
+
+jest.mock('../../src/middleware/workspace', () => ({
+    attachWorkspace: (req, res, next) => {
+        req.workspace = { _id: '507f1f77bcf86cd799439011', slug: 'test-workspace' };
+        next();
+    },
+    requireWorkspaceAccess: (req, res, next) => next(),
+    optionalWorkspaceContext: (req, res, next) => next(),
+    requireAdmin: (req, res, next) => next(),
+    requireOwner: (req, res, next) => next(),
+    requirePermission: () => (req, res, next) => next()
 }));
 
 const { app } = require('../../src/app');

@@ -6,7 +6,23 @@
 const request = require('supertest');
 
 // Mock dependencies before requiring app
-jest.mock('../../models/Conversation');
+jest.mock('../../models/Conversation', () => {
+    const mockInstance = {
+        save: jest.fn().mockResolvedValue(true),
+        toObject: jest.fn().mockReturnValue({ _id: 'mock_conv_id' })
+    };
+    const mockModel = jest.fn(() => mockInstance);
+    Object.assign(mockModel, {
+        find: jest.fn(),
+        findOne: jest.fn(),
+        create: jest.fn(),
+        findById: jest.fn(),
+        updateOne: jest.fn(),
+        aggregate: jest.fn(),
+        countDocuments: jest.fn()
+    });
+    return mockModel;
+});
 jest.mock('../../models/PromptConfig');
 jest.mock('../../models/UserProfile');
 jest.mock('../../models/Workspace');
@@ -21,16 +37,32 @@ jest.mock('../../config/logger');
 jest.mock('../../src/middleware/auth', () => ({
     optionalAuth: (req, res, next) => {
         res.locals.user = { userId: 'testuser123', name: 'Test User' };
-        req.session = { userId: 'testuser123' };
+        req.session = { 
+            userId: 'testuser123',
+            touch: jest.fn(),
+            save: jest.fn((cb) => cb && cb()),
+            cookie: { maxAge: 3600000 }
+        };
         req.user = { _id: 'testuser123', username: 'testuser' };
         next();
     },
     requireAuth: (req, res, next) => {
         res.locals.user = { userId: 'testuser123', name: 'Test User' };
-        req.session = { userId: 'testuser123' };
+        req.session = { 
+            userId: 'testuser123',
+            touch: jest.fn(),
+            save: jest.fn((cb) => cb && cb()),
+            cookie: { maxAge: 3600000 }
+        };
         req.user = { _id: 'testuser123', username: 'testuser' };
         next();
-    }
+    },
+    attachUser: (req, res, next) => {
+        res.locals.user = { userId: 'testuser123', name: 'Test User' };
+        req.user = { _id: 'testuser123', username: 'testuser' };
+        next();
+    },
+    requireAdmin: (req, res, next) => next()
 }));
 
 const PromptConfig = require('../../models/PromptConfig');
