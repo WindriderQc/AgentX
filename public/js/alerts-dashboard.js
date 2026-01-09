@@ -630,7 +630,7 @@ class AlertsDashboard {
 
     renderDeliveryBadges(alert) {
         if (!alert.delivery) return '';
-        const badges = ['email', 'webhook'].map(channel => {
+        const badges = ['email', 'webhook', 'slack', 'dataapi_log'].map(channel => {
             const info = alert.delivery?.[channel];
             if (!info) return '';
             const statusClass = info.sent ? 'success' : info.error ? 'danger' : 'secondary';
@@ -792,8 +792,8 @@ class AlertsDashboard {
                                     <input class="form-control" id="webhook-method" placeholder="POST">
                                 </div>
                                 <div class="col-md-3">
-                                    <label class="form-label">Headers (JSON or key:value)</label>
-                                    <input class="form-control" id="webhook-headers" placeholder='{"Authorization":"Bearer token"}'>
+                                    <label class="form-label">Headers (JSON or key:value pairs)</label>
+                                    <input class="form-control" id="webhook-headers" placeholder='{"Auth":"Bearer token"} or Key:Value,Key2:Value2'>
                                 </div>
                                 <div class="col-md-12">
                                     <label class="form-label">Payload Template (JSON)</label>
@@ -833,18 +833,39 @@ class AlertsDashboard {
                 return;
             }
 
+            const emailRecipients = document.getElementById('email-recipients').value.trim();
+            const emailSubject = document.getElementById('email-subject').value.trim();
+            const webhookUrl = document.getElementById('webhook-url').value.trim();
+            const webhookMethod = document.getElementById('webhook-method').value.trim();
+            const webhookHeaders = document.getElementById('webhook-headers').value.trim();
+            const webhookTemplate = document.getElementById('webhook-template').value.trim();
+
             const channelConfig = {
-                email: {
-                    recipients: document.getElementById('email-recipients').value.trim(),
-                    subject: document.getElementById('email-subject').value.trim()
-                },
-                webhook: {
-                    url: document.getElementById('webhook-url').value.trim(),
-                    method: document.getElementById('webhook-method').value.trim(),
-                    headers: document.getElementById('webhook-headers').value.trim(),
-                    template: document.getElementById('webhook-template').value.trim()
-                }
+                email: {},
+                webhook: {}
             };
+
+            // Only include non-empty email config fields
+            if (emailRecipients) {
+                channelConfig.email.recipients = emailRecipients;
+            }
+            if (emailSubject) {
+                channelConfig.email.subject = emailSubject;
+            }
+
+            // Only include non-empty webhook config fields
+            if (webhookUrl) {
+                channelConfig.webhook.url = webhookUrl;
+            }
+            if (webhookMethod) {
+                channelConfig.webhook.method = webhookMethod;
+            }
+            if (webhookHeaders) {
+                channelConfig.webhook.headers = webhookHeaders;
+            }
+            if (webhookTemplate) {
+                channelConfig.webhook.template = webhookTemplate;
+            }
 
             await apiClient.post('/alerts', {
                 title,

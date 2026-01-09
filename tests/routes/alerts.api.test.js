@@ -104,7 +104,7 @@ describe('Alert API Routes', () => {
             url: 'https://hooks.example.com/alerts',
             method: 'POST',
             headers: { Authorization: 'Bearer test' },
-            template: '{\"alert\":\"{{title}}\"}'
+            template: '{"alert":"{{title}}"}'
           }
         }
       };
@@ -120,6 +120,10 @@ describe('Alert API Routes', () => {
       expect(createdAlert.channelConfig.webhook.url).toBe('https://hooks.example.com/alerts');
       expect(createdAlert.delivery.email.sent).toBe(true);
       expect(createdAlert.delivery.webhook.sent).toBe(true);
+      
+      // Verify webhook delivery metadata
+      expect(createdAlert.delivery.webhook.url).toBe('https://hooks.example.com/alerts');
+      expect(createdAlert.delivery.webhook.statusCode).toBeDefined();
     });
   });
 
