@@ -14,6 +14,95 @@ const logger = require('../config/logger');
 const { getNotificationService } = require('../src/services/notificationService');
 const { validateObjectId } = require('../src/helpers/objectIdValidator');
 
+/**
+ * Validates an email address format
+ * @param {string} email - Email address to validate
+ * @returns {boolean} True if valid email format
+ */
+const isValidEmail = (email) => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+};
+
+/**
+ * Validates a webhook URL to prevent SSRF attacks
+ * @param {string} url - URL to validate
+ * @returns {boolean} True if URL is safe
+ */
+const isValidWebhookUrl = (url) => {
+  if (!url || typeof url !== 'string') return false;
+  
+  try {
+    const parsed = new URL(url);
+    
+    // Only allow HTTP/HTTPS protocols
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      return false;
+    }
+    
+    // Block localhost and private IP ranges
+    const hostname = parsed.hostname.toLowerCase();
+    
+    // Block localhost variations
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') {
+      return false;
+    }
+    
+    // Block private IPv4 ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16)
+    if (/^10\./.test(hostname) || 
+        /^172\.(1[6-9]|2\d|3[01])\./.test(hostname) ||
+        /^192\.168\./.test(hostname)) {
+      return false;
+    }
+    
+    // Block link-local addresses (169.254.0.0/16)
+    if (/^169\.254\./.test(hostname)) {
+      return false;
+    }
+    
+    // Block cloud metadata endpoints
+    if (hostname === '169.254.169.254' || hostname === 'metadata.google.internal') {
+      return false;
+    }
+    
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Sanitizes webhook headers to prevent injection attacks
+ * @param {object} headers - Headers object to sanitize
+ * @returns {object} Sanitized headers
+ */
+const sanitizeWebhookHeaders = (headers) => {
+  if (!headers || typeof headers !== 'object') {
+    return {};
+  }
+  
+  // Dangerous headers that should not be user-configurable
+  const blockedHeaders = [
+    'host', 'content-length', 'transfer-encoding', 'connection',
+    'upgrade', 'via', 'te', 'trailer', 'proxy-authorization'
+  ];
+  
+  const sanitized = {};
+  for (const [key, value] of Object.entries(headers)) {
+    const normalizedKey = key.toLowerCase();
+    if (!blockedHeaders.includes(normalizedKey) && typeof value === 'string') {
+      sanitized[key] = value;
+    }
+  }
+  
+  return sanitized;
+};
+
+/**
+ * Normalizes and validates channel configuration from user input
+ * @param {object} channelConfig - Raw channel configuration from request
+ * @returns {object} Normalized and validated channel configuration
+ */
 const normalizeChannelConfig = (channelConfig = {}) => {
   const normalized = {};
 
@@ -25,12 +114,32 @@ const normalizeChannelConfig = (channelConfig = {}) => {
         ? recipients.split(',').map(recipient => recipient.trim()).filter(Boolean)
         : undefined;
 
-    normalized.email = {
-      recipients: normalizedRecipients,
-      subject: channelConfig.email.subject,
-      from: channelConfig.email.from,
-      replyTo: channelConfig.email.replyTo
-    };
+    const emailConfig = {};
+
+    // Only include recipients if valid emails are present
+    if (Array.isArray(normalizedRecipients) && normalizedRecipients.length > 0) {
+      const validRecipients = normalizedRecipients.filter(isValidEmail);
+      if (validRecipients.length > 0) {
+        emailConfig.recipients = validRecipients;
+      }
+    }
+
+    // Validate and include optional fields only if present
+    if (channelConfig.email.subject && typeof channelConfig.email.subject === 'string') {
+      emailConfig.subject = channelConfig.email.subject;
+    }
+    
+    if (channelConfig.email.from && typeof channelConfig.email.from === 'string' && isValidEmail(channelConfig.email.from)) {
+      emailConfig.from = channelConfig.email.from;
+    }
+    
+    if (channelConfig.email.replyTo && typeof channelConfig.email.replyTo === 'string' && isValidEmail(channelConfig.email.replyTo)) {
+      emailConfig.replyTo = channelConfig.email.replyTo;
+    }
+
+    if (Object.keys(emailConfig).length > 0) {
+      normalized.email = emailConfig;
+    }
   }
 
   if (channelConfig.webhook) {
@@ -47,12 +156,34 @@ const normalizeChannelConfig = (channelConfig = {}) => {
       }
     }
 
-    normalized.webhook = {
-      url: channelConfig.webhook.url,
-      method: channelConfig.webhook.method,
-      headers,
-      template: channelConfig.webhook.template
-    };
+    const webhookConfig = {};
+
+    // Validate webhook URL to prevent SSRF
+    if (channelConfig.webhook.url && isValidWebhookUrl(channelConfig.webhook.url)) {
+      webhookConfig.url = channelConfig.webhook.url;
+    }
+
+    // Include method only if present
+    if (channelConfig.webhook.method && typeof channelConfig.webhook.method === 'string') {
+      webhookConfig.method = channelConfig.webhook.method;
+    }
+
+    // Sanitize headers to prevent header injection
+    if (headers && typeof headers === 'object' && Object.keys(headers).length > 0) {
+      const sanitized = sanitizeWebhookHeaders(headers);
+      if (Object.keys(sanitized).length > 0) {
+        webhookConfig.headers = sanitized;
+      }
+    }
+
+    // Include template only if present
+    if (channelConfig.webhook.template && typeof channelConfig.webhook.template === 'string') {
+      webhookConfig.template = channelConfig.webhook.template;
+    }
+
+    if (Object.keys(webhookConfig).length > 0) {
+      normalized.webhook = webhookConfig;
+    }
   }
 
   return normalized;

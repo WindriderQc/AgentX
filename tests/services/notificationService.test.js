@@ -53,6 +53,95 @@ describe('NotificationService', () => {
     });
   });
 
+  test('handles invalid JSON in webhook template', () => {
+    const service = new NotificationService();
+    const alert = {
+      _id: 'alert123',
+      title: 'Test Alert',
+      severity: 'warning'
+    };
+
+    const payload = service._buildWebhookPayload(
+      alert,
+      '{"title":"{{title}",invalid}'
+    );
+
+    expect(payload).toHaveProperty('text');
+    expect(payload.text).toContain('Test Alert');
+  });
+
+  test('handles malformed template syntax', () => {
+    const service = new NotificationService();
+    const alert = {
+      _id: 'alert123',
+      title: 'Test Alert',
+      severity: 'warning'
+    };
+
+    const payload = service._buildWebhookPayload(
+      alert,
+      '{"title":"{{title}","unclosed":"{{missing.field}'
+    );
+
+    expect(payload).toBeDefined();
+  });
+
+  test('handles missing required fields in alert', () => {
+    const service = new NotificationService();
+    const alert = {
+      message: 'Test message'
+      // missing _id, title, severity
+    };
+
+    const payload = service._buildWebhookPayload(
+      alert,
+      '{"title":"{{title}}","severity":"{{severity}}"}'
+    );
+
+    expect(payload.title).toBe('');
+    expect(payload.severity).toBe('');
+  });
+
+  test('handles null alert object', () => {
+    const service = new NotificationService();
+    
+    const payload = service._buildWebhookPayload(
+      null,
+      '{"title":"{{title}}"}'
+    );
+
+    expect(payload).toBeDefined();
+  });
+
+  test('handles undefined alert object', () => {
+    const service = new NotificationService();
+    
+    const payload = service._buildWebhookPayload(
+      undefined,
+      '{"title":"{{title}}"}'
+    );
+
+    expect(payload).toBeDefined();
+  });
+
+  test('handles missing context fields in template', () => {
+    const service = new NotificationService();
+    const alert = {
+      _id: 'alert123',
+      title: 'Test Alert',
+      severity: 'warning'
+      // missing context
+    };
+
+    const payload = service._buildWebhookPayload(
+      alert,
+      '{"title":"{{title}}","component":"{{context.component}}"}'
+    );
+
+    expect(payload.title).toBe('Test Alert');
+    expect(payload.component).toBe('');
+  });
+
   test('uses channel config recipients for email', async () => {
     const service = new NotificationService();
     const alert = {
@@ -135,5 +224,52 @@ describe('NotificationService webhook retries', () => {
     expect(result.sent).toBe(false);
     expect(result.attempts).toBe(2);
     expect(result.lastError).toBe('timeout');
+  });
+
+  test('sends webhook with channel config', async () => {
+    const service = new NotificationService();
+    const alert = {
+      _id: 'alert789',
+      title: 'API Latency',
+      message: 'High latency detected',
+      severity: 'critical',
+      channelConfig: {
+        webhook: {
+          url: 'https://hooks.test.com/alert',
+          method: 'POST',
+          headers: { 'X-Custom-Header': 'test-value' },
+          template: '{"alert":"{{title}}","level":"{{severity}}"}'
+        }
+      }
+    };
+
+    const result = await service.sendWebhook(alert);
+
+    expect(result.sent).toBe(true);
+    expect(result.url).toBe('https://hooks.test.com/alert');
+  });
+
+  test('builds webhook payload with per-alert template', () => {
+    const service = new NotificationService();
+    const alert = {
+      _id: 'alert999',
+      title: 'Memory Alert',
+      severity: 'warning',
+      context: { host: 'server-01' },
+      channelConfig: {
+        webhook: {
+          template: '{"event":"{{title}}","priority":"{{severity}}","server":"{{context.host}}"}'
+        }
+      }
+    };
+
+    const config = service._resolveWebhookConfig(alert);
+    const payload = service._buildWebhookPayload(alert, config.template);
+
+    expect(payload).toEqual({
+      event: 'Memory Alert',
+      priority: 'warning',
+      server: 'server-01'
+    });
   });
 });

@@ -120,6 +120,12 @@ class NotificationService {
 
   _applyTemplateObject(template, data) {
     if (Array.isArray(template)) {
+      // Optimize for primitive arrays - no need to recurse
+      if (template.length > 0 && typeof template[0] !== 'object') {
+        return template.map(item => 
+          typeof item === 'string' ? this._renderTemplate(item, data) : item
+        );
+      }
       return template.map(item => this._applyTemplateObject(item, data));
     }
     if (template && typeof template === 'object') {
@@ -184,7 +190,7 @@ class NotificationService {
     const subjectTemplate = alert.channelConfig?.email?.subject;
     const subject = subjectTemplate
       ? this._renderTemplate(subjectTemplate, templateData)
-      : `[${alert.severity.toUpperCase()}] ${alert.title}`;
+      : `[${(alert.severity?.toUpperCase() || 'UNKNOWN')}] ${alert.title}`;
 
     const fromAddress = alert.channelConfig?.email?.from || this.config.email.from;
     const replyTo = alert.channelConfig?.email?.replyTo;
@@ -599,7 +605,11 @@ AgentX Alert System
         const rendered = this._renderTemplate(template, templateData);
         try {
           return JSON.parse(rendered);
-        } catch {
+        } catch (err) {
+          logger.warn('[NotificationService] Failed to parse webhook template as JSON, falling back to text payload', {
+            error: err && err.message ? err.message : String(err),
+            alertId: alert && alert._id ? alert._id : undefined
+          });
           return { text: rendered };
         }
       }
