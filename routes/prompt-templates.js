@@ -10,6 +10,7 @@ const PromptTemplate = require('../models/PromptTemplate');
 const { requireAuth, optionalAuth } = require('../src/middleware/auth');
 const { attachWorkspace, optionalWorkspaceContext } = require('../src/middleware/workspace');
 const logger = require('../config/logger');
+const { validateObjectId } = require('../src/helpers/objectIdValidator');
 
 /**
  * Reuse template rendering function from prompts.js
@@ -111,6 +112,9 @@ router.get('/categories/stats', requireAuth, optionalWorkspaceContext, async (re
  */
 router.get('/:id', requireAuth, optionalWorkspaceContext, async (req, res) => {
   try {
+    // Validate ObjectId to prevent NoSQL injection
+    if (!validateObjectId(req.params.id, res, 'Template ID')) return;
+
     const template = await PromptTemplate.findById(req.params.id);
 
     if (!template) {
@@ -211,6 +215,9 @@ router.put('/:id', requireAuth, optionalWorkspaceContext, async (req, res) => {
   const { name, template, category, description, tags } = req.body;
 
   try {
+    // Validate ObjectId to prevent NoSQL injection
+    if (!validateObjectId(req.params.id, res, 'Template ID')) return;
+
     const existingTemplate = await PromptTemplate.findById(req.params.id);
 
     if (!existingTemplate) {
@@ -275,6 +282,9 @@ router.put('/:id', requireAuth, optionalWorkspaceContext, async (req, res) => {
  */
 router.delete('/:id', requireAuth, optionalWorkspaceContext, async (req, res) => {
   try {
+    // Validate ObjectId to prevent NoSQL injection
+    if (!validateObjectId(req.params.id, res, 'Template ID')) return;
+
     const template = await PromptTemplate.findById(req.params.id);
 
     if (!template) {
@@ -326,6 +336,9 @@ router.post('/:id/render', requireAuth, optionalWorkspaceContext, async (req, re
   const { variables } = req.body;
 
   try {
+    // Validate ObjectId to prevent NoSQL injection
+    if (!validateObjectId(req.params.id, res, 'Template ID')) return;
+
     const template = await PromptTemplate.findById(req.params.id);
 
     if (!template) {
@@ -376,6 +389,9 @@ router.post('/:id/render', requireAuth, optionalWorkspaceContext, async (req, re
  */
 router.post('/:id/duplicate', requireAuth, optionalWorkspaceContext, async (req, res) => {
   try {
+    // Validate ObjectId to prevent NoSQL injection
+    if (!validateObjectId(req.params.id, res, 'Template ID')) return;
+
     const sourceTemplate = await PromptTemplate.findById(req.params.id);
 
     if (!sourceTemplate) {

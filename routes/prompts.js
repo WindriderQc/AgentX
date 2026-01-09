@@ -10,6 +10,7 @@ const { requireAuth, optionalAuth } = require('../src/middleware/auth');
 const { attachWorkspace, optionalWorkspaceContext } = require('../src/middleware/workspace');
 const { logPromptAction } = require('../src/middleware/workspaceAudit');
 const logger = require('../config/logger');
+const { validateObjectId } = require('../src/helpers/objectIdValidator');
 
 /**
  * GET /api/prompts
@@ -179,6 +180,9 @@ router.put('/:id', optionalAuth, attachWorkspace, async (req, res) => {
     const { isActive, trafficWeight, description } = req.body;
 
     try {
+        // Validate ObjectId to prevent NoSQL injection
+        if (!validateObjectId(req.params.id, res, 'Prompt ID')) return;
+
         const prompt = await PromptConfig.findById(req.params.id);
 
         if (!prompt) {
@@ -297,6 +301,9 @@ router.post('/:name/ab-test', optionalAuth, attachWorkspace, async (req, res) =>
  */
 router.delete('/:id', optionalAuth, attachWorkspace, async (req, res) => {
     try {
+        // Validate ObjectId to prevent NoSQL injection
+        if (!validateObjectId(req.params.id, res, 'Prompt ID')) return;
+
         const prompt = await PromptConfig.findById(req.params.id);
 
         if (!prompt) {

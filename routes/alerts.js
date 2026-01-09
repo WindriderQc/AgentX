@@ -12,6 +12,7 @@ const Alert = require('../models/Alert');
 const { optionalAuth } = require('../src/middleware/auth');
 const logger = require('../config/logger');
 const { getNotificationService } = require('../src/services/notificationService');
+const { validateObjectId } = require('../src/helpers/objectIdValidator');
 
 const normalizeChannelConfig = (channelConfig = {}) => {
   const normalized = {};
@@ -547,8 +548,11 @@ router.get('/:id', optionalAuth, async (req, res) => {
  */
 router.put('/:id/acknowledge', optionalAuth, async (req, res) => {
   try {
+    // Validate ObjectId to prevent NoSQL injection
+    if (!validateObjectId(req.params.id, res, 'Alert ID')) return;
+
     const { acknowledgedBy } = req.body;
-    
+
     if (!acknowledgedBy) {
       return res.status(400).json({
         status: 'error',
@@ -596,8 +600,11 @@ router.put('/:id/acknowledge', optionalAuth, async (req, res) => {
  */
 router.put('/:id/resolve', optionalAuth, async (req, res) => {
   try {
+    // Validate ObjectId to prevent NoSQL injection
+    if (!validateObjectId(req.params.id, res, 'Alert ID')) return;
+
     const { resolvedBy, resolution, method = 'manual' } = req.body;
-    
+
     if (!resolvedBy) {
       return res.status(400).json({
         status: 'error',
@@ -646,6 +653,9 @@ router.put('/:id/resolve', optionalAuth, async (req, res) => {
  */
 router.post('/:id/delivery-status', optionalAuth, async (req, res) => {
   try {
+    // Validate ObjectId to prevent NoSQL injection
+    if (!validateObjectId(req.params.id, res, 'Alert ID')) return;
+
     const { channel, status, error, timestamp } = req.body;
 
     if (!channel) {

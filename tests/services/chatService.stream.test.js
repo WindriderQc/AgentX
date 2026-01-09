@@ -15,8 +15,42 @@ const { isThinkingModel } = require('../../src/helpers/ollamaResponseHandler');
 const logger = require('../../config/logger');
 
 // Mock dependencies
-jest.mock('../../models/Conversation');
-jest.mock('../../models/PromptConfig');
+jest.mock('../../models/Conversation', () => {
+    const mockInstance = {
+        save: jest.fn().mockResolvedValue(true)
+    };
+    const mockModel = jest.fn(() => mockInstance);
+    Object.assign(mockModel, {
+        find: jest.fn(),
+        findOne: jest.fn(),
+        create: jest.fn(),
+        findById: jest.fn(),
+        updateOne: jest.fn(),
+        aggregate: jest.fn(),
+        countDocuments: jest.fn()
+    });
+    return mockModel;
+});
+
+jest.mock('../../models/PromptConfig', () => ({
+    getActive: jest.fn(),
+    findOne: jest.fn()
+}));
+
+jest.mock('../../models/N8nLLMSource', () => ({
+    findOne: jest.fn()
+}));
+jest.mock('../../src/services/n8nLLMProvider', () => ({
+    chat: jest.fn()
+}));
+
+jest.mock('../../models/N8nLLMSource', () => ({
+    findOne: jest.fn()
+}));
+jest.mock('../../src/services/n8nLLMProvider', () => ({
+    chat: jest.fn()
+}));
+
 jest.mock('../../src/helpers/userHelpers');
 jest.mock('../../src/utils');
 jest.mock('../../src/services/toolService');
@@ -106,6 +140,16 @@ describe('chatService - handleChatRequestStream', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
+
+        // Reset persistent mocks from module requires
+        try {
+            const N8nLLMSource = require('../../models/N8nLLMSource');
+            if (N8nLLMSource.findOne && N8nLLMSource.findOne.mockReset) {
+                N8nLLMSource.findOne.mockReset();
+            }
+        } catch (e) {
+            // Ignore if module not found/mocked yet
+        }
 
         // Default mocks
         PromptConfig.getActive = jest.fn().mockResolvedValue(mockPrompt);

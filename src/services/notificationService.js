@@ -315,24 +315,16 @@ class NotificationService {
 
     try {
       const fetch = (await import('node-fetch')).default;
-      const response = await fetch(webhookConfig.url, {
-        method: webhookConfig.method,
-        headers: {
-          'Content-Type': 'application/json',
-          ...webhookConfig.headers
-        },
-        body: JSON.stringify(payload)
-      });
       const maxAttempts = Math.max(1, this.config.webhook.retry.maxAttempts);
       let lastError = null;
 
       for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
         try {
-          const response = await this._fetchWithTimeout(fetch, this.config.webhook.url, {
-            method: this.config.webhook.method,
+          const response = await this._fetchWithTimeout(fetch, webhookConfig.url, {
+            method: webhookConfig.method,
             headers: {
               'Content-Type': 'application/json',
-              ...this.config.webhook.headers
+              ...webhookConfig.headers
             },
             body: JSON.stringify(payload)
           }, this.config.webhook.timeoutMs);
@@ -344,7 +336,7 @@ class NotificationService {
 
           logger.info('[NotificationService] Webhook notification sent', {
             alertId: alert._id,
-            url: this.config.webhook.url,
+            url: webhookConfig.url,
             attempts: attempt
           });
           return { sent: true, statusCode: response.status, attempts: attempt };
@@ -366,9 +358,7 @@ class NotificationService {
 
       logger.error('[NotificationService] Failed to send webhook notification', {
         alertId: alert._id,
-        url: webhookConfig.url
-      });
-      return { sent: true, statusCode: response.status, url: webhookConfig.url };
+        url: webhookConfig.url,
         error: lastError
       });
       return { sent: false, error: lastError, attempts: maxAttempts, lastError };

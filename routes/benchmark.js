@@ -10,6 +10,7 @@ const logger = require('../config/logger');
 const { attachWorkspace } = require('../src/middleware/workspace');
 const benchmarkService = require('../src/services/benchmarkService');
 const { JUDGE_CONFIG, SCORING_CONFIGS } = require('../src/services/qualityScorer');
+const { validateObjectId } = require('../src/helpers/objectIdValidator');
 
 // Cleanup stale batches on startup
 // Skip in tests to avoid timers/open handles and cross-test DB interference.
@@ -421,6 +422,9 @@ router.get('/batches/stuck', async (req, res) => {
  */
 router.get('/batch/:id/timeline', async (req, res) => {
     try {
+        // Validate ObjectId to prevent NoSQL injection
+        if (!validateObjectId(req.params.id, res, 'Batch ID')) return;
+
         const BenchmarkBatch = require('../models/BenchmarkBatch');
         const batch = await BenchmarkBatch.findById(req.params.id);
 
@@ -484,6 +488,9 @@ router.get('/batch/:id/timeline', async (req, res) => {
  */
 router.post('/batch/:id/recover', async (req, res) => {
     try {
+        // Validate ObjectId to prevent NoSQL injection
+        if (!validateObjectId(req.params.id, res, 'Batch ID')) return;
+
         const BenchmarkBatch = require('../models/BenchmarkBatch');
         const batch = await BenchmarkBatch.findById(req.params.id);
 

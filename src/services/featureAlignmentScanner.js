@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const logger = require('../../config/logger');
 
 const { FALSE_POSITIVE_ENDPOINTS, API_ONLY_ENDPOINTS } = require('./featureAlignmentPriority');
 const { calculateEndpointConfidence } = require('./scannerConfidence');
@@ -530,7 +531,7 @@ function scanWorkspace(options) {
             evidence.lastModified = stats.mtime;
           }
         } catch (err) {
-          console.error(`[featureAlignmentScanner] Failed to stat file ${ref.filePath}:`, err.message);
+          logger.error('featureAlignmentScanner: Failed to stat file', { filePath: ref.filePath, error: err.message });
         }
       }
     }
@@ -548,7 +549,7 @@ function scanWorkspace(options) {
             evidence.lastModified = stats.mtime;
           }
         } catch (err) {
-          console.error(`[featureAlignmentScanner] Failed to stat doc file ${doc.filePath}:`, err.message);
+          logger.error('featureAlignmentScanner: Failed to stat doc file', { filePath: doc.filePath, error: err.message });
         }
       }
     }
@@ -560,7 +561,7 @@ function scanWorkspace(options) {
           evidence.lastModified = stats.mtime;
         }
     } catch (err) {
-        console.error(`[featureAlignmentScanner] Failed to stat source file ${ep.sourceFile}:`, err.message);
+        logger.error('featureAlignmentScanner: Failed to stat source file', { sourceFile: ep.sourceFile, error: err.message });
     }
 
     endpointEvidenceMap.set(epKey, evidence);

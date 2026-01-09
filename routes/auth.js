@@ -4,6 +4,7 @@ const rateLimit = require('express-rate-limit');
 const UserProfile = require('../models/UserProfile');
 const logger = require('../config/logger');
 const securityLogger = require('../src/services/securityLogger');
+const { validatePasswordMiddleware } = require('../src/helpers/passwordValidator');
 
 // Rate limiting for auth endpoints - prevent brute force attacks
 const authLimiter = rateLimit({
@@ -36,17 +37,15 @@ router.post('/register', authLimiter, async (req, res) => {
     
     // Validation
     if (!email || !password) {
-      return res.status(400).json({ 
-        status: 'error', 
-        message: 'Email and password are required' 
+      return res.status(400).json({
+        status: 'error',
+        message: 'Email and password are required'
       });
     }
-    
-    if (password.length < 6) {
-      return res.status(400).json({ 
-        status: 'error', 
-        message: 'Password must be at least 6 characters' 
-      });
+
+    // Validate password strength
+    if (!validatePasswordMiddleware(password, res)) {
+      return; // Response already sent by validator
     }
     
     // Check if user exists

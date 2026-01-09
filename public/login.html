@@ -214,8 +214,13 @@
 
                 <div class="form-group">
                     <label for="registerPassword">Password</label>
-                    <input type="password" id="registerPassword" name="password" required minlength="6" autocomplete="new-password">
-                    <small style="color: #666; font-size: 12px;">Minimum 6 characters</small>
+                    <input type="password" id="registerPassword" name="password" required minlength="12"
+                           pattern="^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{12,}$"
+                           title="Password must be at least 12 characters with uppercase, lowercase, and number"
+                           autocomplete="new-password">
+                    <small style="color: #666; font-size: 12px;">
+                        Minimum 12 characters with at least one uppercase, lowercase, and number
+                    </small>
                 </div>
 
                 <button type="submit" class="btn" id="registerBtn">

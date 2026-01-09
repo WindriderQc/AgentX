@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
+const logger = require('../../config/logger');
 
 let n8nWorkflowsCache = null;
 
@@ -93,7 +94,7 @@ function checkSecurityRequirements(files) {
         break; // Max 10 here
       }
     } catch (err) {
-      console.error(`[featureAlignmentPriority] Failed to read file ${file}:`, err.message);
+      logger.error('featureAlignmentPriority: Failed to read file', { file, error: err.message });
     }
   }
 
@@ -108,7 +109,7 @@ function checkSecurityRequirements(files) {
         break; 
       }
     } catch (err) {
-      console.error(`[featureAlignmentPriority] Failed to read file ${file}:`, err.message);
+      logger.error('featureAlignmentPriority: Failed to read file', { file, error: err.message });
     }
   }
   

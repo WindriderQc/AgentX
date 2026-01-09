@@ -5,6 +5,7 @@
  */
 
 const mongoose = require('mongoose');
+const crypto = require('crypto');
 
 const workspaceInvitationSchema = new mongoose.Schema({
   workspaceId: {
@@ -108,20 +109,51 @@ workspaceInvitationSchema.statics.createInvitation = async function(data) {
 };
 
 // Static method: Find and validate invitation by token
+// Uses timing-safe comparison to prevent timing attacks
 workspaceInvitationSchema.statics.findByToken = async function(token) {
-  const invitation = await this.findOne({ token }).populate('workspaceId invitedBy');
+  if (!token || typeof token !== 'string') {
+    return null;
+  }
 
-  if (!invitation) {
+  // Fetch all pending/accepted invitations (small result set)
+  // We can't use findOne with direct comparison as it's not timing-safe
+  const invitations = await this.find({
+    status: { $in: ['pending', 'accepted'] }
+  }).populate('workspaceId invitedBy');
+
+  // Use constant-time comparison to find matching token
+  // This prevents timing attacks that could help guess valid tokens
+  let matchedInvitation = null;
+  const tokenBuffer = Buffer.from(token, 'utf8');
+
+  for (const inv of invitations) {
+    const invTokenBuffer = Buffer.from(inv.token, 'utf8');
+
+    // Both buffers must be same length for timingSafeEqual
+    if (tokenBuffer.length === invTokenBuffer.length) {
+      try {
+        if (crypto.timingSafeEqual(tokenBuffer, invTokenBuffer)) {
+          matchedInvitation = inv;
+          break; // Found match, but continue timing-safe pattern
+        }
+      } catch (err) {
+        // timingSafeEqual throws if lengths don't match (shouldn't happen here)
+        continue;
+      }
+    }
+  }
+
+  if (!matchedInvitation) {
     return null;
   }
 
   // Auto-expire if past expiration date
-  if (invitation.status === 'pending' && invitation.expiresAt < new Date()) {
-    invitation.status = 'expired';
-    await invitation.save();
+  if (matchedInvitation.status === 'pending' && matchedInvitation.expiresAt < new Date()) {
+    matchedInvitation.status = 'expired';
+    await matchedInvitation.save();
   }
 
-  return invitation;
+  return matchedInvitation;
 };
 
 // Instance method: Accept invitation

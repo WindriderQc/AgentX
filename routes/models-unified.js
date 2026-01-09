@@ -11,6 +11,7 @@ const modelAggregator = require('../src/services/modelAggregator');
 const N8nLLMSource = require('../models/N8nLLMSource');
 const { requireAuth } = require('../src/middleware/auth');
 const logger = require('../config/logger');
+const { validateObjectId } = require('../src/helpers/objectIdValidator');
 
 /**
  * GET /api/models/all
@@ -259,6 +260,9 @@ router.get('/sources/n8n', async (req, res) => {
  */
 router.get('/sources/n8n/:id', async (req, res) => {
   try {
+    // Validate ObjectId to prevent NoSQL injection
+    if (!validateObjectId(req.params.id, res, 'Source ID')) return;
+
     const source = await N8nLLMSource.findById(req.params.id);
 
     if (!source) {
@@ -290,6 +294,9 @@ router.get('/sources/n8n/:id', async (req, res) => {
  */
 router.put('/sources/n8n/:id', requireAuth, async (req, res) => {
   try {
+    // Validate ObjectId to prevent NoSQL injection
+    if (!validateObjectId(req.params.id, res, 'Source ID')) return;
+
     const source = await N8nLLMSource.findById(req.params.id);
 
     if (!source) {
@@ -342,6 +349,9 @@ router.put('/sources/n8n/:id', requireAuth, async (req, res) => {
  */
 router.delete('/sources/n8n/:id', requireAuth, async (req, res) => {
   try {
+    // Validate ObjectId to prevent NoSQL injection
+    if (!validateObjectId(req.params.id, res, 'Source ID')) return;
+
     const source = await N8nLLMSource.findById(req.params.id);
 
     if (!source) {
@@ -385,6 +395,9 @@ router.delete('/sources/n8n/:id', requireAuth, async (req, res) => {
  */
 router.post('/sources/n8n/:id/test', async (req, res) => {
   try {
+    // Validate ObjectId to prevent NoSQL injection
+    if (!validateObjectId(req.params.id, res, 'Source ID')) return;
+
     const source = await N8nLLMSource.findById(req.params.id);
 
     if (!source) {
