@@ -423,7 +423,7 @@ function scanWorkspace(options) {
     frontendEndpointRefs.push(...refs);
   }
 
-  const frontendIndex = frontendFiles.map((filePath) => {
+  const frontendIndex = [...frontendFiles, ...frontendJsFiles].map((filePath) => {
     const html = readTextSafe(filePath);
     const signals = parseHtmlSignals(html);
     const key = computeFeatureKeyFromPath(filePath);
@@ -591,6 +591,15 @@ function scanWorkspace(options) {
 
   const features = [];
   for (const [key, meta] of candidateKeys.entries()) {
+    // Exclude documentation features
+    if (key.includes('quick-reference') ||
+        key.includes('-schema') ||
+        key.includes('-design') ||
+        key.includes('-guide') ||
+        key.includes('-index')) {
+      continue;
+    }
+
     const tokens = uniq(tokenize(key));
 
     // Frontend evidence

@@ -228,15 +228,27 @@ function calculatePriority(feature, rootDir) {
   }
   debug.falsePositive = falsePositivePenalty;
 
-  // 7. UI Detection Penalty (-20 pts)
+  // 7. UI Detection Penalty (-20 pts) OR Static Page Boost (+20 pts)
   // If headless but has frontend files (redundant check potentially, but specific penalty required)
   let uiPenalty = 0;
+  let staticPageBoost = 0;
+
   if (frontendFiles.length > 0) {
-    // If it has frontend files, it essentially HAS a UI, so it shouldn't show up as a "Headless Feature to build"
-    uiPenalty = -20;
-    score += uiPenalty;
+    // Check if this is a static HTML page (has frontend but no backend endpoints)
+    const isStaticPage = endpoints.length === 0 && frontendFiles.some(f => f.endsWith('.html'));
+
+    if (isStaticPage) {
+      // Static pages like login.html are complete as-is, give them credit
+      staticPageBoost = 20;
+      score += staticPageBoost;
+      debug.staticPage = staticPageBoost;
+    } else {
+      // If it has frontend files AND backend, it already HAS a UI
+      uiPenalty = -20;
+      score += uiPenalty;
+      debug.ui = uiPenalty;
+    }
   }
-  debug.ui = uiPenalty;
 
   // Determine Level and Category
   let level = 'LOW';

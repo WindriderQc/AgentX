@@ -75,13 +75,17 @@ router.post('/mongodb', async (req, res) => {
         const mongoBackupDir = path.join(BACKUP_DIR, 'mongodb');
         const result = await executeCommand(`${script} ${mongoBackupDir}`, 'MongoDB backup');
 
+        // Resolve backup metadata from the latest file actually created.
+        const backups = await listBackupFiles(mongoBackupDir, /agentx_.*\.tar\.gz$/);
+        const latest = backups[0] || null;
+
         res.json({
             success: true,
             message: 'MongoDB backup completed',
             output: result.stdout,
             backup: {
-                date: new Date(),
-                size: null // Would need to parse output for size
+                date: latest?.date || new Date(),
+                size: latest?.size ?? null
             }
         });
     } catch (error) {
@@ -175,13 +179,16 @@ router.post('/qdrant', async (req, res) => {
         const qdrantBackupDir = path.join(BACKUP_DIR, 'qdrant');
         const result = await executeCommand(`${script} ${qdrantBackupDir}`, 'Qdrant snapshot');
 
+        const backups = await listBackupFiles(qdrantBackupDir, /(\.snapshot|\.tar\.gz)$/);
+        const latest = backups[0] || null;
+
         res.json({
             success: true,
             message: 'Qdrant snapshot completed',
             output: result.stdout,
             backup: {
-                date: new Date(),
-                size: null
+                date: latest?.date || new Date(),
+                size: latest?.size ?? null
             }
         });
     } catch (error) {
@@ -461,11 +468,13 @@ router.get('/stats', async (req, res) => {
             mongo: {
                 count: mongoBackups.length,
                 lastBackup: mongoBackups[0]?.date || null,
+                lastSize: mongoBackups[0]?.size ?? null,
                 totalSize: mongoBackups.reduce((sum, b) => sum + b.size, 0)
             },
             qdrant: {
                 count: qdrantBackups.length,
                 lastBackup: qdrantBackups[0]?.date || null,
+                lastSize: qdrantBackups[0]?.size ?? null,
                 totalSize: qdrantBackups.reduce((sum, b) => sum + b.size, 0)
             },
             workflows: workflowStats

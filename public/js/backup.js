@@ -445,10 +445,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (data.mongo) {
                     document.getElementById('mongo-backup-count').textContent = data.mongo.count;
                     document.getElementById('mongo-last-backup').textContent = formatDate(data.mongo.lastBackup);
+                    if (document.getElementById('mongo-backup-size')) {
+                        document.getElementById('mongo-backup-size').textContent = formatSize(data.mongo.lastSize);
+                    }
                 }
                 if (data.qdrant) {
                     document.getElementById('qdrant-backup-count').textContent = data.qdrant.count;
                     document.getElementById('qdrant-last-backup').textContent = formatDate(data.qdrant.lastBackup);
+                    if (document.getElementById('qdrant-backup-size')) {
+                        document.getElementById('qdrant-backup-size').textContent = formatSize(data.qdrant.lastSize);
+                    }
                 }
                 if (data.workflows) {
                     document.getElementById('workflow-last-commit').textContent = formatDate(data.workflows.lastCommit);

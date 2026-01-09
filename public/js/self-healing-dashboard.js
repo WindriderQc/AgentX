@@ -100,7 +100,7 @@ class SelfHealingDashboard {
      */
     async loadStatus() {
         try {
-            const response = await apiClient.get('/self-healing/status');
+            const response = await apiClient.get('self-healing/status');
             // Support both wrapped {data: ...} and direct response formats
             this.engineStatus = (response && response.rules) ? response : (response.data || response);
             
@@ -120,7 +120,7 @@ class SelfHealingDashboard {
      */
     async loadRules() {
         try {
-            const response = await apiClient.get('/self-healing/rules');
+            const response = await apiClient.get('self-healing/rules');
             this.rules = response.data?.rules || response.rules || [];
             this.renderRules();
         } catch (error) {
@@ -134,7 +134,7 @@ class SelfHealingDashboard {
      */
     async loadHistory() {
         try {
-            const response = await apiClient.get('/self-healing/history');
+            const response = await apiClient.get('self-healing/history');
             this.executionHistory = response.data?.history || response.history || [];
             this.renderHistory();
         } catch (error) {
@@ -504,7 +504,7 @@ class SelfHealingDashboard {
         try {
             this.showToast(`Testing rule: ${ruleName}...`, 'info');
 
-            const response = await apiClient.post('/self-healing/evaluate', {
+            const response = await apiClient.post('self-healing/evaluate', {
                 ruleName
             });
 
@@ -536,7 +536,7 @@ class SelfHealingDashboard {
         try {
             this.showToast(`Executing remediation: ${ruleName}...`, 'info');
 
-            const response = await apiClient.post('/self-healing/execute', {
+            const response = await apiClient.post('self-healing/execute', {
                 ruleName,
                 context: {
                     manual: true,
@@ -672,7 +672,7 @@ class SelfHealingDashboard {
      */
     async viewRuleHistory(ruleName) {
         try {
-            const response = await apiClient.get(`/self-healing/history/${ruleName}`);
+            const response = await apiClient.get(`self-healing/history/${ruleName}`);
             const history = response.data?.history || response.history || [];
 
             const modalHtml = `
@@ -820,7 +820,7 @@ class SelfHealingDashboard {
         try {
             this.showToast('Reloading rules from configuration...', 'info');
 
-            const response = await apiClient.post('/self-healing/rules/load');
+            const response = await apiClient.post('self-healing/rules/load');
             const count = response.data?.count || response.count || 0;
 
             this.showToast(`Successfully loaded ${count} rule(s)`, 'success');
@@ -842,7 +842,7 @@ class SelfHealingDashboard {
         try {
             this.showToast('Evaluating all rules...', 'info');
 
-            const response = await apiClient.post('/self-healing/evaluate');
+            const response = await apiClient.post('self-healing/evaluate');
             const data = response.data || response;
 
             const message = `Evaluation complete: ${data.triggered || 0} triggered, ${data.skipped || 0} skipped, ${data.failed || 0} failed`;
