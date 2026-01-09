@@ -59,13 +59,15 @@ describe('POST /api/prompts/:name/analyze-failures', () => {
       name: 'default_chat',
       version: 1,
       systemPrompt: 'You are a helpful assistant.',
-      isActive: true
+      isActive: true,
+      workspaceId: '507f1f77bcf86cd799439011'
     });
     await prompt.save();
 
     const conversation = new Conversation({
       promptName: 'default_chat',
       promptVersion: 1,
+      workspaceId: '507f1f77bcf86cd799439011',
       messages: [
         { role: 'user', content: 'Help me' },
         { role: 'assistant', content: 'Sorry', feedback: { rating: -1, comment: 'bad' } }
@@ -90,13 +92,15 @@ describe('POST /api/prompts/:name/analyze-failures', () => {
       name: 'default_chat',
       version: 1,
       systemPrompt: 'You are a helpful assistant.',
-      isActive: true
+      isActive: true,
+      workspaceId: '507f1f77bcf86cd799439011'
     });
     await prompt.save();
 
     const conversation = new Conversation({
       promptName: 'default_chat',
       promptVersion: 1,
+      workspaceId: '507f1f77bcf86cd799439011',
       messages: [
         { role: 'user', content: 'Hello' },
         { role: 'assistant', content: 'Hi there', feedback: { rating: 1 } }

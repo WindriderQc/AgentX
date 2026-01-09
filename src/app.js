@@ -347,6 +347,11 @@ app.use('/api', apiRoutes);
 // ============================================
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
+// Browsers often request /favicon.ico implicitly. We serve a real icon to avoid noisy 404s.
+app.get('/favicon.ico', (_req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'public', 'img', 'favicon.ico'));
+});
+
 // Legacy UI route: prompt management page was previously personas.html
 app.get('/personas.html', (req, res) => {
   res.redirect(301, '/prompts.html');

@@ -55,7 +55,6 @@ function shouldExcludeFile(filePath) {
     '/dist/',
     '/build/',
     '/out/',
-    '/tmp/',
     '/.cache/'
   ];
   if (excludedPathFragments.some((frag) => fp.includes(frag))) return true;

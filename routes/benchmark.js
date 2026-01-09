@@ -11,6 +11,7 @@ const { attachWorkspace } = require('../src/middleware/workspace');
 const benchmarkService = require('../src/services/benchmarkService');
 const { JUDGE_CONFIG, SCORING_CONFIGS } = require('../src/services/qualityScorer');
 const { validateObjectId } = require('../src/helpers/objectIdValidator');
+const BenchmarkBatch = require('../models/BenchmarkBatch');
 
 // Cleanup stale batches on startup
 // Skip in tests to avoid timers/open handles and cross-test DB interference.
@@ -253,7 +254,6 @@ router.post('/batch', attachWorkspace, async (req, res) => {
 
     try {
         // ENFORCE SINGLE BATCH: Check for existing active batches
-        const BenchmarkBatch = require('../models/BenchmarkBatch');
         const activeBatches = await BenchmarkBatch.getActive();
 
         if (activeBatches.length > 0) {
@@ -367,7 +367,6 @@ router.get('/batches', async (req, res) => {
  */
 router.get('/batches/active', async (req, res) => {
     try {
-        const BenchmarkBatch = require('../models/BenchmarkBatch');
         const batches = await BenchmarkBatch.getActive();
 
         // Add activity status and stuck detection
@@ -401,7 +400,6 @@ router.get('/batches/active', async (req, res) => {
  */
 router.get('/batches/stuck', async (req, res) => {
     try {
-        const BenchmarkBatch = require('../models/BenchmarkBatch');
         const thresholdSeconds = parseInt(req.query.threshold) || 300;
         const stuck = await BenchmarkBatch.findStuck(thresholdSeconds);
 
@@ -425,7 +423,6 @@ router.get('/batch/:id/timeline', async (req, res) => {
         // Validate ObjectId to prevent NoSQL injection
         if (!validateObjectId(req.params.id, res, 'Batch ID')) return;
 
-        const BenchmarkBatch = require('../models/BenchmarkBatch');
         const batch = await BenchmarkBatch.findById(req.params.id);
 
         if (!batch) {
@@ -491,7 +488,6 @@ router.post('/batch/:id/recover', async (req, res) => {
         // Validate ObjectId to prevent NoSQL injection
         if (!validateObjectId(req.params.id, res, 'Batch ID')) return;
 
-        const BenchmarkBatch = require('../models/BenchmarkBatch');
         const batch = await BenchmarkBatch.findById(req.params.id);
 
         if (!batch) {

@@ -50,7 +50,12 @@ beforeAll(async () => {
   // Only connect if not already connected
   if (mongoose.connection.readyState === 0) {
     await connectDB();
-    console.log('✅ Test environment: MongoDB connected');
+
+    // Wait for connection to be fully ready
+    const { waitForConnection } = require('./helpers/dbHelper');
+    await waitForConnection();
+
+    console.log('✅ Test environment: MongoDB connected and ready');
   }
 }, 30000); // 30 second timeout for setup
 
