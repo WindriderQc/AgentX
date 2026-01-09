@@ -1886,6 +1886,14 @@ document.addEventListener('DOMContentLoaded', () => {
   async function init() {
     // Load settings after defaults are potentially updated by server config
     state.settings = loadSettings();
+    
+    // Check URL params for model override
+    const urlParams = new URLSearchParams(window.location.search);
+    const modelParam = urlParams.get('model');
+    if (modelParam) {
+      state.settings.model = decodeURIComponent(modelParam);
+    }
+
     elements.threadId.textContent = state.threadId;
     hydrateForm();
     attachEvents();

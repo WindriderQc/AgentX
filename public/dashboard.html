@@ -10,46 +10,13 @@
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        /* Tab styles */
-        .ops-tabs {
-            display: flex;
-            gap: 8px;
-            margin-bottom: 24px;
+        /* Section styles */
+        .ops-section {
+            margin-bottom: 32px;
+        }
+        .ops-section:not(:last-child) {
+            padding-bottom: 32px;
             border-bottom: 2px solid var(--panel-border);
-            padding-bottom: 0;
-        }
-        .ops-tab {
-            padding: 12px 24px;
-            background: transparent;
-            border: none;
-            color: var(--muted);
-            font-size: 14px;
-            font-weight: 500;
-            cursor: pointer;
-            position: relative;
-            transition: all 0.2s;
-        }
-        .ops-tab:hover {
-            color: var(--text);
-            background: rgba(255,255,255,0.03);
-        }
-        .ops-tab.active {
-            color: var(--accent);
-        }
-        .ops-tab.active::after {
-            content: '';
-            position: absolute;
-            bottom: -2px;
-            left: 0;
-            right: 0;
-            height: 2px;
-            background: var(--accent);
-        }
-        .tab-content {
-            display: none;
-        }
-        .tab-content.active {
-            display: block;
         }
 
         /* Workflow table */
@@ -174,21 +141,8 @@
             </div>
         </header>
 
-        <!-- Tabs -->
-        <div class="ops-tabs">
-            <button class="ops-tab active" data-tab="health">
-                <i class="fas fa-heartbeat"></i> System Health
-            </button>
-            <button class="ops-tab" data-tab="workflows">
-                <i class="fas fa-network-wired"></i> n8n Workflows
-            </button>
-            <button class="ops-tab" data-tab="activity">
-                <i class="fas fa-stream"></i> Activity Timeline
-            </button>
-        </div>
-
-        <!-- Tab 1: System Health -->
-        <div class="tab-content active" id="tab-health">
+        <!-- Section 1: System Health -->
+        <div class="ops-section" id="section-health">
             <!-- Health Strip -->
             <div class="health-strip">
                 <span class="health-strip-title"><i class="fas fa-heartbeat"></i> Service Status</span>
@@ -288,8 +242,8 @@
             </div>
         </div>
 
-        <!-- Tab 2: n8n Workflows -->
-        <div class="tab-content" id="tab-workflows">
+        <!-- Section 2: n8n Workflows -->
+        <div class="ops-section" id="section-workflows">
             <div class="section-card">
                 <div class="section-header">
                     <h2><i class="fas fa-network-wired"></i> n8n Workflows</h2>
@@ -333,8 +287,8 @@
             </div>
         </div>
 
-        <!-- Tab 3: Activity Timeline -->
-        <div class="tab-content" id="tab-activity">
+        <!-- Section 3: Activity Timeline -->
+        <div class="ops-section" id="section-activity">
             <div class="section-card">
                 <div class="section-header">
                     <h2><i class="fas fa-stream"></i> Recent Activity</h2>
@@ -397,10 +351,7 @@
             eventSource.addEventListener('activity', (e) => {
                 const data = JSON.parse(e.data);
                 console.log('📝 New activity:', data);
-                const activeTab = document.querySelector('.ops-tab.active')?.dataset.tab;
-                if (activeTab === 'activity') {
-                    loadActivity();
-                }
+                loadActivity();
             });
 
             eventSource.addEventListener('alert', (e) => {
@@ -412,10 +363,7 @@
             eventSource.addEventListener('workflow-test', (e) => {
                 const data = JSON.parse(e.data);
                 console.log('🔧 Workflow test result:', data);
-                const activeTab = document.querySelector('.ops-tab.active')?.dataset.tab;
-                if (activeTab === 'workflows') {
-                    loadWorkflows();
-                }
+                loadWorkflows();
             });
 
             eventSource.addEventListener('heartbeat', (e) => {
@@ -465,27 +413,7 @@
             }
         }
 
-        // Tab switching
-        document.querySelectorAll('.ops-tab').forEach(tab => {
-            tab.addEventListener('click', () => {
-                const targetTab = tab.dataset.tab;
-
-                // Update tab buttons
-                document.querySelectorAll('.ops-tab').forEach(t => t.classList.remove('active'));
-                tab.classList.add('active');
-
-                // Update tab content
-                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-                document.getElementById(`tab-${targetTab}`).classList.add('active');
-
-                // Load tab-specific data
-                if (targetTab === 'workflows') {
-                    loadWorkflows();
-                } else if (targetTab === 'activity') {
-                    loadActivity();
-                }
-            });
-        });
+        // No tab switching needed - all sections are visible
 
         // Auto-refresh controls (now controls SSE)
         document.getElementById('toggle-auto-refresh').addEventListener('click', () => {
@@ -526,14 +454,10 @@
         }
 
         function refreshAll() {
-            const activeTab = document.querySelector('.ops-tab.active').dataset.tab;
-            if (activeTab === 'health') {
-                loadHealth();
-            } else if (activeTab === 'workflows') {
-                loadWorkflows();
-            } else if (activeTab === 'activity') {
-                loadActivity();
-            }
+            // Load all sections since they're all visible
+            loadHealth();
+            loadWorkflows();
+            loadActivity();
         }
 
         // Load health data
@@ -551,7 +475,7 @@
                         const dot = element.querySelector('.dot');
                         dot.className = 'dot';
                         if (status === 'up') dot.classList.add('healthy');
-                        else if (status === 'down') dot.classList.add('error');
+                        else if (status === 'down' || status === 'error') dot.classList.add('error');
                         else dot.classList.add('warning');
                     }
                 });
@@ -809,8 +733,10 @@
             return `${Math.floor(seconds / 86400)}d ago`;
         }
 
-        // Initialize
+        // Initialize - load all sections
         loadHealth();
+        loadWorkflows();
+        loadActivity();
         // Start SSE connection for real-time updates
         if (autoRefresh) {
             connectSSE();

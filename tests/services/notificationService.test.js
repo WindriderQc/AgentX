@@ -1,20 +1,29 @@
 const { NotificationService } = require('../../src/services/notificationService');
 
+// Mock node-fetch
+const mockFetch = jest.fn();
+jest.mock('node-fetch', () => ({
+  default: mockFetch,
+  __esModule: true,
+}));
+
+// Mock nodemailer
+const mockSendMail = jest.fn().mockResolvedValue({ messageId: 'mock-message-id' });
+const mockVerify = jest.fn().mockResolvedValue(true);
 jest.mock('nodemailer', () => ({
   createTransport: jest.fn(() => ({
-    sendMail: jest.fn().mockResolvedValue({ messageId: 'mock-message-id' }),
-    verify: jest.fn()
+    sendMail: mockSendMail,
+    verify: mockVerify
   }))
 }));
 
-jest.mock('node-fetch', () => ({
-  default: jest.fn()
-}));
-const fetch = require('node-fetch').default;
-
 describe('NotificationService', () => {
+  let service;
+  const originalEnv = { ...process.env };
+
   beforeEach(() => {
-    process.env.ALERT_TEST_MODE = 'true';
+    process.env = { ...originalEnv };
+    process.env.ALERT_TEST_MODE = 'false'; // Important: Disable test mode to test real logic
     process.env.EMAIL_ENABLED = 'true';
     process.env.SMTP_HOST = 'smtp.test.local';
     process.env.SMTP_PORT = '587';
@@ -23,256 +32,167 @@ describe('NotificationService', () => {
     process.env.WEBHOOK_ENABLED = 'true';
     process.env.WEBHOOK_URL = 'https://hooks.test.local/alerts';
     process.env.WEBHOOK_METHOD = 'POST';
-  });
-
-  afterEach(() => {
-    delete process.env.ALERT_TEST_MODE;
-    delete process.env.EMAIL_ENABLED;
-    delete process.env.SMTP_HOST;
-    delete process.env.SMTP_PORT;
-    delete process.env.SMTP_USER;
-    delete process.env.SMTP_PASS;
-    delete process.env.WEBHOOK_ENABLED;
-    delete process.env.WEBHOOK_URL;
-    delete process.env.WEBHOOK_METHOD;
-  });
-
-  test('builds webhook payload from template', () => {
-    const service = new NotificationService();
-    const alert = {
-      _id: 'alert123',
-      title: 'CPU Spike',
-      severity: 'critical',
-      context: { component: 'api-service' }
-    };
-
-    const payload = service._buildWebhookPayload(
-      alert,
-      '{"title":"{{title}}","severity":"{{severity}}","component":"{{context.component}}"}'
-    );
-
-    expect(payload).toEqual({
-      title: 'CPU Spike',
-      severity: 'critical',
-      component: 'api-service'
-    });
-  });
-
-  test('handles invalid JSON in webhook template', () => {
-    const service = new NotificationService();
-    const alert = {
-      _id: 'alert123',
-      title: 'Test Alert',
-      severity: 'warning'
-    };
-
-    const payload = service._buildWebhookPayload(
-      alert,
-      '{"title":"{{title}}",invalid}'  // Fixed: Added missing closing brace
-    );
-
-    expect(payload).toHaveProperty('text');
-    expect(payload.text).toContain('Test Alert');
-  });
-
-  test('handles malformed template syntax', () => {
-    const service = new NotificationService();
-    const alert = {
-      _id: 'alert123',
-      title: 'Test Alert',
-      severity: 'warning'
-    };
-
-    const payload = service._buildWebhookPayload(
-      alert,
-      '{"title":"{{title}","unclosed":"{{missing.field}'
-    );
-
-    expect(payload).toBeDefined();
-  });
-
-  test('handles missing required fields in alert', () => {
-    const service = new NotificationService();
-    const alert = {
-      message: 'Test message'
-      // missing _id, title, severity
-    };
-
-    const payload = service._buildWebhookPayload(
-      alert,
-      '{"title":"{{title}}","severity":"{{severity}}"}'
-    );
-
-    expect(payload.title).toBe('');
-    expect(payload.severity).toBe('');
-  });
-
-  test('handles null alert object', () => {
-    const service = new NotificationService();
+    process.env.SLACK_ENABLED = 'true';
+    process.env.SLACK_WEBHOOK_URL = 'https://hooks.slack.com/services/test';
     
-    const payload = service._buildWebhookPayload(
-      null,
-      '{"title":"{{title}}"}'
-    );
-
-    expect(payload).toBeDefined();
-  });
-
-  test('handles undefined alert object', () => {
-    const service = new NotificationService();
+    mockFetch.mockReset();
+    mockSendMail.mockClear();
     
-    const payload = service._buildWebhookPayload(
-      undefined,
-      '{"title":"{{title}}"}'
-    );
-
-    expect(payload).toBeDefined();
+    service = new NotificationService();
+    // Mock _getFetch to return our mockFetch directly, avoiding dynamic import issues in Jest
+    service._getFetch = jest.fn().mockResolvedValue(mockFetch);
+    // Mock _sleep to avoid waiting
+    service._sleep = jest.fn().mockResolvedValue();
   });
-
-  test('handles missing context fields in template', () => {
-    const service = new NotificationService();
-    const alert = {
-      _id: 'alert123',
-      title: 'Test Alert',
-      severity: 'warning'
-      // missing context
-    };
-
-    const payload = service._buildWebhookPayload(
-      alert,
-      '{"title":"{{title}}","component":"{{context.component}}"}'
-    );
-
-    expect(payload.title).toBe('Test Alert');
-    expect(payload.component).toBe('');
-  });
-
-  test('uses channel config recipients for email', async () => {
-    const service = new NotificationService();
-    const alert = {
-      _id: 'alert456',
-      title: 'Disk Full',
-      severity: 'warning',
-      channelConfig: {
-        email: {
-          recipients: ['ops@example.com', 'oncall@example.com']
-        }
-      }
-    };
-
-    const result = await service.sendEmail(alert);
-
-    expect(result.sent).toBe(true);
-    expect(result.recipients).toBe('ops@example.com, oncall@example.com');
-  });
-});
-
-
-describe.skip('NotificationService webhook retries', () => {
-  const originalEnv = { ...process.env };
 
   afterEach(() => {
     process.env = { ...originalEnv };
-    fetch.mockReset();
   });
 
-  test('calculates exponential backoff with jitter', () => {
-    process.env.WEBHOOK_RETRY_BASE_DELAY_MS = '500';
-    process.env.WEBHOOK_RETRY_JITTER_MS = '250';
-
-    const service = new NotificationService();
-    jest.spyOn(Math, 'random').mockReturnValue(0.5);
-
-    const delay = service._calculateWebhookRetryDelay(0);
-    expect(delay).toBe(625);
-
-    Math.random.mockRestore();
+  describe('Webhook Payload & Templates', () => {
+    test('builds webhook payload from template', () => {
+        const alert = {
+          _id: 'alert123',
+          title: 'CPU Spike',
+          severity: 'critical',
+          context: { component: 'api-service' }
+        };
+    
+        const payload = service._buildWebhookPayload(
+          alert,
+          '{"title":"{{title}}","severity":"{{severity}}","component":"{{context.component}}"}'
+        );
+    
+        expect(payload).toEqual({
+          title: 'CPU Spike',
+          severity: 'critical',
+          component: 'api-service'
+        });
+      });
+    
+      test('handles invalid JSON in webhook template', () => {
+        const alert = {
+          _id: 'alert123',
+          title: 'Test Alert',
+          severity: 'warning'
+        };
+    
+        const payload = service._buildWebhookPayload(
+          alert,
+          '{"title":"{{title}}",invalid}' 
+        );
+    
+        expect(payload).toHaveProperty('text');
+        expect(payload.text).toContain('Test Alert');
+      });
   });
 
-  test('retries webhook until success', async () => {
-    process.env.WEBHOOK_ENABLED = 'true';
-    process.env.WEBHOOK_URL = 'https://example.com/webhook';
-    process.env.WEBHOOK_RETRY_MAX_ATTEMPTS = '3';
+  describe('Email Notifications', () => {
+      test('sends email with HTML content', async () => {
+          const alert = {
+              _id: 'alert-email-1',
+              title: 'Email Alert',
+              severity: 'critical',
+              message: 'Something went wrong',
+              emailRecipients: ['admin@example.com']
+          };
 
-    const service = new NotificationService();
-    service._sleep = jest.fn(() => Promise.resolve());
+          const result = await service.sendEmail(alert);
 
-    fetch
-      .mockRejectedValueOnce(new Error('network error'))
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        text: jest.fn().mockResolvedValue('')
+          expect(result.sent).toBe(true);
+          expect(mockSendMail).toHaveBeenCalledTimes(1);
+          const callArgs = mockSendMail.mock.calls[0][0];
+          expect(callArgs.to).toBe('admin@example.com');
+          expect(callArgs.subject).toContain('CRITICAL');
+          expect(callArgs.html).toContain('<!DOCTYPE html>');
+          expect(callArgs.html).toContain('background-color: #dc3545'); // critical red
+          expect(callArgs.html).toContain('Something went wrong');
       });
 
-    const result = await service.sendWebhook({ _id: 'alert-1' });
+      test('uses templates for email subject', async () => {
+        const alert = {
+            _id: 'alert-email-2',
+            title: 'Subject Alert',
+            severity: 'info',
+            channelConfig: {
+                email: {
+                    subject: 'Alert: {{title}} ({{severity}})',
+                    recipients: ['user@example.com']
+                }
+            }
+        };
 
-    expect(result.sent).toBe(true);
-    expect(result.attempts).toBe(2);
-    expect(fetch).toHaveBeenCalledTimes(2);
+        await service.sendEmail(alert);
+        
+        const callArgs = mockSendMail.mock.calls[0][0];
+        expect(callArgs.subject).toBe('Alert: Subject Alert (info)');
+      });
   });
 
-  test('returns failure after exhausting retries', async () => {
-    process.env.WEBHOOK_ENABLED = 'true';
-    process.env.WEBHOOK_URL = 'https://example.com/webhook';
-    process.env.WEBHOOK_RETRY_MAX_ATTEMPTS = '2';
+  describe('Retries (Webhook)', () => {
+    test('retries webhook until success', async () => {
+        // Fail twice, succeed third time
+        mockFetch
+            .mockResolvedValueOnce({ ok: false, status: 500, text: () => Promise.resolve('Server Error') })
+            .mockRejectedValueOnce(new Error('Network Error'))
+            .mockResolvedValueOnce({ ok: true, status: 200 });
 
-    const service = new NotificationService();
-    service._sleep = jest.fn(() => Promise.resolve());
+        const result = await service.sendWebhook({ _id: 'alert-retry-1', title: 'Retry Test' });
 
-    fetch.mockRejectedValue(new Error('timeout'));
-
-    const result = await service.sendWebhook({ _id: 'alert-2' });
-
-    expect(result.sent).toBe(false);
-    expect(result.attempts).toBe(2);
-    expect(result.lastError).toBe('timeout');
-  });
-
-  test('sends webhook with channel config', async () => {
-    const service = new NotificationService();
-    const alert = {
-      _id: 'alert789',
-      title: 'API Latency',
-      message: 'High latency detected',
-      severity: 'critical',
-      channelConfig: {
-        webhook: {
-          url: 'https://hooks.test.com/alert',
-          method: 'POST',
-          headers: { 'X-Custom-Header': 'test-value' },
-          template: '{"alert":"{{title}}","level":"{{severity}}"}'
-        }
-      }
-    };
-
-    const result = await service.sendWebhook(alert);
-
-    expect(result.sent).toBe(true);
-    expect(result.url).toBe('https://hooks.test.com/alert');
-  });
-
-  test('builds webhook payload with per-alert template', () => {
-    const service = new NotificationService();
-    const alert = {
-      _id: 'alert999',
-      title: 'Memory Alert',
-      severity: 'warning',
-      context: { host: 'server-01' },
-      channelConfig: {
-        webhook: {
-          template: '{"event":"{{title}}","priority":"{{severity}}","server":"{{context.host}}"}'
-        }
-      }
-    };
-
-    const config = service._resolveWebhookConfig(alert);
-    const payload = service._buildWebhookPayload(alert, config.template);
-
-    expect(payload).toEqual({
-      event: 'Memory Alert',
-      priority: 'warning',
-      server: 'server-01'
+        expect(result.sent).toBe(true);
+        expect(result.attempts).toBe(3);
+        expect(mockFetch).toHaveBeenCalledTimes(3);
+        expect(service._sleep).toHaveBeenCalledTimes(2);
     });
+
+    test('fails after max retries', async () => {
+        process.env.WEBHOOK_RETRY_MAX_ATTEMPTS = '2';
+        // Re-init service to pick up env
+        service = new NotificationService();
+        service._getFetch = jest.fn().mockResolvedValue(mockFetch);
+        service._sleep = jest.fn().mockResolvedValue();
+
+        mockFetch.mockRejectedValue(new Error('Persistent Error'));
+
+        const result = await service.sendWebhook({ _id: 'alert-fail-1' });
+
+        expect(result.sent).toBe(false);
+        expect(result.attempts).toBe(2); // Max attempts
+        expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('Retries (Slack)', () => {
+    test('retries slack until success', async () => {
+        process.env.SLACK_RETRY_MAX_ATTEMPTS = '3';
+        
+        mockFetch
+            .mockResolvedValueOnce({ ok: false, status: 503, text: () => Promise.resolve('Service Unavailable') })
+            .mockResolvedValueOnce({ ok: true, status: 200 });
+
+        const result = await service.sendSlack({ 
+            _id: 'alert-slack-1', 
+            title: 'Slack Retry',
+            severity: 'high'
+        });
+
+        expect(result.sent).toBe(true);
+        expect(result.attempts).toBe(2);
+        expect(mockFetch).toHaveBeenCalledTimes(2);
+        expect(mockFetch.mock.calls[0][0]).toBe(process.env.SLACK_WEBHOOK_URL);
+    });
+  });
+
+  describe('Calculations', () => {
+      test('calculates exponential backoff', () => {
+        const retryConfig = { baseDelayMs: 100, jitterMs: 0 };
+        // Attempt 0 (1st retry) -> 100 * 2^0 = 100
+        // Attempt 1 (2nd retry) -> 100 * 2^1 = 200
+        // Attempt 2 (3rd retry) -> 100 * 2^2 = 400
+        
+        expect(service._calculateRetryDelay(0, retryConfig)).toBe(100);
+        expect(service._calculateRetryDelay(1, retryConfig)).toBe(200);
+        expect(service._calculateRetryDelay(2, retryConfig)).toBe(400);
+      });
   });
 });

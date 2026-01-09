@@ -8,10 +8,100 @@
     <link rel="stylesheet" href="styles.css">
     <style>
         /* Extra styles for this page specifically */
+        body { padding-top: 80px; } /* Prevent nav overlap */
+
+        .container-fluid {
+            padding: 24px 40px;
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        .grid-4-cols {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 24px;
+            margin-bottom: 32px;
+        }
+
+        .models-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            gap: 16px;
+            margin-top: 24px;
+            min-height: 200px;
+        }
+        
+        /* Compact Card */
+        .model-card {
+            background: rgba(18, 23, 38, 0.6);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 12px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+            position: relative;
+        }
+        .model-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+            border-color: rgba(124, 240, 255, 0.3);
+        }
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 12px;
+        }
+        .model-icon {
+            font-size: 20px;
+            width: 36px;
+            height: 36px;
+            display: flex; align-items: center; justify-content: center;
+            background: rgba(255,255,255,0.05);
+            border-radius: 8px;
+            color: var(--accent);
+        }
+        .model-name {
+            font-size: 15px;
+            font-weight: 600;
+            color: #fff;
+            margin: 0 0 6px 0;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid rgba(255,255,255,0.05);
+        }
+        .metric { display: flex; flex-direction: column; gap: 2px; }
+        .metric .label { font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; }
+        .metric .value { font-size: 13px; color: #e2e8f0; font-family: monospace; }
+        
+        .tags-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; }
+        .tag { 
+            background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+            padding: 2px 8px; border-radius: 4px; font-size: 11px; color: #cbd5e1;
+        }
+
+        .card-actions { margin-top: 12px; display: grid; grid-template-columns: 1fr; gap: 8px; }
+
+        @media (max-width: 1200px) {
+            .grid-4-cols { grid-template-columns: repeat(2, 1fr); }
+        }
+        @media (max-width: 768px) {
+            .grid-4-cols { grid-template-columns: 1fr; }
+            .container-fluid { padding: 16px; }
+        }
+
         .glass-panel {
             background: rgba(18, 23, 38, 0.6);
             backdrop-filter: blur(12px);
             border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
         }
         .modal-overlay {
             position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 1000;
@@ -47,14 +137,130 @@
         }
         .comp-header { font-weight: 600; color: #94a3b8; }
         
+        /* Comparison Drawer */
+        .comparison-drawer {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(15, 23, 42, 0.95);
+            backdrop-filter: blur(12px);
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 20px 40px;
+            z-index: 950;
+            transform: translateY(100%);
+            transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            box-shadow: 0 -10px 40px rgba(0,0,0,0.5);
+        }
+        .comparison-drawer.visible {
+            transform: translateY(0);
+        }
+        .drawer-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .drawer-body {
+            display: flex;
+            gap: 12px;
+            overflow-x: auto;
+            padding-bottom: 8px;
+        }
+        .compare-chip {
+            background: rgba(255,255,255,0.1);
+            padding: 8px 16px;
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            white-space: nowrap;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+        .compare-chip i { cursor: pointer; color: #94a3b8; }
+        .compare-chip i:hover { color: #f87171; }
+
         /* Floating Toolbar */
         .batch-toolbar {
-            position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(100px);
+            position: fixed; bottom: 30px; left: 50%; 
+            transform: translateX(-50%) translateY(150%); /* Hidden */
             background: #0f172a; border: 1px solid rgba(255,255,255,0.1); padding: 12px 24px;
             border-radius: 50px; display: flex; gap: 16px; align-items: center;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.5); transition: transform 0.3s; z-index: 900;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5); 
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.3s; 
+            z-index: 900;
+            visibility: hidden;
         }
-        .batch-toolbar.visible { transform: translateX(-50%) translateY(0); }
+        .batch-toolbar.visible { 
+            transform: translateX(-50%) translateY(0); 
+            visibility: visible;
+        }
+
+        /* Table Styles */
+        .models-table-container {
+            overflow-x: auto;
+            border-radius: 12px;
+            margin-top: 24px;
+        }
+        .models-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+        .models-table th, .models-table td {
+            padding: 16px 24px;
+            text-align: left;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .models-table th {
+            background: rgba(255,255,255,0.02);
+            font-weight: 600;
+            color: #94a3b8;
+            text-transform: uppercase;
+            font-size: 11px;
+            letter-spacing: 0.5px;
+        }
+        .models-table tr:hover {
+            background: rgba(255,255,255,0.02);
+        }
+        .models-table .model-name {
+            font-weight: 600;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .models-table .model-icon {
+            width: 28px;
+            height: 28px;
+            font-size: 14px;
+            border-radius: 6px;
+        }
+        .models-table .tag {
+            background: rgba(255,255,255,0.05);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            color: #cbd5e1;
+            white-space: nowrap;
+        }
+        .models-table .actions {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+        }
+        /* Action Menu in Table */
+        .table-action-cell {
+            position: relative;
+            text-align: right;
+        }
+        .action-menu {
+             right: 0;
+             top: 100%;
+             min-width: 160px;
+        }
         
         /* Models page specific header adjustments */
         .models-header {
@@ -146,16 +352,29 @@
                     <option value="newest">Newest First</option>
                 </select>
             </div>
-            <div class="view-toggles">
-                <button id="viewToggleBtn" class="icon-btn active"><i class="fas fa-th-large"></i></button>
-            </div>
         </div>
 
-        <!-- Models Grid -->
-        <div id="modelsGrid" class="models-grid">
-            <!-- Rendered by JS -->
-            <div class="loading-spinner">Loading models...</div>
+        <!-- Models Table -->
+        <div class="models-table-container glass-panel">
+            <table class="models-table" id="modelsTable">
+                <thead>
+                    <tr>
+                        <th width="30%">Name</th>
+                        <th>Provider</th>
+                        <th>Params</th>
+                        <th>Quant</th>
+                        <th>Size</th>
+                        <th>Context</th>
+                        <th class="text-right">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="modelsTableBody">
+                    <!-- Rendered by JS -->
+                </tbody>
+            </table>
+            <div id="loadingIndicator" class="loading-spinner">Loading models...</div>
         </div>
+        <div id="modelsGrid" class="hidden"></div> <!-- Keep ID to prevent errors if ref exists but hide it -->
 
     </main>
 

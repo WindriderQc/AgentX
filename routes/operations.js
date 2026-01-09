@@ -116,7 +116,9 @@ router.get('/health', async (req, res) => {
     try {
       const dataapiUrl = process.env.DATAAPI_BASE_URL || 'http://127.0.0.1:3003';
       const fetch = require('node-fetch');
-      const response = await fetch(`${dataapiUrl}/api/v1/status`, { timeout: 5000 });
+
+      // DataAPI has a public /health endpoint (no auth required)
+      const response = await fetch(`${dataapiUrl}/health`, { timeout: 5000 });
 
       if (response.ok) {
         const data = await response.json();
@@ -199,32 +201,26 @@ router.get('/health', async (req, res) => {
 
     // 8. Recent Metrics (last 24 hours)
     try {
-      const MetricsSnapshot = require('../models/MetricsSnapshot');
+      const PerformanceSnapshot = require('../models/PerformanceSnapshot');
       const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-      const recentMetrics = await MetricsSnapshot.aggregate([
-        { $match: { timestamp: { $gte: oneDayAgo } } },
-        {
-          $group: {
-            _id: null,
-            totalRequests: { $sum: 1 },
-            avgLatency: { $avg: '$latencyMs' },
-            errorCount: {
-              $sum: { $cond: [{ $gte: ['$statusCode', 400] }, 1, 0] }
-            }
-          }
-        }
-      ]);
+      const recentSnapshots = await PerformanceSnapshot.find({
+        hour: { $gte: oneDayAgo }
+      }).lean();
 
-      if (recentMetrics.length > 0) {
-        const stats = recentMetrics[0];
+      if (recentSnapshots.length > 0) {
+        // Aggregate across all hourly snapshots
+        const totalRequests = recentSnapshots.reduce((sum, s) => sum + (s.requests_total || 0), 0);
+        const totalErrors = recentSnapshots.reduce((sum, s) => sum + (s.requests_failed || 0), 0);
+        const avgLatency = recentSnapshots.reduce((sum, s) => sum + (s.latency?.avg || 0), 0) / recentSnapshots.length;
+
         healthStatus.metrics = {
-          requests24h: stats.totalRequests,
-          avgLatency: Math.round(stats.avgLatency * 100) / 100, // ms
-          errorRate: stats.totalRequests > 0
-            ? Math.round((stats.errorCount / stats.totalRequests) * 10000) / 100 // percentage
+          requests24h: totalRequests,
+          avgLatency: Math.round(avgLatency * 100) / 100, // ms
+          errorRate: totalRequests > 0
+            ? Math.round((totalErrors / totalRequests) * 10000) / 100 // percentage
             : 0,
-          errorCount: stats.errorCount
+          errorCount: totalErrors
         };
       } else {
         healthStatus.metrics = {

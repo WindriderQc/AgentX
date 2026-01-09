@@ -28,6 +28,12 @@ body {
   min-height: 100vh;
 }
 
+/* Prevent body scroll on app-layout pages (chat interface) */
+body:has(.app-layout) {
+  height: 100vh;
+  overflow: hidden;
+}
+
 .bg-grid {
   position: fixed;
   inset: 0;
@@ -145,14 +151,15 @@ body {
   padding: 48px 24px 64px;
   max-width: 1200px;
   margin: 0 auto;
-  /* Default to document flow (natural scrolling) */
-  min-height: 100vh;
+  /* Flex child of .page - will naturally expand to fill height */
 }
 
 /* App-like layout for chat interface (fixed viewport, internal scroll) */
 .main-content.app-layout {
   height: 100vh;
-  overflow-y: auto;
+  max-height: 100vh;
+  overflow-y: hidden; /* Prevent outer scroll - chat-window handles internal scrolling */
+  box-sizing: border-box;
 }
 
 .hero {

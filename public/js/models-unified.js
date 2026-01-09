@@ -17,7 +17,10 @@ class UnifiedModels {
         this.comparator = null;
 
         // UI Elements
-        this.gridEl = document.getElementById('modelsGrid');
+        this.tableBodyEl = document.getElementById('modelsTableBody');
+        this.loadingEl = document.getElementById('loadingIndicator');
+        this.gridEl = document.getElementById('modelsGrid'); // Legacy ref
+        
         this.compareDrawer = document.getElementById('compareDrawer');
         this.compareListEl = document.getElementById('compareList');
         
@@ -35,7 +38,8 @@ class UnifiedModels {
 
     async fetchModels() {
         try {
-            this.gridEl.innerHTML = '<div class="loading-spinner">Loading models...</div>';
+            if (this.loadingEl) this.loadingEl.style.display = 'block';
+            if (this.tableBodyEl) this.tableBodyEl.innerHTML = '';
             
             const fetchOptions = { credentials: 'include' };
             const endpoint = window.WorkspaceManager ? 
@@ -52,10 +56,12 @@ class UnifiedModels {
             
             this.filteredModels = [...this.allModels];
             this.updateStats();
-            this.renderGrid();
+            this.renderTable();
         } catch (err) {
             console.error('Error:', err);
-            this.gridEl.innerHTML = `<div class="error-msg">Failed to load models. ${err.message}</div>`;
+            if (this.tableBodyEl) this.tableBodyEl.innerHTML = `<tr><td colspan="7" class="error-msg text-center p-4">Failed to load models. ${err.message}</td></tr>`;
+        } finally {
+            if (this.loadingEl) this.loadingEl.style.display = 'none';
         }
     }
 
@@ -71,14 +77,10 @@ class UnifiedModels {
             document.getElementById(id)?.addEventListener('change', () => this.filterModels());
         });
 
-        document.getElementById('viewToggleBtn')?.addEventListener('click', () => {
-             this.gridEl.classList.toggle('view-list');
-        });
-
         document.getElementById('clearCompare')?.addEventListener('click', () => {
             this.comparisonList.clear();
             this.renderComparisonDrawer();
-            this.renderGrid();
+            this.renderTable();
         });
     }
 
@@ -106,7 +108,7 @@ class UnifiedModels {
             return a.name.localeCompare(b.name);
         });
 
-        this.renderGrid();
+        this.renderTable();
     }
 
     updateStats() {
@@ -117,55 +119,55 @@ class UnifiedModels {
         document.getElementById('statRam').innerText = '4.2 GB';
     }
 
-    renderGrid() {
-        this.gridEl.innerHTML = '';
+    renderTable() {
+        if (!this.tableBodyEl) return;
+        this.tableBodyEl.innerHTML = '';
         if (this.filteredModels.length === 0) {
-            this.gridEl.innerHTML = '<div class="empty-state">No models found</div>';
+            this.tableBodyEl.innerHTML = '<tr><td colspan="7" class="text-center p-4 text-slate-400">No models found</td></tr>';
             return;
         }
 
         this.filteredModels.forEach(model => {
-            const card = document.createElement('div');
-            card.className = 'model-card';
-            card.innerHTML = this.buildCardHTML(model);
+            const tr = document.createElement('tr');
+            tr.innerHTML = this.buildRowHTML(model);
             
-            // Event Listeners
-            card.querySelector('.btn-compare').addEventListener('click', (e) => {
+            // Compare Action
+            tr.querySelector('.action-compare')?.addEventListener('click', (e) => {
                 e.stopPropagation();
                 this.toggleCompare(model);
             });
-
-            // Action Menu
-            const actionBtn = card.querySelector('.btn-actions');
+            
+             // Action Menu Toggle
+            const actionBtn = tr.querySelector('.btn-actions');
             if (actionBtn) {
                 actionBtn.addEventListener('click', (e) => {
                     e.stopPropagation();
                     // Close others
                     document.querySelectorAll('.action-menu.active').forEach(el => el.classList.remove('active'));
-                    const menu = card.querySelector('.action-menu');
+                    const menu = tr.querySelector('.action-menu');
                     menu.classList.toggle('active');
                 });
             }
 
             // Delete Action
-            card.querySelector('.action-delete')?.addEventListener('click', (e) => {
+            tr.querySelector('.action-delete')?.addEventListener('click', (e) => {
                 e.stopPropagation();
                 this.manager?.deleteModel(model);
             });
 
             // Start Action
-            card.querySelector('.action-start')?.addEventListener('click', (e) => {
+            tr.querySelector('.action-start')?.addEventListener('click', (e) => {
                 e.stopPropagation();
                 this.manager?.startModel(model);
             });
 
             // Test Action
-            card.querySelector('.action-test')?.addEventListener('click', (e) => {
+            tr.querySelector('.action-test')?.addEventListener('click', (e) => {
                 e.stopPropagation();
                 this.manager?.testModel(model);
             });
 
-            this.gridEl.appendChild(card);
+            this.tableBodyEl.appendChild(tr);
         });
 
         // Close menus on click outside
@@ -174,53 +176,59 @@ class UnifiedModels {
         });
     }
 
-    buildCardHTML(model) {
+    buildRowHTML(model) {
         let source = model.provider || 'custom';
         const isOllama = source === 'ollama';
-        const badgeColor = isOllama ? 'badge-orange' : (source === 'n8n' ? 'badge-pink' : 'badge-indigo');
         const isSelected = this.comparisonList.has(model.id || model.name);
         
-        const size = model.size ? (model.size / 1e9).toFixed(1) + 'GB' : 'N/A';
-        const params = model.details?.parameter_size || '?';
+        let sizeStr = '-';
+        const sizeVal = model.size || model.source?.metadata?.size;
+        if (sizeVal) {
+             sizeStr = (sizeVal / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
+        }
+        
+        const params = model.details?.parameter_size || model.parameters || '-';
+        const quant = model.details?.quantization_level || model.quantization || '-';
+        const context = model.capabilities?.maxContext || model.details?.context_length || '4k';
 
         return `
-            <div class="card-header">
-                <div class="model-icon ${source}">
-                    ${this.getIconForSource(source)}
+             <td>
+                <div class="model-name">
+                    <div class="model-icon ${source} flex items-center justify-center bg-white/5 rounded text-accent">
+                        ${this.getIconForSource(source)}
+                    </div>
+                    <div>
+                        <div class="font-bold text-white text-[15px]">${model.name}</div>
+                    </div>
                 </div>
-                <div class="model-meta-top">
-                    <span class="badge ${badgeColor}">${source}</span>
-                    <button class="btn-icon btn-actions" title="Actions"><i class="fas fa-ellipsis-v"></i></button>
-                    <!-- Action Menu Dropdown -->
-                    <div class="action-menu">
+            </td>
+             <td>
+                <span class="tag uppercase">${source}</span>
+            </td>
+            <td>${params}</td>
+            <td>${quant}</td>
+            <td style="font-family:monospace; color:#e2e8f0;">${sizeStr}</td>
+            <td>${context}</td>
+            <td class="text-right table-action-cell">
+                <div class="actions">
+                     <button class="btn-icon action-compare ${isSelected ? 'active text-accent' : ''}" title="Compare">
+                        <i class="fas ${isSelected ? 'fa-check' : 'fa-plus'}"></i>
+                    </button>
+                    <button class="btn-primary-sm" onclick="startChat('${model.name}')" title="Chat">
+                        <i class="fas fa-comment-alt"></i>
+                    </button>
+                    <button class="btn-icon btn-actions" title="More">
+                        <i class="fas fa-ellipsis-v"></i>
+                    </button>
+                     <!-- Action Menu Dropdown -->
+                    <div class="action-menu glass-panel">
                         <button class="menu-item action-start"><i class="fas fa-play"></i> Start</button>
                         <button class="menu-item action-test"><i class="fas fa-flask"></i> Test</button>
                         <div class="divider"></div>
                         <button class="menu-item action-delete text-red"><i class="fas fa-trash"></i> Delete</button>
                     </div>
                 </div>
-            </div>
-             <div class="card-body">
-                <div class="flex justify-between items-start">
-                    <h3 class="model-name" title="${model.name}">${model.name}</h3>
-                    <button class="btn-icon btn-compare ${isSelected ? 'active' : ''}" title="Compare">
-                        <i class="fas ${isSelected ? 'fa-check' : 'fa-plus'}"></i>
-                    </button>
-                </div>
-                <div class="tags-row">
-                    <span class="tag">${params}</span>
-                    <span class="tag">${model.details?.quantization_level || 'Q4_0'}</span>
-                </div>
-                 <div class="metrics-grid">
-                    <div class="metric"><span class="label">Size</span><span class="value">${size}</span></div>
-                    <div class="metric"><span class="label">Context</span><span class="value">${model.details?.context_length || '4k'}</span></div>
-                </div>
-                <div class="card-actions">
-                    <button class="btn-primary-sm w-full" onclick="startChat('${model.name}')">
-                        <i class="fas fa-comment-alt"></i> Chat
-                    </button>
-                </div>
-            </div>
+            </td>
         `;
     }
 
@@ -242,7 +250,7 @@ class UnifiedModels {
             this.comparisonList.add(id);
         }
         this.renderComparisonDrawer();
-        this.renderGrid();
+        this.renderTable();
     }
 
     renderComparisonDrawer() {

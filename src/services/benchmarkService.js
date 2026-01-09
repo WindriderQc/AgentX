@@ -142,10 +142,26 @@ class BenchmarkService {
             const latency = Date.now() - start;
             const tokens = Math.ceil((data.response || '').length / 4);
 
+            // Look up prompt metadata to store level/category
+            let promptMeta = {};
+            try {
+                const promptDef = await BenchmarkPrompt.findOne({ prompt });
+                if (promptDef) {
+                    promptMeta = {
+                        prompt_level: promptDef.level,
+                        prompt_category: promptDef.category,
+                        prompt_name: promptDef.name
+                    };
+                }
+            } catch (err) {
+                // Ignore lookup errors
+            }
+
             const result = new BenchmarkResult({
                 model,
                 host,
                 prompt,
+                ...promptMeta,
                 latency,
                 tokens,
                 tokens_per_sec: tokens > 0 ? (tokens / (latency / 1000)).toFixed(2) : 0,
@@ -302,6 +318,14 @@ class BenchmarkService {
                         _id: { model: '$model', host: '$host' },
                         avg_latency: { $avg: '$latency' },
                         avg_tokens_per_sec: { $avg: { $toDouble: '$tokens_per_sec' } },
+                        
+                        // Level breakdown
+                        tests_level_1: { $sum: { $cond: [{ $eq: ['$prompt_level', 1] }, 1, 0] } },
+                        tests_level_2: { $sum: { $cond: [{ $eq: ['$prompt_level', 2] }, 1, 0] } },
+                        tests_level_3: { $sum: { $cond: [{ $eq: ['$prompt_level', 3] }, 1, 0] } },
+                        tests_level_4: { $sum: { $cond: [{ $eq: ['$prompt_level', 4] }, 1, 0] } },
+                        tests_level_5: { $sum: { $cond: [{ $eq: ['$prompt_level', 5] }, 1, 0] } },
+                        
                         avg_quality: {
                             $avg: {
                                 $cond: [
@@ -432,6 +456,13 @@ class BenchmarkService {
                 avg_composite: fmtScore(interactive.composite_score), 
 
                 quality_tests: m.quality_tests || 0,
+                level_stats: {
+                    1: m.tests_level_1 || 0,
+                    2: m.tests_level_2 || 0,
+                    3: m.tests_level_3 || 0,
+                    4: m.tests_level_4 || 0,
+                    5: m.tests_level_5 || 0
+                },
                 tests: successTests,
                 failed_tests: failedTests,
                 total_tests: successTests + failedTests,

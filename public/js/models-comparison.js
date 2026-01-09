@@ -40,12 +40,12 @@ class ModelComparator {
         // Define rows
         const rows = [
             { label: 'Provider', key: 'provider', format: (v) => `<span class="badge badge-${v==='ollama'?'orange':v==='n8n'?'pink':'indigo'}">${v}</span>` },
-            { label: 'Parameters', key: 'parameters', extract: m => m.details?.parameter_size || m.parameters || '?' },
+            { label: 'Parameters', key: 'parameters', extract: m => m.details?.parameter_size || m.parameters || '-' },
             { label: 'Context', key: 'context', extract: m => (m.details?.context_length || 4096).toLocaleString() },
-            { label: 'Quantization', key: 'quantization', extract: m => m.details?.quantization_level || m.quantization || '?' },
+            { label: 'Quantization', key: 'quantization', extract: m => m.details?.quantization_level || m.quantization || '-' },
             { label: 'Size (Disk)', key: 'size', extract: m => (m.size ? (m.size/1024/1024/1024).toFixed(2)+' GB' : '-') },
             { label: 'Format', key: 'format', extract: m => m.details?.format || 'GGUF' },
-            { label: 'Family', key: 'family', extract: m => m.details?.family || m.family || '?' },
+            { label: 'Family', key: 'family', extract: m => m.details?.family || m.family || '-' },
             { label: 'Modified', key: 'mod', extract: m => new Date(m.modified_at || Date.now()).toLocaleDateString() }
         ];
 

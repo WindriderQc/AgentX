@@ -68,6 +68,8 @@ async function getAllModels(options = {}) {
       name: ollamaModel.name,
       displayName: ollamaModel.name,
       provider: 'ollama',
+      size: ollamaModel.size,
+      details: ollamaModel.details,
       source: {
         type: 'ollama-host',
         url: ollamaModel.host,

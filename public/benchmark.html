@@ -2595,6 +2595,7 @@
                 const host = esc(t && t.host);
                 const latency = (t && Number.isFinite(Number(t.latency))) ? `${Math.round(Number(t.latency))} ms` : '-';
                 const tps = (t && t.tokens_per_sec !== undefined && t.tokens_per_sec !== null) ? esc(t.tokens_per_sec) : '-';
+                const level = (t && t.prompt_level) ? esc(t.prompt_level) : '-';
                 const when = fmtTime(t && t.timestamp);
                 const error = !ok ? esc(t && t.error) : '';
 
@@ -2608,6 +2609,7 @@
                         <div style="display:flex; gap: 14px; flex-wrap: wrap; margin-top: 6px; font-size: 0.9em; color: rgba(255,255,255,0.88);">
                             <div>Latency: <span style="color: var(--text);">${esc(latency)}</span></div>
                             <div>Tokens/s: <span style="color: var(--text);">${tps}</span></div>
+                            <div>Level: <span style="color: var(--text);">${level}</span></div>
                         </div>
                         ${!ok && error ? `<div style="margin-top: 6px; color: rgba(231,76,60,0.95); font-size: 0.85em; line-height: 1.35;">${error}</div>` : ''}
                     </div>
@@ -6104,11 +6106,26 @@
                                 <td>${tpsDisplay}</td>
                                 <td class="${qualityClass}">${qualityDisplay}</td>
                                 <td>${reliabilityDisplay}</td>
-                                <td>
-                                    ${model.tests}
+                                <td onclick="const el = this.querySelector('.level-bd'); if(el) el.style.display = el.style.display === 'none' ? 'block' : 'none';" style="cursor: pointer;" title="Click to show level breakdown">
+                                    <div style="display: flex; align-items: center; gap: 6px;">
+                                        <span style="font-weight: 500;">${model.tests}</span>
+                                        <i class="fas fa-caret-down" style="font-size: 0.8em; opacity: 0.4;"></i>
+                                    </div>
                                     ${model.failed_tests && Number(model.failed_tests) > 0
                                         ? `<div style="margin-top: 2px; color: rgba(231, 76, 60, 0.9); font-size: 0.8em;">Failed: ${model.failed_tests}</div>`
                                         : ''}
+                                    <div class="level-bd" style="display: none; margin-top: 8px; background: rgba(0,0,0,0.2); padding: 6px 8px; border-radius: 4px; font-size: 0.8em;">
+                                        ${model.level_stats ? 
+                                            Object.entries(model.level_stats)
+                                                .filter(([k,v]) => v > 0)
+                                                .map(([k,v]) => `<div style="display:flex; justify-content:space-between; margin-bottom: 2px;">
+                                                    <span style="color: var(--muted);">Level ${k}</span>
+                                                    <span style="font-weight: 600; color: var(--text);">${v}</span>
+                                                </div>`)
+                                                .join('')
+                                            : '<div style="opacity:0.6;">No details</div>'
+                                        }
+                                    </div>
                                 </td>
                                 <td style="font-weight: bold;">${compositeDisplay}</td>
                             </tr>

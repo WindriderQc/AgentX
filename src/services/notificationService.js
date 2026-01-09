@@ -26,7 +26,12 @@ class NotificationService {
       },
       slack: {
         enabled: process.env.SLACK_ENABLED === 'true',
-        webhookUrl: process.env.SLACK_WEBHOOK_URL
+        webhookUrl: process.env.SLACK_WEBHOOK_URL,
+        retry: {
+          maxAttempts: parseInt(process.env.SLACK_RETRY_MAX_ATTEMPTS || '3'),
+          baseDelayMs: parseInt(process.env.SLACK_RETRY_BASE_DELAY_MS || '500'),
+          jitterMs: parseInt(process.env.SLACK_RETRY_JITTER_MS || '250')
+        }
       },
       webhook: {
         enabled: process.env.WEBHOOK_ENABLED === 'true',
@@ -225,6 +230,75 @@ class NotificationService {
   }
 
   /**
+   * Get fetch implementation
+   */
+  async _getFetch() {
+    return (await import('node-fetch')).default;
+  }
+
+  /**
+   * Shared retry logic for external requests
+   */
+  async _sendWithRetry(url, options, retryConfig, context = {}) {
+     const maxAttempts = Math.max(1, retryConfig.maxAttempts);
+     let lastError = null;
+     const fetch = await this._getFetch();
+
+     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+       try {
+         const response = await this._fetchWithTimeout(fetch, url, options, this.config.webhook.timeoutMs);
+
+         if (!response.ok) {
+           const text = await response.text();
+           throw new Error(`API error: ${response.status} ${text}`);
+         }
+
+         logger.info('[NotificationService] Notification sent', {
+           ...context,
+           url,
+           attempts: attempt
+         });
+
+         return { sent: true, statusCode: response.status, attempts: attempt };
+       } catch (err) {
+         lastError = err.message;
+         if (attempt < maxAttempts) {
+           const delayMs = this._calculateRetryDelay(attempt - 1, retryConfig);
+           logger.warn('[NotificationService] Retry scheduled', {
+             ...context,
+             attempt,
+             nextDelayMs: delayMs,
+             error: err.message
+           });
+           await this._sleep(delayMs);
+           continue;
+         }
+       }
+     }
+
+     logger.error('[NotificationService] Failed to send notification after retries', {
+       ...context,
+       url,
+       error: lastError
+     });
+     return { sent: false, error: lastError, attempts: maxAttempts, lastError };
+  }
+
+  _calculateRetryDelay(attempt, retryConfig) {
+    const baseDelay = retryConfig.baseDelayMs !== undefined ? retryConfig.baseDelayMs : 500;
+    const jitterMs = retryConfig.jitterMs !== undefined ? retryConfig.jitterMs : 250;
+    const backoff = baseDelay * Math.pow(2, attempt);
+    const jitter = jitterMs > 0 ? Math.floor(Math.random() * jitterMs) : 0;
+    return backoff + jitter;
+  }
+
+  // Keeping the old method for backward compatibility if any test calls it directly
+  _calculateWebhookRetryDelay(attempt) {
+      return this._calculateRetryDelay(attempt, this.config.webhook.retry);
+  }
+
+
+  /**
    * Send Slack notification
    */
   async sendSlack(alert) {
@@ -278,30 +352,16 @@ class NotificationService {
       ]
     };
 
-    try {
-      const fetch = (await import('node-fetch')).default;
-      const response = await fetch(this.config.slack.webhookUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`Slack API error: ${response.status} ${text}`);
-      }
-
-      logger.info('[NotificationService] Slack notification sent', {
-        alertId: alert._id
-      });
-      return { sent: true };
-    } catch (err) {
-      logger.error('[NotificationService] Failed to send Slack notification', {
-        alertId: alert._id,
-        error: err.message
-      });
-      return { sent: false, error: err.message };
-    }
+    return await this._sendWithRetry(
+        this.config.slack.webhookUrl,
+        {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        },
+        this.config.slack.retry,
+        { alertId: alert._id, channel: 'slack' }
+    );
   }
 
   /**
@@ -324,62 +384,19 @@ class NotificationService {
 
     const payload = this._buildWebhookPayload(alert, webhookConfig.template);
 
-    try {
-      const fetch = (await import('node-fetch')).default;
-      const maxAttempts = Math.max(1, this.config.webhook.retry.maxAttempts);
-      let lastError = null;
-
-      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-        try {
-          const response = await this._fetchWithTimeout(fetch, webhookConfig.url, {
+    return await this._sendWithRetry(
+        webhookConfig.url,
+        {
             method: webhookConfig.method,
             headers: {
               'Content-Type': 'application/json',
               ...webhookConfig.headers
             },
             body: JSON.stringify(payload)
-          }, this.config.webhook.timeoutMs);
-
-          if (!response.ok) {
-            const text = await response.text();
-            throw new Error(`Webhook error: ${response.status} ${text}`);
-          }
-
-          logger.info('[NotificationService] Webhook notification sent', {
-            alertId: alert._id,
-            url: webhookConfig.url,
-            attempts: attempt
-          });
-          return { sent: true, statusCode: response.status, attempts: attempt };
-        } catch (err) {
-          lastError = err.message;
-          if (attempt < maxAttempts) {
-            const delayMs = this._calculateWebhookRetryDelay(attempt - 1);
-            logger.warn('[NotificationService] Webhook retry scheduled', {
-              alertId: alert._id,
-              attempt,
-              nextDelayMs: delayMs,
-              error: err.message
-            });
-            await this._sleep(delayMs);
-            continue;
-          }
-        }
-      }
-
-      logger.error('[NotificationService] Failed to send webhook notification', {
-        alertId: alert._id,
-        url: webhookConfig.url,
-        error: lastError
-      });
-      return { sent: false, error: lastError, attempts: maxAttempts, lastError };
-    } catch (err) {
-      logger.error('[NotificationService] Failed to send webhook notification', {
-        alertId: alert._id,
-        error: err.message
-      });
-      return { sent: false, error: err.message, lastError: err.message };
-    }
+        },
+        this.config.webhook.retry,
+        { alertId: alert._id, channel: 'webhook' }
+    );
   }
 
   /**
@@ -416,7 +433,7 @@ class NotificationService {
         }
         // Send test message
         try {
-          const fetch = (await import('node-fetch')).default;
+          const fetch = await this._getFetch();
           const response = await fetch(this.config.slack.webhookUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -462,14 +479,6 @@ class NotificationService {
         configured: !!this.config.webhook.url
       }
     };
-  }
-
-  _calculateWebhookRetryDelay(attempt) {
-    const baseDelay = this.config.webhook.retry.baseDelayMs;
-    const jitterMs = this.config.webhook.retry.jitterMs;
-    const backoff = baseDelay * Math.pow(2, attempt);
-    const jitter = jitterMs > 0 ? Math.floor(Math.random() * jitterMs) : 0;
-    return backoff + jitter;
   }
 
   async _sleep(ms) {
@@ -520,19 +529,23 @@ AgentX Alert System
 <!DOCTYPE html>
 <html>
 <head>
+  <meta charset="utf-8">
   <style>
-    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-    .header { background-color: ${severityColor}; color: white; padding: 20px; }
-    .content { padding: 20px; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; }
+    .header { background-color: ${severityColor}; color: white; padding: 20px; border-radius: 5px 5px 0 0; }
+    .content { padding: 20px; border: 1px solid #ddd; border-top: none; background: #fff; }
     .field { margin: 10px 0; }
-    .label { font-weight: bold; }
-    .footer { padding: 20px; color: #666; font-size: 12px; border-top: 1px solid #ddd; }
+    .label { font-weight: bold; color: #555; }
+    .footer { padding: 20px; color: #888; font-size: 12px; text-align: center; background: #f9f9f9; border: 1px solid #ddd; border-top: none; border-radius: 0 0 5px 5px; }
+    .details-box { background: #f5f5f5; padding: 10px; border-radius: 4px; margin-top: 5px; }
+    ul { margin: 0; padding-left: 20px; }
+    .alert-id { font-family: monospace; color: #666; }
   </style>
 </head>
 <body>
   <div class="header">
-    <h1>${alert.title}</h1>
-    <p>Severity: ${alert.severity.toUpperCase()}</p>
+    <h1 style="margin:0; font-size: 24px;">${alert.title}</h1>
+    <p style="margin:5px 0 0 0; opacity: 0.9;">Severity: ${alert.severity.toUpperCase()}</p>
   </div>
   <div class="content">
     <div class="field">
@@ -544,27 +557,28 @@ AgentX Alert System
     <div class="field">
       <span class="label">Source:</span> ${alert.source || 'agentx'}
     </div>
-    <div class="field">
+    <div class="field" style="margin-top: 20px;">
       <span class="label">Message:</span><br>
-      ${alert.message}
+      <div style="font-size: 1.1em; color: #000;">${alert.message}</div>
     </div>
     <div class="field">
       <span class="label">Details:</span>
-      <ul>
-        <li>Current Value: ${alert.context?.currentValue}</li>
-        <li>Threshold: ${alert.context?.threshold}</li>
-        <li>Metric: ${alert.context?.metric || 'N/A'}</li>
-      </ul>
+      <div class="details-box">
+        <ul>
+          <li><strong>Current Value:</strong> ${alert.context?.currentValue}</li>
+          <li><strong>Threshold:</strong> ${alert.context?.threshold}</li>
+          <li><strong>Metric:</strong> ${alert.context?.metric || 'N/A'}</li>
+        </ul>
+      </div>
     </div>
-    <div class="field">
-      <span class="label">Triggered:</span> ${alert.createdAt}
-    </div>
-    <div class="field">
-      <span class="label">Alert ID:</span> ${alert._id}
+    <div class="field" style="margin-top: 20px; border-top: 1px solid #eee; padding-top: 10px;">
+      <span class="label">Triggered:</span> ${alert.createdAt}<br>
+      <span class="label">Alert ID:</span> <span class="alert-id">${alert._id}</span>
     </div>
   </div>
   <div class="footer">
-    AgentX Alert System
+    Sent by <strong>AgentX Alert System</strong><br>
+    <a href="#" style="color: #666; text-decoration: none;">View in Dashboard</a>
   </div>
 </body>
 </html>
