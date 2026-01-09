@@ -4,10 +4,24 @@ const { exec } = require('child_process');
 const fs = require('fs').promises;
 const path = require('path');
 const logger = require('../config/logger');
+const os = require('os');
 
 // Path to AgentX ops scripts
 const AGENTX_SCRIPTS = path.join(__dirname, '..', 'scripts');
-const BACKUP_DIR = process.env.BACKUP_DIR || '/mnt/datalake/backups'; // Default backup directory
+// Use home directory for backups by default (more reliable than /mnt)
+const DEFAULT_BACKUP_DIR = path.join(os.homedir(), 'backups');
+const BACKUP_DIR = process.env.BACKUP_DIR || DEFAULT_BACKUP_DIR;
+
+// Ensure backup directories exist on module load
+(async () => {
+    try {
+        await fs.mkdir(path.join(BACKUP_DIR, 'mongodb'), { recursive: true });
+        await fs.mkdir(path.join(BACKUP_DIR, 'qdrant'), { recursive: true });
+        logger.info('Backup directories initialized', { backupDir: BACKUP_DIR });
+    } catch (err) {
+        logger.error('Failed to create backup directories', { error: err.message, backupDir: BACKUP_DIR });
+    }
+})();
 
 /**
  * Execute shell command with promise
@@ -369,7 +383,20 @@ router.get('/workflows/diff/:hash', async (req, res) => {
 router.post('/cron/install', async (req, res) => {
     try {
         const script = path.join(AGENTX_SCRIPTS, 'setup-backup-cron.sh');
-        const result = await executeCommand(script, 'Cron installation');
+        
+        // Verify script exists and is executable
+        try {
+            await fs.access(script, fs.constants.X_OK);
+        } catch (accessError) {
+            logger.error('Cron script not accessible', { script, error: accessError.message });
+            return res.status(500).json({
+                success: false,
+                message: 'Cron installation script not found or not executable',
+                error: `Script: ${script} - ${accessError.message}`
+            });
+        }
+        
+        const result = await executeCommand(`bash ${script}`, 'Cron installation');
 
         res.json({
             success: true,
@@ -377,6 +404,7 @@ router.post('/cron/install', async (req, res) => {
             output: result.stdout
         });
     } catch (error) {
+        logger.error('Cron installation error', { error: error.message, stack: error.stack });
         res.status(500).json({
             success: false,
             message: 'Cron installation failed',

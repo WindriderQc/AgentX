@@ -68,7 +68,7 @@ describe('NotificationService', () => {
 
     const payload = service._buildWebhookPayload(
       alert,
-      '{"title":"{{title}",invalid}'
+      '{"title":"{{title}}",invalid}'  // Fixed: Added missing closing brace
     );
 
     expect(payload).toHaveProperty('text');

@@ -431,36 +431,46 @@ function formatSize(bytes) {
 }
 
 // Initialize on page load
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     console.log('Backup dashboard initialized');
 
-    // Load initial stats
-    checkCronStatus();
+    // Load data in parallel to improve performance
+    try {
+        const [statsResponse, statusResponse] = await Promise.all([
+            fetch(`${API_BASE}/api/backup/stats`),
+            fetch(`${API_BASE}/api/backup/cron/status`)
+        ]);
 
-    // Load backup counts
-    fetch(`${API_BASE}/api/backup/stats`)
-        .then(res => res.json())
-        .then(data => {
-            if (data.success) {
-                if (data.mongo) {
-                    document.getElementById('mongo-backup-count').textContent = data.mongo.count;
-                    document.getElementById('mongo-last-backup').textContent = formatDate(data.mongo.lastBackup);
-                    if (document.getElementById('mongo-backup-size')) {
-                        document.getElementById('mongo-backup-size').textContent = formatSize(data.mongo.lastSize);
-                    }
-                }
-                if (data.qdrant) {
-                    document.getElementById('qdrant-backup-count').textContent = data.qdrant.count;
-                    document.getElementById('qdrant-last-backup').textContent = formatDate(data.qdrant.lastBackup);
-                    if (document.getElementById('qdrant-backup-size')) {
-                        document.getElementById('qdrant-backup-size').textContent = formatSize(data.qdrant.lastSize);
-                    }
-                }
-                if (data.workflows) {
-                    document.getElementById('workflow-last-commit').textContent = formatDate(data.workflows.lastCommit);
-                    document.getElementById('workflow-changes').textContent = data.workflows.uncommitted;
+        // Handle stats
+        const statsData = await statsResponse.json();
+        if (statsData.success) {
+            if (statsData.mongo) {
+                document.getElementById('mongo-backup-count').textContent = statsData.mongo.count;
+                document.getElementById('mongo-last-backup').textContent = formatDate(statsData.mongo.lastBackup);
+                if (document.getElementById('mongo-backup-size')) {
+                    document.getElementById('mongo-backup-size').textContent = formatSize(statsData.mongo.lastSize);
                 }
             }
-        })
-        .catch(err => console.error('Failed to load stats:', err));
+            if (statsData.qdrant) {
+                document.getElementById('qdrant-backup-count').textContent = statsData.qdrant.count;
+                document.getElementById('qdrant-last-backup').textContent = formatDate(statsData.qdrant.lastBackup);
+                if (document.getElementById('qdrant-backup-size')) {
+                    document.getElementById('qdrant-backup-size').textContent = formatSize(statsData.qdrant.lastSize);
+                }
+            }
+            if (statsData.workflows) {
+                document.getElementById('workflow-last-commit').textContent = formatDate(statsData.workflows.lastCommit);
+                document.getElementById('workflow-changes').textContent = statsData.workflows.uncommitted;
+            }
+        }
+
+        // Handle cron status
+        const statusData = await statusResponse.json();
+        if (statusData.success && statusData.status) {
+            updateCronStatus(statusData.status);
+            displayCronLog(statusData.cronJobs || 'No cron jobs found');
+        }
+    } catch (err) {
+        console.error('Failed to load dashboard data:', err);
+    }
 });

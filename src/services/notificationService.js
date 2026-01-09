@@ -88,11 +88,16 @@ class NotificationService {
   }
 
   _buildTemplateData(alert) {
+    // Handle null/undefined alert
+    if (!alert) {
+      return { context: {}, delivery: {} };
+    }
+
     const base = typeof alert?.toObject === 'function' ? alert.toObject() : { ...alert };
     return {
       ...base,
-      context: base.context || alert.context || {},
-      delivery: base.delivery || alert.delivery || {}
+      context: base.context || alert?.context || {},
+      delivery: base.delivery || alert?.delivery || {}
     };
   }
 

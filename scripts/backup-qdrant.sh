@@ -6,7 +6,9 @@ set -e
 
 QDRANT_URL="${QDRANT_URL:-http://localhost:6333}"
 COLLECTION="${QDRANT_COLLECTION:-agentx_rag}"
-BACKUP_DIR="${1:-/mnt/datalake/backups/qdrant}"
+# Use home directory backups by default
+DEFAULT_DIR="$HOME/backups/qdrant"
+BACKUP_DIR="${1:-$DEFAULT_DIR}"
 DATE=$(date +%Y%m%d_%H%M%S)
 RETENTION_DAYS=7
 
