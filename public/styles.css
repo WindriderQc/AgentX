@@ -39,6 +39,15 @@ body {
   z-index: 0;
 }
 
+/* Navigation Container */
+#nav-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+}
+
 .page {
   position: relative;
   z-index: 1;
@@ -1366,6 +1375,28 @@ button:active {
   display: flex;
   gap: 20px;
   align-items: center;
+  flex-wrap: wrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(124, 240, 255, 0.3) transparent;
+}
+
+.top-nav .nav-right::-webkit-scrollbar {
+  height: 4px;
+}
+
+.top-nav .nav-right::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.top-nav .nav-right::-webkit-scrollbar-thumb {
+  background: rgba(124, 240, 255, 0.3);
+  border-radius: 2px;
+}
+
+.top-nav .nav-right::-webkit-scrollbar-thumb:hover {
+  background: rgba(124, 240, 255, 0.5);
 }
 
 .workspace-dropdown {
@@ -1447,6 +1478,95 @@ button:active {
 .dropdown-item i.fa-check {
   color: var(--accent);
   margin-right: 8px;
+}
+
+/* Responsive Navigation */
+@media (max-width: 1400px) {
+  .top-nav {
+    gap: 16px;
+  }
+  
+  .top-nav .nav-right {
+    gap: 12px;
+  }
+  
+  .top-nav a {
+    font-size: 12px;
+    padding: 6px 12px;
+  }
+}
+
+@media (max-width: 1200px) {
+  .top-nav {
+    padding: 10px 16px;
+    gap: 12px;
+  }
+  
+  .top-nav .nav-right {
+    gap: 8px;
+  }
+  
+  .top-nav a {
+    font-size: 12px;
+    padding: 6px 10px;
+  }
+  
+  .top-nav a i {
+    margin-right: 4px;
+  }
+}
+
+@media (max-width: 768px) {
+  .top-nav {
+    padding: 8px 12px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  
+  .top-nav .nav-left {
+    width: 100%;
+    margin-bottom: 8px;
+  }
+  
+  .workspace-btn {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .top-nav .nav-right {
+    width: 100%;
+    gap: 6px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+  
+  .top-nav a {
+    font-size: 11px;
+    padding: 6px 10px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  
+  .top-nav a i {
+    font-size: 11px;
+  }
+}
+
+/* Compact mode for very small screens */
+@media (max-width: 480px) {
+  .top-nav a span.label-text {
+    display: none;
+  }
+  
+  .top-nav a {
+    padding: 8px;
+  }
+  
+  .top-nav a i {
+    margin-right: 0;
+    font-size: 14px;
+  }
 }
 
 .dropdown-item i.fa-cog {

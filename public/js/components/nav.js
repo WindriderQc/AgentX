@@ -57,7 +57,7 @@ function injectNav(activePageId = '') {
 
     navItems.forEach(item => {
         const activeClass = (activePageId === item.id) ? ' class="active"' : '';
-        navHTML += `    <a href="${item.href}"${activeClass}><i class="fas ${item.icon}"></i> ${item.label}</a>\n`;
+        navHTML += `    <a href="${item.href}"${activeClass}><i class="fas ${item.icon}"></i> <span class="label-text">${item.label}</span></a>\n`;
     });
 
     navHTML += '  </div>\n';
