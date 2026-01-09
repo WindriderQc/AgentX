@@ -20,7 +20,7 @@ body {
     background-color: var(--bg-color);
     color: var(--text-primary);
     margin: 0;
-    padding: 80px 20px 20px 20px;
+    padding: 20px;
 }
 
 .dashboard-container {
@@ -50,6 +50,92 @@ body {
 .dashboard-actions {
     display: flex;
     gap: 12px;
+}
+
+.guide-panel {
+    border: 1px solid var(--border-color);
+    background: #fff;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 20px;
+}
+
+.guide-title {
+    font-size: 14px;
+    font-weight: 700;
+    margin-bottom: 6px;
+}
+
+.guide-subtitle {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+}
+
+.guide-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+@media (max-width: 900px) {
+    .guide-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.guide-card {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 12px;
+    background: var(--bg-color);
+}
+
+.guide-card-title {
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+
+.guide-steps {
+    margin: 0;
+    padding-left: 18px;
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+
+.guide-kv {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.guide-kv:last-child {
+    border-bottom: none;
+}
+
+.guide-k {
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.guide-v {
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.scan-status {
+    margin-top: 10px;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.guide-footnote {
+    margin-top: 12px;
+    font-size: 12px;
+    color: var(--text-secondary);
 }
 
 .btn {
@@ -87,6 +173,30 @@ body {
     margin-bottom: 24px;
     flex-wrap: wrap;
     align-items: center;
+}
+
+.presence-filters {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.presence-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: #fff;
+    font-size: 13px;
+    color: var(--text-secondary);
+    user-select: none;
+}
+
+.presence-chip input {
+    margin: 0;
 }
 
 .search-box {
@@ -248,6 +358,70 @@ body {
 .details-content {
     padding: 16px 24px;
     border-top: 1px dashed var(--border-color);
+}
+
+.update-panel {
+    margin-top: 14px;
+    border-top: 1px solid var(--border-color);
+    padding-top: 14px;
+}
+
+.update-title {
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 10px;
+}
+
+.update-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    align-items: end;
+}
+
+@media (max-width: 900px) {
+    .update-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 520px) {
+    .update-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.field label {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.field input,
+.field select {
+    padding: 8px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 13px;
+    background: #fff;
+}
+
+.update-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    justify-content: flex-end;
+}
+
+.hint {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 8px;
 }
 
 .details-grid {

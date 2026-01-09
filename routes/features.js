@@ -95,8 +95,9 @@ router.get('/inventory/alignment', async (req, res) => {
 router.post('/inventory/scan', requireAuth, async (req, res) => {
   try {
     // Implement codebase scanning logic
-    // FIXED: Passed object with rootDir instead of string
-    const scanResult = featureAlignmentScanner.scanWorkspace({ rootDir: process.cwd() });
+    // IMPORTANT: Do not rely on process.cwd() (can vary under PM2). Use repo root based on this file.
+    const rootDir = path.resolve(__dirname, '..');
+    const scanResult = featureAlignmentScanner.scanWorkspace({ rootDir });
 
     // Update DB with results
     const results = {
@@ -112,6 +113,23 @@ router.post('/inventory/scan', requireAuth, async (req, res) => {
         
         let feature = await FeatureInventory.findOne(query);
         
+        const frontendFiles = detectedFeature.frontend?.files || [];
+        const backendEndpoints = detectedFeature.backend?.endpoints || [];
+        const backendServices = detectedFeature.backend?.services || [];
+        const backendModels = detectedFeature.backend?.models || [];
+        const docsFiles = detectedFeature.docs?.files || [];
+
+        const rawStatus = detectedFeature.status;
+        const normalizedStatus = rawStatus === 'complete'
+          ? 'complete'
+          : rawStatus === 'orphan-backend'
+            ? 'orphaned'
+            : rawStatus === 'undocumented' || rawStatus === 'headless-documented'
+              ? 'partial'
+              : rawStatus === 'partial'
+                ? 'partial'
+                : 'partial';
+
         const updateData = {
           name: detectedFeature.key,
           // Map to enum core/analytics/operations/experimental/deprecated based on keyword checks or default to 'experimental'
@@ -119,30 +137,31 @@ router.post('/inventory/scan', requireAuth, async (req, res) => {
                    detectedFeature.key.includes('op') || detectedFeature.key.includes('monitor') ? 'operations' : 
                    detectedFeature.key.includes('core') || detectedFeature.key.includes('chat') ? 'core' : 'experimental',
           
-          status: detectedFeature.status, // already matches 'complete'|'partial'|'missing' etc.
+          status: normalizedStatus,
           
           frontend: {
-            exists: detectedFeature.present.frontend,
-            pages: detectedFeature.frontend.map(p => p.split('/').pop()), // simplify path
+            exists: !!detectedFeature.present?.frontend,
+            pages: frontendFiles.map(p => path.basename(p)), // simplify path
             lastVerified: new Date()
           },
           
           backend: {
-            exists: detectedFeature.present.backend,
-            endpoints: detectedFeature.backendHits.map(e => `${e.method} ${e.path}`),
-            services: detectedFeature.backendServices.map(s => s.split('/').pop()),
+            exists: !!detectedFeature.present?.backend,
+            endpoints: backendEndpoints.map(e => `${e.method} ${e.path}`),
+            services: backendServices.map(s => path.basename(s)),
+            models: backendModels.map(m => path.basename(m)),
             lastVerified: new Date()
           },
           
           documentation: {
-            exists: detectedFeature.present.docs,
-            files: detectedFeature.docs.map(d => d.split('/').pop()),
-            completeness: detectedFeature.score, // Use score as proxy for completeness
+            exists: !!detectedFeature.present?.docs,
+            files: docsFiles.map(d => path.basename(d)),
+            completeness: (detectedFeature.present?.docs ? 100 : 0),
             lastVerified: new Date()
           },
           
           metadata: {
-             description: `Auto-detected from ${detectedFeature.frontend.length} UI files and ${detectedFeature.backendHits.length} API endpoints`,
+             description: `Auto-detected from ${frontendFiles.length} UI files and ${backendEndpoints.length} API endpoints`,
              updatedBy: 'system-scanner'
           }
         };

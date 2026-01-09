@@ -3,7 +3,7 @@
  * Injects the standard AgentX navigation bar with all pages.
  * Usage: injectNav('activePageId') where activePageId is one of:
  * 'chat', 'operations', 'self-healing', 'alerts', 'backup', 'models', 'benchmark',
- * 'performance', 'analytics', 'custom-dashboards', 'features-inventory', 'features-telemetry',
+ * 'performance', 'analytics', 'features-inventory', 'features-telemetry',
  * 'features-adoption', 'features-admin', 'feature-alignment', 'workspaces', 'audit-logs', 'rag', 'personas', 'profile'
  */
 
@@ -28,13 +28,6 @@ function injectNav(activePageId = '') {
                 { label: 'Performance', href: 'performance.html', icon: 'fa-gauge-high', id: 'performance' },
                 { label: 'Analytics', href: 'analytics.html', icon: 'fa-chart-line', id: 'analytics' },
                 { label: 'Cost', href: 'cost-tracking.html', icon: 'fa-dollar-sign', id: 'cost-tracking' }
-            ]
-        },
-        {
-            label: 'Dashboards', icon: 'fa-columns', id: 'grp-dash',
-            children: [
-                { label: 'All Dashboards', href: 'custom-dashboard.html', icon: 'fa-columns', id: 'custom-dashboards' },
-                { label: 'Builder', href: 'dashboard-builder.html', icon: 'fa-layer-group', id: 'dashboard-builder' }
             ]
         },
         {

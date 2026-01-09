@@ -11,7 +11,11 @@ class UnifiedModels {
         this.allModels = [];
         this.filteredModels = [];
         this.comparisonList = new Set();
-        
+        this.sources = null;
+
+        // Sorting state
+        this.currentSort = { column: null, direction: null };
+
         // Modules
         this.manager = null;
         this.comparator = null;
@@ -20,10 +24,14 @@ class UnifiedModels {
         this.tableBodyEl = document.getElementById('modelsTableBody');
         this.loadingEl = document.getElementById('loadingIndicator');
         this.gridEl = document.getElementById('modelsGrid'); // Legacy ref
-        
+
         this.compareDrawer = document.getElementById('compareDrawer');
         this.compareListEl = document.getElementById('compareList');
-        
+
+        // VRAM metrics cache (populated best-effort)
+        this._vramCache = null;
+        this._vramCacheTs = 0;
+
         this.init();
     }
 
@@ -33,7 +41,58 @@ class UnifiedModels {
         if (window.ModelComparator) this.comparator = new ModelComparator(this);
 
         this.setupFilters();
+        this.setupVramPopup();
+        this.setupProvidersPopup();
         await this.fetchModels();
+    }
+
+    setupVramPopup() {
+        const card = document.getElementById('statVramCard');
+        if (!card) return;
+
+        card.addEventListener('click', async () => {
+            try {
+                this.openVramModal('Loading...');
+                const data = await this.fetchVramMetrics({ force: true });
+                this.renderVramModal(data);
+            } catch (err) {
+                this.renderVramModalError(err);
+            }
+        });
+
+        const modal = document.getElementById('vramDetailsModal');
+        const closeBtn = document.getElementById('closeVramDetailsModal');
+        if (closeBtn) closeBtn.addEventListener('click', () => this.closeVramModal());
+        if (modal) {
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) this.closeVramModal();
+            });
+        }
+    }
+
+    setupProvidersPopup() {
+        const card = document.getElementById('statProvidersCard');
+        if (!card) return;
+
+        card.addEventListener('click', async () => {
+            try {
+                this.openProvidersModal('Loading...');
+                // Ensure we have freshest sources/models (but don't force a refetch if already loaded)
+                if (!this.allModels?.length) await this.fetchModels();
+                this.renderProvidersModal();
+            } catch (err) {
+                this.renderProvidersModalError(err);
+            }
+        });
+
+        const modal = document.getElementById('providersDetailsModal');
+        const closeBtn = document.getElementById('closeProvidersDetailsModal');
+        if (closeBtn) closeBtn.addEventListener('click', () => this.closeProvidersModal());
+        if (modal) {
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) this.closeProvidersModal();
+            });
+        }
     }
 
     async fetchModels() {
@@ -53,6 +112,7 @@ class UnifiedModels {
             const data = await res.json();
             const payload = data.data || data;
             this.allModels = payload.models || [];
+            this.sources = payload.sources || null;
             
             this.filteredModels = [...this.allModels];
             this.updateStats();
@@ -81,6 +141,14 @@ class UnifiedModels {
             this.comparisonList.clear();
             this.renderComparisonDrawer();
             this.renderTable();
+        });
+
+        // Table header sorting
+        document.querySelectorAll('.models-table th.sortable').forEach(th => {
+            th.addEventListener('click', () => {
+                const column = th.dataset.sort;
+                this.sortByColumn(column);
+            });
         });
     }
 
@@ -111,12 +179,358 @@ class UnifiedModels {
         this.renderTable();
     }
 
+    sortByColumn(column) {
+        // Toggle direction: null -> asc -> desc -> null
+        if (this.currentSort.column === column) {
+            if (this.currentSort.direction === 'asc') {
+                this.currentSort.direction = 'desc';
+            } else if (this.currentSort.direction === 'desc') {
+                this.currentSort.column = null;
+                this.currentSort.direction = null;
+            }
+        } else {
+            this.currentSort.column = column;
+            this.currentSort.direction = 'asc';
+        }
+
+        // Apply sort
+        if (this.currentSort.column) {
+            this.filteredModels.sort((a, b) => {
+                let aVal, bVal;
+
+                switch (column) {
+                    case 'name':
+                        aVal = a.name?.toLowerCase() || '';
+                        bVal = b.name?.toLowerCase() || '';
+                        return this.currentSort.direction === 'asc'
+                            ? aVal.localeCompare(bVal)
+                            : bVal.localeCompare(aVal);
+
+                    case 'provider':
+                        aVal = a.provider?.toLowerCase() || '';
+                        bVal = b.provider?.toLowerCase() || '';
+                        return this.currentSort.direction === 'asc'
+                            ? aVal.localeCompare(bVal)
+                            : bVal.localeCompare(aVal);
+
+                    case 'params':
+                        aVal = parseFloat(a.details?.parameter_size || a.parameters || '0');
+                        bVal = parseFloat(b.details?.parameter_size || b.parameters || '0');
+                        return this.currentSort.direction === 'asc' ? aVal - bVal : bVal - aVal;
+
+                    case 'quant':
+                        aVal = a.details?.quantization_level || a.quantization || '';
+                        bVal = b.details?.quantization_level || b.quantization || '';
+                        return this.currentSort.direction === 'asc'
+                            ? aVal.localeCompare(bVal)
+                            : bVal.localeCompare(aVal);
+
+                    case 'size':
+                        aVal = a.size || a.source?.metadata?.size || 0;
+                        bVal = b.size || b.source?.metadata?.size || 0;
+                        return this.currentSort.direction === 'asc' ? aVal - bVal : bVal - aVal;
+
+                    case 'context':
+                        aVal = a.capabilities?.maxContext || a.details?.context_length || 0;
+                        bVal = b.capabilities?.maxContext || b.details?.context_length || 0;
+                        return this.currentSort.direction === 'asc' ? aVal - bVal : bVal - aVal;
+
+                    default:
+                        return 0;
+                }
+            });
+        }
+
+        this.updateSortIndicators();
+        this.renderTable();
+    }
+
+    updateSortIndicators() {
+        // Clear all sort indicators
+        document.querySelectorAll('.models-table th.sortable').forEach(th => {
+            th.classList.remove('sort-asc', 'sort-desc');
+        });
+
+        // Set active sort indicator
+        if (this.currentSort.column) {
+            const activeTh = document.querySelector(`.models-table th[data-sort="${this.currentSort.column}"]`);
+            if (activeTh) {
+                activeTh.classList.add(`sort-${this.currentSort.direction}`);
+            }
+        }
+    }
+
     updateStats() {
         document.getElementById('statTotal').innerText = this.allModels.length;
         const size = this.allModels.reduce((acc, m) => acc + (m.size || 0), 0);
         document.getElementById('statStorage').innerText = (size / 1024 / 1024 / 1024).toFixed(1) + ' GB';
-        // Mock RAM
-        document.getElementById('statRam').innerText = '4.2 GB';
+
+        // Providers (show TOTAL sources/endpoints, not provider-types)
+        // - Ollama: host count
+        // - n8n: webhook/source count
+        // - Custom: custom model count (acts as "custom sources")
+        const s = this.sources || {};
+
+        const inferredOllamaHosts = new Set(
+            (this.allModels || [])
+                .filter(m => m?.provider === 'ollama')
+                .map(m => m?.source?.url)
+                .filter(Boolean)
+        );
+
+        const ollamaHostCount = (
+            Array.isArray(s?.ollama?.hosts) && s.ollama.hosts.length
+                ? s.ollama.hosts.length
+                : inferredOllamaHosts.size
+        );
+
+        const n8nSourceCount = Array.isArray(s?.n8n?.webhooks)
+            ? s.n8n.webhooks.length
+            : (this.allModels || []).filter(m => m?.provider === 'n8n-webhook').length;
+
+        const customCount = Number(s?.custom?.count || 0)
+            || (this.allModels || []).filter(m => m?.provider === 'custom').length;
+
+        const totalSources = (ollamaHostCount || 0) + (n8nSourceCount || 0) + (customCount || 0);
+
+        const providersEl = document.getElementById('statProviders');
+        const providersSubEl = document.getElementById('statProvidersSub');
+        if (providersEl) providersEl.innerText = String(totalSources);
+        if (providersSubEl) providersSubEl.innerText = `Ollama: ${ollamaHostCount || 0}, n8n: ${n8nSourceCount || 0}, Custom: ${customCount || 0}`;
+
+        // Real VRAM (best-effort). Falls back to '—' if not available.
+        const vramEl = document.getElementById('statVram') || document.getElementById('statRam');
+        if (vramEl) vramEl.innerText = '—';
+        this.updateVramStat().catch(() => {
+            const el = document.getElementById('statVram') || document.getElementById('statRam');
+            if (el) el.innerText = '—';
+        });
+    }
+
+    async updateVramStat() {
+        const data = await this.fetchVramMetrics({ force: false });
+        const hosts = Array.isArray(data?.hosts) ? data.hosts : [];
+        const usedMiB = hosts.reduce((sum, h) => sum + (h?.memoryUsedMiBTotal || 0), 0);
+        const usedGiB = usedMiB / 1024;
+
+        const el = document.getElementById('statVram') || document.getElementById('statRam');
+        if (el) el.innerText = Number.isFinite(usedGiB) ? `${usedGiB.toFixed(1)} GB` : '—';
+    }
+
+    async fetchVramMetrics({ force }) {
+        const cacheMs = 5000;
+        const now = Date.now();
+        if (!force && this._vramCache && (now - this._vramCacheTs) < cacheMs) {
+            return this._vramCache;
+        }
+
+        const headers = {};
+        if (window.WorkspaceManager && typeof window.WorkspaceManager.addWorkspaceHeader === 'function') {
+            Object.assign(headers, window.WorkspaceManager.addWorkspaceHeader({}));
+        }
+
+        const res = await fetch('/api/ollama-vram', { credentials: 'include', headers });
+        if (!res.ok) {
+            const err = new Error(`HTTP ${res.status}`);
+            err.status = res.status;
+            throw err;
+        }
+
+        const json = await res.json();
+        const data = json?.data || json;
+        this._vramCache = data;
+        this._vramCacheTs = now;
+        return data;
+    }
+
+    openVramModal(loadingText) {
+        const modal = document.getElementById('vramDetailsModal');
+        const body = document.getElementById('vramDetailsBody');
+        if (body) body.innerHTML = `<div style="color: var(--muted);">${this.escapeHtml(loadingText || 'Loading...')}</div>`;
+        if (modal) modal.classList.add('active');
+    }
+
+    closeVramModal() {
+        const modal = document.getElementById('vramDetailsModal');
+        if (modal) modal.classList.remove('active');
+    }
+
+    renderVramModal(data) {
+        const body = document.getElementById('vramDetailsBody');
+        if (!body) return;
+
+        const hosts = Array.isArray(data?.hosts) ? data.hosts : [];
+        if (!hosts.length) {
+            body.innerHTML = '<div style="color: var(--muted);">No hosts configured.</div>';
+            return;
+        }
+
+        const fmtGiB = (mib) => {
+            const gib = (Number(mib) || 0) / 1024;
+            return `${gib.toFixed(1)} GB`;
+        };
+
+        const fmtTs = (iso) => {
+            if (!iso) return '—';
+            const d = new Date(iso);
+            if (Number.isNaN(d.getTime())) return String(iso);
+            return d.toLocaleString();
+        };
+
+        const rows = hosts.map(h => {
+            const hostName = this.escapeHtml(h?.name || h?.id || 'Host');
+            const hostUrl = this.escapeHtml(h?.url || '');
+            const ok = !!h?.ok;
+            const status = ok ? '✓' : '✗';
+            const statusStyle = ok ? 'color:#22c55e;' : 'color:#ef4444;';
+            const used = ok ? fmtGiB(h?.memoryUsedMiBTotal || 0) : '—';
+            const total = ok ? fmtGiB(h?.memoryTotalMiBTotal || 0) : '—';
+            const err = !ok ? this.escapeHtml(h?.error || 'Unavailable') : '';
+            const collectedAt = this.escapeHtml(fmtTs(h?.collectedAt));
+
+            const gpus = Array.isArray(h?.gpus) ? h.gpus : [];
+            const gpuLines = gpus.length
+                ? gpus.map(g => {
+                    const idx = this.escapeHtml(g?.index);
+                    const nm = this.escapeHtml(g?.name || 'GPU');
+                    const gu = fmtGiB(g?.memoryUsedMiB || 0);
+                    const gt = fmtGiB(g?.memoryTotalMiB || 0);
+                    return `<div style="display:flex; justify-content: space-between; gap: 1rem;"><span style="font-family: 'Courier New', monospace;">GPU ${idx}</span><span>${nm}</span><span>${gu} / ${gt}</span></div>`;
+                }).join('')
+                : `<div style="color: var(--muted); font-size: 0.9rem;">No GPU data</div>`;
+
+            return `
+                <div class="glass-panel" style="padding: 1rem; margin-bottom: 0.75rem;">
+                    <div style="display:flex; justify-content: space-between; align-items: baseline; gap: 1rem;">
+                        <div>
+                            <div style="font-weight: 700;">${hostName}</div>
+                            <div style="color: var(--muted); font-size: 0.85rem;">${hostUrl}</div>
+                            <div style="color: var(--muted); font-size: 0.8rem; margin-top: 0.25rem;">Collected: ${collectedAt}</div>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="font-weight: 700; ${statusStyle}">${status}</div>
+                            <div style="font-weight: 700;">${used} / ${total}</div>
+                            ${err ? `<div style="color:#fca5a5; font-size: 0.85rem;">${err}</div>` : ''}
+                        </div>
+                    </div>
+                    <div style="margin-top: 0.75rem; display:flex; flex-direction: column; gap: 0.35rem;">
+                        ${gpuLines}
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        body.innerHTML = rows;
+    }
+
+    renderVramModalError(err) {
+        const body = document.getElementById('vramDetailsBody');
+        if (!body) return;
+        const status = err?.status;
+        if (status === 401) {
+            body.innerHTML = '<div style="color:#fca5a5;">Authentication required. Please log in and try again.</div>';
+            return;
+        }
+        body.innerHTML = `<div style="color:#fca5a5;">Failed to load VRAM metrics: ${this.escapeHtml(err?.message || 'Unknown error')}</div>`;
+    }
+
+    openProvidersModal(loadingText) {
+        const modal = document.getElementById('providersDetailsModal');
+        const body = document.getElementById('providersDetailsBody');
+        if (body) body.innerHTML = `<div style="color: var(--muted);">${this.escapeHtml(loadingText || 'Loading...')}</div>`;
+        if (modal) modal.classList.add('active');
+    }
+
+    closeProvidersModal() {
+        const modal = document.getElementById('providersDetailsModal');
+        if (modal) modal.classList.remove('active');
+    }
+
+    renderProvidersModal() {
+        const body = document.getElementById('providersDetailsBody');
+        if (!body) return;
+
+        const sources = this.sources || {};
+        const ollamaHosts = Array.isArray(sources?.ollama?.hosts) ? sources.ollama.hosts : [];
+        const n8nWebhooks = Array.isArray(sources?.n8n?.webhooks) ? sources.n8n.webhooks : [];
+
+        const byHost = new Map();
+        for (const model of (this.allModels || [])) {
+            if (model?.provider !== 'ollama') continue;
+            const url = model?.source?.url;
+            if (!url) continue;
+            byHost.set(url, (byHost.get(url) || 0) + 1);
+        }
+
+        const hostRows = (ollamaHosts.length ? ollamaHosts : Array.from(byHost.keys()))
+            .map((url) => {
+                const count = byHost.get(url) || 0;
+                return `
+                    <div class="glass-panel" style="padding: 1rem; margin-bottom: 0.75rem;">
+                        <div style="display:flex; justify-content: space-between; gap: 1rem;">
+                            <div>
+                                <div style="font-weight: 700;">${this.escapeHtml(url)}</div>
+                                <div style="color: var(--muted); font-size: 0.85rem;">Ollama host</div>
+                            </div>
+                            <div style="text-align:right;">
+                                <div style="font-weight: 700;">${count}</div>
+                                <div style="color: var(--muted); font-size: 0.85rem;">models</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+        const ollamaHostCount = (ollamaHosts.length ? ollamaHosts.length : byHost.size) || 0;
+        const n8nSourceCount = n8nWebhooks.length || (this.allModels || []).filter(m => m?.provider === 'n8n-webhook').length;
+        const customCount = Number(sources?.custom?.count || 0) || (this.allModels || []).filter(m => m?.provider === 'custom').length;
+
+        const n8nRows = n8nWebhooks.length
+            ? n8nWebhooks.map(w => {
+                const name = this.escapeHtml(w?.name || 'n8n webhook');
+                const url = this.escapeHtml(w?.url || '');
+                const provider = this.escapeHtml(w?.provider || 'n8n');
+                return `
+                    <div class="glass-panel" style="padding: 1rem; margin-bottom: 0.75rem;">
+                        <div style="font-weight: 700;">${name}</div>
+                        <div style="color: var(--muted); font-size: 0.85rem;">${provider}</div>
+                        <div style="color: var(--muted); font-size: 0.85rem; margin-top: 0.25rem;">${url}</div>
+                    </div>
+                `;
+            }).join('')
+            : `<div style="color: var(--muted);">No n8n sources detected.</div>`;
+
+        body.innerHTML = `
+            <div style="margin-bottom: 1rem;">
+                <div style="display:flex; gap: 0.75rem; flex-wrap: wrap;">
+                    <span class="badge">Ollama: ${ollamaHostCount} host${ollamaHostCount === 1 ? '' : 's'}</span>
+                    <span class="badge">n8n: ${n8nSourceCount} source${n8nSourceCount === 1 ? '' : 's'}</span>
+                    <span class="badge">Custom: ${customCount} model${customCount === 1 ? '' : 's'}</span>
+                </div>
+            </div>
+
+            <div style="margin-bottom: 1rem;">
+                <div style="font-weight: 700; margin-bottom: 0.5rem;">Ollama Hosts (${ollamaHostCount})</div>
+                ${hostRows || `<div style=\"color: var(--muted);\">No Ollama hosts detected.</div>`}
+            </div>
+
+            <div>
+                <div style="font-weight: 700; margin-bottom: 0.5rem;">n8n Sources (${n8nSourceCount})</div>
+                ${n8nRows}
+            </div>
+        `;
+    }
+
+    renderProvidersModalError(err) {
+        const body = document.getElementById('providersDetailsBody');
+        if (!body) return;
+        body.innerHTML = `<div style="color:#fca5a5;">Failed to load providers: ${this.escapeHtml(err?.message || 'Unknown error')}</div>`;
+    }
+
+    escapeHtml(value) {
+        const div = document.createElement('div');
+        div.textContent = String(value ?? '');
+        return div.innerHTML;
     }
 
     renderTable() {

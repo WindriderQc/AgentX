@@ -18,6 +18,9 @@
                 <button id="scanBtn" class="btn btn-primary" onclick="window.inventoryApp.scanCodebase()">
                     <span>Scan Codebase</span>
                 </button>
+                <button id="openReportBtn" class="btn" onclick="window.inventoryApp.openLatestReport()">
+                    <span>Open Latest Report</span>
+                </button>
                 <button id="exportBtn" class="btn" onclick="window.inventoryApp.exportReport()">
                     <span>Export CSV</span>
                 </button>
@@ -26,6 +29,45 @@
                 </button>
             </div>
         </header>
+
+        <section class="guide-panel" aria-label="Feature inventory guidance">
+            <div class="guide-title">What you can do here</div>
+            <div class="guide-subtitle">
+                This dashboard turns your codebase into a feature matrix (Frontend / Backend / Docs), then lets you filter, export, and update metadata.
+            </div>
+
+            <div class="guide-grid">
+                <div class="guide-card">
+                    <div class="guide-card-title">Recommended workflow</div>
+                    <ol class="guide-steps">
+                        <li><strong>Scan Codebase</strong> to generate the latest report.</li>
+                        <li>Use <strong>filters</strong> to find partial/orphaned features.</li>
+                        <li>Open any row → <strong>Update</strong> category/status/roadmap.</li>
+                    </ol>
+                </div>
+
+                <div class="guide-card">
+                    <div class="guide-card-title">Latest scan</div>
+                    <div class="guide-kv">
+                        <div class="guide-k">Generated</div>
+                        <div class="guide-v" id="lastScanAt">—</div>
+                    </div>
+                    <div class="guide-kv">
+                        <div class="guide-k">Detected</div>
+                        <div class="guide-v" id="lastScanCounts">—</div>
+                    </div>
+                    <div class="guide-kv">
+                        <div class="guide-k">Report file</div>
+                        <div class="guide-v"><a class="action-link" href="/api/features/reports/latest" target="_blank" rel="noreferrer">feature-alignment.json</a></div>
+                    </div>
+                    <div id="scanStatus" class="scan-status" role="status" aria-live="polite"></div>
+                </div>
+            </div>
+
+            <div class="guide-footnote">
+                <strong>Status meanings:</strong> Complete = frontend+backend+docs. Partial = missing at least one. Orphaned = backend exists without frontend/docs.
+            </div>
+        </section>
 
         <div class="filters-bar">
             <div class="search-box">
@@ -39,7 +81,23 @@
                 <option value="analytics">Analytics</option>
                 <option value="operations">Operations</option>
                 <option value="experimental">Experimental</option>
+                <option value="deprecated">Deprecated</option>
             </select>
+
+            <select id="statusFilter" class="filter-select" onchange="window.inventoryApp.applyFilters()">
+                <option value="all">All Statuses</option>
+                <option value="complete">Complete</option>
+                <option value="partial">Partial</option>
+                <option value="planned">Planned</option>
+                <option value="orphaned">Orphaned</option>
+                <option value="deprecated">Deprecated</option>
+            </select>
+
+            <div class="presence-filters" aria-label="Presence filters">
+                <label class="presence-chip"><input type="checkbox" id="hasFrontend" onchange="window.inventoryApp.applyFilters()"> Frontend</label>
+                <label class="presence-chip"><input type="checkbox" id="hasBackend" onchange="window.inventoryApp.applyFilters()"> Backend</label>
+                <label class="presence-chip"><input type="checkbox" id="hasDocs" onchange="window.inventoryApp.applyFilters()"> Docs</label>
+            </div>
         </div>
 
         <div class="inventory-table-container">
@@ -70,6 +128,8 @@
             <div class="stat-item"><strong id="statPartial">0</strong> Partial</div>
             <div class="stat-item"><strong id="statMissing">0</strong> Missing</div>
             <div class="stat-item"><strong id="statPlanned">0</strong> Planned</div>
+            <div class="stat-item"><strong id="statOrphaned">0</strong> Orphaned</div>
+            <div class="stat-item"><strong id="statDeprecated">0</strong> Deprecated</div>
         </div>
     </div>
 

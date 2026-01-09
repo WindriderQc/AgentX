@@ -239,9 +239,11 @@ app.use('/api/rag', ragRoutes);
 const analyticsRoutes = require('../routes/analytics');
 app.use('/api/analytics', analyticsRoutes);
 
-// Custom Dashboards (Week 4 Day 4)
-const customDashboardRoutes = require('../routes/dashboards');
-app.use('/api/dashboards', customDashboardRoutes);
+// Custom Dashboards (Week 4 Day 4) - ARCHIVED 2026-01-09
+// Feature archived - not required for current release
+// See: /archive/custom-dashboards/README.md
+// const customDashboardRoutes = require('../routes/dashboards');
+// app.use('/api/dashboards', customDashboardRoutes);
 
 const datasetRoutes = require('../routes/dataset');
 app.use('/api/dataset', datasetRoutes);
@@ -284,6 +286,10 @@ app.use('/api/benchmark', benchmarkLimiter, benchmarkRoutes);
 // Ollama hosts routes (configuration and models)
 const ollamaHostsRoutes = require('../routes/ollama-hosts');
 app.use('/api/ollama-hosts', ollamaHostsRoutes);
+
+// Ollama VRAM metrics (via SSH + nvidia-smi)
+const ollamaVramRoutes = require('../routes/ollama-vram');
+app.use('/api/ollama-vram', ollamaVramRoutes);
 
 // Workflow Generator routes (N6.1)
 const workflowGeneratorRoutes = require('../routes/workflowGenerator');

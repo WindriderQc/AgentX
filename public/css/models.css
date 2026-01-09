@@ -32,6 +32,10 @@
     border-color: rgba(124, 240, 255, 0.3);
 }
 
+.stat-card.clickable {
+    cursor: pointer;
+}
+
 .icon-box {
     width: 48px;
     height: 48px;
@@ -224,6 +228,47 @@
     letter-spacing: 0.5px;
     color: var(--muted);
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.models-table th.sortable {
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.2s;
+    position: relative;
+}
+
+.models-table th.sortable:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text);
+}
+
+.models-table th.sortable .sort-icon {
+    margin-left: 6px;
+    font-size: 10px;
+    opacity: 0.3;
+    transition: all 0.2s;
+}
+
+.models-table th.sortable:hover .sort-icon {
+    opacity: 0.6;
+}
+
+.models-table th.sortable.sort-asc .sort-icon {
+    opacity: 1;
+    color: var(--accent);
+}
+
+.models-table th.sortable.sort-asc .sort-icon::before {
+    content: "\f0de"; /* fa-sort-up */
+}
+
+.models-table th.sortable.sort-desc .sort-icon {
+    opacity: 1;
+    color: var(--accent);
+}
+
+.models-table th.sortable.sort-desc .sort-icon::before {
+    content: "\f0dd"; /* fa-sort-down */
 }
 
 .models-table td {

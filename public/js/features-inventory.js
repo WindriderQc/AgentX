@@ -5,6 +5,7 @@
 class FeatureInventory {
     constructor() {
         this.features = [];
+        this.renderedFeatures = [];
         this.sortField = 'name';
         this.sortDirection = 'asc';
         this.init();
@@ -13,6 +14,45 @@ class FeatureInventory {
     init() {
         // Initial load
         this.loadInventory();
+        this.loadLatestReportSummary();
+    }
+
+    setScanStatus(message) {
+        const el = document.getElementById('scanStatus');
+        if (!el) return;
+        el.textContent = message || '';
+    }
+
+    async loadLatestReportSummary() {
+        const lastScanAt = document.getElementById('lastScanAt');
+        const lastScanCounts = document.getElementById('lastScanCounts');
+        if (!lastScanAt || !lastScanCounts) return;
+
+        try {
+            const resp = await fetch('/api/features/reports/latest');
+            if (!resp.ok) {
+                lastScanAt.textContent = 'No report yet';
+                lastScanCounts.textContent = 'Run Scan Codebase';
+                return;
+            }
+            const report = await resp.json();
+            const generated = report?.summary?.generatedAt;
+            const counts = report?.summary?.counts;
+
+            lastScanAt.textContent = generated ? new Date(generated).toLocaleString() : '—';
+            if (counts) {
+                lastScanCounts.textContent = `${counts.features ?? '—'} features, ${counts.backendEndpoints ?? '—'} endpoints, ${counts.docsFiles ?? '—'} docs`;
+            } else {
+                lastScanCounts.textContent = '—';
+            }
+        } catch {
+            lastScanAt.textContent = '—';
+            lastScanCounts.textContent = '—';
+        }
+    }
+
+    openLatestReport() {
+        window.open('/api/features/reports/latest', '_blank', 'noopener,noreferrer');
     }
 
     async loadInventory() {
@@ -35,6 +75,7 @@ class FeatureInventory {
 
                 this.renderTable(this.features);
                 this.updateStats(this.features);
+                this.loadLatestReportSummary();
             } else {
                 console.error("Failed to load inventory:", response.status);
             }
@@ -50,6 +91,8 @@ class FeatureInventory {
         const overlay = document.getElementById('loadingOverlay');
         overlay.style.display = 'flex';
 
+        this.setScanStatus('Scanning codebase…');
+
         try {
             const response = await fetch('/api/features/inventory/scan', { 
                 method: 'POST',
@@ -58,21 +101,26 @@ class FeatureInventory {
             
             if (response.ok) {
                 console.log("Scan complete.");
+                this.setScanStatus('Scan complete. Reloading inventory…');
                 // Reload data to reflect changes
                 await this.loadInventory();
+                this.setScanStatus('Ready.');
             } else {
                 console.error("Scan failed:", response.status);
                 alert("Scan failed. Check server logs.");
+                this.setScanStatus('Scan failed.');
             }
         } catch (err) {
             console.error("Error during scan:", err);
             alert("Error during scan: " + err.message);
+            this.setScanStatus('Scan error.');
         } finally {
             overlay.style.display = 'none';
         }
     }
 
     renderTable(data) {
+        this.renderedFeatures = data;
         const tbody = document.getElementById('tableBody');
         const emptyState = document.getElementById('emptyState');
         
@@ -100,7 +148,7 @@ class FeatureInventory {
                 <td>${this.renderRoadmapBadge(feature.roadmap.status)}</td>
                 <td>${this.renderOverallStatus(feature.status)}</td>
                 <td>
-                    <a href="#" class="action-link" onclick="window.inventoryApp.toggleDetails(event, ${index})">View Details</a>
+                    <a href="#" class="action-link" onclick="window.inventoryApp.toggleDetails(event, ${index})">View / Edit</a>
                 </td>
             `;
             tbody.appendChild(row);
@@ -117,10 +165,78 @@ class FeatureInventory {
                             ${this.renderDetailSection('Backend', feature.backend)}
                             ${this.renderDetailSection('Documentation', feature.documentation)}
                         </div>
+
+                        <div class="update-panel">
+                            <div class="update-title">Update feature metadata</div>
+                            <div class="update-grid">
+                                <div class="field">
+                                    <label for="category-${index}">Category</label>
+                                    <select id="category-${index}">
+                                        <option value="core">Core</option>
+                                        <option value="analytics">Analytics</option>
+                                        <option value="operations">Operations</option>
+                                        <option value="experimental">Experimental</option>
+                                        <option value="deprecated">Deprecated</option>
+                                    </select>
+                                </div>
+
+                                <div class="field">
+                                    <label for="status-${index}">Status</label>
+                                    <select id="status-${index}">
+                                        <option value="complete">Complete</option>
+                                        <option value="partial">Partial</option>
+                                        <option value="planned">Planned</option>
+                                        <option value="orphaned">Orphaned</option>
+                                        <option value="deprecated">Deprecated</option>
+                                    </select>
+                                </div>
+
+                                <div class="field">
+                                    <label for="roadmapStatus-${index}">Roadmap</label>
+                                    <select id="roadmapStatus-${index}">
+                                        <option value="complete">Complete</option>
+                                        <option value="in-progress">In Progress</option>
+                                        <option value="planned">Planned</option>
+                                        <option value="backlog">Backlog</option>
+                                        <option value="not-tracked">Not Tracked</option>
+                                    </select>
+                                </div>
+
+                                <div class="field">
+                                    <label for="roadmapPriority-${index}">Priority</label>
+                                    <select id="roadmapPriority-${index}">
+                                        <option value="critical">Critical</option>
+                                        <option value="high">High</option>
+                                        <option value="medium">Medium</option>
+                                        <option value="low">Low</option>
+                                    </select>
+                                </div>
+
+                                <div class="field" style="grid-column: 1 / -1;">
+                                    <label for="desc-${index}">Description</label>
+                                    <input id="desc-${index}" type="text" placeholder="Short description (optional)" />
+                                </div>
+
+                                <div class="field" style="grid-column: 1 / -1;">
+                                    <label for="tags-${index}">Tags</label>
+                                    <input id="tags-${index}" type="text" placeholder="Comma-separated tags (optional)" />
+                                </div>
+
+                                <div class="update-actions" style="grid-column: 1 / -1;">
+                                    <button class="btn btn-primary" onclick="window.inventoryApp.saveFeature(event, ${index})">Save</button>
+                                    <button class="btn" onclick="window.inventoryApp.resetFeatureForm(event, ${index})">Reset</button>
+                                </div>
+                            </div>
+
+                            <div class="hint" id="saveHint-${index}"></div>
+                        </div>
                     </div>
                 </td>
             `;
             tbody.appendChild(detailsRow);
+
+            // set form defaults after insertion
+            this.populateFeatureForm(index, feature);
         });
     }
 
@@ -174,22 +290,30 @@ class FeatureInventory {
     renderDetailSection(title, data) {
         let content = '';
         if (title === 'Frontend') {
+            const pages = Array.isArray(data?.pages) ? data.pages : [];
+            const lines = Array.isArray(data?.lines) ? data.lines : [];
+
             content = data.exists ? `
                 <ul class="detail-list">
-                    <li><strong>Pages:</strong> ${data.pages.map(p => `<span class="file-path">${p}</span>`).join(', ')}</li>
-                    <li><strong>Lines:</strong> ${data.lines.join(', ')}</li>
+                    <li><strong>Pages:</strong> ${pages.length ? pages.map(p => `<span class="file-path">${p}</span>`).join(', ') : '<span class="status-missing">—</span>'}</li>
+                    <li><strong>Lines:</strong> ${lines.length ? lines.join(', ') : '<span class="status-missing">—</span>'}</li>
                 </ul>` : '<span class="status-missing">No frontend files found.</span>';
         } else if (title === 'Backend') {
+             const services = Array.isArray(data?.services) ? data.services : [];
+             const endpoints = Array.isArray(data?.endpoints) ? data.endpoints : [];
+
              content = data.exists ? `
                 <ul class="detail-list">
-                    <li><strong>Services:</strong> ${data.services.map(p => `<span class="file-path">${p}</span>`).join(', ')}</li>
-                    <li><strong>Endpoints:</strong> ${data.endpoints.map(p => `<span class="file-path">${p}</span>`).join(', ')}</li>
+                    <li><strong>Services:</strong> ${services.length ? services.map(p => `<span class="file-path">${p}</span>`).join(', ') : '<span class="status-missing">—</span>'}</li>
+                    <li><strong>Endpoints:</strong> ${endpoints.length ? endpoints.map(p => `<span class="file-path">${p}</span>`).join(', ') : '<span class="status-missing">—</span>'}</li>
                 </ul>` : '<span class="status-missing">No backend services found.</span>';
         } else if (title === 'Documentation') {
+            const files = Array.isArray(data?.files) ? data.files : [];
+            const completeness = Number.isFinite(data?.completeness) ? data.completeness : 0;
             content = data.exists ? `
                 <ul class="detail-list">
-                    <li><strong>Files:</strong> ${data.files.map(p => `<span class="file-path">${p}</span>`).join(', ')}</li>
-                    <li><strong>Completeness:</strong> ${data.completeness}%</li>
+                    <li><strong>Files:</strong> ${files.length ? files.map(p => `<span class="file-path">${p}</span>`).join(', ') : '<span class="status-missing">—</span>'}</li>
+                    <li><strong>Completeness:</strong> ${completeness}%</li>
                 </ul>` : '<span class="status-missing">No documentation found.</span>';
         }
 
@@ -218,17 +342,35 @@ class FeatureInventory {
     applyFilters() {
         const searchInput = document.getElementById('searchInput').value.toLowerCase();
         const categoryFilter = document.getElementById('categoryFilter').value;
+        const statusFilter = document.getElementById('statusFilter')?.value || 'all';
+        const hasFrontend = !!document.getElementById('hasFrontend')?.checked;
+        const hasBackend = !!document.getElementById('hasBackend')?.checked;
+        const hasDocs = !!document.getElementById('hasDocs')?.checked;
 
         const filtered = this.features.filter(f => {
             const matchesSearch = f.name.toLowerCase().includes(searchInput);
             const matchesCategory = categoryFilter === 'all' || f.category === categoryFilter;
+            const matchesStatus = statusFilter === 'all' || f.status === statusFilter;
+
+            const matchesFrontend = !hasFrontend || !!f.frontend?.exists;
+            const matchesBackend = !hasBackend || !!f.backend?.exists;
+            const matchesDocs = !hasDocs || !!f.documentation?.exists;
+
             return matchesSearch && matchesCategory;
         });
 
+        const filtered2 = filtered.filter(f => {
+            const matchesStatus = statusFilter === 'all' || f.status === statusFilter;
+            const matchesFrontend = !hasFrontend || !!f.frontend?.exists;
+            const matchesBackend = !hasBackend || !!f.backend?.exists;
+            const matchesDocs = !hasDocs || !!f.documentation?.exists;
+            return matchesStatus && matchesFrontend && matchesBackend && matchesDocs;
+        });
+
         // Apply sort
-        this.sortData(filtered);
-        this.renderTable(filtered);
-        this.updateStats(filtered);
+        this.sortData(filtered2);
+        this.renderTable(filtered2);
+        this.updateStats(filtered2);
     }
 
     sortBy(field) {
@@ -279,7 +421,9 @@ class FeatureInventory {
             complete: 0,
             partial: 0,
             missing: 0,
-            planned: 0
+            planned: 0,
+            orphaned: 0,
+            deprecated: 0
         };
 
         data.forEach(f => {
@@ -292,6 +436,86 @@ class FeatureInventory {
         document.getElementById('statPartial').textContent = counts.partial;
         document.getElementById('statMissing').textContent = counts.missing;
         document.getElementById('statPlanned').textContent = counts.planned;
+        const orphanedEl = document.getElementById('statOrphaned');
+        if (orphanedEl) orphanedEl.textContent = counts.orphaned;
+        const deprecatedEl = document.getElementById('statDeprecated');
+        if (deprecatedEl) deprecatedEl.textContent = counts.deprecated;
+    }
+
+    populateFeatureForm(index, feature) {
+        const category = document.getElementById(`category-${index}`);
+        const status = document.getElementById(`status-${index}`);
+        const roadmapStatus = document.getElementById(`roadmapStatus-${index}`);
+        const roadmapPriority = document.getElementById(`roadmapPriority-${index}`);
+        const desc = document.getElementById(`desc-${index}`);
+        const tags = document.getElementById(`tags-${index}`);
+
+        if (category) category.value = feature.category || 'experimental';
+        if (status) status.value = feature.status || 'partial';
+        if (roadmapStatus) roadmapStatus.value = feature.roadmap?.status || 'planned';
+        if (roadmapPriority) roadmapPriority.value = feature.roadmap?.priority || 'medium';
+        if (desc) desc.value = feature.metadata?.description || '';
+        if (tags) tags.value = Array.isArray(feature.metadata?.tags) ? feature.metadata.tags.join(', ') : '';
+
+        const hint = document.getElementById(`saveHint-${index}`);
+        if (hint) hint.textContent = '';
+    }
+
+    resetFeatureForm(event, index) {
+        event.preventDefault();
+        event.stopPropagation();
+        const feature = this.renderedFeatures[index];
+        if (!feature) return;
+        this.populateFeatureForm(index, feature);
+    }
+
+    async saveFeature(event, index) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const feature = this.renderedFeatures[index];
+        if (!feature) return;
+
+        const hint = document.getElementById(`saveHint-${index}`);
+        const setHint = (msg) => { if (hint) hint.textContent = msg; };
+
+        const payload = {
+            name: feature.name,
+            category: document.getElementById(`category-${index}`)?.value,
+            status: document.getElementById(`status-${index}`)?.value,
+            roadmap: {
+                status: document.getElementById(`roadmapStatus-${index}`)?.value,
+                priority: document.getElementById(`roadmapPriority-${index}`)?.value,
+                lastUpdated: new Date().toISOString()
+            },
+            metadata: {
+                description: document.getElementById(`desc-${index}`)?.value || '',
+                tags: String(document.getElementById(`tags-${index}`)?.value || '')
+                    .split(',')
+                    .map(s => s.trim())
+                    .filter(Boolean)
+            }
+        };
+
+        setHint('Saving…');
+        try {
+            const resp = await fetch('/api/features/inventory', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!resp.ok) {
+                setHint(`Save failed (HTTP ${resp.status}). Are you logged in?`);
+                return;
+            }
+
+            // Refresh inventory to reflect changes consistently
+            await this.loadInventory();
+            setHint('Saved.');
+        } catch (err) {
+            setHint(`Save error: ${err.message}`);
+        }
     }
 
     exportReport() {
