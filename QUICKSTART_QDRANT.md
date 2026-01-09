@@ -42,13 +42,13 @@ pm2 logs qdrant --lines 50
 curl -X POST http://localhost:3080/api/backup/qdrant
 
 # Manual backup via script
-/home/yb/codes/DataAPI/scripts/backup-qdrant.sh /home/yb/backups/qdrant
+/home/yb/codes/AgentX/scripts/backup-qdrant.sh /mnt/datalake/backups/qdrant
 
 # Restore from snapshot
-/home/yb/codes/DataAPI/scripts/restore-qdrant.sh /home/yb/backups/qdrant/snapshot_file.snapshot
+/home/yb/codes/AgentX/scripts/restore-qdrant.sh /mnt/datalake/backups/qdrant/snapshot_file.snapshot
 
 # List backups
-ls -lh /home/yb/backups/qdrant/
+ls -lh /mnt/datalake/backups/qdrant/
 ```
 
 ---
@@ -128,9 +128,9 @@ EMBEDDING_MODEL=nomic-embed-text
 | Qdrant Binary         | `/home/yb/codes/AgentX/qdrant`                                |
 | Config File           | `/home/yb/codes/AgentX/qdrant_config.yaml`                    |
 | Data Storage          | `/home/yb/codes/AgentX/qdrant_storage/`                       |
-| Backup Directory      | `/home/yb/backups/qdrant/`                                    |
-| Backup Script         | `/home/yb/codes/DataAPI/scripts/backup-qdrant.sh`             |
-| Restore Script        | `/home/yb/codes/DataAPI/scripts/restore-qdrant.sh`            |
+| Backup Directory      | `/mnt/datalake/backups/qdrant/`                               |
+| Backup Script         | `/home/yb/codes/AgentX/scripts/backup-qdrant.sh`              |
+| Restore Script        | `/home/yb/codes/AgentX/scripts/restore-qdrant.sh`             |
 
 ---
 
@@ -194,13 +194,13 @@ pm2 restart qdrant && sleep 2 && curl http://localhost:6333/healthz
 ### Backup Fails
 ```bash
 # Check backup directory permissions
-ls -la /home/yb/backups/qdrant/
+ls -la /mnt/datalake/backups/qdrant/
 
 # Create directory if missing
-mkdir -p /home/yb/backups/qdrant
+mkdir -p /mnt/datalake/backups/qdrant
 
 # Run backup script manually
-/home/yb/codes/DataAPI/scripts/backup-qdrant.sh /home/yb/backups/qdrant
+/home/yb/codes/AgentX/scripts/backup-qdrant.sh /mnt/datalake/backups/qdrant
 ```
 
 ### Out of Memory

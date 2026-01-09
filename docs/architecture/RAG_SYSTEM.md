@@ -96,7 +96,7 @@ QDRANT_COLLECTION=agentx_embeddings        # Collection name
 
 ## Backup & Recovery
 
-- **Backup script:** `/home/yb/codes/DataAPI/scripts/backup-qdrant.sh`
+- **Backup script:** `/home/yb/codes/AgentX/scripts/backup-qdrant.sh`
 - **Backup location:** `/home/yb/backups/qdrant/`
 - **API endpoint:** `POST /api/backup/qdrant`
 

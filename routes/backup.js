@@ -5,9 +5,9 @@ const fs = require('fs').promises;
 const path = require('path');
 const logger = require('../config/logger');
 
-// Path to DataAPI backup scripts
-const DATAAPI_SCRIPTS = '/home/yb/codes/DataAPI/scripts';
-const BACKUP_DIR = process.env.BACKUP_DIR || '/home/yb/backups'; // Default backup directory
+// Path to AgentX ops scripts
+const AGENTX_SCRIPTS = path.join(__dirname, '..', 'scripts');
+const BACKUP_DIR = process.env.BACKUP_DIR || '/mnt/datalake/backups'; // Default backup directory
 
 /**
  * Execute shell command with promise
@@ -71,7 +71,7 @@ function resolveBackupPath(backupType, inputPathOrName) {
 
 router.post('/mongodb', async (req, res) => {
     try {
-        const script = path.join(DATAAPI_SCRIPTS, 'backup-mongodb.sh');
+        const script = path.join(AGENTX_SCRIPTS, 'backup-mongodb.sh');
         const mongoBackupDir = path.join(BACKUP_DIR, 'mongodb');
         const result = await executeCommand(`${script} ${mongoBackupDir}`, 'MongoDB backup');
 
@@ -126,7 +126,7 @@ router.post('/mongodb/restore', async (req, res) => {
             });
         }
 
-        const script = path.join(DATAAPI_SCRIPTS, 'restore-mongodb.sh');
+        const script = path.join(AGENTX_SCRIPTS, 'restore-mongodb.sh');
         const backupPath = resolveBackupPath('mongodb', filename);
         const result = await executeCommand(`${script} ${backupPath}`, 'MongoDB restore');
 
@@ -175,7 +175,7 @@ router.post('/mongodb/delete', async (req, res) => {
 
 router.post('/qdrant', async (req, res) => {
     try {
-        const script = path.join(DATAAPI_SCRIPTS, 'backup-qdrant.sh');
+        const script = path.join(AGENTX_SCRIPTS, 'backup-qdrant.sh');
         const qdrantBackupDir = path.join(BACKUP_DIR, 'qdrant');
         const result = await executeCommand(`${script} ${qdrantBackupDir}`, 'Qdrant snapshot');
 
@@ -232,7 +232,7 @@ router.post('/qdrant/restore', async (req, res) => {
             });
         }
 
-        const script = path.join(DATAAPI_SCRIPTS, 'restore-qdrant.sh');
+        const script = path.join(AGENTX_SCRIPTS, 'restore-qdrant.sh');
         const backupPath = resolveBackupPath('qdrant', filename);
         const result = await executeCommand(`${script} ${backupPath}`, 'Qdrant restore');
 
@@ -368,7 +368,7 @@ router.get('/workflows/diff/:hash', async (req, res) => {
 
 router.post('/cron/install', async (req, res) => {
     try {
-        const script = path.join(DATAAPI_SCRIPTS, 'setup-backup-cron.sh');
+        const script = path.join(AGENTX_SCRIPTS, 'setup-backup-cron.sh');
         const result = await executeCommand(script, 'Cron installation');
 
         res.json({

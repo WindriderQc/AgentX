@@ -310,6 +310,7 @@ OLLAMA_HOST_SECONDARY=http://...  # Optional
 VECTOR_STORE_TYPE=memory|qdrant
 AGENTX_API_KEY=...
 DATAAPI_BASE_URL=http://...
+BACKUP_DIR=/mnt/datalake/backups
 PORT=3080
 ```
 

@@ -55,6 +55,7 @@
 | `NODE_ENV` | String | `development` | `production` or `development` |
 | `CORS_ORIGINS` | String | `*` | Comma-separated allowed origins |
 | `HOST` | String | `localhost` | Server bind address |
+| `BACKUP_DIR` | String | `/mnt/datalake/backups` | Backup root directory for MongoDB/Qdrant backups |
 
 **Generate Secrets:**
 ```bash

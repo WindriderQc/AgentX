@@ -52,7 +52,10 @@ const MessageSchema = new mongoose.Schema({
       timestamp: Date,
       pageNumber: Number,
       section: String
-    }
+    },
+    // Contextual Compression Fields
+    wasCompressed: { type: Boolean, default: false },
+    compressionRatio: { type: Number, default: 0 }
   }]
 });
 

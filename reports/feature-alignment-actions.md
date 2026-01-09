@@ -2,9 +2,9 @@
 
 ## 1. Executive Summary
 
-- **Total Features:** 211
-- **Complete Features:** 211
-- **Truly Headless Features:** 51
+- **Total Features:** 276
+- **Complete Features:** 276
+- **Truly Headless Features:** 53
 - **API-Only Features:** 1
 - **Orphan Endpoints:** 0
 
@@ -38,39 +38,6 @@ _Features that need UI development, excluding API-only endpoints_
 
 ---
 
-### models-unified (Score: 85/100)
-
-**Status:** headless-documented
-**Priority:** CRITICAL (critical)
-
-**Endpoints (13):**
-- GET /api/models/all (`models-unified.js`) [Conf: 40%]
-- GET /api/models/sources (`models-unified.js`) [Conf: 0%]
-- GET /api/models/:name/detail (`models-unified.js`) [Conf: 0%]
-- POST /api/models/refresh-cache (`models-unified.js`) [Conf: 0%]
-- POST /api/models/sources/n8n (`models-unified.js`) [Conf: 45%]
-- GET /api/models/sources/n8n (`models-unified.js`) [Conf: 0%]
-- GET /api/models/sources/n8n/:id (`models-unified.js`) [Conf: 0%]
-- PUT /api/models/sources/n8n/:id (`models-unified.js`) [Conf: 0%]
-- DELETE /api/models/sources/n8n/:id (`models-unified.js`) [Conf: 0%]
-- POST /api/models/sources/n8n/:id/test (`models-unified.js`) [Conf: 0%]
-- POST /api/models/ollama/pull (`models-unified.js`) [Conf: 45%]
-- POST /api/models/ollama/stop (`models-unified.js`) [Conf: 35%]
-- DELETE /api/models/ollama/:name (`models-unified.js`) [Conf: 0%]
-
-**Score Breakdown:**
-- n8n Workflow Usage: ➖ (0)
-- Endpoint Count: 40 pts
-- Documentation: 15 pts
-- Security/Admin: 15 pts
-- Recent Activity: 15 pts
-
-**Why Build UI:** Critical feature with 13 endpoints and strong documentation. High priority for user accessibility.
-
-**Suggested UI location:** /public/models-unified.html
-
----
-
 ### dataset (Score: 80/100)
 
 **Status:** headless-documented
@@ -101,18 +68,18 @@ _Features that need UI development, excluding API-only endpoints_
 **Priority:** CRITICAL (critical)
 
 **Endpoints (12):**
-- GET /api/models/registry/ (`model-registry.js`) [Conf: 70%]
-- GET /api/models/registry/stats (`model-registry.js`) [Conf: 40%]
-- GET /api/models/registry/grouped (`model-registry.js`) [Conf: 40%]
-- GET /api/models/registry/category/:category (`model-registry.js`) [Conf: 35%]
-- GET /api/models/registry/tag/:tag (`model-registry.js`) [Conf: 35%]
-- GET /api/models/registry/:name (`model-registry.js`) [Conf: 40%]
+- GET /api/models/registry/ (`model-registry.js`) [Conf: 65%]
+- GET /api/models/registry/stats (`model-registry.js`) [Conf: 35%]
+- GET /api/models/registry/grouped (`model-registry.js`) [Conf: 35%]
+- GET /api/models/registry/category/:category (`model-registry.js`) [Conf: 0%]
+- GET /api/models/registry/tag/:tag (`model-registry.js`) [Conf: 0%]
+- GET /api/models/registry/:name (`model-registry.js`) [Conf: 35%]
 - POST /api/models/registry/ (`model-registry.js`) [Conf: 70%]
-- PATCH /api/models/registry/:name (`model-registry.js`) [Conf: 40%]
-- DELETE /api/models/registry/:name (`model-registry.js`) [Conf: 40%]
-- POST /api/models/registry/:name/sync (`model-registry.js`) [Conf: 40%]
-- POST /api/models/registry/:name/categories (`model-registry.js`) [Conf: 40%]
-- DELETE /api/models/registry/:name/categories/:category (`model-registry.js`) [Conf: 40%]
+- PATCH /api/models/registry/:name (`model-registry.js`) [Conf: 35%]
+- DELETE /api/models/registry/:name (`model-registry.js`) [Conf: 35%]
+- POST /api/models/registry/:name/sync (`model-registry.js`) [Conf: 35%]
+- POST /api/models/registry/:name/categories (`model-registry.js`) [Conf: 35%]
+- DELETE /api/models/registry/:name/categories/:category (`model-registry.js`) [Conf: 35%]
 
 **Score Breakdown:**
 - n8n Workflow Usage: ➖ (0)
@@ -175,6 +142,50 @@ _Features that need UI development, excluding API-only endpoints_
 
 ---
 
+### bug-fix-report-2026-01-08 (Score: 65/100)
+
+**Status:** headless-documented
+**Priority:** HIGH (high)
+
+**Endpoints (2):**
+- GET /api/dashboard/scans/:id/report (`dashboard.js`) [Conf: 0%]
+- GET /api/features/reports/latest (`features.js`) [Conf: 0%]
+
+**Score Breakdown:**
+- n8n Workflow Usage: ➖ (0)
+- Endpoint Count: 20 pts
+- Documentation: 15 pts
+- Security/Admin: 15 pts
+- Recent Activity: 15 pts
+
+**Why Build UI:** High-value feature that would benefit from user-friendly interface for non-technical users.
+
+**Suggested UI location:** /public/bug-fix-report-2026-01-08.html
+
+---
+
+### bug-hunt-report-2026-01-07 (Score: 65/100)
+
+**Status:** headless-documented
+**Priority:** HIGH (high)
+
+**Endpoints (2):**
+- GET /api/dashboard/scans/:id/report (`dashboard.js`) [Conf: 0%]
+- GET /api/features/reports/latest (`features.js`) [Conf: 0%]
+
+**Score Breakdown:**
+- n8n Workflow Usage: ➖ (0)
+- Endpoint Count: 20 pts
+- Documentation: 15 pts
+- Security/Admin: 15 pts
+- Recent Activity: 15 pts
+
+**Why Build UI:** High-value feature that would benefit from user-friendly interface for non-technical users.
+
+**Suggested UI location:** /public/bug-hunt-report-2026-01-07.html
+
+---
+
 ### claude-md-refactoring-report (Score: 65/100)
 
 **Status:** headless-documented
@@ -219,7 +230,7 @@ _Features that need UI development, excluding API-only endpoints_
 
 ---
 
-### phase-2-accomplishments-report (Score: 65/100)
+### final-session-report-2026-01-08 (Score: 65/100)
 
 **Status:** headless-documented
 **Priority:** HIGH (high)
@@ -237,29 +248,7 @@ _Features that need UI development, excluding API-only endpoints_
 
 **Why Build UI:** High-value feature that would benefit from user-friendly interface for non-technical users.
 
-**Suggested UI location:** /public/phase-2-accomplishments-report.html
-
----
-
-### phase3-test-report (Score: 65/100)
-
-**Status:** headless-documented
-**Priority:** HIGH (high)
-
-**Endpoints (2):**
-- GET /api/dashboard/scans/:id/report (`dashboard.js`) [Conf: 0%]
-- GET /api/features/reports/latest (`features.js`) [Conf: 0%]
-
-**Score Breakdown:**
-- n8n Workflow Usage: ➖ (0)
-- Endpoint Count: 20 pts
-- Documentation: 15 pts
-- Security/Admin: 15 pts
-- Recent Activity: 15 pts
-
-**Why Build UI:** High-value feature that would benefit from user-friendly interface for non-technical users.
-
-**Suggested UI location:** /public/phase3-test-report.html
+**Suggested UI location:** /public/final-session-report-2026-01-08.html
 
 ---
 

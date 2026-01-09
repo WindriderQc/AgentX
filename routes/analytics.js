@@ -1467,4 +1467,59 @@ router.get('/usage/top-conversations', optionalAuth, optionalWorkspace, async (r
   }
 });
 
+/**
+ * GET /api/analytics/compression
+ * RAG Contextual Compression Stats
+ */
+router.get('/compression', optionalAuth, optionalWorkspace, async (req, res) => {
+  try {
+    const userId = getUserId(res);
+    const workspaceId = res.locals.workspace ? res.locals.workspace._id : null;
+    const { startDate, endDate } = parsePeriod(req.query.period);
+
+    // Build filter
+    const match = {
+        createdAt: { $gte: startDate, $lte: endDate }
+    };
+    if (userId) match.userId = userId;
+    if (workspaceId) match.workspaceId = workspaceId;
+
+    // Aggregate stats
+    const stats = await Conversation.aggregate([
+      { $match: match },
+      { $unwind: '$messages' },
+      { $unwind: '$messages.ragSources' },
+      { $match: { 'messages.ragSources.wasCompressed': true } },
+      {
+        $group: {
+          _id: null,
+          totalCompressedChunks: { $sum: 1 },
+          avgCompressionRatio: { $avg: '$messages.ragSources.compressionRatio' }
+        }
+      }
+    ]);
+
+    // Calculate total savings (estimated)
+    const result = stats.length > 0 ? stats[0] : { totalCompressedChunks: 0, avgCompressionRatio: 0 };
+    
+    // Estimate tokens: 4 chars/token. avg chunk ~500 chars.
+    const estimatedOriginalChars = result.totalCompressedChunks * 500;
+    const savedChars = estimatedOriginalChars * (result.avgCompressionRatio / 100);
+    const savedTokens = Math.round(savedChars / 4);
+
+    res.json({
+      status: 'success',
+      data: {
+        totalCompressedChunks: result.totalCompressedChunks,
+        avgCompressionRatio: parseFloat(result.avgCompressionRatio.toFixed(1)),
+        totalTokenSavings: savedTokens
+      }
+    });
+
+  } catch (err) {
+    logger.error('Failed to get compression stats', { error: err.message });
+    res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
 module.exports = router;
