@@ -68,13 +68,57 @@ const AlertSchema = new mongoose.Schema({
   }],
   channelConfig: {
     email: {
-      recipients: [String],
+      recipients: {
+        type: [String],
+        validate: {
+          validator: function(recipients) {
+            if (!Array.isArray(recipients) || recipients.length === 0) return true;
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            return recipients.every(email => emailRegex.test(email));
+          },
+          message: 'All email recipients must be valid email addresses'
+        }
+      },
       subject: String,
-      from: String,
-      replyTo: String
+      from: {
+        type: String,
+        validate: {
+          validator: function(email) {
+            if (!email) return true;
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            return emailRegex.test(email);
+          },
+          message: 'From address must be a valid email address'
+        }
+      },
+      replyTo: {
+        type: String,
+        validate: {
+          validator: function(email) {
+            if (!email) return true;
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            return emailRegex.test(email);
+          },
+          message: 'ReplyTo address must be a valid email address'
+        }
+      }
     },
     webhook: {
-      url: String,
+      url: {
+        type: String,
+        validate: {
+          validator: function(url) {
+            if (!url) return true;
+            try {
+              const parsed = new URL(url);
+              return ['http:', 'https:'].includes(parsed.protocol);
+            } catch {
+              return false;
+            }
+          },
+          message: 'Webhook URL must be a valid HTTP/HTTPS URL'
+        }
+      },
       method: { type: String, default: 'POST' },
       headers: mongoose.Schema.Types.Mixed,
       template: String

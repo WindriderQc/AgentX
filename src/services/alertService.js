@@ -241,27 +241,27 @@ class AlertService extends EventEmitter {
       if (!alertId || !mongoose.isValidObjectId(alertId)) {
         return results;
       }
-        const updates = {};
-        for (const [channel, result] of Object.entries(results)) {
-          updates[`delivery.${channel}.sent`] = result.sent;
-          updates[`delivery.${channel}.sentAt`] = new Date();
-          if (result.error) {
-            updates[`delivery.${channel}.error`] = result.error;
-          }
-          if (channel === 'email' && result.recipients) {
-            updates[`delivery.${channel}.recipients`] = String(result.recipients)
-              .split(',')
-              .map(recipient => recipient.trim())
-              .filter(Boolean);
-          }
-          if (channel === 'webhook' && result.url) {
-            updates[`delivery.${channel}.url`] = result.url;
-          }
-          if (channel === 'webhook' && result.statusCode) {
-            updates[`delivery.${channel}.statusCode`] = result.statusCode;
-          }
+      const updates = {};
+      for (const [channel, result] of Object.entries(results)) {
+        updates[`delivery.${channel}.sent`] = result.sent;
+        updates[`delivery.${channel}.sentAt`] = new Date();
+        if (result.error) {
+          updates[`delivery.${channel}.error`] = result.error;
         }
-        await Alert.findByIdAndUpdate(alert._id, { $set: updates });
+        if (channel === 'email' && result.recipients) {
+          updates[`delivery.${channel}.recipients`] = String(result.recipients)
+            .split(',')
+            .map(recipient => recipient.trim())
+            .filter(Boolean);
+        }
+        if (channel === 'webhook' && result.url) {
+          updates[`delivery.${channel}.url`] = result.url;
+        }
+        if (channel === 'webhook' && result.statusCode) {
+          updates[`delivery.${channel}.statusCode`] = result.statusCode;
+        }
+      }
+      await Alert.findByIdAndUpdate(alert._id, { $set: updates });
     } catch (err) {
         logger.error('[AlertService] Failed to update alert delivery status', err);
     }
