@@ -219,7 +219,7 @@ async function fetchOllamaModels() {
 
   const hosts = [
     process.env.OLLAMA_HOST,
-    process.env.OLLAMA_HOST_SECONDARY
+    process.env.OLLAMA_HOST_SECONDARY || process.env.OLLAMA_HOST_2
   ].filter(Boolean);
 
   logger.debug('Fetching models from Ollama hosts', { hosts });

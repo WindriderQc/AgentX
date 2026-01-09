@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="styles.css">
     <style>
         /* Extra styles for this page specifically */
-        body { padding-top: 80px; } /* Prevent nav overlap */
+        /* body { padding-top: 80px; } Prevent nav overlap - handled by sticky nav now */
 
         .container-fluid {
             padding: 24px 40px;
@@ -351,6 +351,9 @@
                     <option value="size">Size (Largest)</option>
                     <option value="newest">Newest First</option>
                 </select>
+                <button id="openAddSourceBtn" class="btn-primary" style="margin-left: auto;" title="Add n8n webhook or custom model source">
+                    <i class="fas fa-plus"></i> Add Source
+                </button>
             </div>
         </div>
 

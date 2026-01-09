@@ -11,7 +11,7 @@ class ModelManager {
 
     setupEventListeners() {
         // Add Source Modal
-        const addBtn = document.getElementById('addModelBtn');
+        const addBtn = document.getElementById('addModelBtn') || document.getElementById('openAddSourceBtn');
         const modal = document.getElementById('addSourceModal');
         const closeBtns = modal.querySelectorAll('.close-modal');
         const tabBtns = modal.querySelectorAll('.tab-btn');

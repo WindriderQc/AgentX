@@ -2,64 +2,6 @@
  * Feature Inventory Dashboard - Tab 1 Logic
  */
 
-// Mock Data
-const MOCK_DATA = [
-    {
-        name: "Cost Tracking",
-        category: "analytics",
-        status: "partial",
-        frontend: { exists: true, pages: ["analytics.html"], lines: [103, 202] },
-        backend: { exists: true, services: ["costCalculator.js"], endpoints: ["/api/analytics/costs"] },
-        documentation: { exists: true, files: ["COST_TRACKING.md"], completeness: 90 },
-        roadmap: { status: "in-progress", priority: "high" }
-    },
-    {
-        name: "Voice Input",
-        category: "experimental",
-        status: "missing",
-        frontend: { exists: false, pages: [], lines: [] },
-        backend: { exists: true, services: ["voice_service.py"], endpoints: ["/api/voice/transcribe"] },
-        documentation: { exists: false, files: [], completeness: 0 },
-        roadmap: { status: "planned", priority: "low" }
-    },
-    {
-        name: "RAG System",
-        category: "core",
-        status: "complete",
-        frontend: { exists: true, pages: ["search.html"], lines: [45, 88] },
-        backend: { exists: true, services: ["rag_engine.py", "vector_db.js"], endpoints: ["/api/search/rag"] },
-        documentation: { exists: true, files: ["RAG_ARCH.md"], completeness: 100 },
-        roadmap: { status: "released", priority: "critical" }
-    },
-    {
-        name: "User Authentication",
-        category: "core",
-        status: "complete",
-        frontend: { exists: true, pages: ["login.html", "signup.html"], lines: [12, 150] },
-        backend: { exists: true, services: ["auth_service.js"], endpoints: ["/api/auth/login"] },
-        documentation: { exists: true, files: ["AUTH_SPEC.md"], completeness: 100 },
-        roadmap: { status: "released", priority: "critical" }
-    },
-    {
-        name: "Advanced Filtering",
-        category: "operations",
-        status: "planned",
-        frontend: { exists: false, pages: [], lines: [] },
-        backend: { exists: false, services: [], endpoints: [] },
-        documentation: { exists: false, files: [], completeness: 0 },
-        roadmap: { status: "planned", priority: "medium" }
-    },
-    {
-        name: "Data Visualization",
-        category: "analytics",
-        status: "partial",
-        frontend: { exists: true, pages: ["dashboard.html"], lines: [300, 350] },
-        backend: { exists: false, services: [], endpoints: [] },
-        documentation: { exists: true, files: ["VIZ_GUIDE.md"], completeness: 50 },
-        roadmap: { status: "in-progress", priority: "medium" }
-    }
-];
-
 class FeatureInventory {
     constructor() {
         this.features = [];
@@ -74,33 +16,60 @@ class FeatureInventory {
     }
 
     async loadInventory() {
-        console.log("Loading inventory...");
-        // Simulate API call
-        // const response = await fetch('/api/features/inventory');
-        // const data = await response.json();
-        
-        // Using mock data for now
-        setTimeout(() => {
-            this.features = [...MOCK_DATA];
+        console.log("Loading inventory from API...");
+        try {
+            const response = await fetch('/api/features/inventory');
+            if (response.ok) {
+                const json = await response.json();
+                this.features = json.data || [];
+                
+                // If empty, suggest scanning
+                if (this.features.length === 0) {
+                    console.log("No features found in DB. You might need to scan first.");
+                    document.getElementById('emptyState').style.display = 'flex';
+                    document.getElementById('featuresTable').style.display = 'none';
+                } else {
+                    document.getElementById('emptyState').style.display = 'none';
+                    document.getElementById('featuresTable').style.display = 'table';
+                }
+
+                this.renderTable(this.features);
+                this.updateStats(this.features);
+            } else {
+                console.error("Failed to load inventory:", response.status);
+            }
+        } catch (err) {
+            console.error("Error loading inventory:", err);
+            // Fallback to empty state
+            this.features = [];
             this.renderTable(this.features);
-            this.updateStats(this.features);
-        }, 500); 
+        }
     }
 
     async scanCodebase() {
         const overlay = document.getElementById('loadingOverlay');
         overlay.style.display = 'flex';
 
-        // Simulate API scanning delay
-        // await fetch('/api/features/inventory/scan', { method: 'POST' });
-        
-        setTimeout(() => {
+        try {
+            const response = await fetch('/api/features/inventory/scan', { 
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            
+            if (response.ok) {
+                console.log("Scan complete.");
+                // Reload data to reflect changes
+                await this.loadInventory();
+            } else {
+                console.error("Scan failed:", response.status);
+                alert("Scan failed. Check server logs.");
+            }
+        } catch (err) {
+            console.error("Error during scan:", err);
+            alert("Error during scan: " + err.message);
+        } finally {
             overlay.style.display = 'none';
-            // In a real app, we'd reload the data here using loadInventory()
-            // For demo, we just refresh what we have or maybe add a dummy item
-            this.loadInventory();
-            alert("Scan complete! Inventory updated.");
-        }, 2000);
+        }
     }
 
     renderTable(data) {

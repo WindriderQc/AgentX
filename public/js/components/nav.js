@@ -63,6 +63,9 @@ function injectNav(activePageId = '') {
     style.textContent = `
         /* Parent container override to ensure overflow visibility */
         #nav-container {
+            position: sticky !important; /* Use sticky so it pushes content down */
+            top: 0;
+            width: 100%;
             overflow: visible !important;
             z-index: 9000 !important; /* Ensure it stays on top */
         }

@@ -14,6 +14,9 @@ const mongoose = require('mongoose');
 const logger = require('../config/logger');
 const ActivityLog = require('../models/ActivityLog');
 const { systemHealth } = require('../src/app');
+const { exec } = require('child_process');
+const util = require('util');
+const execPromise = util.promisify(exec);
 
 // n8n configuration
 const N8N_BASE = process.env.N8N_BASE_URL || 'https://n8n.specialblend.icu';
@@ -42,6 +45,20 @@ const WORKFLOWS = [
  */
 router.get('/health', async (req, res) => {
   try {
+    // 0. Fetch PM2 Data if available
+    let pm2Data = {};
+    try {
+      const { stdout } = await execPromise('pm2 jlist');
+      const list = JSON.parse(stdout);
+      list.forEach(proc => {
+        if (proc.pm2_env.status === 'online') {
+            // Keep the longest uptime if multiple instances (or just any)
+            const uptime = Math.floor((Date.now() - proc.pm2_env.pm_uptime) / 1000);
+            pm2Data[proc.name] = uptime;
+        }
+      });
+    } catch (e) { /* ignore pm2 errors */ }
+
     const healthStatus = {
       timestamp: new Date().toISOString(),
       status: 'healthy', // Will be downgraded if any service fails
@@ -54,6 +71,7 @@ router.get('/health', async (req, res) => {
     healthStatus.services.agentx = {
       status: 'up',
       uptime: Math.floor(process.uptime()),
+      pm2Uptime: pm2Data['agentx'],
       version: require('../package.json').version || '1.4.1',
       nodeVersion: process.version,
       pid: process.pid
@@ -78,6 +96,13 @@ router.get('/health', async (req, res) => {
         healthStatus.services.mongodb.collections = stats.collections;
         healthStatus.services.mongodb.documents = stats.objects;
         healthStatus.services.mongodb.dataSize = Math.round(stats.dataSize / 1024 / 1024 * 100) / 100; // MB
+
+        // Total on-disk size (data + indexes). Prefer Mongo's totalSize when available.
+        const totalSizeBytes =
+          typeof stats.totalSize === 'number'
+            ? stats.totalSize
+            : (Number(stats.storageSize) || 0) + (Number(stats.indexSize) || 0);
+        healthStatus.services.mongodb.totalSizeMb = Math.round(totalSizeBytes / 1024 / 1024 * 100) / 100; // MB
       } else {
         healthStatus.status = 'degraded';
       }
@@ -125,6 +150,7 @@ router.get('/health', async (req, res) => {
         healthStatus.services.dataapi = {
           status: 'up',
           url: dataapiUrl,
+          uptime: pm2Data['dataapi'],
           version: data.version || 'unknown'
         };
       } else {
@@ -170,7 +196,8 @@ router.get('/health', async (req, res) => {
         if (response.ok) {
           healthStatus.services.qdrant = {
             status: 'up',
-            url: qdrantUrl
+            url: qdrantUrl,
+            uptime: pm2Data['qdrant']
           };
         } else {
           healthStatus.services.qdrant = { status: 'down', url: qdrantUrl };

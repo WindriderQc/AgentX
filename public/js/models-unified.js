@@ -180,16 +180,30 @@ class UnifiedModels {
         let source = model.provider || 'custom';
         const isOllama = source === 'ollama';
         const isSelected = this.comparisonList.has(model.id || model.name);
-        
+
         let sizeStr = '-';
         const sizeVal = model.size || model.source?.metadata?.size;
         if (sizeVal) {
              sizeStr = (sizeVal / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
         }
-        
+
         const params = model.details?.parameter_size || model.parameters || '-';
         const quant = model.details?.quantization_level || model.quantization || '-';
         const context = model.capabilities?.maxContext || model.details?.context_length || '4k';
+
+        // Determine host indicator for Ollama models
+        let hostIndicator = '';
+        if (isOllama && model.source?.url) {
+            const hostUrl = model.source.url;
+            // Use regex to extract host identifier (port number or hostname)
+            const hostMatch = hostUrl.match(/:(\d+)/) || hostUrl.match(/\/\/([^:/]+)/);
+            const hostIdentifier = hostMatch ? hostMatch[1] : 'unknown';
+
+            // Show host indicator with abbreviated URL or port
+            const hostLabel = hostIdentifier.length > 6 ? hostIdentifier.substring(0,6) : hostIdentifier;
+            const hostColor = '#7cf0ff'; // Cyan for all Ollama hosts
+            hostIndicator = `<span class="tag" style="font-size:10px; padding:2px 6px; background:rgba(255,255,255,0.05); border:1px solid ${hostColor}; color:${hostColor}; margin-left:6px;" title="${hostUrl}">${hostLabel}</span>`;
+        }
 
         return `
              <td>
@@ -198,7 +212,7 @@ class UnifiedModels {
                         ${this.getIconForSource(source)}
                     </div>
                     <div>
-                        <div class="font-bold text-white text-[15px]">${model.name}</div>
+                        <div class="font-bold text-white text-[15px]">${model.name}${hostIndicator}</div>
                     </div>
                 </div>
             </td>

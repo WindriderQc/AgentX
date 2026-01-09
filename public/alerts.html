@@ -59,65 +59,6 @@
             margin: 0;
         }
         
-        /* Tab Navigation */
-        .tab-nav {
-            display: flex;
-            gap: 8px;
-            margin-bottom: 2rem;
-            border-bottom: 2px solid var(--panel-border);
-            padding-bottom: 0;
-        }
-        
-        .tab-button {
-            padding: 12px 24px;
-            background: transparent;
-            border: none;
-            color: var(--muted);
-            font-family: 'Space Grotesk', sans-serif;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            border-bottom: 3px solid transparent;
-            position: relative;
-            bottom: -2px;
-        }
-        
-        .tab-button:hover {
-            color: var(--text);
-            background: rgba(124, 240, 255, 0.05);
-        }
-        
-        .tab-button.active {
-            color: var(--accent);
-            border-bottom-color: var(--accent);
-        }
-        
-        .tab-button i {
-            margin-right: 8px;
-        }
-        
-        /* Tab Content */
-        .tab-content {
-            display: none;
-        }
-        
-        .tab-content.active {
-            display: block;
-            animation: fadeIn 0.3s ease;
-        }
-        
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-        
         /* Dashboard Styles */
         .card {
             background: rgba(255, 255, 255, 0.03);
@@ -310,15 +251,6 @@
                 font-size: 1.5rem;
             }
             
-            .tab-nav {
-                gap: 4px;
-            }
-            
-            .tab-button {
-                padding: 10px 16px;
-                font-size: 13px;
-            }
-            
             .metrics-grid {
                 grid-template-columns: 1fr;
             }
@@ -346,73 +278,49 @@
             <p>Real-time alert monitoring, management, and analytics</p>
         </div>
 
-        <!-- Tab Navigation -->
-        <div class="tab-nav">
-            <button class="tab-button active" data-tab="dashboard">
-                <i class="fas fa-list"></i> Dashboard
-            </button>
-            <button class="tab-button" data-tab="analytics">
-                <i class="fas fa-chart-line"></i> Analytics
-            </button>
-        </div>
-
-        <!-- Dashboard Tab -->
-        <div id="tab-dashboard" class="tab-content active">
-            <!-- Statistics Banner -->
-            <div id="alerts-stats" class="mb-4">
-                <!-- Statistics will be rendered here -->
-            </div>
-
-            <!-- Filters -->
-            <div class="card">
-                <h5 class="card-title">
-                    <i class="fas fa-filter"></i> Filters & Actions
-                </h5>
-                <div id="alerts-filters">
-                    <!-- Filters will be rendered here -->
-                </div>
-            </div>
-
-            <!-- Alerts List -->
-            <div class="card">
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h5 class="card-title" style="margin: 0;">
-                        <i class="fas fa-list"></i> Alerts
-                    </h5>
-                    <button class="btn btn-primary" onclick="window.alertsDashboard && window.alertsDashboard.loadAlerts()">
-                        <i class="fas fa-sync-alt"></i> Refresh
-                    </button>
-                </div>
-                
-                <!-- Loading Spinner -->
-                <div class="loading-spinner" id="loading-spinner-dashboard">
-                    <div class="spinner"></div>
-                    <p style="color: var(--muted);">Loading alerts...</p>
-                </div>
-                
-                <!-- Alerts Container -->
-                <div id="alerts-container">
-                    <!-- Alerts will be rendered here -->
-                </div>
-                
-                <!-- Pagination -->
-                <div id="alerts-pagination" class="mt-4">
-                    <!-- Pagination will be rendered here -->
-                </div>
-            </div>
-        </div>
-
-        <!-- Analytics Tab -->
-        <div id="tab-analytics" class="tab-content">
+        <!-- Analytics Section -->
+        <div id="alert-analytics-container" class="mb-4">
             <!-- Loading Spinner -->
             <div class="loading-spinner active" id="loading-spinner-analytics">
                 <div class="spinner"></div>
                 <p style="color: var(--muted);">Loading analytics...</p>
             </div>
+        </div>
+
+        <!-- Alerts List Section -->
+        <div class="card">
+            <h5 class="card-title">
+                <i class="fas fa-filter"></i> Filters & Actions
+            </h5>
+            <div id="alerts-filters">
+                <!-- Filters will be rendered here -->
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="card-title" style="margin: 0;">
+                    <i class="fas fa-list"></i> Alerts List
+                </h5>
+                <button class="btn btn-primary" onclick="window.alertsDashboard && window.alertsDashboard.loadAlerts()">
+                    <i class="fas fa-sync-alt"></i> Refresh List
+                </button>
+            </div>
             
-            <!-- Analytics Container -->
-            <div id="alert-analytics-container" style="display: none;">
-                <!-- Analytics content will be rendered here -->
+            <!-- Loading Spinner -->
+            <div class="loading-spinner" id="loading-spinner-dashboard">
+                <div class="spinner"></div>
+                <p style="color: var(--muted);">Loading alerts...</p>
+            </div>
+            
+            <!-- Alerts Container -->
+            <div id="alerts-container">
+                <!-- Alerts will be rendered here -->
+            </div>
+            
+            <!-- Pagination -->
+            <div id="alerts-pagination" class="mt-4">
+                <!-- Pagination will be rendered here -->
             </div>
         </div>
     </div>
@@ -423,44 +331,52 @@
     <!-- Toast Notifications -->
     <script src="/js/toast.js"></script>
     
-    <!-- Tab Switching Logic -->
-    <script>
-        // Tab switching functionality
-        document.querySelectorAll('.tab-button').forEach(button => {
-            button.addEventListener('click', () => {
-                const tabName = button.getAttribute('data-tab');
-                
-                // Update active button
-                document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
-                button.classList.add('active');
-                
-                // Update active content
-                document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-                document.getElementById(`tab-${tabName}`).classList.add('active');
-                
-                // Initialize analytics if switching to analytics tab and not yet initialized
-                if (tabName === 'analytics' && !window.alertAnalytics) {
-                    initAnalytics();
-                }
-            });
-        });
-    </script>
-    
-    <!-- Alerts Dashboard Module -->
     <script type="module">
         import AlertsDashboard from './js/alerts-dashboard.js';
+        import AlertAnalytics from './js/alert-analytics.js';
         
-        // Initialize dashboard when DOM is ready
+        // Initialize dashboard and analytics when DOM is ready
         document.addEventListener('DOMContentLoaded', async () => {
+            // 1. Initialize Analytics (Top Section)
+            try {
+                console.log('Initializing Alert Analytics...');
+                const analytics = new AlertAnalytics({
+                    containerId: 'alert-analytics-container',
+                    refreshInterval: 60000, // 1 minute
+                    timeRange: 7 // 7 days
+                });
+                
+                // Expose to window
+                window.alertAnalytics = analytics;
+                
+                // Initialize
+                await analytics.init();
+                
+                console.log('Alert Analytics ready');
+            } catch (error) {
+                console.error('Failed to initialize Alert Analytics:', error);
+                const container = document.getElementById('alert-analytics-container');
+                if (container) {
+                    container.innerHTML = `
+                        <div class="alert alert-danger" role="alert">
+                            <i class="fas fa-exclamation-triangle"></i> Failed to load analytics: ${error.message}
+                            <button onclick="location.reload()" class="btn btn-sm btn-outline-danger ms-3">Retry</button>
+                        </div>
+                    `;
+                }
+            }
+
+            // 2. Initialize Alerts Dashboard (List Section)
             try {
                 // Show loading spinner
                 const spinner = document.getElementById('loading-spinner-dashboard');
                 if (spinner) spinner.classList.add('active');
                 
                 // Create dashboard instance
+                // Note: We deliberately pass a dummy ID for statsContainerId to avoid rendering the redundant stats row
                 const dashboard = new AlertsDashboard({
                     containerId: 'alerts-container',
-                    statsContainerId: 'alerts-stats',
+                    statsContainerId: 'alerts-stats-hidden', 
                     filtersContainerId: 'alerts-filters',
                     refreshInterval: 30000, // 30 seconds
                     perPage: 20
@@ -488,7 +404,7 @@
                         <div style="padding: 2rem; text-align: center;">
                             <div class="card" style="max-width: 500px; margin: 0 auto;">
                                 <i class="fas fa-exclamation-triangle" style="font-size: 3rem; color: var(--accent); margin-bottom: 1rem;"></i>
-                                <h3 style="margin-bottom: 1rem;">Failed to Load Dashboard</h3>
+                                <h3 style="margin-bottom: 1rem;">Failed to Load Alerts List</h3>
                                 <p style="color: var(--muted); margin-bottom: 1rem;">${error.message}</p>
                                 <button onclick="location.reload()" class="btn btn-primary">
                                     <i class="fas fa-sync-alt"></i> Retry
@@ -509,61 +425,6 @@
                 window.alertAnalytics.destroy();
             }
         });
-    </script>
-    
-    <!-- Analytics Module (loaded on demand) -->
-    <script type="module">
-        import AlertAnalytics from './js/alert-analytics.js';
-        
-        // Function to initialize analytics (called when tab is opened)
-        window.initAnalytics = async function() {
-            if (window.alertAnalytics) {
-                // Already initialized
-                return;
-            }
-            
-            try {
-                console.log('Initializing Alert Analytics...');
-                
-                const analytics = new AlertAnalytics({
-                    containerId: 'alert-analytics-container',
-                    refreshInterval: 60000, // 1 minute
-                    timeRange: 7 // 7 days
-                });
-                
-                // Expose to window
-                window.alertAnalytics = analytics;
-                
-                // Initialize the dashboard
-                await analytics.init();
-                
-                // Hide loading, show content
-                document.getElementById('loading-spinner-analytics').classList.remove('active');
-                document.getElementById('loading-spinner-analytics').style.display = 'none';
-                document.getElementById('alert-analytics-container').style.display = 'block';
-                
-                console.log('Alert Analytics ready');
-            } catch (error) {
-                console.error('Failed to initialize Alert Analytics:', error);
-                
-                const spinner = document.getElementById('loading-spinner-analytics');
-                if (spinner) {
-                    spinner.classList.remove('active');
-                    spinner.innerHTML = `
-                        <div style="text-align: center;">
-                            <div class="card" style="max-width: 500px; margin: 0 auto;">
-                                <i class="fas fa-exclamation-triangle" style="font-size: 3rem; color: var(--accent); margin-bottom: 1rem;"></i>
-                                <h3 style="margin-bottom: 1rem;">Failed to Load Analytics</h3>
-                                <p style="color: var(--muted); margin-bottom: 1rem;">${error.message}</p>
-                                <button onclick="location.reload()" class="btn btn-primary">
-                                    <i class="fas fa-sync-alt"></i> Retry
-                                </button>
-                            </div>
-                        </div>
-                    `;
-                }
-            }
-        };
     </script>
 </body>
 </html>

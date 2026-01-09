@@ -95,7 +95,8 @@ router.get('/inventory/alignment', async (req, res) => {
 router.post('/inventory/scan', requireAuth, async (req, res) => {
   try {
     // Implement codebase scanning logic
-    const scanResult = featureAlignmentScanner.scanWorkspace(process.cwd());
+    // FIXED: Passed object with rootDir instead of string
+    const scanResult = featureAlignmentScanner.scanWorkspace({ rootDir: process.cwd() });
 
     // Update DB with results
     const results = {

@@ -143,99 +143,136 @@
 
         <!-- Section 1: System Health -->
         <div class="ops-section" id="section-health">
-            <!-- Health Strip -->
-            <div class="health-strip">
-                <span class="health-strip-title"><i class="fas fa-heartbeat"></i> Service Status</span>
-                <div class="health-strip-item" id="health-agentx">
-                    <span class="dot"></span>
-                    <span>AgentX</span>
-                </div>
-                <div class="health-strip-item" id="health-mongodb">
-                    <span class="dot"></span>
-                    <span>MongoDB</span>
-                </div>
-                <div class="health-strip-item" id="health-ollama">
-                    <span class="dot"></span>
-                    <span>Ollama</span>
-                </div>
-                <div class="health-strip-item" id="health-dataapi">
-                    <span class="dot"></span>
-                    <span>DataAPI</span>
-                </div>
-                <div class="health-strip-item" id="health-n8n">
-                    <span class="dot"></span>
-                    <span>n8n</span>
-                </div>
-                <div class="health-strip-item" id="health-qdrant">
-                    <span class="dot"></span>
-                    <span>Qdrant</span>
-                </div>
-                <div class="uptime-info">
-                    <i class="fas fa-clock"></i>
-                    <span>Uptime:</span>
-                    <span class="value" id="sys-uptime">—</span>
-                </div>
-            </div>
-
-            <!-- Metrics Grid -->
-            <div class="metrics-grid">
-                <div class="metric-card">
-                    <div class="metric-label">Requests (24h)</div>
-                    <div class="metric-value">
-                        <span class="status-dot healthy"></span>
-                        <span id="metric-requests">0</span>
-                    </div>
-                    <div class="metric-detail">Avg latency: <span id="metric-latency">0</span>ms</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-label">Error Rate</div>
-                    <div class="metric-value">
-                        <span class="status-dot healthy" id="error-status"></span>
-                        <span id="metric-error-rate">0</span>%
-                    </div>
-                    <div class="metric-detail"><span id="metric-errors">0</span> errors</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-label">Memory (Heap)</div>
-                    <div class="metric-value">
-                        <span class="status-dot healthy" id="memory-status"></span>
-                        <span id="metric-memory">0</span> MB
-                    </div>
-                    <div class="metric-bar"><div class="metric-fill" id="memory-bar" style="width: 0%"></div></div>
-                    <div class="metric-detail">of <span id="metric-memory-total">0</span> MB</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-label">MongoDB</div>
-                    <div class="metric-value">
-                        <span class="status-dot healthy"></span>
-                        <span id="metric-collections">0</span> collections
-                    </div>
-                    <div class="metric-detail"><span id="metric-documents">0</span> docs</div>
-                </div>
-            </div>
-
-            <!-- System Info -->
+            <!-- Service Status -->
             <div class="section-card">
                 <div class="section-header">
-                    <h2><i class="fas fa-info-circle"></i> System Information</h2>
+                    <h2><i class="fas fa-heartbeat"></i> Service Status</h2>
                 </div>
                 <div class="section-body">
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
-                        <div>
-                            <div style="color: var(--muted); font-size: 12px; margin-bottom: 4px;">Platform</div>
-                            <div id="sys-platform">—</div>
+                    <div class="section-subtitle">Live health checks across core services and key dependencies that power the stack.</div>
+                    <div class="health-strip">
+                        <div class="health-group" aria-label="Core services">
+                            <div class="health-group-label"><i class="fas fa-cube"></i> Core</div>
+                            <div class="health-group-items">
+                                <div class="health-strip-item" id="health-agentx">
+                                    <span class="dot"></span>
+                                    <span><i class="fas fa-robot micro-icon"></i> AgentX</span>
+                                </div>
+                                <div class="health-strip-item" id="health-dataapi">
+                                    <span class="dot"></span>
+                                    <span><i class="fas fa-server micro-icon"></i> DataAPI</span>
+                                </div>
+                            </div>
                         </div>
-                        <div>
-                            <div style="color: var(--muted); font-size: 12px; margin-bottom: 4px;">Node Version</div>
-                            <div id="sys-node-version">—</div>
+                        <div class="health-strip-separator" aria-hidden="true"></div>
+                        <div class="health-group" aria-label="Dependencies">
+                            <div class="health-group-label"><i class="fas fa-link"></i> Dependencies</div>
+                            <div class="health-group-items">
+                                <div class="health-strip-item" id="health-mongodb">
+                                    <span class="dot"></span>
+                                    <span><i class="fas fa-database micro-icon"></i> MongoDB</span>
+                                </div>
+                                <div class="health-strip-item" id="health-qdrant">
+                                    <span class="dot"></span>
+                                    <span><i class="fas fa-layer-group micro-icon"></i> Qdrant</span>
+                                </div>
+                                <div class="health-strip-item" id="health-n8n">
+                                    <span class="dot"></span>
+                                    <span><i class="fas fa-project-diagram micro-icon"></i> n8n</span>
+                                </div>
+                                <div class="health-strip-item" id="health-ollama">
+                                    <span class="dot"></span>
+                                    <span><i class="fas fa-brain micro-icon"></i> Ollama</span>
+                                </div>
+                            </div>
                         </div>
-                        <div>
-                            <div style="color: var(--muted); font-size: 12px; margin-bottom: 4px;">AgentX Version</div>
-                            <div id="sys-agentx-version">—</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Health Overview -->
+            <div class="health-overview">
+                <!-- Metrics -->
+                <div class="health-overview-main">
+                    <div class="section-card">
+                        <div class="section-header">
+                            <h2><i class="fas fa-chart-line"></i> Key Metrics</h2>
                         </div>
-                        <div>
-                            <div style="color: var(--muted); font-size: 12px; margin-bottom: 4px;">Process ID</div>
-                            <div id="sys-pid">—</div>
+                        <div class="section-body">
+                            <div class="section-subtitle">A quick read on usage, reliability, and resource pressure over the last 24 hours.</div>
+                            <div class="metrics-grid">
+                                <div class="metric-card metric-card-rich">
+                                    <div class="metric-label">Requests</div>
+                                    <div class="metric-sub">Rolling 24h total traffic through the system.</div>
+                                    <div class="metric-value">
+                                        <span class="status-dot healthy"></span>
+                                        <span id="metric-requests">0</span>
+                                    </div>
+                                    <div class="metric-detail">Average request latency: <span id="metric-latency">0</span>ms</div>
+                                </div>
+                                <div class="metric-card metric-card-rich">
+                                    <div class="metric-interpretation">Interpretation: spikes can indicate load surges or downstream slowdowns.</div>
+                                    <div class="metric-label">Error Rate</div>
+                                    <div class="metric-sub">Proportion of requests that ended in an error.</div>
+                                    <div class="metric-value">
+                                        <span class="status-dot healthy" id="error-status"></span>
+                                        <span id="metric-error-rate">0</span>%
+                                    </div>
+                                    <div class="metric-detail"><span id="metric-errors">0</span> errors recorded</div>
+                                </div>
+                                <div class="metric-card metric-card-rich">
+                                    <div class="metric-interpretation">Interpretation: lower is better; sudden spikes usually point to upstream failures.</div>
+                                    <div class="metric-label">Memory (Heap)</div>
+                                    <div class="metric-sub">Node.js heap usage — helpful for spotting pressure and leaks.</div>
+                                    <div class="metric-value">
+                                        <span class="status-dot healthy" id="memory-status"></span>
+                                        <span id="metric-memory">0</span> MB
+                                    </div>
+                                    <div class="metric-bar"><div class="metric-fill" id="memory-bar" style="width: 0%"></div></div>
+                                    <div class="metric-detail">Used of <span id="metric-memory-total">0</span> MB</div>
+                                </div>
+                                <div class="metric-card metric-card-rich">
+                                    <div class="metric-interpretation">Interpretation: steady upward drift can signal pressure; sharp jumps are often bursty workloads.</div>
+                                    <div class="metric-label">MongoDB</div>
+                                    <div class="metric-sub">Current collection footprint and document volume.</div>
+                                    <div class="metric-value">
+                                        <span class="status-dot healthy"></span>
+                                        <span id="metric-collections">0</span> collections
+                                    </div>
+                                    <div class="metric-detail"><span id="metric-documents">0</span> documents tracked • <span id="metric-db-size">0</span> MB total</div>
+                                </div>
+                            </div>
+                                    <div class="metric-interpretation">Interpretation: growth reflects ingestion and retention; sudden jumps usually come from bulk imports.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- System Info -->
+                <div class="health-overview-side">
+                    <div class="section-card section-card-compact">
+                        <div class="section-header">
+                            <h2><i class="fas fa-info-circle"></i> System Information</h2>
+                        </div>
+                        <div class="section-body">
+                            <div class="section-subtitle">Runtime metadata for quick troubleshooting and support context.</div>
+                            <div class="sys-grid">
+                                <div class="sys-item">
+                                    <div class="sys-label">Platform</div>
+                                    <div class="sys-value" id="sys-platform">—</div>
+                                </div>
+                                <div class="sys-item">
+                                    <div class="sys-label">Node Version</div>
+                                    <div class="sys-value" id="sys-node-version">—</div>
+                                </div>
+                                <div class="sys-item">
+                                    <div class="sys-label">AgentX Version</div>
+                                    <div class="sys-value" id="sys-agentx-version">—</div>
+                                </div>
+                                <div class="sys-item">
+                                    <div class="sys-label">Process ID</div>
+                                    <div class="sys-value" id="sys-pid">—</div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -254,6 +291,7 @@
                     </div>
                 </div>
                 <div class="section-body">
+                    <div class="section-subtitle">Monitor and validate workflow automation. Use “Test All” to quickly confirm integrations are healthy.</div>
                     <table class="workflow-table">
                         <thead>
                             <tr>
@@ -302,6 +340,7 @@
                     </div>
                 </div>
                 <div class="section-body">
+                    <div class="section-subtitle">A chronological feed of system events and automation actions — useful for incident review and quick debugging.</div>
                     <div class="activity-feed" id="activity-feed">
                         <div style="text-align: center; color: var(--muted); padding: 32px;">
                             Loading activity...
@@ -477,14 +516,44 @@
                         if (status === 'up') dot.classList.add('healthy');
                         else if (status === 'down' || status === 'error') dot.classList.add('error');
                         else dot.classList.add('warning');
+
+                        // Show uptime if available
+                        let infoSpan = element.querySelector('.service-uptime');
+                        if (!infoSpan) {
+                            infoSpan = document.createElement('span');
+                            infoSpan.className = 'service-uptime';
+                            element.appendChild(infoSpan);
+                        }
+
+                        if (data.services[service].uptime) {
+                            const uptimeStr = formatUptime(data.services[service].uptime);
+                            infoSpan.innerHTML = `<i class="fas fa-history" style="opacity: 0.7; margin-right: 4px;"></i>${uptimeStr}`;
+                            element.title = `${service} Uptime: ${uptimeStr}`;
+                        } else if (service === 'mongodb' && status === 'up') {
+                             if (data.services.mongodb.collections) {
+                                infoSpan.innerHTML = `<i class="fas fa-table" style="opacity: 0.7; margin-right: 4px;"></i>${data.services.mongodb.collections}`;
+                                element.title = `${data.services.mongodb.collections} Collections`;
+                             } else {
+                                infoSpan.innerHTML = '<span style="opacity: 0.7; font-size: 10px;">SYSTEM</span>';
+                             }
+                        } else if (service === 'ollama' && status === 'up') {
+                             if (data.services.ollama.models) {
+                                infoSpan.innerHTML = `<i class="fas fa-microchip" style="opacity: 0.7; margin-right: 4px;"></i>${data.services.ollama.models}`;
+                                element.title = `${data.services.ollama.models} Models Available`;
+                             } else {
+                                infoSpan.innerHTML = '<span style="opacity: 0.7; font-size: 10px;">SYSTEM</span>';
+                             }
+                        } else if (service === 'n8n' && status === 'up') {
+                            if (data.services.n8n.workflows) {
+                                infoSpan.innerHTML = `<i class="fas fa-bolt" style="opacity: 0.7; margin-right: 4px;"></i>${data.services.n8n.workflows}`;
+                                element.title = `${data.services.n8n.workflows} Workflows`;
+                            }
+                        } else {
+                            infoSpan.innerHTML = '';
+                            element.removeAttribute('title');
+                        }
                     }
                 });
-
-                // Update uptime
-                if (data.services.agentx) {
-                    const uptime = formatUptime(data.services.agentx.uptime);
-                    document.getElementById('sys-uptime').textContent = uptime;
-                }
 
                 // Update metrics
                 if (data.metrics) {
@@ -528,6 +597,12 @@
                 if (data.services.mongodb) {
                     document.getElementById('metric-collections').textContent = data.services.mongodb.collections || 0;
                     document.getElementById('metric-documents').textContent = data.services.mongodb.documents || 0;
+
+                    const sizeEl = document.getElementById('metric-db-size');
+                    if (sizeEl) {
+                        const mb = data.services.mongodb.totalSizeMb;
+                        sizeEl.textContent = (typeof mb === 'number' && Number.isFinite(mb)) ? mb.toFixed(1) : '0';
+                    }
                 }
 
                 // Update system info
