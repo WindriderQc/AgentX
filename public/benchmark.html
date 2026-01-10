@@ -1029,18 +1029,27 @@
             line-height: 1;
         }
 
-        /* Themed gradient stars with stronger, more vibrant gradients */
-        .test-star.test-star-low {
-            opacity: 0.85;
-            background: linear-gradient(135deg, var(--theme-low-from) 0%, var(--theme-low-to) 100%);
+        /* Level-based star colors - each star position gets its own theme color */
+        /* Level 1 Stars - Red/Orange gradient */
+        .test-star.test-star-level-1 {
+            background: linear-gradient(135deg, #dc2626 0%, #f87171 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
-            filter: drop-shadow(0 0 4px var(--theme-low-glow));
+            filter: drop-shadow(0 0 6px rgba(220, 38, 38, 0.4));
         }
 
-        .test-star.test-star-mid {
-            opacity: 1;
+        /* Level 2 Stars - Green/Emerald gradient */
+        .test-star.test-star-level-2 {
+            background: linear-gradient(135deg, var(--theme-high-from) 0%, var(--theme-high-to) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            filter: drop-shadow(0 0 8px var(--theme-high-glow));
+        }
+
+        /* Level 3 Stars - Yellow/Amber gradient */
+        .test-star.test-star-level-3 {
             background: linear-gradient(135deg, var(--theme-mid-from) 0%, var(--theme-mid-to) 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
@@ -1048,26 +1057,17 @@
             filter: drop-shadow(0 0 8px var(--theme-mid-glow));
         }
 
-        .test-star.test-star-high {
-            opacity: 1;
-            background: linear-gradient(135deg, var(--theme-high-from) 0%, var(--theme-high-to) 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            filter: drop-shadow(0 0 10px var(--theme-high-glow));
-        }
-
-        .test-star.test-star-veryhigh {
-            opacity: 1;
+        /* Level 4 Stars - Blue/Cyan gradient */
+        .test-star.test-star-level-4 {
             background: linear-gradient(135deg, var(--theme-veryhigh-from) 0%, var(--theme-veryhigh-to) 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
-            filter: drop-shadow(0 0 12px var(--theme-veryhigh-glow));
+            filter: drop-shadow(0 0 10px var(--theme-veryhigh-glow));
         }
 
-        .test-star.test-star-ultra {
-            opacity: 1;
+        /* Level 5 Stars - Gold gradient (100% stays gold!) */
+        .test-star.test-star-level-5 {
             background: linear-gradient(135deg, var(--theme-ultra-from) 0%, var(--theme-ultra-to) 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
@@ -1076,17 +1076,36 @@
                 drop-shadow(0 0 8px var(--theme-ultra-glow))
                 drop-shadow(0 0 14px rgba(255, 215, 0, 0.5))
                 drop-shadow(0 0 22px rgba(255, 237, 78, 0.35));
+        }
+
+        /* Intensity modifiers based on test count */
+        .test-star.intensity-low { opacity: 0.5; filter: brightness(0.8) saturate(0.6) drop-shadow(0 0 3px rgba(0,0,0,0.2)); }
+        .test-star.intensity-mid { opacity: 0.75; filter: brightness(0.9) saturate(0.8); }
+        .test-star.intensity-high { opacity: 0.9; }
+        .test-star.intensity-veryhigh { opacity: 1; }
+        .test-star.intensity-ultra {
+            opacity: 1;
             animation: golden-pulse 3s ease-in-out infinite;
+        }
+
+        /* Combine level color with intensity for ultra stars */
+        .test-star.test-star-level-5.intensity-ultra {
+            filter:
+                drop-shadow(0 0 8px var(--theme-ultra-glow))
+                drop-shadow(0 0 14px rgba(255, 215, 0, 0.5))
+                drop-shadow(0 0 22px rgba(255, 237, 78, 0.35));
         }
 
         @keyframes golden-pulse {
             0%, 100% {
+                transform: scale(1);
                 filter:
                     drop-shadow(0 0 8px var(--theme-ultra-glow))
                     drop-shadow(0 0 14px rgba(255, 215, 0, 0.5))
                     drop-shadow(0 0 22px rgba(255, 237, 78, 0.35));
             }
             50% {
+                transform: scale(1.05);
                 filter:
                     drop-shadow(0 0 12px var(--theme-ultra-glow))
                     drop-shadow(0 0 18px rgba(255, 215, 0, 0.6))
@@ -4084,35 +4103,86 @@
 
                 // Offender Badges
                 if (offenders) {
-                    const currentHost = document.getElementById('host') ? document.getElementById('host').value : null;
-                    const badgeStyle = "font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; margin-right: 4px; font-weight: bold; display: inline-flex; align-items: center; gap: 4px;";
-                    
                     const isOffender = (offenderObj) => {
                         if (!offenderObj) return false;
                         // Handle both old format (string) and new format (object)
                         if (typeof offenderObj === 'string') return model === offenderObj;
-                        return model === offenderObj.model && (!currentHost || currentHost === offenderObj.host);
+                        // Match by model name only - the offender might be on a different host
+                        // but we still want to flag the model name as problematic
+                        return model === offenderObj.model;
                     };
 
                     if (isOffender(offenders.slowest)) {
-                        badgesHtml += `<span title="Slowest Latency" style="${badgeStyle} color: #e74c3c; background: rgba(231, 76, 60, 0.15); border: 1px solid rgba(231, 76, 60, 0.3);">
-                            <i class="fas fa-hourglass-end"></i> SLOW
-                        </span>`;
+                        badgesHtml += `<span title="⚠️ Worst Latency" style="
+                            display: inline-flex;
+                            align-items: center;
+                            gap: 4px;
+                            font-size: 0.7rem;
+                            padding: 3px 8px;
+                            margin-right: 6px;
+                            border-radius: 12px;
+                            background: linear-gradient(135deg, rgba(231, 76, 60, 0.25) 0%, rgba(192, 57, 43, 0.15) 100%);
+                            border: 1.5px solid rgba(231, 76, 60, 0.5);
+                            color: #e74c3c;
+                            font-weight: 700;
+                            text-transform: uppercase;
+                            letter-spacing: 0.05em;
+                            box-shadow: 0 2px 4px rgba(231, 76, 60, 0.2);
+                        ">🐌 SLOW</span>`;
                     }
                     if (isOffender(offenders.lowestTps)) {
-                        badgesHtml += `<span title="Lowest Throughput" style="${badgeStyle} color: #e67e22; background: rgba(230, 126, 34, 0.15); border: 1px solid rgba(230, 126, 34, 0.3);">
-                            <i class="fas fa-tachometer-alt"></i> SLUG
-                        </span>`;
+                        badgesHtml += `<span title="⚠️ Worst Throughput" style="
+                            display: inline-flex;
+                            align-items: center;
+                            gap: 4px;
+                            font-size: 0.7rem;
+                            padding: 3px 8px;
+                            margin-right: 6px;
+                            border-radius: 12px;
+                            background: linear-gradient(135deg, rgba(230, 126, 34, 0.25) 0%, rgba(211, 84, 0, 0.15) 100%);
+                            border: 1.5px solid rgba(230, 126, 34, 0.5);
+                            color: #e67e22;
+                            font-weight: 700;
+                            text-transform: uppercase;
+                            letter-spacing: 0.05em;
+                            box-shadow: 0 2px 4px rgba(230, 126, 34, 0.2);
+                        ">🐢 SLUG</span>`;
                     }
                     if (isOffender(offenders.lowestQuality)) {
-                        badgesHtml += `<span title="Lowest Quality" style="${badgeStyle} color: #f39c12; background: rgba(243, 156, 18, 0.15); border: 1px solid rgba(243, 156, 18, 0.3);">
-                            <i class="fas fa-star-half-alt"></i> POOR
-                        </span>`;
+                        badgesHtml += `<span title="⚠️ Lowest Quality Score" style="
+                            display: inline-flex;
+                            align-items: center;
+                            gap: 4px;
+                            font-size: 0.7rem;
+                            padding: 3px 8px;
+                            margin-right: 6px;
+                            border-radius: 12px;
+                            background: linear-gradient(135deg, rgba(243, 156, 18, 0.25) 0%, rgba(230, 126, 34, 0.15) 100%);
+                            border: 1.5px solid rgba(243, 156, 18, 0.5);
+                            color: #f39c12;
+                            font-weight: 700;
+                            text-transform: uppercase;
+                            letter-spacing: 0.05em;
+                            box-shadow: 0 2px 4px rgba(243, 156, 18, 0.2);
+                        ">⭐ POOR</span>`;
                     }
                     if (isOffender(offenders.mostFailures)) {
-                        badgesHtml += `<span title="Most Failures" style="${badgeStyle} color: #c0392b; background: rgba(192, 57, 43, 0.15); border: 1px solid rgba(192, 57, 43, 0.3);">
-                            <i class="fas fa-exclamation-triangle"></i> UNSTABLE
-                        </span>`;
+                        badgesHtml += `<span title="⚠️ Most Test Failures" style="
+                            display: inline-flex;
+                            align-items: center;
+                            gap: 4px;
+                            font-size: 0.7rem;
+                            padding: 3px 8px;
+                            margin-right: 6px;
+                            border-radius: 12px;
+                            background: linear-gradient(135deg, rgba(192, 57, 43, 0.3) 0%, rgba(142, 36, 36, 0.2) 100%);
+                            border: 1.5px solid rgba(192, 57, 43, 0.6);
+                            color: #c0392b;
+                            font-weight: 700;
+                            text-transform: uppercase;
+                            letter-spacing: 0.05em;
+                            box-shadow: 0 2px 4px rgba(192, 57, 43, 0.25);
+                        ">⚠️ UNSTABLE</span>`;
                     }
                 }
 
@@ -5240,13 +5310,28 @@
                 const showHyper = localStorage.getItem('benchmarkShowHyper') === 'true';
                 const results = Array.isArray(batch.results) ? batch.results : [];
 
+                // Get level-specific gradient for progress bars
+                const getLevelGradient = (level) => {
+                    const lvl = Number(level);
+                    switch (lvl) {
+                        case 1: return 'linear-gradient(90deg, #dc2626 0%, #f87171 100%)'; // Red
+                        case 2: return 'linear-gradient(90deg, #10b981 0%, #34d399 100%)'; // Green
+                        case 3: return 'linear-gradient(90deg, #f59e0b 0%, #fbbf24 100%)'; // Yellow
+                        case 4: return 'linear-gradient(90deg, #06b6d4 0%, #22d3ee 100%)'; // Blue/Cyan
+                        case 5: return 'linear-gradient(90deg, #ffd700 0%, #ffed4e 100%)'; // Gold
+                        default: return 'linear-gradient(90deg, var(--accent) 0%, rgba(238, 176, 255, 0.8) 100%)'; // Default
+                    }
+                };
+
                 const clampedProgress = Math.min(Number(batch.progress) || 0, 100);
                 const execBar = document.getElementById('execProgressBar');
                 const execFill = document.getElementById('execProgressFill');
                 const execTextEl = document.getElementById('execProgressText');
                 if (execBar && execFill && execTextEl) {
                     execBar.classList.add('active');
-                    execFill.style.background = '';
+                    // Set background based on current test level
+                    const currentLevel = batch.current_test && batch.current_test.prompt_level;
+                    execFill.style.background = currentLevel ? getLevelGradient(currentLevel) : '';
                     execFill.style.width = `${clampedProgress}%`;
                     execFill.style.borderRadius = clampedProgress >= 99 ? '16px' : '16px 0 0 16px';
                     execTextEl.textContent = `Exec: ${clampedProgress}% (${batch.completed}/${batch.total_tests})`;
@@ -5290,10 +5375,21 @@
                     const stageIcon = currentTest.stage === 'judging' ? '<i class="fas fa-gavel"></i>' : '<i class="fas fa-cogs"></i>';
                     const stageText = currentTest.stage === 'judging' ? 'Judging Response' : 'Executing Test';
 
-                    // Add test number and level info
+                    // Add test number and level info with themed colors
                     const testNum = currentTest.test_number || (batch.completed + 1);
                     const totalTests = batch.total_tests || 0;
-                    const levelBadge = currentTest.prompt_level ? ` <span style="background: rgba(46, 204, 113, 0.2); color: #2ecc71; padding: 2px 8px; border-radius: 12px; font-size: 0.8em; font-weight: 600;">L${currentTest.prompt_level}</span>` : '';
+                    const getLevelBadgeStyle = (level) => {
+                        const lvl = Number(level);
+                        switch (lvl) {
+                            case 1: return 'background: rgba(220, 38, 38, 0.2); color: #f87171;'; // Red
+                            case 2: return 'background: rgba(16, 185, 129, 0.2); color: #34d399;'; // Green
+                            case 3: return 'background: rgba(245, 158, 11, 0.2); color: #fbbf24;'; // Yellow
+                            case 4: return 'background: rgba(6, 182, 212, 0.2); color: #22d3ee;'; // Blue/Cyan
+                            case 5: return 'background: rgba(255, 215, 0, 0.2); color: #ffed4e;'; // Gold
+                            default: return 'background: rgba(46, 204, 113, 0.2); color: #2ecc71;'; // Fallback
+                        }
+                    };
+                    const levelBadge = currentTest.prompt_level ? ` <span style="${getLevelBadgeStyle(currentTest.prompt_level)} padding: 2px 8px; border-radius: 12px; font-size: 0.8em; font-weight: 600;">L${currentTest.prompt_level}</span>` : '';
 
                     document.getElementById('currentTestStage').innerHTML = `${stageIcon} ${stageText} <span style="color: var(--muted); font-weight: 400;">(${testNum}/${totalTests})</span>${levelBadge}`;
                     document.getElementById('currentTestModel').textContent = currentTest.model || '';
@@ -6663,6 +6759,64 @@
                         if (currentSelection) trendsModelFilter.value = currentSelection;
                     }
 
+                    // Calculate Top Offenders FIRST (before rendering table)
+                    const allModels = Array.isArray(data.model_stats) ? data.model_stats : [];
+                    const toNum = (v) => {
+                        const n = typeof v === 'string' ? parseFloat(v) : Number(v);
+                        return Number.isFinite(n) ? n : null;
+                    };
+
+                    const pickMax = (arr, getVal) => {
+                        let best = null;
+                        for (const item of arr) {
+                            const v = getVal(item);
+                            if (!Number.isFinite(v)) continue;
+                            if (!best || v > best.v) best = { item, v };
+                        }
+                        return best ? best.item : null;
+                    };
+                    const pickMin = (arr, getVal) => {
+                        let best = null;
+                        for (const item of arr) {
+                            const v = getVal(item);
+                            if (!Number.isFinite(v)) continue;
+                            if (!best || v < best.v) best = { item, v };
+                        }
+                        return best ? best.item : null;
+                    };
+
+                    const hasSuccess = (m) => Number(m && m.tests) > 0;
+                    const successModels = allModels.filter(hasSuccess);
+
+                    const slowestLatency = pickMax(successModels, (m) => toNum(m.avg_latency));
+                    const lowestTps = pickMin(successModels, (m) => {
+                        const t = toNum(m.avg_tokens_per_sec);
+                        return t !== null && t > 0 ? t : null;
+                    });
+                    const lowestQuality = pickMin(
+                        allModels.filter(m => {
+                            const q = toNum(m && m.avg_quality);
+                            return q !== null && q > 0 && Number(m && m.quality_tests) > 0;
+                        }),
+                        (m) => toNum(m.avg_quality)
+                    );
+
+                    let mostFailures = null;
+                    for (const m of allModels) {
+                        const failed = Number(m && m.failed_tests) || 0;
+                        if (failed <= 0) continue;
+                        const total = Number(m && m.total_tests) || (Number(m && m.tests) || 0) + failed;
+                        const rate = total > 0 ? (failed / total) : 0;
+                        if (!mostFailures || failed > mostFailures.failed || (failed === mostFailures.failed && rate > mostFailures.rate)) {
+                            mostFailures = { item: m, failed, total, rate };
+                        }
+                    }
+
+                    // Helper to check if current model is an offender
+                    const isOffender = (model, offenderModel) => {
+                        return offenderModel && model.model === offenderModel.model && model.host === offenderModel.host;
+                    };
+
                     // Update leaderboard
                     const tbody = document.getElementById('leaderboard');
                     tbody.innerHTML = (data.model_stats || []).map((model, idx) => {
@@ -6715,26 +6869,29 @@
                             if (n >= 100) return '99+';
                             return String(n);
                         };
-                        const starIntensityClass = (count) => {
+                        // Get intensity class based on test count (for opacity/brightness)
+                        const getIntensityClass = (count) => {
                             const n = Number(count || 0);
                             if (!Number.isFinite(n) || n <= 0) return '';
-                            if (n >= 100) return 'test-star-ultra';
-                            if (n >= 50) return 'test-star-veryhigh';
-                            if (n >= 25) return 'test-star-high';
-                            if (n >= 10) return 'test-star-mid';
-                            if (n >= 3) return 'test-star-low';
+                            if (n >= 100) return 'intensity-ultra';
+                            if (n >= 50) return 'intensity-veryhigh';
+                            if (n >= 25) return 'intensity-high';
+                            if (n >= 10) return 'intensity-mid';
+                            if (n >= 3) return 'intensity-low';
                             return '';
                         };
+                        // Build stars HTML - each star gets level-based color + count-based intensity
                         const starsHtml = [1, 2, 3, 4, 5].map((level) => {
                             const count = Number(levelStats[level] ?? levelStats[String(level)] ?? 0);
                             if (!Number.isFinite(count) || count <= 0) {
                                 return '<span class="test-star-slot" aria-hidden="true"></span>';
                             }
-                            const intensity = starIntensityClass(count);
+                            const levelClass = `test-star-level-${level}`;
+                            const intensityClass = getIntensityClass(count);
                             const displayCount = formatStarCount(count);
                             return `
                                 <span class="test-star-slot" title="Level ${level}: ${count} tests">
-                                    <span class="test-star ${intensity}" aria-label="Level ${level}: ${count} tests">
+                                    <span class="test-star ${levelClass} ${intensityClass}" aria-label="Level ${level}: ${count} tests">
                                         <i class="fas fa-star"></i>
                                     </span>
                                     <span class="test-star-count">${displayCount}</span>
@@ -6748,11 +6905,87 @@
 
                         const crown = isBestOverall ? '👑 ' : '';
                         const hostLabel = model.host ? formatHostLabel(model.host) : 'Unknown';
+                        
+                        // Build offender badges with improved visual design
+                        let offenderBadges = '';
+                        if (isOffender(model, slowestLatency)) {
+                            offenderBadges += `<span title="⚠️ Worst Latency" style="
+                                display: inline-flex;
+                                align-items: center;
+                                gap: 4px;
+                                font-size: 0.7rem;
+                                padding: 3px 8px;
+                                margin-left: 8px;
+                                border-radius: 12px;
+                                background: linear-gradient(135deg, rgba(231, 76, 60, 0.25) 0%, rgba(192, 57, 43, 0.15) 100%);
+                                border: 1.5px solid rgba(231, 76, 60, 0.5);
+                                color: #e74c3c;
+                                font-weight: 700;
+                                text-transform: uppercase;
+                                letter-spacing: 0.05em;
+                                box-shadow: 0 2px 4px rgba(231, 76, 60, 0.2);
+                            ">🐌 SLOW</span>`;
+                        }
+                        if (isOffender(model, lowestTps)) {
+                            offenderBadges += `<span title="⚠️ Worst Throughput" style="
+                                display: inline-flex;
+                                align-items: center;
+                                gap: 4px;
+                                font-size: 0.7rem;
+                                padding: 3px 8px;
+                                margin-left: 8px;
+                                border-radius: 12px;
+                                background: linear-gradient(135deg, rgba(230, 126, 34, 0.25) 0%, rgba(211, 84, 0, 0.15) 100%);
+                                border: 1.5px solid rgba(230, 126, 34, 0.5);
+                                color: #e67e22;
+                                font-weight: 700;
+                                text-transform: uppercase;
+                                letter-spacing: 0.05em;
+                                box-shadow: 0 2px 4px rgba(230, 126, 34, 0.2);
+                            ">🐢 SLUG</span>`;
+                        }
+                        if (isOffender(model, lowestQuality)) {
+                            offenderBadges += `<span title="⚠️ Lowest Quality Score" style="
+                                display: inline-flex;
+                                align-items: center;
+                                gap: 4px;
+                                font-size: 0.7rem;
+                                padding: 3px 8px;
+                                margin-left: 8px;
+                                border-radius: 12px;
+                                background: linear-gradient(135deg, rgba(243, 156, 18, 0.25) 0%, rgba(230, 126, 34, 0.15) 100%);
+                                border: 1.5px solid rgba(243, 156, 18, 0.5);
+                                color: #f39c12;
+                                font-weight: 700;
+                                text-transform: uppercase;
+                                letter-spacing: 0.05em;
+                                box-shadow: 0 2px 4px rgba(243, 156, 18, 0.2);
+                            ">⭐ POOR</span>`;
+                        }
+                        if (mostFailures && isOffender(model, mostFailures.item)) {
+                            offenderBadges += `<span title="⚠️ Most Test Failures" style="
+                                display: inline-flex;
+                                align-items: center;
+                                gap: 4px;
+                                font-size: 0.7rem;
+                                padding: 3px 8px;
+                                margin-left: 8px;
+                                border-radius: 12px;
+                                background: linear-gradient(135deg, rgba(192, 57, 43, 0.3) 0%, rgba(142, 36, 36, 0.2) 100%);
+                                border: 1.5px solid rgba(192, 57, 43, 0.6);
+                                color: #c0392b;
+                                font-weight: 700;
+                                text-transform: uppercase;
+                                letter-spacing: 0.05em;
+                                box-shadow: 0 2px 4px rgba(192, 57, 43, 0.25);
+                            ">⚠️ UNSTABLE</span>`;
+                        }
+                        
                         return `
                             <tr class="${rowClass}">
                                 <td>${badge}</td>
                                 <td>
-                                    <strong>${crown}${model.model}</strong>
+                                    <strong>${crown}${model.model}</strong>${offenderBadges}
                                     <div style="font-size: 0.8em; color: var(--muted); margin-top: 2px; opacity: 0.7;">${hostLabel}</div>
                                 </td>
                                 <td>${latencyDisplay}</td>
@@ -6769,59 +7002,6 @@
                             </tr>
                         `;
                     }).join('');
-
-                    // Calculate Top Offenders
-                    const rows = Array.isArray(data.model_stats) ? data.model_stats : [];
-                    const toNum = (v) => {
-                        const n = typeof v === 'string' ? parseFloat(v) : Number(v);
-                        return Number.isFinite(n) ? n : null;
-                    };
-
-                    const pickMax = (arr, getVal) => {
-                        let best = null;
-                        for (const item of arr) {
-                            const v = getVal(item);
-                            if (!Number.isFinite(v)) continue;
-                            if (!best || v > best.v) best = { item, v };
-                        }
-                        return best ? best.item : null;
-                    };
-                    const pickMin = (arr, getVal) => {
-                        let best = null;
-                        for (const item of arr) {
-                            const v = getVal(item);
-                            if (!Number.isFinite(v)) continue;
-                            if (!best || v < best.v) best = { item, v };
-                        }
-                        return best ? best.item : null;
-                    };
-
-                    const hasSuccess = (m) => Number(m && m.tests) > 0;
-                    const successRows = rows.filter(hasSuccess);
-
-                    const slowestLatency = pickMax(successRows, (m) => toNum(m.avg_latency));
-                    const lowestTps = pickMin(successRows, (m) => {
-                        const t = toNum(m.avg_tokens_per_sec);
-                        return t !== null && t > 0 ? t : null;
-                    });
-                    const lowestQuality = pickMin(
-                        rows.filter(m => {
-                            const q = toNum(m && m.avg_quality);
-                            return q !== null && q > 0 && Number(m && m.quality_tests) > 0;
-                        }),
-                        (m) => toNum(m.avg_quality)
-                    );
-
-                    let mostFailures = null;
-                    for (const m of rows) {
-                        const failed = Number(m && m.failed_tests) || 0;
-                        if (failed <= 0) continue;
-                        const total = Number(m && m.total_tests) || (Number(m && m.tests) || 0) + failed;
-                        const rate = total > 0 ? (failed / total) : 0;
-                        if (!mostFailures || failed > mostFailures.failed || (failed === mostFailures.failed && rate > mostFailures.rate)) {
-                            mostFailures = { item: m, failed, total, rate };
-                        }
-                    }
 
                     // Store offenders globally for the model selection table
                     window.benchmarkOffenders = {
@@ -7462,21 +7642,6 @@
                     const validQuality = sorted.filter(r => r.quality_score).map(r => r.quality_score);
                     const validJudge = sorted.filter(r => r.scoring_time_ms).map(r => r.scoring_time_ms);
                     const successCount = sorted.filter(r => r.success).length;
-
-                    // Debug: Log tokens_per_sec data availability
-                    console.log('[Timeline Debug] Results with tokens_per_sec:', {
-                        total_results: sorted.length,
-                        with_tokens_per_sec_field: sorted.filter(r => r.tokens_per_sec !== undefined && r.tokens_per_sec !== null).length,
-                        valid_numeric_tps: validTps.length,
-                        sample_values: sorted.slice(0, 3).map(r => ({
-                            model: r.model,
-                            tokens_per_sec: r.tokens_per_sec,
-                            type: typeof r.tokens_per_sec,
-                            parsed: parseFloat(r.tokens_per_sec),
-                            tokens: r.tokens,
-                            latency: r.latency
-                        }))
-                    });
 
                     globalStats.avgLatency = validLatencies.length ? validLatencies.reduce((a,b) => a+b, 0) / validLatencies.length : 0;
                     globalStats.avgTps = validTps.length ? validTps.reduce((a,b) => a+b, 0) / validTps.length : 0;
