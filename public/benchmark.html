@@ -6977,6 +6977,20 @@
                         baseColor: '#e74c3c'
                     }
                 };
+                const stageLabels = {
+                    'queued': 'Queued',
+                    'running': 'Running',
+                    'judging': 'Judging',
+                    'complete-success': 'Complete (Success)',
+                    'complete-error': 'Complete (Error)'
+                };
+                const stageIconLegends = {
+                    'queued': 'Stage icon: clock indicates queued work.',
+                    'running': 'Stage icon: cogs (pulsing) indicates active execution.',
+                    'judging': 'Stage icon: gavel (pulsing) indicates judging in progress.',
+                    'complete-success': 'Stage icon: check indicates completed successfully.',
+                    'complete-error': 'Stage icon: x indicates completed with errors.'
+                };
 
                 // Generate batch labels for time axis
                 const batchLabels = batches.map((batch, idx) => {
@@ -7014,6 +7028,8 @@
 
                     // Quality badge with detailed breakdown - inside the bar
                     let qualityBadgeHtml = '';
+                    let qualityTooltipDetails = `Quality Score: N/A\nCorrectness: N/A\nClarity: N/A\nEfficiency: N/A`;
+                    let qualityBadgeLegend = 'Quality badge: none (no score available).';
                     if (result.quality_score) {
                         const score = result.quality_score;
                         const breakdown = result.quality_breakdown || {};
@@ -7025,12 +7041,48 @@ Clarity: ${breakdown.clarity || 'N/A'}/10
 Efficiency: ${breakdown.efficiency || 'N/A'}/10
 
 ${result.quality_explanation || breakdown.explanation || 'No details available'}`;
+                        qualityTooltipDetails = tooltipText;
+                        qualityBadgeLegend = `Quality badge: Q${score} shows overall quality score.`;
 
                         qualityBadgeHtml = `<span
                             style="background: ${badgeColor}; color: white; padding: 2px 6px; border-radius: 3px; font-size: 0.7em; font-weight: 700; cursor: help; margin-left: 6px; border: 1px solid rgba(255,255,255,0.4); box-shadow: 0 1px 3px rgba(0,0,0,0.3);"
                             title="${tooltipText.replace(/"/g, '&quot;').replace(/\n/g, '&#10;')}"
                         >Q${score}</span>`;
                     }
+
+                    const stageSpecificInfo = [];
+                    if (stage === 'queued') {
+                        stageSpecificInfo.push('Status: waiting in queue.');
+                    } else if (stage === 'running' || stage === 'judging') {
+                        if (result.timestamp) {
+                            const elapsed = Date.now() - new Date(result.timestamp).getTime();
+                            stageSpecificInfo.push(`Elapsed: ${formatTimeLabel(Math.max(elapsed, 0))}.`);
+                        } else {
+                            stageSpecificInfo.push('Elapsed: in progress.');
+                        }
+                    } else if (stage === 'complete-success' || stage === 'complete-error') {
+                        stageSpecificInfo.push(`Result: ${result.success ? 'Success' : 'Failed'}.`);
+                        if (!result.success && result.error) {
+                            stageSpecificInfo.push(`Error: ${result.error}`);
+                        }
+                    }
+                    if (result.prompt) {
+                        stageSpecificInfo.push(`Prompt: ${result.prompt}`);
+                    }
+
+                    const stageLabel = stageLabels[stage] || stage.replace('-', ' ');
+                    const tooltipText = `Model: ${result.model}
+Stage: ${stageLabel}
+Prompt level: ${result.prompt_level || 'N/A'}
+Latency: ${duration > 0 ? formatTimeLabel(duration) : 'N/A'}
+Batch ID: ${result.batch_id || 'N/A'}
+
+${qualityTooltipDetails}
+
+${stageSpecificInfo.join('\n') || 'Status: N/A'}
+
+${stageIconLegends[stage] || 'Stage icon: status indicator.'}
+${qualityBadgeLegend}`;
 
                     // Stage icon with pulse animation
                     const stageIconHtml = `<i class="fas ${visual.icon} stage-icon ${visual.iconPulse ? 'stage-icon-pulse' : ''}"></i>`;
@@ -7046,7 +7098,7 @@ ${result.quality_explanation || breakdown.explanation || 'No details available'}
                                     <div
                                         class="${visual.barClass}"
                                         style="position: absolute; left: ${leftPercent}%; width: ${Math.max(widthPercent, 1.5)}%; height: 100%; ${visual.barClass ? '' : `background: linear-gradient(90deg, ${visual.baseColor}, ${visual.baseColor}dd);`} border-radius: 4px; display: flex; align-items: center; padding: 0 6px 0 22px; transition: width 0.5s ease, left 0.3s ease; position: relative; gap: 4px;"
-                                        title="${result.model} - ${stage.replace('-', ' ')} - ${result.prompt_level || 'N/A'}"
+                                        title="${tooltipText.replace(/"/g, '&quot;').replace(/\n/g, '&#10;')}"
                                     >
                                         ${stageIconHtml}
                                         <span style="color: white; font-size: 0.7em; font-weight: 600; white-space: nowrap;">
