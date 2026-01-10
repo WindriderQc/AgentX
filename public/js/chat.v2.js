@@ -1157,7 +1157,24 @@ document.addEventListener('DOMContentLoaded', () => {
           const url = window.WorkspaceManager ?
             WorkspaceManager.addWorkspaceParam(`/api/history/${id}`) : `/api/history/${id}`;
           const res = await fetch(url);
-          const { data } = await res.json();
+
+          if (!res.ok) {
+            if (res.status === 404) {
+                console.warn(`Conversation ${id} not found.`);
+                state.conversationId = null;
+                // Don't throw, just allow UI to be in "new chat" state or remain as is
+                return;
+            }
+            throw new Error(`Failed to load conversation: ${res.status}`);
+          }
+
+          const responseData = await res.json();
+          const data = responseData.data || responseData;
+
+          if (!data || !data._id) {
+              throw new Error('Invalid conversation data received');
+          }
+
           state.conversationId = data._id;
           state.history = []; // We will rebuild history from DB
           elements.chatWindow.innerHTML = '';
@@ -1223,7 +1240,11 @@ document.addEventListener('DOMContentLoaded', () => {
   async function loadProfile() {
       try {
           const res = await fetch('/api/profile');
-          const { data } = await res.json();
+          if (!res.ok) return;
+          const responseData = await res.json();
+          const data = responseData.data || responseData;
+          if (!data) return;
+
           elements.userAbout.value = data.about || '';
           elements.userInstructions.value = data.preferences?.customInstructions || '';
       } catch (err) {
@@ -1810,7 +1831,10 @@ async function refreshStats(conversationId) {
         const url = window.WorkspaceManager ?
           WorkspaceManager.addWorkspaceParam(`/api/history/${conversationId}`) : `/api/history/${conversationId}`;
         const res = await fetch(url);
-        const { data } = await res.json();
+        if (!res.ok) return; // Silent fail on 404/error during stats refresh
+        
+        const responseData = await res.json();
+        const data = responseData.data || responseData;
         if (data) updateConversationStats(data);
     } catch (e) {
         console.error('Failed to refresh stats', e);

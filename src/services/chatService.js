@@ -758,21 +758,22 @@ const handleChatRequestStream = async ({
             let thinkingContent = '';
             let stats = {};
 
-            const stream = response.body;
-            const reader = stream.getReader();
+            // const stream = response.body;
+            // const reader = stream.getReader();
+            // const decoder = new TextDecoder();
+
             const decoder = new TextDecoder();
 
             try {
-                while (true) {
+                // Universal stream iterator (works with both Node streams and Web streams)
+                for await (const chunk of response.body) {
                     if (abortSignal?.aborted) {
-                        await reader.cancel();
                         return;
                     }
-                    const { done, value } = await reader.read();
-                    if (done) break;
-
-                    const chunk = decoder.decode(value, { stream: true });
-                    const lines = chunk.split('\n').filter(line => line.trim());
+                    
+                    // Handle Buffer (Node) or Uint8Array (Web)
+                    const text = decoder.decode(chunk, { stream: true });
+                    const lines = text.split('\n').filter(line => line.trim());
 
                     for (const line of lines) {
                         try {
