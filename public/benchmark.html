@@ -7427,12 +7427,16 @@
                 const currentResultIds = new Set(results.map(r => r._id));
                 const hasNewResults = results.some(r => !lastTimelineResultIds.has(r._id));
                 
-                // If no new results, skip the full re-render
-                if (!hasNewResults && lastTimelineResultIds.size > 0) {
+                // Create a hash of the result data to detect updates (not just new results)
+                const resultHash = results.map(r => `${r._id}-${r.success}-${r.quality_score || 'null'}`).join('|');
+                
+                // If no new results and data hasn't changed, skip the full re-render
+                if (!hasNewResults && lastTimelineResultIds.size > 0 && window.lastTimelineHash === resultHash) {
                     return;
                 }
                 
                 lastTimelineResultIds = currentResultIds;
+                window.lastTimelineHash = resultHash;
 
                 timelineVisual.style.display = 'block';
                 timelineEmptyState.style.display = 'none';
