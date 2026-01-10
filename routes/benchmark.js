@@ -242,7 +242,7 @@ router.get('/prompts', async (req, res) => {
  * Start a batch benchmark test with optional quality scoring - workspace-aware
  */
 router.post('/batch', attachWorkspace, async (req, res) => {
-    const { host, models, levels, run_name, quality_scoring, judge_config } = req.body;
+    const { host, models, levels, run_name, quality_scoring, judge_config, execution_mode } = req.body;
 
     // Validation
     if (!host || !models || !Array.isArray(models) || !levels || !Array.isArray(levels)) {
@@ -288,6 +288,7 @@ router.post('/batch', attachWorkspace, async (req, res) => {
             run_name,
             quality_scoring,
             judge_config,
+            execution_mode: execution_mode || 'latency', // Default to latency mode
             workspaceId: req.workspace ? req.workspace._id : null
         });
 

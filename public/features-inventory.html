@@ -98,6 +98,13 @@
                 <label class="presence-chip"><input type="checkbox" id="hasBackend" onchange="window.inventoryApp.applyFilters()"> Backend</label>
                 <label class="presence-chip"><input type="checkbox" id="hasDocs" onchange="window.inventoryApp.applyFilters()"> Docs</label>
             </div>
+
+            <div class="quick-filters" aria-label="Quick filters">
+                <button class="btn btn-sm" data-qf="missingDocs" onclick="window.inventoryApp.applyQuickFilter('missingDocs')">Missing Docs</button>
+                <button class="btn btn-sm" data-qf="orphaned" onclick="window.inventoryApp.applyQuickFilter('orphaned')">Orphaned</button>
+                <button class="btn btn-sm" data-qf="planned" onclick="window.inventoryApp.applyQuickFilter('planned')">Planned</button>
+                <button class="btn btn-sm" onclick="window.inventoryApp.clearQuickFilter()">Clear</button>
+            </div>
         </div>
 
         <div class="inventory-table-container">

@@ -83,7 +83,9 @@ node scripts/seed-model-registry.js  # Seed model registry with 11 models
 
 ### Production Deployment (PM2)
 ```bash
-pm2 reload ecosystem.config.js --update-env  # Reload with new env vars
+
+
+
 pm2 save                                     # Persist for reboot
 pm2 status                                   # Check process status
 pm2 logs agentx --lines 200                  # View AgentX logs

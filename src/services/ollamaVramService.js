@@ -50,6 +50,48 @@ function parseHostFromUrl(hostUrl) {
   }
 }
 
+function parseDisabledHosts() {
+  const raw = String(process.env.OLLAMA_SSH_DISABLED_HOSTS || '').trim();
+  if (!raw) return new Set();
+  return new Set(
+    raw
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean)
+      .map(s => s.toLowerCase())
+  );
+}
+
+function parseSshUserMap() {
+  // Format: "host=user,host2=user2" (hosts can be IPs or DNS names)
+  const raw = String(process.env.OLLAMA_SSH_USER_MAP || '').trim();
+  const map = new Map();
+  if (!raw) return map;
+
+  for (const entry of raw.split(',')) {
+    const trimmed = String(entry || '').trim();
+    if (!trimmed) continue;
+    const idx = trimmed.indexOf('=');
+    if (idx <= 0) continue;
+    const host = trimmed.slice(0, idx).trim().toLowerCase();
+    const user = trimmed.slice(idx + 1).trim();
+    if (!host || !user) continue;
+    map.set(host, user);
+  }
+
+  return map;
+}
+
+function resolveSshUserForHost(sshHost) {
+  const hostKey = String(sshHost || '').trim().toLowerCase();
+  if (!hostKey) return process.env.OLLAMA_SSH_USER || null;
+
+  const map = parseSshUserMap();
+  if (map.has(hostKey)) return map.get(hostKey);
+
+  return process.env.OLLAMA_SSH_USER || null;
+}
+
 function parseNvidiaSmiCsv(output) {
   const lines = String(output || '')
     .split('\n')
@@ -125,10 +167,15 @@ class OllamaVramService {
     this.cache = new Map();
   }
 
-  async getHostVram(hostUrl) {
+  async getHostVram(hostUrl, overrides = {}) {
     const sshHost = parseHostFromUrl(hostUrl);
     if (!sshHost) {
       return { ok: false, error: 'Invalid host URL' };
+    }
+
+    const disabledHosts = parseDisabledHosts();
+    if (disabledHosts.has(String(sshHost).toLowerCase())) {
+      return { ok: false, sshHost, error: 'VRAM telemetry disabled for this host (OLLAMA_SSH_DISABLED_HOSTS). Common case: Ollama running on Windows without SSH/nvidia-smi compatibility.' };
     }
 
     const cacheMs = Number.parseInt(process.env.OLLAMA_VRAM_CACHE_MS || '', 10) || DEFAULT_CACHE_MS;
@@ -140,7 +187,7 @@ class OllamaVramService {
       return cached.value;
     }
 
-    const sshUser = process.env.OLLAMA_SSH_USER || null;
+    const sshUser = overrides.sshUser || resolveSshUserForHost(sshHost);
     const sshPort = process.env.OLLAMA_SSH_PORT || 22;
     const sshKeyPath = process.env.OLLAMA_SSH_KEY_PATH || null;
     const timeoutMs = Number.parseInt(process.env.OLLAMA_SSH_TIMEOUT_MS || '', 10) || DEFAULT_TIMEOUT_MS;
@@ -182,7 +229,7 @@ class OllamaVramService {
   async getVramForHosts(hosts) {
     const out = await Promise.all(
       (hosts || []).map(async (host) => {
-        const result = await this.getHostVram(host.url);
+        const result = await this.getHostVram(host.url, { sshUser: host?.sshUser });
         return {
           ...host,
           sshHost: result.sshHost || parseHostFromUrl(host.url),
@@ -201,4 +248,4 @@ class OllamaVramService {
 }
 
 module.exports = new OllamaVramService();
-module.exports._internal = { parseHostFromUrl, parseNvidiaSmiCsv, buildSshArgs };
+module.exports._internal = { parseHostFromUrl, parseNvidiaSmiCsv, buildSshArgs, parseDisabledHosts, parseSshUserMap, resolveSshUserForHost };

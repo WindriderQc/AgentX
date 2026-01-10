@@ -235,6 +235,11 @@ describe('Benchmark System - Integration Tests', () => {
             expect(response.body.data.overview).toHaveProperty('successful');
             expect(response.body.data.overview).toHaveProperty('success_rate');
             expect(response.body.data.model_stats).toBeInstanceOf(Array);
+            
+            // Verify recent tests are included
+            expect(response.body.data.recent_tests).toBeInstanceOf(Array);
+            expect(response.body.data.recent_tests).toHaveLength(1);
+            expect(response.body.data.recent_tests[0].model).toBe('test-model');
         });
 
         it('should sort results by specified criteria', async () => {
@@ -508,6 +513,70 @@ describe('Benchmark System - Integration Tests', () => {
             expect(response.body.data.status).toBe('completed');
             expect(response.body.data).toHaveProperty('progress');
             expect(response.body.data).toHaveProperty('success_rate');
+        });
+    });
+
+    describe('GET /api/benchmark/batches', () => {
+        it('should return empty list when no batches exist', async () => {
+            const response = await request(app).get('/api/benchmark/batches');
+
+            expect(response.status).toBe(200);
+            expect(response.body.status).toBe('success');
+            // Service returns { batches: [], total: 0 }
+            expect(response.body.data.batches).toBeInstanceOf(Array);
+            expect(response.body.data.batches).toHaveLength(0);
+        });
+
+        it('should return recent batches sorted by creation time', async () => {
+            // Create batches with different timestamps
+            const olderBatch = await BenchmarkBatch.create({
+                host: 'http://localhost:11434',
+                models: ['model-1'],
+                levels: [1],
+                run_name: 'Older Batch',
+                status: 'completed',
+                total_tests: 1,
+                created_at: new Date(Date.now() - 10000)
+            });
+
+            const newerBatch = await BenchmarkBatch.create({
+                host: 'http://localhost:11434',
+                models: ['model-2'],
+                levels: [1],
+                run_name: 'Newer Batch',
+                status: 'running',
+                total_tests: 1,
+                created_at: new Date()
+            });
+
+            const response = await request(app).get('/api/benchmark/batches');
+
+            expect(response.status).toBe(200);
+            expect(response.body.data.batches).toHaveLength(2);
+            // Should be sorted by created_at desc (newer first)
+            expect(response.body.data.batches[0]._id.toString()).toBe(newerBatch._id.toString());
+            expect(response.body.data.batches[1]._id.toString()).toBe(olderBatch._id.toString());
+        });
+
+        it('should respect limit parameter', async () => {
+            // Create 5 batches
+            const batches = [];
+            for (let i = 0; i < 5; i++) {
+                batches.push({
+                    host: 'http://localhost:11434',
+                    models: ['test-model'],
+                    levels: [1],
+                    run_name: `Batch ${i}`,
+                    status: 'completed',
+                    total_tests: 1
+                });
+            }
+            await BenchmarkBatch.create(batches);
+
+            const response = await request(app).get('/api/benchmark/batches?limit=3');
+
+            expect(response.status).toBe(200);
+            expect(response.body.data.batches).toHaveLength(3);
         });
     });
 

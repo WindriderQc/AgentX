@@ -8,6 +8,7 @@ class FeatureInventory {
         this.renderedFeatures = [];
         this.sortField = 'name';
         this.sortDirection = 'asc';
+        this.quickFilter = null;
         this.init();
     }
 
@@ -15,6 +16,39 @@ class FeatureInventory {
         // Initial load
         this.loadInventory();
         this.loadLatestReportSummary();
+        this.syncQuickFilterButtons();
+    }
+
+    syncQuickFilterButtons() {
+        const btns = document.querySelectorAll('[data-qf]');
+        btns.forEach((b) => {
+            const key = b.getAttribute('data-qf');
+            if (!key) return;
+            b.classList.toggle('is-active', this.quickFilter === key);
+        });
+    }
+
+    applyQuickFilter(key) {
+        this.quickFilter = (this.quickFilter === key) ? null : key;
+
+        // For status-based quick filters, set the status dropdown.
+        const statusFilter = document.getElementById('statusFilter');
+        if (statusFilter) {
+            if (this.quickFilter === 'orphaned') statusFilter.value = 'orphaned';
+            else if (this.quickFilter === 'planned') statusFilter.value = 'planned';
+            else if (this.quickFilter === null || this.quickFilter === 'missingDocs') statusFilter.value = 'all';
+        }
+
+        this.syncQuickFilterButtons();
+        this.applyFilters();
+    }
+
+    clearQuickFilter() {
+        this.quickFilter = null;
+        const statusFilter = document.getElementById('statusFilter');
+        if (statusFilter) statusFilter.value = 'all';
+        this.syncQuickFilterButtons();
+        this.applyFilters();
     }
 
     setScanStatus(message) {
@@ -136,11 +170,14 @@ class FeatureInventory {
         data.forEach((feature, index) => {
             const row = document.createElement('tr');
             row.id = `row-${index}`;
+
+            const why = this.getWhyText(feature);
             
             row.innerHTML = `
                 <td>
-                    <div style="font-weight: 500;">${feature.name}</div>
-                    <div style="font-size: 12px; color: #64748b;">${feature.category}</div>
+                    <div class="feature-name">${feature.name}</div>
+                    <div class="feature-category">${feature.category}</div>
+                    <div class="why-text">${why}</div>
                 </td>
                 <td>${this.renderStatusIcon(feature.frontend.exists)}</td>
                 <td>${this.renderStatusIcon(feature.backend.exists)}</td>
@@ -295,7 +332,7 @@ class FeatureInventory {
 
             content = data.exists ? `
                 <ul class="detail-list">
-                    <li><strong>Pages:</strong> ${pages.length ? pages.map(p => `<span class="file-path">${p}</span>`).join(', ') : '<span class="status-missing">—</span>'}</li>
+                    <li><strong>Pages:</strong> ${pages.length ? pages.map(p => `<span class="file-path">${p}</span>`).join(' ') : '<span class="status-missing">—</span>'}</li>
                     <li><strong>Lines:</strong> ${lines.length ? lines.join(', ') : '<span class="status-missing">—</span>'}</li>
                 </ul>` : '<span class="status-missing">No frontend files found.</span>';
         } else if (title === 'Backend') {
@@ -304,15 +341,15 @@ class FeatureInventory {
 
              content = data.exists ? `
                 <ul class="detail-list">
-                    <li><strong>Services:</strong> ${services.length ? services.map(p => `<span class="file-path">${p}</span>`).join(', ') : '<span class="status-missing">—</span>'}</li>
-                    <li><strong>Endpoints:</strong> ${endpoints.length ? endpoints.map(p => `<span class="file-path">${p}</span>`).join(', ') : '<span class="status-missing">—</span>'}</li>
+                    <li><strong>Services:</strong> ${services.length ? services.map(p => `<span class="file-path">${p}</span>`).join(' ') : '<span class="status-missing">—</span>'}</li>
+                    <li><strong>Endpoints:</strong> ${endpoints.length ? endpoints.map(p => `<span class="file-path">${p}</span>`).join(' ') : '<span class="status-missing">—</span>'}</li>
                 </ul>` : '<span class="status-missing">No backend services found.</span>';
         } else if (title === 'Documentation') {
             const files = Array.isArray(data?.files) ? data.files : [];
             const completeness = Number.isFinite(data?.completeness) ? data.completeness : 0;
             content = data.exists ? `
                 <ul class="detail-list">
-                    <li><strong>Files:</strong> ${files.length ? files.map(p => `<span class="file-path">${p}</span>`).join(', ') : '<span class="status-missing">—</span>'}</li>
+                    <li><strong>Files:</strong> ${files.length ? files.map(p => `<span class="file-path">${p}</span>`).join(' ') : '<span class="status-missing">—</span>'}</li>
                     <li><strong>Completeness:</strong> ${completeness}%</li>
                 </ul>` : '<span class="status-missing">No documentation found.</span>';
         }
@@ -356,21 +393,32 @@ class FeatureInventory {
             const matchesBackend = !hasBackend || !!f.backend?.exists;
             const matchesDocs = !hasDocs || !!f.documentation?.exists;
 
-            return matchesSearch && matchesCategory;
-        });
+            const matchesQuickFilter = this.quickFilter === 'missingDocs'
+                ? !f.documentation?.exists
+                : true;
 
-        const filtered2 = filtered.filter(f => {
-            const matchesStatus = statusFilter === 'all' || f.status === statusFilter;
-            const matchesFrontend = !hasFrontend || !!f.frontend?.exists;
-            const matchesBackend = !hasBackend || !!f.backend?.exists;
-            const matchesDocs = !hasDocs || !!f.documentation?.exists;
-            return matchesStatus && matchesFrontend && matchesBackend && matchesDocs;
+            return matchesSearch && matchesCategory && matchesStatus && matchesFrontend && matchesBackend && matchesDocs && matchesQuickFilter;
         });
 
         // Apply sort
-        this.sortData(filtered2);
-        this.renderTable(filtered2);
-        this.updateStats(filtered2);
+        this.sortData(filtered);
+        this.renderTable(filtered);
+        this.updateStats(filtered);
+    }
+
+    getWhyText(feature) {
+        const missing = [];
+        if (!feature.frontend?.exists) missing.push('UI');
+        if (!feature.backend?.exists) missing.push('Backend');
+        if (!feature.documentation?.exists) missing.push('Docs');
+
+        if (missing.length === 0) return 'All signals present.';
+
+        if (feature.status === 'orphaned' || (!feature.frontend?.exists && feature.backend?.exists && !feature.documentation?.exists)) {
+            return 'Backend only (no UI, no docs).';
+        }
+
+        return `Missing: ${missing.join(', ')}.`;
     }
 
     sortBy(field) {

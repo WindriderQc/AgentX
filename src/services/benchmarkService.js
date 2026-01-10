@@ -653,7 +653,7 @@ class BenchmarkService {
     /**
      * Start a batch benchmark test
      */
-    async startBatch({ host, models, levels, run_name, quality_scoring = true, judge_config = {}, tags = [], description = '' }) {
+    async startBatch({ host, models, levels, run_name, quality_scoring = true, judge_config = {}, tags = [], description = '', execution_mode = 'latency' }) {
         if (!host || !models || !Array.isArray(models) || !levels || !Array.isArray(levels)) {
             throw new Error('host, models (array), and levels (array) are required');
         }
@@ -733,7 +733,8 @@ class BenchmarkService {
             status: 'running',
             started_at: new Date(),
             tags: Array.isArray(tags) ? tags : [],
-            description: typeof description === 'string' ? description : ''
+            description: typeof description === 'string' ? description : '',
+            execution_mode: execution_mode || 'latency'
         });
 
         // Capture system snapshot for reproducibility
@@ -745,7 +746,7 @@ class BenchmarkService {
         // Start batch execution in background.
         // Skip in tests to keep Jest deterministic and avoid runaway async work.
         if (process.env.NODE_ENV !== 'test') {
-            this.executeBatch(batchId, host, models, selectedPrompts, { quality_scoring, judge_config }).catch(err => {
+            this.executeBatch(batchId, host, models, selectedPrompts, { quality_scoring, judge_config, execution_mode }).catch(err => {
                 logger.error('Batch execution failed', { batchId, error: err.message });
             });
         }
@@ -759,12 +760,13 @@ class BenchmarkService {
     }
 
     /**
-     * Execute batch tests with parallel host execution
+     * Execute batch tests with parallel or serial host execution
      */
     async executeBatch(batchId, defaultHost, models, prompts, options = {}) {
         const enableQualityScoring = options.quality_scoring !== false;
         const judgeConfig = options.judge_config || {};
         const judgeSameHost = judgeConfig.judge_same_host !== undefined ? !!judgeConfig.judge_same_host : false;
+        const executionMode = options.execution_mode || 'latency';
 
         // Prevent duplicate execution
         const batch = await BenchmarkBatch.findById(batchId);
@@ -801,8 +803,8 @@ class BenchmarkService {
             }
         };
 
-        // Per-batch judge queue
-        const judgeConcurrency = judgeConfig.concurrency || 2;
+        // Per-batch judge queue - set concurrency based on execution mode
+        const judgeConcurrency = executionMode === 'latency' ? 1 : (judgeConfig.concurrency || 2);
         const judgeQueue = new ConcurrencyQueue(judgeConcurrency);
 
         // Set up periodic heartbeat to update last_activity_at (every 10 seconds)
@@ -1115,8 +1117,16 @@ class BenchmarkService {
             }
         });
 
-        // Wait for all host executions to complete
-        await Promise.all(hostPromises);
+        // Execute serially (latency mode) or in parallel (throughput mode)
+        if (executionMode === 'latency') {
+            // Serial execution: run one host at a time for clean latency measurements
+            for (const hostPromise of hostPromises) {
+                await hostPromise;
+            }
+        } else {
+            // Parallel execution: maximize throughput
+            await Promise.all(hostPromises);
+        }
 
         if (enableQualityScoring) {
             const postExecBatch = await BenchmarkBatch.findById(batchId);

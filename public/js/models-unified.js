@@ -385,7 +385,11 @@ class UnifiedModels {
             const statusStyle = ok ? 'color:#22c55e;' : 'color:#ef4444;';
             const used = ok ? fmtGiB(h?.memoryUsedMiBTotal || 0) : '—';
             const total = ok ? fmtGiB(h?.memoryTotalMiBTotal || 0) : '—';
-            const err = !ok ? this.escapeHtml(h?.error || 'Unavailable') : '';
+            const rawErr = String(h?.error || '').trim();
+            const displayErr = rawErr.includes('OLLAMA_SSH_DISABLED_HOSTS')
+                ? 'VRAM telemetry unavailable for this host (Windows/disabled)'
+                : (rawErr || 'Unavailable');
+            const err = !ok ? this.escapeHtml(displayErr) : '';
             const collectedAt = this.escapeHtml(fmtTs(h?.collectedAt));
 
             const gpus = Array.isArray(h?.gpus) ? h.gpus : [];
