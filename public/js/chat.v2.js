@@ -1163,7 +1163,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.warn(`Conversation ${id} not found.`);
                 state.conversationId = null;
                 // Don't throw, just allow UI to be in "new chat" state or remain as is
-                return;
+                return false;
             }
             throw new Error(`Failed to load conversation: ${res.status}`);
           }
@@ -1212,8 +1212,10 @@ document.addEventListener('DOMContentLoaded', () => {
               }
           }
 
+          return true;
       } catch (err) {
           console.error('Failed to load conversation', err);
+          return false;
       }
   }
 
@@ -1781,7 +1783,21 @@ document.addEventListener('DOMContentLoaded', () => {
     // Load history and open latest conversation if available
     const history = await loadHistoryList();
     if (history && history.length > 0) {
-        loadConversation(history[0].id);
+        // Try to load conversations until one succeeds
+        let loaded = false;
+        // Check first few items to avoid infinite loop if all are bad 
+        // (though loop breaks on first success)
+        const candidates = history.slice(0, 5); 
+        
+        for (const item of candidates) {
+            loaded = await loadConversation(item.id);
+            if (loaded) break;
+        }
+
+        if (!loaded) {
+            setStatus('Ready');
+            setFeedback('Set host/model, then start chatting.');
+        }
     } else {
         setStatus('Ready');
         setFeedback('Set host/model, then start chatting.');

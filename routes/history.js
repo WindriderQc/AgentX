@@ -50,6 +50,22 @@ router.get('/:id', optionalAuth, attachWorkspace, async (req, res) => {
 
         const userId = getUserId(res);
 
+        // DEBUG: Find without filters to see what's wrong
+        const debugConv = await Conversation.findOne({ _id: req.params.id });
+        if (debugConv) {
+             logger.info('DEBUG: Conversation found but maybe filtered out', {
+                 paramsId: req.params.id,
+                 convId: debugConv._id,
+                 convUserId: debugConv.userId,
+                 reqUserId: userId,
+                 convWorkspaceId: debugConv.workspaceId,
+                 reqWorkspaceId: req.workspace ? req.workspace._id : 'no-workspace-context'
+             });
+        } else {
+             logger.info('DEBUG: Conversation strictly not found by ID', { id: req.params.id });
+        }
+
+
         // Build query with security filters FIRST
         const query = { _id: req.params.id, userId };
 

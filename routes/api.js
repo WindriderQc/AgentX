@@ -1,8 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const Conversation = require('../models/Conversation');
+const Workspace = require('../models/Workspace');
 const { resolveTarget } = require('../src/utils');
 const { optionalAuth } = require('../src/middleware/auth');
+const { attachWorkspace } = require('../src/middleware/workspace');
 const { getUserId } = require('../src/helpers/userHelpers');
 const logger = require('../config/logger');
 const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
@@ -16,6 +18,30 @@ const ragStore = getRagStore({
   vectorStoreType: process.env.VECTOR_STORE_TYPE || 'memory',
   url: process.env.QDRANT_URL,
   collection: process.env.QDRANT_COLLECTION
+});
+
+// DEBUG: Temporary endpoint to inspect conversation
+router.get('/debug/conversation/:id', async (req, res) => {
+    try {
+        const conv = await Conversation.findOne({ _id: req.params.id });
+        if (!conv) return res.status(404).json({ error: 'Not found' });
+        
+        const userId = getUserId(res);
+        const workspaceId = req.workspace ? req.workspace._id : null;
+        
+        res.json({
+            status: 'success',
+            conversation: conv,
+            context: {
+                reqUserId: userId,
+                reqWorkspaceId: workspaceId,
+                matchUser: conv.userId === userId,
+                matchWorkspace: conv.workspaceId?.toString() === workspaceId?.toString()
+            }
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // PROXY: Models List
@@ -143,14 +169,14 @@ router.get('/health/qdrant', async (req, res) => {
 });
 
 // CHAT: Delegated to chatService
-router.post('/chat', optionalAuth, async (req, res) => {
+router.post('/chat', optionalAuth, attachWorkspace, async (req, res) => {
   const { 
     target = process.env.OLLAMA_HOST, 
     model, 
     message, 
     messages = [], 
     system, 
-        persona,
+    persona,
     options = {}, 
     conversationId, 
     useRag, 
@@ -160,6 +186,14 @@ router.post('/chat', optionalAuth, async (req, res) => {
     autoRoute = false,  // Enable smart model routing
     taskType = null     // Override task classification (code_generation, deep_reasoning, etc.)
   } = req.body;
+
+  // Defensive fix for workspace context
+  if (!req.workspace && req.query.workspace) {
+        try {
+        const ws = await Workspace.findOne({ slug: req.query.workspace });
+        if (ws) req.workspace = ws;
+        } catch (e) { /* ignore */ }
+  }
 
   if (!target) {
       return res.status(500).json({ status: 'error', message: 'OLLAMA_HOST not configured and no target provided' });
@@ -192,7 +226,8 @@ router.post('/chat', optionalAuth, async (req, res) => {
         target,
         ragStore,
         autoRoute,
-        taskType
+        taskType,
+        workspaceId: req.workspace ? req.workspace._id : null
     });
 
     res.json({
@@ -252,10 +287,21 @@ const handleChatStreamRequest = async (req, res, payload) => {
     taskType = null
   } = payload || {};
 
+  // Debug log for context
+  const userId = getUserId(res);
+  const workspaceId = req.workspace ? req.workspace._id : null;
+  const workspaceSlug = req.workspace ? req.workspace.slug : (req.query.workspace || 'unknown');
+  
+  logger.info('DEBUG_STREAM: handleChatStreamRequest', { 
+    userId, 
+    workspaceId,
+    workspaceSlug,
+    model 
+  });
+
   if (!target) {
     return res.status(500).json({ status: 'error', message: 'OLLAMA_HOST not configured and no target provided' });
   }
-  const userId = getUserId(res);
 
   if (!model && !autoRoute && !taskType) {
     return res.status(400).json({ status: 'error', message: 'Model is required (or enable autoRoute/taskType)' });
@@ -317,6 +363,7 @@ const handleChatStreamRequest = async (req, res, payload) => {
       ragStore,
       autoRoute,
       taskType,
+      workspaceId: workspaceId,
       abortSignal: abortController.signal,
       onToken: (token) => {
         sendEvent('token', { content: token });
@@ -347,11 +394,38 @@ const handleChatStreamRequest = async (req, res, payload) => {
 };
 
 // CHAT STREAMING: SSE endpoint for real-time token streaming
-router.post('/chat/stream', optionalAuth, async (req, res) => {
+router.post('/chat/stream', optionalAuth, attachWorkspace, async (req, res) => {
+    // Defensive fix for workspace context
+    if (!req.workspace && req.query.workspace) {
+         try {
+            const ws = await Workspace.findOne({ slug: req.query.workspace });
+            if (ws) req.workspace = ws;
+         } catch (e) { /* ignore */ }
+    }
   await handleChatStreamRequest(req, res, req.body);
 });
 
-router.get('/chat/stream', optionalAuth, async (req, res) => {
+router.get('/chat/stream', optionalAuth, attachWorkspace, async (req, res) => {
+  logger.info('DEBUG_STREAM: GET request', { 
+      workspaceQuery: req.query.workspace, 
+      workspaceId: req.workspace ? req.workspace._id : 'missing' 
+  });
+  
+  // Defensive fix: If middleware missed it but query param exists, try to load it
+  let workspaceId = req.workspace ? req.workspace._id : null;
+  if (!workspaceId && req.query.workspace) {
+      try {
+          const ws = await Workspace.findOne({ slug: req.query.workspace });
+          if (ws) {
+              workspaceId = ws._id;
+              req.workspace = ws; // Attach for downstream use
+              logger.info('DEBUG_STREAM: Manually loaded workspace', { slug: req.query.workspace, id: ws._id });
+          }
+      } catch (err) {
+          logger.error('DEBUG_STREAM: Failed to manually load workspace', { error: err.message });
+      }
+  }
+
   const payload = decodeStreamPayload(req.query.payload) || {
     target: req.query.target,
     model: req.query.model,

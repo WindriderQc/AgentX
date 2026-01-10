@@ -67,52 +67,59 @@
             border-radius: 2px;
         }
 
-        .timeline-segment {
+        .timeline-segment-group {
+            display: flex;
             height: 32px;
             border-radius: 4px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 0 8px;
-            font-size: 0.75em;
-            font-weight: 600;
-            color: rgba(0,0,0,0.7);
-            white-space: nowrap;
-            cursor: help;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(46, 204, 113, 0.2);
             transition: all 0.2s;
-            position: relative;
-            min-width: 60px; /* Minimum width for visibility */
+            cursor: help;
         }
 
-        .timeline-segment:hover {
+        .timeline-segment-group:hover {
             transform: translateY(-2px);
             box-shadow: 0 4px 12px rgba(0,0,0,0.3);
             z-index: 10;
         }
 
+        .timeline-segment {
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 4px;
+            font-size: 0.75em;
+            font-weight: 600;
+            color: rgba(0,0,0,0.8);
+            white-space: nowrap;
+            position: relative;
+            min-width: 0; 
+            overflow: hidden;
+        }
+
         .timeline-segment i {
             margin-right: 4px;
-            font-size: 1.1em;
+            font-size: 1.0em;
         }
 
         /* Segment Variants */
         .segment-success {
             background: linear-gradient(135deg, #2ecc71, #27ae60);
-            box-shadow: 0 2px 4px rgba(46, 204, 113, 0.2);
         }
         .segment-error {
             background: linear-gradient(135deg, #e74c3c, #c0392b);
             color: white;
         }
+        .segment-judging {
+            background: linear-gradient(135deg, #9b59b6, #8e44ad);
+            color: white;
+            box-shadow: -2px 0 4px rgba(0,0,0,0.1); /* Separator shadow */
+        }
         .segment-running {
             background: linear-gradient(135deg, #3498db, #2980b9);
             color: white;
             animation: pulse-blue 2s infinite;
-        }
-        .segment-judging {
-            background: linear-gradient(135deg, #9b59b6, #8e44ad);
-            color: white;
-            animation: pulse-purple 2s infinite;
         }
         .segment-queued {
             background: rgba(255,255,255,0.1);
@@ -7127,34 +7134,74 @@
                     let segmentsHtml = '';
                     
                     // Render Completed Tests
-                    segmentsHtml += modelResults.map(result => {
+                    let lastTime = 0;
+                    segmentsHtml += modelResults.map((result, idx) => {
                         const visual = getSegmentVisual(result);
-                        const duration = result.latency || 0;
-                        const durationStr = formatTime(duration);
+                        const inferenceTime = result.latency || 0;
+                        const judgingTime = result.judging_time || 0;
+                        const totalTime = inferenceTime + judgingTime;
+
+                        const inferenceStr = formatTime(inferenceTime);
+                        const judgingStr = formatTime(judgingTime);
+                        const totalStr = formatTime(totalTime);
+                        
                         const qScore = result.q_score ? `Q${result.q_score}` : '';
                         const level = result.difficulty ? `L${result.difficulty}` : '';
+                        const timestamp = new Date(result.timestamp).getTime();
 
                         // Tooltip content
                         const tooltip = `
 Test ID: ${result.test_id || 'N/A'}
 Success: ${result.success}
-Latency: ${durationStr}
+Total Time: ${totalStr}
+Inference: ${inferenceStr}
+Judging: ${judgingStr}
 Date: ${new Date(result.timestamp).toLocaleTimeString()}
 Prompt: ${result.prompt || 'N/A'}
 ${result.error ? 'Error: ' + result.error : ''}
                         `.trim();
                         
-                        const widthPx = Math.min(150, Math.max(70, 60 + (duration / 2000) * 40));
+                         let separator = '';
+                        if (idx > 0 && (timestamp - lastTime > 300000)) {
+                             separator = `<div style="width: 1px; height: 20px; background: rgba(255,255,255,0.2); margin: 0 4px;" title="Gap > 5m"></div>`;
+                        }
+                        lastTime = timestamp;
 
-                        return `
-                        <div class="timeline-segment ${visual.class}" 
-                             style="width: ${widthPx}px" 
-                             title="${tooltip}">
-                            <i class="fas ${visual.icon}"></i>
-                            <span>${durationStr}</span>
-                            ${qScore ? `<span class="segment-badge" style="background:rgba(255,255,255,0.2)">${qScore}</span>` : ''}
-                            ${level ? `<span class="segment-badge">${level}</span>` : ''}
-                        </div>`;
+                        // Width scale (min 80px, max 220px)
+                        const totalWidthPx = Math.min(220, Math.max(80, 60 + (totalTime / 2000) * 40));
+                        
+                        // Calculate percentage widths for sub-segments
+                        const inferencePct = totalTime > 0 ? (inferenceTime / totalTime) * 100 : 100;
+                        const judgingPct = totalTime > 0 ? (judgingTime / totalTime) * 100 : 0;
+
+                        // Only split if we actually have judging time
+                        if (judgingTime > 100) {
+                            return `${separator}
+                            <div class="timeline-segment-group" style="width: ${totalWidthPx}px;" title="${tooltip}">
+                                <div class="timeline-segment ${visual.class}" style="width: ${inferencePct}%; border-radius: 0;">
+                                    <i class="fas ${visual.icon}"></i>
+                                    <span>${inferenceStr}</span>
+                                </div>
+                                <div class="timeline-segment segment-judging" style="width: ${judgingPct}%; border-radius: 0;">
+                                    <i class="fas fa-gavel" style="font-size:0.8em"></i>
+                                    <span style="font-size:0.75em">${judgingStr}</span>
+                                </div>
+                                <div style="position:absolute; right:4px; top:0; height:100%; display:flex; align-items:center; pointer-events:none;">
+                                    ${qScore ? `<span class="segment-badge" style="background:rgba(0,0,0,0.3); backdrop-filter:blur(2px);">${qScore}</span>` : ''}
+                                </div>
+                            </div>`;
+                        } else {
+                            // Standard single block
+                            return `${separator}
+                            <div class="timeline-segment-group" style="width: ${totalWidthPx}px;" title="${tooltip}">
+                                <div class="timeline-segment ${visual.class}" style="width: 100%;">
+                                    <i class="fas ${visual.icon}"></i>
+                                    <span>${inferenceStr}</span>
+                                    ${qScore ? `<span class="segment-badge" style="background:rgba(255,255,255,0.2)">${qScore}</span>` : ''}
+                                    ${level ? `<span class="segment-badge">${level}</span>` : ''}
+                                </div>
+                            </div>`;
+                        }
                     }).join('');
 
                     // Check for Active State
