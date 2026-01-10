@@ -31,21 +31,58 @@
             display: flex;
             align-items: center;
             gap: 16px;
-            padding: 8px;
-            background: rgba(255,255,255,0.03);
-            border-radius: 6px;
-            min-height: 50px;
+            padding: 12px;
+            background: linear-gradient(90deg, rgba(124, 240, 255, 0.05) 0%, rgba(255,255,255,0.02) 100%);
+            border-radius: 8px;
+            min-height: 56px;
+            border: 1px solid rgba(124, 240, 255, 0.08);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .timeline-model-row::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            height: 100%;
+            width: 3px;
+            background: linear-gradient(180deg, rgba(124, 240, 255, 0.5) 0%, rgba(124, 240, 255, 0) 100%);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .timeline-model-row:hover {
+            background: linear-gradient(90deg, rgba(124, 240, 255, 0.08) 0%, rgba(255,255,255,0.04) 100%);
+            border-color: rgba(124, 240, 255, 0.15);
+            transform: translateX(2px);
+        }
+
+        .timeline-model-row:hover::before {
+            opacity: 1;
         }
 
         .timeline-model-label {
-            width: 140px;
+            width: 160px;
             flex-shrink: 0;
-            color: var(--fg);
-            font-weight: 500;
-            font-size: 0.9em;
+            color: var(--text);
+            font-weight: 600;
+            font-size: 0.95em;
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 10px;
+            padding-left: 8px;
+        }
+
+        .timeline-model-label i {
+            color: var(--accent);
+            font-size: 1.1em;
+            transition: transform 0.3s ease;
+        }
+
+        .timeline-model-row:hover .timeline-model-label i {
+            transform: scale(1.15) rotate(5deg);
         }
 
         .timeline-track {
@@ -70,17 +107,46 @@
         .timeline-segment-group {
             display: flex;
             height: 32px;
-            border-radius: 4px;
+            border-radius: 6px;
             overflow: hidden;
-            box-shadow: 0 2px 4px rgba(46, 204, 113, 0.2);
-            transition: all 0.2s;
+            box-shadow: 0 2px 8px rgba(46, 204, 113, 0.25);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             cursor: help;
+            animation: slideInUp 0.4s ease-out backwards;
+            position: relative;
+        }
+
+        @keyframes slideInUp {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
         .timeline-segment-group:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            transform: translateY(-3px) scale(1.02);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.4), 0 0 0 2px rgba(124, 240, 255, 0.2);
             z-index: 10;
+        }
+
+        .timeline-segment-group::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .timeline-segment-group:hover::before {
+            opacity: 1;
         }
 
         .timeline-segment {
@@ -103,23 +169,58 @@
             font-size: 1.0em;
         }
 
-        /* Segment Variants */
+        /* Segment Variants - Enhanced Gradients */
         .segment-success {
-            background: linear-gradient(135deg, #2ecc71, #27ae60);
+            background: linear-gradient(135deg, #00f260 0%, #0575e6 100%);
+            box-shadow: 0 2px 8px rgba(46, 204, 113, 0.3);
+            transition: all 0.3s ease;
         }
+
+        .segment-success:hover {
+            box-shadow: 0 4px 16px rgba(46, 204, 113, 0.5);
+            transform: translateY(-1px);
+        }
+
         .segment-error {
-            background: linear-gradient(135deg, #e74c3c, #c0392b);
+            background: linear-gradient(135deg, #ff416c 0%, #ff4b2b 100%);
             color: white;
+            box-shadow: 0 2px 8px rgba(231, 76, 60, 0.3);
+            transition: all 0.3s ease;
         }
+
+        .segment-error:hover {
+            box-shadow: 0 4px 16px rgba(231, 76, 60, 0.5);
+            transform: translateY(-1px);
+        }
+
         .segment-judging {
-            background: linear-gradient(135deg, #8e44ad, #9b59b6);
+            background: linear-gradient(135deg, #a044ff 0%, #6a11cb 100%);
             color: white;
-            box-shadow: -2px 0 4px rgba(0,0,0,0.1); /* Separator shadow */
+            box-shadow: -2px 0 4px rgba(0,0,0,0.15), 0 2px 8px rgba(155, 89, 182, 0.3);
+            transition: all 0.3s ease;
         }
+
+        .segment-judging:hover {
+            box-shadow: -2px 0 4px rgba(0,0,0,0.15), 0 4px 16px rgba(155, 89, 182, 0.5);
+            transform: translateY(-1px);
+        }
+
         .segment-running {
-            background: linear-gradient(135deg, #3498db, #2980b9);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            animation: pulse-blue 2s infinite;
+            animation: pulse-gradient 2s ease-in-out infinite;
+            box-shadow: 0 2px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        @keyframes pulse-gradient {
+            0%, 100% {
+                box-shadow: 0 2px 12px rgba(102, 126, 234, 0.4);
+                opacity: 1;
+            }
+            50% {
+                box-shadow: 0 4px 20px rgba(102, 126, 234, 0.7);
+                opacity: 0.9;
+            }
         }
 
         /* Custom Tooltip */
@@ -1973,7 +2074,7 @@
 
         <!-- Task Execution Timeline Section -->
         <div class="timeline-section" style="margin-top: 32px; background: var(--panel); border: 1px solid var(--panel-border); border-radius: var(--radius); padding: 24px;">
-            <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+            <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                 <h3 style="margin: 0; font-size: 1.25em; display: flex; align-items: center; gap: 10px;">
                     <i class="fas fa-stream" style="color: var(--accent);"></i> Recent Test Execution
                 </h3>
@@ -1986,6 +2087,14 @@
                     </select>
                 </div>
             </div>
+
+            <!-- Performance Summary Panel -->
+            <div id="timelineStatsSummary" style="display: none; background: linear-gradient(135deg, rgba(124, 240, 255, 0.08) 0%, rgba(124, 240, 255, 0.03) 100%); border: 1px solid rgba(124, 240, 255, 0.15); border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px;">
+                    <!-- Stats will be populated by JavaScript -->
+                </div>
+            </div>
+
             <div id="timelineVisual" style="background: rgba(0,0,0,0.2); border-radius: 8px; padding: 16px; min-height: 300px; position: relative;">
                 <!-- Timeline bars rendered here -->
             </div>
@@ -1993,6 +2102,18 @@
                 <i class="fas fa-chart-gantt" style="font-size: 2em; margin-bottom: 16px; opacity: 0.5;"></i>
                 <p>No test results yet. Run a benchmark to see the execution timeline.</p>
             </div>
+
+            <!-- Model Performance Heatmap -->
+            <div id="performanceHeatmapSection" style="display: none; margin-top: 24px; padding-top: 24px; border-top: 1px solid rgba(124, 240, 255, 0.15);">
+                <h4 style="margin: 0 0 16px; font-size: 1.1em; display: flex; align-items: center; gap: 10px; color: var(--text);">
+                    <i class="fas fa-th" style="color: var(--accent);"></i> Model Performance Matrix
+                    <span style="font-size: 0.7em; color: var(--muted); font-weight: 400; margin-left: auto;">(Hover for details)</span>
+                </h4>
+                <div id="performanceHeatmap" style="overflow-x: auto;">
+                    <!-- Heatmap will be populated by JavaScript -->
+                </div>
+            </div>
+
             <!-- Add CSS for live animations -->
             <style>
                 @keyframes pulse-glow {
@@ -7147,21 +7268,51 @@
                 tooltip = document.createElement('div');
                 tooltip.id = 'timeline-tooltip';
                 tooltip.className = 'custom-tooltip';
+                tooltip.style.cssText = `
+                    position: fixed;
+                    background: linear-gradient(135deg, #1a1d26 0%, #14171e 100%);
+                    border: 1px solid rgba(124, 240, 255, 0.3);
+                    border-radius: 12px;
+                    padding: 16px;
+                    color: #eee;
+                    font-size: 0.85em;
+                    line-height: 1.6;
+                    z-index: 9999;
+                    box-shadow: 0 12px 32px rgba(0,0,0,0.7), 0 0 0 1px rgba(124, 240, 255, 0.1);
+                    pointer-events: none;
+                    max-width: 350px;
+                    backdrop-filter: blur(12px);
+                    opacity: 0;
+                    transform: translateY(5px);
+                    transition: opacity 0.2s ease, transform 0.2s ease;
+                `;
                 document.body.appendChild(tooltip);
             }
             tooltip.innerHTML = htmlContent;
             tooltip.style.display = 'block';
-            
+
+            // Trigger animation
+            requestAnimationFrame(() => {
+                tooltip.style.opacity = '1';
+                tooltip.style.transform = 'translateY(0)';
+            });
+
             const moveHandler = (evt) => {
-                const x = evt.clientX + 15;
-                const y = evt.clientY + 15;
-                tooltip.style.left = Math.min(x, window.innerWidth - 320) + 'px';
-                tooltip.style.top = Math.min(y, window.innerHeight - tooltip.offsetHeight - 10) + 'px';
+                const x = evt.clientX + 18;
+                const y = evt.clientY + 18;
+                const maxX = window.innerWidth - 370;
+                const maxY = window.innerHeight - tooltip.offsetHeight - 20;
+                tooltip.style.left = Math.min(x, maxX) + 'px';
+                tooltip.style.top = Math.min(y, maxY) + 'px';
             };
             moveHandler(e);
             document.addEventListener('mousemove', moveHandler);
             e.target.onmouseleave = () => {
-                tooltip.style.display = 'none';
+                tooltip.style.opacity = '0';
+                tooltip.style.transform = 'translateY(5px)';
+                setTimeout(() => {
+                    tooltip.style.display = 'none';
+                }, 200);
                 document.removeEventListener('mousemove', moveHandler);
             };
         };
@@ -7206,6 +7357,29 @@
 
                 // Sort by timestamp (oldest first)
                 const sorted = [...results].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+                // Calculate global averages for comparison
+                const globalStats = {
+                    avgLatency: 0,
+                    avgTps: 0,
+                    avgQuality: 0,
+                    avgJudgeTime: 0,
+                    successRate: 0
+                };
+
+                if (sorted.length > 0) {
+                    const validLatencies = sorted.filter(r => r.latency).map(r => r.latency);
+                    const validTps = sorted.filter(r => r.tokens_per_sec).map(r => r.tokens_per_sec);
+                    const validQuality = sorted.filter(r => r.quality_score).map(r => r.quality_score);
+                    const validJudge = sorted.filter(r => r.scoring_time_ms).map(r => r.scoring_time_ms);
+                    const successCount = sorted.filter(r => r.success).length;
+
+                    globalStats.avgLatency = validLatencies.length ? validLatencies.reduce((a,b) => a+b, 0) / validLatencies.length : 0;
+                    globalStats.avgTps = validTps.length ? validTps.reduce((a,b) => a+b, 0) / validTps.length : 0;
+                    globalStats.avgQuality = validQuality.length ? validQuality.reduce((a,b) => a+b, 0) / validQuality.length : 0;
+                    globalStats.avgJudgeTime = validJudge.length ? validJudge.reduce((a,b) => a+b, 0) / validJudge.length : 0;
+                    globalStats.successRate = (successCount / sorted.length) * 100;
+                }
 
                 // Group results by model
                 const resultsByModel = new Map();
@@ -7252,6 +7426,7 @@
                     // Render Completed Tests
                     let lastTime = 0;
                     segmentsHtml += modelResults.map((result, idx) => {
+                        const animationDelay = idx * 0.03; // Stagger animations
                         const visual = getSegmentVisual(result);
                         const inferenceTime = result.latency || 0;
                         const judgingTime = result.scoring_time_ms || 0;
@@ -7265,18 +7440,68 @@
                         const level = result.difficulty ? `L${result.difficulty}` : '';
                         const timestamp = new Date(result.timestamp).getTime();
 
-                        // Tooltip HTML for Custom Tooltip
+                        // Tooltip HTML for Custom Tooltip with Performance Comparisons
                         const promptText = result.prompt ? (result.prompt.length > 60 ? result.prompt.substring(0,60)+'...' : result.prompt).replace(/"/g, '&quot;') : 'No prompt';
+
+                        // Performance indicators
+                        const latencyDiff = globalStats.avgLatency ? ((inferenceTime - globalStats.avgLatency) / globalStats.avgLatency * 100).toFixed(0) : 0;
+                        const latencyIndicator = inferenceTime < globalStats.avgLatency ? `<span style="color:#2ecc71">▼ ${Math.abs(latencyDiff)}% faster</span>` : (inferenceTime > globalStats.avgLatency ? `<span style="color:#e74c3c">▲ ${latencyDiff}% slower</span>` : '<span style="color:#95a5a6">● average</span>');
+
+                        const qualityDiff = globalStats.avgQuality && result.quality_score ? ((result.quality_score - globalStats.avgQuality) / globalStats.avgQuality * 100).toFixed(0) : 0;
+                        const qualityIndicator = result.quality_score && globalStats.avgQuality ? (result.quality_score > globalStats.avgQuality ? `<span style="color:#2ecc71">▲ ${Math.abs(qualityDiff)}% above avg</span>` : (result.quality_score < globalStats.avgQuality ? `<span style="color:#e74c3c">▼ ${Math.abs(qualityDiff)}% below avg</span>` : '<span style="color:#95a5a6">● average</span>')) : '';
+
+                        const tpsDisplay = result.tokens_per_sec ? `${result.tokens_per_sec.toFixed(1)} tok/s` : '-';
+                        const tpsDiff = globalStats.avgTps && result.tokens_per_sec ? ((result.tokens_per_sec - globalStats.avgTps) / globalStats.avgTps * 100).toFixed(0) : 0;
+                        const tpsIndicator = result.tokens_per_sec && globalStats.avgTps ? (result.tokens_per_sec > globalStats.avgTps ? `<span style="color:#2ecc71">▲ ${Math.abs(tpsDiff)}%</span>` : (result.tokens_per_sec < globalStats.avgTps ? `<span style="color:#e74c3c">▼ ${Math.abs(tpsDiff)}%</span>` : '<span style="color:#95a5a6">●</span>')) : '';
+
                         const tooltipHtml = `
-                            <h4>${result.model}</h4>
-                            <div class="row"><span class="label">Date:</span> <span>${new Date(result.timestamp).toLocaleTimeString()}</span></div>
-                            <div class="row"><span class="label">Result:</span> <span style="color:${result.success?'#2ecc71':'#e74c3c'}">${result.success?'Success':'Failed'}</span></div>
-                            <div class="row"><span class="label">Total Time:</span> <span>${totalStr}</span></div>
-                            <div class="row"><span class="label">Inference:</span> <span>${inferenceStr}</span></div>
-                            ${judgingTime ? `<div class="row"><span class="label">Judging:</span> <span style="color:#1abc9c">${judgingStr}</span></div>` : ''}
-                            ${result.quality_score ? `<div class="row"><span class="label">Quality:</span> <span>${result.quality_score}/10</span></div>` : ''}
-                            <div style="margin-top:8px; color:#aaa; font-style:italic; font-size:0.9em; border-top:1px solid rgba(255,255,255,0.1); padding-top:4px;">
-                                ${promptText}
+                            <div style="border-bottom: 2px solid rgba(124, 240, 255, 0.3); padding-bottom: 8px; margin-bottom: 10px;">
+                                <h4 style="margin: 0 0 4px; color: #7cf0ff; font-size: 1.15em; font-weight: 600;">${result.model}</h4>
+                                <div style="font-size: 0.8em; color: rgba(255,255,255,0.6);">${new Date(result.timestamp).toLocaleString()}</div>
+                            </div>
+                            <div style="display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; margin-bottom: 10px;">
+                                <span style="color: rgba(255,255,255,0.6);">Status:</span>
+                                <span style="font-weight: 600; color:${result.success?'#2ecc71':'#e74c3c'}">
+                                    ${result.success ? '<i class="fas fa-check-circle"></i> Success' : '<i class="fas fa-times-circle"></i> Failed'}
+                                </span>
+
+                                <span style="color: rgba(255,255,255,0.6);">Total Time:</span>
+                                <span style="font-weight: 600;">${totalStr}</span>
+
+                                <span style="color: rgba(255,255,255,0.6);">Inference:</span>
+                                <div>
+                                    <span style="font-weight: 600;">${inferenceStr}</span>
+                                    <span style="font-size: 0.85em; margin-left: 6px;">${latencyIndicator}</span>
+                                </div>
+
+                                ${judgingTime ? `
+                                <span style="color: rgba(255,255,255,0.6);">Judging:</span>
+                                <span style="font-weight: 600; color:#9b59b6">${judgingStr}</span>
+                                ` : ''}
+
+                                ${result.quality_score ? `
+                                <span style="color: rgba(255,255,255,0.6);">Quality:</span>
+                                <div>
+                                    <span style="font-weight: 600; color:#f39c12">${result.quality_score.toFixed(1)}/10</span>
+                                    <span style="font-size: 0.85em; margin-left: 6px;">${qualityIndicator}</span>
+                                </div>
+                                ` : ''}
+
+                                ${result.tokens_per_sec ? `
+                                <span style="color: rgba(255,255,255,0.6);">Throughput:</span>
+                                <div>
+                                    <span style="font-weight: 600;">${tpsDisplay}</span>
+                                    <span style="font-size: 0.85em; margin-left: 6px;">${tpsIndicator}</span>
+                                </div>
+                                ` : ''}
+
+                                ${result.difficulty ? `
+                                <span style="color: rgba(255,255,255,0.6);">Difficulty:</span>
+                                <span style="font-weight: 600;">Level ${result.difficulty}</span>
+                                ` : ''}
+                            </div>
+                            <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1); color: rgba(255,255,255,0.7); font-style: italic; font-size: 0.85em; line-height: 1.4;">
+                                <i class="fas fa-quote-left" style="font-size: 0.7em; opacity: 0.5; margin-right: 4px;"></i>${promptText}<i class="fas fa-quote-right" style="font-size: 0.7em; opacity: 0.5; margin-left: 4px;"></i>
                             </div>
                         `.replace(/"/g, '&quot;').replace(/'/g, "\\'").replace(/\n/g, '').trim();
                         
@@ -7304,7 +7529,7 @@
                         // Use onmouseenter for custom tooltip
                         if (judgingTime > 0) {
                             return `${separator}
-                            <div class="timeline-segment-group" style="width: ${totalWidthPx}px;" onmouseenter="showTimelineTooltip(event, '${tooltipHtml}')">
+                            <div class="timeline-segment-group" style="width: ${totalWidthPx}px; animation-delay: ${animationDelay}s;" onmouseenter="showTimelineTooltip(event, '${tooltipHtml}')">
                                 <div class="timeline-segment ${visual.class}" style="width: ${inferencePct}%; border-radius: 0;">
                                     ${showInferenceText ? `<i class="fas ${visual.icon}"></i><span>${inferenceStr}</span>` : ''}
                                 </div>
@@ -7318,7 +7543,7 @@
                         } else {
                             // Standard single block
                             return `${separator}
-                            <div class="timeline-segment-group" style="width: ${totalWidthPx}px;" onmouseenter="showTimelineTooltip(event, '${tooltipHtml}')">
+                            <div class="timeline-segment-group" style="width: ${totalWidthPx}px; animation-delay: ${animationDelay}s;" onmouseenter="showTimelineTooltip(event, '${tooltipHtml}')">
                                 <div class="timeline-segment ${visual.class}" style="width: 100%;">
                                     ${totalWidthPx > 40 ? `<i class="fas ${visual.icon}"></i><span>${inferenceStr}</span>` : ''}
                                     ${qScore ? `<span class="segment-badge" style="background:rgba(255,255,255,0.2)">${qScore}</span>` : ''}
@@ -7381,6 +7606,159 @@
                         ${rowsHtml}
                     </div>
                 `;
+
+                // Populate Performance Summary Panel
+                const statsSummary = document.getElementById('timelineStatsSummary');
+                if (statsSummary && sorted.length > 0) {
+                    // Calculate percentiles for latency
+                    const latencies = sorted.filter(r => r.latency).map(r => r.latency).sort((a, b) => a - b);
+                    const p50 = latencies.length ? latencies[Math.floor(latencies.length * 0.5)] : 0;
+                    const p95 = latencies.length ? latencies[Math.floor(latencies.length * 0.95)] : 0;
+                    const p99 = latencies.length ? latencies[Math.floor(latencies.length * 0.99)] : 0;
+
+                    const totalTests = sorted.length;
+                    const successCount = sorted.filter(r => r.success).length;
+                    const successRate = ((successCount / totalTests) * 100).toFixed(1);
+                    const avgTps = globalStats.avgTps.toFixed(1);
+                    const avgQuality = globalStats.avgQuality.toFixed(1);
+
+                    const formatMs = (ms) => ms < 1000 ? `${Math.round(ms)}ms` : `${(ms/1000).toFixed(1)}s`;
+
+                    statsSummary.innerHTML = `
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px;">
+                            <div style="text-align: center; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+                                <div style="color: rgba(255,255,255,0.6); font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">Total Tests</div>
+                                <div style="color: var(--accent); font-size: 1.8em; font-weight: 700;">${totalTests}</div>
+                            </div>
+                            <div style="text-align: center; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+                                <div style="color: rgba(255,255,255,0.6); font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">Success Rate</div>
+                                <div style="color: ${successRate >= 90 ? '#2ecc71' : (successRate >= 70 ? '#f39c12' : '#e74c3c')}; font-size: 1.8em; font-weight: 700;">${successRate}%</div>
+                            </div>
+                            <div style="text-align: center; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+                                <div style="color: rgba(255,255,255,0.6); font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">Avg Latency</div>
+                                <div style="color: var(--text); font-size: 1.8em; font-weight: 700;">${formatMs(globalStats.avgLatency)}</div>
+                            </div>
+                            <div style="text-align: center; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+                                <div style="color: rgba(255,255,255,0.6); font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">P95 Latency</div>
+                                <div style="color: var(--text); font-size: 1.8em; font-weight: 700;">${formatMs(p95)}</div>
+                            </div>
+                            <div style="text-align: center; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+                                <div style="color: rgba(255,255,255,0.6); font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">Avg Throughput</div>
+                                <div style="color: var(--text); font-size: 1.8em; font-weight: 700;">${avgTps}<span style="font-size: 0.5em; color: rgba(255,255,255,0.5);"> tok/s</span></div>
+                            </div>
+                            <div style="text-align: center; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+                                <div style="color: rgba(255,255,255,0.6); font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">Avg Quality</div>
+                                <div style="color: ${avgQuality >= 8 ? '#2ecc71' : (avgQuality >= 6 ? '#f39c12' : '#e74c3c')}; font-size: 1.8em; font-weight: 700;">${avgQuality}<span style="font-size: 0.5em; color: rgba(255,255,255,0.5);">/10</span></div>
+                            </div>
+                        </div>
+                    `;
+                    statsSummary.style.display = 'block';
+                }
+
+                // Generate Performance Heatmap
+                const heatmapSection = document.getElementById('performanceHeatmapSection');
+                const heatmapContainer = document.getElementById('performanceHeatmap');
+                if (heatmapContainer && resultsByModel.size > 1) {
+                    // Calculate per-model stats
+                    const modelStats = [];
+                    for (const [model, modelResults] of resultsByModel.entries()) {
+                        if (modelResults.length === 0) continue;
+
+                        const successCount = modelResults.filter(r => r.success).length;
+                        const successRate = (successCount / modelResults.length) * 100;
+                        const latencies = modelResults.filter(r => r.latency).map(r => r.latency);
+                        const avgLatency = latencies.length ? latencies.reduce((a,b) => a+b, 0) / latencies.length : 0;
+                        const qualities = modelResults.filter(r => r.quality_score).map(r => r.quality_score);
+                        const avgQuality = qualities.length ? qualities.reduce((a,b) => a+b, 0) / qualities.length : 0;
+                        const tps = modelResults.filter(r => r.tokens_per_sec).map(r => r.tokens_per_sec);
+                        const avgTps = tps.length ? tps.reduce((a,b) => a+b, 0) / tps.length : 0;
+
+                        modelStats.push({
+                            model,
+                            successRate,
+                            avgLatency,
+                            avgQuality,
+                            avgTps,
+                            testCount: modelResults.length
+                        });
+                    }
+
+                    if (modelStats.length > 0) {
+                        // Find min/max for normalization
+                        const maxLatency = Math.max(...modelStats.map(m => m.avgLatency));
+                        const minLatency = Math.min(...modelStats.map(m => m.avgLatency).filter(l => l > 0));
+                        const maxTps = Math.max(...modelStats.map(m => m.avgTps));
+
+                        // Color scale function (0-100)
+                        const getHeatColor = (value, reverse = false) => {
+                            if (reverse) value = 100 - value;
+                            if (value >= 80) return 'rgba(46, 204, 113, 0.8)'; // Green
+                            if (value >= 60) return 'rgba(52, 152, 219, 0.8)'; // Blue
+                            if (value >= 40) return 'rgba(241, 196, 15, 0.8)'; // Yellow
+                            if (value >= 20) return 'rgba(230, 126, 34, 0.8)'; // Orange
+                            return 'rgba(231, 76, 60, 0.8)'; // Red
+                        };
+
+                        const heatmapHtml = `
+                            <table style="width: 100%; border-collapse: separate; border-spacing: 4px; font-size: 0.9em;">
+                                <thead>
+                                    <tr>
+                                        <th style="padding: 10px 12px; text-align: left; color: var(--muted); font-weight: 600; background: rgba(0,0,0,0.2); border-radius: 4px;">Model</th>
+                                        <th style="padding: 10px 12px; text-align: center; color: var(--muted); font-weight: 600; background: rgba(0,0,0,0.2); border-radius: 4px;">Tests</th>
+                                        <th style="padding: 10px 12px; text-align: center; color: var(--muted); font-weight: 600; background: rgba(0,0,0,0.2); border-radius: 4px;">Success Rate</th>
+                                        <th style="padding: 10px 12px; text-align: center; color: var(--muted); font-weight: 600; background: rgba(0,0,0,0.2); border-radius: 4px;">Avg Latency</th>
+                                        <th style="padding: 10px 12px; text-align: center; color: var(--muted); font-weight: 600; background: rgba(0,0,0,0.2); border-radius: 4px;">Avg Quality</th>
+                                        <th style="padding: 10px 12px; text-align: center; color: var(--muted); font-weight: 600; background: rgba(0,0,0,0.2); border-radius: 4px;">Throughput</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${modelStats.map(stat => {
+                                        const latencyNorm = maxLatency > 0 ? (1 - ((stat.avgLatency - minLatency) / (maxLatency - minLatency))) * 100 : 50;
+                                        const qualityNorm = (stat.avgQuality / 10) * 100;
+                                        const tpsNorm = maxTps > 0 ? (stat.avgTps / maxTps) * 100 : 50;
+
+                                        const formatMs = (ms) => ms < 1000 ? \`\${Math.round(ms)}ms\` : \`\${(ms/1000).toFixed(1)}s\`;
+
+                                        return \`
+                                            <tr style="transition: all 0.2s ease;">
+                                                <td style="padding: 10px 12px; color: var(--text); font-weight: 600; background: rgba(0,0,0,0.2); border-radius: 4px;">\${stat.model}</td>
+                                                <td style="padding: 10px 12px; text-align: center; color: var(--text); background: rgba(0,0,0,0.2); border-radius: 4px;">\${stat.testCount}</td>
+                                                <td style="padding: 10px 12px; text-align: center; font-weight: 600; background: \${getHeatColor(stat.successRate)}; color: white; border-radius: 4px; cursor: help; transition: all 0.2s ease;" title="Success Rate: \${stat.successRate.toFixed(1)}%">
+                                                    \${stat.successRate.toFixed(1)}%
+                                                </td>
+                                                <td style="padding: 10px 12px; text-align: center; font-weight: 600; background: \${getHeatColor(latencyNorm)}; color: white; border-radius: 4px; cursor: help; transition: all 0.2s ease;" title="Avg Latency: \${formatMs(stat.avgLatency)}">
+                                                    \${formatMs(stat.avgLatency)}
+                                                </td>
+                                                <td style="padding: 10px 12px; text-align: center; font-weight: 600; background: \${getHeatColor(qualityNorm)}; color: white; border-radius: 4px; cursor: help; transition: all 0.2s ease;" title="Avg Quality: \${stat.avgQuality.toFixed(1)}/10">
+                                                    \${stat.avgQuality.toFixed(1)}/10
+                                                </td>
+                                                <td style="padding: 10px 12px; text-align: center; font-weight: 600; background: \${getHeatColor(tpsNorm)}; color: white; border-radius: 4px; cursor: help; transition: all 0.2s ease;" title="Avg Throughput: \${stat.avgTps.toFixed(1)} tok/s">
+                                                    \${stat.avgTps.toFixed(1)} tok/s
+                                                </td>
+                                            </tr>
+                                        \`;
+                                    }).join('')}
+                                </tbody>
+                            </table>
+                        `;
+
+                        heatmapContainer.innerHTML = heatmapHtml;
+                        heatmapSection.style.display = 'block';
+
+                        // Add hover effect to cells
+                        const cells = heatmapContainer.querySelectorAll('td[title]');
+                        cells.forEach(cell => {
+                            cell.addEventListener('mouseenter', function() {
+                                this.style.transform = 'scale(1.05)';
+                                this.style.zIndex = '10';
+                            });
+                            cell.addEventListener('mouseleave', function() {
+                                this.style.transform = 'scale(1)';
+                                this.style.zIndex = '1';
+                            });
+                        });
+                    }
+                }
 
             } catch (err) {
                 console.error('Failed to load timeline:', err);
