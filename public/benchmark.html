@@ -7006,10 +7006,55 @@
                         baseColor: '#3498db'
                     }
                 };
+                const stageLabels = {
+                    'queued': 'Queued',
+                    'running': 'Running',
+                    'judging': 'Judging',
+                    'complete-success': 'Complete (Success)',
+                    'complete-error': 'Complete (Error)'
+                };
+                const stageIconLegends = {
+                    'queued': 'Stage icon: clock indicates queued work.',
+                    'running': 'Stage icon: cogs (pulsing) indicates active execution.',
+                    'judging': 'Stage icon: gavel (pulsing) indicates judging in progress.',
+                    'complete-success': 'Stage icon: check indicates completed successfully.',
+                    'complete-error': 'Stage icon: x indicates completed with errors.'
+                };
 
                 const getSegmentType = (result) => {
                     if (result.prompt === 'warmup') {
                         return 'warmup';
+                // Generate batch labels for time axis
+                const batchLabels = batches.map((batch, idx) => {
+                    const batchStartTime = new Date(batch[0].timestamp);
+                    const timeStr = batchStartTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                    return `Batch ${idx + 1} (${timeStr})`;
+                });
+
+                // Render time axis with batch labels
+                const timeAxisHtml = `
+                    <div style="display: flex; justify-content: ${batches.length > 1 ? 'space-between' : 'flex-start'}; padding: 0 8px 8px; margin-left: 150px; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 12px; gap: 20px;">
+                        ${batchLabels.map(label => `<div style="color: var(--accent); font-size: 0.75em; font-weight: 600;">${label}</div>`).join('')}
+                    </div>
+                `;
+
+                const activeCurrentTest = activeBatch?.status === 'running' ? activeBatch.current_test : null;
+
+                const renderItems = sorted.map((result) => {
+                    const duration = result.latency || 0;
+                    const leftPercent = testPositions.get(result);
+                    const stage = getTestStage(result);
+                    const visual = stageVisuals[stage];
+
+                    // Bar width proportional to duration (max duration = 15% of space)
+                    let widthPercent = (duration / maxDuration) * 15;
+
+                    // For running/judging tests, calculate live elapsed time
+                    if ((stage === 'running' || stage === 'judging') && result.timestamp) {
+                        const elapsed = Date.now() - new Date(result.timestamp).getTime();
+                        widthPercent = (elapsed / maxDuration) * 15;
+                    } else if (stage === 'queued') {
+                        widthPercent = 0.8; // Minimal width for queued tests
                     }
                     const stage = getTestStage(result);
                     if (stage === 'judging') return 'judging';
@@ -7024,6 +7069,66 @@
                     if (!duration) return 90;
                     return Math.max(80, Math.min(220, (duration / maxDuration) * 220));
                 };
+                    const barWidth = Math.max(widthPercent, 1.5);
+                    const durationText = duration > 0 ? formatTimeLabel(duration) : (stage === 'running' || stage === 'judging' ? 'Running...' : 'Queued');
+
+                    return {
+                        result,
+                        duration,
+                        leftPercent,
+                        stage,
+                        visual,
+                        barWidth,
+                        durationText
+                    };
+                });
+
+                const latestSegmentByModel = new Map();
+                renderItems.forEach((item, index) => {
+                    const modelKey = item.result.model;
+                    const rightEdge = item.leftPercent + item.barWidth;
+                    const existing = latestSegmentByModel.get(modelKey);
+                    if (!existing || rightEdge >= existing.rightEdge) {
+                        latestSegmentByModel.set(modelKey, { index, rightEdge });
+                    }
+                });
+
+                const bubbleModel = activeCurrentTest?.model;
+                const bubbleTarget = bubbleModel ? latestSegmentByModel.get(bubbleModel) : null;
+                const bubbleTargetIndex = bubbleTarget ? bubbleTarget.index : null;
+                const elapsedMs = activeCurrentTest?.started_at
+                    ? Date.now() - new Date(activeCurrentTest.started_at).getTime()
+                    : null;
+                const bubbleElapsedText = elapsedMs != null ? formatTimeLabel(elapsedMs) : 'N/A';
+                const bubbleStage = activeCurrentTest?.stage || 'running';
+                const bubbleStageLabel = bubbleStage === 'judging' ? 'Judging' : bubbleStage === 'running' ? 'Running' : bubbleStage;
+                const bubbleStageVisual = stageVisuals[bubbleStage] || stageVisuals['running'];
+
+                const bubbleQualitySource = bubbleModel && activeCurrentTest?.prompt
+                    ? renderItems.find(item => item.result.model === bubbleModel && item.result.prompt === activeCurrentTest.prompt)
+                    : null;
+
+                // Render gantt bars
+                const ganttHtml = renderItems.map((item, index) => {
+                    const { result, leftPercent, stage, visual, barWidth, durationText } = item;
+
+                    // Quality badge with detailed breakdown - inside the bar
+                    let qualityBadgeHtml = '';
+                    let qualityTooltipDetails = `Quality Score: N/A\nCorrectness: N/A\nClarity: N/A\nEfficiency: N/A`;
+                    let qualityBadgeLegend = 'Quality badge: none (no score available).';
+                    if (result.quality_score) {
+                        const score = result.quality_score;
+                        const breakdown = result.quality_breakdown || {};
+                        const badgeColor = score >= 8 ? '#2ecc71' : score >= 6 ? '#f39c12' : score >= 4 ? '#e67e22' : '#e74c3c';
+
+                        const tooltipText = `Quality Score: ${score}/10
+Correctness: ${breakdown.correctness || 'N/A'}/10
+Clarity: ${breakdown.clarity || 'N/A'}/10
+Efficiency: ${breakdown.efficiency || 'N/A'}/10
+
+${result.quality_explanation || breakdown.explanation || 'No details available'}`;
+                        qualityTooltipDetails = tooltipText;
+                        qualityBadgeLegend = `Quality badge: Q${score} shows overall quality score.`;
 
                 const timelineRowsHtml = Array.from(resultsByModel.entries())
                     .sort(([modelA], [modelB]) => modelA.localeCompare(modelB))
@@ -7071,6 +7176,82 @@ ${result.prompt_level || result.prompt || 'N/A'}`;
                                 </div>
                                 <div class="timeline-model-track">
                                     ${segmentsHtml}
+                    const stageSpecificInfo = [];
+                    if (stage === 'queued') {
+                        stageSpecificInfo.push('Status: waiting in queue.');
+                    } else if (stage === 'running' || stage === 'judging') {
+                        if (result.timestamp) {
+                            const elapsed = Date.now() - new Date(result.timestamp).getTime();
+                            stageSpecificInfo.push(`Elapsed: ${formatTimeLabel(Math.max(elapsed, 0))}.`);
+                        } else {
+                            stageSpecificInfo.push('Elapsed: in progress.');
+                        }
+                    } else if (stage === 'complete-success' || stage === 'complete-error') {
+                        stageSpecificInfo.push(`Result: ${result.success ? 'Success' : 'Failed'}.`);
+                        if (!result.success && result.error) {
+                            stageSpecificInfo.push(`Error: ${result.error}`);
+                        }
+                    }
+                    if (result.prompt) {
+                        stageSpecificInfo.push(`Prompt: ${result.prompt}`);
+                    }
+
+                    const stageLabel = stageLabels[stage] || stage.replace('-', ' ');
+                    const tooltipText = `Model: ${result.model}
+Stage: ${stageLabel}
+Prompt level: ${result.prompt_level || 'N/A'}
+Latency: ${duration > 0 ? formatTimeLabel(duration) : 'N/A'}
+Batch ID: ${result.batch_id || 'N/A'}
+
+${qualityTooltipDetails}
+
+${stageSpecificInfo.join('\n') || 'Status: N/A'}
+
+${stageIconLegends[stage] || 'Stage icon: status indicator.'}
+${qualityBadgeLegend}`;
+                    const isBubbleTarget = bubbleTargetIndex === index;
+                    const bubblePromptLevel = activeCurrentTest?.prompt_level ?? result.prompt_level ?? 'N/A';
+                    const bubbleQualityScore = bubbleQualitySource?.result?.quality_score || null;
+                    const bubbleQualityHtml = bubbleQualityScore
+                        ? `<div>Quality: Q${bubbleQualityScore}</div>`
+                        : '';
+
+                    const bubbleHtml = isBubbleTarget && activeCurrentTest
+                        ? `
+                            <div style="position: absolute; left: calc(${leftPercent + barWidth}% + 8px); top: 50%; transform: translateY(-50%); background: rgba(20, 23, 30, 0.95); color: white; padding: 6px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); font-size: 0.72em; box-shadow: 0 4px 12px rgba(0,0,0,0.35); white-space: nowrap; z-index: 3;">
+                                <div style="font-weight: 700; color: ${bubbleStageVisual.baseColor}; margin-bottom: 2px;">${bubbleStageLabel}</div>
+                                <div>Elapsed: ${bubbleElapsedText}</div>
+                                <div>Level: ${bubblePromptLevel}</div>
+                                ${bubbleQualityHtml}
+                                <div style="position: absolute; left: -6px; top: 50%; transform: translateY(-50%); width: 0; height: 0; border-top: 6px solid transparent; border-bottom: 6px solid transparent; border-right: 6px solid rgba(20, 23, 30, 0.95);"></div>
+                            </div>
+                        `
+                        : '';
+
+                    // Stage icon with pulse animation
+                    const stageIconHtml = `<i class="fas ${visual.icon} stage-icon ${visual.iconPulse ? 'stage-icon-pulse' : ''}"></i>`;
+
+                    return `
+                        <div style="position: relative; height: 36px; margin-bottom: 8px;">
+                            <div style="position: absolute; left: 0; top: 0; width: 140px; padding-right: 8px; color: var(--text); font-size: 0.85em; line-height: 36px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                <i class="fas ${visual.icon}" style="color: ${visual.baseColor}; margin-right: 4px;"></i>
+                                ${result.model}
+                            </div>
+                            <div style="position: absolute; left: 150px; right: 32px; top: 0; height: 100%; padding: 6px 0;">
+                                <div style="position: relative; height: 100%; background: rgba(255,255,255,0.03); border-radius: 4px;">
+                                    <div
+                                        class="${visual.barClass}"
+                                        style="position: absolute; left: ${leftPercent}%; width: ${barWidth}%; height: 100%; ${visual.barClass ? '' : `background: linear-gradient(90deg, ${visual.baseColor}, ${visual.baseColor}dd);`} border-radius: 4px; display: flex; align-items: center; padding: 0 6px 0 22px; transition: width 0.5s ease, left 0.3s ease; position: relative; gap: 4px;"
+                                        title="${result.model} - ${stage.replace('-', ' ')} - ${result.prompt_level || 'N/A'}"
+                                    >
+                                        ${stageIconHtml}
+                                        <span style="color: white; font-size: 0.7em; font-weight: 600; white-space: nowrap;">
+                                            ${barWidth > 8 ? result.prompt_level || '' : ''}
+                                        </span>
+                                        <span style="margin-left: auto; color: white; font-size: 0.65em; font-weight: 500;">${durationText}</span>
+                                        ${qualityBadgeHtml}
+                                    </div>
+                                    ${bubbleHtml}
                                 </div>
                             </div>
                         `;
