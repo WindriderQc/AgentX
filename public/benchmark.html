@@ -1079,7 +1079,9 @@
         }
 
         /* Intensity modifiers based on test count */
-        .test-star.intensity-low { opacity: 0.5; filter: brightness(0.8) saturate(0.6) drop-shadow(0 0 3px rgba(0,0,0,0.2)); }
+        .test-star.intensity-none { opacity: 0.35; filter: brightness(0.6) saturate(0.4) drop-shadow(0 0 0px transparent) !important; }
+        .test-star.intensity-minimal { opacity: 0.45; filter: brightness(0.7) saturate(0.5) drop-shadow(0 0 2px rgba(0,0,0,0.15)) !important; }
+        .test-star.intensity-low { opacity: 0.6; filter: brightness(0.8) saturate(0.65) drop-shadow(0 0 3px rgba(0,0,0,0.2)) !important; }
         .test-star.intensity-mid { opacity: 0.75; filter: brightness(0.9) saturate(0.8); }
         .test-star.intensity-high { opacity: 0.9; }
         .test-star.intensity-veryhigh { opacity: 1; }
@@ -6872,15 +6874,25 @@
                         // Get intensity class based on test count (for opacity/brightness)
                         const getIntensityClass = (count) => {
                             const n = Number(count || 0);
-                            if (!Number.isFinite(n) || n <= 0) return '';
-                            if (n >= 100) return 'intensity-ultra';
-                            if (n >= 50) return 'intensity-veryhigh';
-                            if (n >= 25) return 'intensity-high';
-                            if (n >= 10) return 'intensity-mid';
+                            if (!Number.isFinite(n) || n <= 0) return 'intensity-none';
+                            if (n >= 50) return 'intensity-ultra';
+                            if (n >= 30) return 'intensity-veryhigh';
+                            if (n >= 15) return 'intensity-high';
+                            if (n >= 8) return 'intensity-mid';
                             if (n >= 3) return 'intensity-low';
-                            return '';
+                            return 'intensity-minimal'; // 1-2 tests
                         };
-                        // Build stars HTML - each star gets level-based color + count-based intensity
+                        // Get size scale based on count
+                        const getSizeScale = (count) => {
+                            const n = Number(count || 0);
+                            if (n >= 50) return 1.15;
+                            if (n >= 30) return 1.08;
+                            if (n >= 15) return 1.0;
+                            if (n >= 8) return 0.95;
+                            if (n >= 3) return 0.9;
+                            return 0.85; // 1-2 tests - smaller
+                        };
+                        // Build stars HTML - each star gets level-based color + count-based intensity + size
                         const starsHtml = [1, 2, 3, 4, 5].map((level) => {
                             const count = Number(levelStats[level] ?? levelStats[String(level)] ?? 0);
                             if (!Number.isFinite(count) || count <= 0) {
@@ -6888,9 +6900,10 @@
                             }
                             const levelClass = `test-star-level-${level}`;
                             const intensityClass = getIntensityClass(count);
+                            const sizeScale = getSizeScale(count);
                             const displayCount = formatStarCount(count);
                             return `
-                                <span class="test-star-slot" title="Level ${level}: ${count} tests">
+                                <span class="test-star-slot" title="Level ${level}: ${count} tests" style="transform: scale(${sizeScale});">
                                     <span class="test-star ${levelClass} ${intensityClass}" aria-label="Level ${level}: ${count} tests">
                                         <i class="fas fa-star"></i>
                                     </span>
@@ -6906,8 +6919,9 @@
                         const crown = isBestOverall ? '👑 ' : '';
                         const hostLabel = model.host ? formatHostLabel(model.host) : 'Unknown';
                         
-                        // Build offender badges with improved visual design
+                        // Build offender badges - these represent actual performance issues from test data
                         let offenderBadges = '';
+                        
                         if (isOffender(model, slowestLatency)) {
                             offenderBadges += `<span title="⚠️ Worst Latency" style="
                                 display: inline-flex;
