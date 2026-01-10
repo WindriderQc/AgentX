@@ -812,9 +812,9 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Streaming message handler (SSE via fetch)
-  async function sendMessageStreamFetch() {
-    const message = elements.messageInput.value.trim();
-    const model = elements.modelSelect.value;
+  async function sendMessageStreamFetch(msgInput, modelInput) {
+    const message = msgInput || elements.messageInput.value.trim();
+    const model = modelInput || elements.modelSelect.value;
 
     // Get RAG options including advanced settings
     const ragOpts = getRagOptions();
@@ -930,7 +930,16 @@ document.addEventListener('DOMContentLoaded', () => {
               if (currentEvent === 'token') {
                 // Progressive token rendering
                 fullContent += data.content;
-                contentDiv.innerHTML = sanitizeHTML(marked.parse(fullContent));
+                // Debug logging
+                // console.log('Parsing content length:', fullContent.length);
+                let parsedHTML;
+                try {
+                   parsedHTML = marked.parse(fullContent);
+                   contentDiv.innerHTML = sanitizeHTML(parsedHTML);
+                } catch (err) {
+                   console.error('Rendering failed:', err);
+                   contentDiv.textContent = fullContent; // Safe fallback (plain text)
+                }
                 elements.chatWindow.scrollTop = elements.chatWindow.scrollHeight;
               } else if (currentEvent === 'thinking') {
                 // Show thinking section
@@ -1006,9 +1015,9 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Streaming message handler (SSE via EventSource)
-  async function sendMessageStreamEventSource() {
-    const message = elements.messageInput.value.trim();
-    const model = elements.modelSelect.value;
+  async function sendMessageStreamEventSource(msgInput, modelInput) {
+    const message = msgInput || elements.messageInput.value.trim();
+    const model = modelInput || elements.modelSelect.value;
     const ragOpts = getRagOptions();
 
     const payload = {
@@ -1184,9 +1193,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (elements.streamToggle && resolveStreamEnabled()) {
       const transport = resolveStreamTransport();
       if (transport === 'eventsource') {
-        await sendMessageStreamEventSource();
+        await sendMessageStreamEventSource(message, model);
       } else {
-        await sendMessageStreamFetch();
+        await sendMessageStreamFetch(message, model);
       }
       return;
     }

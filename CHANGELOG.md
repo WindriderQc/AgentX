@@ -5,9 +5,10 @@ All notable changes to AgentX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.4.1] - 2026-01-03
+## [1.4.1] - 2026-01-08
 
 ### Added
+- **External Agent Feature Completion**: Delivered 7 major features (87-117h effort) including Workspace API Integration, RAG UI Controls, RAG Citation Tracking, Scanner Frontend Fixes, Doc Exclusion, RAG Contextual Compression, and Alerts UI Unification.
 - CI: E2E smoke run via `./test-all.sh` (CI mode) and a Jest open-handles check (`npm run test:ci`)
 - Testing: New scripts `test:ci` and `test:debug:handles` for diagnosing hangs/open handles
 

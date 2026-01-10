@@ -30,8 +30,9 @@ body {
 
 /* Prevent body scroll on app-layout pages (chat interface) */
 body:has(.app-layout) {
-  height: 100vh;
-  overflow: hidden;
+  min-height: 100vh; 
+  /* height: 100vh; */
+  /* overflow: hidden; */
 }
 
 .bg-grid {
@@ -156,9 +157,10 @@ body:has(.app-layout) {
 
 /* App-like layout for chat interface (fixed viewport, internal scroll) */
 .main-content.app-layout {
-  height: 100vh;
-  max-height: 100vh;
-  overflow-y: hidden; /* Prevent outer scroll - chat-window handles internal scrolling */
+  min-height: 100vh;
+  /* height: 100vh; */
+  /* max-height: 100vh; */
+  /* overflow-y: hidden; */ /* Prevent outer scroll - chat-window handles internal scrolling */
   box-sizing: border-box;
 }
 
