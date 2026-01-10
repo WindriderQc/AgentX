@@ -374,8 +374,11 @@ class BenchmarkService {
                 { $sort: { avg_latency: 1 } }
             ]),
             BenchmarkResult.aggregate([
-                { $match: { 
-                    success: false
+                { $match: {
+                    success: false,
+                    // Apply same model filter for failure stats to maintain category consistency
+                    // When modelNames is set (even empty), enforce the filter to exclude unrelated models
+                    ...(modelNames !== null ? { model: { $in: modelNames } } : {})
                 } },
                 {
                     $group: {
@@ -519,19 +522,22 @@ class BenchmarkService {
             case 'interactive':
                 sortedStats.sort((a, b) => {
                     if (a.failure_only !== b.failure_only) return a.failure_only ? 1 : -1;
-                    return (b.interactive_score || 0) - (a.interactive_score || 0);
+                    const diff = (b.interactive_score || 0) - (a.interactive_score || 0);
+                    return diff !== 0 ? diff : a.model.localeCompare(b.model); // Stable tie-breaker
                 });
                 break;
             case 'reasoning':
                 sortedStats.sort((a, b) => {
                     if (a.failure_only !== b.failure_only) return a.failure_only ? 1 : -1;
-                    return (b.reasoning_score || 0) - (a.reasoning_score || 0);
+                    const diff = (b.reasoning_score || 0) - (a.reasoning_score || 0);
+                    return diff !== 0 ? diff : a.model.localeCompare(b.model); // Stable tie-breaker
                 });
                 break;
             case 'coding':
                 sortedStats.sort((a, b) => {
                     if (a.failure_only !== b.failure_only) return a.failure_only ? 1 : -1;
-                    return (b.coding_score || 0) - (a.coding_score || 0);
+                    const diff = (b.coding_score || 0) - (a.coding_score || 0);
+                    return diff !== 0 ? diff : a.model.localeCompare(b.model); // Stable tie-breaker
                 });
                 break;
             case 'speed':

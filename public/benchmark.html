@@ -169,56 +169,56 @@
             font-size: 1.3em;
         }
 
-        /* Segment Variants - Enhanced Gradients */
+        /* Segment Variants - Themed Gradients */
         .segment-success {
-            background: linear-gradient(135deg, #00f260 0%, #0575e6 100%);
-            box-shadow: 0 2px 8px rgba(46, 204, 113, 0.3);
+            background: linear-gradient(135deg, var(--theme-high-from) 0%, var(--theme-veryhigh-to) 100%);
+            box-shadow: 0 2px 8px var(--theme-high-glow);
             transition: all 0.3s ease;
         }
 
         .segment-success:hover {
-            box-shadow: 0 4px 16px rgba(46, 204, 113, 0.5);
+            box-shadow: 0 4px 16px var(--theme-high-glow), 0 0 12px var(--theme-veryhigh-glow);
             transform: translateY(-1px);
         }
 
         .segment-error {
-            background: linear-gradient(135deg, #ff416c 0%, #ff4b2b 100%);
+            background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
             color: white;
-            box-shadow: 0 2px 8px rgba(231, 76, 60, 0.3);
+            box-shadow: 0 2px 8px rgba(220, 38, 38, 0.4);
             transition: all 0.3s ease;
         }
 
         .segment-error:hover {
-            box-shadow: 0 4px 16px rgba(231, 76, 60, 0.5);
+            box-shadow: 0 4px 16px rgba(220, 38, 38, 0.6);
             transform: translateY(-1px);
         }
 
         .segment-judging {
-            background: linear-gradient(135deg, #a044ff 0%, #6a11cb 100%);
+            background: linear-gradient(135deg, #a855f7 0%, #c084fc 100%);
             color: white;
-            box-shadow: -2px 0 4px rgba(0,0,0,0.15), 0 2px 8px rgba(155, 89, 182, 0.3);
+            box-shadow: -2px 0 4px rgba(0,0,0,0.15), 0 2px 8px rgba(168, 85, 247, 0.4);
             transition: all 0.3s ease;
         }
 
         .segment-judging:hover {
-            box-shadow: -2px 0 4px rgba(0,0,0,0.15), 0 4px 16px rgba(155, 89, 182, 0.5);
+            box-shadow: -2px 0 4px rgba(0,0,0,0.15), 0 4px 16px rgba(168, 85, 247, 0.6);
             transform: translateY(-1px);
         }
 
         .segment-running {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
+            background: linear-gradient(135deg, var(--theme-mid-from) 0%, var(--theme-mid-to) 100%);
+            color: #1a1a1a;
             animation: pulse-gradient 2s ease-in-out infinite;
-            box-shadow: 0 2px 12px rgba(102, 126, 234, 0.4);
+            box-shadow: 0 2px 12px var(--theme-mid-glow);
         }
 
         @keyframes pulse-gradient {
             0%, 100% {
-                box-shadow: 0 2px 12px rgba(102, 126, 234, 0.4);
+                box-shadow: 0 2px 12px var(--theme-mid-glow);
                 opacity: 1;
             }
             50% {
-                box-shadow: 0 4px 20px rgba(102, 126, 234, 0.7);
+                box-shadow: 0 4px 20px var(--theme-mid-glow), 0 0 16px rgba(245, 158, 11, 0.3);
                 opacity: 0.9;
             }
         }
@@ -953,6 +953,35 @@
             box-shadow: 0 2px 8px rgba(205, 127, 50, 0.3);
         }
 
+        /* ===== TEST LEVEL THEME SYSTEM ===== */
+        /* Define color themes for each test level */
+        :root {
+            /* Low (3-9 tests): Gray/Silver - Beginner */
+            --theme-low-from: #9ca3af;
+            --theme-low-to: #d1d5db;
+            --theme-low-glow: rgba(156, 163, 175, 0.4);
+
+            /* Mid (10-24 tests): Yellow/Amber - Warming Up */
+            --theme-mid-from: #f59e0b;
+            --theme-mid-to: #fbbf24;
+            --theme-mid-glow: rgba(245, 158, 11, 0.5);
+
+            /* High (25-49 tests): Green/Emerald - Solid */
+            --theme-high-from: #10b981;
+            --theme-high-to: #34d399;
+            --theme-high-glow: rgba(16, 185, 129, 0.5);
+
+            /* VeryHigh (50-99 tests): Blue/Cyan - Excellent */
+            --theme-veryhigh-from: #06b6d4;
+            --theme-veryhigh-to: #22d3ee;
+            --theme-veryhigh-glow: rgba(6, 182, 212, 0.6);
+
+            /* Ultra (100+ tests): Gold/Sun - Legendary */
+            --theme-ultra-from: #ffd700;
+            --theme-ultra-to: #ffed4e;
+            --theme-ultra-glow: rgba(255, 215, 0, 0.7);
+        }
+
         /* Quality score color indicators */
         .quality-high {
             color: #2ecc71;
@@ -992,6 +1021,7 @@
             justify-content: center;
             color: var(--muted);
             opacity: 0.65;
+            position: relative;
         }
 
         .test-star i {
@@ -999,36 +1029,69 @@
             line-height: 1;
         }
 
+        /* Themed gradient stars with stronger, more vibrant gradients */
         .test-star.test-star-low {
-            color: var(--text);
-            opacity: 0.7;
+            opacity: 0.85;
+            background: linear-gradient(135deg, var(--theme-low-from) 0%, var(--theme-low-to) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            filter: drop-shadow(0 0 4px var(--theme-low-glow));
         }
 
         .test-star.test-star-mid {
-            color: #f1c40f;
-            opacity: 0.95;
-            filter: drop-shadow(0 0 6px rgba(241, 196, 15, 0.45));
+            opacity: 1;
+            background: linear-gradient(135deg, var(--theme-mid-from) 0%, var(--theme-mid-to) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            filter: drop-shadow(0 0 8px var(--theme-mid-glow));
         }
 
         .test-star.test-star-high {
-            color: #2ecc71;
             opacity: 1;
-            filter: drop-shadow(0 0 10px rgba(46, 204, 113, 0.45));
+            background: linear-gradient(135deg, var(--theme-high-from) 0%, var(--theme-high-to) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            filter: drop-shadow(0 0 10px var(--theme-high-glow));
         }
 
         .test-star.test-star-veryhigh {
-            color: var(--accent);
             opacity: 1;
-            filter: drop-shadow(0 0 12px rgba(124, 240, 255, 0.55));
+            background: linear-gradient(135deg, var(--theme-veryhigh-from) 0%, var(--theme-veryhigh-to) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            filter: drop-shadow(0 0 12px var(--theme-veryhigh-glow));
         }
 
         .test-star.test-star-ultra {
-            color: #ffd700;
             opacity: 1;
+            background: linear-gradient(135deg, var(--theme-ultra-from) 0%, var(--theme-ultra-to) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
             filter:
-                drop-shadow(0 0 8px rgba(255, 215, 0, 0.65))
-                drop-shadow(0 0 14px rgba(255, 215, 0, 0.45))
+                drop-shadow(0 0 8px var(--theme-ultra-glow))
+                drop-shadow(0 0 14px rgba(255, 215, 0, 0.5))
                 drop-shadow(0 0 22px rgba(255, 237, 78, 0.35));
+            animation: golden-pulse 3s ease-in-out infinite;
+        }
+
+        @keyframes golden-pulse {
+            0%, 100% {
+                filter:
+                    drop-shadow(0 0 8px var(--theme-ultra-glow))
+                    drop-shadow(0 0 14px rgba(255, 215, 0, 0.5))
+                    drop-shadow(0 0 22px rgba(255, 237, 78, 0.35));
+            }
+            50% {
+                filter:
+                    drop-shadow(0 0 12px var(--theme-ultra-glow))
+                    drop-shadow(0 0 18px rgba(255, 215, 0, 0.6))
+                    drop-shadow(0 0 28px rgba(255, 237, 78, 0.45));
+            }
         }
 
         .test-star-count {
@@ -6863,7 +6926,7 @@
             .catch((err) => {
                 console.error('Failed to load Ollama hosts:', err);
             })
-            .finally(() => {
+            .finally(async () => {
             // Disclosure defaults
             if (localStorage.getItem('benchmarkShowAdvanced') === null) {
                 localStorage.setItem('benchmarkShowAdvanced', 'false');
@@ -6984,11 +7047,16 @@
             // Load batch models for first available host
             const firstHost = document.getElementById('host').value;
             if (firstHost) {
-                loadBatchModels(firstHost);
+                await loadBatchModels(firstHost);
             }
 
             // Load judge defaults so the UI can display the actual judge model (not just "default")
             loadJudgeConfig();
+
+            // Load dashboard after models are loaded
+            if (typeof loadDashboard === 'function') {
+                loadDashboard();
+            }
 
             // Check for active batch
             const savedBatchId = localStorage.getItem('currentBatchId');
@@ -7041,9 +7109,6 @@
 
         });
         initCharts();
-        if (typeof loadDashboard === 'function') {
-            loadDashboard();
-        }
         /**
          * Switch between category tabs
          */
@@ -7322,6 +7387,8 @@
         };
 
         // Stacked Timeline functionality
+        let lastTimelineResultIds = new Set();
+        
         async function loadRecentTestsTimeline(limit = 100) {
             try {
                 // Fetch both results and active batch status
@@ -7356,6 +7423,17 @@
                     return;
                 }
 
+                // Check for new results only (incremental update)
+                const currentResultIds = new Set(results.map(r => r._id));
+                const hasNewResults = results.some(r => !lastTimelineResultIds.has(r._id));
+                
+                // If no new results, skip the full re-render
+                if (!hasNewResults && lastTimelineResultIds.size > 0) {
+                    return;
+                }
+                
+                lastTimelineResultIds = currentResultIds;
+
                 timelineVisual.style.display = 'block';
                 timelineEmptyState.style.display = 'none';
 
@@ -7373,10 +7451,28 @@
 
                 if (sorted.length > 0) {
                     const validLatencies = sorted.filter(r => r.latency).map(r => r.latency);
-                    const validTps = sorted.filter(r => r.tokens_per_sec).map(r => r.tokens_per_sec);
+                    // Parse tokens_per_sec as number (handles both string and number types from DB)
+                    const validTps = sorted
+                        .map(r => parseFloat(r.tokens_per_sec))
+                        .filter(v => !isNaN(v) && v > 0);
                     const validQuality = sorted.filter(r => r.quality_score).map(r => r.quality_score);
                     const validJudge = sorted.filter(r => r.scoring_time_ms).map(r => r.scoring_time_ms);
                     const successCount = sorted.filter(r => r.success).length;
+
+                    // Debug: Log tokens_per_sec data availability
+                    console.log('[Timeline Debug] Results with tokens_per_sec:', {
+                        total_results: sorted.length,
+                        with_tokens_per_sec_field: sorted.filter(r => r.tokens_per_sec !== undefined && r.tokens_per_sec !== null).length,
+                        valid_numeric_tps: validTps.length,
+                        sample_values: sorted.slice(0, 3).map(r => ({
+                            model: r.model,
+                            tokens_per_sec: r.tokens_per_sec,
+                            type: typeof r.tokens_per_sec,
+                            parsed: parseFloat(r.tokens_per_sec),
+                            tokens: r.tokens,
+                            latency: r.latency
+                        }))
+                    });
 
                     globalStats.avgLatency = validLatencies.length ? validLatencies.reduce((a,b) => a+b, 0) / validLatencies.length : 0;
                     globalStats.avgTps = validTps.length ? validTps.reduce((a,b) => a+b, 0) / validTps.length : 0;
@@ -7454,9 +7550,11 @@
                         const qualityDiff = globalStats.avgQuality && result.quality_score ? ((result.quality_score - globalStats.avgQuality) / globalStats.avgQuality * 100).toFixed(0) : 0;
                         const qualityIndicator = result.quality_score && globalStats.avgQuality ? (result.quality_score > globalStats.avgQuality ? `<span style="color:#2ecc71">▲ ${Math.abs(qualityDiff)}% above avg</span>` : (result.quality_score < globalStats.avgQuality ? `<span style="color:#e74c3c">▼ ${Math.abs(qualityDiff)}% below avg</span>` : '<span style="color:#95a5a6">● average</span>')) : '';
 
-                        const tpsDisplay = result.tokens_per_sec ? `${result.tokens_per_sec.toFixed(1)} tok/s` : '-';
-                        const tpsDiff = globalStats.avgTps && result.tokens_per_sec ? ((result.tokens_per_sec - globalStats.avgTps) / globalStats.avgTps * 100).toFixed(0) : 0;
-                        const tpsIndicator = result.tokens_per_sec && globalStats.avgTps ? (result.tokens_per_sec > globalStats.avgTps ? `<span style="color:#2ecc71">▲ ${Math.abs(tpsDiff)}%</span>` : (result.tokens_per_sec < globalStats.avgTps ? `<span style="color:#e74c3c">▼ ${Math.abs(tpsDiff)}%</span>` : '<span style="color:#95a5a6">●</span>')) : '';
+                        // Parse tokens_per_sec (handles both string and number types)
+                        const tokensPerSec = parseFloat(result.tokens_per_sec);
+                        const tpsDisplay = !isNaN(tokensPerSec) && tokensPerSec > 0 ? `${tokensPerSec.toFixed(1)} tok/s` : '-';
+                        const tpsDiff = globalStats.avgTps && !isNaN(tokensPerSec) ? ((tokensPerSec - globalStats.avgTps) / globalStats.avgTps * 100).toFixed(0) : 0;
+                        const tpsIndicator = !isNaN(tokensPerSec) && tokensPerSec > 0 && globalStats.avgTps ? (tokensPerSec > globalStats.avgTps ? `<span style="color:#2ecc71">▲ ${Math.abs(tpsDiff)}%</span>` : (tokensPerSec < globalStats.avgTps ? `<span style="color:#e74c3c">▼ ${Math.abs(tpsDiff)}%</span>` : '<span style="color:#95a5a6">●</span>')) : '';
 
                         const tooltipHtml = `
                             <div style="border-bottom: 2px solid rgba(124, 240, 255, 0.3); padding-bottom: 8px; margin-bottom: 10px;">
@@ -7543,7 +7641,7 @@
                         // Use onmouseenter for custom tooltip
                         if (judgingTime > 0) {
                             return `${separator}
-                            <div class="timeline-segment-group" style="width: ${totalWidthPx}px; animation-delay: ${animationDelay}s;" onmouseenter="showTimelineTooltip(event, '${tooltipHtml}')">
+                            <div class="timeline-segment-group" style="width: ${totalWidthPx}px;" onmouseenter="showTimelineTooltip(event, '${tooltipHtml}')">
                                 <div class="timeline-segment ${visual.class}" style="width: ${inferencePct}%; border-radius: 0;">
                                     ${showInferenceIcon ? `<i class="fas ${visual.icon}"></i>` : ''}
                                 </div>
@@ -7631,7 +7729,7 @@
                     const totalTests = sorted.length;
                     const successCount = sorted.filter(r => r.success).length;
                     const successRate = ((successCount / totalTests) * 100).toFixed(1);
-                    const avgTps = globalStats.avgTps.toFixed(1);
+                    const avgTps = globalStats.avgTps > 0 ? globalStats.avgTps.toFixed(1) : '0.0';
                     const avgQuality = globalStats.avgQuality.toFixed(1);
 
                     const formatMs = (ms) => ms < 1000 ? `${Math.round(ms)}ms` : `${(ms/1000).toFixed(1)}s`;
@@ -7682,7 +7780,10 @@
                         const avgLatency = latencies.length ? latencies.reduce((a,b) => a+b, 0) / latencies.length : 0;
                         const qualities = modelResults.filter(r => r.quality_score).map(r => r.quality_score);
                         const avgQuality = qualities.length ? qualities.reduce((a,b) => a+b, 0) / qualities.length : 0;
-                        const tps = modelResults.filter(r => r.tokens_per_sec).map(r => r.tokens_per_sec);
+                        // Parse tokens_per_sec as number (handles both string and number types)
+                        const tps = modelResults
+                            .map(r => parseFloat(r.tokens_per_sec))
+                            .filter(v => !isNaN(v) && v > 0);
                         const avgTps = tps.length ? tps.reduce((a,b) => a+b, 0) / tps.length : 0;
 
                         modelStats.push({
@@ -7701,14 +7802,19 @@
                         const minLatency = Math.min(...modelStats.map(m => m.avgLatency).filter(l => l > 0));
                         const maxTps = Math.max(...modelStats.map(m => m.avgTps));
 
-                        // Color scale function (0-100)
+                        // Themed color scale function (0-100) using test level themes
                         const getHeatColor = (value, reverse = false) => {
                             if (reverse) value = 100 - value;
-                            if (value >= 80) return 'rgba(46, 204, 113, 0.8)'; // Green
-                            if (value >= 60) return 'rgba(52, 152, 219, 0.8)'; // Blue
-                            if (value >= 40) return 'rgba(241, 196, 15, 0.8)'; // Yellow
-                            if (value >= 20) return 'rgba(230, 126, 34, 0.8)'; // Orange
-                            return 'rgba(231, 76, 60, 0.8)'; // Red
+                            // Ultra theme (80-100): Blue/Cyan gradient
+                            if (value >= 80) return 'linear-gradient(135deg, #06b6d4 0%, #22d3ee 100%)';
+                            // VeryHigh theme (60-80): Green/Emerald gradient
+                            if (value >= 60) return 'linear-gradient(135deg, #10b981 0%, #34d399 100%)';
+                            // Mid theme (40-60): Yellow/Amber gradient
+                            if (value >= 40) return 'linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%)';
+                            // Low theme (20-40): Orange/Red gradient
+                            if (value >= 20) return 'linear-gradient(135deg, #f97316 0%, #fb923c 100%)';
+                            // Failed (0-20): Red gradient
+                            return 'linear-gradient(135deg, #dc2626 0%, #ef4444 100%)';
                         };
 
                         const heatmapHtml = `
@@ -7729,26 +7835,26 @@
                                         const qualityNorm = (stat.avgQuality / 10) * 100;
                                         const tpsNorm = maxTps > 0 ? (stat.avgTps / maxTps) * 100 : 50;
 
-                                        const formatMs = (ms) => ms < 1000 ? \`\${Math.round(ms)}ms\` : \`\${(ms/1000).toFixed(1)}s\`;
+                                        const formatMs = (ms) => ms < 1000 ? `${Math.round(ms)}ms` : `${(ms/1000).toFixed(1)}s`;
 
-                                        return \`
+                                        return `
                                             <tr style="transition: all 0.2s ease;">
-                                                <td style="padding: 10px 12px; color: var(--text); font-weight: 600; background: rgba(0,0,0,0.2); border-radius: 4px;">\${stat.model}</td>
-                                                <td style="padding: 10px 12px; text-align: center; color: var(--text); background: rgba(0,0,0,0.2); border-radius: 4px;">\${stat.testCount}</td>
-                                                <td style="padding: 10px 12px; text-align: center; font-weight: 600; background: \${getHeatColor(stat.successRate)}; color: white; border-radius: 4px; cursor: help; transition: all 0.2s ease;" title="Success Rate: \${stat.successRate.toFixed(1)}%">
-                                                    \${stat.successRate.toFixed(1)}%
+                                                <td style="padding: 10px 12px; color: var(--text); font-weight: 600; background: rgba(0,0,0,0.2); border-radius: 4px;">${stat.model}</td>
+                                                <td style="padding: 10px 12px; text-align: center; color: var(--text); background: rgba(0,0,0,0.2); border-radius: 4px;">${stat.testCount}</td>
+                                                <td style="padding: 10px 12px; text-align: center; font-weight: 600; background: ${getHeatColor(stat.successRate)}; color: white; border-radius: 4px; cursor: help; transition: all 0.2s ease;" title="Success Rate: ${stat.successRate.toFixed(1)}%">
+                                                    ${stat.successRate.toFixed(1)}%
                                                 </td>
-                                                <td style="padding: 10px 12px; text-align: center; font-weight: 600; background: \${getHeatColor(latencyNorm)}; color: white; border-radius: 4px; cursor: help; transition: all 0.2s ease;" title="Avg Latency: \${formatMs(stat.avgLatency)}">
-                                                    \${formatMs(stat.avgLatency)}
+                                                <td style="padding: 10px 12px; text-align: center; font-weight: 600; background: ${getHeatColor(latencyNorm)}; color: white; border-radius: 4px; cursor: help; transition: all 0.2s ease;" title="Avg Latency: ${formatMs(stat.avgLatency)}">
+                                                    ${formatMs(stat.avgLatency)}
                                                 </td>
-                                                <td style="padding: 10px 12px; text-align: center; font-weight: 600; background: \${getHeatColor(qualityNorm)}; color: white; border-radius: 4px; cursor: help; transition: all 0.2s ease;" title="Avg Quality: \${stat.avgQuality.toFixed(1)}/10">
-                                                    \${stat.avgQuality.toFixed(1)}/10
+                                                <td style="padding: 10px 12px; text-align: center; font-weight: 600; background: ${getHeatColor(qualityNorm)}; color: white; border-radius: 4px; cursor: help; transition: all 0.2s ease;" title="Avg Quality: ${stat.avgQuality.toFixed(1)}/10">
+                                                    ${stat.avgQuality.toFixed(1)}/10
                                                 </td>
-                                                <td style="padding: 10px 12px; text-align: center; font-weight: 600; background: \${getHeatColor(tpsNorm)}; color: white; border-radius: 4px; cursor: help; transition: all 0.2s ease;" title="Avg Throughput: \${stat.avgTps.toFixed(1)} tok/s">
-                                                    \${stat.avgTps.toFixed(1)} tok/s
+                                                <td style="padding: 10px 12px; text-align: center; font-weight: 600; background: ${getHeatColor(tpsNorm)}; color: white; border-radius: 4px; cursor: help; transition: all 0.2s ease;" title="Avg Throughput: ${stat.avgTps.toFixed(1)} tok/s">
+                                                    ${stat.avgTps.toFixed(1)} tok/s
                                                 </td>
                                             </tr>
-                                        \`;
+                                        `;
                                     }).join('')}
                                 </tbody>
                             </table>
