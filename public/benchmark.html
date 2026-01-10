@@ -219,6 +219,65 @@
             margin-bottom: 32px;
         }
 
+        .timeline-model-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .timeline-model-label {
+            width: 160px;
+            flex: 0 0 160px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: var(--text);
+            font-size: 0.85em;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .timeline-model-track {
+            display: flex;
+            flex-wrap: nowrap;
+            gap: 6px;
+            overflow-x: auto;
+            padding: 6px 8px;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            scrollbar-width: thin;
+            scrollbar-color: rgba(124, 240, 255, 0.35) transparent;
+        }
+
+        .timeline-model-track::-webkit-scrollbar {
+            height: 6px;
+        }
+
+        .timeline-model-track::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .timeline-model-track::-webkit-scrollbar-thumb {
+            background: rgba(124, 240, 255, 0.35);
+            border-radius: 6px;
+        }
+
+        .timeline-segment {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 8px;
+            border-radius: 6px;
+            color: #fff;
+            font-size: 0.7em;
+            font-weight: 600;
+            white-space: nowrap;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+        }
+
         /* Compare + Batch row */
         .benchmark-compare-batch-row {
             display: flex;
@@ -6876,41 +6935,17 @@
                 // Sort by timestamp (oldest first)
                 const sorted = [...results].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
-                // Find max duration for proportional bar sizing
-                const maxDuration = Math.max(...sorted.map(r => r.latency || 0));
+                // Find max duration for proportional segment sizing
+                const maxDuration = Math.max(1, ...sorted.map(r => r.latency || 0));
 
-                // Group tests into batches (tests within 5 seconds are same batch)
-                const batches = [];
-                let currentBatch = [sorted[0]];
-
-                for (let i = 1; i < sorted.length; i++) {
-                    const prevEnd = new Date(sorted[i-1].timestamp).getTime() + (sorted[i-1].latency || 0);
-                    const currStart = new Date(sorted[i].timestamp).getTime();
-                    const gap = currStart - prevEnd;
-
-                    if (gap < 5000) { // Less than 5 seconds gap = same batch
-                        currentBatch.push(sorted[i]);
-                    } else {
-                        batches.push(currentBatch);
-                        currentBatch = [sorted[i]];
+                // Group results by model
+                const resultsByModel = new Map();
+                sorted.forEach((result) => {
+                    const model = result.model || 'Unknown Model';
+                    if (!resultsByModel.has(model)) {
+                        resultsByModel.set(model, []);
                     }
-                }
-                batches.push(currentBatch);
-
-                // Calculate space allocation: each batch gets equal space, tests positioned within their batch
-                const spacePerBatch = 100 / batches.length;
-                const testPositions = new Map();
-
-                batches.forEach((batch, batchIdx) => {
-                    const batchStartPercent = batchIdx * spacePerBatch;
-                    const batchEndPercent = (batchIdx + 1) * spacePerBatch;
-                    const batchSpace = batchEndPercent - batchStartPercent;
-
-                    // Within each batch, position tests sequentially
-                    batch.forEach((test, testIdx) => {
-                        const testPosition = batchStartPercent + (testIdx / batch.length) * batchSpace;
-                        testPositions.set(test, testPosition);
-                    });
+                    resultsByModel.get(model).push(result);
                 });
 
                 // Helper function to format time labels
@@ -6945,36 +6980,30 @@
                     return 'queued';
                 };
 
-                const stageVisuals = {
-                    'queued': {
-                        icon: 'fa-clock',
-                        iconPulse: false,
-                        barClass: 'gantt-bar-queued',
-                        baseColor: '#95a5a6'
-                    },
-                    'running': {
-                        icon: 'fa-cogs',
-                        iconPulse: true,
-                        barClass: 'gantt-bar-running',
-                        baseColor: '#3498db'
-                    },
-                    'judging': {
-                        icon: 'fa-gavel',
-                        iconPulse: true,
-                        barClass: 'gantt-bar-judging',
-                        baseColor: '#9b59b6'
-                    },
-                    'complete-success': {
+                const segmentVisuals = {
+                    test: {
                         icon: 'fa-check-circle',
-                        iconPulse: false,
-                        barClass: '',
                         baseColor: '#2ecc71'
                     },
-                    'complete-error': {
+                    'test-error': {
                         icon: 'fa-times-circle',
-                        iconPulse: false,
-                        barClass: '',
                         baseColor: '#e74c3c'
+                    },
+                    judging: {
+                        icon: 'fa-gavel',
+                        baseColor: '#9b59b6'
+                    },
+                    warmup: {
+                        icon: 'fa-fire',
+                        baseColor: '#f39c12'
+                    },
+                    queued: {
+                        icon: 'fa-clock',
+                        baseColor: '#95a5a6'
+                    },
+                    running: {
+                        icon: 'fa-cogs',
+                        baseColor: '#3498db'
                     }
                 };
                 const stageLabels = {
@@ -6992,6 +7021,9 @@
                     'complete-error': 'Stage icon: x indicates completed with errors.'
                 };
 
+                const getSegmentType = (result) => {
+                    if (result.prompt === 'warmup') {
+                        return 'warmup';
                 // Generate batch labels for time axis
                 const batchLabels = batches.map((batch, idx) => {
                     const batchStartTime = new Date(batch[0].timestamp);
@@ -7024,7 +7056,19 @@
                     } else if (stage === 'queued') {
                         widthPercent = 0.8; // Minimal width for queued tests
                     }
+                    const stage = getTestStage(result);
+                    if (stage === 'judging') return 'judging';
+                    if (stage === 'running') return 'running';
+                    if (stage === 'queued') return 'queued';
+                    return result.success ? 'test' : 'test-error';
+                };
 
+                const getSegmentWidth = (duration, stage) => {
+                    if (stage === 'queued') return 80;
+                    if ((stage === 'running' || stage === 'judging') && duration === 0) return 110;
+                    if (!duration) return 90;
+                    return Math.max(80, Math.min(220, (duration / maxDuration) * 220));
+                };
                     const barWidth = Math.max(widthPercent, 1.5);
                     const durationText = duration > 0 ? formatTimeLabel(duration) : (stage === 'running' || stage === 'judging' ? 'Running...' : 'Queued');
 
@@ -7086,12 +7130,52 @@ ${result.quality_explanation || breakdown.explanation || 'No details available'}
                         qualityTooltipDetails = tooltipText;
                         qualityBadgeLegend = `Quality badge: Q${score} shows overall quality score.`;
 
-                        qualityBadgeHtml = `<span
-                            style="background: ${badgeColor}; color: white; padding: 2px 6px; border-radius: 3px; font-size: 0.7em; font-weight: 700; cursor: help; margin-left: 6px; border: 1px solid rgba(255,255,255,0.4); box-shadow: 0 1px 3px rgba(0,0,0,0.3);"
-                            title="${tooltipText.replace(/"/g, '&quot;').replace(/\n/g, '&#10;')}"
-                        >Q${score}</span>`;
-                    }
+                const timelineRowsHtml = Array.from(resultsByModel.entries())
+                    .sort(([modelA], [modelB]) => modelA.localeCompare(modelB))
+                    .map(([model, modelResults]) => {
+                        const sortedResults = [...modelResults].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
+                        const segmentsHtml = sortedResults.map((result) => {
+                            const stage = getTestStage(result);
+                            const segmentType = getSegmentType(result);
+                            const visual = segmentVisuals[segmentType];
+                            const duration = result.latency || 0;
+                            const elapsed = result.timestamp ? Date.now() - new Date(result.timestamp).getTime() : 0;
+                            const segmentDuration = (stage === 'running' || stage === 'judging') ? elapsed : duration;
+                            const widthPx = getSegmentWidth(segmentDuration, stage);
+                            const durationText = duration > 0
+                                ? formatTimeLabel(duration)
+                                : (stage === 'running' || stage === 'judging' ? 'Running...' : stage === 'queued' ? 'Queued' : '—');
+
+                            const segmentLabel = result.prompt === 'warmup'
+                                ? 'Warmup'
+                                : result.prompt_level || stage.replace('-', ' ');
+
+                            const tooltipText = `${result.model}
+${segmentType.replace('-', ' ')}
+${result.prompt_level || result.prompt || 'N/A'}`;
+
+                            return `
+                                <div
+                                    class="timeline-segment"
+                                    style="flex: 0 0 ${widthPx}px; background: ${visual.baseColor};"
+                                    title="${tooltipText.replace(/"/g, '&quot;')}"
+                                >
+                                    <i class="fas ${visual.icon}"></i>
+                                    <span>${segmentLabel}</span>
+                                    <span style="margin-left: auto; font-weight: 500; font-size: 0.65em;">${durationText}</span>
+                                </div>
+                            `;
+                        }).join('');
+
+                        return `
+                            <div class="timeline-model-row">
+                                <div class="timeline-model-label" title="${model.replace(/"/g, '&quot;')}">
+                                    <i class="fas fa-robot" style="color: var(--accent);"></i>
+                                    ${model}
+                                </div>
+                                <div class="timeline-model-track">
+                                    ${segmentsHtml}
                     const stageSpecificInfo = [];
                     if (stage === 'queued') {
                         stageSpecificInfo.push('Status: waiting in queue.');
@@ -7170,11 +7254,10 @@ ${qualityBadgeLegend}`;
                                     ${bubbleHtml}
                                 </div>
                             </div>
-                        </div>
-                    `;
-                }).join('');
+                        `;
+                    }).join('');
 
-                timelineVisual.innerHTML = timeAxisHtml + ganttHtml || '<div style="color: var(--muted); padding: 16px; text-align: center;">No test results</div>';
+                timelineVisual.innerHTML = timelineRowsHtml || '<div style="color: var(--muted); padding: 16px; text-align: center;">No test results</div>';
             } catch (err) {
                 console.error('Failed to load timeline:', err);
                 const timelineVisual = document.getElementById('timelineVisual');
