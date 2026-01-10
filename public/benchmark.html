@@ -166,7 +166,7 @@
 
         .timeline-segment i {
             margin-right: 4px;
-            font-size: 1.0em;
+            font-size: 1.3em;
         }
 
         /* Segment Variants - Enhanced Gradients */
@@ -1812,6 +1812,9 @@
                                 <span id="batchInfo" style="color: #666; display: block; line-height: 1.4;"></span>
                             </div>
 
+
+
+                            <!-- Current Test Indicator -->
                             <div class="progress-bar-group" id="progressBars">
                                 <div class="progress-bar" id="execProgressBar">
                                     <div class="progress-fill" id="execProgressFill"></div>
@@ -1823,34 +1826,7 @@
                                 </div>
                             </div>
 
-                            <!-- Current Test Indicator -->
-                            <div id="currentTestIndicator" style="display: none; margin: 10px 8px 0; padding: 12px; background: rgba(0,0,0,0.3); border-radius: 8px; border-left: 4px solid var(--accent);">
-                                <div style="display: flex; align-items: center; gap: 12px;">
-                                    <div class="pulse-dot" style="width: 12px; height: 12px; background: var(--accent); border-radius: 50%; animation: pulse 2s ease-in-out infinite;"></div>
-                                    <div style="flex: 1;">
-                                        <div style="font-weight: 600; color: var(--text); font-size: 0.95em;" id="currentTestStage">Executing Test...</div>
-                                        <div style="color: var(--muted); font-size: 0.85em; margin-top: 4px;">
-                                            <span id="currentTestModel" style="color: var(--accent); font-weight: 500;"></span> →
-                                            <span id="currentTestPrompt"></span>
-                                        </div>
-                                        <div style="color: var(--muted); font-size: 0.80em; margin-top: 2px;">
-                                            <i class="fas fa-clock"></i> <span id="currentTestDuration">0s</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
 
-                            <!-- Execution Timeline (Collapsible) -->
-                            <div id="timelineContainer" style="display: none; margin: 10px 8px 0; background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
-                                <button id="toggleTimelineBtn" type="button" style="width: 100%; padding: 12px; background: transparent; border: none; color: var(--text); cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-weight: 600;">
-                                    <span><i class="fas fa-stream"></i> Execution Timeline</span>
-                                    <i class="fas fa-chevron-down" id="timelineChevron"></i>
-                                </button>
-                                <div id="timelineContent" style="display: none; padding: 0 12px 12px; max-height: 300px; overflow-y: auto;">
-                                    <div id="timelineEvents" style="font-size: 0.85em;"></div>
-                                    <div id="timelineSummary" style="margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.1); font-size: 0.85em; color: var(--muted);"></div>
-                                </div>
-                            </div>
 
                             <div style="display:flex; gap: 10px; align-items:center; margin: 10px 8px 0; flex-wrap: wrap;">
                                 <button class="btn-secondary" id="toggleAdvancedBtn" type="button" style="padding: 8px 12px;">Show details</button>
@@ -2076,8 +2052,23 @@
         <div class="timeline-section" style="margin-top: 32px; background: var(--panel); border: 1px solid var(--panel-border); border-radius: var(--radius); padding: 24px;">
             <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                 <h3 style="margin: 0; font-size: 1.25em; display: flex; align-items: center; gap: 10px;">
-                    <i class="fas fa-stream" style="color: var(--accent);"></i> Recent Test Execution
+                    <i class="fas fa-stream" style="color: var(--accent);"></i> Test Execution
                 </h3>
+                <div id="currentTestIndicator" style="display: none; flex: 1; margin: 0 24px; padding: 12px; background: rgba(0,0,0,0.3); border-radius: 8px; border-left: 4px solid var(--accent);">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <div class="pulse-dot" style="width: 12px; height: 12px; background: var(--accent); border-radius: 50%; animation: pulse 2s ease-in-out infinite;"></div>
+                        <div style="flex: 1;">
+                            <div style="font-weight: 600; color: var(--text); font-size: 0.95em;" id="currentTestStage">Executing Test...</div>
+                            <div style="color: var(--muted); font-size: 0.85em; margin-top: 4px;">
+                                <span id="currentTestModel" style="color: var(--accent); font-weight: 500;"></span> →
+                                <span id="currentTestPrompt"></span>
+                            </div>
+                            <div style="color: var(--muted); font-size: 0.80em; margin-top: 2px;">
+                                <i class="fas fa-clock"></i> <span id="currentTestDuration">0s</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 <div class="timeline-controls">
                     <select id="timelineLimit" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); color: var(--text); padding: 8px 12px; border-radius: 6px;">
                         <option value="20">Last 20 tests</option>
@@ -2097,6 +2088,19 @@
 
             <div id="timelineVisual" style="background: rgba(0,0,0,0.2); border-radius: 8px; padding: 16px; min-height: 300px; position: relative;">
                 <!-- Timeline bars rendered here -->
+            </div>
+            <!-- Execution Timeline (Collapsible) -->
+            <div id="timelineContainer" style="display: none; margin: 12px 0 0; background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
+                <button id="toggleTimelineBtn" type="button" style="width: 100%; padding: 12px; background: transparent; border: none; color: var(--text); cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-weight: 600;">
+                    <span><i class="fas fa-stream"></i> Execution Timeline</span>
+                    <i class="fas fa-chevron-down" id="timelineChevron"></i>
+                </button>
+                <div id="timelineContent" style="display: none;">
+                    <div id="timelineSummary" style="padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 0.85em; color: var(--muted); background: rgba(0,0,0,0.1);"></div>
+                    <div style="padding: 0 12px 12px; max-height: 300px; overflow-y: auto;">
+                        <div id="timelineEvents" style="font-size: 0.85em;"></div>
+                    </div>
+                </div>
             </div>
             <div id="timelineEmptyState" style="display: none; text-align: center; padding: 48px; color: var(--muted);">
                 <i class="fas fa-chart-gantt" style="font-size: 2em; margin-bottom: 16px; opacity: 0.5;"></i>
@@ -7522,8 +7526,18 @@
                         const inferencePx = totalWidthPx * (inferencePct / 100);
                         const judgingPx = totalWidthPx * (judgingPct / 100);
                         
-                        const showInferenceText = inferencePx > 40;
-                        const showJudgingText = judgingPx > 35;
+                        const showInferenceIcon = inferencePx > 20;
+                        const showJudgingIcon = judgingPx > 20;
+
+                        // Handle Small Bar "Floating" Badge
+                        let badgeStyle = '';
+                        if (totalWidthPx < 100) {
+                             // Float upper right
+                             badgeStyle = `position:absolute; right:-6px; top:-8px; background:rgba(20,20,30,0.95); border:1px solid rgba(255,255,255,0.2); backdrop-filter:blur(4px); font-weight:700; font-size:0.75em; padding:2px 6px; border-radius:10px; z-index:5; box-shadow:0 2px 4px rgba(0,0,0,0.5); transform:scale(0.9);`;
+                        } else {
+                             // Inside right
+                             badgeStyle = `position:absolute; right:2px; top:0; height:100%; display:flex; align-items:center; background:rgba(0,0,0,0.4); backdrop-filter:blur(2px); font-weight:700; font-size:0.75em; padding:0 6px; border-radius:3px;`;
+                        }
 
                         // Only split if we actually have judging time
                         // Use onmouseenter for custom tooltip
@@ -7531,23 +7545,21 @@
                             return `${separator}
                             <div class="timeline-segment-group" style="width: ${totalWidthPx}px; animation-delay: ${animationDelay}s;" onmouseenter="showTimelineTooltip(event, '${tooltipHtml}')">
                                 <div class="timeline-segment ${visual.class}" style="width: ${inferencePct}%; border-radius: 0;">
-                                    ${showInferenceText ? `<i class="fas ${visual.icon}"></i><span>${inferenceStr}</span>` : ''}
+                                    ${showInferenceIcon ? `<i class="fas ${visual.icon}"></i>` : ''}
                                 </div>
                                 <div class="timeline-segment segment-judging" style="width: ${judgingPct}%; border-radius: 0;">
-                                    ${showJudgingText ? `<i class="fas fa-gavel" style="font-size:0.8em"></i><span style="font-size:0.75em">${judgingStr}</span>` : ''}
+                                    ${showJudgingIcon ? `<i class="fas fa-gavel"></i>` : ''}
                                 </div>
-                                <div style="position:absolute; right:2px; top:0; height:100%; display:flex; align-items:center; pointer-events:none;">
-                                    ${qScore ? `<span class="segment-badge" style="background:rgba(0,0,0,0.4); backdrop-filter:blur(2px); font-weight:700; font-size:0.75em; padding:1px 4px; border-radius:3px;">${qScore}</span>` : ''}
-                                </div>
+                                ${qScore ? `<div style="${badgeStyle}" class="segment-badge">${qScore}</div>` : ''}
                             </div>`;
                         } else {
                             // Standard single block
                             return `${separator}
                             <div class="timeline-segment-group" style="width: ${totalWidthPx}px; animation-delay: ${animationDelay}s;" onmouseenter="showTimelineTooltip(event, '${tooltipHtml}')">
                                 <div class="timeline-segment ${visual.class}" style="width: 100%;">
-                                    ${totalWidthPx > 40 ? `<i class="fas ${visual.icon}"></i><span>${inferenceStr}</span>` : ''}
-                                    ${qScore ? `<span class="segment-badge" style="background:rgba(255,255,255,0.2)">${qScore}</span>` : ''}
-                                    ${level ? `<span class="segment-badge">${level}</span>` : ''}
+                                    ${totalWidthPx > 20 ? `<i class="fas ${visual.icon}"></i>` : ''}
+                                    ${qScore ? `<div style="${badgeStyle}" class="segment-badge">${qScore}</div>` : ''}
+                                    ${level ? `<span class="segment-badge" style="margin-right:2px">${level}</span>` : ''}
                                 </div>
                             </div>`;
                         }
