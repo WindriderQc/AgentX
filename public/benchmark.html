@@ -112,7 +112,7 @@
             color: white;
         }
         .segment-judging {
-            background: linear-gradient(135deg, #9b59b6, #8e44ad);
+            background: linear-gradient(135deg, #8e44ad, #9b59b6);
             color: white;
             box-shadow: -2px 0 4px rgba(0,0,0,0.1); /* Separator shadow */
         }
@@ -120,6 +120,39 @@
             background: linear-gradient(135deg, #3498db, #2980b9);
             color: white;
             animation: pulse-blue 2s infinite;
+        }
+
+        /* Custom Tooltip */
+        .custom-tooltip {
+            position: fixed;
+            background: #14171e;
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            padding: 12px;
+            color: #eee;
+            font-size: 0.85em;
+            line-height: 1.5;
+            z-index: 9999;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            pointer-events: none;
+            max-width: 300px;
+            backdrop-filter: blur(10px);
+        }
+        .custom-tooltip h4 {
+            margin: 0 0 8px;
+            color: var(--accent);
+            font-size: 1.1em;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            padding-bottom: 4px;
+        }
+        .custom-tooltip .row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 4px;
+        }
+        .custom-tooltip .label {
+            color: var(--muted);
+            margin-right: 12px;
         }
         .segment-queued {
             background: rgba(255,255,255,0.1);
@@ -1948,7 +1981,8 @@
                     <select id="timelineLimit" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); color: var(--text); padding: 8px 12px; border-radius: 6px;">
                         <option value="20">Last 20 tests</option>
                         <option value="50">Last 50 tests</option>
-                        <option value="100">Last 100 tests</option>
+                        <option value="100" selected>Last 100 tests</option>
+                        <option value="200">Last 200 tests</option>
                     </select>
                 </div>
             </div>
@@ -7055,6 +7089,83 @@
             });
         }
 
+        let benchmarkTooltipEl = null;
+
+        function showBenchmarkTooltip(event, text) {
+            if (!benchmarkTooltipEl) {
+                benchmarkTooltipEl = document.createElement('div');
+                benchmarkTooltipEl.className = 'benchmark-tooltip';
+                benchmarkTooltipEl.style.cssText = `
+                    position: fixed;
+                    background: rgba(0, 0, 0, 0.9);
+                    color: #fff;
+                    padding: 8px 12px;
+                    border-radius: 4px;
+                    font-size: 12px;
+                    line-height: 1.4;
+                    z-index: 10000;
+                    pointer-events: none;
+                    white-space: pre-line;
+                    max-width: 300px;
+                    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+                    border: 1px solid rgba(255,255,255,0.1);
+                `;
+                document.body.appendChild(benchmarkTooltipEl);
+            }
+            benchmarkTooltipEl.textContent = text;
+            benchmarkTooltipEl.style.display = 'block';
+            
+            const x = event.clientX + 15;
+            const y = event.clientY + 15;
+            
+            // Boundary checks
+            const rect = benchmarkTooltipEl.getBoundingClientRect();
+            let finalX = x;
+            let finalY = y;
+            
+            if (x + rect.width > window.innerWidth) {
+                finalX = x - rect.width - 15;
+            }
+            if (y + rect.height > window.innerHeight) {
+                finalY = y - rect.height - 15;
+            }
+            
+            benchmarkTooltipEl.style.left = finalX + 'px';
+            benchmarkTooltipEl.style.top = finalY + 'px';
+        }
+
+        function hideBenchmarkTooltip() {
+            if (benchmarkTooltipEl) {
+                benchmarkTooltipEl.style.display = 'none';
+            }
+        }
+
+        // Tooltip Helper
+        window.showTimelineTooltip = (e, htmlContent) => {
+            let tooltip = document.getElementById('timeline-tooltip');
+            if (!tooltip) {
+                tooltip = document.createElement('div');
+                tooltip.id = 'timeline-tooltip';
+                tooltip.className = 'custom-tooltip';
+                document.body.appendChild(tooltip);
+            }
+            tooltip.innerHTML = htmlContent;
+            tooltip.style.display = 'block';
+            
+            const moveHandler = (evt) => {
+                const x = evt.clientX + 15;
+                const y = evt.clientY + 15;
+                tooltip.style.left = Math.min(x, window.innerWidth - 320) + 'px';
+                tooltip.style.top = Math.min(y, window.innerHeight - tooltip.offsetHeight - 10) + 'px';
+            };
+            moveHandler(e);
+            document.addEventListener('mousemove', moveHandler);
+            e.target.onmouseleave = () => {
+                tooltip.style.display = 'none';
+                document.removeEventListener('mousemove', moveHandler);
+            };
+        };
+
         // Stacked Timeline functionality
         async function loadRecentTestsTimeline(limit = 100) {
             try {
@@ -7067,13 +7178,18 @@
                 if (!resResults.ok) throw new Error(`HTTP ${resResults.status}`);
 
                 const json = await resResults.json();
-                const results = json.data?.results || [];
+                let results = json.data?.results || [];
 
                 // Get active batch info for live state detection
                 let activeBatch = null;
                 if (resActive.ok) {
                     const activeJson = await resActive.json();
                     activeBatch = activeJson.data?.[0] || null;
+                }
+
+                // If a batch is active, only show results for that batch
+                if (activeBatch && activeBatch._id) {
+                    results = results.filter(r => r.batch_id === activeBatch._id);
                 }
 
                 const timelineVisual = document.getElementById('timelineVisual');
@@ -7109,8 +7225,8 @@
                 }
 
                 const stageVisuals = {
-                    test: { icon: 'fa-check', class: 'segment-success' },
-                    'test-error': { icon: 'fa-times', class: 'segment-error' },
+                    test: { icon: 'fa-robot', class: 'segment-success' },
+                    'test-error': { icon: 'fa-exclamation-triangle', class: 'segment-error' },
                     judging: { icon: 'fa-gavel', class: 'segment-judging' },
                     running: { icon: 'fa-cog fa-spin', class: 'segment-running' },
                     queued: { icon: 'fa-clock', class: 'segment-queued' }
@@ -7138,28 +7254,31 @@
                     segmentsHtml += modelResults.map((result, idx) => {
                         const visual = getSegmentVisual(result);
                         const inferenceTime = result.latency || 0;
-                        const judgingTime = result.judging_time || 0;
+                        const judgingTime = result.scoring_time_ms || 0;
                         const totalTime = inferenceTime + judgingTime;
 
                         const inferenceStr = formatTime(inferenceTime);
                         const judgingStr = formatTime(judgingTime);
                         const totalStr = formatTime(totalTime);
                         
-                        const qScore = result.q_score ? `Q${result.q_score}` : '';
+                        const qScore = result.quality_score ? `Q${result.quality_score}` : '';
                         const level = result.difficulty ? `L${result.difficulty}` : '';
                         const timestamp = new Date(result.timestamp).getTime();
 
-                        // Tooltip content
-                        const tooltip = `
-Test ID: ${result.test_id || 'N/A'}
-Success: ${result.success}
-Total Time: ${totalStr}
-Inference: ${inferenceStr}
-Judging: ${judgingStr}
-Date: ${new Date(result.timestamp).toLocaleTimeString()}
-Prompt: ${result.prompt || 'N/A'}
-${result.error ? 'Error: ' + result.error : ''}
-                        `.trim();
+                        // Tooltip HTML for Custom Tooltip
+                        const promptText = result.prompt ? (result.prompt.length > 60 ? result.prompt.substring(0,60)+'...' : result.prompt).replace(/"/g, '&quot;') : 'No prompt';
+                        const tooltipHtml = `
+                            <h4>${result.model}</h4>
+                            <div class="row"><span class="label">Date:</span> <span>${new Date(result.timestamp).toLocaleTimeString()}</span></div>
+                            <div class="row"><span class="label">Result:</span> <span style="color:${result.success?'#2ecc71':'#e74c3c'}">${result.success?'Success':'Failed'}</span></div>
+                            <div class="row"><span class="label">Total Time:</span> <span>${totalStr}</span></div>
+                            <div class="row"><span class="label">Inference:</span> <span>${inferenceStr}</span></div>
+                            ${judgingTime ? `<div class="row"><span class="label">Judging:</span> <span style="color:#1abc9c">${judgingStr}</span></div>` : ''}
+                            ${result.quality_score ? `<div class="row"><span class="label">Quality:</span> <span>${result.quality_score}/10</span></div>` : ''}
+                            <div style="margin-top:8px; color:#aaa; font-style:italic; font-size:0.9em; border-top:1px solid rgba(255,255,255,0.1); padding-top:4px;">
+                                ${promptText}
+                            </div>
+                        `.replace(/"/g, '&quot;').replace(/'/g, "\\'").replace(/\n/g, '').trim();
                         
                          let separator = '';
                         if (idx > 0 && (timestamp - lastTime > 300000)) {
@@ -7173,30 +7292,35 @@ ${result.error ? 'Error: ' + result.error : ''}
                         // Calculate percentage widths for sub-segments
                         const inferencePct = totalTime > 0 ? (inferenceTime / totalTime) * 100 : 100;
                         const judgingPct = totalTime > 0 ? (judgingTime / totalTime) * 100 : 0;
+                        
+                        // Calculate pixel widths to control text visibility
+                        const inferencePx = totalWidthPx * (inferencePct / 100);
+                        const judgingPx = totalWidthPx * (judgingPct / 100);
+                        
+                        const showInferenceText = inferencePx > 40;
+                        const showJudgingText = judgingPx > 35;
 
                         // Only split if we actually have judging time
-                        if (judgingTime > 100) {
+                        // Use onmouseenter for custom tooltip
+                        if (judgingTime > 0) {
                             return `${separator}
-                            <div class="timeline-segment-group" style="width: ${totalWidthPx}px;" title="${tooltip}">
+                            <div class="timeline-segment-group" style="width: ${totalWidthPx}px;" onmouseenter="showTimelineTooltip(event, '${tooltipHtml}')">
                                 <div class="timeline-segment ${visual.class}" style="width: ${inferencePct}%; border-radius: 0;">
-                                    <i class="fas ${visual.icon}"></i>
-                                    <span>${inferenceStr}</span>
+                                    ${showInferenceText ? `<i class="fas ${visual.icon}"></i><span>${inferenceStr}</span>` : ''}
                                 </div>
                                 <div class="timeline-segment segment-judging" style="width: ${judgingPct}%; border-radius: 0;">
-                                    <i class="fas fa-gavel" style="font-size:0.8em"></i>
-                                    <span style="font-size:0.75em">${judgingStr}</span>
+                                    ${showJudgingText ? `<i class="fas fa-gavel" style="font-size:0.8em"></i><span style="font-size:0.75em">${judgingStr}</span>` : ''}
                                 </div>
-                                <div style="position:absolute; right:4px; top:0; height:100%; display:flex; align-items:center; pointer-events:none;">
-                                    ${qScore ? `<span class="segment-badge" style="background:rgba(0,0,0,0.3); backdrop-filter:blur(2px);">${qScore}</span>` : ''}
+                                <div style="position:absolute; right:2px; top:0; height:100%; display:flex; align-items:center; pointer-events:none;">
+                                    ${qScore ? `<span class="segment-badge" style="background:rgba(0,0,0,0.4); backdrop-filter:blur(2px); font-weight:700; font-size:0.75em; padding:1px 4px; border-radius:3px;">${qScore}</span>` : ''}
                                 </div>
                             </div>`;
                         } else {
                             // Standard single block
                             return `${separator}
-                            <div class="timeline-segment-group" style="width: ${totalWidthPx}px;" title="${tooltip}">
+                            <div class="timeline-segment-group" style="width: ${totalWidthPx}px;" onmouseenter="showTimelineTooltip(event, '${tooltipHtml}')">
                                 <div class="timeline-segment ${visual.class}" style="width: 100%;">
-                                    <i class="fas ${visual.icon}"></i>
-                                    <span>${inferenceStr}</span>
+                                    ${totalWidthPx > 40 ? `<i class="fas ${visual.icon}"></i><span>${inferenceStr}</span>` : ''}
                                     ${qScore ? `<span class="segment-badge" style="background:rgba(255,255,255,0.2)">${qScore}</span>` : ''}
                                     ${level ? `<span class="segment-badge">${level}</span>` : ''}
                                 </div>
@@ -7204,38 +7328,38 @@ ${result.error ? 'Error: ' + result.error : ''}
                         }
                     }).join('');
 
-                    // Check for Active State
-                    if (activeBatch && activeBatch.model === model && activeBatch.status === 'running') {
+                    // Check for Active State - IMPROVED LOGIC
+                    if (activeBatch && activeBatch.status === 'running' && activeBatch.model === model) {
                         const currentTest = activeBatch.current_test;
-                        /* 
-                           activeBatch structure usually has:
-                           current_test: { prompt: "...", stage: "running" | "judging", start_time: ... }
-                        */
+                        
                         let activeStage = 'running';
                         let activeText = 'Running...';
                         let activeIcon = 'fa-cog fa-spin';
                         let bubbleText = 'Processing Test...';
                         
-                        // Estimate elapsed time
                         if (currentTest) {
                             if (currentTest.stage === 'judging' || (activeBatch.current_phase === 'judging')) {
                                 activeStage = 'judging';
                                 activeText = 'Judging';
                                 activeIcon = 'fa-gavel';
-                                bubbleText = `Judging: ${currentTest.prompt?.substring(0, 15) || 'Output'}...`;
+                                bubbleText = `Judging: ${currentTest.prompt ? (currentTest.prompt.length > 20 ? currentTest.prompt.substring(0, 20)+'...' : currentTest.prompt) : 'Response'}...`;
                             } else {
-                                bubbleText = `Running: ${currentTest.prompt?.substring(0, 15) || 'Prompt'}...`;
+                                bubbleText = `Running: ${currentTest.prompt ? (currentTest.prompt.length > 20 ? currentTest.prompt.substring(0, 20)+'...' : currentTest.prompt) : 'Prompt'}...`;
                             }
                         }
 
                         const visualClass = stageVisuals[activeStage].class;
                         
+                        // Force append to the track so it's always visible at end
+                        // Using a distinct style for the active bubble
                         segmentsHtml += `
-                        <div class="timeline-segment ${visualClass}" style="width: 110px; opacity: 0.9;">
-                            <i class="fas ${activeIcon}"></i>
-                            <span>${activeText}</span>
-                            <div class="status-bubble">
-                                <i class="fas fa-info-circle"></i> ${bubbleText}
+                        <div class="timeline-segment-group" style="width: 140px; opacity: 1; margin-left:8px; display:flex; flex-direction:column; justify-content:center; align-items:flex-start; overflow:visible;">
+                            <div class="timeline-segment ${visualClass}" style="width: 100%; height: 20px; margin-bottom: 2px;">
+                                <i class="fas ${activeIcon}"></i>
+                                <span>${activeText}</span>
+                            </div>
+                            <div style="font-size:0.7em; color:var(--accent); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:140px; padding-left:4px;">
+                                ${bubbleText}
                             </div>
                         </div>`;
                     }
@@ -7276,7 +7400,7 @@ ${result.error ? 'Error: ' + result.error : ''}
         }
 
         // Load timeline on page load
-        loadRecentTestsTimeline(20);
+        loadRecentTestsTimeline(100);
 
         setInterval(() => {
             if (typeof window.loadDashboard === 'function') {

@@ -893,7 +893,7 @@ const handleChatRequestStream = async ({
                 }
                 conversation.promptConfigId = activePrompt._id;
                 conversation.promptName = activePrompt.name;
-                conversation.promptVersion = activePrompt.version;
+                conversation.promptVersion = isNaN(activePrompt.version) ? 1 : Number(activePrompt.version);
 
                 try {
                     const totalCost = calculateConversationCost(conversation.messages);

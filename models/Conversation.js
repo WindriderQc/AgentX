@@ -42,7 +42,7 @@ const MessageSchema = new mongoose.Schema({
   
   // V6: RAG Citation Tracking (2026-01-07)
   ragSources: [{
-    chunkId: { type: mongoose.Schema.Types.ObjectId, ref: 'RAGChunk' },
+    chunkId: { type: String }, // Changed from ObjectId to String to support Qdrant/UUIDs
     score: { type: Number },  // Relevance score (0-1)
     excerpt: { type: String }, // First 200 chars of chunk for preview
     metadata: {
