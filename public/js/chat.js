@@ -457,13 +457,25 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // V6: RAG Citation Display (2026-01-07)
     if (role === 'assistant' && message.ragSources && Array.isArray(message.ragSources) && message.ragSources.length > 0) {
-      const citationsDiv = document.createElement('div');
+      const citationsDiv = document.createElement('details');
       citationsDiv.className = 'message-citations';
       
-      const citationsTitle = document.createElement('div');
+      const citationsTitle = document.createElement('summary');
       citationsTitle.className = 'citations-title';
-      citationsTitle.innerHTML = '<i class="fas fa-book"></i><span>Sources</span>';
+      citationsTitle.style.cursor = 'pointer';
+      citationsTitle.style.listStyle = 'none'; // Hide default marker
+      citationsTitle.innerHTML = '<i class="fas fa-chevron-right" style="font-size: 0.8em; margin-right: 6px; transition: transform 0.2s;"></i><i class="fas fa-book"></i><span>Sources</span>';
       citationsDiv.appendChild(citationsTitle);
+      
+      // Add event listener for rotation effect
+      citationsDiv.addEventListener('toggle', () => {
+        const icon = citationsTitle.querySelector('.fa-chevron-right');
+        if (citationsDiv.open) {
+          icon.style.transform = 'rotate(90deg)';
+        } else {
+          icon.style.transform = 'rotate(0deg)';
+        }
+      });
       
       message.ragSources.forEach((source, idx) => {
         const sourceItem = document.createElement('div');

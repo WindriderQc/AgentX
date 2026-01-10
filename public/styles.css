@@ -1229,6 +1229,13 @@ button:active {
   border-top: 1px solid rgba(255, 255, 255, 0.05);
 }
 
+.message-citations details > summary {
+  list-style: none;
+}
+.message-citations details > summary::-webkit-details-marker {
+  display: none;
+}
+
 .message-citations .citations-title {
   font-weight: 600;
   margin-bottom: 0.5rem;
