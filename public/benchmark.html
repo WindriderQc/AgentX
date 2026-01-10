@@ -219,6 +219,65 @@
             margin-bottom: 32px;
         }
 
+        .timeline-model-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .timeline-model-label {
+            width: 160px;
+            flex: 0 0 160px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: var(--text);
+            font-size: 0.85em;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .timeline-model-track {
+            display: flex;
+            flex-wrap: nowrap;
+            gap: 6px;
+            overflow-x: auto;
+            padding: 6px 8px;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            scrollbar-width: thin;
+            scrollbar-color: rgba(124, 240, 255, 0.35) transparent;
+        }
+
+        .timeline-model-track::-webkit-scrollbar {
+            height: 6px;
+        }
+
+        .timeline-model-track::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .timeline-model-track::-webkit-scrollbar-thumb {
+            background: rgba(124, 240, 255, 0.35);
+            border-radius: 6px;
+        }
+
+        .timeline-segment {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 8px;
+            border-radius: 6px;
+            color: #fff;
+            font-size: 0.7em;
+            font-weight: 600;
+            white-space: nowrap;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+        }
+
         /* Compare + Batch row */
         .benchmark-compare-batch-row {
             display: flex;
@@ -6876,41 +6935,17 @@
                 // Sort by timestamp (oldest first)
                 const sorted = [...results].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
-                // Find max duration for proportional bar sizing
-                const maxDuration = Math.max(...sorted.map(r => r.latency || 0));
+                // Find max duration for proportional segment sizing
+                const maxDuration = Math.max(1, ...sorted.map(r => r.latency || 0));
 
-                // Group tests into batches (tests within 5 seconds are same batch)
-                const batches = [];
-                let currentBatch = [sorted[0]];
-
-                for (let i = 1; i < sorted.length; i++) {
-                    const prevEnd = new Date(sorted[i-1].timestamp).getTime() + (sorted[i-1].latency || 0);
-                    const currStart = new Date(sorted[i].timestamp).getTime();
-                    const gap = currStart - prevEnd;
-
-                    if (gap < 5000) { // Less than 5 seconds gap = same batch
-                        currentBatch.push(sorted[i]);
-                    } else {
-                        batches.push(currentBatch);
-                        currentBatch = [sorted[i]];
+                // Group results by model
+                const resultsByModel = new Map();
+                sorted.forEach((result) => {
+                    const model = result.model || 'Unknown Model';
+                    if (!resultsByModel.has(model)) {
+                        resultsByModel.set(model, []);
                     }
-                }
-                batches.push(currentBatch);
-
-                // Calculate space allocation: each batch gets equal space, tests positioned within their batch
-                const spacePerBatch = 100 / batches.length;
-                const testPositions = new Map();
-
-                batches.forEach((batch, batchIdx) => {
-                    const batchStartPercent = batchIdx * spacePerBatch;
-                    const batchEndPercent = (batchIdx + 1) * spacePerBatch;
-                    const batchSpace = batchEndPercent - batchStartPercent;
-
-                    // Within each batch, position tests sequentially
-                    batch.forEach((test, testIdx) => {
-                        const testPosition = batchStartPercent + (testIdx / batch.length) * batchSpace;
-                        testPositions.set(test, testPosition);
-                    });
+                    resultsByModel.get(model).push(result);
                 });
 
                 // Helper function to format time labels
@@ -6945,123 +6980,103 @@
                     return 'queued';
                 };
 
-                const stageVisuals = {
-                    'queued': {
-                        icon: 'fa-clock',
-                        iconPulse: false,
-                        barClass: 'gantt-bar-queued',
-                        baseColor: '#95a5a6'
-                    },
-                    'running': {
-                        icon: 'fa-cogs',
-                        iconPulse: true,
-                        barClass: 'gantt-bar-running',
-                        baseColor: '#3498db'
-                    },
-                    'judging': {
-                        icon: 'fa-gavel',
-                        iconPulse: true,
-                        barClass: 'gantt-bar-judging',
-                        baseColor: '#9b59b6'
-                    },
-                    'complete-success': {
+                const segmentVisuals = {
+                    test: {
                         icon: 'fa-check-circle',
-                        iconPulse: false,
-                        barClass: '',
                         baseColor: '#2ecc71'
                     },
-                    'complete-error': {
+                    'test-error': {
                         icon: 'fa-times-circle',
-                        iconPulse: false,
-                        barClass: '',
                         baseColor: '#e74c3c'
+                    },
+                    judging: {
+                        icon: 'fa-gavel',
+                        baseColor: '#9b59b6'
+                    },
+                    warmup: {
+                        icon: 'fa-fire',
+                        baseColor: '#f39c12'
+                    },
+                    queued: {
+                        icon: 'fa-clock',
+                        baseColor: '#95a5a6'
+                    },
+                    running: {
+                        icon: 'fa-cogs',
+                        baseColor: '#3498db'
                     }
                 };
 
-                // Generate batch labels for time axis
-                const batchLabels = batches.map((batch, idx) => {
-                    const batchStartTime = new Date(batch[0].timestamp);
-                    const timeStr = batchStartTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                    return `Batch ${idx + 1} (${timeStr})`;
-                });
-
-                // Render time axis with batch labels
-                const timeAxisHtml = `
-                    <div style="display: flex; justify-content: ${batches.length > 1 ? 'space-between' : 'flex-start'}; padding: 0 8px 8px; margin-left: 150px; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 12px; gap: 20px;">
-                        ${batchLabels.map(label => `<div style="color: var(--accent); font-size: 0.75em; font-weight: 600;">${label}</div>`).join('')}
-                    </div>
-                `;
-
-                // Render gantt bars
-                const ganttHtml = sorted.map((result, index) => {
-                    const duration = result.latency || 0;
-                    const leftPercent = testPositions.get(result);
+                const getSegmentType = (result) => {
+                    if (result.prompt === 'warmup') {
+                        return 'warmup';
+                    }
                     const stage = getTestStage(result);
-                    const visual = stageVisuals[stage];
+                    if (stage === 'judging') return 'judging';
+                    if (stage === 'running') return 'running';
+                    if (stage === 'queued') return 'queued';
+                    return result.success ? 'test' : 'test-error';
+                };
 
-                    // Bar width proportional to duration (max duration = 15% of space)
-                    let widthPercent = (duration / maxDuration) * 15;
+                const getSegmentWidth = (duration, stage) => {
+                    if (stage === 'queued') return 80;
+                    if ((stage === 'running' || stage === 'judging') && duration === 0) return 110;
+                    if (!duration) return 90;
+                    return Math.max(80, Math.min(220, (duration / maxDuration) * 220));
+                };
 
-                    // For running/judging tests, calculate live elapsed time
-                    if ((stage === 'running' || stage === 'judging') && result.timestamp) {
-                        const elapsed = Date.now() - new Date(result.timestamp).getTime();
-                        widthPercent = (elapsed / maxDuration) * 15;
-                    } else if (stage === 'queued') {
-                        widthPercent = 0.8; // Minimal width for queued tests
-                    }
+                const timelineRowsHtml = Array.from(resultsByModel.entries())
+                    .sort(([modelA], [modelB]) => modelA.localeCompare(modelB))
+                    .map(([model, modelResults]) => {
+                        const sortedResults = [...modelResults].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
-                    const durationText = duration > 0 ? formatTimeLabel(duration) : (stage === 'running' || stage === 'judging' ? 'Running...' : 'Queued');
+                        const segmentsHtml = sortedResults.map((result) => {
+                            const stage = getTestStage(result);
+                            const segmentType = getSegmentType(result);
+                            const visual = segmentVisuals[segmentType];
+                            const duration = result.latency || 0;
+                            const elapsed = result.timestamp ? Date.now() - new Date(result.timestamp).getTime() : 0;
+                            const segmentDuration = (stage === 'running' || stage === 'judging') ? elapsed : duration;
+                            const widthPx = getSegmentWidth(segmentDuration, stage);
+                            const durationText = duration > 0
+                                ? formatTimeLabel(duration)
+                                : (stage === 'running' || stage === 'judging' ? 'Running...' : stage === 'queued' ? 'Queued' : '—');
 
-                    // Quality badge with detailed breakdown - inside the bar
-                    let qualityBadgeHtml = '';
-                    if (result.quality_score) {
-                        const score = result.quality_score;
-                        const breakdown = result.quality_breakdown || {};
-                        const badgeColor = score >= 8 ? '#2ecc71' : score >= 6 ? '#f39c12' : score >= 4 ? '#e67e22' : '#e74c3c';
+                            const segmentLabel = result.prompt === 'warmup'
+                                ? 'Warmup'
+                                : result.prompt_level || stage.replace('-', ' ');
 
-                        const tooltipText = `Quality Score: ${score}/10
-Correctness: ${breakdown.correctness || 'N/A'}/10
-Clarity: ${breakdown.clarity || 'N/A'}/10
-Efficiency: ${breakdown.efficiency || 'N/A'}/10
+                            const tooltipText = `${result.model}
+${segmentType.replace('-', ' ')}
+${result.prompt_level || result.prompt || 'N/A'}`;
 
-${result.quality_explanation || breakdown.explanation || 'No details available'}`;
+                            return `
+                                <div
+                                    class="timeline-segment"
+                                    style="flex: 0 0 ${widthPx}px; background: ${visual.baseColor};"
+                                    title="${tooltipText.replace(/"/g, '&quot;')}"
+                                >
+                                    <i class="fas ${visual.icon}"></i>
+                                    <span>${segmentLabel}</span>
+                                    <span style="margin-left: auto; font-weight: 500; font-size: 0.65em;">${durationText}</span>
+                                </div>
+                            `;
+                        }).join('');
 
-                        qualityBadgeHtml = `<span
-                            style="background: ${badgeColor}; color: white; padding: 2px 6px; border-radius: 3px; font-size: 0.7em; font-weight: 700; cursor: help; margin-left: 6px; border: 1px solid rgba(255,255,255,0.4); box-shadow: 0 1px 3px rgba(0,0,0,0.3);"
-                            title="${tooltipText.replace(/"/g, '&quot;').replace(/\n/g, '&#10;')}"
-                        >Q${score}</span>`;
-                    }
-
-                    // Stage icon with pulse animation
-                    const stageIconHtml = `<i class="fas ${visual.icon} stage-icon ${visual.iconPulse ? 'stage-icon-pulse' : ''}"></i>`;
-
-                    return `
-                        <div style="position: relative; height: 36px; margin-bottom: 8px;">
-                            <div style="position: absolute; left: 0; top: 0; width: 140px; padding-right: 8px; color: var(--text); font-size: 0.85em; line-height: 36px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                                <i class="fas ${visual.icon}" style="color: ${visual.baseColor}; margin-right: 4px;"></i>
-                                ${result.model}
-                            </div>
-                            <div style="position: absolute; left: 150px; right: 32px; top: 0; height: 100%; padding: 6px 0;">
-                                <div style="position: relative; height: 100%; background: rgba(255,255,255,0.03); border-radius: 4px;">
-                                    <div
-                                        class="${visual.barClass}"
-                                        style="position: absolute; left: ${leftPercent}%; width: ${Math.max(widthPercent, 1.5)}%; height: 100%; ${visual.barClass ? '' : `background: linear-gradient(90deg, ${visual.baseColor}, ${visual.baseColor}dd);`} border-radius: 4px; display: flex; align-items: center; padding: 0 6px 0 22px; transition: width 0.5s ease, left 0.3s ease; position: relative; gap: 4px;"
-                                        title="${result.model} - ${stage.replace('-', ' ')} - ${result.prompt_level || 'N/A'}"
-                                    >
-                                        ${stageIconHtml}
-                                        <span style="color: white; font-size: 0.7em; font-weight: 600; white-space: nowrap;">
-                                            ${widthPercent > 8 ? result.prompt_level || '' : ''}
-                                        </span>
-                                        <span style="margin-left: auto; color: white; font-size: 0.65em; font-weight: 500;">${durationText}</span>
-                                        ${qualityBadgeHtml}
-                                    </div>
+                        return `
+                            <div class="timeline-model-row">
+                                <div class="timeline-model-label" title="${model.replace(/"/g, '&quot;')}">
+                                    <i class="fas fa-robot" style="color: var(--accent);"></i>
+                                    ${model}
+                                </div>
+                                <div class="timeline-model-track">
+                                    ${segmentsHtml}
                                 </div>
                             </div>
-                        </div>
-                    `;
-                }).join('');
+                        `;
+                    }).join('');
 
-                timelineVisual.innerHTML = timeAxisHtml + ganttHtml || '<div style="color: var(--muted); padding: 16px; text-align: center;">No test results</div>';
+                timelineVisual.innerHTML = timelineRowsHtml || '<div style="color: var(--muted); padding: 16px; text-align: center;">No test results</div>';
             } catch (err) {
                 console.error('Failed to load timeline:', err);
                 const timelineVisual = document.getElementById('timelineVisual');
