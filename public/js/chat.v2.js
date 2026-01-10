@@ -1810,10 +1810,27 @@ document.addEventListener('DOMContentLoaded', () => {
       if (e.target.type === 'range' || e.target.id === 'temperature') {
         updateConfigSummary();
       }
+      // Update context limit display when num_ctx changes
+      if (e.target.id === 'numCtx') {
+        const tokenLimit = document.getElementById('tokenLimit');
+        if (tokenLimit) {
+          tokenLimit.textContent = Number(e.target.value).toLocaleString();
+        }
+        // Recalculate percentage if there's current conversation data
+        if (state.conversationId) {
+          refreshStats(state.conversationId);
+        }
+      }
     });
 
     // Initialize config summary
     updateConfigSummary();
+
+    // Initialize context limit display
+    const tokenLimit = document.getElementById('tokenLimit');
+    if (tokenLimit) {
+      tokenLimit.textContent = (config.options.num_ctx || 4096).toLocaleString();
+    }
 
     // Load history and open latest conversation if available
     const history = await loadHistoryList();
@@ -1859,13 +1876,35 @@ function updateConversationStats(conversation) {
   if (conversation && conversation.usage) {
     const tokensEl = document.getElementById('conversationTokens');
     const costEl = document.getElementById('conversationCost');
-    
+
     if (tokensEl) {
       tokensEl.style.display = 'inline-flex';
       const tokenCount = document.getElementById('tokenCount');
-      if (tokenCount) tokenCount.textContent = (conversation.usage.totalTokens || 0).toLocaleString();
+      const tokenLimit = document.getElementById('tokenLimit');
+      const contextPercentage = document.getElementById('contextPercentage');
+      const contextProgressFill = document.getElementById('contextProgressFill');
+
+      const currentTokens = conversation.usage.totalTokens || 0;
+      const maxTokens = config.options.num_ctx || 4096;
+      const percentage = Math.min(100, Math.round((currentTokens / maxTokens) * 100));
+
+      if (tokenCount) tokenCount.textContent = currentTokens.toLocaleString();
+      if (tokenLimit) tokenLimit.textContent = maxTokens.toLocaleString();
+      if (contextPercentage) contextPercentage.textContent = `${percentage}%`;
+
+      if (contextProgressFill) {
+        contextProgressFill.style.width = `${percentage}%`;
+
+        // Color coding based on usage
+        contextProgressFill.classList.remove('warning', 'danger');
+        if (percentage >= 90) {
+          contextProgressFill.classList.add('danger');
+        } else if (percentage >= 70) {
+          contextProgressFill.classList.add('warning');
+        }
+      }
     }
-    
+
     if (costEl) {
       costEl.style.display = 'inline-flex';
       const costAmount = document.getElementById('costAmount');
