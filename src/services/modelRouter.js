@@ -10,6 +10,7 @@ const logger = require('../../config/logger');
 const fetch = require('node-fetch');
 const { RemediationAction } = require('../../models/RemediationAction');
 const { getAlertService } = require('./alertService');
+const { getFetchOptions } = require('../helpers/httpAgent');
 
 // Host configuration
 // NOTE: Some unit tests set env vars after requiring this module.
@@ -66,7 +67,9 @@ async function getModelHealth(hostUrl, _model = null) {
     }
 
     try {
-        const response = await fetch(`${hostUrl}/api/tags`, { method: 'GET' });
+        const url = `${hostUrl}/api/tags`;
+        const fetchOptions = getFetchOptions(url, { method: 'GET' });
+        const response = await fetch(url, fetchOptions);
         const end = Date.now();
         const result = {
             healthy: !!response?.ok,
@@ -285,7 +288,8 @@ async function classifyQuery(message, timeout = 10000) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeout);
         
-        const response = await fetch(`${frontDoor}/api/generate`, {
+        const url = `${frontDoor}/api/generate`;
+        const fetchOptions = getFetchOptions(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -299,6 +303,7 @@ async function classifyQuery(message, timeout = 10000) {
             }),
             signal: controller.signal
         });
+        const response = await fetch(url, fetchOptions);
         
         clearTimeout(timeoutId);
         
