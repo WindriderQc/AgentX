@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CategoryBadge Component Demo</title>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/model-categorization.css">
+    <style>
+        body {
+            background: #0D1117;
+            color: #e0e0e0;
+            font-family: 'Space Grotesk', sans-serif;
+            padding: 40px;
+            line-height: 1.6;
+        }
+        .demo-section {
+            margin-bottom: 60px;
+        }
+        .demo-section h2 {
+            color: #7CF0FF;
+            margin-bottom: 20px;
+        }
+        .badge-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .badge-demo {
+            background: rgba(255,255,255,0.05);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .badge-demo h4 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            color: #ccc;
+            font-size: 0.9rem;
+        }
+        code {
+            background: rgba(0,0,0,0.3);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            color: #7CF0FF;
+        }
+    </style>
+</head>
+<body>
+    <h1 style="color: #7CF0FF; margin-bottom: 10px;">🎨 CategoryBadge Component Demo</h1>
+    <p style="color: #888; margin-bottom: 40px;">Interactive showcase of the reusable CategoryBadge component</p>
+
+    <!-- Section 1: Confidence Levels -->
+    <div class="demo-section">
+        <h2>1. Confidence Levels</h2>
+        <div class="badge-grid">
+            <div class="badge-demo">
+                <h4>High Confidence (≥80%)</h4>
+                <div id="badge-high"></div>
+                <p style="margin-top: 10px; font-size: 0.85rem; color: #888;">Solid border, full opacity, thick ring</p>
+            </div>
+            <div class="badge-demo">
+                <h4>Medium Confidence (60-79%)</h4>
+                <div id="badge-medium"></div>
+                <p style="margin-top: 10px; font-size: 0.85rem; color: #888;">90% opacity, regular ring</p>
+            </div>
+            <div class="badge-demo">
+                <h4>Low Confidence (40-59%)</h4>
+                <div id="badge-low"></div>
+                <p style="margin-top: 10px; font-size: 0.85rem; color: #888;">Dashed border, 80% opacity</p>
+            </div>
+            <div class="badge-demo">
+                <h4>Very Low Confidence (<40%)</h4>
+                <div id="badge-very-low"></div>
+                <p style="margin-top: 10px; font-size: 0.85rem; color: #888;">Dotted border, 60% opacity</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Section 2: All Categories -->
+    <div class="demo-section">
+        <h2>2. All Categories</h2>
+        <div class="badge-grid">
+            <div class="badge-demo">
+                <h4>💻 Coding</h4>
+                <div id="badge-coding"></div>
+                <code>#7c9fff</code>
+            </div>
+            <div class="badge-demo">
+                <h4>🧠 Reasoning</h4>
+                <div id="badge-reasoning"></div>
+                <code>#a78bfa</code>
+            </div>
+            <div class="badge-demo">
+                <h4>📚 Factual</h4>
+                <div id="badge-factual"></div>
+                <code>#34d399</code>
+            </div>
+            <div class="badge-demo">
+                <h4>🔢 Math</h4>
+                <div id="badge-math"></div>
+                <code>#fbbf24</code>
+            </div>
+            <div class="badge-demo">
+                <h4>✨ Creative</h4>
+                <div id="badge-creative"></div>
+                <code>#f87171</code>
+            </div>
+            <div class="badge-demo">
+                <h4>📝 General</h4>
+                <div id="badge-general"></div>
+                <code>#94a3b8</code>
+            </div>
+        </div>
+    </div>
+
+    <!-- Section 3: Size Variants -->
+    <div class="demo-section">
+        <h2>3. Size Variants</h2>
+        <div class="badge-grid">
+            <div class="badge-demo">
+                <h4>Small</h4>
+                <div id="badge-small"></div>
+            </div>
+            <div class="badge-demo">
+                <h4>Medium (Default)</h4>
+                <div id="badge-medium-size"></div>
+            </div>
+            <div class="badge-demo">
+                <h4>Large</h4>
+                <div id="badge-large"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Section 4: With Benchmark Scores -->
+    <div class="demo-section">
+        <h2>4. With Benchmark Tooltips</h2>
+        <p style="color: #888; margin-bottom: 20px;">Hover over these badges to see benchmark score tooltips:</p>
+        <div class="badge-grid">
+            <div class="badge-demo">
+                <h4>Coding with Scores</h4>
+                <div id="badge-with-scores"></div>
+                <p style="margin-top: 10px; font-size: 0.85rem; color: #888;">Hover to see HumanEval, MBPP, CodeGen scores</p>
+            </div>
+            <div class="badge-demo">
+                <h4>Without Scores</h4>
+                <div id="badge-without-scores"></div>
+                <p style="margin-top: 10px; font-size: 0.85rem; color: #888;">Basic tooltip only</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Section 5: Simple Badges -->
+    <div class="demo-section">
+        <h2>5. Simple Badges (No Confidence)</h2>
+        <p style="color: #888; margin-bottom: 20px;">For manual categories without AI recommendations:</p>
+        <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+            <div id="badge-simple-1"></div>
+            <div id="badge-simple-2"></div>
+            <div id="badge-simple-3"></div>
+        </div>
+    </div>
+
+    <!-- Section 6: States -->
+    <div class="demo-section">
+        <h2>6. Special States</h2>
+        <div class="badge-grid">
+            <div class="badge-demo">
+                <h4>Empty/Null Category</h4>
+                <div id="badge-empty"></div>
+            </div>
+            <div class="badge-demo">
+                <h4>No Confidence Data</h4>
+                <div id="badge-no-confidence"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Component Script -->
+    <script src="/js/components/CategoryBadge.js"></script>
+    <script>
+        // Confidence levels
+        document.getElementById('badge-high').innerHTML = 
+            CategoryBadge.render('coding', 87, { 
+                interactive: true, 
+                benchmarkScores: { HumanEval: 85, MBPP: 78, CodeGen: 95 }
+            });
+        
+        document.getElementById('badge-medium').innerHTML = 
+            CategoryBadge.render('reasoning', 65, { interactive: true });
+        
+        document.getElementById('badge-low').innerHTML = 
+            CategoryBadge.render('factual', 52, { interactive: true });
+        
+        document.getElementById('badge-very-low').innerHTML = 
+            CategoryBadge.render('math', 38, { interactive: true });
+
+        // All categories
+        document.getElementById('badge-coding').innerHTML = 
+            CategoryBadge.render('coding', 85, { interactive: true });
+        
+        document.getElementById('badge-reasoning').innerHTML = 
+            CategoryBadge.render('reasoning', 72, { interactive: true });
+        
+        document.getElementById('badge-factual').innerHTML = 
+            CategoryBadge.render('factual', 91, { interactive: true });
+        
+        document.getElementById('badge-math').innerHTML = 
+            CategoryBadge.render('math', 68, { interactive: true });
+        
+        document.getElementById('badge-creative').innerHTML = 
+            CategoryBadge.render('creative', 79, { interactive: true });
+        
+        document.getElementById('badge-general').innerHTML = 
+            CategoryBadge.render('general', 55, { interactive: true });
+
+        // Size variants
+        document.getElementById('badge-small').innerHTML = 
+            CategoryBadge.render('coding', 85, { size: 'small', interactive: true });
+        
+        document.getElementById('badge-medium-size').innerHTML = 
+            CategoryBadge.render('coding', 85, { size: 'medium', interactive: true });
+        
+        document.getElementById('badge-large').innerHTML = 
+            CategoryBadge.render('coding', 85, { size: 'large', interactive: true });
+
+        // With benchmark scores
+        document.getElementById('badge-with-scores').innerHTML = 
+            CategoryBadge.render('coding', 86, { 
+                interactive: true,
+                benchmarkScores: {
+                    'HumanEval': 85,
+                    'MBPP': 78,
+                    'CodeGen': 95
+                }
+            });
+        
+        document.getElementById('badge-without-scores').innerHTML = 
+            CategoryBadge.render('reasoning', 72, { interactive: true });
+
+        // Simple badges
+        document.getElementById('badge-simple-1').innerHTML = 
+            CategoryBadge.renderSimple('coding', { interactive: true });
+        
+        document.getElementById('badge-simple-2').innerHTML = 
+            CategoryBadge.renderSimple('reasoning', { interactive: true });
+        
+        document.getElementById('badge-simple-3').innerHTML = 
+            CategoryBadge.renderSimple('math', { interactive: true });
+
+        // Special states
+        document.getElementById('badge-empty').innerHTML = 
+            CategoryBadge.render(null);
+        
+        document.getElementById('badge-no-confidence').innerHTML = 
+            CategoryBadge.render('coding', null, { interactive: false });
+    </script>
+</body>
+</html>

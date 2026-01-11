@@ -1653,6 +1653,7 @@
 
 <body>
     <div id="nav-container"></div>
+    <script src="/js/components/CategoryBadge.js"></script>
     <script src="/js/components/nav.js"></script>
     <script src="/js/workspace.js"></script>
     <script>injectNav('benchmark');</script>
@@ -6931,9 +6932,29 @@
                         const crown = isBestOverall ? '👑 ' : '';
                         const hostLabel = model.host ? formatHostLabel(model.host) : 'Unknown';
 
-                        // Recommended category formatting
-                        const formatRecommendedCategory = (category) => {
+                        // Recommended category formatting with CategoryBadge component
+                        const formatRecommendedCategory = (category, benchmarkScores = null) => {
                             if (!category) return '<span style="color: var(--muted); font-size: 0.85em;">—</span>';
+                            
+                            // Calculate confidence based on benchmark scores
+                            let confidence = null;
+                            if (benchmarkScores && Object.keys(benchmarkScores).length > 0) {
+                                const scores = Object.values(benchmarkScores);
+                                confidence = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+                            }
+                            
+                            // Use CategoryBadge component if available
+                            if (typeof CategoryBadge !== 'undefined') {
+                                return CategoryBadge.render(category, confidence, {
+                                    benchmarkScores: benchmarkScores,
+                                    showRing: confidence !== null,
+                                    interactive: true,
+                                    animated: true,
+                                    size: 'small'
+                                });
+                            }
+                            
+                            // Fallback to simple badge
                             const categoryColors = {
                                 'coding': '#7c9fff',
                                 'reasoning': '#a78bfa',
@@ -6950,7 +6971,21 @@
                                         category === 'creative' ? '✨' : '📝';
                             return `<span style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 12px; background: linear-gradient(135deg, ${color}22 0%, ${color}11 100%); border: 1px solid ${color}44; color: ${color}; font-size: 0.85em; font-weight: 600;">${icon} ${category}</span>`;
                         };
-                        const recommendedCategoryHtml = formatRecommendedCategory(model.recommended_category);
+                        
+                        // Get benchmark scores for tooltip
+                        const benchmarkScores = {};
+                        if (model.stats && Array.isArray(model.stats)) {
+                            model.stats.forEach(stat => {
+                                if (stat.score !== undefined && stat.score !== null) {
+                                    benchmarkScores[stat.benchmark || 'Overall'] = stat.score;
+                                }
+                            });
+                        }
+                        
+                        const recommendedCategoryHtml = formatRecommendedCategory(
+                            model.recommended_category,
+                            Object.keys(benchmarkScores).length > 0 ? benchmarkScores : null
+                        );
 
                         // Build offender badges - these represent actual performance issues from test data
                         let offenderBadges = '';

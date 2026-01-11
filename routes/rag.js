@@ -650,10 +650,19 @@ router.get('/deletion-preview', async (req, res) => {
     const manifest = await RagManifest.findOne({ source, root: cleanRoot }).lean();
 
     if (!manifest) {
-      return res.status(404).json({
-        status: 'error',
-        message: 'Manifest not found for source/root',
-        details: { source, root: cleanRoot }
+      return res.json({
+        status: 'success',
+        data: {
+          source,
+          root: cleanRoot,
+          manifestMissing: true,
+          summary: {
+            ragDocuments: 0,
+            manifestFiles: 0,
+            candidates: 0
+          },
+          candidates: []
+        }
       });
     }
 

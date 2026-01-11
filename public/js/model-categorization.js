@@ -13,11 +13,36 @@ async function init() {
     await fetchModels();
     await fetchStats();
     setupEventListeners();
+    setupScrollHints();
+}
+
+function setupScrollHints() {
+    const tableContainer = document.querySelector('.table-container');
+    const table = tableContainer.querySelector('table');
+    
+    const checkScroll = () => {
+        if (table.scrollWidth > tableContainer.clientWidth) {
+            tableContainer.classList.add('has-scroll');
+        } else {
+            tableContainer.classList.remove('has-scroll');
+        }
+    };
+    
+    // Check on load and resize
+    checkScroll();
+    window.addEventListener('resize', checkScroll);
+    
+    // Remove hint after first scroll
+    tableContainer.addEventListener('scroll', () => {
+        tableContainer.classList.remove('has-scroll');
+    }, { once: true });
 }
 
 async function fetchModels() {
     const tableBody = document.getElementById('modelsTableBody');
-    tableBody.innerHTML = '<tr><td colspan="5" style="text-align: center;">Loading...</td></tr>';
+    
+    // Show skeleton loading state
+    tableBody.innerHTML = renderSkeletonRows(5);
 
     try {
         const response = await fetch('/api/models/registry');
@@ -25,7 +50,8 @@ async function fetchModels() {
         
         if (result.status === 'success') {
             allModels = result.data.models;
-            renderTable(allModels);
+            // Small delay for smooth transition
+            setTimeout(() => renderTable(allModels), 200);
         } else {
             tableBody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #ff6b6b;">Failed to load models</td></tr>';
         }
@@ -33,6 +59,31 @@ async function fetchModels() {
         console.error('Error fetching models:', error);
         tableBody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #ff6b6b;">Network error</td></tr>';
     }
+}
+
+function renderSkeletonRows(count) {
+    let html = '';
+    for (let i = 0; i < count; i++) {
+        html += `
+            <tr>
+                <td><div class="skeleton" style="width: 20px; height: 20px;"></div></td>
+                <td>
+                    <div class="skeleton" style="width: 200px; height: 16px; margin-bottom: 8px;"></div>
+                    <div class="skeleton" style="width: 150px; height: 14px;"></div>
+                </td>
+                <td><div class="skeleton skeleton-badge"></div></td>
+                <td>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <div class="skeleton" style="width: 80px; height: 24px; border-radius: 12px;"></div>
+                        <div class="skeleton" style="width: 90px; height: 24px; border-radius: 12px;"></div>
+                        <div class="skeleton" style="width: 70px; height: 24px; border-radius: 12px;"></div>
+                    </div>
+                </td>
+                <td><div class="skeleton" style="width: 100px; height: 30px;"></div></td>
+            </tr>
+        `;
+    }
+    return html;
 }
 
 async function fetchStats() {
@@ -74,15 +125,30 @@ function renderTable(models) {
         `;
         tr.appendChild(nameTd);
 
-        // Recommended Category
+        // Recommended Category with CategoryBadge component
         const recTd = document.createElement('td');
-        const recCat = model.benchmarkStats?.bestCategory || 'Pending';
-        const isPending = recCat === 'Pending';
-        recTd.innerHTML = `
-            <div class="rec-badge" style="${isPending ? 'background:rgba(255,255,255,0.05); color:#888; border-color:#444;' : ''}">
-                <i class="fa-solid ${getCategoryIcon(recCat)}"></i> ${capitalize(recCat)}
-            </div>
-        `;
+        const recCat = model.benchmarkStats?.bestCategory;
+        const confidence = model.benchmarkStats?.confidence || null;
+        
+        if (recCat && recCat !== 'Pending' && typeof CategoryBadge !== 'undefined') {
+            // Use CategoryBadge with confidence indicator
+            const benchmarkScores = model.benchmarkStats?.scores || null;
+            recTd.innerHTML = CategoryBadge.render(recCat, confidence, {
+                benchmarkScores: benchmarkScores,
+                showRing: true,
+                interactive: true,
+                animated: true,
+                size: 'medium'
+            });
+        } else {
+            // Fallback for pending or no category
+            const isPending = !recCat || recCat === 'Pending';
+            recTd.innerHTML = `
+                <div class="rec-badge" style="${isPending ? 'background:rgba(255,255,255,0.05); color:#888; border-color:#444;' : ''}">
+                    <i class="fa-solid ${getCategoryIcon(recCat || 'pending')}"></i> ${capitalize(recCat || 'Pending')}
+                </div>
+            `;
+        }
         tr.appendChild(recTd);
 
         // Manual Categories
@@ -149,17 +215,62 @@ window.markDirty = function(modelName) {
         btn.style.display = 'flex';
         btn.classList.add('btn-primary');
     }
+    
+    // Show real-time category suggestion preview
+    showCategorySuggestionPreview(modelName);
 };
 
-window.saveModelCategories = async function(modelName) {
-    // Collect checked checkboxes for this row
-    // We find the row by button context or just searching
-    // Simpler: find the categories for this model in the current DOM
-    // But since arguments are passed, we need a way to find the inputs.
-    // Let's assume unique IDs or traverse logic.
-    // Actually, iterating all checkboxes in the row is safer.
+function showCategorySuggestionPreview(modelName) {
+    const model = allModels.find(m => m.name === modelName);
+    if (!model) return;
     
-    // Find the row containing this button
+    // Find the row for this model
+    const rows = document.querySelectorAll('#modelsTableBody tr');
+    let targetRow = null;
+    rows.forEach(row => {
+        const saveBtn = row.querySelector(`#save-${CSS.escape(modelName)}`);
+        if (saveBtn) targetRow = row;
+    });
+    
+    if (!targetRow) return;
+    
+    // Get currently selected categories from checkboxes
+    const checkboxes = targetRow.querySelectorAll('.category-checkboxes input[type="checkbox"]:checked');
+    const selectedCats = Array.from(checkboxes).map(cb => cb.value);
+    
+    // Get recommended category
+    const recommendedCat = model.benchmarkStats?.bestCategory;
+    
+    // Find or create preview element
+    let preview = targetRow.querySelector('.suggestion-preview');
+    const catsTd = targetRow.querySelector('td:nth-child(4)'); // Manual categories column
+    
+    if (!preview && recommendedCat && recommendedCat !== 'Pending') {
+        preview = document.createElement('div');
+        preview.className = 'suggestion-preview';
+        catsTd.appendChild(preview);
+    }
+    
+    if (preview && recommendedCat && recommendedCat !== 'Pending') {
+        const hasDiff = !selectedCats.includes(recommendedCat);
+        preview.className = hasDiff ? 'suggestion-preview has-diff' : 'suggestion-preview';
+        
+        if (hasDiff) {
+            preview.innerHTML = `
+                <i class="fas fa-lightbulb suggestion-icon"></i>
+                <span class="suggestion-text">AI suggests: <strong>${capitalize(recommendedCat)}</strong></span>
+                <span class="diff-badge diff-added">${recommendedCat}</span>
+            `;
+        } else {
+            preview.innerHTML = `
+                <i class="fas fa-check-circle suggestion-icon" style="color: var(--success);"></i>
+                <span class="suggestion-text">Matches AI recommendation!</span>
+            `;
+        }
+    }
+}
+
+window.saveModelCategories = async function(modelName) {
     const btn = document.getElementById(`save-${modelName}`);
     const row = btn.closest('tr');
     const checkboxes = row.querySelectorAll('.category-checkboxes input[type="checkbox"]');
@@ -169,6 +280,11 @@ window.saveModelCategories = async function(modelName) {
         if (cb.checked) newCategories.push(cb.value);
     });
 
+    // Add loading state
+    row.classList.add('updating');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+
     try {
         const response = await fetch(`/api/models/registry/${encodeURIComponent(modelName)}`, {
             method: 'PATCH',
@@ -177,16 +293,31 @@ window.saveModelCategories = async function(modelName) {
         });
         
         if (response.ok) {
-            showToast(`Categories saved for ${modelName}`);
+            // Success animation
+            row.classList.remove('updating');
+            row.classList.add('just-saved');
+            setTimeout(() => row.classList.remove('just-saved'), 600);
+            
+            showToast(`Categories saved for ${modelName}`, 'success');
             btn.style.display = 'none';
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-solid fa-save"></i> Save';
+            
+            // Remove preview
+            const preview = row.querySelector('.suggestion-preview');
+            if (preview) preview.remove();
+            
             // Refresh stats to reflect changes
             fetchStats();
         } else {
-            showToast('Failed to save categories', true);
+            throw new Error('Save failed');
         }
-    } catch (e) {
-        console.error(e);
-        showToast('Error saving categories', true);
+    } catch (error) {
+        console.error('Error saving categories:', error);
+        row.classList.remove('updating');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-save"></i> Save';
+        showToast(`Failed to save categories for ${modelName}`, 'error');
     }
 };
 
@@ -388,10 +519,10 @@ function renderPerfChart(perfData) {
     });
 }
 
-function showToast(msg, isError = false) {
+function showToast(msg, type = 'success') {
     const t = document.getElementById('toast');
     t.innerText = msg;
-    t.style.borderLeftColor = isError ? '#e74c3c' : '#2ecc71';
+    t.className = `toast ${type}`;
     t.classList.add('show');
     setTimeout(() => t.classList.remove('show'), 3000);
 }

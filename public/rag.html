@@ -216,6 +216,194 @@
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }
     }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 30px;
+    }
+
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .panel-header h2 {
+      font-size: 18px;
+      margin: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 2fr auto;
+      gap: 12px;
+      align-items: end;
+      margin-bottom: 12px;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+
+    .form-group input {
+      width: 100%;
+      padding: 10px 12px;
+      background: rgba(0,0,0,0.25);
+      border: 1px solid var(--panel-border);
+      border-radius: 8px;
+      color: var(--text);
+    }
+
+    .form-group input:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(124,240,255,0.1);
+    }
+
+    .table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border-radius: 10px;
+      border: 1px solid var(--panel-border);
+    }
+
+    .table th,
+    .table td {
+      padding: 10px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--panel-border);
+      font-size: 13px;
+      vertical-align: top;
+    }
+
+    .table th {
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      background: rgba(0,0,0,0.2);
+    }
+
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .upload-actions {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 14px;
+    }
+
+    .toolbar-row {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 18px;
+    }
+
+    .toolbar-row .search-box {
+      flex: 1;
+      margin-bottom: 0;
+      min-width: 260px;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--panel-border);
+      background: rgba(0,0,0,0.2);
+      color: var(--text);
+      font-size: 13px;
+    }
+
+    .chip input {
+      background: transparent;
+      border: none;
+      outline: none;
+      color: var(--text);
+      font-size: 13px;
+      width: 180px;
+    }
+
+    .form-row.two {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .form-row.four {
+      grid-template-columns: 1fr 1fr 1fr 1fr;
+    }
+
+    .form-group select {
+      width: 100%;
+      padding: 10px 12px;
+      background: rgba(0,0,0,0.25);
+      border: 1px solid var(--panel-border);
+      border-radius: 8px;
+      color: var(--text);
+    }
+
+    .progress {
+      width: 100%;
+      height: 10px;
+      background: rgba(0,0,0,0.25);
+      border: 1px solid var(--panel-border);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .progress > div {
+      height: 100%;
+      background: linear-gradient(90deg, rgba(124,240,255,0.2), rgba(124,240,255,0.9));
+      width: 0%;
+      transition: width 0.15s ease;
+    }
+
+    details summary {
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 13px;
+      user-select: none;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      border: 1px solid var(--panel-border);
+      background: rgba(0,0,0,0.2);
+      color: var(--text);
+    }
+
+    .badge.ok { border-color: rgba(34,197,94,0.35); background: rgba(34,197,94,0.08); }
+    .badge.warn { border-color: rgba(234,179,8,0.35); background: rgba(234,179,8,0.08); }
+    .badge.err { border-color: rgba(239,68,68,0.35); background: rgba(239,68,68,0.08); }
   </style>
 </head>
 <body>
@@ -253,19 +441,138 @@
       </div>
     </div>
 
+    <!-- Ingestion Settings -->
+    <div class="panel">
+      <div class="panel-header">
+        <h2><i class="fas fa-sliders"></i> Ingestion Settings</h2>
+        <div style="display:flex; gap:10px; align-items:center;">
+          <span id="settingsStatus" class="badge warn">Not saved</span>
+          <button class="btn-sm ghost" onclick="resetSettings()" title="Reset settings">
+            <i class="fas fa-eraser"></i>
+          </button>
+        </div>
+      </div>
+
+      <div class="form-row four">
+        <div class="form-group">
+          <label for="ingestSource">Source (required)</label>
+          <input id="ingestSource" placeholder="e.g. webui, nas-docs" value="webui">
+        </div>
+        <div class="form-group">
+          <label for="pathPrefix">Path Prefix (optional)</label>
+          <input id="pathPrefix" placeholder="e.g. /mnt/share/RAG" value="">
+        </div>
+        <div class="form-group">
+          <label for="defaultTags">Default Tags (comma)</label>
+          <input id="defaultTags" placeholder="e.g. manual, notes" value="">
+        </div>
+        <div class="form-group">
+          <label for="uploadMode">Upload Mode</label>
+          <select id="uploadMode">
+            <option value="files">Files</option>
+            <option value="folder">Folder (preserve paths)</option>
+          </select>
+        </div>
+      </div>
+
+      <details>
+        <summary>Advanced</summary>
+        <div class="form-row two" style="margin-top: 12px;">
+          <div class="form-group">
+            <label for="maxChars">Max chars per file (0 = unlimited)</label>
+            <input id="maxChars" type="number" min="0" value="0">
+          </div>
+          <div class="form-group">
+            <label for="concurrency">Upload concurrency</label>
+            <input id="concurrency" type="number" min="1" max="4" value="1">
+          </div>
+        </div>
+      </details>
+
+      <div style="display:flex; justify-content:flex-end; gap:10px; margin-top: 12px;">
+        <button class="btn-sm ghost" onclick="saveSettings()"><i class="fas fa-floppy-disk"></i> Save</button>
+      </div>
+    </div>
+
     <!-- Upload Zone -->
     <div class="upload-zone" id="uploadZone">
       <i class="fas fa-cloud-upload-alt"></i>
       <h3>Upload Documents</h3>
       <p>Click to browse or drag and drop files here</p>
-      <p style="font-size: 12px; margin-top: 8px;">Supported: TXT, MD, PDF, HTML, JSON</p>
-      <input type="file" id="fileInput" style="display: none;" multiple accept=".txt,.md,.pdf,.html,.json">
+      <p style="font-size: 12px; margin-top: 8px;">Supported: TXT, MD, HTML, JSON (PDF coming soon)</p>
+      <div class="upload-actions">
+        <button class="btn" id="pickFilesBtn"><i class="fas fa-file-arrow-up"></i> Pick files</button>
+        <button class="btn-sm ghost" id="pickFolderBtn" title="Pick a folder (Chrome/Edge)"><i class="fas fa-folder-open"></i> Pick folder</button>
+      </div>
+      <input type="file" id="fileInput" style="display: none;" multiple accept=".txt,.md,.html,.json">
+      <input type="file" id="folderInput" style="display: none;" webkitdirectory directory>
     </div>
 
-    <!-- Search Box -->
-    <div class="search-box">
-      <i class="fas fa-search"></i>
-      <input type="text" id="searchInput" placeholder="Search documents by title, content, or tags...">
+    <!-- Upload Progress -->
+    <div class="panel" id="uploadProgressPanel" style="display:none;">
+      <div class="panel-header">
+        <h2><i class="fas fa-rocket"></i> Upload Progress</h2>
+        <div style="display:flex; gap:10px; align-items:center;">
+          <span id="uploadSummary" class="badge">—</span>
+          <button class="btn-sm ghost" onclick="clearUploadResults()" title="Clear results"><i class="fas fa-xmark"></i></button>
+        </div>
+      </div>
+      <div class="progress" style="margin-bottom: 10px;"><div id="uploadProgressBar"></div></div>
+      <div id="uploadResults" class="muted" style="font-size: 13px;">—</div>
+    </div>
+
+    <!-- Deletion Preview -->
+    <div class="panel">
+      <div class="panel-header">
+        <h2><i class="fas fa-broom"></i> Deletion Preview (Manifest vs RAG)</h2>
+        <div style="display:flex; gap:10px; align-items:center;">
+          <button class="btn-sm ghost" onclick="copyDeletionPreviewUrl()" title="Copy preview URL">
+            <i class="fas fa-link"></i>
+          </button>
+          <button class="btn-sm ghost" onclick="loadDeletionPreview()" title="Refresh preview">
+            <i class="fas fa-rotate"></i>
+          </button>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="previewSource">Source</label>
+          <input id="previewSource" placeholder="e.g. nas-docs" value="nas-docs">
+        </div>
+        <div class="form-group">
+          <label for="previewRoot">Root</label>
+          <input id="previewRoot" placeholder="e.g. /mnt/share/RAG" value="/mnt/share/RAG">
+        </div>
+        <button class="btn" onclick="loadDeletionPreview()">Preview</button>
+      </div>
+      <div id="deletionPreviewContainer" class="muted" style="font-size: 13px;">
+        Enter source/root and click Preview.
+      </div>
+    </div>
+
+    <!-- Help -->
+    <div class="panel">
+      <div class="panel-header">
+        <h2><i class="fas fa-circle-info"></i> How this works</h2>
+      </div>
+      <div class="muted" style="font-size: 13px; line-height: 1.5;">
+        Uploads from this UI send the file text to <span class="mono">/api/rag/ingest</span> and are stored in the vector store (Qdrant payload contains the text chunks).
+        Folder scanning is typically done by n8n; it should (1) POST each file to <span class="mono">/api/rag/ingest</span> and (2) POST a manifest snapshot to <span class="mono">/api/rag/manifests</span>.
+        The Deletion Preview compares RAG docs for a <span class="mono">source</span> against the latest stored manifest for <span class="mono">source+root</span>.
+      </div>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="toolbar-row">
+      <div class="search-box">
+        <i class="fas fa-search"></i>
+        <input type="text" id="searchInput" placeholder="Search documents by title, path, content, or tags...">
+      </div>
+      <span class="chip" title="Filter by source">
+        <i class="fas fa-tag"></i>
+        <input id="sourceFilter" placeholder="source filter (optional)">
+      </span>
+      <button class="btn-sm ghost" onclick="loadDocuments()" title="Refresh documents"><i class="fas fa-rotate"></i></button>
     </div>
 
     <!-- Documents List -->
@@ -284,6 +591,9 @@
   <script>
     // Initialize
     let documents = [];
+    const SETTINGS_KEY = 'agentx_rag_ui_settings_v1';
+    const PREVIEW_KEY = 'agentx_rag_ui_preview_v1';
+    let uploadRun = null;
     const toast = window.toast || {
       success: (msg) => console.log('Success:', msg),
       error: (msg) => console.error('Error:', msg),
@@ -292,10 +602,137 @@
 
     // Load documents on page load
     document.addEventListener('DOMContentLoaded', () => {
+      loadSettings();
+      loadPreviewSettings();
       loadDocuments();
       setupUploadZone();
       setupSearch();
+      setTimeout(() => {
+        const ps = document.getElementById('previewSource').value.trim();
+        const pr = document.getElementById('previewRoot').value.trim();
+        if (ps && pr) loadDeletionPreview();
+      }, 250);
     });
+
+    function getSettings() {
+      const source = document.getElementById('ingestSource').value.trim();
+      const pathPrefix = document.getElementById('pathPrefix').value.trim().replace(/\\/g, '/').replace(/\/+$/, '');
+      const defaultTags = document.getElementById('defaultTags').value
+        .split(',')
+        .map(t => t.trim())
+        .filter(Boolean);
+      const uploadMode = document.getElementById('uploadMode').value;
+      const maxChars = Number(document.getElementById('maxChars').value || 0);
+      const concurrency = Math.min(4, Math.max(1, Number(document.getElementById('concurrency').value || 1)));
+
+      return {
+        source,
+        pathPrefix,
+        defaultTags,
+        uploadMode,
+        maxChars: Number.isFinite(maxChars) ? maxChars : 0,
+        concurrency
+      };
+    }
+
+    function setSettingsStatus(text, kind = '') {
+      const el = document.getElementById('settingsStatus');
+      el.textContent = text;
+      el.className = 'badge ' + (kind || '');
+    }
+
+    function saveSettings() {
+      const settings = getSettings();
+      if (!settings.source) {
+        toast.error('Source is required');
+        return;
+      }
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+      setSettingsStatus('Saved', 'ok');
+      toast.success('Settings saved');
+    }
+
+    function loadSettings() {
+      try {
+        const raw = localStorage.getItem(SETTINGS_KEY);
+        if (!raw) {
+          setSettingsStatus('Not saved', 'warn');
+          return;
+        }
+
+        const settings = JSON.parse(raw);
+        if (settings.source) document.getElementById('ingestSource').value = settings.source;
+        if (settings.pathPrefix !== undefined) document.getElementById('pathPrefix').value = settings.pathPrefix;
+        if (Array.isArray(settings.defaultTags)) document.getElementById('defaultTags').value = settings.defaultTags.join(', ');
+        if (settings.uploadMode) document.getElementById('uploadMode').value = settings.uploadMode;
+        if (settings.maxChars !== undefined) document.getElementById('maxChars').value = String(settings.maxChars);
+        if (settings.concurrency !== undefined) document.getElementById('concurrency').value = String(settings.concurrency);
+
+        const ps = document.getElementById('previewSource');
+        if (!ps.value.trim() && settings.source) ps.value = settings.source;
+        setSettingsStatus('Saved', 'ok');
+      } catch (e) {
+        console.warn('Failed to load settings', e);
+        setSettingsStatus('Not saved', 'warn');
+      }
+    }
+
+    function loadPreviewSettings() {
+      try {
+        const raw = localStorage.getItem(PREVIEW_KEY);
+        if (!raw) return;
+        const cfg = JSON.parse(raw);
+        if (cfg.source) document.getElementById('previewSource').value = cfg.source;
+        if (cfg.root) document.getElementById('previewRoot').value = cfg.root;
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    function savePreviewSettings() {
+      const source = document.getElementById('previewSource').value.trim();
+      const root = document.getElementById('previewRoot').value.trim();
+      localStorage.setItem(PREVIEW_KEY, JSON.stringify({ source, root }));
+    }
+
+    async function copyToClipboard(text) {
+      try {
+        await navigator.clipboard.writeText(text);
+        toast.success('Copied to clipboard');
+      } catch {
+        // Fallback for older browsers
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+        toast.success('Copied to clipboard');
+      }
+    }
+
+    function copyDeletionPreviewUrl() {
+      const source = document.getElementById('previewSource').value.trim();
+      const root = document.getElementById('previewRoot').value.trim();
+      if (!source || !root) {
+        toast.error('Source and root are required');
+        return;
+      }
+      const url = `${location.origin}/api/rag/deletion-preview?source=${encodeURIComponent(source)}&root=${encodeURIComponent(root)}`;
+      copyToClipboard(url);
+    }
+
+    function resetSettings() {
+      localStorage.removeItem(SETTINGS_KEY);
+      document.getElementById('ingestSource').value = 'webui';
+      document.getElementById('pathPrefix').value = '';
+      document.getElementById('defaultTags').value = '';
+      document.getElementById('uploadMode').value = 'files';
+      document.getElementById('maxChars').value = '0';
+      document.getElementById('concurrency').value = '1';
+      setSettingsStatus('Not saved', 'warn');
+      toast.info('Settings reset');
+    }
 
     // Load documents from API
     async function loadDocuments() {
@@ -320,6 +757,10 @@
           </div>
         `;
       }
+    }
+
+    function getDocId(doc) {
+      return doc.documentId || doc.id || doc._id;
     }
 
     // Update stats
@@ -352,12 +793,14 @@
       container.innerHTML = `
         <div class="document-grid">
           ${docs.map(doc => `
-            <div class="document-card" data-id="${doc.id || doc._id}">
+            <div class="document-card" data-id="${getDocId(doc) || ''}">
               <div class="document-info">
                 <div class="document-title">${escapeHtml(doc.title || 'Untitled')}</div>
                 <div class="document-meta">
-                  <span><i class="fas fa-calendar"></i> ${formatDate(doc.createdAt || doc.timestamp)}</span>
-                  <span><i class="fas fa-file-alt"></i> ${formatBytes(doc.text?.length || 0)}</span>
+                  <span><i class="fas fa-calendar"></i> ${formatDate(doc.updatedAt || doc.createdAt || doc.timestamp)}</span>
+                  <span><i class="fas fa-file-alt"></i> ${formatBytes(doc.textLength || doc.text?.length || 0)}</span>
+                  ${doc.source ? `<span><i class="fas fa-tag"></i> ${escapeHtml(doc.source)}</span>` : ''}
+                  ${doc.path ? `<span class="mono"><i class="fas fa-folder-tree"></i> ${escapeHtml(doc.path)}</span>` : ''}
                   ${doc.chunkCount ? `<span><i class="fas fa-cubes"></i> ${doc.chunkCount} chunks</span>` : ''}
                 </div>
                 ${doc.tags && doc.tags.length > 0 ? `
@@ -367,7 +810,7 @@
                 ` : ''}
               </div>
               <div class="document-actions">
-                <button class="btn-sm ghost" onclick="deleteDocument('${doc.id || doc._id}')" title="Delete">
+                <button class="btn-sm ghost" onclick='deleteDocument(${JSON.stringify(getDocId(doc) || "")})' title="Delete">
                   <i class="fas fa-trash"></i>
                 </button>
               </div>
@@ -381,8 +824,19 @@
     function setupUploadZone() {
       const zone = document.getElementById('uploadZone');
       const fileInput = document.getElementById('fileInput');
+      const folderInput = document.getElementById('folderInput');
+      const pickFilesBtn = document.getElementById('pickFilesBtn');
+      const pickFolderBtn = document.getElementById('pickFolderBtn');
 
-      zone.addEventListener('click', () => fileInput.click());
+      function openPicker() {
+        const mode = document.getElementById('uploadMode').value;
+        if (mode === 'folder') folderInput.click();
+        else fileInput.click();
+      }
+
+      zone.addEventListener('click', openPicker);
+      pickFilesBtn.addEventListener('click', (e) => { e.stopPropagation(); fileInput.click(); });
+      pickFolderBtn.addEventListener('click', (e) => { e.stopPropagation(); folderInput.click(); });
 
       zone.addEventListener('dragover', (e) => {
         e.preventDefault();
@@ -402,31 +856,169 @@
       fileInput.addEventListener('change', (e) => {
         handleFiles(e.target.files);
       });
+
+      folderInput.addEventListener('change', (e) => {
+        handleFiles(e.target.files);
+      });
+    }
+
+    function showUploadPanel() {
+      document.getElementById('uploadProgressPanel').style.display = 'block';
+    }
+
+    function setUploadProgress(current, total) {
+      const pct = total > 0 ? Math.round((current / total) * 100) : 0;
+      document.getElementById('uploadProgressBar').style.width = pct + '%';
+      document.getElementById('uploadSummary').textContent = `${current}/${total} (${pct}%)`;
+    }
+
+    function renderUploadResults() {
+      const el = document.getElementById('uploadResults');
+      if (!uploadRun || uploadRun.results.length === 0) {
+        el.textContent = '—';
+        return;
+      }
+
+      const ok = uploadRun.results.filter(r => r.outcome === 'ok').length;
+      const err = uploadRun.results.filter(r => r.outcome === 'err').length;
+      const unchanged = uploadRun.results.filter(r => r.status === 'unchanged').length;
+
+      el.innerHTML = `
+        <div class="muted" style="margin-bottom: 10px;">
+          <span class="badge ok">OK: ${ok}</span>
+          <span class="badge err" style="margin-left: 8px;">Errors: ${err}</span>
+          <span class="badge" style="margin-left: 8px;">Unchanged: ${unchanged}</span>
+        </div>
+        <table class="table">
+          <thead>
+            <tr>
+              <th>File</th>
+              <th>Path</th>
+              <th>Status</th>
+              <th>Chunks</th>
+              <th>Message</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${uploadRun.results.map(r => `
+              <tr>
+                <td>${escapeHtml(r.title)}</td>
+                <td class="mono">${escapeHtml(r.path)}</td>
+                <td>${escapeHtml(r.status || (r.outcome === 'ok' ? 'ok' : 'error'))}</td>
+                <td>${r.chunkCount ?? ''}</td>
+                <td class="muted">${escapeHtml(r.message || '')}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function clearUploadResults() {
+      uploadRun = null;
+      document.getElementById('uploadProgressBar').style.width = '0%';
+      document.getElementById('uploadSummary').textContent = '—';
+      document.getElementById('uploadResults').textContent = '—';
+      document.getElementById('uploadProgressPanel').style.display = 'none';
     }
 
     // Handle file upload
     async function handleFiles(files) {
       if (files.length === 0) return;
 
-      toast.info(`Uploading ${files.length} file(s)...`);
+      const settings = getSettings();
+      if (!settings.source) {
+        toast.error('Source is required (set it in Ingestion Settings)');
+        return;
+      }
 
-      for (const file of files) {
-        try {
-          const text = await file.text();
-          await uploadDocument({
-            title: file.name,
-            text: text,
-            tags: [file.type || 'unknown'],
-            path: file.name
-          });
-        } catch (error) {
-          console.error(`Error uploading ${file.name}:`, error);
-          toast.error(`Failed to upload ${file.name}`);
+      showUploadPanel();
+      uploadRun = { startedAt: Date.now(), total: files.length, results: [] };
+      setUploadProgress(0, files.length);
+      renderUploadResults();
+
+      toast.info(`Uploading ${files.length} item(s)...`);
+
+      const queue = Array.from(files);
+      let done = 0;
+
+      async function worker() {
+        while (queue.length > 0) {
+          const file = queue.shift();
+          if (!file) return;
+
+          const fileName = file.name || 'unknown';
+          const isPdf = fileName.toLowerCase().endsWith('.pdf') || file.type === 'application/pdf';
+          if (isPdf) {
+            uploadRun.results.push({
+              title: fileName,
+              path: file.webkitRelativePath || fileName,
+              outcome: 'err',
+              status: 'unsupported',
+              message: 'PDF not supported yet'
+            });
+            done++;
+            setUploadProgress(done, files.length);
+            renderUploadResults();
+            continue;
+          }
+
+          try {
+            let text = await file.text();
+            if (settings.maxChars > 0 && text.length > settings.maxChars) {
+              text = text.slice(0, settings.maxChars);
+            }
+
+            const rawPath = file.webkitRelativePath || fileName;
+            const prefix = settings.pathPrefix ? settings.pathPrefix + '/' : '';
+            const docPath = (prefix + rawPath).replace(/\\/g, '/');
+
+            const tags = Array.from(new Set([
+              ...settings.defaultTags,
+              file.type || ''
+            ].filter(Boolean)));
+
+            const result = await uploadDocument({
+              source: settings.source,
+              title: fileName,
+              text,
+              tags,
+              path: docPath
+            });
+
+            uploadRun.results.push({
+              title: fileName,
+              path: docPath,
+              outcome: 'ok',
+              status: result.status,
+              chunkCount: result.chunkCount,
+              message: result.status === 'unchanged' ? 'No changes detected' : ''
+            });
+          } catch (error) {
+            console.error(`Error uploading ${fileName}:`, error);
+            uploadRun.results.push({
+              title: fileName,
+              path: file.webkitRelativePath || fileName,
+              outcome: 'err',
+              status: 'error',
+              message: error.message
+            });
+          } finally {
+            done++;
+            setUploadProgress(done, files.length);
+            renderUploadResults();
+          }
         }
       }
 
-      // Reload documents
-      loadDocuments();
+      const workers = Array.from({ length: settings.concurrency }, () => worker());
+      await Promise.all(workers);
+
+      const errs = uploadRun.results.filter(r => r.outcome === 'err').length;
+      if (errs === 0) toast.success('Upload complete');
+      else toast.error(`Upload complete with ${errs} error(s)`);
+
+      await loadDocuments();
     }
 
     // Upload document to API
@@ -439,15 +1031,24 @@
 
       const data = await response.json();
 
-      if (data.status === 'success') {
-        toast.success(`Uploaded: ${doc.title}`);
-      } else {
+      if (!response.ok || data.status === 'error') {
         throw new Error(data.message || 'Upload failed');
       }
+
+      return {
+        status: data.status,
+        documentId: data.documentId,
+        chunkCount: data.chunkCount
+      };
     }
 
     // Delete document
     async function deleteDocument(docId) {
+      if (!docId) {
+        toast.error('Missing document id');
+        return;
+      }
+
       if (!confirm('Are you sure you want to delete this document?')) return;
 
       try {
@@ -469,18 +1070,182 @@
       }
     }
 
+    async function loadDeletionPreview() {
+      const container = document.getElementById('deletionPreviewContainer');
+      const source = document.getElementById('previewSource').value.trim();
+      const root = document.getElementById('previewRoot').value.trim();
+
+      if (!source || !root) {
+        toast.error('Source and root are required');
+        return;
+      }
+
+      savePreviewSettings();
+
+      container.innerHTML = `
+        <div class="loading" style="padding: 20px;">
+          <div class="spinner" style="width: 28px; height: 28px;"></div>
+          <p>Computing deletion preview...</p>
+        </div>
+      `;
+
+      try {
+        const url = `/api/rag/deletion-preview?source=${encodeURIComponent(source)}&root=${encodeURIComponent(root)}`;
+        const response = await fetch(url);
+        let data;
+        try {
+          data = await response.json();
+        } catch {
+          throw new Error('Failed to parse server response');
+        }
+
+        // New behavior: backend can return {status:'success', data:{manifestMissing:true}}
+        if (response.ok && data.status === 'success' && data.data && data.data.manifestMissing) {
+          const exampleManifest = {
+            source,
+            root,
+            generatedAt: new Date().toISOString(),
+            files: [
+              { path: `${root.replace(/\/+$/, '')}/docs/example.md`, sha256: '...', size: 1234, mtime: new Date().toISOString() }
+            ]
+          };
+          const curl = `curl -X POST ${location.origin}/api/rag/manifests \\\n+  -H 'Content-Type: application/json' \\\n+  -H 'x-api-key: YOUR_N8N_API_KEY' \\\n+  -d '${JSON.stringify(exampleManifest).replace(/'/g, "'\\''")}'`;
+
+          container.innerHTML = `
+            <div class="empty-state" style="padding: 20px 10px;">
+              <i class="fas fa-folder-tree"></i>
+              <h3>No Manifest Found</h3>
+              <p class="muted">No manifest is stored yet for <span class="mono">${escapeHtml(source)}</span> + <span class="mono">${escapeHtml(root)}</span>.</p>
+              <p class="muted">Fix: have your n8n scan workflow POST to <span class="mono">/api/rag/manifests</span> after it inventories the folder.</p>
+              <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-top: 10px;">
+                <button class="btn-sm ghost" onclick='copyToClipboard(${JSON.stringify(JSON.stringify(exampleManifest, null, 2))})'><i class="fas fa-copy"></i> Copy JSON</button>
+                <button class="btn-sm ghost" onclick='copyToClipboard(${JSON.stringify(curl)})'><i class="fas fa-terminal"></i> Copy curl</button>
+              </div>
+            </div>
+          `;
+          return;
+        }
+
+        if (!response.ok || data.status !== 'success') {
+          // Legacy behavior: backend used to return 404 for missing manifest
+          if (response.status === 404) {
+            const exampleManifest = {
+              source,
+              root,
+              generatedAt: new Date().toISOString(),
+              files: [
+                { path: `${root.replace(/\/+$/, '')}/docs/example.md`, sha256: '...', size: 1234, mtime: new Date().toISOString() }
+              ]
+            };
+            const curl = `curl -X POST ${location.origin}/api/rag/manifests \\\n+  -H 'Content-Type: application/json' \\\n+  -H 'x-api-key: YOUR_N8N_API_KEY' \\\n+  -d '${JSON.stringify(exampleManifest).replace(/'/g, "'\\''")}'`;
+
+            container.innerHTML = `
+              <div class="empty-state" style="padding: 20px 10px;">
+                <i class="fas fa-folder-tree"></i>
+                <h3>No Manifest Found</h3>
+                <p class="muted">No manifest is stored yet for <span class="mono">${escapeHtml(source)}</span> + <span class="mono">${escapeHtml(root)}</span>.</p>
+                <p class="muted">Fix: have your n8n scan workflow POST to <span class="mono">/api/rag/manifests</span> after it inventories the folder.</p>
+                <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-top: 10px;">
+                  <button class="btn-sm ghost" onclick='copyToClipboard(${JSON.stringify(JSON.stringify(exampleManifest, null, 2))})'><i class="fas fa-copy"></i> Copy JSON</button>
+                  <button class="btn-sm ghost" onclick='copyToClipboard(${JSON.stringify(curl)})'><i class="fas fa-terminal"></i> Copy curl</button>
+                </div>
+              </div>
+            `;
+            return;
+          }
+          throw new Error(data.message || 'Failed to load deletion preview');
+        }
+
+        const payload = data.data;
+        const candidates = payload.candidates || [];
+        const manifestInfo = payload.manifest || {};
+        const summary = payload.summary || {};
+
+        if (candidates.length === 0) {
+          container.innerHTML = `
+            <div style="display:flex; gap:10px; align-items:center;">
+              <i class="fas fa-circle-check" style="color: var(--success, #22c55e);"></i>
+              <div>
+                <div><strong>No deletion candidates</strong></div>
+                <div class="muted">RAG documents: ${summary.ragDocuments || 0} • Manifest files: ${summary.manifestFiles || 0}</div>
+                <div class="muted">Manifest generated: ${manifestInfo.generatedAt ? formatDate(manifestInfo.generatedAt) : 'Unknown'}</div>
+                <div class="muted">Manifest updated: ${manifestInfo.updatedAt ? formatDate(manifestInfo.updatedAt) : 'Unknown'}</div>
+              </div>
+            </div>
+          `;
+          return;
+        }
+
+        container.innerHTML = `
+          <div class="muted" style="margin-bottom: 10px;">
+            Candidates missing from manifest: <strong>${candidates.length}</strong> • RAG docs: ${summary.ragDocuments || 0} • Manifest files: ${summary.manifestFiles || 0}
+            <br>
+            Manifest generated: ${manifestInfo.generatedAt ? escapeHtml(formatDate(manifestInfo.generatedAt)) : 'Unknown'}
+            <br>
+            Manifest updated: ${manifestInfo.updatedAt ? escapeHtml(formatDate(manifestInfo.updatedAt)) : 'Unknown'}
+          </div>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Title</th>
+                <th>Path</th>
+                <th>Reason</th>
+                <th style="width: 110px;">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${candidates.map(c => `
+                <tr>
+                  <td>${escapeHtml(c.title || 'Untitled')}</td>
+                  <td class="mono">${escapeHtml(c.path || '')}</td>
+                  <td class="muted">${escapeHtml(c.reason || '')}</td>
+                  <td>
+                    <button class="btn-sm ghost" onclick='deleteDocument(${JSON.stringify(c.documentId || "")})' title="Delete from RAG">
+                      <i class="fas fa-trash"></i>
+                    </button>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+      } catch (error) {
+        console.error('Error loading deletion preview:', error);
+        container.innerHTML = `
+          <div class="empty-state" style="padding: 20px 10px;">
+            <i class="fas fa-exclamation-triangle"></i>
+            <h3>Deletion Preview Error</h3>
+            <p>${escapeHtml(error.message)}</p>
+          </div>
+        `;
+      }
+    }
+
     // Setup search
     function setupSearch() {
       const searchInput = document.getElementById('searchInput');
-      searchInput.addEventListener('input', (e) => {
-        const query = e.target.value.toLowerCase();
+      const sourceFilter = document.getElementById('sourceFilter');
+
+      function applyFilters() {
+        const query = searchInput.value.toLowerCase();
+        const src = sourceFilter.value.trim().toLowerCase();
+
         const filtered = documents.filter(doc => {
-          return doc.title?.toLowerCase().includes(query) ||
-                 doc.text?.toLowerCase().includes(query) ||
-                 doc.tags?.some(tag => tag.toLowerCase().includes(query));
+          const matchesQuery = !query ||
+            doc.title?.toLowerCase().includes(query) ||
+            doc.path?.toLowerCase().includes(query) ||
+            doc.text?.toLowerCase().includes(query) ||
+            doc.tags?.some(tag => tag.toLowerCase().includes(query));
+
+          const matchesSource = !src || (doc.source || '').toLowerCase().includes(src);
+          return matchesQuery && matchesSource;
         });
+
         renderDocuments(filtered);
-      });
+      }
+
+      searchInput.addEventListener('input', applyFilters);
+      sourceFilter.addEventListener('input', applyFilters);
     }
 
     // Utilities
