@@ -5,6 +5,7 @@
 
 const logger = require('../../config/logger');
 const fetch = require('node-fetch');
+const { getFetchOptions } = require('../helpers/httpAgent');
 
 class RAGCompressionService {
   constructor() {
@@ -115,7 +116,8 @@ ${chunk.text}
 Extract the most relevant sentences:`;
 
     try {
-      const response = await fetch(`${this.ollamaHost}/api/generate`, {
+      const url = `${this.ollamaHost}/api/generate`;
+      const fetchOptions = getFetchOptions(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -129,6 +131,7 @@ Extract the most relevant sentences:`;
           }
         })
       });
+      const response = await fetch(url, fetchOptions);
 
       if (!response.ok) {
         throw new Error(`Ollama API error: ${response.statusText}`);

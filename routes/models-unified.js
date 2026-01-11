@@ -12,6 +12,7 @@ const N8nLLMSource = require('../models/N8nLLMSource');
 const { requireAuth } = require('../src/middleware/auth');
 const logger = require('../config/logger');
 const { validateObjectId } = require('../src/helpers/objectIdValidator');
+const { getFetchOptions } = require('../src/helpers/httpAgent');
 
 /**
  * GET /api/models/all
@@ -503,11 +504,13 @@ router.post('/ollama/stop', requireAuth, async (req, res) => {
     const targetHost = host || process.env.OLLAMA_HOST || 'http://localhost:11434';
 
     // To unload: generate with empty prompt and keep_alive: 0
-    const response = await fetch(`${targetHost}/api/generate`, {
+    const url = `${targetHost}/api/generate`;
+    const fetchOptions = getFetchOptions(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ model: name, prompt: '', keep_alive: 0 })
     });
+    const response = await fetch(url, fetchOptions);
     
     if (response.ok) {
         res.json({ status: 'success', message: `Model ${name} unloaded.` });

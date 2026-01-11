@@ -9,6 +9,7 @@ const logger = require('../../config/logger');
 const fs = require('fs').promises;
 const path = require('path');
 const { ObjectId } = require('mongoose').Types;
+const { getFetchOptions } = require('../helpers/httpAgent');
 
 // Models
 const BenchmarkPrompt = require('../../models/BenchmarkPrompt');
@@ -127,12 +128,15 @@ class BenchmarkService {
         const start = Date.now();
 
         try {
-            const response = await fetch(`${host}/api/generate`, {
+            // Use HTTP agent for connection pooling and proper timeout handling
+            const url = `${host}/api/generate`;
+            const fetchOptions = getFetchOptions(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ model, prompt, stream: false }),
-                timeout: 30000
+                timeout: 120000  // 120 seconds for model loading on first request
             });
+            const response = await fetch(url, fetchOptions);
 
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -810,10 +814,12 @@ class BenchmarkService {
         await batch.lockForExecution(process.pid);
 
         // Helper for model warmup
+        // IMPORTANT: First request to a model may be SLOW (60-120s) as model loads into GPU
         const warmupModel = async (hostUrl, model) => {
             try {
-                // Short timeout, don't block too long
-                await fetch(`${hostUrl}/api/generate`, {
+                // Longer timeout for model loading - Linux hosts need more time than Windows
+                const url = `${hostUrl}/api/generate`;
+                const fetchOptions = getFetchOptions(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ 
@@ -822,8 +828,10 @@ class BenchmarkService {
                         stream: false, 
                         options: { num_predict: 1 } 
                     }),
-                    timeout: 20000 
+                    timeout: 120000  // 120 seconds for model loading
                 });
+                await fetch(url, fetchOptions);
+                logger.debug('Model warmed up successfully', { host: hostUrl, model });
             } catch (err) {
                 // Non-fatal, just log debug
                 logger.debug('Warmup failed / timed out', { host: hostUrl, model, error: err.message });
@@ -912,12 +920,16 @@ class BenchmarkService {
                                 promptLevel: prompt.level
                             }
                         );
-                        const response = await fetch(`${hostUrl}/api/generate`, {
+                        // First request may be slow if model needs loading (60-120s on Linux)
+                        // Use HTTP agent for connection reuse and longer timeout
+                        const url = `${hostUrl}/api/generate`;
+                        const fetchOptions = getFetchOptions(url, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ model, prompt: prompt.prompt, stream: false }),
-                            timeout: 60000
+                            timeout: 120000  // 120 seconds to allow model loading
                         });
+                        const response = await fetch(url, fetchOptions);
 
                         const data = await response.json();
                         const latency = Date.now() - start;

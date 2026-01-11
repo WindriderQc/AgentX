@@ -7,6 +7,7 @@
 const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
 const logger = require('../../config/logger');
 const { HOSTS } = require('./modelRouter');
+const { getFetchOptions } = require('../helpers/httpAgent');
 
 // Judge model configuration - use a capable model for evaluation
 const JUDGE_CONFIG = {
@@ -174,7 +175,9 @@ async function callJudge(evalPrompt, config = {}) {
     const timeoutId = setTimeout(() => controller.abort(), judgeConfig.timeout);
     
     try {
-        const response = await fetch(`${judgeConfig.host}/api/generate`, {
+        // Use HTTP agent for connection pooling
+        const url = `${judgeConfig.host}/api/generate`;
+        const fetchOptions = getFetchOptions(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -188,6 +191,7 @@ async function callJudge(evalPrompt, config = {}) {
             }),
             signal: controller.signal
         });
+        const response = await fetch(url, fetchOptions);
         
         clearTimeout(timeoutId);
         
