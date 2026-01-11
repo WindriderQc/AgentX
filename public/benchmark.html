@@ -1665,8 +1665,10 @@
                     <h1><i class="fas fa-rocket"></i>Benchmark</h1>
                     <p>Real-time performance metrics for Ollama models across configured hosts</p>
                 </div>
-                <button id="helpBtn" class="btn-secondary" style="margin-top: 10px;"><i class="fas fa-book"></i>
-                    Methodology & Guide</button>
+                <div style="display: flex; gap: 10px; margin-top: 10px;">
+                    <a href="model-categorization.html" class="btn-secondary" style="text-decoration: none; display: inline-flex; align-items: center; justify-content: center; width: auto; height: 42px;"><i class="fas fa-tags"></i> Manage Categories</a>
+                    <button id="helpBtn" class="btn-secondary" style="height: 42px;"><i class="fas fa-book"></i> Methodology & Guide</button>
+                </div>
             </div>
         </div>
 
@@ -2571,6 +2573,16 @@
                                 </span>
                             </span>
                         </th>
+                        <th style="width: 120px;">
+                            <span class="tooltip-wrapper">
+                                Best At
+                                <span class="help-icon">?</span>
+                                <span class="tooltip-content">
+                                    <div class="tooltip-title">Recommended Category</div>
+                                    <div class="tooltip-text">Category where this model performs best based on actual benchmark scores (prompt_category with highest quality_score).</div>
+                                </span>
+                            </span>
+                        </th>
                         <th>
                             <span class="tooltip-wrapper">
                                 <span id="compositeHeader">Composite</span>
@@ -2585,7 +2597,7 @@
                 </thead>
                 <tbody id="leaderboard">
                     <tr>
-                        <td colspan="8" style="text-align: center; color: #999;">No tests run yet</td>
+                        <td colspan="9" style="text-align: center; color: #999;">No tests run yet</td>
                     </tr>
                 </tbody>
             </table>
@@ -6918,7 +6930,28 @@
 
                         const crown = isBestOverall ? '👑 ' : '';
                         const hostLabel = model.host ? formatHostLabel(model.host) : 'Unknown';
-                        
+
+                        // Recommended category formatting
+                        const formatRecommendedCategory = (category) => {
+                            if (!category) return '<span style="color: var(--muted); font-size: 0.85em;">—</span>';
+                            const categoryColors = {
+                                'coding': '#7c9fff',
+                                'reasoning': '#a78bfa',
+                                'factual': '#34d399',
+                                'math': '#fbbf24',
+                                'creative': '#f87171',
+                                'general': '#94a3b8'
+                            };
+                            const color = categoryColors[category] || '#94a3b8';
+                            const icon = category === 'coding' ? '💻' :
+                                        category === 'reasoning' ? '🧠' :
+                                        category === 'factual' ? '📚' :
+                                        category === 'math' ? '🔢' :
+                                        category === 'creative' ? '✨' : '📝';
+                            return `<span style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 12px; background: linear-gradient(135deg, ${color}22 0%, ${color}11 100%); border: 1px solid ${color}44; color: ${color}; font-size: 0.85em; font-weight: 600;">${icon} ${category}</span>`;
+                        };
+                        const recommendedCategoryHtml = formatRecommendedCategory(model.recommended_category);
+
                         // Build offender badges - these represent actual performance issues from test data
                         let offenderBadges = '';
                         
@@ -7012,6 +7045,7 @@
                                         ? `<div style="margin-top: 2px; color: rgba(231, 76, 60, 0.9); font-size: 0.8em;">Failed: ${model.failed_tests}</div>`
                                         : ''}
                                 </td>
+                                <td>${recommendedCategoryHtml}</td>
                                 <td style="font-weight: bold;">${compositeDisplay}</td>
                             </tr>
                         `;

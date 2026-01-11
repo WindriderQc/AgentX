@@ -1,0 +1,686 @@
+[
+  {
+    "level": 2,
+    "category": "coding",
+    "category_test": true,
+    "name": "String Reversal",
+    "prompt": "Write a function that reverses a string without using built-in reverse methods",
+    "expected_tokens": 120,
+    "expected_answer": "A function that uses a loop or recursion to reverse a string character by character, returning the reversed result",
+    "judge_criteria": [
+      "Valid function with string parameter",
+      "Manually reverses without .reverse() or similar",
+      "Returns correctly reversed string",
+      "Code is syntactically correct"
+    ],
+    "scoring_type": "code"
+  },
+  {
+    "level": 2,
+    "category": "coding",
+    "category_test": true,
+    "name": "FizzBuzz",
+    "prompt": "Write a function that prints numbers 1 to 15, but for multiples of 3 print 'Fizz', for multiples of 5 print 'Buzz', and for multiples of both print 'FizzBuzz'",
+    "expected_tokens": 150,
+    "expected_answer": "A function or loop that checks divisibility by 3 and 5, printing the appropriate output for each number from 1 to 15",
+    "judge_criteria": [
+      "Correctly identifies multiples of 3, 5, and both",
+      "Prints FizzBuzz for multiples of both (15)",
+      "Valid code syntax",
+      "Covers all numbers 1-15"
+    ],
+    "scoring_type": "code"
+  },
+  {
+    "level": 3,
+    "category": "coding",
+    "category_test": true,
+    "name": "Palindrome Checker",
+    "prompt": "Write a function that checks if a given string is a palindrome, ignoring spaces and case",
+    "expected_tokens": 140,
+    "expected_answer": "A function that normalizes the string (removes spaces, converts to same case) and checks if it reads the same forwards and backwards",
+    "judge_criteria": [
+      "Handles case insensitivity",
+      "Ignores spaces correctly",
+      "Returns boolean true/false",
+      "Logic is correct"
+    ],
+    "scoring_type": "code"
+  },
+  {
+    "level": 2,
+    "category": "coding",
+    "category_test": true,
+    "name": "Find Maximum",
+    "prompt": "Write a function that finds the maximum value in an array of numbers without using Math.max()",
+    "expected_tokens": 100,
+    "expected_answer": "A function that iterates through the array, tracking the largest value seen so far, and returns it",
+    "judge_criteria": [
+      "Valid function with array parameter",
+      "Doesn't use Math.max() or similar built-in",
+      "Correctly identifies maximum value",
+      "Handles edge cases mentioned"
+    ],
+    "scoring_type": "code"
+  },
+  {
+    "level": 3,
+    "category": "coding",
+    "category_test": true,
+    "name": "Object Merging",
+    "prompt": "Write a function that merges two JavaScript objects, with the second object's properties overriding the first when keys conflict",
+    "expected_tokens": 130,
+    "expected_answer": "A function that combines two objects, ensuring properties from the second object take precedence over the first",
+    "judge_criteria": [
+      "Takes two objects as parameters",
+      "Correctly merges properties",
+      "Second object overrides first on conflicts",
+      "Returns new merged object"
+    ],
+    "scoring_type": "code"
+  },
+  {
+    "level": 2,
+    "category": "coding",
+    "category_test": true,
+    "name": "Count Vowels",
+    "prompt": "Write a function that counts the number of vowels (a, e, i, o, u) in a given string, case-insensitive",
+    "expected_tokens": 110,
+    "expected_answer": "A function that iterates through the string and counts occurrences of vowels, handling both uppercase and lowercase",
+    "judge_criteria": [
+      "Correctly identifies all 5 vowels",
+      "Case-insensitive matching",
+      "Returns accurate count",
+      "Valid function syntax"
+    ],
+    "scoring_type": "code"
+  },
+  {
+    "level": 3,
+    "category": "coding",
+    "category_test": true,
+    "name": "Remove Duplicates",
+    "prompt": "Write a function that removes duplicate elements from an array while preserving the original order",
+    "expected_tokens": 120,
+    "expected_answer": "A function using a Set, filter with indexOf, or manual tracking to remove duplicates while maintaining order",
+    "judge_criteria": [
+      "Removes all duplicates correctly",
+      "Preserves original order",
+      "Works with various data types",
+      "Clean implementation"
+    ],
+    "scoring_type": "code"
+  },
+  {
+    "level": 2,
+    "category": "reasoning",
+    "category_test": true,
+    "name": "Bridge Crossing",
+    "prompt": "Four people need to cross a bridge at night. They have one flashlight and the bridge can only hold two people at a time. Their crossing times are 1, 2, 5, and 10 minutes. When two cross together, they move at the slower person's pace. What's the minimum time to get everyone across?",
+    "expected_tokens": 200,
+    "expected_answer": "17 minutes. Strategy: 1&2 cross (2min), 1 returns (1min), 5&10 cross (10min), 2 returns (2min), 1&2 cross (2min). Total: 2+1+10+2+2=17",
+    "judge_criteria": [
+      "Correct answer of 17 minutes",
+      "Strategy involves sending fastest back",
+      "Sends slowest two together",
+      "Step-by-step explanation provided",
+      "Logic is sound"
+    ],
+    "scoring_type": "reasoning"
+  },
+  {
+    "level": 2,
+    "category": "reasoning",
+    "category_test": true,
+    "name": "Water Jug Problem",
+    "prompt": "You have a 3-liter jug and a 5-liter jug. How can you measure exactly 4 liters of water?",
+    "expected_tokens": 180,
+    "expected_answer": "Fill 5L jug, pour into 3L jug (leaving 2L in 5L). Empty 3L jug. Pour 2L from 5L jug into 3L jug. Fill 5L jug again. Pour from 5L into 3L until full (1L transferred). 5L jug now contains exactly 4L",
+    "judge_criteria": [
+      "Arrives at 4 liters",
+      "Uses both jugs correctly",
+      "Steps are logically valid",
+      "Clear sequence provided",
+      "No errors in calculations"
+    ],
+    "scoring_type": "reasoning"
+  },
+  {
+    "level": 3,
+    "category": "reasoning",
+    "category_test": true,
+    "name": "Lying Knights",
+    "prompt": "You meet two people. One always tells the truth (knight), one always lies (knave). You don't know who is who. You can ask one yes/no question to one person to determine which path leads to freedom. What do you ask?",
+    "expected_tokens": 200,
+    "expected_answer": "Ask either person: 'If I asked the other person which path leads to freedom, what would they say?' Then take the opposite path. This works because truth-teller reports liar's lie, and liar lies about truth-teller's truth - both point to wrong path",
+    "judge_criteria": [
+      "Correct logical solution",
+      "Explains why it works for both cases",
+      "Single question format",
+      "Points to correct path identification",
+      "Sound reasoning"
+    ],
+    "scoring_type": "reasoning"
+  },
+  {
+    "level": 2,
+    "category": "reasoning",
+    "category_test": true,
+    "name": "Clock Angle",
+    "prompt": "What is the angle between the hour and minute hands of a clock at 3:15?",
+    "expected_tokens": 150,
+    "expected_answer": "7.5 degrees. At 3:15, minute hand is at 90° (pointing at 3), hour hand is at 97.5° (3 hours = 90°, plus 15 mins = 7.5°). Difference: 97.5 - 90 = 7.5°",
+    "judge_criteria": [
+      "Correct answer of 7.5 degrees",
+      "Considers hour hand movement",
+      "Shows calculation steps",
+      "Understands clock mechanics",
+      "Math is accurate"
+    ],
+    "scoring_type": "reasoning"
+  },
+  {
+    "level": 3,
+    "category": "reasoning",
+    "category_test": true,
+    "name": "Counterfeit Coin",
+    "prompt": "You have 12 coins, one is counterfeit and weighs slightly less. Using a balance scale only 3 times, how do you identify the counterfeit coin?",
+    "expected_tokens": 250,
+    "expected_answer": "Divide into 3 groups of 4. Weigh two groups (W1). If balanced, counterfeit in third group. Weigh 3 from suspect group against 3 known good (W2). Find suspect group of 3 or 1. Weigh final comparison (W3) to identify exact coin",
+    "judge_criteria": [
+      "Uses exactly 3 weighings",
+      "Divide and conquer strategy",
+      "Handles all cases",
+      "Logic is complete and sound",
+      "Identifies specific coin"
+    ],
+    "scoring_type": "reasoning"
+  },
+  {
+    "level": 2,
+    "category": "reasoning",
+    "category_test": true,
+    "name": "Number Series",
+    "prompt": "What is the next number in the sequence: 1, 1, 2, 3, 5, 8, 13, ?",
+    "expected_tokens": 100,
+    "expected_answer": "21. This is the Fibonacci sequence where each number is the sum of the previous two: 8 + 13 = 21",
+    "judge_criteria": [
+      "Correct answer of 21",
+      "Identifies Fibonacci pattern",
+      "Shows the addition",
+      "Clear explanation"
+    ],
+    "scoring_type": "reasoning"
+  },
+  {
+    "level": 3,
+    "category": "reasoning",
+    "category_test": true,
+    "name": "Logical Deduction",
+    "prompt": "In a room are five people: Alice, Bob, Carol, Dan, and Eve. Alice is taller than Bob. Carol is shorter than Dan. Bob is taller than Dan. Eve is shorter than Carol. Who is the shortest person?",
+    "expected_tokens": 150,
+    "expected_answer": "Eve is the shortest. Order from tallest to shortest: Alice > Bob > Dan > Carol > Eve. Eve is shorter than Carol, who is shorter than Dan, who is shorter than Bob, who is shorter than Alice",
+    "judge_criteria": [
+      "Correct answer: Eve",
+      "Shows logical chain of comparisons",
+      "Considers all relationships",
+      "Reasoning is sound",
+      "Clear explanation"
+    ],
+    "scoring_type": "reasoning"
+  },
+  {
+    "level": 2,
+    "category": "factual",
+    "category_test": true,
+    "name": "Chemical Symbol",
+    "prompt": "What is the chemical symbol for gold?",
+    "expected_tokens": 30,
+    "expected_answer": "Au (from Latin 'aurum')",
+    "judge_criteria": [
+      "Answer is 'Au'",
+      "Correctly formatted",
+      "No incorrect information"
+    ],
+    "scoring_type": "factual"
+  },
+  {
+    "level": 2,
+    "category": "factual",
+    "category_test": true,
+    "name": "Speed of Light",
+    "prompt": "What is the speed of light in a vacuum?",
+    "expected_tokens": 50,
+    "expected_answer": "Approximately 299,792,458 meters per second (or about 300,000 km/s, or 186,282 miles/s)",
+    "judge_criteria": [
+      "Correct value provided",
+      "Appropriate units included",
+      "Reasonable precision",
+      "No major errors"
+    ],
+    "scoring_type": "factual"
+  },
+  {
+    "level": 2,
+    "category": "factual",
+    "category_test": true,
+    "name": "Solar System",
+    "prompt": "How many planets are in our solar system?",
+    "expected_tokens": 40,
+    "expected_answer": "8 planets (Mercury, Venus, Earth, Mars, Jupiter, Saturn, Uranus, Neptune). Pluto was reclassified as a dwarf planet in 2006",
+    "judge_criteria": [
+      "Answer is 8",
+      "May mention Pluto reclassification",
+      "Factually accurate",
+      "Current scientific consensus"
+    ],
+    "scoring_type": "factual"
+  },
+  {
+    "level": 3,
+    "category": "factual",
+    "category_test": true,
+    "name": "DNA Structure",
+    "prompt": "What is the structure of DNA called and who discovered it?",
+    "expected_tokens": 100,
+    "expected_answer": "Double helix structure, discovered by James Watson and Francis Crick in 1953, based on X-ray crystallography work by Rosalind Franklin",
+    "judge_criteria": [
+      "Mentions double helix",
+      "Credits Watson and Crick",
+      "May mention Rosalind Franklin",
+      "Date approximately 1953",
+      "Factually accurate"
+    ],
+    "scoring_type": "factual"
+  },
+  {
+    "level": 2,
+    "category": "factual",
+    "category_test": true,
+    "name": "Programming Language",
+    "prompt": "What programming language is known as the 'language of the web' for client-side scripting?",
+    "expected_tokens": 40,
+    "expected_answer": "JavaScript",
+    "judge_criteria": [
+      "Answer is JavaScript",
+      "Not Java (common mistake)",
+      "Factually correct"
+    ],
+    "scoring_type": "factual"
+  },
+  {
+    "level": 3,
+    "category": "factual",
+    "category_test": true,
+    "name": "Constitutional Amendment",
+    "prompt": "What does the First Amendment of the US Constitution protect?",
+    "expected_tokens": 120,
+    "expected_answer": "The First Amendment protects freedom of religion, speech, press, assembly, and petition. These five freedoms are fundamental rights of American citizens",
+    "judge_criteria": [
+      "Mentions freedom of speech",
+      "Mentions freedom of religion",
+      "Mentions freedom of press",
+      "May mention assembly and petition",
+      "Factually accurate"
+    ],
+    "scoring_type": "factual"
+  },
+  {
+    "level": 2,
+    "category": "factual",
+    "category_test": true,
+    "name": "Boolean Algebra",
+    "prompt": "In Boolean algebra, what is the result of TRUE AND FALSE?",
+    "expected_tokens": 30,
+    "expected_answer": "FALSE. In Boolean AND operation, both operands must be TRUE for the result to be TRUE",
+    "judge_criteria": [
+      "Answer is FALSE",
+      "Correctly explains AND logic",
+      "No errors"
+    ],
+    "scoring_type": "factual"
+  },
+  {
+    "level": 2,
+    "category": "math",
+    "category_test": true,
+    "name": "Percentage Calculation",
+    "prompt": "What is 15% of 80?",
+    "expected_tokens": 50,
+    "expected_answer": "12. Calculation: 80 × 0.15 = 12",
+    "judge_criteria": [
+      "Answer is 12",
+      "Calculation is correct",
+      "Shows work"
+    ],
+    "scoring_type": "math"
+  },
+  {
+    "level": 2,
+    "category": "math",
+    "category_test": true,
+    "name": "Fraction Addition",
+    "prompt": "What is 1/4 + 1/3?",
+    "expected_tokens": 80,
+    "expected_answer": "7/12. Find common denominator (12): 3/12 + 4/12 = 7/12",
+    "judge_criteria": [
+      "Answer is 7/12",
+      "Shows common denominator step",
+      "Calculation is correct",
+      "Fraction is simplified if needed"
+    ],
+    "scoring_type": "math"
+  },
+  {
+    "level": 3,
+    "category": "math",
+    "category_test": true,
+    "name": "Quadratic Equation",
+    "prompt": "Solve for x: x^2 - 5x + 6 = 0",
+    "expected_tokens": 120,
+    "expected_answer": "x = 2 or x = 3. Factor: (x-2)(x-3) = 0, or use quadratic formula: x = (5 ± √(25-24))/2 = (5 ± 1)/2",
+    "judge_criteria": [
+      "Correct answers: x = 2 and x = 3",
+      "Shows solving method (factoring or formula)",
+      "Work is shown",
+      "Both solutions provided"
+    ],
+    "scoring_type": "math"
+  },
+  {
+    "level": 2,
+    "category": "math",
+    "category_test": true,
+    "name": "Circle Area",
+    "prompt": "What is the area of a circle with radius 5 cm? (Use π = 3.14)",
+    "expected_tokens": 70,
+    "expected_answer": "78.5 square cm. Formula: A = πr² = 3.14 × 5² = 3.14 × 25 = 78.5",
+    "judge_criteria": [
+      "Answer is approximately 78.5 sq cm",
+      "Uses correct formula A = πr²",
+      "Shows calculation steps",
+      "Units included"
+    ],
+    "scoring_type": "math"
+  },
+  {
+    "level": 3,
+    "category": "math",
+    "category_test": true,
+    "name": "Probability",
+    "prompt": "If you roll two fair six-sided dice, what is the probability of getting a sum of 7?",
+    "expected_tokens": 150,
+    "expected_answer": "1/6 or approximately 16.67%. There are 6 ways to get 7: (1,6), (2,5), (3,4), (4,3), (5,2), (6,1) out of 36 total possible outcomes. 6/36 = 1/6",
+    "judge_criteria": [
+      "Correct answer: 1/6 or 16.67%",
+      "Identifies 6 favorable outcomes",
+      "Identifies 36 total outcomes",
+      "Shows probability calculation",
+      "Math is correct"
+    ],
+    "scoring_type": "math"
+  },
+  {
+    "level": 2,
+    "category": "math",
+    "category_test": true,
+    "name": "Average Calculation",
+    "prompt": "What is the average of these numbers: 12, 18, 22, 28?",
+    "expected_tokens": 60,
+    "expected_answer": "20. Sum: 12 + 18 + 22 + 28 = 80. Average: 80 ÷ 4 = 20",
+    "judge_criteria": [
+      "Correct answer: 20",
+      "Shows sum calculation",
+      "Shows division by count",
+      "Work is accurate"
+    ],
+    "scoring_type": "math"
+  },
+  {
+    "level": 3,
+    "category": "math",
+    "category_test": true,
+    "name": "Pythagorean Theorem",
+    "prompt": "A right triangle has legs of length 3 cm and 4 cm. What is the length of the hypotenuse?",
+    "expected_tokens": 100,
+    "expected_answer": "5 cm. Using Pythagorean theorem: a² + b² = c², so 3² + 4² = c², 9 + 16 = 25, c = √25 = 5",
+    "judge_criteria": [
+      "Correct answer: 5 cm",
+      "Uses Pythagorean theorem",
+      "Shows calculation steps",
+      "Includes units"
+    ],
+    "scoring_type": "math"
+  },
+  {
+    "level": 2,
+    "category": "creative",
+    "category_test": true,
+    "name": "Product Slogan",
+    "prompt": "Create a catchy slogan for a new eco-friendly water bottle brand called 'PureFlow'",
+    "expected_tokens": 80,
+    "expected_answer": "Any creative, memorable slogan that emphasizes eco-friendliness, purity, or sustainability while incorporating the brand essence",
+    "judge_criteria": [
+      "Catchy and memorable",
+      "Relevant to eco-friendly theme",
+      "Incorporates brand identity",
+      "Professional tone",
+      "Creative and original"
+    ],
+    "scoring_type": "creative"
+  },
+  {
+    "level": 2,
+    "category": "creative",
+    "category_test": true,
+    "name": "Character Description",
+    "prompt": "Describe an interesting character for a detective novel in 3-4 sentences",
+    "expected_tokens": 120,
+    "expected_answer": "A vivid character description with unique traits, personality quirks, appearance details, and compelling background that would work in a detective story",
+    "judge_criteria": [
+      "Clear visual description",
+      "Personality traits included",
+      "Fits detective genre",
+      "Interesting and unique",
+      "Well-written prose"
+    ],
+    "scoring_type": "creative"
+  },
+  {
+    "level": 3,
+    "category": "creative",
+    "category_test": true,
+    "name": "Opening Scene",
+    "prompt": "Write the opening paragraph of a thriller that takes place in a snowy mountain cabin",
+    "expected_tokens": 180,
+    "expected_answer": "A compelling opening paragraph that establishes atmosphere, setting, tension, and hooks the reader with thriller genre conventions",
+    "judge_criteria": [
+      "Establishes snowy mountain setting",
+      "Creates suspenseful atmosphere",
+      "Engaging opening hook",
+      "Good prose quality",
+      "Fits thriller genre"
+    ],
+    "scoring_type": "creative"
+  },
+  {
+    "level": 2,
+    "category": "creative",
+    "category_test": true,
+    "name": "Haiku Poem",
+    "prompt": "Write a haiku about autumn",
+    "expected_tokens": 60,
+    "expected_answer": "A three-line poem following 5-7-5 syllable structure with autumn imagery and seasonal mood",
+    "judge_criteria": [
+      "Follows 5-7-5 syllable pattern",
+      "Autumn theme present",
+      "Evocative imagery",
+      "Captures seasonal essence",
+      "Poetic quality"
+    ],
+    "scoring_type": "creative"
+  },
+  {
+    "level": 3,
+    "category": "creative",
+    "category_test": true,
+    "name": "Metaphor Creation",
+    "prompt": "Create 3 original metaphors to describe a busy city street at night",
+    "expected_tokens": 120,
+    "expected_answer": "Three creative, vivid metaphors that capture different aspects of a nighttime urban street scene without using clichés",
+    "judge_criteria": [
+      "Three distinct metaphors",
+      "Creative and original",
+      "Vivid imagery",
+      "Captures city night atmosphere",
+      "Avoids clichés"
+    ],
+    "scoring_type": "creative"
+  },
+  {
+    "level": 2,
+    "category": "creative",
+    "category_test": true,
+    "name": "Dialogue Writing",
+    "prompt": "Write a short dialogue (4-6 exchanges) between two old friends meeting after 10 years",
+    "expected_tokens": 150,
+    "expected_answer": "Natural dialogue that conveys passage of time, emotion, distinct character voices, and realistic conversation flow",
+    "judge_criteria": [
+      "Natural conversational flow",
+      "Conveys emotion and history",
+      "Distinct character voices",
+      "4-6 exchanges present",
+      "Realistic and engaging"
+    ],
+    "scoring_type": "creative"
+  },
+  {
+    "level": 3,
+    "category": "creative",
+    "category_test": true,
+    "name": "Twist Ending",
+    "prompt": "Write a 4-sentence micro-story with an unexpected twist ending",
+    "expected_tokens": 100,
+    "expected_answer": "A complete micro-narrative that sets up expectations, develops minimal plot, and delivers a surprising but logical twist in the final sentence",
+    "judge_criteria": [
+      "Exactly 4 sentences",
+      "Setup and development present",
+      "Twist is surprising",
+      "Twist is logical/earned",
+      "Complete story arc"
+    ],
+    "scoring_type": "creative"
+  },
+  {
+    "level": 2,
+    "category": "general",
+    "category_test": true,
+    "name": "Email Etiquette",
+    "prompt": "What are three important rules for writing professional business emails?",
+    "expected_tokens": 120,
+    "expected_answer": "Three clear guidelines such as: use clear subject lines, maintain professional tone, keep it concise, proofread before sending, use proper greetings/closings",
+    "judge_criteria": [
+      "Three distinct rules provided",
+      "Rules are relevant to business emails",
+      "Practical and actionable",
+      "Clear explanations",
+      "Professional context"
+    ],
+    "scoring_type": "general"
+  },
+  {
+    "level": 2,
+    "category": "general",
+    "category_test": true,
+    "name": "Recipe Conversion",
+    "prompt": "A recipe calls for 2 cups of flour but I want to make half the recipe. How much flour do I need?",
+    "expected_tokens": 50,
+    "expected_answer": "1 cup of flour. Half of 2 cups is 1 cup",
+    "judge_criteria": [
+      "Correct answer: 1 cup",
+      "Shows simple division",
+      "Practical response"
+    ],
+    "scoring_type": "general"
+  },
+  {
+    "level": 2,
+    "category": "general",
+    "category_test": true,
+    "name": "Time Zone",
+    "prompt": "If it's 3:00 PM in New York (EST), what time is it in Los Angeles (PST)?",
+    "expected_tokens": 60,
+    "expected_answer": "12:00 PM (noon). PST is 3 hours behind EST",
+    "judge_criteria": [
+      "Correct answer: 12:00 PM",
+      "Mentions 3-hour difference",
+      "Direction is correct (PST behind EST)"
+    ],
+    "scoring_type": "general"
+  },
+  {
+    "level": 2,
+    "category": "general",
+    "category_test": true,
+    "name": "File Organization",
+    "prompt": "Suggest a logical way to organize digital photos from a family vacation",
+    "expected_tokens": 120,
+    "expected_answer": "Organize by date, location, or event. Example structure: Vacation_2024/Day1_Beach, Day2_Museum, etc. Include descriptive names and keep originals separate from edited versions",
+    "judge_criteria": [
+      "Logical organization system",
+      "Practical for photos",
+      "Clear folder structure",
+      "Helpful tips included"
+    ],
+    "scoring_type": "general"
+  },
+  {
+    "level": 3,
+    "category": "general",
+    "category_test": true,
+    "name": "Meeting Summary",
+    "prompt": "You attended a team meeting about launching a new product. List the key information you should include in meeting notes",
+    "expected_tokens": 150,
+    "expected_answer": "Include: date/time/attendees, product name/description, launch timeline, assigned action items with owners, key decisions made, next steps, follow-up meeting date",
+    "judge_criteria": [
+      "Lists essential meeting elements",
+      "Includes action items",
+      "Mentions decisions/outcomes",
+      "Practical and comprehensive",
+      "Professional format"
+    ],
+    "scoring_type": "general"
+  },
+  {
+    "level": 2,
+    "category": "general",
+    "category_test": true,
+    "name": "Travel Packing",
+    "prompt": "What are three essential items to pack for a weekend beach trip?",
+    "expected_tokens": 80,
+    "expected_answer": "Essential items such as: sunscreen, swimsuit, towel, change of clothes, water bottle, or similar practical beach necessities",
+    "judge_criteria": [
+      "Three items listed",
+      "Items are appropriate for beach",
+      "Practical and essential",
+      "Weekend duration considered"
+    ],
+    "scoring_type": "general"
+  },
+  {
+    "level": 2,
+    "category": "general",
+    "category_test": true,
+    "name": "Plant Care",
+    "prompt": "How often should you water most common houseplants?",
+    "expected_tokens": 100,
+    "expected_answer": "Most houseplants need watering when the top inch of soil is dry, typically every 1-2 weeks. Frequency depends on plant type, pot size, season, and humidity. Check soil moisture before watering",
+    "judge_criteria": [
+      "Mentions checking soil moisture",
+      "Gives reasonable frequency",
+      "Acknowledges variables",
+      "Practical advice"
+    ],
+    "scoring_type": "general"
+  }
+]

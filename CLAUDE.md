@@ -28,6 +28,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - [Authentication](docs/operations/AUTHENTICATION.md) - Dual auth system
 - [Response Handling](docs/operations/RESPONSE_HANDLING.md) - LLM response processing
 - [Benchmark System](docs/operations/BENCHMARK_SYSTEM.md) - Quality scoring
+- [Categorization Tests](docs/operations/CATEGORIZATION_TESTS.md) - Model category assignment
 - [Benchmark Color Theme](docs/operations/BENCHMARK_COLOR_THEME.md) - Level-based color system
 - [Critical Gotchas](docs/operations/CRITICAL_GOTCHAS.md) - Known issues & pitfalls
 

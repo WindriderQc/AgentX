@@ -495,6 +495,27 @@ class BenchmarkService {
             });
         }
 
+        // Enrich with ModelRegistry data (recommended category, manual categories)
+        const ModelRegistry = require('../../models/ModelRegistry');
+        const uniqueModelNames = [...new Set(sortedStats.map(s => s.model))];
+        const registryModels = await ModelRegistry.find({
+            modelName: { $in: uniqueModelNames }
+        }).lean();
+
+        const registryByName = new Map();
+        registryModels.forEach(rm => {
+            registryByName.set(rm.modelName, rm);
+        });
+
+        sortedStats = sortedStats.map(stat => {
+            const registryData = registryByName.get(stat.model);
+            return {
+                ...stat,
+                recommended_category: registryData?.benchmarkStats?.bestCategory || null,
+                manual_categories: registryData?.categories || []
+            };
+        });
+
         // Apply sorting
         switch (sortBy) {
             case 'reliability':

@@ -11,9 +11,12 @@
 
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const { getRagStore } = require('../src/services/ragStore');
 const { resolveTarget } = require('../src/utils');
 const logger = require('../config/logger');
+const n8nAuth = require('../src/middleware/n8nAuth');
+const RagManifest = require('../models/RagManifest');
 
 function classifyRagAvailabilityError(error) {
   const message = error?.message || '';
@@ -47,6 +50,35 @@ const ragStore = getRagStore({
   url: process.env.QDRANT_URL,
   collection: process.env.QDRANT_COLLECTION
 });
+
+function requireMongoReady(res) {
+  if (mongoose.connection.readyState !== 1) {
+    res.status(503).json({
+      status: 'error',
+      message: 'Database not connected'
+    });
+    return false;
+  }
+  return true;
+}
+
+function normalizeRoot(root) {
+  if (!root || typeof root !== 'string') return '';
+  return root.replace(/\\/g, '/').replace(/\/+$/, '');
+}
+
+function normalizeRelativePath(filePath, root) {
+  if (!filePath || typeof filePath !== 'string') return '';
+  const normalized = filePath.replace(/\\/g, '/');
+  const cleanRoot = normalizeRoot(root);
+
+  if (cleanRoot && normalized.startsWith(cleanRoot + '/')) {
+    return normalized.slice(cleanRoot.length + 1);
+  }
+
+  // Treat leading slash as non-relative; strip it for comparison.
+  return normalized.replace(/^\/+/, '');
+}
 
 /**
  * POST /api/rag/ingest (and /api/rag/documents)
@@ -452,6 +484,236 @@ router.get('/collections/:collection/info', async (req, res) => {
       error: 'Internal server error',
       message: error.message
     });
+  }
+});
+
+/**
+ * POST /api/rag/manifests
+ *
+ * Store/update the latest folder manifest for a given source+root.
+ * Intended to be called by n8n (or other automation) after a folder scan.
+ *
+ * Body:
+ * {
+ *   source: "nas-docs",
+ *   root: "/mnt/share/RAG",
+ *   scanId: "..." (optional),
+ *   generatedAt: "2026-01-10T..." (optional),
+ *   files: [{ path, sha256, size, mtime }]
+ * }
+ */
+router.post('/manifests', n8nAuth, async (req, res) => {
+  try {
+    if (!requireMongoReady(res)) return;
+
+    const { source, root, scanId, generatedAt, files } = req.body || {};
+
+    if (!source || typeof source !== 'string') {
+      return res.status(400).json({
+        status: 'error',
+        message: 'source is required'
+      });
+    }
+
+    if (!root || typeof root !== 'string') {
+      return res.status(400).json({
+        status: 'error',
+        message: 'root is required'
+      });
+    }
+
+    if (!Array.isArray(files)) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'files must be an array'
+      });
+    }
+
+    const cleanRoot = normalizeRoot(root);
+    const manifestFiles = [];
+    let totalBytes = 0;
+
+    for (const entry of files) {
+      if (!entry || typeof entry !== 'object') continue;
+      if (!entry.path || typeof entry.path !== 'string') continue;
+
+      const size = Number.isFinite(entry.size) ? entry.size : (entry.size ? Number(entry.size) : undefined);
+      if (Number.isFinite(size)) totalBytes += size;
+
+      manifestFiles.push({
+        path: normalizeRelativePath(entry.path, cleanRoot),
+        sha256: typeof entry.sha256 === 'string' ? entry.sha256 : undefined,
+        size: Number.isFinite(size) ? size : undefined,
+        mtime: entry.mtime ? new Date(entry.mtime) : undefined
+      });
+    }
+
+    const fileCount = manifestFiles.length;
+    const genAt = generatedAt ? new Date(generatedAt) : new Date();
+
+    const saved = await RagManifest.findOneAndUpdate(
+      { source, root: cleanRoot },
+      {
+        $set: {
+          scanId: scanId || undefined,
+          generatedAt: genAt,
+          files: manifestFiles,
+          stats: { fileCount, totalBytes }
+        }
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
+    return res.json({
+      status: 'success',
+      data: {
+        source: saved.source,
+        root: saved.root,
+        scanId: saved.scanId,
+        generatedAt: saved.generatedAt,
+        fileCount: saved.stats?.fileCount || 0,
+        totalBytes: saved.stats?.totalBytes || 0,
+        updatedAt: saved.updatedAt
+      }
+    });
+  } catch (error) {
+    logger.error('RAG manifest upsert error', { error: error.message, stack: error.stack });
+    return res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
+/**
+ * GET /api/rag/manifests/latest
+ *
+ * Fetch latest manifest metadata for a source+root.
+ */
+router.get('/manifests/latest', async (req, res) => {
+  try {
+    if (!requireMongoReady(res)) return;
+
+    const { source, root } = req.query;
+    if (!source || !root) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'source and root are required'
+      });
+    }
+
+    const manifest = await RagManifest.findOne({
+      source: String(source),
+      root: normalizeRoot(String(root))
+    }).lean();
+
+    if (!manifest) {
+      return res.status(404).json({ status: 'error', message: 'Manifest not found' });
+    }
+
+    return res.json({
+      status: 'success',
+      data: {
+        source: manifest.source,
+        root: manifest.root,
+        scanId: manifest.scanId,
+        generatedAt: manifest.generatedAt,
+        fileCount: manifest.stats?.fileCount || manifest.files?.length || 0,
+        totalBytes: manifest.stats?.totalBytes || 0,
+        updatedAt: manifest.updatedAt
+      }
+    });
+  } catch (error) {
+    logger.error('RAG manifest latest error', { error: error.message });
+    return res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
+/**
+ * GET /api/rag/deletion-preview
+ *
+ * Compare RAG documents (by source) against the latest stored manifest.
+ * Returns candidates that exist in RAG but are missing from the manifest.
+ * Does NOT delete anything.
+ */
+router.get('/deletion-preview', async (req, res) => {
+  try {
+    if (!requireMongoReady(res)) return;
+
+    const source = req.query.source ? String(req.query.source) : '';
+    const root = req.query.root ? String(req.query.root) : '';
+    if (!source || !root) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'source and root are required'
+      });
+    }
+
+    const cleanRoot = normalizeRoot(root);
+    const manifest = await RagManifest.findOne({ source, root: cleanRoot }).lean();
+
+    if (!manifest) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Manifest not found for source/root',
+        details: { source, root: cleanRoot }
+      });
+    }
+
+    const manifestSet = new Set(
+      (manifest.files || [])
+        .map(f => normalizeRelativePath(f.path, cleanRoot))
+        .filter(Boolean)
+    );
+
+    const docs = await ragStore.listDocuments({ source });
+
+    const candidates = [];
+    for (const doc of docs) {
+      const docPath = normalizeRelativePath(doc.path, cleanRoot);
+      if (!docPath) {
+        candidates.push({
+          documentId: doc.documentId,
+          title: doc.title,
+          source: doc.source,
+          path: doc.path,
+          reason: 'missing_path'
+        });
+        continue;
+      }
+
+      if (!manifestSet.has(docPath)) {
+        candidates.push({
+          documentId: doc.documentId,
+          title: doc.title,
+          source: doc.source,
+          path: doc.path,
+          reason: 'missing_from_manifest',
+          updatedAt: doc.updatedAt,
+          chunkCount: doc.chunkCount
+        });
+      }
+    }
+
+    return res.json({
+      status: 'success',
+      data: {
+        source,
+        root: cleanRoot,
+        manifest: {
+          scanId: manifest.scanId,
+          generatedAt: manifest.generatedAt,
+          updatedAt: manifest.updatedAt,
+          fileCount: manifest.stats?.fileCount || manifest.files?.length || 0
+        },
+        summary: {
+          ragDocuments: docs.length,
+          manifestFiles: manifest.stats?.fileCount || manifest.files?.length || 0,
+          candidates: candidates.length
+        },
+        candidates
+      }
+    });
+  } catch (error) {
+    logger.error('RAG deletion preview error', { error: error.message, stack: error.stack });
+    return res.status(500).json({ status: 'error', message: error.message });
   }
 });
 
