@@ -1777,6 +1777,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Check RAG availability and show/hide advanced options panel
     checkRagAvailability();
+    
+    // RE-EVALUATE AGENT SELECTION
+    // Ensure that if an agent was selected during initAgentSystem (which runs largely in parallel or before fetchModels),
+    // we re-apply the model constraint now that models are actually loaded.
+    if (state.agent && state.agent.defaultModel) {
+        console.log('Re-applying agent model after fetchModels:', state.agent.defaultModel);
+        
+         // If not found in select, maybe add it? 
+          if (elements.modelSelect.querySelector(`option[value="${state.agent.defaultModel}"]`) === null) {
+              const opt = document.createElement('option');
+              opt.value = state.agent.defaultModel;
+              opt.textContent = state.agent.defaultModel + ' (Agent)';
+              elements.modelSelect.appendChild(opt);
+          }
+        
+        elements.modelSelect.value = state.agent.defaultModel;
+        state.settings.model = state.agent.defaultModel; // Ensure state is synced
+        updateConfigSummary();
+    }
 
     // Set initial UI toggle states
     if (elements.toggleLogBtn) {
@@ -1827,7 +1846,10 @@ document.addEventListener('DOMContentLoaded', () => {
     console.warn('Server config load failed, using defaults:', err);
     init();
   });
-});
+
+  // ==========================================
+  // V8: Stats & AgentX Integration (Continued Scope)
+  // ==========================================
 
 /**
  * Update conversation statistics (tokens, cost) in the UI
@@ -1898,7 +1920,14 @@ async function refreshStats(conversationId) {
   let agentListView = null;
 
   async function initAgentSystem() {
-    if (!agentElements.launcherContainer || !window.AgentListView) return;
+    console.log('Initializing Agent System...');
+    if (!agentElements.launcherContainer || !window.AgentListView) {
+        console.error('Agent Launcher or AgentListView missing', { 
+            container: !!agentElements.launcherContainer, 
+            class: !!window.AgentListView 
+        });
+        return;
+    }
 
     // Initialize AgentListView in Launcher Mode
     agentListView = new AgentListView(agentElements.launcherContainer, {
@@ -1913,6 +1942,8 @@ async function refreshStats(conversationId) {
     const hasConversation = urlParams.get('c');
     const agentIdParam = urlParams.get('agent');
     
+    console.log('Agent Params:', { hasConversation, agentIdParam });
+
     // Wire up Change Agent Button
     if (agentElements.changeBtn) {
         agentElements.changeBtn.addEventListener('click', () => {
@@ -1922,13 +1953,21 @@ async function refreshStats(conversationId) {
 
     // Load agents and show launcher if needed
     // Only load if visible or needed to save bandwidth? No, load fast.
-    await agentListView.load();
+    try {
+        await agentListView.load();
+        console.log(`Loaded ${agentListView.agents.length} agents for launcher.`);
+    } catch (e) {
+        console.error('Failed to load agents in initAgentSystem:', e);
+    }
 
     // Check if we need to auto-select an agent from URL
     if (agentIdParam) {
         const preSelectedAgent = agentListView.agents.find(a => a._id === agentIdParam);
+        console.log('Pre-selected agent found:', preSelectedAgent?.name);
         if (preSelectedAgent) {
             handleAgentSelection(preSelectedAgent);
+        } else {
+            console.warn(`Agent ID ${agentIdParam} not found in list.`);
         }
     }
 
@@ -1979,19 +2018,24 @@ async function refreshStats(conversationId) {
       
       // Update Model Selection
       if (agent.defaultModel) {
-           elements.modelSelect.value = agent.defaultModel;
+            // Force disable user interaction if we want to be strict, or just select it
+            // elements.modelSelect.disabled = true; // Optional: Enforce agent model? 
+            
            // If not found in select, maybe add it? 
-           if (elements.modelSelect.value !== agent.defaultModel) {
+           if (elements.modelSelect.querySelector(`option[value="${agent.defaultModel}"]`) === null) {
                const opt = document.createElement('option');
                opt.value = agent.defaultModel;
                opt.textContent = agent.defaultModel + ' (Agent)';
                elements.modelSelect.appendChild(opt);
-               elements.modelSelect.value = agent.defaultModel;
            }
+           elements.modelSelect.value = agent.defaultModel;
+           state.settings.model = agent.defaultModel;
+           updateConfigSummary();
       }
       
       // Update UI Panels
       updateAgentPanel(agent);
+      updateChatHeader(agent);
       
       hideLauncher();
       
@@ -2027,6 +2071,37 @@ async function refreshStats(conversationId) {
       if (agentElements.activePanel) agentElements.activePanel.style.display = 'block';
       if (agentElements.agentSummary) agentElements.agentSummary.style.display = 'flex';
       if (agentElements.defaultSummary) agentElements.defaultSummary.style.display = 'none';
+  }
+
+  function updateChatHeader(agent) {
+      // Find or create a header in the chat window top area
+      let header = document.getElementById('chatAgentHeader');
+      const chatWindow = document.getElementById('chatWindow');
+      
+      if (!agent) {
+          if (header) header.remove();
+          return;
+      }
+      
+      if (!header) {
+          header = document.createElement('div');
+          header.id = 'chatAgentHeader';
+          header.className = 'chat-agent-header';
+          // Insert at the top of chatWindow
+          chatWindow.insertBefore(header, chatWindow.firstChild);
+      }
+      
+      const catConfig = agentListView && agentListView.agents ? (agent.category || 'general') : 'general';
+      // Basic styling override for this dynamic element
+      header.innerHTML = `
+        <div class="chat-agent-header-content">
+            <span class="chat-agent-avatar"><i class="fas ${agent.avatar || 'fa-robot'}"></i></span>
+            <div class="chat-agent-info">
+                <span class="chat-agent-name">Chatting with ${agent.displayName}</span>
+                <span class="chat-agent-model"><i class="fas fa-microchip"></i> ${agent.defaultModel}</span>
+            </div>
+        </div>
+      `;
   }
 
   function showLauncher() {

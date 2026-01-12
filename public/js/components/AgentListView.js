@@ -405,4 +405,6 @@ class AgentListView {
 // Export for use in other scripts
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = AgentListView;
+} else if (typeof window !== 'undefined') {
+    window.AgentListView = AgentListView;
 }

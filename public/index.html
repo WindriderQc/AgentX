@@ -220,6 +220,59 @@
         font-size: 13px;
       }
     }
+
+    /* Chat Agent Header */
+    .chat-agent-header {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: rgba(13, 17, 23, 0.95);
+        backdrop-filter: blur(8px);
+        border-bottom: 1px solid var(--border);
+        padding: 10px 20px;
+        margin: -20px -20px 20px -20px; /* Offset chat window padding */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: calc(100% + 40px);
+    }
+    
+    .chat-agent-header-content {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+    
+    .chat-agent-avatar {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        background: var(--surface-2);
+        color: var(--accent);
+    }
+    
+    .chat-agent-info {
+        display: flex;
+        flex-direction: column;
+        line-height: 1.2;
+    }
+    
+    .chat-agent-name {
+        font-weight: 600;
+        font-size: 0.95em;
+        color: var(--text);
+    }
+    
+    .chat-agent-model {
+        font-size: 0.8em;
+        color: var(--muted);
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
   </style>
 </head>
 <body>
@@ -942,8 +995,10 @@
   <script src="/js/utils/shortcut-hints.js"></script>
   <!-- Keyboard Shortcuts Help Modal -->
   <script src="/js/utils/shortcuts-modal.js"></script>
-  <script src="/js/chat.v2.js"></script>
+  <!-- Components -->
   <script src="/js/components/AgentXCard.js"></script>
   <script src="/js/components/AgentListView.js"></script>
+  <!-- Main Application -->
+  <script src="/js/chat.v2.js"></script>
 </body>
 </html>

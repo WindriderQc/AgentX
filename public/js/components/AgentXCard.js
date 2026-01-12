@@ -221,4 +221,6 @@ const AgentXCard = (() => {
 // Export for use in other scripts
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = AgentXCard;
+} else if (typeof window !== 'undefined') {
+    window.AgentXCard = AgentXCard;
 }
