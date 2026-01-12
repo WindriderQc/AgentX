@@ -170,21 +170,22 @@ router.get('/health/qdrant', async (req, res) => {
 
 // CHAT: Delegated to chatService
 router.post('/chat', optionalAuth, attachWorkspace, async (req, res) => {
-  const { 
-    target = process.env.OLLAMA_HOST, 
-    model, 
-    message, 
-    messages = [], 
-    system, 
+  const {
+    target = process.env.OLLAMA_HOST,
+    model,
+    message,
+    messages = [],
+    system,
     persona,
-    options = {}, 
-    conversationId, 
-    useRag, 
-    ragTopK, 
+    options = {},
+    conversationId,
+    useRag,
+    ragTopK,
     ragFilters,
     ragCompress,
     autoRoute = false,  // Enable smart model routing
-    taskType = null     // Override task classification (code_generation, deep_reasoning, etc.)
+    taskType = null,    // Override task classification (code_generation, deep_reasoning, etc.)
+    agentId = null      // AgentX: Unified agent context
   } = req.body;
 
   // Defensive fix for workspace context
@@ -217,7 +218,7 @@ router.post('/chat', optionalAuth, attachWorkspace, async (req, res) => {
         message,
         messages,
         system,
-            persona,
+        persona,
         options,
         conversationId,
         useRag,
@@ -227,7 +228,8 @@ router.post('/chat', optionalAuth, attachWorkspace, async (req, res) => {
         ragStore,
         autoRoute,
         taskType,
-        workspaceId: req.workspace ? req.workspace._id : null
+        workspaceId: req.workspace ? req.workspace._id : null,
+        agentId  // AgentX: Pass agent context
     });
 
     res.json({

@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="/css/agentx.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <style>
@@ -414,10 +415,29 @@
           </ul>
         </div>
 
+        <!-- AgentX Launcher (shown when no conversation) -->
+        <div class="agentx-launcher-container" id="agentxLauncher" style="display: none;">
+          <div class="agentx-launcher">
+            <div class="agentx-launcher-header">
+              <h2><i class="fas fa-user-astronaut"></i> Choose an Agent</h2>
+              <p>Select an AgentX to start your conversation, or use the default settings</p>
+            </div>
+            <div class="agentx-filters" id="launcherFilters">
+              <!-- Category tabs rendered by JS -->
+            </div>
+            <div class="agentx-launcher-grid" id="agentxLauncherGrid">
+              <!-- Agent cards rendered by JS -->
+            </div>
+            <button class="ghost small" id="skipAgentBtn" style="margin-top: 16px;">
+              <i class="fas fa-forward"></i> Skip and use default settings
+            </button>
+          </div>
+        </div>
+
         <div class="chat-window" id="chatWindow">
           <div class="bubble assistant">
             <div class="meta">AgentX</div>
-            <p>Hello! I’m online. Pick a model, then ask away.</p>
+            <p>Hello! I'm online. Pick a model, then ask away.</p>
           </div>
         </div>
 
@@ -459,15 +479,36 @@
 
         <!-- Config Summary (shown when panel collapsed) -->
         <div class="config-summary" id="configSummary" style="display: block;">
-          <div class="summary-items">
+          <div class="summary-items" id="defaultConfigSummary">
             <span class="summary-item"><strong>Model:</strong> <span id="summaryModel">—</span></span>
             <span class="summary-item"><strong>RAG:</strong> <span id="summaryRag">Off</span></span>
             <span class="summary-item"><strong>Stream:</strong> <span id="summaryStream">On</span></span>
             <span class="summary-item"><strong>Temp:</strong> <span id="summaryTemp">0.7</span></span>
           </div>
+          <div class="summary-items" id="agentConfigSummary" style="display: none;">
+            <span class="summary-item"><i class="fas fa-robot"></i> <strong id="summaryAgentName">Agent</strong></span>
+            <span class="summary-item"><i class="fas fa-tools"></i> <span id="summaryAgentTools">0</span> Tools</span>
+          </div>
         </div>
 
         <div class="config-body" id="configBody">
+
+        <!-- Agent Active Panel -->
+        <div class="agent-active-panel" id="agentActivePanel" style="display: none;">
+          <div class="agent-card-mini">
+            <div class="agent-avatar-mini" id="activeAgentAvatar"><i class="fas fa-robot"></i></div>
+            <div class="agent-info-mini">
+              <h3 id="activeAgentName">Agent Name</h3>
+              <p id="activeAgentRole">General Assistant</p>
+            </div>
+            <button class="icon-btn small" id="changeAgentBtn" title="Change Agent"><i class="fas fa-exchange-alt"></i></button>
+          </div>
+          <div class="agent-capabilities-list">
+             <div class="capability-tag" id="activeAgentModel"><i class="fas fa-microchip"></i> <span>Model</span></div>
+             <div class="capability-tag" id="activeAgentTools"><i class="fas fa-wrench"></i> <span>0 Tools</span></div>
+          </div>
+          <hr class="panel-divider">
+        </div>
 
         <div class="field">
           <label>Target host</label>
@@ -902,5 +943,7 @@
   <!-- Keyboard Shortcuts Help Modal -->
   <script src="/js/utils/shortcuts-modal.js"></script>
   <script src="/js/chat.v2.js"></script>
+  <script src="/js/components/AgentXCard.js"></script>
+  <script src="/js/components/AgentListView.js"></script>
 </body>
 </html>

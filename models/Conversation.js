@@ -105,6 +105,15 @@ const ConversationSchema = new mongoose.Schema({
   promptName: { type: String },     // Snapshot: e.g. "default_chat"
   promptVersion: { type: Number },  // Snapshot: e.g. 5
 
+  // AgentX: Unified agent tracking
+  agentId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'AgentX',
+    required: false,
+    index: true
+  },
+  agentName: { type: String },      // Snapshot: e.g. "code_expert"
+
   // V5: Total conversation cost (sum of all message costs)
   totalCost: {
     sum: { type: Number, default: 0 },

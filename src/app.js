@@ -279,6 +279,14 @@ app.use('/api/voice', voiceRoutes);
 const promptRoutes = require('../routes/prompts');
 app.use('/api/prompts', promptRoutes);
 
+// AgentX routes (unified agents with model + prompt + tools)
+const agentRoutes = require('../routes/agents');
+app.use('/api/agents', agentRoutes);
+
+// Tool execution routes (N8N proxy for LLM tool calls)
+const toolRoutes = require('../routes/tools');
+app.use('/api/tools', toolRoutes);
+
 // Benchmark routes (LLM performance testing)
 const benchmarkRoutes = require('../routes/benchmark');
 app.use('/api/benchmark', benchmarkLimiter, benchmarkRoutes);

@@ -175,7 +175,8 @@ function buildOllamaPayload(params) {
     model,
     messages,
     options = {},
-    streamEnabled = false
+    streamEnabled = false,
+    tools = []  // AgentX: N8N tools as LLM function calls
   } = params;
 
   const payload = {
@@ -188,6 +189,11 @@ function buildOllamaPayload(params) {
       num_predict: streamEnabled ? (options.num_predict || 256) : -1
     }
   };
+
+  // Add tools if provided (for function calling)
+  if (tools && tools.length > 0) {
+    payload.tools = tools;
+  }
 
   // For thinking models in non-streaming mode, ensure proper token limits
   if (!streamEnabled && isThinkingModel(model)) {

@@ -1,5 +1,6 @@
 const Conversation = require('../../models/Conversation');
 const PromptConfig = require('../../models/PromptConfig');
+const AgentX = require('../../models/AgentX');
 const { getOrCreateProfile } = require('../helpers/userHelpers');
 const { extractResponse, buildOllamaPayload } = require('../helpers/ollamaResponseHandler');
 const { sanitizeOptions, resolveTarget } = require('../utils');
@@ -8,6 +9,12 @@ const { executeTool, parseToolCalls } = require('./toolExecutor');
 const { routeRequest, getTargetForModel } = require('./modelRouter');
 const { calculateMessageCost, calculateConversationCost } = require('./costCalculator');
 const { getCompressionService } = require('./ragCompression');
+const {
+    buildAgentSystemPrompt,
+    getAgentToolDefinitions,
+    executeN8nTool,
+    processToolCalls: processAgentToolCalls
+} = require('./agentService');
 const logger = require('../../config/logger');
 const fetch = require('node-fetch');
 
@@ -78,11 +85,54 @@ const handleChatRequest = async ({
     ragStore,
     autoRoute = false,  // Enable smart model routing
     taskType = null,    // Override task classification
-    workspaceId = null  // Week 4: Workspace context
+    workspaceId = null, // Week 4: Workspace context
+    agentId = null      // AgentX: Unified agent context
 }) => {
-    const personaName = persona || options.persona || 'default_chat';
+    let personaName = persona || options.persona || 'default_chat';
 
-    // 0. Smart Model Routing (if enabled)
+    // 0a. Load AgentX context if provided
+    let agent = null;
+    let agentTools = [];
+
+    if (agentId) {
+        try {
+            agent = await AgentX.findById(agentId)
+                .populate('promptConfigId', 'name systemPrompt version isActive description');
+
+            if (agent) {
+                // Override settings from agent
+                if (!model || model === 'auto') {
+                    model = agent.defaultModel;
+                }
+                if (agent.promptConfigId?.name) {
+                    personaName = agent.promptConfigId.name;
+                }
+                // Get N8N tool definitions for this agent
+                agentTools = getAgentToolDefinitions(agent);
+
+                // Apply agent capabilities
+                if (agent.capabilities) {
+                    if (typeof useRag === 'undefined' && agent.capabilities.supportsRag !== undefined) {
+                        useRag = agent.capabilities.supportsRag;
+                    }
+                    if (agent.capabilities.autoRoute) {
+                        autoRoute = true;
+                    }
+                }
+
+                logger.info('AgentX context loaded', {
+                    agentId: agent._id,
+                    agentName: agent.name,
+                    model: agent.defaultModel,
+                    toolCount: agentTools.length
+                });
+            }
+        } catch (err) {
+            logger.warn('Failed to load AgentX context', { agentId, error: err.message });
+        }
+    }
+
+    // 0b. Smart Model Routing (if enabled)
     let effectiveModel = model;
     let effectiveTarget = target;
     let routingInfo = null;
@@ -304,7 +354,8 @@ const handleChatRequest = async ({
                 model: effectiveModel,
                 messages: formattedMessages,
                 options: sanitizeOptions(options),
-                streamEnabled: false
+                streamEnabled: false,
+                tools: agentTools  // AgentX: Pass N8N tools for function calling
             });
 
             // Call Ollama
@@ -331,11 +382,65 @@ const handleChatRequest = async ({
             }
 
             const data = await response.json();
-            const extracted = extractResponse(data, model);
-            assistantMessageContent = extracted.content;
-            thinking = extracted.thinking;
-            warning = extracted.warning;
-            stats = extracted.stats;
+
+            // AgentX: Handle tool calls from Ollama response
+            if (data.message?.tool_calls && data.message.tool_calls.length > 0 && agent) {
+                logger.info('Ollama returned tool calls', {
+                    count: data.message.tool_calls.length,
+                    tools: data.message.tool_calls.map(tc => tc.function?.name)
+                });
+
+                // Execute N8N tools
+                const toolResults = await processAgentToolCalls(
+                    data.message.tool_calls,
+                    agent,
+                    { conversationId, userId, workspaceId }
+                );
+
+                // Add tool results to messages and make another call
+                const toolResultMessages = toolResults.map(result => ({
+                    role: 'tool',
+                    content: JSON.stringify(result.success ? result.result : { error: result.error }),
+                    name: result.function_name
+                }));
+
+                // Make follow-up call with tool results
+                const followUpMessages = [
+                    ...formattedMessages,
+                    data.message,  // Include the assistant's tool call message
+                    ...toolResultMessages
+                ];
+
+                const followUpPayload = buildOllamaPayload({
+                    model: effectiveModel,
+                    messages: followUpMessages,
+                    options: sanitizeOptions(options),
+                    streamEnabled: false
+                });
+
+                const followUpResponse = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(followUpPayload)
+                });
+
+                if (!followUpResponse.ok) {
+                    throw new Error(`Ollama follow-up request failed: ${followUpResponse.statusText}`);
+                }
+
+                const followUpData = await followUpResponse.json();
+                const extracted = extractResponse(followUpData, model);
+                assistantMessageContent = extracted.content;
+                thinking = extracted.thinking;
+                warning = extracted.warning;
+                stats = extracted.stats;
+            } else {
+                const extracted = extractResponse(data, model);
+                assistantMessageContent = extracted.content;
+                thinking = extracted.thinking;
+                warning = extracted.warning;
+                stats = extracted.stats;
+            }
 
             if (warning) logger.warn('Response extraction warning', { model, warning });
         }
@@ -457,6 +562,12 @@ const handleChatRequest = async ({
         conversation.promptConfigId = activePrompt._id;
         conversation.promptName = activePrompt.name;
         conversation.promptVersion = activePrompt.version;
+
+        // AgentX: Record agent association
+        if (agent) {
+            conversation.agentId = agent._id;
+            conversation.agentName = agent.name;
+        }
 
         // V5: Update conversation total cost
         try {
