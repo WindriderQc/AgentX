@@ -9,6 +9,8 @@ const logger = require('../../config/logger');
 const fs = require('fs').promises;
 const path = require('path');
 const { ObjectId } = require('mongoose').Types;
+const { getFetchOptions } = require('../helpers/httpAgent');
+const { waitForModelLoadWithFallback } = require('../helpers/modelLoadWaiter');
 
 // Models
 const BenchmarkPrompt = require('../../models/BenchmarkPrompt');
@@ -127,12 +129,15 @@ class BenchmarkService {
         const start = Date.now();
 
         try {
-            const response = await fetch(`${host}/api/generate`, {
+            // Use HTTP agent for connection pooling and proper timeout handling
+            const url = `${host}/api/generate`;
+            const fetchOptions = getFetchOptions(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ model, prompt, stream: false }),
-                timeout: 30000
+                timeout: 120000  // 120 seconds for model loading on first request
             });
+            const response = await fetch(url, fetchOptions);
 
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -810,10 +815,15 @@ class BenchmarkService {
         await batch.lockForExecution(process.pid);
 
         // Helper for model warmup
+        // Uses intelligent VRAM monitoring to detect when model is loaded
+        // Falls back to timeout if VRAM monitoring unavailable (e.g., Windows hosts)
         const warmupModel = async (hostUrl, model) => {
             try {
-                // Short timeout, don't block too long
-                await fetch(`${hostUrl}/api/generate`, {
+                logger.info('Starting model warmup', { host: hostUrl, model });
+                
+                // Trigger model load with a minimal request
+                const url = `${hostUrl}/api/generate`;
+                const fetchOptions = getFetchOptions(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ 
@@ -822,11 +832,43 @@ class BenchmarkService {
                         stream: false, 
                         options: { num_predict: 1 } 
                     }),
-                    timeout: 20000 
+                    timeout: 10000  // Just trigger the load, don't wait for completion
                 });
+                
+                // Start the request but don't wait for it (model will start loading)
+                fetch(url, fetchOptions).catch(() => {}); // Ignore errors, we'll check VRAM
+                
+                // Wait for model to finish loading by monitoring VRAM
+                const loadResult = await waitForModelLoadWithFallback(hostUrl, model, {
+                    maxWaitMs: 120000,      // Max 120s to wait
+                    pollIntervalMs: 2000,   // Check every 2s
+                    stabilityChecks: 2,     // Need 2 stable readings
+                    fallbackTimeoutMs: 30000 // If VRAM monitoring unavailable, wait 30s
+                });
+                
+                if (loadResult.loaded) {
+                    logger.info('Model warmed up successfully (VRAM-verified)', { 
+                        host: hostUrl, 
+                        model,
+                        durationMs: loadResult.durationMs,
+                        vramUsedMiB: loadResult.vramUsedMiB
+                    });
+                } else if (loadResult.loaded === null) {
+                    logger.info('Model warmup completed (VRAM monitoring unavailable)', {
+                        host: hostUrl,
+                        model,
+                        reason: loadResult.error
+                    });
+                } else {
+                    logger.warn('Model warmup may not be complete', {
+                        host: hostUrl,
+                        model,
+                        reason: loadResult.error
+                    });
+                }
             } catch (err) {
-                // Non-fatal, just log debug
-                logger.debug('Warmup failed / timed out', { host: hostUrl, model, error: err.message });
+                // Non-fatal, just log
+                logger.debug('Warmup encountered error', { host: hostUrl, model, error: err.message });
             }
         };
 
@@ -912,12 +954,16 @@ class BenchmarkService {
                                 promptLevel: prompt.level
                             }
                         );
-                        const response = await fetch(`${hostUrl}/api/generate`, {
+                        // After warmup, model should be loaded, so use standard timeout
+                        // If model wasn't warmed up properly, this may still timeout
+                        const url = `${hostUrl}/api/generate`;
+                        const fetchOptions = getFetchOptions(url, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ model, prompt: prompt.prompt, stream: false }),
-                            timeout: 60000
+                            timeout: 90000  // 90s for actual inference (model should be loaded)
                         });
+                        const response = await fetch(url, fetchOptions);
 
                         const data = await response.json();
                         const latency = Date.now() - start;
