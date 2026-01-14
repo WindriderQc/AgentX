@@ -175,7 +175,7 @@ Add to the metrics section:
 ```
 
 **API Reference:**
-Update `docs/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md` for:
+Update `docs/architecture/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md` for:
 - New endpoints (method, path, request/response schemas)
 - Changed parameters or response formats
 - Deprecated endpoints (mark as deprecated, include migration path)

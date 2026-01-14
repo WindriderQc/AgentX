@@ -3,73 +3,41 @@
 [![AgentX CI Pipeline](https://github.com/WindriderQc/AgentX/actions/workflows/ci.yml/badge.svg)](https://github.com/WindriderQc/AgentX/actions/workflows/ci.yml)
 [![AgentX CD Pipeline](https://github.com/WindriderQc/AgentX/actions/workflows/cd.yml/badge.svg)](https://github.com/WindriderQc/AgentX/actions/workflows/cd.yml)
 
-**Production-ready local AI assistant with RAG, conversation memory, and continuous improvement capabilities.**
+**Production-ready AI assistant platform with RAG, conversation memory, multi-tenancy, and automated improvement capabilities.**
+
+AgentX transforms your local Ollama instance into a powerful AI platform with advanced features including knowledge augmentation (RAG), persistent conversation memory, team collaboration, analytics, and automated improvement loops via n8n integration.
 
 ---
 
-## ✅ Completed Development Tracks (Phase 1)
+## 🎯 Project Status
 
-The following development tracks have been successfully completed, bringing the SBQC Stack to feature maturity:
+✅ **All 8 development tracks complete** - Production ready with comprehensive testing and CI/CD
 
-1.  **Alerts:** Real-time system monitoring and notification system.
-2.  **Analytics:** Comprehensive dashboard for usage, performance, and quality metrics.
-3.  **Custom Models:** Advanced model configuration and tuning UI.
-4.  **Self-Healing:** Automated recovery workflows for critical failures.
-5.  **Testing:** Robust CI/CD pipeline with unit and integration tests.
-6.  **Backup:** Automated backup and restore strategies for MongoDB and Qdrant.
+See **[ROADMAP.md](ROADMAP.md)** for detailed status, **[CHANGELOG.md](CHANGELOG.md)** for version history.
 
 ---
 
-## 📖 Documentation Hub
+## 📖 Documentation
 
-**Canonical index:** `docs/INDEX.md` (roadmap + progression live under `docs/planning/`).
+**→ Complete documentation index:** **[docs/INDEX.md](docs/INDEX.md)** ← Start here!
 
-**For complete, up-to-date documentation, see the SBQC Stack documentation:**
+### Quick Links
 
-### 🎯 Start Here
-- **[00-OVERVIEW.md](docs/architecture/SBQC-Stack-Final/00-OVERVIEW.md)** - System architecture overview & getting started guide
-- **[00-AUDIT-SUMMARY.md](docs/architecture/SBQC-Stack-Final/00-AUDIT-SUMMARY.md)** - Latest documentation status & changes
-- **[07-AGENTX-API-REFERENCE.md](docs/architecture/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md)** - Complete API documentation (40+ endpoints)
+**👤 For Users:**
+- [Getting Started](docs/onboarding/quickstart.md) - Installation & first steps
+- [User Manual](docs/user-manual/README.md) - Complete UI guide
+- [Troubleshooting](docs/guides/TROUBLESHOOTING.md) - Common issues & solutions
 
-### 🔧 Configuration & Deployment
-- **[05-DEPLOYMENT.md](docs/architecture/SBQC-Stack-Final/05-DEPLOYMENT.md)** - Environment variables & deployment guide
-- **[01-ARCHITECTURE.md](docs/architecture/SBQC-Stack-Final/01-ARCHITECTURE.md)** - System design & architecture decisions
+**👨‍💻 For Developers:**
+- [Contributing Guide](CONTRIBUTING.md) - Development workflow
+- [Architecture Overview](docs/architecture/backend-overview.md) - System design
+- [API Reference](docs/architecture/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md) - All endpoints
 
-### 🔨 Development & Testing
-- **[03-AGENTX-TASKS.md](docs/architecture/SBQC-Stack-Final/03-AGENTX-TASKS.md)** - Validation tasks & feature roadmap
-- **[04-N8N-WORKFLOWS.md](docs/architecture/SBQC-Stack-Final/04-N8N-WORKFLOWS.md)** - n8n workflow specifications
+**🤖 For AI Agents (Claude Code):**
+- [CLAUDE.md](CLAUDE.md) - Complete agent guidance
 
-### 📚 Additional Resources
-- **[Quick Start Guide](docs/onboarding/quickstart.md)** - Installation & setup (original guide)
-- **[Backend Overview](docs/architecture/backend-overview.md)** - Implementation details
-- **[API Contracts](docs/api/contracts/)** - Version-specific API contracts
-
----
-
-## Documentation Map
-
-We have organized the documentation to help you get started quickly and then dive deep into the technical details.
-
-### 🚀 Getting Started (Onboarding)
-*   [**Quick Start Guide**](docs/onboarding/quickstart.md): Installation, setup, and your first test. Start here!
-*   [**V4 Quick Reference**](docs/onboarding/v4-quick-reference.md): Specifics for V4 features.
-
-### 🏗️ Architecture & Technical Details
-*   [**Backend Overview**](docs/architecture/backend-overview.md): High-level architecture and design decisions.
-*   [**Architecture Diagrams**](docs/architecture/diagrams.md): Visual representation of the system and data flows.
-*   [**Database Architecture**](docs/architecture/database.md): Schema and data model details.
-*   [**Specs**](specs/): Detailed architectural specifications (V3 RAG, V4 Analytics).
-
-### 🔌 API Reference
-*   [**API Reference**](docs/api/reference.md): Complete API documentation with examples.
-*   [**Contracts**](docs/api/contracts/): Snapshots of API contracts for specific versions.
-
-### 📜 History & Reports
-*   [**Implementation Reports**](docs/reports/): Summaries of what was implemented in each version.
-*   [**Archive**](docs/archive/): Old plans, reports, and deprecated documentation.
-
-## What’s here
-AgentX is a Node.js application that transforms your local Ollama instance into a powerful AI assistant with advanced features including knowledge augmentation (RAG), persistent conversation memory, user profiles, analytics, and automated improvement loops via n8n integration.
+**📚 All Documentation:**
+- [Complete Documentation Index](docs/INDEX.md) - Navigate all 226 docs
 
 ---
 
@@ -153,34 +121,6 @@ DataAPI must be configured with the matching `DATAAPI_API_KEY` and will require 
    \`\`\`
 
 See [Quick Start Guide](docs/onboarding/quickstart.md) for detailed setup instructions.
-
----
-
-## 📖 Documentation
-
-### 🚀 Getting Started
-- [**Quick Start Guide**](docs/onboarding/quickstart.md) - Installation and first steps
-- [**Onboarding Hub**](docs/onboarding/README.md) - Complete onboarding resources
-- [**v1.0.0 Release Notes**](docs/reports/REVISED_PLAN_STATUS.md) - What's in this release
-
-### 🏗️ Architecture
-- [**Backend Overview**](docs/architecture/backend-overview.md) - System architecture
-- [**Database Schema**](docs/architecture/database.md) - MongoDB models
-- [**Architecture Diagrams**](docs/architecture/diagrams.md) - Visual documentation
-
-### 🔌 API Documentation
-- [**API Reference**](docs/api/reference.md) - Complete endpoint documentation
-- [**V3 RAG Contract**](docs/api/contracts/v3-snapshot.md) - RAG ingestion API
-- [**V4 Analytics Contract**](docs/api/contracts/v4-contract.md) - Analytics API
-
-### 📋 Specifications
-- [**V3 RAG Architecture**](specs/V3_RAG_ARCHITECTURE.md) - RAG system design
-- [**V4 Analytics Architecture**](specs/V4_ANALYTICS_ARCHITECTURE.md) - Analytics and improvement loops
-
-### 🔧 Operations
-- [**n8n Ingestion Workflows**](docs/reports/n8n-ingestion.md) - Document automation
-- [**n8n Prompt Improvement**](docs/reports/n8n-prompt-improvement-v4.md) - Automated optimization
-- [**Implementation Reports**](docs/reports/) - Feature summaries
 
 ---
 
@@ -275,47 +215,6 @@ Run endpoint validation tests:
 - [ ] Port 3080 accessible (or configured alternative)
 - [ ] Health check passes: \`curl http://localhost:3080/health\`
 - [ ] Models load successfully: \`curl http://localhost:3080/api/ollama/models\`
-
----
-
-## 🛠️ Ops Quick Reference (PM2 ecosystem)
-
-Standard workflow (apply changes + persist for reboot):
-
-```bash
-cd /home/yb/codes/AgentX
-pm2 reload ecosystem.config.js --update-env
-pm2 save
-pm2 status
-```
-
-Logs:
-
-```bash
-pm2 logs agentx --lines 200
-pm2 logs dataapi --lines 200
-```
-
-Boot startup status (systemd):
-
-```bash
-systemctl is-enabled pm2-yb
-systemctl show -p ActiveState,SubState,Result pm2-yb
-```
-
-## 🔮 Roadmap
-
-### v1.1.0 (Planned)
-- Persistent vector database (Qdrant/Chroma migration)
-- API authentication and rate limiting
-- Structured logging and monitoring
-- Docker deployment support
-
-### v1.2.0 (Planned)
-- Hybrid search (semantic + keyword)
-- Multi-agent conversation support
-- Tool use / function calling
-- Enhanced prompt evaluation metrics
 
 ---
 
