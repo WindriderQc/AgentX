@@ -434,8 +434,20 @@
               <strong id="statMessages">0</strong>
             </div>
             <div class="pill inline" id="conversationTokens" style="display: none; margin-left: 12px;">
-              <span class="label">Tokens</span>
-              <strong id="tokenCount">0</strong>
+              <div class="context-measure">
+                <div class="context-measure-info">
+                  <div>
+                    <span class="label">Context</span>
+                    <strong id="tokenCount">0</strong>
+                    <span class="muted" style="font-size: 10px;"> / </span>
+                    <span id="tokenLimit" style="font-size: 10px; opacity: 0.6;">4096</span>
+                  </div>
+                  <span class="context-percentage" id="contextPercentage">0%</span>
+                </div>
+                <div class="context-progress-bar">
+                  <div class="context-progress-fill" id="contextProgressFill" style="width: 0%"></div>
+                </div>
+              </div>
             </div>
             <div class="pill inline" id="conversationCost" style="display: none; margin-left: 12px;">
               <span class="label">Cost</span>
