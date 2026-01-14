@@ -580,6 +580,10 @@ class SelfHealingEngine {
       const throttleDurationMs = 15 * 60 * 1000; // 15 minutes
       const reductionFactor = 0.5; // 50% reduction
 
+      // Generate unique token to version this throttle state
+      // Prevents race where old timeout disables newer throttle
+      const token = crypto.randomUUID();
+
       // Store throttle state in global (in-memory for now, Redis in future)
       if (!global._selfHealingThrottle) {
         global._selfHealingThrottle = {};
@@ -587,8 +591,15 @@ class SelfHealingEngine {
 
       const previousState = global._selfHealingThrottle.enabled || false;
 
+      // Cancel any existing timeout to prevent premature disabling
+      if (global._selfHealingThrottleTimeout) {
+        clearTimeout(global._selfHealingThrottleTimeout);
+        logger.debug('Cleared previous throttle timeout');
+      }
+
       global._selfHealingThrottle = {
         enabled: true,
+        token, // Unique identifier for this throttle state
         reductionFactor,
         appliedAt: Date.now(),
         expiresAt: Date.now() + throttleDurationMs,
@@ -600,21 +611,30 @@ class SelfHealingEngine {
       };
 
       logger.warn('Request throttling activated', {
+        token,
         reductionFactor: `${(1 - reductionFactor) * 100}%`,
         durationMs: throttleDurationMs,
         expiresAt: new Date(global._selfHealingThrottle.expiresAt).toISOString(),
         previouslyThrottled: previousState
       });
 
-      // Schedule automatic restoration
+      // Schedule automatic restoration with token check
       // Skip in tests to avoid leaving a long-lived timer that keeps Jest alive.
       if (process.env.NODE_ENV !== 'test') {
-        setTimeout(() => {
-          if (global._selfHealingThrottle && global._selfHealingThrottle.enabled) {
+        global._selfHealingThrottleTimeout = setTimeout(() => {
+          // Only disable if this timeout's token matches current throttle state
+          // This prevents race where newer throttle gets disabled by older timeout
+          if (global._selfHealingThrottle?.token === token && global._selfHealingThrottle.enabled) {
             global._selfHealingThrottle.enabled = false;
             logger.info('Request throttling automatically restored', {
+              token,
               duration: throttleDurationMs,
               reason: 'timeout_reached'
+            });
+          } else {
+            logger.debug('Throttle timeout ignored (token mismatch or already disabled)', {
+              timeoutToken: token,
+              currentToken: global._selfHealingThrottle?.token
             });
           }
         }, throttleDurationMs);
@@ -623,6 +643,7 @@ class SelfHealingEngine {
       return {
         action: 'throttle_requests',
         enabled: true,
+        token,
         reductionPercentage: `${(1 - reductionFactor) * 100}%`,
         durationMs: throttleDurationMs,
         expiresAt: new Date(global._selfHealingThrottle.expiresAt).toISOString(),

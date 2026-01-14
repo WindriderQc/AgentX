@@ -118,28 +118,69 @@ async function flushToDatabase() {
       by_status_code: groupByStatusCode(requests)
     };
 
-    // Upsert to database (update if exists, insert if not)
-    // Use $inc to increment counters, $set to update calculated fields
-    const existingSnapshot = await PerformanceSnapshot.findOne({ hour });
+    // ATOMIC OPERATION: Use updateOne with atomic operators to prevent race conditions
+    // In PM2 cluster or multi-server setups, multiple workers can flush simultaneously
 
-    if (existingSnapshot) {
-      // Merge with existing data
-      existingSnapshot.requests_total += summary.requests_total;
-      existingSnapshot.requests_successful += summary.requests_successful;
-      existingSnapshot.requests_failed += summary.requests_failed;
+    // Build atomic increment operations for status codes
+    const statusCodeIncs = {};
+    Object.entries(summary.by_status_code).forEach(([code, count]) => {
+      statusCodeIncs[`by_status_code.${code}`] = count;
+    });
 
-      // Recalculate latency (merge new samples)
-      const previousCount = existingSnapshot.requests_total - summary.requests_total;
-      const previousAvg = existingSnapshot.latency.avg || 0;
+    // Step 1: Atomically update counters and min/max latency
+    await PerformanceSnapshot.updateOne(
+      { hour },
+      {
+        $inc: {
+          requests_total: summary.requests_total,
+          requests_successful: summary.requests_successful,
+          requests_failed: summary.requests_failed,
+          ...statusCodeIncs
+        },
+        $min: { 'latency.min': summary.latency.min || 0 },
+        $max: { 'latency.max': summary.latency.max || 0 },
+        $setOnInsert: {
+          hour,
+          by_endpoint: [],
+          latency: { min: 0, max: 0, avg: 0, p95: 0, p99: 0 }
+        }
+      },
+      { upsert: true }
+    );
+
+    // Step 2: Update complex aggregations (avg, percentiles, endpoints) using findOneAndUpdate
+    // This reduces race window compared to find-then-save, though not fully atomic
+    const snapshot = await PerformanceSnapshot.findOneAndUpdate(
+      { hour },
+      {},
+      { new: true }
+    );
+
+    if (snapshot) {
+      // Recalculate weighted average latency
+      const totalRequests = snapshot.requests_total;
+      const newRequestCount = requests.length;
+      const previousRequestCount = totalRequests - newRequestCount;
+      const previousAvg = snapshot.latency.avg || 0;
+      const newAvg = summary.latency.avg || 0;
+
+      snapshot.latency.avg = previousRequestCount > 0
+        ? Math.round((previousAvg * previousRequestCount + newAvg * newRequestCount) / totalRequests)
+        : newAvg;
+
+      // Update percentiles (approximate - computed from running average)
+      // Note: True percentiles require all samples; this is an approximation for clustered environments
       const allLatencies = [
-        ...Array(previousCount).fill(previousAvg),
+        ...Array(Math.min(previousRequestCount, 1000)).fill(previousAvg),
         ...requests.map(r => r.latency)
       ];
-      existingSnapshot.latency = calculateLatencyStats(allLatencies.map(latency => ({ latency })));
+      const approxStats = calculateLatencyStats(allLatencies.map(latency => ({ latency })));
+      snapshot.latency.p95 = approxStats.p95;
+      snapshot.latency.p99 = approxStats.p99;
 
       // Merge endpoint data
       summary.by_endpoint.forEach(newEndpoint => {
-        const existing = existingSnapshot.by_endpoint.find(
+        const existing = snapshot.by_endpoint.find(
           e => e.path === newEndpoint.path && e.method === newEndpoint.method
         );
 
@@ -148,22 +189,17 @@ async function flushToDatabase() {
           const previousAvg = existing.avg_latency || 0;
           existing.count += newEndpoint.count;
           existing.error_count += newEndpoint.error_count;
-          // Recalculate average latency using previous counts
-          existing.avg_latency = (previousAvg * previousCount + newEndpoint.avg_latency * newEndpoint.count) / (previousCount + newEndpoint.count);
+          // Weighted average for endpoint latency
+          existing.avg_latency = Math.round(
+            (previousAvg * previousCount + newEndpoint.avg_latency * newEndpoint.count) /
+            (previousCount + newEndpoint.count)
+          );
         } else {
-          existingSnapshot.by_endpoint.push(newEndpoint);
+          snapshot.by_endpoint.push(newEndpoint);
         }
       });
 
-      // Merge status codes
-      Object.entries(summary.by_status_code).forEach(([code, count]) => {
-        existingSnapshot.by_status_code[code] = (existingSnapshot.by_status_code[code] || 0) + count;
-      });
-
-      await existingSnapshot.save();
-    } else {
-      // Create new snapshot
-      await PerformanceSnapshot.create(summary);
+      await snapshot.save();
     }
 
     logger.debug('Performance snapshot updated', {
