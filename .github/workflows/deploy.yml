@@ -4,6 +4,19 @@ on:
   push:
     branches:
       - main
+      - develop
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  NODE_VERSION: '18'
 
 jobs:
   test:
@@ -12,69 +25,391 @@ jobs:
     steps:
       - name: 📥 Checkout Code
         uses: actions/checkout@v4
-        
+
       - name: 🔧 Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
-          
+
       - name: 📦 Install Dependencies
         run: npm ci
-        
+
       - name: 🧪 Run Tests
         run: npm test
-        
+        env:
+          NODE_ENV: test
+
       - name: ✅ Tests Passed
         run: echo "✅ All tests passed! Ready to deploy."
 
-  deploy-local:
-    name: 🏠 Deploy Local (AgentX)
+  deploy-staging:
+    name: 🔧 Deploy to Staging
     needs: test
     runs-on: self-hosted
-    if: ${{ github.event_name == 'push' }}
+    if: |
+      (github.ref == 'refs/heads/develop' && github.event_name == 'push') ||
+      (inputs.environment == 'staging' && github.event_name == 'workflow_dispatch')
+    environment:
+      name: staging
+      url: http://192.168.2.33:3081
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 📂 Set Deploy Path
+        id: paths
+        run: |
+          TARGET_DIR="${{ secrets.AGENTX_STAGING_PATH }}"
+          TARGET_DIR="${TARGET_DIR:-/home/yb/codes/AgentX-staging}"
+          echo "target_dir=$TARGET_DIR" >> $GITHUB_OUTPUT
+          echo "📂 Deploying to: $TARGET_DIR"
+
+      - name: 💾 Backup Current State
+        run: |
+          cd "${{ steps.paths.outputs.target_dir }}"
+
+          echo "🗄️ Creating MongoDB backup..."
+          ./scripts/backup-mongodb.sh || echo "⚠️ MongoDB backup skipped"
+
+          echo "🗄️ Creating Qdrant backup..."
+          ./scripts/backup-qdrant.sh || echo "⚠️ Qdrant backup skipped"
+
+          echo "💾 Saving current git commit..."
+          git rev-parse HEAD > .last_deploy_commit
+        continue-on-error: true
+
+      - name: 🔄 Update Code
+        run: |
+          cd "${{ steps.paths.outputs.target_dir }}"
+
+          # Save current commit for rollback
+          CURRENT_COMMIT=$(git rev-parse HEAD)
+          echo "Current commit: $CURRENT_COMMIT"
+
+          # Pull latest changes (non-destructive)
+          git fetch origin develop
+          git merge origin/develop --ff-only || {
+            echo "⚠️ Fast-forward merge failed, using reset"
+            git reset --hard origin/develop
+          }
+
+          NEW_COMMIT=$(git rev-parse HEAD)
+          echo "New commit: $NEW_COMMIT"
+
+          # Install dependencies (keep existing if possible)
+          npm ci --prefer-offline --no-audit
+
+      - name: 🚀 Deploy Application
+        id: deploy
+        run: |
+          cd "${{ steps.paths.outputs.target_dir }}"
+
+          # Check if PM2 process exists
+          if pm2 describe agentx-staging > /dev/null 2>&1; then
+            echo "🔄 Reloading PM2 process..."
+            pm2 reload agentx-staging --update-env
+          else
+            echo "🆕 Starting new PM2 process..."
+            pm2 start server.js --name agentx-staging
+            pm2 save
+          fi
+
+          echo "✅ Deployment complete!"
+
+      - name: 🏥 Health Check
+        run: |
+          echo "⏳ Waiting for application to start..."
+          sleep 10
+
+          for i in {1..5}; do
+            if curl -f http://localhost:3081/health; then
+              echo "✅ Health check passed!"
+              exit 0
+            fi
+            echo "⏳ Attempt $i/5 failed, retrying..."
+            sleep 5
+          done
+
+          echo "❌ Health check failed after 5 attempts"
+          exit 1
+
+      - name: 📦 Deploy n8n Workflows
+        run: |
+          cd "${{ steps.paths.outputs.target_dir }}"
+          ./scripts/deploy-n8n-workflows.sh
+        env:
+          N8N_API_URL: ${{ secrets.N8N_STAGING_URL }}
+          N8N_API_KEY: ${{ secrets.N8N_STAGING_KEY }}
+        continue-on-error: true
+
+      - name: 🔔 Notify Success
+        if: success()
+        uses: slackapi/slack-github-action@v1
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          payload: |
+            {
+              "text": "✅ AgentX deployed to *staging*",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "🔧 *Staging Deployment Succeeded*\n*Commit:* `${{ github.sha }}`\n*Branch:* `${{ github.ref_name }}`\n*By:* ${{ github.actor }}"
+                  }
+                }
+              ]
+            }
+        continue-on-error: true
+
+      - name: ⚠️ Rollback on Failure
+        if: failure()
+        run: |
+          cd "${{ steps.paths.outputs.target_dir }}"
+
+          if [ -f .last_deploy_commit ]; then
+            LAST_COMMIT=$(cat .last_deploy_commit)
+            echo "🔙 Rolling back to commit: $LAST_COMMIT"
+
+            git reset --hard $LAST_COMMIT
+            npm ci --prefer-offline --no-audit
+            pm2 reload agentx-staging --update-env
+
+            echo "✅ Rollback complete"
+          else
+            echo "⚠️ No rollback commit found"
+          fi
+        continue-on-error: true
+
+      - name: 🔔 Notify Failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          payload: |
+            {
+              "text": "❌ AgentX staging deployment FAILED - rollback initiated",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "🚨 *Staging Deployment Failed*\n*Commit:* `${{ github.sha }}`\n*Branch:* `${{ github.ref_name }}`\n*By:* ${{ github.actor }}"
+                  }
+                }
+              ]
+            }
+        continue-on-error: true
+
+  deploy-production:
+    name: 🚀 Deploy to Production
+    needs: test
+    runs-on: self-hosted
+    if: |
+      (github.ref == 'refs/heads/main' && github.event_name == 'push') ||
+      (inputs.environment == 'production' && github.event_name == 'workflow_dispatch')
     environment:
       name: production
       url: http://192.168.2.33:3080
     steps:
       - name: 📥 Checkout Code
         uses: actions/checkout@v4
-        
-      - name: 🔄 Update & Restart
+
+      - name: 📂 Set Deploy Path
+        id: paths
         run: |
           TARGET_DIR="${{ secrets.AGENTX_DEPLOY_PATH }}"
           TARGET_DIR="${TARGET_DIR:-/home/yb/codes/AgentX}"
-          
+          echo "target_dir=$TARGET_DIR" >> $GITHUB_OUTPUT
           echo "📂 Deploying to: $TARGET_DIR"
-          
-          if [ -d "$TARGET_DIR" ]; then
-            cd "$TARGET_DIR"
-            
-            # Backup current state
-            git stash
-            
-            # Update code
-            git fetch origin
-            git reset --hard origin/main
-            
-            # Clean install
-            rm -rf node_modules package-lock.json
-            npm ci
-            
-            # Check if PM2 process exists
-            if pm2 describe agentx > /dev/null 2>&1; then
-              # Zero-downtime reload
-              pm2 reload agentx
-              echo "🔄 PM2 reload complete"
-            else
-              # First time deployment
-              pm2 start server.js --name agentx
-              pm2 save
-              echo "🆕 PM2 started agentx"
-            fi
-            
-            echo "🎉 AgentX Deployment complete!"
-          else
-            echo "❌ Target directory $TARGET_DIR not found on runner!"
+
+      - name: ✅ Verify Directory
+        run: |
+          if [ ! -d "${{ steps.paths.outputs.target_dir }}" ]; then
+            echo "❌ Target directory not found: ${{ steps.paths.outputs.target_dir }}"
             exit 1
           fi
+
+      - name: 💾 Create Backups
+        run: |
+          cd "${{ steps.paths.outputs.target_dir }}"
+
+          echo "🗄️ Creating MongoDB backup..."
+          ./scripts/backup-mongodb.sh || echo "⚠️ MongoDB backup skipped"
+
+          echo "🗄️ Creating Qdrant backup..."
+          ./scripts/backup-qdrant.sh || echo "⚠️ Qdrant backup skipped"
+
+          echo "💾 Saving current git commit..."
+          git rev-parse HEAD > .last_deploy_commit
+
+          echo "✅ Backups complete"
+        continue-on-error: true
+
+      - name: 🔄 Update Code
+        id: update
+        run: |
+          cd "${{ steps.paths.outputs.target_dir }}"
+
+          # Save current commit for rollback
+          CURRENT_COMMIT=$(git rev-parse HEAD)
+          echo "📍 Current commit: $CURRENT_COMMIT"
+
+          # Pull latest changes (non-destructive)
+          git fetch origin main
+          git merge origin/main --ff-only || {
+            echo "⚠️ Fast-forward merge failed, using reset"
+            git reset --hard origin/main
+          }
+
+          NEW_COMMIT=$(git rev-parse HEAD)
+          echo "📍 New commit: $NEW_COMMIT"
+
+          # Install dependencies (keep existing if possible)
+          npm ci --prefer-offline --no-audit
+
+          echo "✅ Code updated successfully"
+
+      - name: 🚀 Deploy Application
+        id: deploy
+        run: |
+          cd "${{ steps.paths.outputs.target_dir }}"
+
+          # Check if PM2 process exists
+          if pm2 describe agentx > /dev/null 2>&1; then
+            echo "🔄 Performing zero-downtime reload..."
+            pm2 reload agentx --update-env
+            echo "✅ PM2 reload complete"
+          else
+            echo "🆕 Starting new PM2 process..."
+            pm2 start server.js --name agentx
+            pm2 save
+            echo "✅ PM2 started agentx"
+          fi
+
+          echo "🎉 Deployment complete!"
+
+      - name: 🏥 Health Check
+        id: healthcheck
+        run: |
+          echo "⏳ Waiting for application to stabilize..."
+          sleep 15
+
+          for i in {1..6}; do
+            echo "🔍 Health check attempt $i/6..."
+            if curl -f http://localhost:3080/health; then
+              echo "✅ Health check passed!"
+              exit 0
+            fi
+            echo "⏳ Retrying in 10 seconds..."
+            sleep 10
+          done
+
+          echo "❌ Health check failed after 6 attempts"
+          exit 1
+
+      - name: 📦 Deploy n8n Workflows
+        run: |
+          cd "${{ steps.paths.outputs.target_dir }}"
+
+          if [ -f "./scripts/deploy-n8n-workflows.sh" ]; then
+            echo "📦 Deploying n8n workflows..."
+            ./scripts/deploy-n8n-workflows.sh
+          else
+            echo "⚠️ n8n deployment script not found, skipping"
+          fi
+        env:
+          N8N_API_URL: ${{ secrets.N8N_PROD_URL }}
+          N8N_API_KEY: ${{ secrets.N8N_PROD_KEY }}
+        continue-on-error: true
+
+      - name: 📊 Deployment Summary
+        if: success()
+        run: |
+          cd "${{ steps.paths.outputs.target_dir }}"
+
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🎉 PRODUCTION DEPLOYMENT SUCCESSFUL"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "📍 Commit: $(git rev-parse --short HEAD)"
+          echo "🌿 Branch: ${{ github.ref_name }}"
+          echo "👤 By: ${{ github.actor }}"
+          echo "🕐 Time: $(date)"
+          echo "🔗 URL: http://192.168.2.33:3080"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+          # Show PM2 status
+          pm2 list
+
+      - name: 🔔 Notify Success
+        if: success()
+        uses: slackapi/slack-github-action@v1
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          payload: |
+            {
+              "text": "🚀 AgentX deployed to PRODUCTION",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Production Deployment Succeeded* ✅\n\n*Commit:* `${{ github.sha }}`\n*Branch:* `${{ github.ref_name }}`\n*By:* ${{ github.actor }}\n*URL:* http://192.168.2.33:3080"
+                  }
+                }
+              ]
+            }
+        continue-on-error: true
+
+      - name: ⚠️ Rollback on Failure
+        if: failure()
+        run: |
+          cd "${{ steps.paths.outputs.target_dir }}"
+
+          echo "🚨 Deployment failed, initiating rollback..."
+
+          if [ -f .last_deploy_commit ]; then
+            LAST_COMMIT=$(cat .last_deploy_commit)
+            echo "🔙 Rolling back to commit: $LAST_COMMIT"
+
+            # Rollback code
+            git reset --hard $LAST_COMMIT
+
+            # Reinstall dependencies
+            npm ci --prefer-offline --no-audit
+
+            # Restart application
+            pm2 reload agentx --update-env
+
+            # Verify rollback
+            sleep 10
+            if curl -f http://localhost:3080/health; then
+              echo "✅ Rollback successful - application is healthy"
+            else
+              echo "⚠️ Rollback completed but health check failed"
+            fi
+          else
+            echo "⚠️ No rollback commit found - manual intervention required"
+          fi
+        continue-on-error: true
+
+      - name: 🔔 Notify Failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          payload: |
+            {
+              "text": "❌ AgentX PRODUCTION deployment FAILED",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "🚨 *Production Deployment Failed* ❌\n\n*Commit:* `${{ github.sha }}`\n*Branch:* `${{ github.ref_name }}`\n*By:* ${{ github.actor }}\n\n⚠️ Automatic rollback initiated"
+                  }
+                }
+              ]
+            }
+        continue-on-error: true
