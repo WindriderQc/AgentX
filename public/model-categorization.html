@@ -40,6 +40,27 @@
              </div>
         </div>
 
+        <!-- Section 1.5: Search & Filter Bar -->
+        <div class="search-filter-bar">
+            <div class="search-input-wrapper">
+                <i class="fa-solid fa-search"></i>
+                <input type="text" id="modelSearchInput" placeholder="Search models by name..." />
+                <button class="btn-clear" id="clearSearchBtn" style="display: none;">
+                    <i class="fa-solid fa-times"></i>
+                </button>
+            </div>
+            <div class="category-filter-chips" id="categoryFilterChips">
+                <!-- Category filter chips will be injected here -->
+            </div>
+            <div style="flex-grow: 1;"></div>
+            <button class="btn btn-sm" id="exportCsvBtn" title="Export model categories">
+                <i class="fa-solid fa-download"></i> Export CSV
+            </button>
+            <button class="btn btn-sm" id="showShortcutsBtn" title="Show keyboard shortcuts (?)">
+                <i class="fa-solid fa-keyboard"></i>
+            </button>
+        </div>
+
         <!-- Section 2: Bulk Actions -->
         <div class="actions-bar">
             <span><i class="fa-solid fa-layer-group"></i> Bulk Actions:</span>
@@ -106,6 +127,53 @@
 
     <!-- Toast Notification -->
     <div id="toast" class="toast">Action Saved</div>
+
+    <!-- Keyboard Shortcuts Help Modal -->
+    <div id="shortcutsModal" class="modal">
+        <div class="modal-content" style="max-width: 600px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="margin:0; color:var(--accent);">
+                    <i class="fa-solid fa-keyboard"></i> Keyboard Shortcuts
+                </h2>
+                <button class="btn" onclick="closeShortcutsModal()">
+                    <i class="fa-solid fa-times"></i>
+                </button>
+            </div>
+
+            <div class="shortcuts-list">
+                <div class="shortcut-item">
+                    <div class="shortcut-keys">
+                        <kbd>Ctrl</kbd> + <kbd>S</kbd>
+                    </div>
+                    <div class="shortcut-desc">Save all modified categories</div>
+                </div>
+                <div class="shortcut-item">
+                    <div class="shortcut-keys">
+                        <kbd>Escape</kbd>
+                    </div>
+                    <div class="shortcut-desc">Clear search filter</div>
+                </div>
+                <div class="shortcut-item">
+                    <div class="shortcut-keys">
+                        <kbd>Ctrl</kbd> + <kbd>E</kbd>
+                    </div>
+                    <div class="shortcut-desc">Export model categories as CSV</div>
+                </div>
+                <div class="shortcut-item">
+                    <div class="shortcut-keys">
+                        <kbd>?</kbd>
+                    </div>
+                    <div class="shortcut-desc">Show this help dialog</div>
+                </div>
+                <div class="shortcut-item">
+                    <div class="shortcut-keys">
+                        <kbd>Ctrl</kbd> + <kbd>A</kbd>
+                    </div>
+                    <div class="shortcut-desc">Select all models</div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Scripts -->
     <script src="/js/components/CategoryBadge.js"></script>
