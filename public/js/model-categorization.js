@@ -9,6 +9,10 @@ let performanceChart = null;
 
 const CATEGORIES = ['coding', 'reasoning', 'generalist', 'specialist', 'ops', 'embedding', 'judge'];
 
+function toSafeId(value) {
+    return encodeURIComponent(value).replace(/%/g, '_');
+}
+
 async function init() {
     await fetchModels();
     await fetchStats();
@@ -105,7 +109,7 @@ function renderTable(models) {
     tbody.innerHTML = '';
 
     if (models.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">No models found found</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">No models found</td></tr>';
         return;
     }
 
@@ -114,7 +118,11 @@ function renderTable(models) {
         
         // Checkbox column
         const checkTd = document.createElement('td');
-        checkTd.innerHTML = `<input type="checkbox" class="model-select" data-model="${model.name}">`;
+        const selectCheckbox = document.createElement('input');
+        selectCheckbox.type = 'checkbox';
+        selectCheckbox.className = 'model-select';
+        selectCheckbox.dataset.model = model.name;
+        checkTd.appendChild(selectCheckbox);
         tr.appendChild(checkTd);
 
         // Model Name
@@ -160,12 +168,13 @@ function renderTable(models) {
         CATEGORIES.forEach(cat => {
             const label = document.createElement('label');
             label.className = 'checkbox-label';
-            const checked = currentCats.includes(cat) ? 'checked' : '';
-            label.innerHTML = `
-                <input type="checkbox" value="${cat}" ${checked} 
-                    onchange="markDirty('${model.name}')"> 
-                ${capitalize(cat)}
-            `;
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.value = cat;
+            checkbox.checked = currentCats.includes(cat);
+            checkbox.addEventListener('change', () => markDirty(model.name));
+            label.appendChild(checkbox);
+            label.append(` ${capitalize(cat)}`);
             catsDiv.appendChild(label);
         });
         catsTd.appendChild(catsDiv);
@@ -173,16 +182,29 @@ function renderTable(models) {
 
         // Actions
         const actionsTd = document.createElement('td');
-        actionsTd.innerHTML = `
-            <div style="display: flex; gap: 8px;">
-                <button class="btn btn-sm" id="save-${model.name}" onclick="saveModelCategories('${model.name}')" style="display:none; padding: 4px 10px; font-size: 0.8em;">
-                    <i class="fa-solid fa-save"></i> Save
-                </button>
-                <button class="btn btn-sm" onclick="openQuickTest('${model.name}')" style="padding: 4px 10px; font-size: 0.8em;">
-                    <i class="fa-solid fa-vial"></i> Test
-                </button>
-            </div>
-        `;
+        const actionsWrap = document.createElement('div');
+        actionsWrap.style.display = 'flex';
+        actionsWrap.style.gap = '8px';
+
+        const saveButton = document.createElement('button');
+        saveButton.className = 'btn btn-sm';
+        saveButton.id = `save-${toSafeId(model.name)}`;
+        saveButton.style.display = 'none';
+        saveButton.style.padding = '4px 10px';
+        saveButton.style.fontSize = '0.8em';
+        saveButton.innerHTML = '<i class="fa-solid fa-save"></i> Save';
+        saveButton.addEventListener('click', () => saveModelCategories(model.name));
+
+        const testButton = document.createElement('button');
+        testButton.className = 'btn btn-sm';
+        testButton.style.padding = '4px 10px';
+        testButton.style.fontSize = '0.8em';
+        testButton.innerHTML = '<i class="fa-solid fa-vial"></i> Test';
+        testButton.addEventListener('click', () => openQuickTest(model.name));
+
+        actionsWrap.appendChild(saveButton);
+        actionsWrap.appendChild(testButton);
+        actionsTd.appendChild(actionsWrap);
         tr.appendChild(actionsTd);
 
         tbody.appendChild(tr);
@@ -210,7 +232,7 @@ function capitalize(str) {
 
 // Global scope functions for inline event handlers
 window.markDirty = function(modelName) {
-    const btn = document.getElementById(`save-${modelName}`);
+    const btn = document.getElementById(`save-${toSafeId(modelName)}`);
     if (btn) {
         btn.style.display = 'flex';
         btn.classList.add('btn-primary');
@@ -228,7 +250,7 @@ function showCategorySuggestionPreview(modelName) {
     const rows = document.querySelectorAll('#modelsTableBody tr');
     let targetRow = null;
     rows.forEach(row => {
-        const saveBtn = row.querySelector(`#save-${CSS.escape(modelName)}`);
+        const saveBtn = row.querySelector(`#save-${CSS.escape(toSafeId(modelName))}`);
         if (saveBtn) targetRow = row;
     });
     
@@ -271,7 +293,7 @@ function showCategorySuggestionPreview(modelName) {
 }
 
 window.saveModelCategories = async function(modelName) {
-    const btn = document.getElementById(`save-${modelName}`);
+    const btn = document.getElementById(`save-${toSafeId(modelName)}`);
     const row = btn.closest('tr');
     const checkboxes = row.querySelectorAll('.category-checkboxes input[type="checkbox"]');
     
@@ -438,16 +460,7 @@ function renderCharts(rawData) {
     categories.forEach(cat => {
         if (typeof rawData[cat] === 'object') {
             distribution[cat] = rawData[cat].count || 0;
-            // Ensure we use the calculated average
-            performance[cat] = (rawData[cat].avgCompositeScore || 0) / (rawData[cat].count || 1); 
-            // NOTE: ModelRegistry.js seems to aggregate score in `avgCompositeScore` but then says "Calculate averages" at the end.
-            // Let's verify if `getCategoryStats` actually divides by count.
-            // Looking at the snippet I saw earlier:
-            // "Object.keys(stats).forEach(category => { ..." 
-            // It ends with ellipsis in my read. I should probably assume it returns ready-to-use averages.
-            // If it returns Sums, I need to divide.
-            // Let me check ModelRegistry.js again to be sure.
-            performance[cat] = rawData[cat].avgCompositeScore;
+            performance[cat] = rawData[cat].avgCompositeScore || 0;
         }
     });
 

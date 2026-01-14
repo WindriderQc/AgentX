@@ -7594,6 +7594,13 @@
         }
 
         // Tooltip Helper
+        const escapeHtml = (value = '') => String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+
         window.showTimelineTooltip = (e, htmlContent) => {
             let tooltip = document.getElementById('timeline-tooltip');
             if (!tooltip) {
@@ -7793,7 +7800,9 @@
                         const timestamp = new Date(result.timestamp).getTime();
 
                         // Tooltip HTML for Custom Tooltip with Performance Comparisons
-                        const promptText = result.prompt ? (result.prompt.length > 60 ? result.prompt.substring(0,60)+'...' : result.prompt).replace(/"/g, '&quot;') : 'No prompt';
+                        const promptTextRaw = result.prompt ? (result.prompt.length > 60 ? result.prompt.substring(0, 60) + '...' : result.prompt) : 'No prompt';
+                        const promptText = escapeHtml(promptTextRaw);
+                        const modelName = escapeHtml(result.model || 'Unknown Model');
 
                         // Performance indicators
                         const latencyDiff = globalStats.avgLatency ? ((inferenceTime - globalStats.avgLatency) / globalStats.avgLatency * 100).toFixed(0) : 0;
@@ -7810,7 +7819,7 @@
 
                         const tooltipHtml = `
                             <div style="border-bottom: 2px solid rgba(124, 240, 255, 0.3); padding-bottom: 8px; margin-bottom: 10px;">
-                                <h4 style="margin: 0 0 4px; color: #7cf0ff; font-size: 1.15em; font-weight: 600;">${result.model}</h4>
+                                <h4 style="margin: 0 0 4px; color: #7cf0ff; font-size: 1.15em; font-weight: 600;">${modelName}</h4>
                                 <div style="font-size: 0.8em; color: rgba(255,255,255,0.6);">${new Date(result.timestamp).toLocaleString()}</div>
                             </div>
                             <div style="display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; margin-bottom: 10px;">
@@ -7929,9 +7938,11 @@
                                 activeStage = 'judging';
                                 activeText = 'Judging';
                                 activeIcon = 'fa-gavel';
-                                bubbleText = `Judging: ${currentTest.prompt ? (currentTest.prompt.length > 20 ? currentTest.prompt.substring(0, 20)+'...' : currentTest.prompt) : 'Response'}...`;
+                                const promptSnippet = currentTest.prompt ? (currentTest.prompt.length > 20 ? currentTest.prompt.substring(0, 20) + '...' : currentTest.prompt) : 'Response';
+                                bubbleText = `Judging: ${escapeHtml(promptSnippet)}...`;
                             } else {
-                                bubbleText = `Running: ${currentTest.prompt ? (currentTest.prompt.length > 20 ? currentTest.prompt.substring(0, 20)+'...' : currentTest.prompt) : 'Prompt'}...`;
+                                const promptSnippet = currentTest.prompt ? (currentTest.prompt.length > 20 ? currentTest.prompt.substring(0, 20) + '...' : currentTest.prompt) : 'Prompt';
+                                bubbleText = `Running: ${escapeHtml(promptSnippet)}...`;
                             }
                         }
 
@@ -7951,11 +7962,13 @@
                         </div>`;
                     }
 
+                    const safeModelLabel = escapeHtml(model);
+
                     rowsHtml += `
                     <div class="timeline-model-row">
                         <div class="timeline-model-label">
                             <i class="fas fa-cube" style="color:var(--accent)"></i>
-                            ${model}
+                            ${safeModelLabel}
                         </div>
                         <div class="timeline-track">
                             ${segmentsHtml}
