@@ -1,0 +1,589 @@
+{
+  "name": "SBQC - N2.4 Complete Markdown Archive & RAG Update",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "sbqc-n2-4-complete-rag",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "WebhookTrigger",
+      "name": "Webhook (Manual Trigger)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -600,
+        400
+      ],
+      "webhookId": "sbqc-n24-complete-rag"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 2 * * 1"
+            }
+          ]
+        }
+      },
+      "id": "ScheduleTrigger",
+      "name": "Schedule (Weekly Mon 2AM)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -600,
+        600
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "MergeTriggers",
+      "name": "Merge Triggers",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        -300,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Workflow initialization\nconst timestamp = new Date().toISOString();\nconst workflowRun = {\n  workflowId: 'N2.4',\n  startTime: timestamp,\n  triggered: $input.first().json,\n  projectRoot: '/home/user/AgentX',\n  backupDir: process.env.BACKUP_DIR || '/mnt/datalake/backups',\n  agentxBaseUrl: process.env.AGENTX_BASE_URL || 'http://192.168.2.33:3080',\n  source: 'agentx-complete'\n};\n\nreturn [{ json: workflowRun }];"
+      },
+      "id": "InitWorkflow",
+      "name": "Initialize Workflow",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -50,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "command": "cd /home/user/AgentX && ./scripts/archive-md-files.sh 2>&1"
+      },
+      "id": "RunArchive",
+      "name": "Step 1: Archive All Markdown",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "executeOnce": false,
+      "position": [
+        200,
+        500
+      ],
+      "continueOnFail": true,
+      "notesInFlow": true,
+      "notes": "Creates tar.gz archive of all .md files with folder hierarchy"
+    },
+    {
+      "parameters": {
+        "jsCode": "const workflowData = $('Initialize Workflow').first().json;\nconst archiveOutput = $input.first().json.stdout || '';\n\n// Extract JSON from archive script output\nlet archiveResult = { status: 'unknown' };\ntry {\n  const jsonMatch = archiveOutput.match(/\\{[\\s\\S]*\"status\"[\\s\\S]*\\}/m);\n  if (jsonMatch) {\n    archiveResult = JSON.parse(jsonMatch[0]);\n  }\n} catch (e) {\n  archiveResult = {\n    status: 'error',\n    message: 'Failed to parse archive output',\n    rawOutput: archiveOutput.substring(0, 500)\n  };\n}\n\nreturn [{\n  json: {\n    ...workflowData,\n    archive: archiveResult,\n    archiveSuccess: archiveResult.status === 'success'\n  }\n}];"
+      },
+      "id": "ParseArchiveResult",
+      "name": "Parse Archive Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        450,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "archive-success-check",
+              "leftValue": "={{ $json.archiveSuccess }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "CheckArchiveSuccess",
+      "name": "Check Archive Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        700,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "command": "=cd {{ $json.projectRoot }} && node scripts/update-rag-from-md.js --source={{ $json.source }} 2>&1"
+      },
+      "id": "RunRagUpdate",
+      "name": "Step 2: Update RAG Store",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "executeOnce": false,
+      "position": [
+        950,
+        400
+      ],
+      "continueOnFail": true,
+      "notesInFlow": true,
+      "notes": "Ingests all markdown files into RAG system"
+    },
+    {
+      "parameters": {
+        "jsCode": "const workflowData = $('Parse Archive Result').first().json;\nconst ragOutput = $input.first().json.stdout || '';\n\n// Extract JSON from RAG update script output\nlet ragResult = { status: 'unknown', stats: {} };\ntry {\n  // Find the JSON Output section\n  const jsonMatch = ragOutput.match(/📋 JSON Output:[\\s\\S]*?(\\{[\\s\\S]*?\\})[\\s]*$/m);\n  if (jsonMatch && jsonMatch[1]) {\n    ragResult = JSON.parse(jsonMatch[1]);\n  }\n} catch (e) {\n  ragResult = {\n    status: 'error',\n    message: 'Failed to parse RAG output',\n    rawOutput: ragOutput.substring(0, 500)\n  };\n}\n\nreturn [{\n  json: {\n    ...workflowData,\n    rag: ragResult,\n    ragSuccess: ragResult.status === 'success' || ragResult.status === 'partial'\n  }\n}];"
+      },
+      "id": "ParseRagResult",
+      "name": "Parse RAG Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\n\n// Build manifest payload for AgentX\nconst files = [];\nif (data.rag && data.rag.stats && data.rag.stats.success > 0) {\n  // Simplified manifest - we don't have individual file hashes from our script\n  // This indicates a successful bulk update\n  return [{\n    json: {\n      source: data.source,\n      root: data.projectRoot,\n      scanId: `n2.4-${Date.now()}`,\n      generatedAt: new Date().toISOString(),\n      files: [],\n      stats: {\n        fileCount: data.rag.stats.found || 0,\n        processedCount: data.rag.stats.processed || 0,\n        successCount: data.rag.stats.success || 0\n      },\n      metadata: {\n        workflowId: 'N2.4',\n        archivePath: data.archive?.archive?.path,\n        method: 'bulk-script-update'\n      }\n    }\n  }];\n}\n\nreturn [{ json: { skip: true, reason: 'No files processed' } }];"
+      },
+      "id": "PrepareManifest",
+      "name": "Prepare Manifest Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1450,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "skip-check",
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "CheckManifest",
+      "name": "Check Manifest",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1700,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://192.168.2.33:3080/api/rag/manifests",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "StoreManifest",
+      "name": "Step 3: Store Manifest",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1950,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "PIrrA2wpOppzVodi",
+          "name": "Header Auth account"
+        }
+      },
+      "continueOnFail": true,
+      "notesInFlow": true,
+      "notes": "Stores manifest in AgentX for deletion detection"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Gather results from all steps\nconst workflowData = $('Parse RAG Result').first().json;\nconst manifestResponse = $input.first().json;\n\nconst summary = {\n  workflowId: 'N2.4',\n  status: workflowData.ragSuccess ? 'success' : 'partial',\n  timestamp: new Date().toISOString(),\n  duration: Date.now() - new Date(workflowData.startTime).getTime(),\n  \n  archive: {\n    status: workflowData.archive?.status,\n    fileCount: workflowData.archive?.archive?.fileCount,\n    size: workflowData.archive?.archive?.size,\n    path: workflowData.archive?.archive?.path\n  },\n  \n  rag: {\n    status: workflowData.rag?.status,\n    found: workflowData.rag?.stats?.found,\n    processed: workflowData.rag?.stats?.processed,\n    success: workflowData.rag?.stats?.success,\n    failed: workflowData.rag?.stats?.failed,\n    skipped: workflowData.rag?.stats?.skipped\n  },\n  \n  manifest: {\n    stored: manifestResponse.status === 'success',\n    response: manifestResponse\n  }\n};\n\nreturn [{ json: summary }];"
+      },
+      "id": "BuildSummary",
+      "name": "Build Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://192.168.2.33:3003/integrations/events/n8n",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  workflow_id: 'N2.4',\n  event_type: 'complete_rag_update',\n  data: $json\n} }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "LogToDataAPI",
+      "name": "Log Event (DataAPI)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2450,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "PIrrA2wpOppzVodi",
+          "name": "Header Auth account"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "RespondToWebhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2700,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const workflowData = $('Parse Archive Result').first().json;\n\nconst errorSummary = {\n  workflowId: 'N2.4',\n  status: 'error',\n  timestamp: new Date().toISOString(),\n  error: 'Archive step failed',\n  archive: workflowData.archive\n};\n\nreturn [{ json: errorSummary }];"
+      },
+      "id": "HandleArchiveError",
+      "name": "Handle Archive Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        950,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://192.168.2.33:3003/integrations/events/n8n",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  workflow_id: 'N2.4',\n  event_type: 'workflow_error',\n  data: $json\n} }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "LogError",
+      "name": "Log Error (DataAPI)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1200,
+        600
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "PIrrA2wpOppzVodi",
+          "name": "Header Auth account"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseCode": 500
+        }
+      },
+      "id": "RespondError",
+      "name": "Respond Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1450,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// If manifest step skipped or failed, continue to summary anyway\nconst workflowData = $('Parse RAG Result').first().json;\n\nconst summary = {\n  workflowId: 'N2.4',\n  status: workflowData.ragSuccess ? 'success' : 'partial',\n  timestamp: new Date().toISOString(),\n  duration: Date.now() - new Date(workflowData.startTime).getTime(),\n  \n  archive: {\n    status: workflowData.archive?.status,\n    fileCount: workflowData.archive?.archive?.fileCount,\n    size: workflowData.archive?.archive?.size\n  },\n  \n  rag: {\n    status: workflowData.rag?.status,\n    found: workflowData.rag?.stats?.found,\n    processed: workflowData.rag?.stats?.processed,\n    success: workflowData.rag?.stats?.success\n  },\n  \n  manifest: {\n    stored: false,\n    reason: 'Skipped or failed'\n  }\n};\n\nreturn [{ json: summary }];"
+      },
+      "id": "BuildSummaryAlt",
+      "name": "Build Summary (No Manifest)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1950,
+        500
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook (Manual Trigger)": {
+      "main": [
+        [
+          {
+            "node": "Merge Triggers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule (Weekly Mon 2AM)": {
+      "main": [
+        [
+          {
+            "node": "Merge Triggers",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Triggers": {
+      "main": [
+        [
+          {
+            "node": "Initialize Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Initialize Workflow": {
+      "main": [
+        [
+          {
+            "node": "Step 1: Archive All Markdown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 1: Archive All Markdown": {
+      "main": [
+        [
+          {
+            "node": "Parse Archive Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Archive Result": {
+      "main": [
+        [
+          {
+            "node": "Check Archive Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Archive Success": {
+      "main": [
+        [
+          {
+            "node": "Step 2: Update RAG Store",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle Archive Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 2: Update RAG Store": {
+      "main": [
+        [
+          {
+            "node": "Parse RAG Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse RAG Result": {
+      "main": [
+        [
+          {
+            "node": "Prepare Manifest Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Manifest Payload": {
+      "main": [
+        [
+          {
+            "node": "Check Manifest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Manifest": {
+      "main": [
+        [
+          {
+            "node": "Step 3: Store Manifest",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Summary (No Manifest)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 3: Store Manifest": {
+      "main": [
+        [
+          {
+            "node": "Build Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Summary": {
+      "main": [
+        [
+          {
+            "node": "Log Event (DataAPI)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Event (DataAPI)": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle Archive Error": {
+      "main": [
+        [
+          {
+            "node": "Log Error (DataAPI)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Error (DataAPI)": {
+      "main": [
+        [
+          {
+            "node": "Respond Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Summary (No Manifest)": {
+      "main": [
+        [
+          {
+            "node": "Log Event (DataAPI)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "",
+  "meta": {
+    "instanceId": ""
+  },
+  "id": "",
+  "tags": [
+    {
+      "name": "SBQC",
+      "id": "sbqc"
+    },
+    {
+      "name": "RAG",
+      "id": "rag"
+    },
+    {
+      "name": "Priority-2",
+      "id": "priority-2"
+    }
+  ]
+}
