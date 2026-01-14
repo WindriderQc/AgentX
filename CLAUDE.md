@@ -40,7 +40,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **User manual**: [docs/user-manual/README.md](docs/user-manual/README.md)
 - **UI pages map** (URLs + what each page does): [docs/user-manual/README.md#2-the-ui-pages--navigation](docs/user-manual/README.md#2-the-ui-pages--navigation)
 - **Project roadmap** (current status & priorities): [ROADMAP.md](ROADMAP.md)
-- **Stack documentation hub**: [docs/SBQC-Stack-Final/](docs/SBQC-Stack-Final/)
+- **Stack documentation hub**: [docs/architecture/SBQC-Stack-Final/](docs/architecture/SBQC-Stack-Final/)
 
 AgentX is the SBQC stack system-of-record; DataAPI docs defer to AgentX for stack-level truth.
 
@@ -318,7 +318,7 @@ BACKUP_DIR=/mnt/datalake/backups
 PORT=3080
 ```
 
-→ [Deployment Guide](docs/SBQC-Stack-Final/05-DEPLOYMENT.md) for complete list.
+→ [Deployment Guide](docs/architecture/SBQC-Stack-Final/05-DEPLOYMENT.md) for complete list.
 
 ---
 
@@ -385,10 +385,10 @@ For detailed contribution guidelines including branching strategy, git conventio
 - [ROADMAP.md](ROADMAP.md) - Project status and priorities
 - [docs/INDEX.md](docs/INDEX.md) - Complete documentation index
 - [docs/user-manual/README.md](docs/user-manual/README.md) - User guide
-- [docs/SBQC-Stack-Final/](docs/SBQC-Stack-Final/) - Stack documentation
+- [docs/architecture/SBQC-Stack-Final/](docs/architecture/SBQC-Stack-Final/) - Stack documentation
 
 **API References:**
-- [docs/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md](docs/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md) - All 40+ endpoints
+- [docs/architecture/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md](docs/architecture/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md) - All 40+ endpoints
 
 **Architecture Deep Dives:**
 - See `/docs/architecture/` for detailed component documentation

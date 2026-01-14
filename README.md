@@ -27,17 +27,17 @@ The following development tracks have been successfully completed, bringing the 
 **For complete, up-to-date documentation, see the SBQC Stack documentation:**
 
 ### 🎯 Start Here
-- **[00-OVERVIEW.md](docs/SBQC-Stack-Final/00-OVERVIEW.md)** - System architecture overview & getting started guide
-- **[00-AUDIT-SUMMARY.md](docs/SBQC-Stack-Final/00-AUDIT-SUMMARY.md)** - Latest documentation status & changes
-- **[07-AGENTX-API-REFERENCE.md](docs/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md)** - Complete API documentation (40+ endpoints)
+- **[00-OVERVIEW.md](docs/architecture/SBQC-Stack-Final/00-OVERVIEW.md)** - System architecture overview & getting started guide
+- **[00-AUDIT-SUMMARY.md](docs/architecture/SBQC-Stack-Final/00-AUDIT-SUMMARY.md)** - Latest documentation status & changes
+- **[07-AGENTX-API-REFERENCE.md](docs/architecture/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md)** - Complete API documentation (40+ endpoints)
 
 ### 🔧 Configuration & Deployment
-- **[05-DEPLOYMENT.md](docs/SBQC-Stack-Final/05-DEPLOYMENT.md)** - Environment variables & deployment guide
-- **[01-ARCHITECTURE.md](docs/SBQC-Stack-Final/01-ARCHITECTURE.md)** - System design & architecture decisions
+- **[05-DEPLOYMENT.md](docs/architecture/SBQC-Stack-Final/05-DEPLOYMENT.md)** - Environment variables & deployment guide
+- **[01-ARCHITECTURE.md](docs/architecture/SBQC-Stack-Final/01-ARCHITECTURE.md)** - System design & architecture decisions
 
 ### 🔨 Development & Testing
-- **[03-AGENTX-TASKS.md](docs/SBQC-Stack-Final/03-AGENTX-TASKS.md)** - Validation tasks & feature roadmap
-- **[04-N8N-WORKFLOWS.md](docs/SBQC-Stack-Final/04-N8N-WORKFLOWS.md)** - n8n workflow specifications
+- **[03-AGENTX-TASKS.md](docs/architecture/SBQC-Stack-Final/03-AGENTX-TASKS.md)** - Validation tasks & feature roadmap
+- **[04-N8N-WORKFLOWS.md](docs/architecture/SBQC-Stack-Final/04-N8N-WORKFLOWS.md)** - n8n workflow specifications
 
 ### 📚 Additional Resources
 - **[Quick Start Guide](docs/onboarding/quickstart.md)** - Installation & setup (original guide)
@@ -339,4 +339,4 @@ AgentX is part of the GraphysX ecosystem. Contributions are welcome! Please read
 
 ---
 
-**Version**: 1.0.0 | **Status**: Production Ready ✅
+**Version**: 1.4.1 | **Status**: Production Ready ✅
