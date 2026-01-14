@@ -393,4 +393,141 @@ describe('AlertService', () => {
       expect(Array.isArray(stats)).toBe(true);
     });
   });
+
+  describe('Race Condition Fix: Alert Deduplication', () => {
+    beforeEach(async () => {
+      await Alert.deleteMany({});
+      const rules = [
+        {
+          id: 'race_test_rule',
+          name: 'Race Test Rule',
+          enabled: true,
+          metric: 'concurrent_metric',
+          threshold: 100,
+          comparison: 'greater_than',
+          severity: 'warning',
+          title: 'Concurrent Alert',
+          message: 'Testing race condition',
+          channels: ['dataapi_log']
+        }
+      ];
+      alertService.loadRules(rules);
+    });
+
+    test('should prevent duplicate alerts under concurrent load', async () => {
+      const event = {
+        component: 'race-test-component',
+        metric: 'concurrent_metric',
+        value: 150,
+        source: 'test'
+      };
+
+      // Simulate 10 concurrent requests for the same alert
+      const promises = Array(10).fill(null).map(() =>
+        alertService.evaluateEvent(event)
+      );
+
+      const results = await Promise.all(promises);
+
+      // All results should return alerts
+      expect(results.every(r => r.length === 1)).toBe(true);
+
+      // But only ONE unique alert should exist in the database
+      const allAlerts = await Alert.find({
+        'context.component': 'race-test-component'
+      });
+
+      expect(allAlerts).toHaveLength(1);
+
+      // Occurrence count should be 10 (atomic increments)
+      expect(allAlerts[0].occurrenceCount).toBe(10);
+    });
+
+    test('should accurately track occurrence count under parallel updates', async () => {
+      const event = {
+        component: 'parallel-component',
+        metric: 'concurrent_metric',
+        value: 150,
+        source: 'test'
+      };
+
+      // Create initial alert
+      await alertService.evaluateEvent(event);
+
+      // Wait a bit to ensure alert exists
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      // Now fire 5 more concurrent updates
+      const promises = Array(5).fill(null).map(() =>
+        alertService.evaluateEvent(event)
+      );
+
+      await Promise.all(promises);
+
+      // Check final count
+      const finalAlert = await Alert.findOne({
+        'context.component': 'parallel-component'
+      });
+
+      expect(finalAlert).toBeDefined();
+      expect(finalAlert.occurrenceCount).toBe(6); // 1 initial + 5 concurrent
+    });
+
+    test('should handle concurrent alerts with different fingerprints', async () => {
+      const createEvent = (component) => ({
+        component,
+        metric: 'concurrent_metric',
+        value: 150,
+        source: 'test'
+      });
+
+      // Create 5 different alerts concurrently
+      const components = ['comp-1', 'comp-2', 'comp-3', 'comp-4', 'comp-5'];
+      const promises = components.map(comp =>
+        alertService.evaluateEvent(createEvent(comp))
+      );
+
+      await Promise.all(promises);
+
+      // Should have 5 distinct alerts
+      const allAlerts = await Alert.find({
+        'context.metric': 'concurrent_metric'
+      });
+
+      expect(allAlerts).toHaveLength(5);
+      expect(allAlerts.every(a => a.occurrenceCount === 1)).toBe(true);
+    });
+
+    test('should not deduplicate alerts outside cooldown window', async () => {
+      // Override cooldown to 100ms for testing
+      const originalCooldown = alertService.config.cooldownMs;
+      alertService.config.cooldownMs = 100;
+
+      const event = {
+        component: 'cooldown-test',
+        metric: 'concurrent_metric',
+        value: 150,
+        source: 'test'
+      };
+
+      // First alert
+      await alertService.evaluateEvent(event);
+
+      // Wait for cooldown to expire
+      await new Promise(resolve => setTimeout(resolve, 150));
+
+      // Second alert (should create new one)
+      await alertService.evaluateEvent(event);
+
+      const alerts = await Alert.find({
+        'context.component': 'cooldown-test'
+      });
+
+      expect(alerts).toHaveLength(2);
+      expect(alerts.every(a => a.occurrenceCount === 1)).toBe(true);
+
+      // Restore original cooldown
+      alertService.config.cooldownMs = originalCooldown;
+    });
+  });
 });

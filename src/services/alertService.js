@@ -173,15 +173,30 @@ class AlertService extends EventEmitter {
     data.threshold = data.threshold ?? rule.threshold;
 
     const fingerprint = this._fingerprintFor(rule, data);
-    const existing = await Alert.findRecentByFingerprint(fingerprint, 1);
+    const since = new Date(Date.now() - this.config.cooldownMs);
+    const now = new Date();
 
-    if (existing && existing.shouldDeduplicate(this.config.cooldownMs)) {
-      existing.occurrenceCount += 1;
-      existing.lastOccurrence = new Date();
-      await existing.save();
-      return existing;
+    // ATOMIC OPERATION: Try to update existing alert within cooldown window
+    // This prevents race conditions where multiple threads create duplicate alerts
+    const updated = await Alert.findOneAndUpdate(
+      {
+        fingerprint,
+        lastOccurrence: { $gte: since }
+      },
+      {
+        $set: { lastOccurrence: now },
+        $inc: { occurrenceCount: 1 }
+      },
+      { new: true }
+    );
+
+    if (updated) {
+      // Alert was deduplicated - no need to send notifications again
+      return updated;
     }
 
+    // No existing alert in cooldown window - create new one atomically
+    // Using create() is safe here because we already checked for existing alerts
     const alertDoc = await Alert.create({
       ruleId: rule?.id || 'rule',
       ruleName: rule?.name || 'Alert Rule',
