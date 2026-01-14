@@ -207,6 +207,54 @@ td {
     vertical-align: middle;
 }
 
+.source-host {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 0.85em;
+    color: #c9d1d9;
+}
+
+.source-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.source-label {
+    word-break: break-all;
+    color: #9aa4b2;
+}
+
+.status-pill {
+    align-self: flex-start;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 0.75em;
+    font-weight: 600;
+    border: 1px solid transparent;
+}
+
+.status-active {
+    background: rgba(46, 204, 113, 0.15);
+    color: #2ecc71;
+    border-color: rgba(46, 204, 113, 0.4);
+}
+
+.status-experimental {
+    background: rgba(241, 196, 15, 0.15);
+    color: #f1c40f;
+    border-color: rgba(241, 196, 15, 0.4);
+}
+
+.status-deprecated,
+.status-retired,
+.status-inactive {
+    background: rgba(231, 76, 60, 0.15);
+    color: #ff7b72;
+    border-color: rgba(231, 76, 60, 0.4);
+}
+
 tr:last-child td {
     border-bottom: none;
 }

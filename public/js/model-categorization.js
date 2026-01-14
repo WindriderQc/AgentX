@@ -53,11 +53,11 @@ async function fetchModels() {
             // Small delay for smooth transition
             setTimeout(() => renderTable(allModels), 200);
         } else {
-            tableBody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #ff6b6b;">Failed to load models</td></tr>';
+        tableBody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #ff6b6b;">Failed to load models</td></tr>';
         }
     } catch (error) {
         console.error('Error fetching models:', error);
-        tableBody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #ff6b6b;">Network error</td></tr>';
+        tableBody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #ff6b6b;">Network error</td></tr>';
     }
 }
 
@@ -70,6 +70,10 @@ function renderSkeletonRows(count) {
                 <td>
                     <div class="skeleton" style="width: 200px; height: 16px; margin-bottom: 8px;"></div>
                     <div class="skeleton" style="width: 150px; height: 14px;"></div>
+                </td>
+                <td>
+                    <div class="skeleton" style="width: 160px; height: 14px; margin-bottom: 6px;"></div>
+                    <div class="skeleton" style="width: 90px; height: 20px; border-radius: 10px;"></div>
                 </td>
                 <td><div class="skeleton skeleton-badge"></div></td>
                 <td>
@@ -105,25 +109,44 @@ function renderTable(models) {
     tbody.innerHTML = '';
 
     if (models.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">No models found found</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;">No models found found</td></tr>';
         return;
     }
 
     models.forEach(model => {
         const tr = document.createElement('tr');
+        const modelKey = model.modelName || model.name;
         
         // Checkbox column
         const checkTd = document.createElement('td');
-        checkTd.innerHTML = `<input type="checkbox" class="model-select" data-model="${model.name}">`;
+        checkTd.innerHTML = `<input type="checkbox" class="model-select" data-model="${modelKey}">`;
         tr.appendChild(checkTd);
 
         // Model Name
         const nameTd = document.createElement('td');
+        const displayName = model.displayName || modelKey || 'Unknown Model';
+        const vendor = model.provider || model.vendor || 'Unknown';
+        const parameterSize = model.parameterSize || model.parameters || model.size || '?';
         nameTd.innerHTML = `
-            <div style="font-weight: 600; color: #fff;">${model.displayName || model.name}</div>
-            <div style="font-size: 0.8em; color: #888;">${model.provider || model.vendor || 'Unknown'} • ${model.parameterSize || '?'}</div>
+            <div style="font-weight: 600; color: #fff;">${displayName}</div>
+            <div style="font-size: 0.8em; color: #888;">${vendor} • ${parameterSize}</div>
         `;
         tr.appendChild(nameTd);
+
+        // Source/Host
+        const sourceTd = document.createElement('td');
+        const host = model.host || model.source?.url || model.ollamaHost || 'Unknown host';
+        const status = getModelStatus(model);
+        sourceTd.innerHTML = `
+            <div class="source-host">
+                <div class="source-row">
+                    <i class="fa-solid fa-server"></i>
+                    <span class="source-label">${truncateHost(host)}</span>
+                </div>
+                <span class="status-pill status-${status.toLowerCase()}">${capitalize(status)}</span>
+            </div>
+        `;
+        tr.appendChild(sourceTd);
 
         // Recommended Category with CategoryBadge component
         const recTd = document.createElement('td');
@@ -163,7 +186,7 @@ function renderTable(models) {
             const checked = currentCats.includes(cat) ? 'checked' : '';
             label.innerHTML = `
                 <input type="checkbox" value="${cat}" ${checked} 
-                    onchange="markDirty('${model.name}')"> 
+                    onchange="markDirty('${modelKey}')"> 
                 ${capitalize(cat)}
             `;
             catsDiv.appendChild(label);
@@ -175,10 +198,10 @@ function renderTable(models) {
         const actionsTd = document.createElement('td');
         actionsTd.innerHTML = `
             <div style="display: flex; gap: 8px;">
-                <button class="btn btn-sm" id="save-${model.name}" onclick="saveModelCategories('${model.name}')" style="display:none; padding: 4px 10px; font-size: 0.8em;">
+                <button class="btn btn-sm" id="save-${modelKey}" onclick="saveModelCategories('${modelKey}')" style="display:none; padding: 4px 10px; font-size: 0.8em;">
                     <i class="fa-solid fa-save"></i> Save
                 </button>
-                <button class="btn btn-sm" onclick="openQuickTest('${model.name}')" style="padding: 4px 10px; font-size: 0.8em;">
+                <button class="btn btn-sm" onclick="openQuickTest('${modelKey}')" style="padding: 4px 10px; font-size: 0.8em;">
                     <i class="fa-solid fa-vial"></i> Test
                 </button>
             </div>
@@ -187,6 +210,20 @@ function renderTable(models) {
 
         tbody.appendChild(tr);
     });
+}
+
+function getModelStatus(model) {
+    if (model.isActive === false) return 'inactive';
+    const status = model.status || model.deployment?.status || 'active';
+    const normalized = status.toLowerCase();
+    if (normalized === 'available') return 'active';
+    if (normalized === 'dead' || normalized === 'unavailable') return 'inactive';
+    return status;
+}
+
+function truncateHost(host) {
+    if (!host) return 'Unknown host';
+    return host.replace(/^https?:\/\//, '');
 }
 
 function getCategoryIcon(category) {
@@ -221,7 +258,7 @@ window.markDirty = function(modelName) {
 };
 
 function showCategorySuggestionPreview(modelName) {
-    const model = allModels.find(m => m.name === modelName);
+    const model = allModels.find(m => (m.modelName || m.name) === modelName);
     if (!model) return;
     
     // Find the row for this model
@@ -243,7 +280,7 @@ function showCategorySuggestionPreview(modelName) {
     
     // Find or create preview element
     let preview = targetRow.querySelector('.suggestion-preview');
-    const catsTd = targetRow.querySelector('td:nth-child(4)'); // Manual categories column
+    const catsTd = targetRow.querySelector('td:nth-child(5)'); // Manual categories column
     
     if (!preview && recommendedCat && recommendedCat !== 'Pending') {
         preview = document.createElement('div');
@@ -352,7 +389,7 @@ window.openQuickTest = function(modelName) {
             // In a real implementation this would come from the backend or the script
             // For now, we fetch the model data again to see if backend updated it, 
             // or just show a "mock" result based on existing data
-            const model = allModels.find(m => m.name === modelName);
+            const model = allModels.find(m => (m.modelName || m.name) === modelName);
             const rec = model?.benchmarkStats?.bestCategory || 'Generalist';
             
             document.getElementById('testRecommendation').innerText = capitalize(rec);
@@ -396,7 +433,7 @@ function setupEventListeners() {
             // We need to know current categories to avoid removing others? 
             // Let's assume we append the new one if not present.
             
-            const model = allModels.find(m => m.name === modelName);
+            const model = allModels.find(m => (m.modelName || m.name) === modelName);
             let cats = model.categories || [];
             if (!cats.includes(category)) {
                 cats.push(category);
