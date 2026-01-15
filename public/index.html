@@ -340,7 +340,7 @@
         <div class="filter-section">
           <label class="filter-label">Tags</label>
           <div class="tags-input-container">
-            <input type="text" id="filterTagsInput" class="filter-input" placeholder="Add tag and press Enter">
+            <input type="text" id="filterTagsInput" class="filter-input" placeholder="Add tag and press Enter" aria-label="Filter tags">
             <div id="filterTagsChips" class="tags-chips"></div>
           </div>
           <div id="tagsSuggestions" class="tags-suggestions" style="display: none;"></div>
@@ -463,14 +463,14 @@
           <div class="alert-content">
             <p>Enhance your experience! <a href="/profile.html">Set up your profile</a> to give the AI context about you.</p>
           </div>
-          <button class="alert-dismiss" onclick="dismissProfilePrompt()" title="Dismiss">×</button>
+          <button class="alert-dismiss" onclick="dismissProfilePrompt()" title="Dismiss" aria-label="Dismiss profile alert">×</button>
         </div>
 
         <!-- Setup Checklist -->
         <div class="setup-checklist" id="setupChecklist" style="display: none;">
           <div class="checklist-header">
             <h4><i class="fas fa-rocket"></i> Getting Started</h4>
-            <button class="checklist-dismiss" onclick="dismissChecklist()" title="Dismiss">×</button>
+            <button class="checklist-dismiss" onclick="dismissChecklist()" title="Dismiss" aria-label="Dismiss setup checklist">×</button>
           </div>
           <ul class="checklist-items">
             <li class="done"><i class="fas fa-check-circle"></i> <span>Account created</span></li>
@@ -513,7 +513,7 @@
             <button class="chip" data-quick="List available tools." data-tooltip="View all tools and commands available to the AI agent">Tools</button>
             <button class="chip" data-quick="Brainstorm next steps for my project." data-tooltip="Get creative suggestions and ideas for your project">Brainstorm</button>
           </div>
-          <textarea id="messageInput" rows="3" placeholder="Type to your agent..."></textarea>
+          <textarea id="messageInput" rows="3" placeholder="Type to your agent..." aria-label="Message to AgentX"></textarea>
           <div class="composer-actions">
             <button class="icon-btn" id="micBtn" title="Voice Input" aria-label="Voice Input" aria-pressed="false">🎤</button>
             <div class="flex-spacer"></div>
@@ -772,13 +772,13 @@
     <div class="modal-content">
       <div class="modal-header">
         <h2>User Profile & Memory</h2>
-        <button id="closeProfileBtn" class="close-btn">&times;</button>
+        <button id="closeProfileBtn" class="close-btn" aria-label="Close profile modal">&times;</button>
       </div>
       <div class="modal-body">
         <div class="field">
           <label>About You (Memory)</label>
           <div class="hint">Facts the agent should remember about you (e.g., job, interests, background).</div>
-          <textarea id="userAbout" rows="5" placeholder="I am a software engineer interested in AI..."></textarea>
+          <textarea id="userAbout" rows="5" placeholder="I am a software engineer interested in AI..." aria-label="User about me"></textarea>
         </div>
         <div class="field">
           <label>Preferred Language</label>
@@ -795,7 +795,7 @@
         <div class="field">
           <label>Custom Instructions</label>
           <div class="hint">How the agent should behave (e.g., always be concise).</div>
-          <textarea id="userInstructions" rows="3" placeholder="Be brief and professional."></textarea>
+          <textarea id="userInstructions" rows="3" placeholder="Be brief and professional." aria-label="User custom instructions"></textarea>
         </div>
         <div class="hint">All profile data is saved to your AgentX database and persisted across conversations.</div>
         <div class="action-row">
