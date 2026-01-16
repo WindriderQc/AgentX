@@ -1,4 +1,4 @@
-        const BENCHMARK_API = '/api/benchmark';
+     const BENCHMARK_API = '/api/benchmark';
         let latencyChart, tokensChart, qualityChart, compositeChart;
         let ollamaHosts = [];
         let currentSortBy = 'composite';
@@ -33,14 +33,6 @@
             if (now - last < intervalMs) return;
             __debugLastLogAt[key] = now;
             console.log(...args);
-        }
-
-        function escapeJsString(value = '') {
-            return String(value)
-                .replace(/\\/g, '\\\\')
-                .replace(/'/g, '\\\'')
-                .replace(/\r/g, '\\r')
-                .replace(/\n/g, '\\n');
         }
 
         function buildRecentTestsModelOptions(recentTests) {
@@ -732,7 +724,6 @@
 
             sortedCategories.forEach(cat => {
                 const isActive = activeCategory === cat;
-                const safeCat = escapeJsString(cat);
                 // Choose an icon based on category name
                 let icon = 'fa-tag';
                 const lowerCat = cat.toLowerCase();
@@ -743,7 +734,7 @@
                 else if (lowerCat.includes('general')) icon = 'fa-cubes';
 
                 html += `
-                    <button class="category-tab ${isActive ? 'active' : ''}" data-category="${cat}" onclick="switchCategoryTab('${safeCat}')" style="padding: 10px 20px; background: none; border: none; border-bottom: 3px solid ${isActive ? 'var(--accent)' : 'transparent'}; color: ${isActive ? 'var(--accent)' : 'var(--muted)'}; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: all 0.2s;">
+                    <button class="category-tab ${isActive ? 'active' : ''}" data-category="${cat}" onclick="switchCategoryTab('${cat}')" style="padding: 10px 20px; background: none; border: none; border-bottom: 3px solid ${isActive ? 'var(--accent)' : 'transparent'}; color: ${isActive ? 'var(--accent)' : 'var(--muted)'}; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: all 0.2s;">
                         <i class="fas ${icon}" style="margin-right: 6px;"></i> ${cat.charAt(0).toUpperCase() + cat.slice(1)}
                     </button>
                 `;
@@ -850,7 +841,6 @@
             if (host && host.models && host.models.length > 0) {
                 tbody.innerHTML = host.models.map(model => {
                     const safeId = model.replace(/[^a-zA-Z0-9]/g, '_');
-                    const safeModelJs = escapeJsString(model);
                     
                     // Get from registry or fallback to local storage (migration path) or empty
                     const registryEntry = modelRegistryCache[model];
@@ -906,7 +896,7 @@
                         </td>
                         <td style="padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.05);">
                             <input type="text" list="category-list-${safeId}" value="${category}" 
-                                onchange="saveModelCategory('${safeModelJs}', this.value)"
+                                onchange="saveModelCategory('${model}', this.value)"
                                 style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.1); color: var(--text); border-radius: 4px; padding: 4px 8px; font-size: 0.9em; width: 100%;">
                             <datalist id="category-list-${safeId}">
                                 ${datalistOptions}
@@ -916,7 +906,7 @@
                             <input type="text" class="model-note-input" data-model="${model}" value="${savedNote}" placeholder="Add note..." 
                                 style="width: 100%; background: transparent; border: none; color: var(--text); border-bottom: 1px solid transparent; padding: 4px;"
                                 onfocus="this.style.borderBottom='1px solid var(--accent)'"
-                                onblur="this.style.borderBottom='1px solid transparent'; saveModelNote('${safeModelJs}', this.value)">
+                                onblur="this.style.borderBottom='1px solid transparent'; saveModelNote('${model}', this.value)">
                         </td>
                     </tr>
                 `}).join('');
@@ -2049,6 +2039,149 @@
             }
         }
 
+        // Remove the old multi-batch functions
+        const oldRefreshActiveBatches = async () => {
+            try {
+                const res = await fetch(`${BENCHMARK_API}/batches/active`);
+                const json = await res.json();
+
+                if (json.status === 'success' && Array.isArray(json.data) && json.data.length > 0) {
+                    const batch = json.data[0];
+                    // Just update the current batch if it's not ours
+                    if (batch._id !== currentBatchId) {
+                        refreshActiveBatch();
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to check active batches:', err);
+            }
+        };
+
+        // Replace all references
+        window.refreshActiveBatches = refreshActiveBatch;
+
+        // OLD CODE - REMOVED
+        /*
+        async function refreshActiveBatches() {
+            try {
+                const res = await fetch(`${BENCHMARK_API}/batches/active`);
+                const json = await res.json();
+
+                if (json.status === 'success' && Array.isArray(json.data) && json.data.length > 0) {
+                    const discovery = document.getElementById('activeBatchesDiscovery');
+                    const list = document.getElementById('activeBatchesList');
+
+                    // Filter out current batch if we're tracking it
+                    const otherBatches = json.data.filter(b => b._id !== currentBatchId);
+
+                    if (otherBatches.length === 0) {
+                        discovery.style.display = 'none';
+                        return;
+                    }
+
+                    discovery.style.display = 'block';
+                    list.innerHTML = otherBatches.map(batch => {
+                        const inactiveSeconds = batch.inactive_seconds || 0;
+                        const activityStatus = batch.activity_status || 'active';
+                        const isStuck = batch.is_stuck || false;
+
+                        const statusColor = isStuck ? '#e74c3c' : (activityStatus === 'slow' ? '#f39c12' : '#2ecc71');
+                        const statusIcon = isStuck ? 'fa-exclamation-circle' : (activityStatus === 'slow' ? 'fa-clock' : 'fa-circle');
+                        const statusText = isStuck ? 'STUCK' : (activityStatus === 'slow' ? 'SLOW' : 'ACTIVE');
+
+                        const progress = batch.progress || 0;
+                        const judgeProgress = batch.judge_progress || 0;
+
+                        return `
+                            <div style="padding: 12px; background: rgba(0,0,0,0.2); border-radius: 8px; border-left: 4px solid ${statusColor};">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <div>
+                                        <div style="font-weight: 600; color: var(--text); margin-bottom: 4px;">
+                                            ${batch.run_name || 'Untitled Batch'}
+                                        </div>
+                                        <div style="font-size: 0.85em; color: var(--muted);">
+                                            ${batch.models ? batch.models.length : 0} models • ${batch.completed}/${batch.total_tests} tests
+                                            ${batch.judge_total > 0 ? ` • ${batch.judge_completed}/${batch.judge_total} judged` : ''}
+                                        </div>
+                                        <div style="font-size: 0.8em; color: var(--muted); margin-top: 2px;">
+                                            Last activity: ${inactiveSeconds < 60 ? `${inactiveSeconds}s ago` : `${Math.floor(inactiveSeconds / 60)}m ago`}
+                                        </div>
+                                    </div>
+                                    <div style="text-align: right;">
+                                        <div style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; background: rgba(0,0,0,0.3); border-radius: 16px; margin-bottom: 8px;">
+                                            <i class="fas ${statusIcon}" style="color: ${statusColor}; font-size: 0.9em;"></i>
+                                            <span style="color: ${statusColor}; font-weight: 600; font-size: 0.85em;">${statusText}</span>
+                                        </div>
+                                        <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                                            <button class="btn-secondary btn-sm" onclick="attachToBatch('${batch._id}')" style="padding: 6px 12px; font-size: 0.85em;">
+                                                <i class="fas fa-link"></i> Attach
+                                            </button>
+                                            ${isStuck ? `<button class="btn-secondary btn-sm" onclick="recoverBatch('${batch._id}')" style="padding: 6px 12px; font-size: 0.85em; background: rgba(231, 76, 60, 0.2); border-color: rgba(231, 76, 60, 0.5); color: #e74c3c;">
+                                                <i class="fas fa-life-ring"></i> Recover
+                                            </button>` : ''}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div style="margin-top: 8px; display: flex; gap: 10px;">
+                                    <div style="flex: 1;">
+                                        <div style="height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden;">
+                                            <div style="height: 100%; width: ${progress}%; background: var(--accent); transition: width 0.3s;"></div>
+                                        </div>
+                                        <div style="font-size: 0.75em; color: var(--muted); margin-top: 2px;">Exec: ${progress}%</div>
+                                    </div>
+                                    ${batch.judge_total > 0 ? `<div style="flex: 1;">
+                                        <div style="height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden;">
+                                            <div style="height: 100%; width: ${judgeProgress}%; background: #9b59b6; transition: width 0.3s;"></div>
+                                        </div>
+                                        <div style="font-size: 0.75em; color: var(--muted); margin-top: 2px;">Judge: ${judgeProgress}%</div>
+                                    </div>` : ''}
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                } else {
+                    document.getElementById('activeBatchesDiscovery').style.display = 'none';
+                }
+            } catch (err) {
+                console.error('Failed to fetch active batches:', err);
+            }
+        }
+
+        */
+
+        async function attachToBatch(batchId) {
+            if (confirm('Attach to this batch? Your current session will be replaced.')) {
+                currentBatchId = batchId;
+                localStorage.setItem('currentBatchId', batchId);
+                await loadBatchDetails(batchId);
+                refreshActiveBatches(); // Hide it from discovery once attached
+            }
+        }
+
+        async function recoverBatch(batchId) {
+            if (!confirm('Mark this batch as stopped? This will stop tracking it but preserve results.')) {
+                return;
+            }
+
+            try {
+                const res = await fetch(`${BENCHMARK_API}/batch/${batchId}/recover`, {
+                    method: 'POST'
+                });
+                const json = await res.json();
+
+                if (json.status === 'success') {
+                    alert('Batch marked as stopped successfully');
+                    refreshActiveBatches();
+                    loadBatchHistory();
+                } else {
+                    alert(`Failed to recover batch: ${json.error || 'Unknown error'}`);
+                }
+            } catch (err) {
+                console.error('Failed to recover batch:', err);
+                alert(`Error: ${err.message}`);
+            }
+        }
+
         async function loadBatchDetails(batchId) {
             if (currentBatchId === batchId) return; // Already viewing
             
@@ -2264,7 +2397,7 @@
                     const execHostCounts = countBy(results, (r) => r && r.host ? formatHostLabel(r.host) : null);
                     const judgeHostCounts = countBy(results, (r) => r && r.judge_host ? formatHostLabel(r.judge_host) : null);
                     const methodCounts = countBy(results, (r) => {
-                        const m = (r && r.scoring_method ? String(r.scoring_method).toLowerCase() : '');
+                        const m = r && r.scoring_method ? String(r.scoring_method).toLowerCase() : null;
                         return m || null;
                     });
                     const topExecHosts = topCounts(execHostCounts, 3);
@@ -2467,23 +2600,23 @@
                         const perModelAggForMedian = models.map(model => {
                             const modelResults = results.filter(r => r && r.model === model);
                             const tpsValues = modelResults
-                                .map(r => parseFloat(r.tokens_per_sec))
-                                .filter(v => !isNaN(v) && v > 0);
+                                .map(r => toFiniteNumber(r && r.tokens_per_sec))
+                                .filter(v => v !== null && v > 0);
                             const judgeMsValues = modelResults
-                                .map(r => Number(r && r.scoring_time_ms))
-                                .filter(v => Number.isFinite(v) && v > 0);
+                                .map(r => toFiniteNumber(r && r.scoring_time_ms))
+                                .filter(v => v !== null && v > 0);
                             const avgTps = tpsValues.length > 0 ? (tpsValues.reduce((sum, v) => sum + v, 0) / tpsValues.length) : null;
                             const avgJudgeMs = judgeMsValues.length > 0 ? (judgeMsValues.reduce((sum, v) => sum + v, 0) / judgeMsValues.length) : null;
                             return { model, avgTps, tpsN: tpsValues.length, avgJudgeMs, judgeMsN: judgeMsValues.length };
                         });
-                        const median = (values) => {
+                        const medianBaseline = (values) => {
                             const xs = (Array.isArray(values) ? values : []).filter(v => Number.isFinite(v)).slice().sort((a, b) => a - b);
                             if (xs.length === 0) return null;
                             const mid = Math.floor(xs.length / 2);
                             return (xs.length % 2 === 1) ? xs[mid] : (xs[mid - 1] + xs[mid]) / 2;
                         };
-                        const tpsMedianModelAvg = median(perModelAggForMedian.map(x => x.avgTps).filter(v => Number.isFinite(v) && v > 0));
-                        const judgeMsMedianModelAvg = median(perModelAggForMedian.map(x => x.avgJudgeMs).filter(v => Number.isFinite(v) && v > 0));
+                        const tpsMedianModelAvg = medianBaseline(perModelAggForMedian.map(x => x.avgTps).filter(v => Number.isFinite(v) && v > 0));
+                        const judgeMsMedianModelAvg = medianBaseline(perModelAggForMedian.map(x => x.avgJudgeMs).filter(v => Number.isFinite(v) && v > 0));
 
                         const rows = models.map(model => {
                             const modelResults = results.filter(r => r && r.model === model);
@@ -3080,4 +3213,1878 @@
                                     avg_latency_ms: latStats.n > 0 ? latStats.mean : null,
                                     p50_latency_ms: latStats.n > 0 ? latStats.p50 : null,
                                     p95_latency_ms: latStats.n > 0 ? latStats.p95 : null,
-                                    avg_quality: qStats.n > 0 ? qStats.mean : null
+                                    avg_quality: qStats.n > 0 ? qStats.mean : null,
+                                    p10_quality: qStats.n > 0 ? qStats.p10 : null,
+                                    p50_quality: qStats.n > 0 ? qStats.p50 : null
+                                });
+                            }
+                            return out;
+                        };
+
+                        const byLevel = groupAverages((r) => (r && r.prompt_level !== undefined && r.prompt_level !== null) ? String(r.prompt_level) : null);
+                        const byCategory = groupAverages((r) => (r && r.prompt_category) ? String(r.prompt_category) : null);
+
+                        const worstLatencyLevels = byLevel
+                            .filter(x => Number.isFinite(x.avg_latency_ms))
+                            .sort((a, b) => b.avg_latency_ms - a.avg_latency_ms)
+                            .slice(0, 3);
+                        const worstLatencyCategories = byCategory
+                            .filter(x => Number.isFinite(x.avg_latency_ms))
+                            .sort((a, b) => b.avg_latency_ms - a.avg_latency_ms)
+                            .slice(0, 3);
+                        const lowestQualityLevels = byLevel
+                            .filter(x => Number.isFinite(x.avg_quality))
+                            .sort((a, b) => a.avg_quality - b.avg_quality)
+                            .slice(0, 3);
+                        const lowestQualityCategories = byCategory
+                            .filter(x => Number.isFinite(x.avg_quality))
+                            .sort((a, b) => a.avg_quality - b.avg_quality)
+                            .slice(0, 3);
+
+                        const promptOutliers = {
+                            worst_latency_levels: worstLatencyLevels,
+                            worst_latency_categories: worstLatencyCategories,
+                            lowest_quality_levels: lowestQualityLevels,
+                            lowest_quality_categories: lowestQualityCategories
+                        };
+
+                        if (hyperAnomalies) {
+                            const lines = [];
+                            if (anomalies.length === 0 && modelAnomalies.length === 0) {
+                                hyperAnomalies.style.display = 'block';
+                                hyperAnomalies.innerHTML = `<div style="font-weight: 700; color: var(--text); margin-bottom: 4px;">Anomalies</div><div style="color: var(--muted);">None detected (based on current thresholds)</div>`;
+                            } else {
+                                hyperAnomalies.style.display = 'block';
+                                lines.push(`<div style="font-weight: 700; color: var(--text); margin-bottom: 6px;">Anomalies</div>`);
+                                for (const a of anomalies.slice(0, 8)) {
+                                    lines.push(`<div style="margin: 4px 0; color: rgba(255,255,255,0.92);">• ${a}</div>`);
+                                }
+                                for (const m of modelAnomalies.slice(0, 8)) {
+                                    lines.push(`<div style="margin: 4px 0; color: rgba(255,255,255,0.92);">• <button type="button" class="btn-secondary" data-action="jump-model" data-model="${String(m.model).replace(/\"/g, '&quot;')}" style="padding: 4px 8px; margin-right: 6px;">${m.model}</button><button type="button" class="btn-secondary" data-action="inspect-model" data-model="${String(m.model).replace(/\"/g, '&quot;')}" data-mode="${String((m && m.inspect_mode) || 'failure').replace(/\"/g, '&quot;')}" style="padding: 4px 8px; margin-right: 8px;">Inspect</button>${m.message}</div>`);
+                                }
+
+                                const fmtOutlier = (label, entries, fmt) => {
+                                    if (!Array.isArray(entries) || entries.length === 0) return;
+                                    lines.push(`<div style="margin-top: 8px; font-weight: 700; color: var(--text);">${label}</div>`);
+                                    for (const e of entries.slice(0, 3)) {
+                                        lines.push(`<div style="margin: 4px 0; color: rgba(255,255,255,0.92);">• ${fmt(e)}</div>`);
+                                    }
+                                };
+                                fmtOutlier('Prompt draggers — latency', worstLatencyLevels, (e) => `Level ${e.key}: avg ${Math.round(e.avg_latency_ms)}ms (n=${e.n})`);
+                                fmtOutlier('Prompt draggers — latency', worstLatencyCategories, (e) => `${e.key}: avg ${Math.round(e.avg_latency_ms)}ms (n=${e.n})`);
+                                fmtOutlier('Prompt draggers — quality', lowestQualityLevels, (e) => `Level ${e.key}: avg ${Number(e.avg_quality).toFixed(2)} (n=${e.n})`);
+                                fmtOutlier('Prompt draggers — quality', lowestQualityCategories, (e) => `${e.key}: avg ${Number(e.avg_quality).toFixed(2)} (n=${e.n})`);
+
+                                hyperAnomalies.innerHTML = lines.join('');
+                            }
+
+                            if (!hyperAnomalies.dataset.bound) {
+                                hyperAnomalies.addEventListener('click', (e) => {
+                                    const inspectBtn = e.target && e.target.closest && e.target.closest('[data-action="inspect-model"]');
+                                    if (inspectBtn) {
+                                        const model = inspectBtn.getAttribute('data-model');
+                                        const mode = inspectBtn.getAttribute('data-mode') || 'failure';
+                                        const idOrIndex = pickRepresentativeResultIdForModel(model, mode);
+                                        if (idOrIndex !== null && typeof window.showJudgeDetails === 'function') {
+                                            window.showJudgeDetails(idOrIndex);
+                                        }
+                                        return;
+                                    }
+
+                                    const btn = e.target && e.target.closest && e.target.closest('[data-action="jump-model"]');
+                                    if (!btn) return;
+                                    const model = btn.getAttribute('data-model');
+                                    const perModel = document.getElementById('perModelProgressContainer');
+                                    if (!perModel) return;
+                                    // Ensure details are showing
+                                    setAdvancedMode(true);
+                                    setHyperMode(true);
+                                    // Find the model's main row and hyper row
+                                    const mainRow = findRowByAttr(perModel, 'data-model-main-row', model);
+                                    if (mainRow && mainRow.scrollIntoView) {
+                                        mainRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                    }
+                                    const hyperRow = findRowByAttr(perModel, 'data-model-hyper-row', model);
+                                    if (hyperRow) {
+                                        hyperRow.style.display = '';
+                                        // Update the button label if present
+                                        const hyperBtn = Array.from(perModel.querySelectorAll('[data-action="toggle-model-hyper"]'))
+                                            .find(b => b.getAttribute('data-model') === model);
+                                        if (hyperBtn) hyperBtn.textContent = 'Hide';
+                                    }
+                                });
+                                hyperAnomalies.dataset.bound = 'true';
+                            }
+                        }
+
+                        const snapshot = {
+                            id: batch._id || currentBatchId || null,
+                            status: batch.status,
+                            started_at: batch.started_at || null,
+                            completed_at: batch.completed_at || null,
+                            hosts: {
+                                primary: batch.hosts ? batch.hosts.primary : undefined,
+                                secondary: batch.hosts ? batch.hosts.secondary : undefined
+                            },
+                            plan: batch.plan || null,
+                            totals: {
+                                exec_total: batch.total_tests,
+                                exec_completed: batch.completed,
+                                exec_failed: batch.failed,
+                                exec_fail_rate: completed > 0 ? Number(execFailRate.toFixed(6)) : 0,
+                                judge_total_planned: batch.judge_total,
+                                judge_total_effective: batch.judge_total_effective,
+                                judge_completed: batch.judge_completed,
+                                judge_failed: batch.judge_failed,
+                                judge_fail_rate: judgeCompleted > 0 ? Number(judgeFailRate.toFixed(6)) : 0
+                            },
+                            progress: {
+                                exec_progress: batch.progress,
+                                judge_progress_planned: batch.judge_progress,
+                                judge_progress_effective: batch.judge_progress_effective
+                            },
+                            judge: {
+                                same_host: !!(batch.judge_same_host || (batch.judge_config && batch.judge_config.judge_same_host)),
+                                config: batch.judge_config || null,
+                                stats: batch.judge_stats || null
+                            },
+                            quality_scoring: batch.quality_scoring,
+                            batch_distributions: batchDistributions,
+                            batch_breakdowns: batchBreakdowns,
+                            prompt_outliers: promptOutliers,
+                            anomaly_thresholds: thresholds,
+                            anomaly_baselines: {
+                                model_min_n: minSamples,
+                                throughput: {
+                                    eligible_models: tpsEligibleModels,
+                                    median_tokens_per_sec: tpsMedian !== null ? Number(tpsMedian.toFixed(6)) : null,
+                                    cutoff_tokens_per_sec: tpsCutoff !== null ? Number(tpsCutoff.toFixed(6)) : null,
+                                    below_median_pct: tpsBelowPct,
+                                    outliers: throughputOutliers
+                                },
+                                judge_time: {
+                                    eligible_models: judgeMsEligibleModels,
+                                    median_ms: judgeMsMedian !== null ? Math.round(judgeMsMedian) : null,
+                                    cutoff_ms: judgeMsCutoff !== null ? Math.round(judgeMsCutoff) : null,
+                                    above_median_pct: judgeMsAbovePct,
+                                    outliers: judgeTimeOutliers
+                                }
+                            },
+                            anomalies: anomalies,
+                            model_anomalies: modelAnomalies,
+                            model_stats: modelStats.map(s => ({
+                                model: s.model,
+                                execDone: s.execDone,
+                                execFailedCount: s.execFailedCount,
+                                execRate: Number.isFinite(s.execRate) ? Number(s.execRate.toFixed(6)) : null,
+                                judgeDone: s.judgeDone,
+                                judgeFailedCount: s.judgeFailedCount,
+                                judgeRate: Number.isFinite(s.judgeRate) ? Number(s.judgeRate.toFixed(6)) : null,
+                                tpsN: s.tpsN,
+                                avgTps: Number.isFinite(s.avgTps) ? Number(s.avgTps.toFixed(6)) : null,
+                                judgeMsN: s.judgeMsN,
+                                avgJudgeMs: Number.isFinite(s.avgJudgeMs) ? Math.round(s.avgJudgeMs) : null
+                            })),
+                            samples: {
+                                failure: pickRepresentativeResultId('failure'),
+                                worst_latency: pickRepresentativeResultId('worst_latency'),
+                                worst_throughput: pickRepresentativeResultId('worst_throughput'),
+                                longest_judge: pickRepresentativeResultId('longest_judge'),
+                                lowest_quality: pickRepresentativeResultId('lowest_quality')
+                            }
+                        };
+                        hyperPre.textContent = JSON.stringify(snapshot, null, 2);
+                    } else {
+                        hyperDetails.style.display = 'none';
+                        if (hyperAnomalies) hyperAnomalies.style.display = 'none';
+                        if (hyperThresholds) hyperThresholds.style.display = 'none';
+                    }
+                }
+
+                if (batch.status === 'completed') {
+                    clearInterval(batchPollInterval);
+                    batchPollInterval = null;
+                    localStorage.removeItem('currentBatchId');
+
+                    const status = document.getElementById('batchStatus');
+                    
+                    // Check if judging is actually complete
+                    const judgeTotal = Number(batch.judge_total) || 0;
+                    const judgeTotalEffective = Number(
+                        batch.judge_total_effective ??
+                        (batch.judge_stats ? batch.judge_stats.total : null) ??
+                        judgeTotal
+                    ) || 0;
+                    const judgeCompleted = Number(batch.judge_completed) || 0;
+                    
+                    if (judgeTotalEffective > 0 && judgeCompleted < judgeTotalEffective) {
+                        status.className = 'status warning';
+                        status.style.background = 'rgba(241, 196, 15, 0.1)';
+                        status.style.borderColor = 'rgba(241, 196, 15, 0.3)';
+                        status.style.color = '#f1c40f';
+                        status.innerHTML = `
+                            <i class="fas fa-exclamation-triangle"></i> Batch execution finished, but judging is incomplete (${judgeCompleted}/${judgeTotalEffective}).<br>
+                            <small>The server process may have stopped or judging failed silently. Check logs.</small>
+                        `;
+                    } else {
+                        status.className = 'status success';
+                        status.textContent = `✓ Batch completed! ${batch.completed} tests run (${batch.success_rate} success)`;
+                    }
+                    
+                    status.style.display = 'block';
+                    status.style.display = 'block';
+
+                    const btn = document.getElementById('runBatchBtn');
+                    const stopBtn = document.getElementById('stopBatchBtn');
+                    btn.disabled = false;
+                    btn.textContent = 'Start Batch Test';
+                    stopBtn.style.display = 'none';
+
+                    // Refresh dashboard
+                    loadDashboard();
+                }
+            } catch (err) {
+                console.error('Failed to poll batch progress:', err);
+                // If 404 (batch not found), clear local storage
+                if (err.message.includes('404')) {
+                    resetBatchUI();
+                }
+            }
+        }
+
+        // Initialize charts
+        function initCharts() {
+            const latencyCtx = document.getElementById('latencyChart').getContext('2d');
+            const tokensCtx = document.getElementById('tokensChart').getContext('2d');
+            const qualityCtx = document.getElementById('qualityChart').getContext('2d');
+            const compositeCtx = document.getElementById('compositeChart').getContext('2d');
+
+            latencyChart = new Chart(latencyCtx, {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Average Latency (ms)',
+                        data: [],
+                        backgroundColor: 'rgba(102, 126, 234, 0.8)',
+                        borderColor: 'rgba(102, 126, 234, 1)',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+
+            tokensChart = new Chart(tokensCtx, {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Tokens per Second',
+                        data: [],
+                        backgroundColor: 'rgba(118, 75, 162, 0.8)',
+                        borderColor: 'rgba(118, 75, 162, 1)',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+
+            qualityChart = new Chart(qualityCtx, {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Quality Score (0-10)',
+                        data: [],
+                        backgroundColor: 'rgba(46, 204, 113, 0.8)',
+                        borderColor: 'rgba(46, 204, 113, 1)',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true, max: 10 } }
+                }
+            });
+
+            compositeChart = new Chart(compositeCtx, {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Composite Score (0-10)',
+                        data: [],
+                        backgroundColor: 'rgba(241, 196, 15, 0.8)',
+                        borderColor: 'rgba(241, 196, 15, 1)',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true, max: 10 } }
+                }
+            });
+        }
+
+        // Load dashboard data
+        async function loadDashboard() {
+            try {
+                const params = new URLSearchParams();
+                params.append('sort', currentSortBy);
+                
+                if (window.BenchmarkAnalytics && typeof window.BenchmarkAnalytics.getActiveFilters === 'function') {
+                    const filters = window.BenchmarkAnalytics.getActiveFilters();
+                    if (filters.modelCategory) params.append('modelCategory', filters.modelCategory);
+                    if (filters.promptCategory) params.append('promptCategory', filters.promptCategory);
+                    if (filters.tag) params.append('tag', filters.tag);
+                }
+
+                const res = await fetch(`${BENCHMARK_API}/dashboard?${params.toString()}`);
+
+                if (res.status === 429) {
+                    console.warn('Rate limited loading dashboard, skipping...');
+                    return;
+                }
+
+                if (!res.ok) {
+                    throw new Error(`HTTP error! status: ${res.status}`);
+                }
+
+                const json = await res.json();
+                const data = json.data || json; // Handle both wrapped and unwrapped responses
+                window.latestBenchmarkData = data; // Store globally for other components
+
+
+                if (!data || !data.overview) {
+                    throw new Error('Invalid dashboard data structure');
+                }
+
+                lastDashboardOverview = data.overview;
+                renderSuccessRateDetails();
+
+                lastRecentTests = Array.isArray(data.recent_tests) ? data.recent_tests : [];
+                buildRecentTestsModelOptions(lastRecentTests);
+                rerenderRecentTests();
+
+                // Update stats
+                document.getElementById('totalTests').textContent = data.overview.total_tests;
+                document.getElementById('successRate').innerHTML =
+                    data.overview.success_rate.replace('%', '<span class="stat-unit">%</span>');
+
+                const statsForCharts = (data.model_stats || []).filter(m => Number(m && m.tests) > 0);
+
+                // Define profileKey and currentProfile in a broader scope
+                const currentProfile = document.getElementById('scoringProfile') ? document.getElementById('scoringProfile').value : 'interactive';
+                let profileKey = 'interactive_score';
+                if (currentProfile === 'reasoning') profileKey = 'reasoning_score';
+                if (currentProfile === 'coding') profileKey = 'coding_score';
+
+                if (statsForCharts.length > 0) {
+                    const fastest = statsForCharts[0];
+                    document.getElementById('avgLatency').innerHTML =
+                        `${fastest.avg_latency}<span class="stat-unit">ms</span>`;
+
+                    // Update charts
+                    const chartLabels = statsForCharts.map(m => {
+                        const hostLabel = m.host ? formatHostLabel(m.host) : '';
+                        // Only append host if it's not localhost or if we have multiple hosts
+                        return hostLabel && hostLabel !== 'localhost' ? `${m.model} (${hostLabel})` : m.model;
+                    });
+
+                    latencyChart.data.labels = chartLabels;
+                    latencyChart.data.datasets[0].data = statsForCharts.map(m => m.avg_latency);
+                    latencyChart.update();
+
+                    tokensChart.data.labels = chartLabels;
+                    tokensChart.data.datasets[0].data = statsForCharts.map(m => parseFloat(m.avg_tokens_per_sec));
+                    tokensChart.update();
+
+                    // Update quality chart
+                    qualityChart.data.labels = chartLabels;
+                    qualityChart.data.datasets[0].data = statsForCharts.map(m => parseFloat(m.avg_quality) || 0);
+                    qualityChart.update();
+
+                    // Update composite chart
+                    compositeChart.data.labels = chartLabels;
+                    
+                    compositeChart.data.datasets[0].data = statsForCharts.map(m => parseFloat(m[profileKey]) || 0);
+                    compositeChart.update();
+                } else {
+                    // Clear charts if no data
+                    document.getElementById('avgLatency').innerHTML = '-<span class="stat-unit">ms</span>';
+                    
+                    [latencyChart, tokensChart, qualityChart, compositeChart].forEach(chart => {
+                        if (chart) {
+                            chart.data.labels = [];
+                            chart.data.datasets.forEach(ds => ds.data = []);
+                            chart.update();
+                        }
+                    });
+                }
+
+                // Update Judge Stats
+                    const judgeContainer = document.getElementById('judgeStatsContainer');
+                    const judgeGrid = document.getElementById('judgeStatsGrid');
+                    
+                    if (data.judge_stats && data.judge_stats.length > 0 && judgeContainer && judgeGrid) {
+                        judgeContainer.style.display = 'block';
+                        judgeGrid.innerHTML = data.judge_stats.map(stat => {
+                            const model = stat._id.model || stat._id || 'Unknown Judge';
+                            const host = stat._id.host ? formatHostLabel(stat._id.host) : '';
+                            return `
+                            <div class="stat-card" style="padding: 16px;">
+                                <div class="stat-label" style="margin-bottom: 8px;">
+                                    ${model}
+                                    ${host ? `<div style="font-size: 0.8em; opacity: 0.7; margin-top: 2px;">${host}</div>` : ''}
+                                </div>
+                                <div class="stat-value" style="font-size: 1.8em;">${Math.round(stat.avg_latency)}<span class="stat-unit">ms</span></div>
+                                <div style="font-size: 0.8em; color: var(--muted); margin-top: 4px;">${stat.count} evaluations</div>
+                            </div>
+                        `}).join('');
+                    } else if (judgeContainer) {
+                        judgeContainer.style.display = 'none';
+                    }
+
+                    // Find best overall model (highest composite score)
+                    const modelsWithComposite = statsForCharts.filter(m => m[profileKey] && parseFloat(m[profileKey]) > 0);
+                    let bestOverallModel = null;
+                    if (modelsWithComposite.length > 0) {
+                        bestOverallModel = modelsWithComposite.reduce((best, current) =>
+                            parseFloat(current[profileKey]) > parseFloat(best[profileKey]) ? current : best
+                        );
+                    }
+
+                    // Update best overall text
+                    const bestOverallText = document.getElementById('bestOverallText');
+                    if (bestOverallText) {
+                        if (bestOverallModel) {
+                            const score = bestOverallModel[profileKey];
+                            bestOverallText.innerHTML = `👑 Best Overall: <strong style="color: #2ecc71;">${bestOverallModel.model}</strong> <span style="color: #888;">(${score} ${currentProfile})</span>`;
+                        } else {
+                            bestOverallText.innerHTML = `👑 Best Overall: <span style="color: #888;">Run tests with quality scoring</span>`;
+                        }
+                    }
+
+                    // Populate trends model filter
+                    const trendsModelFilter = document.getElementById('trendsModelFilter');
+                    if (trendsModelFilter && statsForCharts.length > 0) {
+                        const uniqueModels = [...new Set(statsForCharts.map(m => m.model))];
+                        const currentSelection = trendsModelFilter.value;
+                        trendsModelFilter.innerHTML = '<option value="">All Models</option>' +
+                            uniqueModels.map(model => `<option value="${model}">${model}</option>`).join('');
+                        if (currentSelection) trendsModelFilter.value = currentSelection;
+                    }
+
+                    // Calculate Top Offenders FIRST (before rendering table)
+                    const allModels = Array.isArray(data.model_stats) ? data.model_stats : [];
+                    const toNum = (v) => {
+                        const n = typeof v === 'string' ? parseFloat(v) : Number(v);
+                        return Number.isFinite(n) ? n : null;
+                    };
+
+                    const pickMax = (arr, getVal) => {
+                        let best = null;
+                        for (const item of arr) {
+                            const v = getVal(item);
+                            if (!Number.isFinite(v)) continue;
+                            if (!best || v > best.v) best = { item, v };
+                        }
+                        return best ? best.item : null;
+                    };
+                    const pickMin = (arr, getVal) => {
+                        let best = null;
+                        for (const item of arr) {
+                            const v = getVal(item);
+                            if (!Number.isFinite(v)) continue;
+                            if (!best || v < best.v) best = { item, v };
+                        }
+                        return best ? best.item : null;
+                    };
+
+                    const hasSuccess = (m) => Number(m && m.tests) > 0;
+                    const successModels = allModels.filter(hasSuccess);
+
+                    const slowestLatency = pickMax(successModels, (m) => toNum(m.avg_latency));
+                    const lowestTps = pickMin(successModels, (m) => {
+                        const t = toNum(m.avg_tokens_per_sec);
+                        return t !== null && t > 0 ? t : null;
+                    });
+                    const lowestQuality = pickMin(
+                        allModels.filter(m => {
+                            const q = toNum(m && m.avg_quality);
+                            return q !== null && q > 0 && Number(m && m.quality_tests) > 0;
+                        }),
+                        (m) => toNum(m.avg_quality)
+                    );
+
+                    let mostFailures = null;
+                    for (const m of allModels) {
+                        const failed = Number(m && m.failed_tests) || 0;
+                        if (failed <= 0) continue;
+                        const total = Number(m && m.total_tests) || (Number(m && m.tests) || 0) + failed;
+                        const rate = total > 0 ? (failed / total) : 0;
+                        if (!mostFailures || failed > mostFailures.failed || (failed === mostFailures.failed && rate > mostFailures.rate)) {
+                            mostFailures = { item: m, failed, total, rate };
+                        }
+                    }
+
+                    // Helper to check if current model is an offender
+                    const isOffender = (model, offenderModel) => {
+                        return offenderModel && model.model === offenderModel.model && model.host === offenderModel.host;
+                    };
+
+                    // Update leaderboard
+                    const tbody = document.getElementById('leaderboard');
+                    tbody.innerHTML = (data.model_stats || []).map((model, idx) => {
+                        let badge = '';
+                        if (idx === 0) badge = '<span class="badge gold">🥇 1st</span>';
+                        else if (idx === 1) badge = '<span class="badge silver">🥈 2nd</span>';
+                        else if (idx === 2) badge = '<span class="badge bronze">🥉 3rd</span>';
+                        else badge = `<span>${idx + 1}</span>`;
+
+                        const qualityVal = parseFloat(model.avg_quality);
+                        const compositeVal = parseFloat(model[profileKey]);
+                        const qualityDisplay = !isNaN(qualityVal) ? model.avg_quality : '-';
+
+                        // Debug: avoid spamming console during 10s dashboard refresh polling
+                        if (idx === 0) {
+                            debugLogThrottled(
+                                'dashboardFirstModel',
+                                30000,
+                                'First model data:',
+                                model,
+                                'Profile:',
+                                currentProfile,
+                                'Key:',
+                                profileKey,
+                                'Composite value:',
+                                model[profileKey],
+                                'Parsed:',
+                                compositeVal
+                            );
+                        }
+
+                        const compositeDisplay = !isNaN(compositeVal) ? compositeVal.toFixed(1) : '-';
+                        const qualityClass = qualityVal >= 70 ? 'quality-high' : qualityVal >= 40 ? 'quality-mid' : (qualityVal > 0 ? 'quality-low' : '');
+
+                        const hasSuccessSamples = Number(model.tests) > 0;
+                        const latencyDisplay = hasSuccessSamples ? `${model.avg_latency} ms` : '-';
+                        const tpsDisplay = hasSuccessSamples ? `${model.avg_tokens_per_sec}` : '-';
+
+                        const totalTests = Number(model.total_tests || (Number(model.tests) + Number(model.failed_tests || 0)));
+                        const failedTests = Number(model.failed_tests || 0);
+                        const successRate = totalTests > 0 ? ((totalTests - failedTests) / totalTests) : 0;
+                        const reliabilityDisplay = totalTests > 0
+                            ? `${(successRate * 100).toFixed(1)}%`
+                            : '-';
+
+                        const levelStats = (model && typeof model.level_stats === 'object' && model.level_stats) ? model.level_stats : {};
+                        const formatStarCount = (count) => {
+                            const n = Number(count || 0);
+                            if (!Number.isFinite(n) || n <= 0) return '';
+                            if (n >= 100) return '99+';
+                            return String(n);
+                        };
+                        // Get intensity class based on test count (for opacity/brightness)
+                        const getIntensityClass = (count) => {
+                            const n = Number(count || 0);
+                            if (!Number.isFinite(n) || n <= 0) return 'intensity-none';
+                            if (n >= 50) return 'intensity-ultra';
+                            if (n >= 30) return 'intensity-veryhigh';
+                            if (n >= 15) return 'intensity-high';
+                            if (n >= 8) return 'intensity-mid';
+                            if (n >= 3) return 'intensity-low';
+                            return 'intensity-minimal'; // 1-2 tests
+                        };
+                        // Get size scale based on count
+                        const getSizeScale = (count) => {
+                            const n = Number(count || 0);
+                            if (n >= 50) return 1.15;
+                            if (n >= 30) return 1.08;
+                            if (n >= 15) return 1.0;
+                            if (n >= 8) return 0.95;
+                            if (n >= 3) return 0.9;
+                            return 0.85; // 1-2 tests - smaller
+                        };
+                        // Build stars HTML - each star gets level-based color + count-based intensity + size
+                        const starsHtml = [1, 2, 3, 4, 5].map((level) => {
+                            const count = Number(levelStats[level] ?? levelStats[String(level)] ?? 0);
+                            if (!Number.isFinite(count) || count <= 0) {
+                                return '<span class="test-star-slot" aria-hidden="true"></span>';
+                            }
+                            const levelClass = `test-star-level-${level}`;
+                            const intensityClass = getIntensityClass(count);
+                            const sizeScale = getSizeScale(count);
+                            const displayCount = formatStarCount(count);
+                            return `
+                                <span class="test-star-slot" title="Level ${level}: ${count} tests" style="transform: scale(${sizeScale});">
+                                    <span class="test-star ${levelClass} ${intensityClass}" aria-label="Level ${level}: ${count} tests">
+                                        <i class="fas fa-star"></i>
+                                    </span>
+                                    <span class="test-star-count">${displayCount}</span>
+                                </span>
+                            `;
+                        }).join('');
+
+                        // Highlight best overall model
+                        const isBestOverall = bestOverallModel && model.model === bestOverallModel.model;
+                        const rowClass = isBestOverall ? 'best-overall' : '';
+
+                        const crown = isBestOverall ? '👑 ' : '';
+                        const hostLabel = model.host ? formatHostLabel(model.host) : 'Unknown';
+
+                        // Recommended category formatting with CategoryBadge component
+                        const formatRecommendedCategory = (category, benchmarkScores = null) => {
+                            if (!category) return '<span style="color: var(--muted); font-size: 0.85em;">—</span>';
+                            
+                            // Calculate confidence based on benchmark scores
+                            let confidence = null;
+                            if (benchmarkScores && Object.keys(benchmarkScores).length > 0) {
+                                const scores = Object.values(benchmarkScores);
+                                confidence = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+                            }
+                            
+                            // Use CategoryBadge component if available
+                            if (typeof CategoryBadge !== 'undefined') {
+                                return CategoryBadge.render(category, confidence, {
+                                    benchmarkScores: benchmarkScores,
+                                    showRing: confidence !== null,
+                                    interactive: true,
+                                    animated: true,
+                                    size: 'small'
+                                });
+                            }
+                            
+                            // Fallback to simple badge
+                            const categoryColors = {
+                                'coding': '#7c9fff',
+                                'reasoning': '#a78bfa',
+                                'factual': '#34d399',
+                                'math': '#fbbf24',
+                                'creative': '#f87171',
+                                'general': '#94a3b8'
+                            };
+                            const color = categoryColors[category] || '#94a3b8';
+                            const icon = category === 'coding' ? '💻' :
+                                        category === 'reasoning' ? '🧠' :
+                                        category === 'factual' ? '📚' :
+                                        category === 'math' ? '🔢' :
+                                        category === 'creative' ? '✨' : '📝';
+                            return `<span style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 12px; background: linear-gradient(135deg, ${color}22 0%, ${color}11 100%); border: 1px solid ${color}44; color: ${color}; font-size: 0.85em; font-weight: 600;">${icon} ${category}</span>`;
+                        };
+                        
+                        // Get benchmark scores for tooltip
+                        const benchmarkScores = {};
+                        if (model.stats && Array.isArray(model.stats)) {
+                            model.stats.forEach(stat => {
+                                if (stat.score !== undefined && stat.score !== null) {
+                                    benchmarkScores[stat.benchmark || 'Overall'] = stat.score;
+                                }
+                            });
+                        }
+                        
+                        const recommendedCategoryHtml = formatRecommendedCategory(
+                            model.recommended_category,
+                            Object.keys(benchmarkScores).length > 0 ? benchmarkScores : null
+                        );
+
+                        // Build offender badges - these represent actual performance issues from test data
+                        let offenderBadges = '';
+                        
+                        if (isOffender(model, slowestLatency)) {
+                            offenderBadges += `<span title="⚠️ Worst Latency" style="
+                                display: inline-flex;
+                                align-items: center;
+                                gap: 4px;
+                                font-size: 0.7rem;
+                                padding: 3px 8px;
+                                margin-left: 8px;
+                                border-radius: 12px;
+                                background: linear-gradient(135deg, rgba(231, 76, 60, 0.25) 0%, rgba(192, 57, 43, 0.15) 100%);
+                                border: 1.5px solid rgba(231, 76, 60, 0.5);
+                                color: #e74c3c;
+                                font-weight: 700;
+                                text-transform: uppercase;
+                                letter-spacing: 0.05em;
+                                box-shadow: 0 2px 4px rgba(231, 76, 60, 0.2);
+                            ">🐌 SLOW</span>`;
+                        }
+                        if (isOffender(model, lowestTps)) {
+                            offenderBadges += `<span title="⚠️ Worst Throughput" style="
+                                display: inline-flex;
+                                align-items: center;
+                                gap: 4px;
+                                font-size: 0.7rem;
+                                padding: 3px 8px;
+                                margin-left: 8px;
+                                border-radius: 12px;
+                                background: linear-gradient(135deg, rgba(230, 126, 34, 0.25) 0%, rgba(211, 84, 0, 0.15) 100%);
+                                border: 1.5px solid rgba(230, 126, 34, 0.5);
+                                color: #e67e22;
+                                font-weight: 700;
+                                text-transform: uppercase;
+                                letter-spacing: 0.05em;
+                                box-shadow: 0 2px 4px rgba(230, 126, 34, 0.2);
+                            ">🐢 SLUG</span>`;
+                        }
+                        if (isOffender(model, lowestQuality)) {
+                            offenderBadges += `<span title="⚠️ Lowest Quality Score" style="
+                                display: inline-flex;
+                                align-items: center;
+                                gap: 4px;
+                                font-size: 0.7rem;
+                                padding: 3px 8px;
+                                margin-left: 8px;
+                                border-radius: 12px;
+                                background: linear-gradient(135deg, rgba(243, 156, 18, 0.25) 0%, rgba(230, 126, 34, 0.15) 100%);
+                                border: 1.5px solid rgba(243, 156, 18, 0.5);
+                                color: #f39c12;
+                                font-weight: 700;
+                                text-transform: uppercase;
+                                letter-spacing: 0.05em;
+                                box-shadow: 0 2px 4px rgba(243, 156, 18, 0.2);
+                            ">⭐ POOR</span>`;
+                        }
+                        if (mostFailures && isOffender(model, mostFailures.item)) {
+                            offenderBadges += `<span title="⚠️ Most Test Failures" style="
+                                display: inline-flex;
+                                align-items: center;
+                                gap: 4px;
+                                font-size: 0.7rem;
+                                padding: 3px 8px;
+                                margin-left: 8px;
+                                border-radius: 12px;
+                                background: linear-gradient(135deg, rgba(192, 57, 43, 0.3) 0%, rgba(142, 36, 36, 0.2) 100%);
+                                border: 1.5px solid rgba(192, 57, 43, 0.6);
+                                color: #c0392b;
+                                font-weight: 700;
+                                text-transform: uppercase;
+                                letter-spacing: 0.05em;
+                                box-shadow: 0 2px 4px rgba(192, 57, 43, 0.25);
+                            ">⚠️ UNSTABLE</span>`;
+                        }
+                        
+                        return `
+                            <tr class="${rowClass}">
+                                <td>${badge}</td>
+                                <td>
+                                    <strong>${crown}${model.model}</strong>${offenderBadges}
+                                    <div style="font-size: 0.8em; color: var(--muted); margin-top: 2px; opacity: 0.7;">${hostLabel}</div>
+                                </td>
+                                <td>${latencyDisplay}</td>
+                                <td>${tpsDisplay}</td>
+                                <td class="${qualityClass}">${qualityDisplay}</td>
+                                <td>${reliabilityDisplay}</td>
+                                <td title="Per-level tests (Levels 1–5)">
+                                    <div class="tests-stars">${starsHtml}</div>
+                                    ${model.failed_tests && Number(model.failed_tests) > 0
+                                        ? `<div style="margin-top: 2px; color: rgba(231, 76, 60, 0.9); font-size: 0.8em;">Failed: ${model.failed_tests}</div>`
+                                        : ''}
+                                </td>
+                                <td>${recommendedCategoryHtml}</td>
+                                <td style="font-weight: bold;">${compositeDisplay}</td>
+                            </tr>
+                        `;
+                    }).join('');
+
+                    // Store offenders globally for the model selection table
+                    window.benchmarkOffenders = {
+                        slowest: slowestLatency ? { model: slowestLatency.model, host: slowestLatency.host } : null,
+                        lowestTps: lowestTps ? { model: lowestTps.model, host: lowestTps.host } : null,
+                        lowestQuality: lowestQuality ? { model: lowestQuality.model, host: lowestQuality.host } : null,
+                        mostFailures: mostFailures ? { model: mostFailures.item.model, host: mostFailures.item.host } : null
+                    };
+
+                    // Update Model Selection Table if it exists
+                    if (typeof updateModelSelectionBadges === 'function') {
+                        updateModelSelectionBadges();
+                    }
+            } catch (err) {
+                console.error('Failed to load dashboard:', err);
+            }
+        }
+
+        // Expose dashboard loader globally for UI handlers defined outside this scope
+        window.loadDashboard = loadDashboard;
+
+        // Profile selector change handler
+        const profileSelector = document.getElementById('scoringProfile');
+        if (profileSelector) {
+            profileSelector.addEventListener('change', (e) => {
+                const profile = e.target.value;
+                const sortSelector = document.getElementById('sortBy');
+                
+                // If currently sorting by composite/score, switch to the new profile score
+                if (['composite', 'interactive', 'reasoning', 'coding'].includes(currentSortBy)) {
+                    currentSortBy = profile;
+                    if (sortSelector) sortSelector.value = 'composite';
+                }
+                loadDashboard();
+            });
+        }
+
+        // Sort selector change handler
+        const sortBy = document.getElementById('sortBy');
+        if (sortBy) {
+            sortBy.addEventListener('change', (e) => {
+                const val = e.target.value;
+                if (val === 'composite') {
+                    // If user selects "Composite", use the current profile
+                    const profile = document.getElementById('scoringProfile') ? document.getElementById('scoringProfile').value : 'interactive';
+                    currentSortBy = profile;
+                } else {
+                    currentSortBy = val;
+                }
+                loadDashboard();
+            });
+        }
+
+        // Run test
+        const testForm = document.getElementById('testForm');
+        if (testForm) testForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const btn = document.getElementById('runBtn');
+            const status = document.getElementById('status');
+
+            btn.disabled = true;
+            btn.textContent = 'Running...';
+            status.style.display = 'none';
+
+            try {
+                const res = await fetch(`${BENCHMARK_API}/test`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        model: document.getElementById('model').value,
+                        host: document.getElementById('host').value,
+                        prompt: document.getElementById('prompt').value
+                    })
+                });
+
+                const json = await res.json();
+                const data = json.data || json;
+
+                if (data.success) {
+                    status.className = 'status success';
+                    status.textContent = `✓ Test completed in ${data.latency}ms (${data.tokens_per_sec} tokens/s)`;
+                } else {
+                    status.className = 'status error';
+                    status.textContent = `✗ Test failed: ${data.error || json.error}`;
+                }
+
+                status.style.display = 'block';
+                loadDashboard();
+            } catch (err) {
+                status.className = 'status error';
+                status.textContent = `✗ Error: ${err.message}`;
+                status.style.display = 'block';
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Run Test';
+            }
+        });
+
+        // Initialize
+        loadOllamaHosts()
+            .catch((err) => {
+                console.error('Failed to load Ollama hosts:', err);
+            })
+            .finally(async () => {
+            // Disclosure defaults
+            if (localStorage.getItem('benchmarkShowAdvanced') === null) {
+                localStorage.setItem('benchmarkShowAdvanced', 'false');
+            }
+            if (localStorage.getItem('benchmarkShowHyper') === null) {
+                localStorage.setItem('benchmarkShowHyper', 'false');
+            }
+
+            const toggleAdvancedBtn = document.getElementById('toggleAdvancedBtn');
+            const toggleHyperBtn = document.getElementById('toggleHyperBtn');
+            if (toggleAdvancedBtn) {
+                toggleAdvancedBtn.addEventListener('click', () => {
+                    const current = localStorage.getItem('benchmarkShowAdvanced') === 'true';
+                    setAdvancedMode(!current);
+                });
+            }
+            if (toggleHyperBtn) {
+                toggleHyperBtn.addEventListener('click', () => {
+                    const current = localStorage.getItem('benchmarkShowHyper') === 'true';
+                    setHyperMode(!current);
+                });
+            }
+
+            // Timeline toggle
+            const toggleTimelineBtn = document.getElementById('toggleTimelineBtn');
+            if (toggleTimelineBtn) {
+                toggleTimelineBtn.addEventListener('click', () => {
+                    const content = document.getElementById('timelineContent');
+                    const chevron = document.getElementById('timelineChevron');
+                    if (content && chevron) {
+                        const isHidden = content.style.display === 'none';
+                        content.style.display = isHidden ? 'block' : 'none';
+                        chevron.className = isHidden ? 'fas fa-chevron-up' : 'fas fa-chevron-down';
+                    }
+                });
+            }
+
+            const copyHyperJsonBtn = document.getElementById('copyHyperJsonBtn');
+            if (copyHyperJsonBtn) {
+                copyHyperJsonBtn.addEventListener('click', async () => {
+                    const pre = document.getElementById('hyperBatchJson');
+                    if (!pre) return;
+                    const text = pre.textContent || '';
+                    try {
+                        if (navigator && navigator.clipboard && navigator.clipboard.writeText) {
+                            await navigator.clipboard.writeText(text);
+                            const prev = copyHyperJsonBtn.textContent;
+                            copyHyperJsonBtn.textContent = 'Copied';
+                            setTimeout(() => { copyHyperJsonBtn.textContent = prev; }, 800);
+                        }
+                    } catch (e) {
+                        // ignore clipboard errors
+                    }
+                });
+            }
+
+            const copyAnomaliesBtn = document.getElementById('copyAnomaliesBtn');
+            if (copyAnomaliesBtn) {
+                copyAnomaliesBtn.addEventListener('click', async () => {
+                    const pre = document.getElementById('hyperBatchJson');
+                    if (!pre) return;
+                    let text = '';
+                    try {
+                        const parsed = JSON.parse(pre.textContent || '{}');
+                        const lines = [];
+                        lines.push(`batch: ${parsed.id || ''}`);
+                        if (Array.isArray(parsed.anomalies)) {
+                            for (const a of parsed.anomalies) lines.push(`- ${a}`);
+                        }
+                        if (Array.isArray(parsed.model_anomalies)) {
+                            for (const m of parsed.model_anomalies) {
+                                lines.push(`- ${m.model}: ${m.message}`);
+                            }
+                        }
+                        text = lines.join('\n');
+                    } catch {
+                        text = '';
+                    }
+                    if (!text) return;
+                    try {
+                        if (navigator && navigator.clipboard && navigator.clipboard.writeText) {
+                            await navigator.clipboard.writeText(text);
+                            const prev = copyAnomaliesBtn.textContent;
+                            copyAnomaliesBtn.textContent = 'Copied';
+                            setTimeout(() => { copyAnomaliesBtn.textContent = prev; }, 800);
+                        }
+                    } catch (e) {
+                        // ignore clipboard errors
+                    }
+                });
+            }
+
+            const inspectBatchFailureBtn = document.getElementById('inspectBatchFailureBtn');
+            const inspectBatchWorstLatencyBtn = document.getElementById('inspectBatchWorstLatencyBtn');
+            const inspectBatchWorstThroughputBtn = document.getElementById('inspectBatchWorstThroughputBtn');
+            const inspectBatchLongestJudgeBtn = document.getElementById('inspectBatchLongestJudgeBtn');
+            const inspectBatchLowestQualityBtn = document.getElementById('inspectBatchLowestQualityBtn');
+
+            const bindBatchInspect = (btn, mode) => {
+                if (!btn) return;
+                btn.addEventListener('click', () => {
+                    const idOrIndex = pickRepresentativeResultId(mode);
+                    if (idOrIndex !== null && typeof window.showJudgeDetails === 'function') {
+                        window.showJudgeDetails(idOrIndex);
+                    }
+                });
+            };
+
+            bindBatchInspect(inspectBatchFailureBtn, 'failure');
+            bindBatchInspect(inspectBatchWorstLatencyBtn, 'worst_latency');
+            bindBatchInspect(inspectBatchWorstThroughputBtn, 'worst_throughput');
+            bindBatchInspect(inspectBatchLongestJudgeBtn, 'longest_judge');
+            bindBatchInspect(inspectBatchLowestQualityBtn, 'lowest_quality');
+
+            // Apply persisted state to initial UI
+            setAdvancedMode(localStorage.getItem('benchmarkShowAdvanced') === 'true');
+
+            // Load batch models for first available host
+            const firstHost = document.getElementById('host').value;
+            if (firstHost) {
+                await loadBatchModels(firstHost);
+            }
+
+            // Load judge defaults so the UI can display the actual judge model (not just "default")
+            loadJudgeConfig();
+
+            // Load dashboard after models are loaded
+            if (typeof loadDashboard === 'function') {
+                loadDashboard();
+            }
+
+            // Check for active batch
+            const savedBatchId = localStorage.getItem('currentBatchId');
+            if (savedBatchId) {
+                debugLog('Resuming batch:', savedBatchId);
+                currentBatchId = savedBatchId;
+
+                const btn = document.getElementById('runBatchBtn');
+                const stopBtn = document.getElementById('stopBatchBtn');
+                const execProgressBar = document.getElementById('execProgressBar');
+                const judgeProgressBar = document.getElementById('judgeProgressBar');
+                const status = document.getElementById('batchStatus');
+
+                btn.disabled = true;
+                btn.textContent = 'Resuming...';
+                stopBtn.style.display = 'inline-block';
+                execProgressBar.classList.add('active');
+                judgeProgressBar.classList.add('active');
+
+                // Initialize progress bar visual state
+                document.getElementById('execProgressFill').style.width = '100%'; // Show full width but indeterminate or waiting
+                document.getElementById('execProgressFill').style.background = 'linear-gradient(90deg, var(--muted) 0%, var(--panel-border) 100%)'; // Grey out until update
+                document.getElementById('execProgressText').textContent = 'Exec: Connecting...';
+
+                document.getElementById('judgeProgressFill').style.width = '100%';
+                document.getElementById('judgeProgressFill').style.background = 'linear-gradient(90deg, var(--muted) 0%, var(--panel-border) 100%)';
+                document.getElementById('judgeProgressText').textContent = 'Judge: Connecting...';
+
+                const judgeStatsContainer = document.getElementById('judgeStatsContainer');
+                if (judgeStatsContainer) judgeStatsContainer.style.display = 'none';
+                const perModelContainer = document.getElementById('perModelProgressContainer');
+                if (perModelContainer) perModelContainer.style.display = 'none';
+
+                status.style.display = 'block';
+                status.className = 'status';
+                status.textContent = 'Resuming session...';
+
+                // Start polling immediately
+                pollBatchProgress();
+                batchPollInterval = setInterval(pollBatchProgress, 2000);
+            }
+
+            // Load history
+            loadBatchHistory();
+            document.getElementById('refreshHistoryBtn').addEventListener('click', loadBatchHistory);
+
+            // Check for active batches (not just own)
+            refreshActiveBatches();
+            setInterval(refreshActiveBatches, 15000); // Check every 15 seconds
+
+        });
+        initCharts();
+        /**
+         * Switch between category tabs
+         */
+        function switchCategoryTab(category) {
+            // Update active tab styling
+            const tabs = document.querySelectorAll('.category-tab');
+            tabs.forEach(tab => {
+                const isActive = tab.dataset.category === category;
+                if (isActive) {
+                    tab.classList.add('active');
+                    tab.style.borderBottomColor = 'var(--accent)';
+                    tab.style.color = 'var(--accent)';
+                } else {
+                    tab.classList.remove('active');
+                    tab.style.borderBottomColor = 'transparent';
+                    tab.style.color = 'var(--muted)';
+                }
+            });
+
+            // Update model category filter dropdown to match
+            const modelFilter = document.getElementById('modelCategoryFilter');
+            if (modelFilter) {
+                modelFilter.value = category;
+            }
+
+            // Apply filter
+            if (window.BenchmarkAnalytics && typeof window.BenchmarkAnalytics.filterByModelCategory === 'function') {
+                window.BenchmarkAnalytics.filterByModelCategory(category);
+            }
+
+            // Update leaderboard header text
+            updateLeaderboardHeader(category);
+
+            // Show category insights
+            showCategoryInsights(category);
+        }
+
+        /**
+         * Update leaderboard header based on active category
+         */
+        function updateLeaderboardHeader(category) {
+            const headerText = document.querySelector('.leaderboard h2');
+            const bestOverallText = document.getElementById('bestOverallText');
+
+            let title = 'Model Leaderboard';
+            let subtitle = 'All models ranked across all task types';
+
+            if (category) {
+                title = `${category.charAt(0).toUpperCase() + category.slice(1)} Specialists`;
+                subtitle = `Models in the '${category}' category`;
+            }
+
+            if (headerText) {
+                headerText.innerHTML = `<i class="fas fa-trophy" style="color: var(--accent);"></i> ${title}`;
+            }
+            if (bestOverallText) {
+                bestOverallText.textContent = subtitle;
+            }
+        }
+
+        /**
+         * Show category-specific insights and recommendations
+         */
+        function showCategoryInsights(category) {
+            const insightsPanel = document.getElementById('categoryInsights');
+            const insightsTitle = document.getElementById('insightsTitle');
+            const insightsContent = document.getElementById('insightsContent');
+
+            if (!category) {
+                // Universal view
+                if (insightsTitle) insightsTitle.textContent = '🌐 Universal Leaderboard - All Models';
+                if (insightsContent) insightsContent.innerHTML = '<strong>Overview:</strong> All models ranked across all task types using composite scoring<br><strong>Key Metric:</strong> Composite score balances quality (40%), speed (40%), and reliability (20%)<br><strong>💡 Tip:</strong> This view is useful for general comparison, but use category tabs for task-specific rankings to avoid misleading results (e.g., fast models ranking high on easy tasks).';
+                if (insightsPanel) insightsPanel.style.display = 'block';
+                return;
+            }
+
+            // Dynamic category view
+            if (insightsTitle) insightsTitle.textContent = `📂 ${category.charAt(0).toUpperCase() + category.slice(1)} Category`;
+            if (insightsContent) insightsContent.innerHTML = `<strong>Overview:</strong> Showing models tagged with <code>${category}</code>.<br><strong>Tip:</strong> Use this view to compare models within this specific domain.`;
+            if (insightsPanel) insightsPanel.style.display = 'block';
+        }
+
+        window.switchCategoryTab = switchCategoryTab;
+        setupModals();
+
+        const recentTestsFailuresOnly = document.getElementById('recentTestsFailuresOnly');
+        if (recentTestsFailuresOnly) {
+            recentTestsFailuresOnly.addEventListener('change', rerenderRecentTests);
+        }
+        const recentTestsModelFilter = document.getElementById('recentTestsModelFilter');
+        if (recentTestsModelFilter) {
+            recentTestsModelFilter.addEventListener('change', rerenderRecentTests);
+        }
+
+        const successRateCard = document.getElementById('successRateCard');
+        if (successRateCard) {
+            successRateCard.style.cursor = 'pointer';
+            successRateCard.title = 'Click for breakdown';
+            successRateCard.addEventListener('click', toggleSuccessRateDetails);
+        }
+
+        const resetLeaderboardBtn = document.getElementById('resetLeaderboardBtn');
+        if (resetLeaderboardBtn) {
+            resetLeaderboardBtn.addEventListener('click', async () => {
+                const first = confirm('Reset all benchmark tests? This will clear the leaderboard and charts.');
+                if (!first) return;
+                const second = confirm('Are you sure? This cannot be undone.');
+                if (!second) return;
+
+                try {
+                    resetLeaderboardBtn.disabled = true;
+                    const prev = resetLeaderboardBtn.textContent;
+                    resetLeaderboardBtn.textContent = 'Resetting...';
+
+                    const res = await fetch(`${BENCHMARK_API}/results`, { method: 'DELETE' });
+                    const json = await res.json().catch(() => null);
+                    if (!res.ok) {
+                        const msg = (json && (json.error || json.message)) ? (json.error || json.message) : `HTTP ${res.status}`;
+                        throw new Error(msg);
+                    }
+
+                    if (typeof window.loadDashboard === 'function') {
+                        await window.loadDashboard();
+                    }
+                    // Keep button responsive
+                    resetLeaderboardBtn.textContent = 'Reset Tests';
+                    resetLeaderboardBtn.disabled = false;
+                } catch (err) {
+                    console.error('Failed to reset benchmark results:', err);
+                    alert(`Failed to reset results: ${err.message}`);
+                    resetLeaderboardBtn.textContent = 'Reset Tests';
+                    resetLeaderboardBtn.disabled = false;
+                }
+            });
+        }
+
+        const resetFailedLeaderboardBtn = document.getElementById('resetFailedLeaderboardBtn');
+        if (resetFailedLeaderboardBtn) {
+            resetFailedLeaderboardBtn.addEventListener('click', async () => {
+                const first = confirm('Reset FAILED benchmark tests only? Successful results will be kept.');
+                if (!first) return;
+                const second = confirm('Are you sure? This cannot be undone.');
+                if (!second) return;
+
+                try {
+                    resetFailedLeaderboardBtn.disabled = true;
+                    const prev = resetFailedLeaderboardBtn.textContent;
+                    resetFailedLeaderboardBtn.textContent = 'Resetting...';
+
+                    const res = await fetch(`${BENCHMARK_API}/results/failed`, { method: 'DELETE' });
+                    const json = await res.json().catch(() => null);
+                    if (!res.ok) {
+                        const msg = (json && (json.error || json.message)) ? (json.error || json.message) : `HTTP ${res.status}`;
+                        throw new Error(msg);
+                    }
+
+                    if (typeof window.loadDashboard === 'function') {
+                        await window.loadDashboard();
+                    }
+                    resetFailedLeaderboardBtn.textContent = 'Reset Failed';
+                    resetFailedLeaderboardBtn.disabled = false;
+                } catch (err) {
+                    console.error('Failed to reset failed benchmark results:', err);
+                    alert(`Failed to reset failed results: ${err.message}`);
+                    resetFailedLeaderboardBtn.textContent = 'Reset Failed';
+                    resetFailedLeaderboardBtn.disabled = false;
+                }
+            });
+        }
+
+        let benchmarkTooltipEl = null;
+
+        function showBenchmarkTooltip(event, text) {
+            if (!benchmarkTooltipEl) {
+                benchmarkTooltipEl = document.createElement('div');
+                benchmarkTooltipEl.className = 'benchmark-tooltip';
+                benchmarkTooltipEl.style.cssText = `
+                    position: fixed;
+                    background: rgba(0, 0, 0, 0.9);
+                    color: #fff;
+                    padding: 8px 12px;
+                    border-radius: 4px;
+                    font-size: 12px;
+                    line-height: 1.4;
+                    z-index: 10000;
+                    pointer-events: none;
+                    white-space: pre-line;
+                    max-width: 300px;
+                    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+                    border: 1px solid rgba(255,255,255,0.1);
+                `;
+                document.body.appendChild(benchmarkTooltipEl);
+            }
+            benchmarkTooltipEl.textContent = text;
+            benchmarkTooltipEl.style.display = 'block';
+            
+            const x = event.clientX + 15;
+            const y = event.clientY + 15;
+            
+            // Boundary checks
+            const rect = benchmarkTooltipEl.getBoundingClientRect();
+            let finalX = x;
+            let finalY = y;
+            
+            if (x + rect.width > window.innerWidth) {
+                finalX = x - rect.width - 15;
+            }
+            if (y + rect.height > window.innerHeight) {
+                finalY = y - rect.height - 15;
+            }
+            
+            benchmarkTooltipEl.style.left = finalX + 'px';
+            benchmarkTooltipEl.style.top = finalY + 'px';
+        }
+
+        function hideBenchmarkTooltip() {
+            if (benchmarkTooltipEl) {
+                benchmarkTooltipEl.style.display = 'none';
+            }
+        }
+
+        // Tooltip Helper
+        const escapeHtml = (value = '') => String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+
+        window.showTimelineTooltip = (e, htmlContent) => {
+            let tooltip = document.getElementById('timeline-tooltip');
+            if (!tooltip) {
+                tooltip = document.createElement('div');
+                tooltip.id = 'timeline-tooltip';
+                tooltip.className = 'custom-tooltip';
+                tooltip.style.cssText = `
+                    position: fixed;
+                    background: linear-gradient(135deg, #1a1d26 0%, #14171e 100%);
+                    border: 1px solid rgba(124, 240, 255, 0.3);
+                    border-radius: 12px;
+                    padding: 16px;
+                    color: #eee;
+                    font-size: 0.85em;
+                    line-height: 1.6;
+                    z-index: 9999;
+                    box-shadow: 0 12px 32px rgba(0,0,0,0.7), 0 0 0 1px rgba(124, 240, 255, 0.1);
+                    pointer-events: none;
+                    max-width: 350px;
+                    backdrop-filter: blur(12px);
+                    opacity: 0;
+                    transform: translateY(5px);
+                    transition: opacity 0.2s ease, transform 0.2s ease;
+                `;
+                document.body.appendChild(tooltip);
+            }
+            tooltip.innerHTML = htmlContent;
+            tooltip.style.display = 'block';
+
+            // Trigger animation
+            requestAnimationFrame(() => {
+                tooltip.style.opacity = '1';
+                tooltip.style.transform = 'translateY(0)';
+            });
+
+            const moveHandler = (evt) => {
+                const x = evt.clientX + 18;
+                const y = evt.clientY + 18;
+                const maxX = window.innerWidth - 370;
+                const maxY = window.innerHeight - tooltip.offsetHeight - 20;
+                tooltip.style.left = Math.min(x, maxX) + 'px';
+                tooltip.style.top = Math.min(y, maxY) + 'px';
+            };
+            moveHandler(e);
+            document.addEventListener('mousemove', moveHandler);
+            e.target.onmouseleave = () => {
+                tooltip.style.opacity = '0';
+                tooltip.style.transform = 'translateY(5px)';
+                setTimeout(() => {
+                    tooltip.style.display = 'none';
+                }, 200);
+                document.removeEventListener('mousemove', moveHandler);
+            };
+        };
+
+        // Stacked Timeline functionality
+        let lastTimelineResultIds = new Set();
+        
+        async function loadRecentTestsTimeline(limit = 100) {
+            try {
+                // Fetch both results and active batch status
+                const [resResults, resActive] = await Promise.all([
+                    fetch(`${BENCHMARK_API}/results?limit=${limit}`),
+                    fetch(`${BENCHMARK_API}/batches/active`)
+                ]);
+
+                if (!resResults.ok) throw new Error(`HTTP ${resResults.status}`);
+
+                const json = await resResults.json();
+                let results = json.data?.results || [];
+
+                // Get active batch info for live state detection
+                let activeBatch = null;
+                if (resActive.ok) {
+                    const activeJson = await resActive.json();
+                    activeBatch = activeJson.data?.[0] || null;
+                }
+
+                // If a batch is active, only show results for that batch
+                if (activeBatch && activeBatch._id) {
+                    results = results.filter(r => r.batch_id === activeBatch._id);
+                }
+
+                const timelineVisual = document.getElementById('timelineVisual');
+                const timelineEmptyState = document.getElementById('timelineEmptyState');
+
+                if (!results.length && !activeBatch) {
+                    timelineVisual.style.display = 'none';
+                    timelineEmptyState.style.display = 'block';
+                    return;
+                }
+
+                // Check for new results only (incremental update)
+                const currentResultIds = new Set(results.map(r => r._id));
+                const hasNewResults = results.some(r => !lastTimelineResultIds.has(r._id));
+                
+                // Create a hash of the result data to detect updates (not just new results)
+                const resultHash = results.map(r => `${r._id}-${r.success}-${r.quality_score || 'null'}`).join('|');
+                
+                // If no new results and data hasn't changed, skip the full re-render
+                if (!hasNewResults && lastTimelineResultIds.size > 0 && window.lastTimelineHash === resultHash) {
+                    return;
+                }
+                
+                lastTimelineResultIds = currentResultIds;
+                window.lastTimelineHash = resultHash;
+
+                timelineVisual.style.display = 'block';
+                timelineEmptyState.style.display = 'none';
+
+                // Sort by timestamp (oldest first)
+                const sorted = [...results].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+                // Calculate global averages for comparison
+                const globalStats = {
+                    avgLatency: 0,
+                    avgTps: 0,
+                    avgQuality: 0,
+                    avgJudgeTime: 0,
+                    successRate: 0
+                };
+
+                if (sorted.length > 0) {
+                    const validLatencies = sorted.filter(r => r.latency).map(r => r.latency);
+                    // Parse tokens_per_sec as number (handles both string and number types from DB)
+                    const validTps = sorted
+                        .map(r => parseFloat(r.tokens_per_sec))
+                        .filter(v => !isNaN(v) && v > 0);
+                    const validQuality = sorted.filter(r => r.quality_score).map(r => r.quality_score);
+                    const validJudge = sorted.filter(r => r.scoring_time_ms).map(r => r.scoring_time_ms);
+                    const successCount = sorted.filter(r => r.success).length;
+
+                    globalStats.avgLatency = validLatencies.length ? validLatencies.reduce((a,b) => a+b, 0) / validLatencies.length : 0;
+                    globalStats.avgTps = validTps.length ? validTps.reduce((a,b) => a+b, 0) / validTps.length : 0;
+                    globalStats.avgQuality = validQuality.length ? validQuality.reduce((a,b) => a+b, 0) / validQuality.length : 0;
+                    globalStats.avgJudgeTime = validJudge.length ? validJudge.reduce((a,b) => a+b, 0) / validJudge.length : 0;
+                    globalStats.successRate = (successCount / sorted.length) * 100;
+                }
+
+                // Group results by model
+                const resultsByModel = new Map();
+                sorted.forEach((result) => {
+                    const model = result.model || 'Unknown Model';
+                    if (!resultsByModel.has(model)) {
+                        resultsByModel.set(model, []);
+                    }
+                    resultsByModel.get(model).push(result);
+                });
+                
+                // Ensure active model is in the map if it doesn't have results yet
+                if (activeBatch && activeBatch.status === 'running' && activeBatch.model) {
+                    if (!resultsByModel.has(activeBatch.model)) {
+                        resultsByModel.set(activeBatch.model, []);
+                    }
+                }
+
+                const stageVisuals = {
+                    test: { icon: 'fa-robot', class: 'segment-success' },
+                    'test-error': { icon: 'fa-exclamation-triangle', class: 'segment-error' },
+                    judging: { icon: 'fa-gavel', class: 'segment-judging' },
+                    running: { icon: 'fa-cog fa-spin', class: 'segment-running' },
+                    queued: { icon: 'fa-clock', class: 'segment-queued' }
+                };
+
+                const getSegmentVisual = (result) => {
+                    if (result.success) return stageVisuals['test'];
+                    if (result.success === false) return stageVisuals['test-error'];
+                    return stageVisuals['test'];
+                };
+                
+                const formatTime = (ms) => {
+                    if (ms < 1000) return `${Math.round(ms)}ms`;
+                    return `${(ms/1000).toFixed(1)}s`;
+                };
+
+                let rowsHtml = '';
+
+                // Iterate over models to build rows
+                for (const [model, modelResults] of resultsByModel.entries()) {
+                    let segmentsHtml = '';
+                    
+                    // Render Completed Tests
+                    let lastTime = 0;
+                    segmentsHtml += modelResults.map((result, idx) => {
+                        const animationDelay = idx * 0.03; // Stagger animations
+                        const visual = getSegmentVisual(result);
+                        const inferenceTime = result.latency || 0;
+                        const judgingTime = result.scoring_time_ms || 0;
+                        const totalTime = inferenceTime + judgingTime;
+
+                        const inferenceStr = formatTime(inferenceTime);
+                        const judgingStr = formatTime(judgingTime);
+                        const totalStr = formatTime(totalTime);
+                        
+                        const qScore = result.quality_score ? `Q${result.quality_score}` : '';
+                        const level = result.difficulty ? `L${result.difficulty}` : '';
+                        const timestamp = new Date(result.timestamp).getTime();
+
+                        // Tooltip HTML for Custom Tooltip with Performance Comparisons
+                        const promptTextRaw = result.prompt ? (result.prompt.length > 60 ? result.prompt.substring(0, 60) + '...' : result.prompt) : 'No prompt';
+                        const promptText = escapeHtml(promptTextRaw);
+                        const modelName = escapeHtml(result.model || 'Unknown Model');
+
+                        // Performance indicators
+                        const latencyDiff = globalStats.avgLatency ? ((inferenceTime - globalStats.avgLatency) / globalStats.avgLatency * 100).toFixed(0) : 0;
+                        const latencyIndicator = inferenceTime < globalStats.avgLatency ? `<span style="color:#2ecc71">▼ ${Math.abs(latencyDiff)}% faster</span>` : (inferenceTime > globalStats.avgLatency ? `<span style="color:#e74c3c">▲ ${latencyDiff}% slower</span>` : '<span style="color:#95a5a6">● average</span>');
+
+                        const qualityDiff = globalStats.avgQuality && result.quality_score ? ((result.quality_score - globalStats.avgQuality) / globalStats.avgQuality * 100).toFixed(0) : 0;
+                        const qualityIndicator = result.quality_score && globalStats.avgQuality ? (result.quality_score > globalStats.avgQuality ? `<span style="color:#2ecc71">▲ ${Math.abs(qualityDiff)}% above avg</span>` : (result.quality_score < globalStats.avgQuality ? `<span style="color:#e74c3c">▼ ${Math.abs(qualityDiff)}% below avg</span>` : '<span style="color:#95a5a6">● average</span>')) : '';
+
+                        // Parse tokens_per_sec (handles both string and number types)
+                        const tokensPerSec = parseFloat(result.tokens_per_sec);
+                        const tpsDisplay = !isNaN(tokensPerSec) && tokensPerSec > 0 ? `${tokensPerSec.toFixed(1)} tok/s` : '-';
+                        const tpsDiff = globalStats.avgTps && !isNaN(tokensPerSec) ? ((tokensPerSec - globalStats.avgTps) / globalStats.avgTps * 100).toFixed(0) : 0;
+                        const tpsIndicator = !isNaN(tokensPerSec) && tokensPerSec > 0 && globalStats.avgTps ? (tokensPerSec > globalStats.avgTps ? `<span style="color:#2ecc71">▲ ${Math.abs(tpsDiff)}%</span>` : (tokensPerSec < globalStats.avgTps ? `<span style="color:#e74c3c">▼ ${Math.abs(tpsDiff)}%</span>` : '<span style="color:#95a5a6">●</span>')) : '';
+
+                        const tooltipHtml = `
+                            <div style="border-bottom: 2px solid rgba(124, 240, 255, 0.3); padding-bottom: 8px; margin-bottom: 10px;">
+                                <h4 style="margin: 0 0 4px; color: #7cf0ff; font-size: 1.15em; font-weight: 600;">${modelName}</h4>
+                                <div style="font-size: 0.8em; color: rgba(255,255,255,0.6);">${new Date(result.timestamp).toLocaleString()}</div>
+                            </div>
+                            <div style="display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; margin-bottom: 10px;">
+                                <span style="color: rgba(255,255,255,0.6);">Status:</span>
+                                <span style="font-weight: 600; color:${result.success?'#2ecc71':'#e74c3c'}">
+                                    ${result.success ? '<i class="fas fa-check-circle"></i> Success' : '<i class="fas fa-times-circle"></i> Failed'}
+                                </span>
+
+                                <span style="color: rgba(255,255,255,0.6);">Total Time:</span>
+                                <span style="font-weight: 600;">${totalStr}</span>
+
+                                <span style="color: rgba(255,255,255,0.6);">Inference:</span>
+                                <div>
+                                    <span style="font-weight: 600;">${inferenceStr}</span>
+                                    <span style="font-size: 0.85em; margin-left: 6px;">${latencyIndicator}</span>
+                                </div>
+
+                                ${judgingTime ? `
+                                <span style="color: rgba(255,255,255,0.6);">Judging:</span>
+                                <span style="font-weight: 600; color:#9b59b6">${judgingStr}</span>
+                                ` : ''}
+
+                                ${result.quality_score ? `
+                                <span style="color: rgba(255,255,255,0.6);">Quality:</span>
+                                <div>
+                                    <span style="font-weight: 600; color:#f39c12">${result.quality_score.toFixed(1)}/10</span>
+                                    <span style="font-size: 0.85em; margin-left: 6px;">${qualityIndicator}</span>
+                                </div>
+                                ` : ''}
+
+                                ${result.tokens_per_sec ? `
+                                <span style="color: rgba(255,255,255,0.6);">Throughput:</span>
+                                <div>
+                                    <span style="font-weight: 600;">${tpsDisplay}</span>
+                                    <span style="font-size: 0.85em; margin-left: 6px;">${tpsIndicator}</span>
+                                </div>
+                                ` : ''}
+
+                                ${result.difficulty ? `
+                                <span style="color: rgba(255,255,255,0.6);">Difficulty:</span>
+                                <span style="font-weight: 600;">Level ${result.difficulty}</span>
+                                ` : ''}
+                            </div>
+                            <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1); color: rgba(255,255,255,0.7); font-style: italic; font-size: 0.85em; line-height: 1.4;">
+                                <i class="fas fa-quote-left" style="font-size: 0.7em; opacity: 0.5; margin-right: 4px;"></i>${promptText}<i class="fas fa-quote-right" style="font-size: 0.7em; opacity: 0.5; margin-left: 4px;"></i>
+                            </div>
+                        `.replace(/"/g, '&quot;').replace(/'/g, "\\'").replace(/\n/g, '').trim();
+                        
+                         let separator = '';
+                        if (idx > 0 && (timestamp - lastTime > 300000)) {
+                             separator = `<div style="width: 1px; height: 20px; background: rgba(255,255,255,0.2); margin: 0 4px;" title="Gap > 5m"></div>`;
+                        }
+                        lastTime = timestamp;
+
+                        // Width scale (min 80px, max 220px)
+                        const totalWidthPx = Math.min(220, Math.max(80, 60 + (totalTime / 2000) * 40));
+                        
+                        // Calculate percentage widths for sub-segments
+                        const inferencePct = totalTime > 0 ? (inferenceTime / totalTime) * 100 : 100;
+                        const judgingPct = totalTime > 0 ? (judgingTime / totalTime) * 100 : 0;
+                        
+                        // Calculate pixel widths to control text visibility
+                        const inferencePx = totalWidthPx * (inferencePct / 100);
+                        const judgingPx = totalWidthPx * (judgingPct / 100);
+                        
+                        const showInferenceIcon = inferencePx > 20;
+                        const showJudgingIcon = judgingPx > 20;
+
+                        // Handle Small Bar "Floating" Badge
+                        let badgeStyle = '';
+                        if (totalWidthPx < 100) {
+                             // Float upper right
+                             badgeStyle = `position:absolute; right:-6px; top:-8px; background:rgba(20,20,30,0.95); border:1px solid rgba(255,255,255,0.2); backdrop-filter:blur(4px); font-weight:700; font-size:0.75em; padding:2px 6px; border-radius:10px; z-index:5; box-shadow:0 2px 4px rgba(0,0,0,0.5); transform:scale(0.9);`;
+                        } else {
+                             // Inside right
+                             badgeStyle = `position:absolute; right:2px; top:0; height:100%; display:flex; align-items:center; background:rgba(0,0,0,0.4); backdrop-filter:blur(2px); font-weight:700; font-size:0.75em; padding:0 6px; border-radius:3px;`;
+                        }
+
+                        // Only split if we actually have judging time
+                        // Use onmouseenter for custom tooltip
+                        if (judgingTime > 0) {
+                            return `${separator}
+                            <div class="timeline-segment-group" style="width: ${totalWidthPx}px;" onmouseenter="showTimelineTooltip(event, '${tooltipHtml}')">
+                                <div class="timeline-segment ${visual.class}" style="width: ${inferencePct}%; border-radius: 0;">
+                                    ${showInferenceIcon ? `<i class="fas ${visual.icon}"></i>` : ''}
+                                </div>
+                                <div class="timeline-segment segment-judging" style="width: ${judgingPct}%; border-radius: 0;">
+                                    ${showJudgingIcon ? `<i class="fas fa-gavel"></i>` : ''}
+                                </div>
+                                ${qScore ? `<div style="${badgeStyle}" class="segment-badge">${qScore}</div>` : ''}
+                            </div>`;
+                        } else {
+                            // Standard single block
+                            return `${separator}
+                            <div class="timeline-segment-group" style="width: ${totalWidthPx}px; animation-delay: ${animationDelay}s;" onmouseenter="showTimelineTooltip(event, '${tooltipHtml}')">
+                                <div class="timeline-segment ${visual.class}" style="width: 100%;">
+                                    ${totalWidthPx > 20 ? `<i class="fas ${visual.icon}"></i>` : ''}
+                                    ${qScore ? `<div style="${badgeStyle}" class="segment-badge">${qScore}</div>` : ''}
+                                    ${level ? `<span class="segment-badge" style="margin-right:2px">${level}</span>` : ''}
+                                </div>
+                            </div>`;
+                        }
+                    }).join('');
+
+                    // Check for Active State - IMPROVED LOGIC
+                    if (activeBatch && activeBatch.status === 'running' && activeBatch.model === model) {
+                        const currentTest = activeBatch.current_test;
+                        
+                        let activeStage = 'running';
+                        let activeText = 'Running...';
+                        let activeIcon = 'fa-cog fa-spin';
+                        let bubbleText = 'Processing Test...';
+                        
+                        if (currentTest) {
+                            if (currentTest.stage === 'judging' || (activeBatch.current_phase === 'judging')) {
+                                activeStage = 'judging';
+                                activeText = 'Judging';
+                                activeIcon = 'fa-gavel';
+                                const promptSnippet = currentTest.prompt ? (currentTest.prompt.length > 20 ? currentTest.prompt.substring(0, 20) + '...' : currentTest.prompt) : 'Response';
+                                bubbleText = `Judging: ${escapeHtml(promptSnippet)}...`;
+                            } else {
+                                const promptSnippet = currentTest.prompt ? (currentTest.prompt.length > 20 ? currentTest.prompt.substring(0, 20) + '...' : currentTest.prompt) : 'Prompt';
+                                bubbleText = `Running: ${escapeHtml(promptSnippet)}...`;
+                            }
+                        }
+
+                        const visualClass = stageVisuals[activeStage].class;
+                        
+                        // Force append to the track so it's always visible at end
+                        // Using a distinct style for the active bubble
+                        segmentsHtml += `
+                        <div class="timeline-segment-group" style="width: 140px; opacity: 1; margin-left:8px; display:flex; flex-direction:column; justify-content:center; align-items:flex-start; overflow:visible;">
+                            <div class="timeline-segment ${visualClass}" style="width: 100%; height: 20px; margin-bottom: 2px;">
+                                <i class="fas ${activeIcon}"></i>
+                                <span>${activeText}</span>
+                            </div>
+                            <div style="font-size:0.7em; color:var(--accent); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:140px; padding-left:4px;">
+                                ${bubbleText}
+                            </div>
+                        </div>`;
+                    }
+
+                    const safeModelLabel = escapeHtml(model);
+
+                    rowsHtml += `
+                    <div class="timeline-model-row">
+                        <div class="timeline-model-label">
+                            <i class="fas fa-cube" style="color:var(--accent)"></i>
+                            ${safeModelLabel}
+                        </div>
+                        <div class="timeline-track">
+                            ${segmentsHtml}
+                        </div>
+                    </div>`;
+                }
+
+                timelineVisual.innerHTML = `
+                    <div class="timeline-wrapper">
+                        ${rowsHtml}
+                    </div>
+                `;
+
+                // Populate Performance Summary Panel
+                const statsSummary = document.getElementById('timelineStatsSummary');
+                if (statsSummary && sorted.length > 0) {
+                    // Calculate percentiles for latency
+                    const latencies = sorted.filter(r => r.latency).map(r => r.latency).sort((a, b) => a - b);
+                    const p50 = latencies.length ? latencies[Math.floor(latencies.length * 0.5)] : 0;
+                    const p95 = latencies.length ? latencies[Math.floor(latencies.length * 0.95)] : 0;
+                    const p99 = latencies.length ? latencies[Math.floor(latencies.length * 0.99)] : 0;
+
+                    const totalTests = sorted.length;
+                    const successCount = sorted.filter(r => r.success).length;
+                    const successRate = ((successCount / totalTests) * 100).toFixed(1);
+                    const avgTps = globalStats.avgTps > 0 ? globalStats.avgTps.toFixed(1) : '0.0';
+                    const avgQuality = globalStats.avgQuality.toFixed(1);
+
+                    const formatMs = (ms) => ms < 1000 ? `${Math.round(ms)}ms` : `${(ms/1000).toFixed(1)}s`;
+
+                    statsSummary.innerHTML = `
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px;">
+                            <div style="text-align: center; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+                                <div style="color: rgba(255,255,255,0.6); font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">Total Tests</div>
+                                <div style="color: var(--accent); font-size: 1.8em; font-weight: 700;">${totalTests}</div>
+                            </div>
+                            <div style="text-align: center; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+                                <div style="color: rgba(255,255,255,0.6); font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">Success Rate</div>
+                                <div style="color: ${successRate >= 90 ? '#2ecc71' : (successRate >= 70 ? '#f39c12' : '#e74c3c')}; font-size: 1.8em; font-weight: 700;">${successRate}%</div>
+                            </div>
+                            <div style="text-align: center; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+                                <div style="color: rgba(255,255,255,0.6); font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">Avg Latency</div>
+                                <div style="color: var(--text); font-size: 1.8em; font-weight: 700;">${formatMs(globalStats.avgLatency)}</div>
+                            </div>
+                            <div style="text-align: center; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+                                <div style="color: rgba(255,255,255,0.6); font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">P95 Latency</div>
+                                <div style="color: var(--text); font-size: 1.8em; font-weight: 700;">${formatMs(p95)}</div>
+                            </div>
+                            <div style="text-align: center; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+                                <div style="color: rgba(255,255,255,0.6); font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">Avg Throughput</div>
+                                <div style="color: var(--text); font-size: 1.8em; font-weight: 700;">${avgTps}<span style="font-size: 0.5em; color: rgba(255,255,255,0.5);"> tok/s</span></div>
+                            </div>
+                            <div style="text-align: center; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+                                <div style="color: rgba(255,255,255,0.6); font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">Avg Quality</div>
+                                <div style="color: ${avgQuality >= 8 ? '#2ecc71' : (avgQuality >= 6 ? '#f39c12' : '#e74c3c')}; font-size: 1.8em; font-weight: 700;">${avgQuality}<span style="font-size: 0.5em; color: rgba(255,255,255,0.5);">/10</span></div>
+                            </div>
+                        </div>
+                    `;
+                    statsSummary.style.display = 'block';
+                }
+
+                // Generate Performance Heatmap
+                const heatmapSection = document.getElementById('performanceHeatmapSection');
+                const heatmapContainer = document.getElementById('performanceHeatmap');
+                if (heatmapContainer && resultsByModel.size > 1) {
+                    // Calculate per-model stats
+                    const modelStats = [];
+                    for (const [model, modelResults] of resultsByModel.entries()) {
+                        if (modelResults.length === 0) continue;
+
+                        const successCount = modelResults.filter(r => r.success).length;
+                        const successRate = (successCount / modelResults.length) * 100;
+                        const latencies = modelResults.filter(r => r.latency).map(r => r.latency);
+                        const avgLatency = latencies.length ? latencies.reduce((a,b) => a+b, 0) / latencies.length : 0;
+                        const qualities = modelResults.filter(r => r.quality_score).map(r => r.quality_score);
+                        const avgQuality = qualities.length ? qualities.reduce((a,b) => a+b, 0) / qualities.length : 0;
+                        // Parse tokens_per_sec as number (handles both string and number types)
+                        const tps = modelResults
+                            .map(r => parseFloat(r.tokens_per_sec))
+                            .filter(v => !isNaN(v) && v > 0);
+                        const avgTps = tps.length ? tps.reduce((a,b) => a+b, 0) / tps.length : 0;
+
+                        modelStats.push({
+                            model,
+                            successRate,
+                            avgLatency,
+                            avgQuality,
+                            avgTps,
+                            testCount: modelResults.length
+                        });
+                    }
+
+                    if (modelStats.length > 0) {
+                        // Find min/max for normalization
+                        const maxLatency = Math.max(...modelStats.map(m => m.avgLatency));
+                        const minLatency = Math.min(...modelStats.map(m => m.avgLatency).filter(l => l > 0));
+                        const maxTps = Math.max(...modelStats.map(m => m.avgTps));
+
+                        // Themed color scale function (0-100) using test level themes
+                        const getHeatColor = (value, reverse = false) => {
+                            if (reverse) value = 100 - value;
+                            // Ultra theme (80-100): Blue/Cyan gradient
+                            if (value >= 80) return 'linear-gradient(135deg, #06b6d4 0%, #22d3ee 100%)';
+                            // VeryHigh theme (60-80): Green/Emerald gradient
+                            if (value >= 60) return 'linear-gradient(135deg, #10b981 0%, #34d399 100%)';
+                            // Mid theme (40-60): Yellow/Amber gradient
+                            if (value >= 40) return 'linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%)';
+                            // Low theme (20-40): Orange/Red gradient
+                            if (value >= 20) return 'linear-gradient(135deg, #f97316 0%, #fb923c 100%)';
+                            // Failed (0-20): Red gradient
+                            return 'linear-gradient(135deg, #dc2626 0%, #ef4444 100%)';
+                        };
+
+                        const heatmapHtml = `
+                            <table style="width: 100%; border-collapse: separate; border-spacing: 4px; font-size: 0.9em;">
+                                <thead>
+                                    <tr>
+                                        <th style="padding: 10px 12px; text-align: left; color: var(--muted); font-weight: 600; background: rgba(0,0,0,0.2); border-radius: 4px;">Model</th>
+                                        <th style="padding: 10px 12px; text-align: center; color: var(--muted); font-weight: 600; background: rgba(0,0,0,0.2); border-radius: 4px;">Tests</th>
+                                        <th style="padding: 10px 12px; text-align: center; color: var(--muted); font-weight: 600; background: rgba(0,0,0,0.2); border-radius: 4px;">Success Rate</th>
+                                        <th style="padding: 10px 12px; text-align: center; color: var(--muted); font-weight: 600; background: rgba(0,0,0,0.2); border-radius: 4px;">Avg Latency</th>
+                                        <th style="padding: 10px 12px; text-align: center; color: var(--muted); font-weight: 600; background: rgba(0,0,0,0.2); border-radius: 4px;">Avg Quality</th>
+                                        <th style="padding: 10px 12px; text-align: center; color: var(--muted); font-weight: 600; background: rgba(0,0,0,0.2); border-radius: 4px;">Throughput</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${modelStats.map(stat => {
+                                        const latencyNorm = maxLatency > 0 ? (1 - ((stat.avgLatency - minLatency) / (maxLatency - minLatency))) * 100 : 50;
+                                        const qualityNorm = (stat.avgQuality / 10) * 100;
+                                        const tpsNorm = maxTps > 0 ? (stat.avgTps / maxTps) * 100 : 50;
+
+                                        const formatMs = (ms) => ms < 1000 ? `${Math.round(ms)}ms` : `${(ms/1000).toFixed(1)}s`;
+
+                                        return `
+                                            <tr style="transition: all 0.2s ease;">
+                                                <td style="padding: 10px 12px; color: var(--text); font-weight: 600; background: rgba(0,0,0,0.2); border-radius: 4px;">${stat.model}</td>
+                                                <td style="padding: 10px 12px; text-align: center; color: var(--text); background: rgba(0,0,0,0.2); border-radius: 4px;">${stat.testCount}</td>
+                                                <td style="padding: 10px 12px; text-align: center; font-weight: 600; background: ${getHeatColor(stat.successRate)}; color: white; border-radius: 4px; cursor: help; transition: all 0.2s ease;" title="Success Rate: ${stat.successRate.toFixed(1)}%">
+                                                    ${stat.successRate.toFixed(1)}%
+                                                </td>
+                                                <td style="padding: 10px 12px; text-align: center; font-weight: 600; background: ${getHeatColor(latencyNorm)}; color: white; border-radius: 4px; cursor: help; transition: all 0.2s ease;" title="Avg Latency: ${formatMs(stat.avgLatency)}">
+                                                    ${formatMs(stat.avgLatency)}
+                                                </td>
+                                                <td style="padding: 10px 12px; text-align: center; font-weight: 600; background: ${getHeatColor(qualityNorm)}; color: white; border-radius: 4px; cursor: help; transition: all 0.2s ease;" title="Avg Quality: ${stat.avgQuality.toFixed(1)}/10">
+                                                    ${stat.avgQuality.toFixed(1)}/10
+                                                </td>
+                                                <td style="padding: 10px 12px; text-align: center; font-weight: 600; background: ${getHeatColor(tpsNorm)}; color: white; border-radius: 4px; cursor: help; transition: all 0.2s ease;" title="Avg Throughput: ${stat.avgTps.toFixed(1)} tok/s">
+                                                    ${stat.avgTps.toFixed(1)} tok/s
+                                                </td>
+                                            </tr>
+                                        `;
+                                    }).join('')}
+                                </tbody>
+                            </table>
+                        `;
+
+                        heatmapContainer.innerHTML = heatmapHtml;
+                        heatmapSection.style.display = 'block';
+
+                        // Add hover effect to cells
+                        const cells = heatmapContainer.querySelectorAll('td[title]');
+                        cells.forEach(cell => {
+                            cell.addEventListener('mouseenter', function() {
+                                this.style.transform = 'scale(1.05)';
+                                this.style.zIndex = '10';
+                            });
+                            cell.addEventListener('mouseleave', function() {
+                                this.style.transform = 'scale(1)';
+                                this.style.zIndex = '1';
+                            });
+                        });
+                    }
+                }
+
+            } catch (err) {
+                console.error('Failed to load timeline:', err);
+                const timelineVisual = document.getElementById('timelineVisual');
+                if (timelineVisual && !timelineVisual.innerHTML.trim()) {
+                     timelineVisual.innerHTML = `<div style="padding:20px; text-align:center; color:var(--muted)">Failed to load timeline data</div>`;
+                }
+            }
+        }
+
+        // Event listener for timeline limit selector
+        const timelineLimitSelect = document.getElementById('timelineLimit');
+        if (timelineLimitSelect) {
+            timelineLimitSelect.addEventListener('change', (e) => {
+                loadRecentTestsTimeline(parseInt(e.target.value));
+            });
+        }
+
+        // Load timeline on page load
+        loadRecentTestsTimeline(100);
+
+        setInterval(() => {
+            if (typeof window.loadDashboard === 'function') {
+                window.loadDashboard();
+            }
+            // Also refresh timeline
+            const timelineLimit = document.getElementById('timelineLimit');
+            if (timelineLimit) {
+                loadRecentTestsTimeline(parseInt(timelineLimit.value));
+            }
+        }, 2000); // Refresh every 2s for live updates
