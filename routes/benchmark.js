@@ -7,7 +7,7 @@
 const express = require('express');
 const router = express.Router();
 const logger = require('../config/logger');
-const { attachWorkspace } = require('../src/middleware/workspace');
+const { attachWorkspace, optionalWorkspaceContext } = require('../src/middleware/workspace');
 const benchmarkService = require('../src/services/benchmarkService');
 const { JUDGE_CONFIG, SCORING_CONFIGS } = require('../src/services/qualityScorer');
 const { validateObjectId } = require('../src/helpers/objectIdValidator');
@@ -48,7 +48,7 @@ router.get('/config', (req, res) => {
  * POST /api/benchmark/test
  * Run a single benchmark test - workspace-aware
  */
-router.post('/test', attachWorkspace, async (req, res) => {
+router.post('/test', optionalWorkspaceContext, async (req, res) => {
     const { model, host, prompt } = req.body;
 
     // Validation
@@ -241,7 +241,7 @@ router.get('/prompts', async (req, res) => {
  * POST /api/benchmark/batch
  * Start a batch benchmark test with optional quality scoring - workspace-aware
  */
-router.post('/batch', attachWorkspace, async (req, res) => {
+router.post('/batch', optionalWorkspaceContext, async (req, res) => {
     const { host, models, levels, run_name, quality_scoring, judge_config, execution_mode } = req.body;
 
     // Validation

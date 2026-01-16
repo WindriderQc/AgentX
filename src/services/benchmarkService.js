@@ -814,10 +814,39 @@ class BenchmarkService {
 
         await batch.lockForExecution(process.pid);
 
+        const recordBatchTimelineEvent = async (event, data = {}) => {
+            try {
+                await BenchmarkBatch.updateOne(
+                    { _id: batchId },
+                    {
+                        $push: {
+                            timeline: {
+                                timestamp: new Date(),
+                                event,
+                                ...data
+                            }
+                        },
+                        $set: { last_activity_at: new Date() }
+                    }
+                );
+            } catch (err) {
+                logger.debug('Failed to record timeline event', { batchId, event, error: err.message });
+            }
+        };
+
+        await recordBatchTimelineEvent('prep_start', {
+            model: enableQualityScoring ? (judgeConfig.model || JUDGE_CONFIG.model) : null,
+            success: true
+        });
+
         // Helper for model warmup
         // Uses intelligent VRAM monitoring to detect when model is loaded
         // Falls back to timeout if VRAM monitoring unavailable (e.g., Windows hosts)
-        const warmupModel = async (hostUrl, model) => {
+        const warmupModel = async (hostUrl, model, timelinePrefix = null) => {
+            const warmupStart = Date.now();
+            if (timelinePrefix) {
+                await recordBatchTimelineEvent(`${timelinePrefix}_start`, { model, success: null });
+            }
             try {
                 logger.info('Starting model warmup', { host: hostUrl, model });
                 
@@ -846,6 +875,17 @@ class BenchmarkService {
                     fallbackTimeoutMs: 30000 // If VRAM monitoring unavailable, wait 30s
                 });
                 
+                const durationMs = loadResult.durationMs || (Date.now() - warmupStart);
+                const success = loadResult.loaded !== false;
+                if (timelinePrefix) {
+                    await recordBatchTimelineEvent(`${timelinePrefix}_complete`, {
+                        model,
+                        duration_ms: durationMs,
+                        success,
+                        error: loadResult.error || null
+                    });
+                }
+
                 if (loadResult.loaded) {
                     logger.info('Model warmed up successfully (VRAM-verified)', { 
                         host: hostUrl, 
@@ -869,6 +909,14 @@ class BenchmarkService {
             } catch (err) {
                 // Non-fatal, just log
                 logger.debug('Warmup encountered error', { host: hostUrl, model, error: err.message });
+                if (timelinePrefix) {
+                    await recordBatchTimelineEvent(`${timelinePrefix}_complete`, {
+                        model,
+                        duration_ms: Date.now() - warmupStart,
+                        success: false,
+                        error: err.message
+                    });
+                }
             }
         };
 
@@ -909,6 +957,7 @@ class BenchmarkService {
         }
 
         // Create execution promises for each host
+        let testsStarted = false;
         const hostPromises = Object.entries(modelsByHost).map(async ([hostUrl, hostModels]) => {
             // Determine judge host
             let judgeHostUrl = hostUrl;
@@ -924,12 +973,12 @@ class BenchmarkService {
             // Warmup judge if separate host (async background, don't block)
             if (enableQualityScoring && !judgeSameHost) {
                 const jModel = judgeConfig.model || JUDGE_CONFIG.model;
-                warmupModel(judgeHostUrl, jModel).catch(() => {});
+                warmupModel(judgeHostUrl, jModel, 'judge_warmup').catch(() => {});
             }
 
             for (const model of hostModels) {
                 // Warmup tested model (await ensures accurate latency for first prompt)
-                await warmupModel(hostUrl, model);
+                await warmupModel(hostUrl, model, 'model_warmup');
 
                 for (const prompt of prompts) {
                     // Check if batch was stopped
@@ -937,6 +986,11 @@ class BenchmarkService {
                     if (currentBatch && currentBatch.status === 'stopped') {
                         logger.info('Batch execution stopped by user', { batchId });
                         return;
+                    }
+
+                    if (!testsStarted) {
+                        testsStarted = true;
+                        await recordBatchTimelineEvent('tests_start', { success: true });
                     }
 
                     // Update current test indicator with detailed info
@@ -1001,7 +1055,8 @@ class BenchmarkService {
                             prompt._id ? prompt._id.toString() : null,
                             latency,
                             true,
-                            null
+                            null,
+                            prompt.level
                         );
 
                         // Update batch progress
@@ -1084,7 +1139,8 @@ class BenchmarkService {
                                             model,
                                             prompt._id ? prompt._id.toString() : null,
                                             judgeDuration,
-                                            true
+                                            true,
+                                            prompt.level
                                         );
                                     }
 
@@ -1155,7 +1211,8 @@ class BenchmarkService {
                             prompt._id ? prompt._id.toString() : null,
                             errorDuration,
                             false,
-                            err
+                            err,
+                            prompt.level
                         );
 
                         await BenchmarkBatch.updateOne(

@@ -2,8 +2,10 @@ require('dotenv').config();
 const path = require('path');
 const connectDB = require('./config/db-mongodb');
 const logger = require('./config/logger');
-const { app, systemHealth } = require('./src/app');
+const { app, systemHealth, setRagWatcherInstance } = require('./src/app');
 const SelfHealingEngine = require('./src/services/selfHealingEngine');
+
+console.log('SERVER.JS STARTING UP - DEBUG TEST');
 
 const PORT = process.env.PORT || 3080;
 const HOST = process.env.HOST || 'localhost';
@@ -200,6 +202,40 @@ async function startServer() {
   } catch (err) {
     console.log(`   ⚠ Self-Healing: ${err.message}`);
     logger.warn('Self-healing rules not loaded - automation disabled', { error: err.message });
+  }
+
+  // Initialize RAG file watcher
+  let ragWatcher = null;
+  try {
+    console.log('Initializing RAG file watcher...');
+    const RagFileWatcher = require('./src/services/ragFileWatcher');
+    console.log('RagFileWatcher module loaded');
+    ragWatcher = new RagFileWatcher({
+      ragDir: '/mnt/datalake/RAG',
+      source: 'rag-folder',
+      vectorStoreType: process.env.VECTOR_STORE_TYPE,
+      manifestUpdateInterval: 5 * 60 * 1000 // 5 minutes
+    });
+    console.log('RagFileWatcher instance created');
+    await ragWatcher.start();
+    console.log('RagFileWatcher started successfully');
+
+    // Set the watcher instance on the app
+    console.log('Checking setRagWatcherInstance function:', typeof setRagWatcherInstance);
+    if (setRagWatcherInstance) {
+      console.log('Calling setRagWatcherInstance...');
+      setRagWatcherInstance(ragWatcher);
+      console.log('setRagWatcherInstance called successfully');
+    } else {
+      console.log('setRagWatcherInstance function not available');
+    }
+
+    console.log(`   ✓ RAG Watcher: Monitoring /mnt/datalake/RAG`);
+    logger.info('RAG file watcher started');
+  } catch (err) {
+    console.log(`   ⚠ RAG Watcher: ${err.message}`);
+    console.log('Full error:', err);
+    logger.warn('RAG file watcher not started - automatic ingestion disabled', { error: err.message });
   }
 
   // Start Express server

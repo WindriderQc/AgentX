@@ -48,6 +48,43 @@
             font-weight: 500;
             text-transform: uppercase;
         }
+
+        /* Status indicator */
+        .status-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--muted);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        /* Stat cards */
+        .stat-card {
+            background: rgba(255,255,255,0.02);
+            border: 1px solid var(--panel-border);
+            border-radius: 8px;
+            padding: 16px;
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 24px;
+            font-weight: 600;
+            color: var(--accent);
+            margin-bottom: 4px;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: var(--muted);
+            text-transform: uppercase;
+            font-weight: 500;
+        }
         .workflow-badge.get {
             background: rgba(34, 197, 94, 0.1);
             color: #22c55e;
@@ -390,6 +427,84 @@
             </div>
         </div>
 
+        <!-- Section 5: RAG File Watcher -->
+        <div class="ops-section" id="section-rag-watcher">
+            <div class="section-card">
+                <div class="section-header">
+                    <h2><i class="fas fa-eye"></i> RAG File Watcher</h2>
+                </div>
+                <div class="section-body">
+                    <div class="section-subtitle">Monitor and manage automatic RAG document ingestion. The watcher automatically processes new MD files in the RAG folder with integrity validation and cleanup.</div>
+                    
+                    <!-- Watcher Status -->
+                    <div id="watcher-status" style="margin-top: 16px; padding: 16px; background: rgba(255,255,255,0.02); border-radius: 8px; border: 1px solid var(--panel-border);">
+                        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                            <div id="watcher-indicator" class="status-indicator" style="width: 12px; height: 12px; border-radius: 50%; background: var(--muted);"></div>
+                            <strong id="watcher-status-text">Checking watcher status...</strong>
+                        </div>
+                        <div id="watcher-details" style="font-size: 14px; color: var(--muted); display: none;">
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
+                                <div><strong>Files Processed:</strong> <span id="watcher-files">0</span></div>
+                                <div><strong>Processing Queue:</strong> <span id="watcher-queue">0</span></div>
+                                <div><strong>Last Scan:</strong> <span id="watcher-last-scan">-</span></div>
+                                <div><strong>Manifest Updates:</strong> <span id="watcher-manifest">-</span></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Control Buttons -->
+                    <div style="display: flex; gap: 12px; align-items: center; margin-top: 16px; flex-wrap: wrap;">
+                        <button class="btn" id="watcher-scan" style="display: flex; align-items: center; gap: 8px;">
+                            <i class="fas fa-search"></i>
+                            <span>Scan Now</span>
+                        </button>
+                        <button class="btn-secondary" id="watcher-cleanup" style="display: flex; align-items: center; gap: 8px;">
+                            <i class="fas fa-broom"></i>
+                            <span>Cleanup Obsolete</span>
+                        </button>
+                        <button class="btn-secondary" id="watcher-refresh" style="display: flex; align-items: center; gap: 8px;">
+                            <i class="fas fa-sync-alt"></i>
+                            <span>Refresh Status</span>
+                        </button>
+                        <div id="watcher-action-status" style="font-size: 14px; color: var(--muted);"></div>
+                    </div>
+
+                    <!-- Recent Activity -->
+                    <div id="watcher-activity" style="margin-top: 20px; display: none;">
+                        <h4 style="margin-bottom: 12px; color: var(--text);"><i class="fas fa-history"></i> Recent Activity</h4>
+                        <div id="activity-list" style="max-height: 200px; overflow-y: auto; background: rgba(255,255,255,0.01); border-radius: 4px; padding: 8px;">
+                            <div style="text-align: center; color: var(--muted); font-size: 14px; padding: 20px;">
+                                <i class="fas fa-spinner fa-spin"></i> Loading activity...
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- RAG Statistics -->
+                    <div id="rag-stats" style="margin-top: 20px; display: none;">
+                        <h4 style="margin-bottom: 12px; color: var(--text);"><i class="fas fa-chart-bar"></i> RAG Statistics</h4>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;">
+                            <div class="stat-card">
+                                <div class="stat-value" id="rag-total-docs">-</div>
+                                <div class="stat-label">Total Documents</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-value" id="rag-total-chunks">-</div>
+                                <div class="stat-label">Total Chunks</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-value" id="rag-last-update">-</div>
+                                <div class="stat-label">Last Updated</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-value" id="rag-folder-size">-</div>
+                                <div class="stat-label">Folder Size</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
     </div>
 
     <script>
@@ -450,6 +565,11 @@
                 updateConnectionIndicator(true);
             });
 
+            eventSource.addEventListener('rag-activity', (e) => {
+                const data = JSON.parse(e.data);
+                updateRagActivity(data);
+            });
+
             eventSource.onerror = (error) => {
                 console.error('❌ SSE connection error:', error);
                 updateConnectionIndicator(false);
@@ -482,6 +602,67 @@
         function showNotification(message, type = 'info') {
             // Simple notification (can be enhanced with toast library)
             console.log(`[${type.toUpperCase()}] ${message}`);
+        }
+
+        function updateRagActivity(data) {
+            // Update activity feed with real-time RAG events
+            const activityList = document.getElementById('activity-list');
+            if (!activityList) return;
+
+            const activityItem = document.createElement('div');
+            activityItem.style.cssText = 'padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 13px;';
+            
+            let icon, color, message;
+            
+            switch (data.type) {
+                case 'file-processed':
+                    icon = data.eventType === 'added' ? 'fa-plus-circle' : 'fa-edit';
+                    color = 'var(--success)';
+                    message = `${data.eventType === 'added' ? 'Added' : 'Updated'} ${data.filePath} (${data.chunkCount} chunks)`;
+                    break;
+                case 'file-removed':
+                    icon = 'fa-trash-alt';
+                    color = 'var(--danger)';
+                    message = `Removed ${data.filePath}`;
+                    break;
+                case 'cleanup-completed':
+                    icon = 'fa-broom';
+                    color = 'var(--warning)';
+                    message = `Cleaned up ${data.cleanedCount} obsolete documents`;
+                    break;
+                default:
+                    icon = 'fa-info-circle';
+                    color = 'var(--accent)';
+                    message = data.message || 'RAG activity';
+            }
+            
+            activityItem.innerHTML = `
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <i class="fas ${icon}" style="color: ${color}; font-size: 12px;"></i>
+                    <div style="flex: 1;">
+                        <div style="color: var(--text); font-weight: 500;">${message}</div>
+                        <div style="color: var(--muted); font-size: 11px;">${new Date(data.timestamp || Date.now()).toLocaleTimeString()}</div>
+                    </div>
+                </div>
+            `;
+
+            // Add to top of activity list
+            if (activityList.firstChild) {
+                activityList.insertBefore(activityItem, activityList.firstChild);
+            } else {
+                activityList.appendChild(activityItem);
+            }
+
+            // Keep only last 10 items
+            while (activityList.children.length > 10) {
+                activityList.removeChild(activityList.lastChild);
+            }
+
+            // Refresh stats after activity
+            setTimeout(() => {
+                loadWatcherStatus();
+                loadRagMetrics();
+            }, 1000);
         }
 
         function disconnectSSE() {
@@ -957,9 +1138,216 @@
             }
         }
 
+        // RAG File Watcher functionality
+        let watcherStatusInterval = null;
+
+        // Initialize watcher functionality
+        initWatcher();
+
+        function initWatcher() {
+            // Load initial status
+            loadWatcherStatus();
+            
+            // Set up periodic status updates
+            watcherStatusInterval = setInterval(loadWatcherStatus, 10000); // Every 10 seconds
+            
+            // Bind event listeners
+            document.getElementById('watcher-scan').addEventListener('click', triggerWatcherScan);
+            document.getElementById('watcher-cleanup').addEventListener('click', triggerWatcherCleanup);
+            document.getElementById('watcher-refresh').addEventListener('click', loadWatcherStatus);
+        }
+
+        async function loadWatcherStatus() {
+            try {
+                const response = await fetch('/api/rag/watcher/status');
+                const data = await response.json();
+
+                const indicator = document.getElementById('watcher-indicator');
+                const statusText = document.getElementById('watcher-status-text');
+                const details = document.getElementById('watcher-details');
+                const activity = document.getElementById('watcher-activity');
+
+                if (data.status === 'success') {
+                    const status = data.data;
+                    
+                    if (status.isRunning) {
+                        indicator.style.background = 'var(--success)';
+                        statusText.textContent = 'RAG Watcher Active';
+                        statusText.style.color = 'var(--success)';
+                        
+                        // Show stats
+                        document.getElementById('rag-stats').style.display = 'block';
+                        
+                        // Load RAG metrics
+                        loadRagMetrics();
+                        
+                        // Update stats
+                        document.getElementById('watcher-files').textContent = status.filesProcessed || '0';
+                        document.getElementById('watcher-queue').textContent = status.processingQueueSize || '0';
+                        document.getElementById('watcher-last-scan').textContent = new Date().toLocaleTimeString();
+                        document.getElementById('watcher-manifest').textContent = 'Auto-updating';
+                        
+                        // Load recent activity
+                        loadWatcherActivity();
+                        
+                    } else {
+                        indicator.style.background = 'var(--error)';
+                        statusText.textContent = status.message || 'RAG Watcher Not Running';
+                        statusText.style.color = 'var(--error)';
+                        details.style.display = 'none';
+                        activity.style.display = 'none';
+                    }
+                } else {
+                    indicator.style.background = 'var(--error)';
+                    statusText.textContent = 'Failed to load watcher status';
+                    statusText.style.color = 'var(--error)';
+                    details.style.display = 'none';
+                    activity.style.display = 'none';
+                }
+                
+            } catch (error) {
+                console.error('Failed to load watcher status:', error);
+                const indicator = document.getElementById('watcher-indicator');
+                const statusText = document.getElementById('watcher-status-text');
+                indicator.style.background = 'var(--error)';
+                statusText.textContent = 'Connection Error';
+                statusText.style.color = 'var(--error)';
+            }
+        }
+
+        async function loadWatcherActivity() {
+            // This would load recent RAG processing activity
+            // For now, we'll show a placeholder
+            const activityList = document.getElementById('activity-list');
+            activityList.innerHTML = `
+                <div style="text-align: center; color: var(--muted); font-size: 14px; padding: 20px;">
+                    <i class="fas fa-check-circle" style="color: var(--success); margin-bottom: 8px;"></i><br>
+                    Watcher is monitoring /mnt/datalake/RAG/<br>
+                    Files are processed automatically
+                </div>
+            `;
+        }
+
+        async function loadRagMetrics() {
+            try {
+                const response = await fetch('/api/rag/metrics');
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    const metrics = data.data;
+                    
+                    document.getElementById('rag-total-docs').textContent = metrics.totalDocuments || '0';
+                    document.getElementById('rag-total-chunks').textContent = metrics.totalChunks || '0';
+                    document.getElementById('rag-last-update').textContent = metrics.lastUpdated ? new Date(metrics.lastUpdated).toLocaleTimeString() : '-';
+                    document.getElementById('rag-folder-size').textContent = metrics.collectionSize ? `${(metrics.collectionSize / 1024 / 1024).toFixed(1)}MB` : '-';
+                }
+            } catch (error) {
+                console.error('Failed to load RAG metrics:', error);
+                // Don't show error to user, just leave as default
+            }
+        }
+
+        async function triggerWatcherScan() {
+            const btn = document.getElementById('watcher-scan');
+            const status = document.getElementById('watcher-action-status');
+            
+            // Disable button and show loading
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span>Scanning...</span>';
+            status.textContent = 'Scanning RAG folder...';
+            status.style.color = 'var(--accent)';
+
+            try {
+                const response = await fetch('/api/rag/watcher/trigger-scan', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    status.textContent = 'Scan completed successfully!';
+                    status.style.color = 'var(--success)';
+                    showNotification('RAG folder scan completed', 'success');
+                    
+                    // Refresh status
+                    setTimeout(loadWatcherStatus, 1000);
+                    
+                } else {
+                    status.textContent = `Scan failed: ${data.message}`;
+                    status.style.color = 'var(--error)';
+                }
+
+            } catch (error) {
+                status.textContent = 'Scan failed due to network error';
+                status.style.color = 'var(--error)';
+                console.error('Scan error:', error);
+            } finally {
+                // Re-enable button
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-search"></i> <span>Scan Now</span>';
+                
+                // Clear status after 5 seconds
+                setTimeout(() => {
+                    status.textContent = '';
+                }, 5000);
+            }
+        }
+
+        async function triggerWatcherCleanup() {
+            const btn = document.getElementById('watcher-cleanup');
+            const status = document.getElementById('watcher-action-status');
+            
+            // Disable button and show loading
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span>Cleaning...</span>';
+            status.textContent = 'Cleaning up obsolete documents...';
+            status.style.color = 'var(--accent)';
+
+            try {
+                const response = await fetch('/api/rag/watcher/cleanup-obsolete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    const cleaned = data.data?.cleanedCount || 0;
+                    status.textContent = `Cleanup completed! Removed ${cleaned} obsolete documents.`;
+                    status.style.color = 'var(--success)';
+                    showNotification(`Cleaned up ${cleaned} obsolete RAG documents`, 'success');
+                    
+                    // Refresh status
+                    setTimeout(loadWatcherStatus, 1000);
+                    
+                } else {
+                    status.textContent = `Cleanup failed: ${data.message}`;
+                    status.style.color = 'var(--error)';
+                }
+
+            } catch (error) {
+                status.textContent = 'Cleanup failed due to network error';
+                status.style.color = 'var(--error)';
+                console.error('Cleanup error:', error);
+            } finally {
+                // Re-enable button
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-broom"></i> <span>Cleanup Obsolete</span>';
+                
+                // Clear status after 5 seconds
+                setTimeout(() => {
+                    status.textContent = '';
+                }, 5000);
+            }
+        }
+
         // Cleanup on page unload
         window.addEventListener('beforeunload', () => {
             disconnectSSE();
+            if (watcherStatusInterval) {
+                clearInterval(watcherStatusInterval);
+            }
         });
     </script>
 </body>

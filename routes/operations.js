@@ -500,11 +500,16 @@ router.get('/events', (req, res) => {
     sendEvent('workflow-test', data);
   };
 
+  const ragActivityHandler = (data) => {
+    sendEvent('rag-activity', data);
+  };
+
   // Register listeners
   systemEvents.on('health-change', healthChangeHandler);
   systemEvents.on('activity-log', activityLogHandler);
   systemEvents.on('alert-created', alertHandler);
   systemEvents.on('workflow-test', workflowTestHandler);
+  systemEvents.on('rag-activity', ragActivityHandler);
 
   // Send heartbeat every 30 seconds to keep connection alive
   const heartbeatInterval = setInterval(() => {
@@ -518,6 +523,7 @@ router.get('/events', (req, res) => {
     systemEvents.off('activity-log', activityLogHandler);
     systemEvents.off('alert-created', alertHandler);
     systemEvents.off('workflow-test', workflowTestHandler);
+    systemEvents.off('rag-activity', ragActivityHandler);
     logger.info('Dashboard client disconnected from SSE');
   });
 

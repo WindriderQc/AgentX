@@ -1,12 +1,14 @@
 /**
  * RAG Routes for AgentX V3
- * 
+ *
  * Implements ingestion and search endpoints for n8n integration.
  * Contract: V3_CONTRACT_SNAPSHOT.md § 2
- * 
+ *
  * Endpoints:
  * - POST /api/rag/ingest - Ingest documents from n8n
  * - POST /api/rag/search - Semantic search for debugging
+ * - GET /api/rag/watcher/status - Get file watcher status
+ * - POST /api/rag/watcher/trigger-scan - Manually trigger folder scan
  */
 
 const express = require('express');
@@ -17,6 +19,37 @@ const { resolveTarget } = require('../src/utils');
 const logger = require('../config/logger');
 const n8nAuth = require('../src/middleware/n8nAuth');
 const RagManifest = require('../models/RagManifest');
+
+// Global reference to RAG watcher (set during server startup)
+const routeId = Math.random();
+
+console.log('RAG routes loaded, ID:', routeId);
+
+// Legacy function for backward compatibility - no longer used
+function setRagWatcherInstance(watcher) {
+  console.log('setRagWatcherInstance called (legacy), route ID:', routeId, 'watcher:', !!watcher);
+  // This function is kept for module export compatibility but no longer used
+  // The watcher instance is now stored in app.locals
+}
+
+// Get watcher instance from app.locals (set by server.js)
+function getRagWatcherInstance() {
+  try {
+    const { app } = require('../src/app');
+    console.log('App instance found:', !!app);
+    console.log('App.locals exists:', !!app.locals);
+    console.log('App.locals.ragWatcherInstance exists:', !!app.locals?.ragWatcherInstance);
+    if (app && app.locals && app.locals.ragWatcherInstance) {
+      console.log('Returning watcher from app.locals');
+      return app.locals.ragWatcherInstance;
+    }
+  } catch (e) {
+    console.log('Error accessing app:', e.message);
+  }
+
+  console.log('No watcher instance found in app.locals');
+  return null;
+}
 
 function classifyRagAvailabilityError(error) {
   const message = error?.message || '';
@@ -726,4 +759,94 @@ router.get('/deletion-preview', async (req, res) => {
   }
 });
 
+/**
+ * GET /api/rag/watcher/status
+ * Get RAG file watcher status
+ */
+router.get('/watcher/status', async (req, res) => {
+  console.log('RAG watcher status endpoint called');
+  try {
+    const watcher = getRagWatcherInstance();
+    console.log('Watcher instance:', !!watcher);
+    if (!watcher) {
+      return res.json({
+        status: 'success',
+        data: {
+          isRunning: false,
+          message: 'RAG file watcher not initialized'
+        }
+      });
+    }
+
+    const status = watcher.getStatus();
+    res.json({
+      status: 'success',
+      data: status
+    });
+  } catch (error) {
+    logger.error('RAG watcher status error', { error: error.message });
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
+/**
+ * POST /api/rag/watcher/trigger-scan
+ * Manually trigger a folder scan and manifest update
+ */
+router.post('/watcher/trigger-scan', async (req, res) => {
+  try {
+    const watcher = getRagWatcherInstance();
+    if (!watcher) {
+      return res.status(503).json({
+        status: 'error',
+        message: 'RAG file watcher not initialized'
+      });
+    }
+
+    logger.info('Manual RAG folder scan triggered');
+
+    // Perform scan
+    await watcher.initialScan();
+
+    res.json({
+      status: 'success',
+      message: 'RAG folder scan completed successfully'
+    });
+  } catch (error) {
+    logger.error('Manual RAG scan error', { error: error.message });
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
+/**
+ * POST /api/rag/watcher/cleanup-obsolete
+ * Manually trigger cleanup of obsolete documents
+ */
+router.post('/watcher/cleanup-obsolete', async (req, res) => {
+  try {
+    const watcher = getRagWatcherInstance();
+    if (!watcher) {
+      return res.status(503).json({
+        status: 'error',
+        message: 'RAG file watcher not initialized'
+      });
+    }
+
+    logger.info('Manual obsolete document cleanup triggered');
+
+    const cleanedCount = await watcher.cleanupObsoleteDocuments();
+
+    res.json({
+      status: 'success',
+      message: `Obsolete document cleanup completed`,
+      data: { cleanedCount }
+    });
+  } catch (error) {
+    logger.error('Manual cleanup error', { error: error.message });
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
 module.exports = router;
+module.exports.setRagWatcherInstance = setRagWatcherInstance;
+module.exports.getRagWatcherInstance = getRagWatcherInstance;

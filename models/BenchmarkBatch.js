@@ -173,6 +173,7 @@ const BenchmarkBatchSchema = new mongoose.Schema({
         event: { type: String, required: true },  // 'test_start', 'test_complete', 'judge_start', 'judge_complete', 'error'
         model: String,
         prompt_id: String,
+        prompt_level: Number,
         duration_ms: Number,
         success: Boolean,
         error: String
@@ -363,18 +364,20 @@ BenchmarkBatchSchema.methods.updateCurrentTest = function(model, promptId, promp
         event: stage === 'executing' ? 'test_start' : 'judge_start',
         model,
         prompt_id: promptId,
+        prompt_level: promptLevel,
         success: null
     });
 
     return this.save();
 };
 
-BenchmarkBatchSchema.methods.recordTestComplete = function(model, promptId, durationMs, success = true, error = null) {
+BenchmarkBatchSchema.methods.recordTestComplete = function(model, promptId, durationMs, success = true, error = null, promptLevel = null) {
     this.timeline.push({
         timestamp: new Date(),
         event: success ? 'test_complete' : 'error',
         model,
         prompt_id: promptId,
+        prompt_level: promptLevel,
         duration_ms: durationMs,
         success,
         error: error ? error.message || error.toString() : null
@@ -384,12 +387,13 @@ BenchmarkBatchSchema.methods.recordTestComplete = function(model, promptId, dura
     return this.save();
 };
 
-BenchmarkBatchSchema.methods.recordJudgeComplete = function(model, promptId, durationMs, success = true) {
+BenchmarkBatchSchema.methods.recordJudgeComplete = function(model, promptId, durationMs, success = true, promptLevel = null) {
     this.timeline.push({
         timestamp: new Date(),
         event: 'judge_complete',
         model,
         prompt_id: promptId,
+        prompt_level: promptLevel,
         duration_ms: durationMs,
         success
     });

@@ -8,13 +8,13 @@
         let showSuccessRateDetails = false;
 
         // Helper: Get headers with workspace context
-        function getWorkspaceHeaders() {
-            const headers = { 'Content-Type': 'application/json' };
+        function getWorkspaceHeaders(extra = {}) {
+            const baseHeaders = { 'Content-Type': 'application/json', ...extra };
             if (window.WorkspaceManager && typeof window.WorkspaceManager.addWorkspaceHeader === 'function') {
-                const workspaceHeaders = window.WorkspaceManager.addWorkspaceHeader({});
-                Object.assign(headers, workspaceHeaders);
+                const withWorkspace = window.WorkspaceManager.addWorkspaceHeader({ headers: baseHeaders });
+                return withWorkspace.headers || baseHeaders;
             }
-            return headers;
+            return baseHeaders;
         }
 
         // Debug logging (opt-in via ?debug=1 or localStorage.benchmarkDebug=true)
@@ -256,6 +256,18 @@
             // Calculate event type icons and colors
             const getEventDisplay = (event) => {
                 switch (event.event) {
+                    case 'prep_start':
+                        return { icon: 'fa-plug', color: '#c084fc', label: 'Prep Started' };
+                    case 'judge_warmup_start':
+                        return { icon: 'fa-gavel', color: '#c084fc', label: 'Judge Warmup' };
+                    case 'judge_warmup_complete':
+                        return { icon: 'fa-check-circle', color: '#a855f7', label: 'Judge Warmup Stabilized' };
+                    case 'model_warmup_start':
+                        return { icon: 'fa-bolt', color: '#94a3b8', label: 'Model Warmup' };
+                    case 'model_warmup_complete':
+                        return { icon: 'fa-check', color: '#94a3b8', label: 'Model Warmup Ready' };
+                    case 'tests_start':
+                        return { icon: 'fa-rocket', color: '#7cf0ff', label: 'Launching Tests' };
                     case 'test_start':
                         return { icon: 'fa-play-circle', color: '#3498db', label: 'Test Started' };
                     case 'test_complete':
@@ -277,7 +289,9 @@
                 const timestamp = new Date(event.timestamp).toLocaleTimeString();
                 const durationText = event.duration_ms ? ` (${event.duration_ms < 1000 ? `${event.duration_ms}ms` : `${(event.duration_ms / 1000).toFixed(1)}s`})` : '';
                 const modelText = event.model ? `<span style="color: ${display.color}; font-weight: 500;">${event.model}</span>` : '';
-                const errorText = event.error ? `<div style="color: #e74c3c; font-size: 0.9em; margin-top: 2px;">${event.error}</div>` : '';
+                const isWarmupEvent = typeof event.event === 'string' && event.event.includes('warmup');
+                const errorColor = isWarmupEvent ? 'var(--muted)' : '#e74c3c';
+                const errorText = event.error ? `<div style="color: ${errorColor}; font-size: 0.9em; margin-top: 2px;">${event.error}</div>` : '';
 
                 return `
                     <div style="display: flex; align-items: start; gap: 10px; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
@@ -1625,7 +1639,7 @@
             try {
                 const res = await fetch(`${BENCHMARK_API}/batch`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: getWorkspaceHeaders(),
                     body: JSON.stringify({
                         host,
                         models: selectedModels,
@@ -4085,7 +4099,7 @@
             try {
                 const res = await fetch(`${BENCHMARK_API}/test`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: getWorkspaceHeaders(),
                     body: JSON.stringify({
                         model: document.getElementById('model').value,
                         host: document.getElementById('host').value,
@@ -4532,6 +4546,14 @@
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#39;');
+        const encodeTooltip = (value = '') => encodeURIComponent(String(value)).replace(/'/g, '%27');
+        const decodeTooltip = (value = '') => {
+            try {
+                return decodeURIComponent(value);
+            } catch (err) {
+                return value;
+            }
+        };
 
         window.showTimelineTooltip = (e, htmlContent) => {
             let tooltip = document.getElementById('timeline-tooltip');
@@ -4559,7 +4581,7 @@
                 `;
                 document.body.appendChild(tooltip);
             }
-            tooltip.innerHTML = htmlContent;
+            tooltip.innerHTML = decodeTooltip(htmlContent);
             tooltip.style.display = 'block';
 
             // Trigger animation
@@ -4578,7 +4600,8 @@
             };
             moveHandler(e);
             document.addEventListener('mousemove', moveHandler);
-            e.target.onmouseleave = () => {
+            const hoverTarget = e.currentTarget || e.target;
+            hoverTarget.onmouseleave = () => {
                 tooltip.style.opacity = '0';
                 tooltip.style.transform = 'translateY(5px)';
                 setTimeout(() => {
@@ -4587,6 +4610,223 @@
                 document.removeEventListener('mousemove', moveHandler);
             };
         };
+
+        const getTimelineMode = () => {
+            const modeSelect = document.getElementById('timelineMode');
+            return modeSelect ? modeSelect.value : 'results';
+        };
+
+        const getTimelineZoom = () => {
+            const zoomSelect = document.getElementById('timelineZoom');
+            const zoom = zoomSelect ? Number(zoomSelect.value) : 1;
+            return Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+        };
+
+        async function renderBatchEventTimeline(timelineVisual, timelineEmptyState, activeBatch) {
+            if (!timelineVisual || !timelineEmptyState) return;
+            if (!activeBatch || !activeBatch._id) {
+                timelineVisual.style.display = 'none';
+                timelineEmptyState.style.display = 'block';
+                return;
+            }
+
+            const res = await fetch(`${BENCHMARK_API}/batch/${activeBatch._id}/timeline`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const json = await res.json();
+            const timeline = json.data?.timeline || [];
+
+            if (!timeline.length) {
+                timelineVisual.style.display = 'none';
+                timelineEmptyState.style.display = 'block';
+                return;
+            }
+
+            timelineVisual.style.display = 'block';
+            timelineEmptyState.style.display = 'none';
+
+            const prepLaneKey = '__prep__';
+            const prepEvents = new Set([
+                'prep_start',
+                'judge_warmup_start',
+                'judge_warmup_complete',
+                'tests_start'
+            ]);
+            const renderableEvents = new Set([
+                'prep_start',
+                'judge_warmup_start',
+                'judge_warmup_complete',
+                'tests_start',
+                'model_warmup_complete',
+                'test_complete',
+                'judge_complete',
+                'error'
+            ]);
+            const eventVisuals = {
+                prep_start: { icon: 'fa-plug', class: 'segment-warmup-judge', label: 'LLM Load' },
+                judge_warmup_start: { icon: 'fa-gavel', class: 'segment-warmup-judge', label: 'Judge Warmup' },
+                judge_warmup_complete: { icon: 'fa-check-circle', class: 'segment-warmup-judge', label: 'Judge Warmup Stabilized' },
+                tests_start: { icon: 'fa-rocket', class: 'segment-running', label: 'Launching Tests' },
+                model_warmup_complete: { icon: 'fa-bolt', class: 'segment-warmup', label: 'Model Warmup' },
+                test_complete: { icon: 'fa-robot', class: 'segment-success', label: 'Test Complete' },
+                judge_complete: { icon: 'fa-gavel', class: 'segment-judging', label: 'Judging Complete' },
+                error: { icon: 'fa-exclamation-triangle', class: 'segment-error', label: 'Test Failed' }
+            };
+
+            const getEventLevel = (event) => {
+                const level = Number(event.prompt_level);
+                return Number.isFinite(level) ? level : null;
+            };
+
+            const getLaneKey = (event) => {
+                if (prepEvents.has(event.event)) return prepLaneKey;
+                return event.model || prepLaneKey;
+            };
+
+            const eventsByLane = new Map();
+            const filtered = timeline.filter(event => renderableEvents.has(event.event));
+            filtered.forEach((event) => {
+                const laneKey = getLaneKey(event);
+                if (!eventsByLane.has(laneKey)) {
+                    eventsByLane.set(laneKey, []);
+                }
+                eventsByLane.get(laneKey).push(event);
+            });
+
+            let maxEndMs = 0;
+            filtered.forEach((event) => {
+                const end = Number(event.time_since_start_ms) || 0;
+                const duration = Number(event.duration_ms) || 0;
+                maxEndMs = Math.max(maxEndMs, end, end - duration);
+            });
+
+            const totalDurationMs = Math.max(1, maxEndMs);
+            const zoom = getTimelineZoom();
+            const baseWidth = Math.max(600, timelineVisual.clientWidth - 32);
+            const trackWidth = Math.round(baseWidth * zoom);
+            const scale = trackWidth / totalDurationMs;
+            const markerDurationMs = Math.max(200, Math.round(totalDurationMs * 0.01));
+
+            const orderedLanes = [];
+            if (eventsByLane.has(prepLaneKey)) {
+                orderedLanes.push(prepLaneKey);
+            }
+            const preferredModels = Array.isArray(activeBatch.models) ? activeBatch.models : [];
+            preferredModels.forEach((model) => {
+                if (eventsByLane.has(model)) orderedLanes.push(model);
+            });
+            Array.from(eventsByLane.keys())
+                .filter(key => key !== prepLaneKey && !orderedLanes.includes(key))
+                .sort()
+                .forEach(key => orderedLanes.push(key));
+
+            const formatTimelineMs = (ms) => {
+                if (!Number.isFinite(ms)) return '-';
+                if (ms < 1000) return `${Math.round(ms)}ms`;
+                return `${(ms / 1000).toFixed(2)}s`;
+            };
+
+            const buildTooltip = (event, laneLabel, visual, durationMs) => {
+                const sinceStart = Number(event.time_since_start_ms) || 0;
+                const level = getEventLevel(event);
+                const status = event.success === false ? 'Failed' : 'OK';
+
+                return `
+                    <div style="border-bottom: 1px solid rgba(124, 240, 255, 0.2); padding-bottom: 8px; margin-bottom: 8px;">
+                        <h4 style="margin: 0 0 4px;">${escapeHtml(visual.label)}</h4>
+                        <div style="font-size: 0.8em; color: rgba(255,255,255,0.6);">T+${formatTimelineMs(sinceStart)}</div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: auto 1fr; gap: 6px 12px;">
+                        <span style="color: rgba(255,255,255,0.6);">Lane:</span>
+                        <span style="font-weight: 600;">${escapeHtml(laneLabel)}</span>
+                        ${event.model ? `
+                        <span style="color: rgba(255,255,255,0.6);">Model:</span>
+                        <span style="font-weight: 600;">${escapeHtml(event.model)}</span>
+                        ` : ''}
+                        ${Number.isFinite(durationMs) ? `
+                        <span style="color: rgba(255,255,255,0.6);">Duration:</span>
+                        <span style="font-weight: 600;">${formatTimelineMs(durationMs)}</span>
+                        ` : ''}
+                        ${Number.isFinite(level) ? `
+                        <span style="color: rgba(255,255,255,0.6);">Level:</span>
+                        <span style="font-weight: 600;">L${level}</span>
+                        ` : ''}
+                        ${event.success === false ? `
+                        <span style="color: rgba(255,255,255,0.6);">Status:</span>
+                        <span style="font-weight: 600; color:#e74c3c">${status}</span>
+                        ` : ''}
+                    </div>
+                `.trim();
+            };
+
+            const rowsHtml = orderedLanes.map((laneKey) => {
+                const laneEvents = eventsByLane.get(laneKey) || [];
+                laneEvents.sort((a, b) => (a.time_since_start_ms || 0) - (b.time_since_start_ms || 0));
+                const laneLabel = laneKey === prepLaneKey ? 'Prep' : laneKey;
+                const rowClass = laneKey === prepLaneKey ? 'timeline-model-row prep-lane' : 'timeline-model-row';
+                const rowIcon = laneKey === prepLaneKey ? 'fa-flask' : 'fa-cube';
+                const rowBadge = laneKey === prepLaneKey ? '<span class="prep-lane-badge">Prep</span>' : '';
+
+                const segmentsHtml = laneEvents.map((event) => {
+                    const endMs = Number(event.time_since_start_ms) || 0;
+                    const rawDuration = Number(event.duration_ms) || 0;
+                    const durationMs = rawDuration > 0 ? rawDuration : markerDurationMs;
+                    const startMs = rawDuration > 0 ? Math.max(0, endMs - rawDuration) : endMs;
+                    const left = Math.round(startMs * scale);
+                    const width = Math.max(6, Math.round(durationMs * scale));
+
+                    let visual = eventVisuals[event.event] || eventVisuals.test_complete;
+                    if (event.event === 'test_complete' && event.success === false) {
+                        visual = eventVisuals.error;
+                    }
+
+                    if (event.event === 'test_complete' && event.success !== false) {
+                        const level = getEventLevel(event);
+                        if (Number.isFinite(level) && level >= 1 && level <= 5) {
+                            visual = { ...visual, class: `segment-level-${level}` };
+                        }
+                    }
+
+                    const tooltipHtml = buildTooltip(event, laneLabel, visual, rawDuration || null);
+                    const tooltipEncoded = encodeTooltip(tooltipHtml);
+                    const showIcon = width > 18;
+                    const levelBadge = (() => {
+                        const level = getEventLevel(event);
+                        if (event.event === 'test_complete' && Number.isFinite(level) && width > 40) {
+                            return `<span class="segment-badge" style="margin-right:2px">L${level}</span>`;
+                        }
+                        return '';
+                    })();
+
+                    return `
+                        <div class="timeline-segment ${visual.class}" style="position:absolute; left:${left}px; width:${width}px; height:100%;"
+                            onmouseenter="showTimelineTooltip(event, '${tooltipEncoded}')">
+                            ${showIcon ? `<i class="fas ${visual.icon}"></i>` : ''}
+                            ${levelBadge}
+                        </div>
+                    `;
+                }).join('');
+
+                return `
+                    <div class="${rowClass}">
+                        <div class="timeline-model-label">
+                            <i class="fas ${rowIcon}" style="color:var(--accent)"></i>
+                            ${escapeHtml(laneLabel)} ${rowBadge}
+                        </div>
+                        <div class="timeline-track timeline-track-absolute">
+                            <div style="position: relative; width: ${trackWidth}px; height: 32px;">
+                                ${segmentsHtml}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            timelineVisual.innerHTML = `
+                <div class="timeline-wrapper">
+                    ${rowsHtml}
+                </div>
+            `;
+        }
 
         // Stacked Timeline functionality
         let lastTimelineResultIds = new Set();
@@ -4616,8 +4856,30 @@
                     results = results.filter(r => r.batch_id === activeBatch._id);
                 }
 
+                let batchTimeline = [];
+                if (activeBatch && activeBatch._id) {
+                    try {
+                        const timelineRes = await fetch(`${BENCHMARK_API}/batch/${activeBatch._id}/timeline`);
+                        if (timelineRes.ok) {
+                            const timelineJson = await timelineRes.json();
+                            batchTimeline = timelineJson.data?.timeline || [];
+                        }
+                    } catch (err) {
+                        console.warn('Failed to load batch timeline for results view', err);
+                    }
+                }
+
                 const timelineVisual = document.getElementById('timelineVisual');
                 const timelineEmptyState = document.getElementById('timelineEmptyState');
+                const statsSummaryEl = document.getElementById('timelineStatsSummary');
+                const heatmapSectionEl = document.getElementById('performanceHeatmapSection');
+
+                if (timelineVisual && timelineEmptyState && getTimelineMode() === 'events') {
+                    if (statsSummaryEl) statsSummaryEl.style.display = 'none';
+                    if (heatmapSectionEl) heatmapSectionEl.style.display = 'none';
+                    await renderBatchEventTimeline(timelineVisual, timelineEmptyState, activeBatch);
+                    return;
+                }
 
                 if (!results.length && !activeBatch) {
                     timelineVisual.style.display = 'none';
@@ -4631,14 +4893,18 @@
                 
                 // Create a hash of the result data to detect updates (not just new results)
                 const resultHash = results.map(r => `${r._id}-${r.success}-${r.quality_score || 'null'}`).join('|');
+                const timelineHash = batchTimeline
+                    .map(e => `${e.event}-${e.model || ''}-${e.time_since_start_ms || 0}-${e.duration_ms || 0}-${e.success}`)
+                    .join('|');
+                const combinedHash = `${resultHash}::${timelineHash}`;
                 
                 // If no new results and data hasn't changed, skip the full re-render
-                if (!hasNewResults && lastTimelineResultIds.size > 0 && window.lastTimelineHash === resultHash) {
+                if (!hasNewResults && lastTimelineResultIds.size > 0 && window.lastTimelineHash === combinedHash) {
                     return;
                 }
                 
                 lastTimelineResultIds = currentResultIds;
-                window.lastTimelineHash = resultHash;
+                window.lastTimelineHash = combinedHash;
 
                 timelineVisual.style.display = 'block';
                 timelineEmptyState.style.display = 'none';
@@ -4681,11 +4947,36 @@
                     }
                     resultsByModel.get(model).push(result);
                 });
+
+                const prepEventTypes = new Set([
+                    'prep_start',
+                    'judge_warmup_start',
+                    'judge_warmup_complete',
+                    'tests_start'
+                ]);
+                const prepLaneEvents = batchTimeline
+                    .filter(event => prepEventTypes.has(event.event))
+                    .sort((a, b) => (a.time_since_start_ms || 0) - (b.time_since_start_ms || 0));
+
+                const modelWarmups = new Map();
+                batchTimeline.forEach((event) => {
+                    if (event.event !== 'model_warmup_complete' || !event.model) return;
+                    const current = modelWarmups.get(event.model);
+                    const time = Number(event.time_since_start_ms) || 0;
+                    if (!current || time < current.time_since_start_ms) {
+                        modelWarmups.set(event.model, event);
+                    }
+                });
                 
                 // Ensure active model is in the map if it doesn't have results yet
                 if (activeBatch && activeBatch.status === 'running' && activeBatch.model) {
                     if (!resultsByModel.has(activeBatch.model)) {
                         resultsByModel.set(activeBatch.model, []);
+                    }
+                }
+                for (const model of modelWarmups.keys()) {
+                    if (!resultsByModel.has(model)) {
+                        resultsByModel.set(model, []);
                     }
                 }
 
@@ -4694,7 +4985,9 @@
                     'test-error': { icon: 'fa-exclamation-triangle', class: 'segment-error' },
                     judging: { icon: 'fa-gavel', class: 'segment-judging' },
                     running: { icon: 'fa-cog fa-spin', class: 'segment-running' },
-                    queued: { icon: 'fa-clock', class: 'segment-queued' }
+                    queued: { icon: 'fa-clock', class: 'segment-queued' },
+                    warmup: { icon: 'fa-bolt', class: 'segment-warmup' },
+                    'judge-prep': { icon: 'fa-gavel', class: 'segment-warmup-judge' }
                 };
 
                 const getResultLevel = (result) => {
@@ -4713,6 +5006,8 @@
                 };
 
                 const getSegmentVisual = (result) => {
+                    if (result.__lane === 'judge_prep') return stageVisuals['judge-prep'];
+                    if (result.__lane === 'model_warmup') return stageVisuals['warmup'];
                     if (result.success === false) return stageVisuals['test-error'];
                     if (result.success) {
                         const level = getResultLevel(result);
@@ -4729,13 +5024,109 @@
                 };
 
                 let rowsHtml = '';
+                const widthFromDuration = (durationMs, minWidth = 60, maxWidth = 200) => {
+                    const base = 50 + (durationMs / 2000) * 40;
+                    return Math.min(maxWidth, Math.max(minWidth, Math.round(base)));
+                };
+                const prepEventVisuals = {
+                    prep_start: { icon: 'fa-plug', class: 'segment-warmup-judge', label: 'Prep Started' },
+                    judge_warmup_start: { icon: 'fa-gavel', class: 'segment-warmup-judge', label: 'Judge Warmup' },
+                    judge_warmup_complete: { icon: 'fa-check-circle', class: 'segment-warmup-judge', label: 'Judge Warmup Stabilized' },
+                    tests_start: { icon: 'fa-rocket', class: 'segment-running', label: 'Launching Tests' }
+                };
+
+                if (prepLaneEvents.length > 0) {
+                    const prepSegmentsHtml = prepLaneEvents.map((event) => {
+                        const visual = prepEventVisuals[event.event] || prepEventVisuals.prep_start;
+                        const durationMs = Number(event.duration_ms) || 0;
+                        const widthPx = widthFromDuration(durationMs || 1200, 60, 180);
+                        const tooltipHtml = `
+                            <div style="border-bottom: 1px solid rgba(124, 240, 255, 0.2); padding-bottom: 6px; margin-bottom: 6px;">
+                                <strong>${escapeHtml(visual.label)}</strong>
+                            </div>
+                            <div style="display: grid; grid-template-columns: auto 1fr; gap: 6px 12px;">
+                                ${event.model ? `
+                                <span style="color: rgba(255,255,255,0.6);">Model:</span>
+                                <span style="font-weight: 600;">${escapeHtml(event.model)}</span>
+                                ` : ''}
+                                ${durationMs ? `
+                                <span style="color: rgba(255,255,255,0.6);">Duration:</span>
+                                <span style="font-weight: 600;">${formatTime(durationMs)}</span>
+                                ` : ''}
+                                ${event.error ? `
+                                <span style="color: rgba(255,255,255,0.6);">Note:</span>
+                                <span style="color: rgba(255,255,255,0.6);">${escapeHtml(event.error)}</span>
+                                ` : ''}
+                            </div>
+                        `.trim();
+                        const tooltipEncoded = encodeTooltip(tooltipHtml);
+                        return `
+                            <div class="timeline-segment-group" style="width: ${widthPx}px;" onmouseenter="showTimelineTooltip(event, '${tooltipEncoded}')">
+                                <div class="timeline-segment ${visual.class}" style="width: 100%;">
+                                    ${widthPx > 20 ? `<i class="fas ${visual.icon}"></i>` : ''}
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+
+                    rowsHtml += `
+                        <div class="timeline-model-row prep-lane">
+                            <div class="timeline-model-label">
+                                <i class="fas fa-flask" style="color:var(--accent)"></i>
+                                Prep <span class="prep-lane-badge">Prep</span>
+                            </div>
+                            <div class="timeline-track">
+                                ${prepSegmentsHtml}
+                            </div>
+                        </div>
+                    `;
+                }
+
+                const orderedModels = [];
+                const preferredModels = activeBatch && Array.isArray(activeBatch.models) ? activeBatch.models : [];
+                preferredModels.forEach((model) => {
+                    if (resultsByModel.has(model)) orderedModels.push(model);
+                });
+                for (const model of resultsByModel.keys()) {
+                    if (!orderedModels.includes(model)) orderedModels.push(model);
+                }
 
                 // Iterate over models to build rows
-                for (const [model, modelResults] of resultsByModel.entries()) {
+                for (const model of orderedModels) {
+                    const modelResults = resultsByModel.get(model) || [];
                     let segmentsHtml = '';
-                    
-                    // Render Completed Tests
-                    let lastTime = 0;
+
+                    const warmupEvent = modelWarmups.get(model);
+                    if (warmupEvent) {
+                        const durationMs = Number(warmupEvent.duration_ms) || 0;
+                        const widthPx = widthFromDuration(durationMs || 1800, 60, 180);
+                        const tooltipHtml = `
+                            <div style="border-bottom: 1px solid rgba(124, 240, 255, 0.2); padding-bottom: 6px; margin-bottom: 6px;">
+                                <strong>Model Warmup Ready</strong>
+                            </div>
+                            <div style="display: grid; grid-template-columns: auto 1fr; gap: 6px 12px;">
+                                <span style="color: rgba(255,255,255,0.6);">Model:</span>
+                                <span style="font-weight: 600;">${escapeHtml(model)}</span>
+                                ${durationMs ? `
+                                <span style="color: rgba(255,255,255,0.6);">Duration:</span>
+                                <span style="font-weight: 600;">${formatTime(durationMs)}</span>
+                                ` : ''}
+                                ${warmupEvent.error ? `
+                                <span style="color: rgba(255,255,255,0.6);">Note:</span>
+                                <span style="color: rgba(255,255,255,0.6);">${escapeHtml(warmupEvent.error)}</span>
+                                ` : ''}
+                            </div>
+                        `.trim();
+                        const tooltipEncoded = encodeTooltip(tooltipHtml);
+                        segmentsHtml += `
+                            <div class="timeline-segment-group" style="width: ${widthPx}px;" onmouseenter="showTimelineTooltip(event, '${tooltipEncoded}')">
+                                <div class="timeline-segment segment-warmup" style="width: 100%;">
+                                    ${widthPx > 20 ? '<i class="fas fa-bolt"></i>' : ''}
+                                </div>
+                            </div>
+                        `;
+                    }
+
                     segmentsHtml += modelResults.map((result, idx) => {
                         const animationDelay = idx * 0.03; // Stagger animations
                         const visual = getSegmentVisual(result);
@@ -4747,10 +5138,10 @@
                         const judgingStr = formatTime(judgingTime);
                         const totalStr = formatTime(totalTime);
                         
-                        const qScore = result.quality_score ? `Q${result.quality_score}` : '';
+                        const qualityScore = Number.isFinite(result.quality_score)
+                            ? result.quality_score
+                            : null;
                         const levelNumber = getResultLevel(result);
-                        const level = Number.isFinite(levelNumber) && levelNumber >= 1 ? `L${levelNumber}` : '';
-                        const timestamp = new Date(result.timestamp).getTime();
 
                         // Tooltip HTML for Custom Tooltip with Performance Comparisons
                         const promptTextRaw = result.prompt ? (result.prompt.length > 60 ? result.prompt.substring(0, 60) + '...' : result.prompt) : 'No prompt';
@@ -4758,11 +5149,26 @@
                         const modelName = escapeHtml(result.model || 'Unknown Model');
 
                         // Performance indicators
-                        const latencyDiff = globalStats.avgLatency ? ((inferenceTime - globalStats.avgLatency) / globalStats.avgLatency * 100).toFixed(0) : 0;
-                        const latencyIndicator = inferenceTime < globalStats.avgLatency ? `<span style="color:#2ecc71">▼ ${Math.abs(latencyDiff)}% faster</span>` : (inferenceTime > globalStats.avgLatency ? `<span style="color:#e74c3c">▲ ${latencyDiff}% slower</span>` : '<span style="color:#95a5a6">● average</span>');
+                        const hasBaseline = Number.isFinite(globalStats.avgLatency) && globalStats.avgLatency > 0;
+                        const latencyDiff = hasBaseline ? ((inferenceTime - globalStats.avgLatency) / globalStats.avgLatency * 100).toFixed(0) : 0;
+                        const latencyIndicator = hasBaseline
+                            ? (inferenceTime < globalStats.avgLatency
+                                ? `<span style="color:#2ecc71">▼ ${Math.abs(latencyDiff)}% faster</span>`
+                                : (inferenceTime > globalStats.avgLatency
+                                    ? `<span style="color:#e74c3c">▲ ${latencyDiff}% slower</span>`
+                                    : '<span style="color:#95a5a6">● average</span>'))
+                            : '<span style="color:#95a5a6">● average</span>';
 
-                        const qualityDiff = globalStats.avgQuality && result.quality_score ? ((result.quality_score - globalStats.avgQuality) / globalStats.avgQuality * 100).toFixed(0) : 0;
-                        const qualityIndicator = result.quality_score && globalStats.avgQuality ? (result.quality_score > globalStats.avgQuality ? `<span style="color:#2ecc71">▲ ${Math.abs(qualityDiff)}% above avg</span>` : (result.quality_score < globalStats.avgQuality ? `<span style="color:#e74c3c">▼ ${Math.abs(qualityDiff)}% below avg</span>` : '<span style="color:#95a5a6">● average</span>')) : '';
+                        const qualityDiff = globalStats.avgQuality && Number.isFinite(qualityScore)
+                            ? ((qualityScore - globalStats.avgQuality) / globalStats.avgQuality * 100).toFixed(0)
+                            : 0;
+                        const qualityIndicator = Number.isFinite(qualityScore) && globalStats.avgQuality
+                            ? (qualityScore > globalStats.avgQuality
+                                ? `<span style="color:#2ecc71">▲ ${Math.abs(qualityDiff)}% above avg</span>`
+                                : (qualityScore < globalStats.avgQuality
+                                    ? `<span style="color:#e74c3c">▼ ${Math.abs(qualityDiff)}% below avg</span>`
+                                    : '<span style="color:#95a5a6">● average</span>'))
+                            : '';
 
                         // Parse tokens_per_sec (handles both string and number types)
                         const tokensPerSec = parseFloat(result.tokens_per_sec);
@@ -4795,10 +5201,10 @@
                                 <span style="font-weight: 600; color:#9b59b6">${judgingStr}</span>
                                 ` : ''}
 
-                                ${result.quality_score ? `
+                                ${Number.isFinite(qualityScore) ? `
                                 <span style="color: rgba(255,255,255,0.6);">Quality:</span>
                                 <div>
-                                    <span style="font-weight: 600; color:#f39c12">${result.quality_score.toFixed(1)}/10</span>
+                                    <span style="font-weight: 600; color:#f39c12">Q${qualityScore.toFixed(1)} / 10</span>
                                     <span style="font-size: 0.85em; margin-left: 6px;">${qualityIndicator}</span>
                                 </div>
                                 ` : ''}
@@ -4819,13 +5225,8 @@
                             <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1); color: rgba(255,255,255,0.7); font-style: italic; font-size: 0.85em; line-height: 1.4;">
                                 <i class="fas fa-quote-left" style="font-size: 0.7em; opacity: 0.5; margin-right: 4px;"></i>${promptText}<i class="fas fa-quote-right" style="font-size: 0.7em; opacity: 0.5; margin-left: 4px;"></i>
                             </div>
-                        `.replace(/"/g, '&quot;').replace(/'/g, "\\'").replace(/\n/g, '').trim();
-                        
-                         let separator = '';
-                        if (idx > 0 && (timestamp - lastTime > 300000)) {
-                             separator = `<div style="width: 1px; height: 20px; background: rgba(255,255,255,0.2); margin: 0 4px;" title="Gap > 5m"></div>`;
-                        }
-                        lastTime = timestamp;
+                        `.trim();
+                        const tooltipEncoded = encodeTooltip(tooltipHtml);
 
                         // Width scale (min 80px, max 220px)
                         const totalWidthPx = Math.min(220, Math.max(80, 60 + (totalTime / 2000) * 40));
@@ -4841,40 +5242,26 @@
                         const showInferenceIcon = inferencePx > 20;
                         const showJudgingIcon = judgingPx > 20;
 
-                        // Handle Small Bar "Floating" Badge
-                        let badgeStyle = '';
-                        if (totalWidthPx < 100) {
-                             // Float upper right
-                             badgeStyle = `position:absolute; right:-6px; top:-8px; background:rgba(20,20,30,0.95); border:1px solid rgba(255,255,255,0.2); backdrop-filter:blur(4px); font-weight:700; font-size:0.75em; padding:2px 6px; border-radius:10px; z-index:5; box-shadow:0 2px 4px rgba(0,0,0,0.5); transform:scale(0.9);`;
-                        } else {
-                             // Inside right
-                             badgeStyle = `position:absolute; right:2px; top:0; height:100%; display:flex; align-items:center; background:rgba(0,0,0,0.4); backdrop-filter:blur(2px); font-weight:700; font-size:0.75em; padding:0 6px; border-radius:3px;`;
-                        }
-
                         // Only split if we actually have judging time
                         // Use onmouseenter for custom tooltip
                         if (judgingTime > 0) {
-                            return `${separator}
-                            <div class="timeline-segment-group" style="width: ${totalWidthPx}px;" onmouseenter="showTimelineTooltip(event, '${tooltipHtml}')">
+                            return `
+                            <div class="timeline-segment-group" style="width: ${totalWidthPx}px;" onmouseenter="showTimelineTooltip(event, '${tooltipEncoded}')">
                                 <div class="timeline-segment ${visual.class}" style="width: ${inferencePct}%; border-radius: 0;">
                                     ${showInferenceIcon ? `<i class="fas ${visual.icon}"></i>` : ''}
                                 </div>
                                 <div class="timeline-segment segment-judging" style="width: ${judgingPct}%; border-radius: 0;">
                                     ${showJudgingIcon ? `<i class="fas fa-gavel"></i>` : ''}
                                 </div>
-                                ${qScore ? `<div style="${badgeStyle}" class="segment-badge">${qScore}</div>` : ''}
-                            </div>`;
-                        } else {
-                            // Standard single block
-                            return `${separator}
-                            <div class="timeline-segment-group" style="width: ${totalWidthPx}px; animation-delay: ${animationDelay}s;" onmouseenter="showTimelineTooltip(event, '${tooltipHtml}')">
-                                <div class="timeline-segment ${visual.class}" style="width: 100%;">
-                                    ${totalWidthPx > 20 ? `<i class="fas ${visual.icon}"></i>` : ''}
-                                    ${qScore ? `<div style="${badgeStyle}" class="segment-badge">${qScore}</div>` : ''}
-                                    ${level ? `<span class="segment-badge" style="margin-right:2px">${level}</span>` : ''}
-                                </div>
                             </div>`;
                         }
+                        // Standard single block
+                        return `
+                            <div class="timeline-segment-group" style="width: ${totalWidthPx}px; animation-delay: ${animationDelay}s;" onmouseenter="showTimelineTooltip(event, '${tooltipEncoded}')">
+                                <div class="timeline-segment ${visual.class}" style="width: 100%;">
+                                    ${totalWidthPx > 20 ? `<i class="fas ${visual.icon}"></i>` : ''}
+                                </div>
+                            </div>`;
                     }).join('');
 
                     // Check for Active State - IMPROVED LOGIC
@@ -5105,13 +5492,42 @@
             }
         }
 
-        // Event listener for timeline limit selector
+        // Event listener for timeline controls
+        const timelineModeSelect = document.getElementById('timelineMode');
+        const timelineZoomSelect = document.getElementById('timelineZoom');
         const timelineLimitSelect = document.getElementById('timelineLimit');
+        const updateTimelineControls = () => {
+            const mode = getTimelineMode();
+            if (timelineLimitSelect) {
+                timelineLimitSelect.style.display = mode === 'events' ? 'none' : '';
+            }
+            if (timelineZoomSelect) {
+                timelineZoomSelect.style.display = mode === 'events' ? '' : 'none';
+            }
+        };
+
+        if (timelineModeSelect) {
+            timelineModeSelect.addEventListener('change', () => {
+                updateTimelineControls();
+                const limit = timelineLimitSelect ? parseInt(timelineLimitSelect.value) : 100;
+                loadRecentTestsTimeline(limit);
+            });
+        }
+
+        if (timelineZoomSelect) {
+            timelineZoomSelect.addEventListener('change', () => {
+                const limit = timelineLimitSelect ? parseInt(timelineLimitSelect.value) : 100;
+                loadRecentTestsTimeline(limit);
+            });
+        }
+
         if (timelineLimitSelect) {
             timelineLimitSelect.addEventListener('change', (e) => {
                 loadRecentTestsTimeline(parseInt(e.target.value));
             });
         }
+
+        updateTimelineControls();
 
         // Load timeline on page load
         loadRecentTestsTimeline(100);

@@ -506,4 +506,9 @@ app.use((req, res) => {
   }
 });
 
-module.exports = { app, systemHealth, systemEvents };
+module.exports = { app, systemHealth, systemEvents, setRagWatcherInstance: (watcher) => {
+  // This will be called from server.js to set the watcher instance
+  console.log('setRagWatcherInstance called from app.js, watcher:', !!watcher, 'app.locals exists:', !!app.locals);
+  app.locals.ragWatcherInstance = watcher;
+  console.log('app.locals.ragWatcherInstance set to:', !!app.locals.ragWatcherInstance);
+} };

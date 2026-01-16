@@ -48,6 +48,12 @@ const WorkspaceManager = {
         credentials: 'include'
       });
 
+      if (response.status === 401 || response.status === 403) {
+        this.workspaces = [];
+        this.currentWorkspace = null;
+        localStorage.removeItem(this.STORAGE_KEY);
+        return;
+      }
       if (!response.ok) {
         console.error('[Workspace] Failed to load workspaces:', response.statusText);
         return;
