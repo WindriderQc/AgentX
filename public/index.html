@@ -286,8 +286,8 @@
       <div class="sidebar-head">
         <h2>History</h2>
         <div class="sidebar-actions">
-          <button id="newChatBtn" class="icon-btn" title="New Chat">+</button>
-          <button id="closeHistoryBtn" class="icon-btn" title="Hide history">×</button>
+          <button id="newChatBtn" class="icon-btn" title="New Chat" aria-label="Start new chat">+</button>
+          <button id="closeHistoryBtn" class="icon-btn" title="Hide history" aria-label="Hide conversation history">×</button>
         </div>
       </div>
 
@@ -295,12 +295,12 @@
       <div class="search-bar-container">
         <div class="search-input-wrapper">
           <i class="fas fa-search search-icon"></i>
-          <input type="text" id="conversationSearchInput" class="search-input" placeholder="Search conversations..." autocomplete="off">
-          <button id="clearSearchBtn" class="clear-search-btn" title="Clear search" style="display: none;">
+          <input type="text" id="conversationSearchInput" class="search-input" placeholder="Search conversations..." autocomplete="off" aria-label="Search conversations">
+          <button id="clearSearchBtn" class="clear-search-btn" title="Clear search" aria-label="Clear search" style="display: none;">
             <i class="fas fa-times"></i>
           </button>
         </div>
-        <button id="toggleFiltersBtn" class="icon-btn filter-btn" title="Show filters">
+        <button id="toggleFiltersBtn" class="icon-btn filter-btn" title="Show filters" aria-label="Toggle history filters">
           <i class="fas fa-filter"></i>
         </button>
       </div>
@@ -566,7 +566,7 @@
               <h3 id="activeAgentName">Agent Name</h3>
               <p id="activeAgentRole">General Assistant</p>
             </div>
-            <button class="icon-btn small" id="changeAgentBtn" title="Change Agent"><i class="fas fa-exchange-alt"></i></button>
+            <button class="icon-btn small" id="changeAgentBtn" title="Change Agent" aria-label="Change active agent"><i class="fas fa-exchange-alt"></i></button>
           </div>
           <div class="agent-capabilities-list">
              <div class="capability-tag" id="activeAgentModel"><i class="fas fa-microchip"></i> <span>Model</span></div>
@@ -594,7 +594,7 @@
             <select id="modelSelect" style="flex: 1;">
               <option value="">Load available models…</option>
             </select>
-            <button class="icon-btn" id="refreshModels" title="Refresh models from Ollama">↻</button>
+            <button class="icon-btn" id="refreshModels" title="Refresh models from Ollama" aria-label="Refresh available models">↻</button>
           </div>
           <div class="hint">Models are pulled from the selected Ollama host.</div>
         </div>
@@ -605,7 +605,7 @@
             <select id="promptSelect" style="flex: 1;">
               <option value="default_chat">Loading prompts…</option>
             </select>
-            <button class="icon-btn" id="promptInfoBtn" title="View prompt details">ⓘ</button>
+            <button class="icon-btn" id="promptInfoBtn" title="View prompt details" aria-label="View prompt details">ⓘ</button>
           </div>
           <div class="hint">Choose which system prompt to use for AI behavior.</div>
         </div>
