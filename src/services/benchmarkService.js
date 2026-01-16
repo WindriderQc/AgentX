@@ -1315,19 +1315,21 @@ class BenchmarkService {
      * Stop a running batch
      */
     async stopBatch(batchId) {
-        const batch = await BenchmarkBatch.findOne({
-            _id: batchId,
-            status: { $in: ['running', 'judging'] }
-        });
+        const batch = await BenchmarkBatch.findById(batchId);
 
         if (!batch) {
-            throw new Error('Batch not found or not running');
+            throw new Error('Batch not found');
+        }
+
+        const stoppableStatuses = new Set(['pending', 'running', 'judging']);
+        if (!stoppableStatuses.has(batch.status)) {
+            return { batch, alreadyStopped: true };
         }
 
         await batch.markAsStopped();
         logger.info('Batch stopped by user', { batchId });
 
-        return batch;
+        return { batch, alreadyStopped: false };
     }
 
     /**

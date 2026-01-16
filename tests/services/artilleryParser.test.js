@@ -56,7 +56,7 @@ describe('Artillery Parser Service', () => {
       expect(result).toHaveProperty('summary');
       expect(result).toHaveProperty('latency');
       expect(result).toHaveProperty('codes');
-      expect(result).toHaveProperty('errors');
+      expect(result).toHaveProperty('error_counts');
       expect(result).toHaveProperty('config');
     });
 
@@ -403,10 +403,10 @@ describe('Artillery Parser Service', () => {
 
       const result = artilleryParser.parseArtilleryReport(multiErrorReport);
 
-      expect(result.errors.total).toBe(25);
-      expect(result.errors.ECONNREFUSED).toBe(10);
-      expect(result.errors.ETIMEDOUT).toBe(8);
-      expect(result.errors.ENOTFOUND).toBe(7);
+      expect(result.error_counts.total).toBe(25);
+      expect(result.error_counts.ECONNREFUSED).toBe(10);
+      expect(result.error_counts.ETIMEDOUT).toBe(8);
+      expect(result.error_counts.ENOTFOUND).toBe(7);
     });
   });
 

@@ -90,12 +90,12 @@ const PerformanceLoadTestSchema = new mongoose.Schema({
     }
   },
 
-  // HTTP status codes and errors
+  // HTTP status codes and error counts
   codes: {
     type: mongoose.Schema.Types.Mixed,
     description: 'HTTP status code distribution (e.g., {"200": 1234, "500": 5})'
   },
-  errors: {
+  error_counts: {
     type: mongoose.Schema.Types.Mixed,
     description: 'Error type counts and descriptions'
   },

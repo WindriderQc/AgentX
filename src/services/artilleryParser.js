@@ -41,9 +41,9 @@ function parseArtilleryReport(rawReport) {
   // Extract latency metrics
   const latency = extractLatency(aggregate);
 
-  // Extract HTTP codes and errors
+  // Extract HTTP codes and error counts
   const codes = extractCodes(aggregate);
-  const errors = extractErrors(aggregate);
+  const errorCounts = extractErrors(aggregate);
 
   // Extract configuration if available
   const config = extractConfig(rawReport);
@@ -58,7 +58,7 @@ function parseArtilleryReport(rawReport) {
     summary,
     latency,
     codes,
-    errors,
+    error_counts: errorCounts,
     config
   };
 }
@@ -145,7 +145,7 @@ function extractCodes(aggregate) {
 }
 
 /**
- * Extract error information
+ * Extract error counts
  *
  * @param {Object} aggregate - Artillery aggregate object
  * @returns {Object} Error counts and descriptions
@@ -276,7 +276,8 @@ function extractScenarioMetrics(rawReport) {
  * @returns {String} Formatted summary text
  */
 function generateSummary(parsedMetrics) {
-  const { summary, latency, codes, errors } = parsedMetrics;
+  const errorCounts = parsedMetrics.error_counts || parsedMetrics.errors || {};
+  const { summary, latency, codes } = parsedMetrics;
 
   const lines = [
     `Test Duration: ${summary.duration}s`,
@@ -292,7 +293,7 @@ function generateSummary(parsedMetrics) {
     `  Max: ${latency.max}ms`,
     '',
     `HTTP Status Codes: ${Object.keys(codes).length > 0 ? JSON.stringify(codes) : 'None'}`,
-    `Total Errors: ${errors.total || 0}`
+    `Total Errors: ${errorCounts.total || 0}`
   ];
 
   return lines.join('\n');

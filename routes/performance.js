@@ -526,7 +526,7 @@ router.post('/load-tests', async (req, res) => {
       summary: parsed.summary,
       latency: parsed.latency,
       codes: parsed.codes,
-      errors: parsed.errors,
+      error_counts: parsed.error_counts,
       raw_report,
       timestamp: timestamp ? new Date(timestamp) : new Date()
     });

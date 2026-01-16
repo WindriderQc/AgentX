@@ -311,9 +311,17 @@ router.post('/batch', optionalWorkspaceContext, async (req, res) => {
  */
 router.post('/batch/:id/stop', async (req, res) => {
     try {
-        await benchmarkService.stopBatch(req.params.id);
+        const { batch, alreadyStopped } = await benchmarkService.stopBatch(req.params.id);
 
-        res.json({ status: 'success', message: 'Batch stopped' });
+        res.json({
+            status: 'success',
+            message: alreadyStopped ? `Batch already ${batch.status}` : 'Batch stopped',
+            data: {
+                batch_id: batch._id,
+                status: batch.status,
+                already_stopped: alreadyStopped
+            }
+        });
     } catch (err) {
         logger.error('Failed to stop batch', { error: err.message });
 
