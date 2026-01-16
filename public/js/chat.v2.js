@@ -219,7 +219,8 @@ document.addEventListener('DOMContentLoaded', () => {
     agent: null, // V7: Selected Agent Object
     showStats: true, // V4: Toggle message stats
     eventSource: null,
-    streamAbortController: null
+    streamAbortController: null,
+    config: null // Server configuration
   };
 
   const streamParams = new URLSearchParams(window.location.search);
@@ -1829,7 +1830,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize context limit display
     const tokenLimit = document.getElementById('tokenLimit');
     if (tokenLimit) {
-      tokenLimit.textContent = (config.options.num_ctx || 4096).toLocaleString();
+      tokenLimit.textContent = (state.config?.options?.num_ctx || 4096).toLocaleString();
     }
 
     // Load history and open latest conversation if available
@@ -1857,7 +1858,8 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Load server config first, then initialize
-  loadServerConfig().then(() => {
+  loadServerConfig().then((config) => {
+    state.config = config;
     init();
   }).catch(err => {
     console.warn('Server config load failed, using defaults:', err);
@@ -1885,7 +1887,7 @@ function updateConversationStats(conversation) {
       const contextProgressFill = document.getElementById('contextProgressFill');
 
       const currentTokens = conversation.usage.totalTokens || 0;
-      const maxTokens = config.options.num_ctx || 4096;
+      const maxTokens = state.config?.options?.num_ctx || 4096;
       const percentage = Math.min(100, Math.round((currentTokens / maxTokens) * 100));
 
       if (tokenCount) tokenCount.textContent = currentTokens.toLocaleString();
@@ -2083,6 +2085,13 @@ async function refreshStats(conversationId) {
           role: 'system',
           content: `Activated agent **${agent.displayName}**. ${agent.description ? agent.description.slice(0, 100) : ''}...`
       });
+
+      const pendingMessage = elements.messageInput?.value.trim();
+      if (pendingMessage) {
+          sendMessage();
+      } else if (elements.messageInput) {
+          elements.messageInput.focus();
+      }
   }
 
   function updateAgentPanel(agent) {

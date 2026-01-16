@@ -1,0 +1,365 @@
+/**
+ * Category Badge Component Styles
+ * Shared across Model Categorization and Benchmark pages
+ * 11-category unified system (6 AI + 5 manual + 1 fallback)
+ */
+
+/* ============================================
+   CATEGORY COLOR DEFINITIONS (11 CATEGORIES)
+   ============================================ */
+
+/* AI Benchmark Categories (6) */
+.category-coding {
+    --badge-color: #7c9fff;
+    --badge-color-rgb: 124, 159, 255;
+}
+
+.category-reasoning {
+    --badge-color: #a78bfa;
+    --badge-color-rgb: 167, 139, 250;
+}
+
+.category-factual {
+    --badge-color: #34d399;
+    --badge-color-rgb: 52, 211, 153;
+}
+
+.category-math {
+    --badge-color: #fbbf24;
+    --badge-color-rgb: 251, 191, 36;
+}
+
+.category-creative {
+    --badge-color: #f87171;
+    --badge-color-rgb: 248, 113, 113;
+}
+
+/* Manual Assignment Categories (5) */
+.category-generalist {
+    --badge-color: #94a3b8;
+    --badge-color-rgb: 148, 163, 184;
+}
+
+.category-specialist {
+    --badge-color: #ec4899;
+    --badge-color-rgb: 236, 72, 153;
+}
+
+.category-ops {
+    --badge-color: #10b981;
+    --badge-color-rgb: 16, 185, 129;
+}
+
+.category-embedding {
+    --badge-color: #8b5cf6;
+    --badge-color-rgb: 139, 92, 246;
+}
+
+.category-judge {
+    --badge-color: #f59e0b;
+    --badge-color-rgb: 245, 158, 11;
+}
+
+/* Fallback */
+.category-general {
+    --badge-color: #64748b;
+    --badge-color-rgb: 100, 116, 139;
+}
+
+/* ============================================
+   BADGE BASE STYLES
+   ============================================ */
+
+.category-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    background: linear-gradient(135deg,
+        rgba(var(--badge-color-rgb), 0.15) 0%,
+        rgba(var(--badge-color-rgb), 0.05) 100%);
+    border: 1px solid rgba(var(--badge-color-rgb), 0.3);
+    color: var(--badge-color);
+    font-size: 0.85em;
+    font-weight: 600;
+    position: relative;
+    transition: all 0.2s ease;
+    cursor: default;
+}
+
+.category-badge:hover {
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(var(--badge-color-rgb), 0.3);
+}
+
+.category-badge-icon {
+    font-size: 1.1em;
+}
+
+.category-badge-label {
+    text-transform: capitalize;
+}
+
+/* ============================================
+   SIZE VARIANTS
+   ============================================ */
+
+.category-badge.size-small {
+    padding: 4px 8px;
+    font-size: 0.75em;
+    gap: 4px;
+}
+
+.category-badge.size-medium {
+    padding: 6px 12px;
+    font-size: 0.85em;
+    gap: 6px;
+}
+
+.category-badge.size-large {
+    padding: 8px 16px;
+    font-size: 0.95em;
+    gap: 8px;
+}
+
+/* ============================================
+   CONFIDENCE LEVELS
+   ============================================ */
+
+.category-badge.confidence-high::before {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border-radius: 8px;
+    border: 2px solid var(--badge-color);
+    opacity: 0.5;
+    animation: confidenceRing 2s infinite;
+}
+
+.category-badge.confidence-medium::before {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border-radius: 8px;
+    border: 2px dashed var(--badge-color);
+    opacity: 0.3;
+}
+
+.category-badge.confidence-low {
+    opacity: 0.7;
+    border-style: dashed;
+}
+
+.category-badge.confidence-very-low {
+    opacity: 0.5;
+    border-style: dotted;
+}
+
+/* ============================================
+   TOOLTIP STYLES
+   ============================================ */
+
+.category-badge-wrapper {
+    position: relative;
+    display: inline-block;
+}
+
+.category-tooltip {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.95);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(var(--badge-color-rgb), 0.4);
+    border-radius: 8px;
+    padding: 12px 16px;
+    min-width: 200px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    z-index: 1000;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+}
+
+.category-badge-wrapper:hover .category-tooltip {
+    opacity: 1;
+    transform: translateX(-50%) translateY(-4px);
+}
+
+.category-tooltip::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: rgba(0, 0, 0, 0.95);
+}
+
+.tooltip-score {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+}
+
+.tooltip-score-label {
+    color: #94a3b8;
+    font-size: 0.85em;
+}
+
+.tooltip-score-value {
+    color: var(--badge-color);
+    font-weight: 700;
+    font-size: 1.1em;
+}
+
+.tooltip-confidence {
+    color: #64748b;
+    font-size: 0.8em;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* ============================================
+   CONFIDENCE RING ANIMATION
+   ============================================ */
+
+@keyframes confidenceRing {
+    0% {
+        opacity: 0.5;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.8;
+        transform: scale(1.05);
+    }
+    100% {
+        opacity: 0.5;
+        transform: scale(1);
+    }
+}
+
+/* ============================================
+   BADGE ENTER ANIMATION
+   ============================================ */
+
+@keyframes badgeEnter {
+    from {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.category-badge {
+    animation: badgeEnter 0.3s ease;
+}
+
+/* ============================================
+   SIMPLE BADGE VARIANT (NO TOOLTIPS)
+   ============================================ */
+
+.category-badge-simple {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    background: rgba(var(--badge-color-rgb), 0.2);
+    color: var(--badge-color);
+    font-size: 0.75em;
+    font-weight: 600;
+    border: 1px solid rgba(var(--badge-color-rgb), 0.4);
+}
+
+/* ============================================
+   MOBILE RESPONSIVE STYLES
+   ============================================ */
+
+@media (max-width: 767px) {
+    .category-badge {
+        font-size: 0.8em;
+        padding: 5px 10px;
+    }
+
+    .category-badge.size-small {
+        padding: 3px 6px;
+        font-size: 0.7em;
+    }
+
+    .category-badge.size-large {
+        padding: 6px 12px;
+        font-size: 0.85em;
+    }
+
+    /* Disable tooltips on touch devices */
+    .category-tooltip {
+        display: none !important;
+    }
+}
+
+/* Touch device optimization */
+@media (hover: none) and (pointer: coarse) {
+    .category-badge:hover {
+        transform: none;
+    }
+
+    .category-badge:active {
+        transform: scale(0.95);
+    }
+
+    .category-tooltip {
+        display: none !important;
+    }
+}
+
+/* ============================================
+   ULTRA-WIDE RESPONSIVE STYLES
+   ============================================ */
+
+@media (min-width: 1920px) {
+    .category-badge {
+        font-size: 0.9em;
+        padding: 7px 14px;
+        gap: 7px;
+    }
+
+    .category-badge.size-small {
+        padding: 5px 10px;
+        font-size: 0.8em;
+    }
+
+    .category-badge.size-large {
+        padding: 10px 18px;
+        font-size: 1em;
+    }
+
+    .category-tooltip {
+        min-width: 240px;
+        padding: 14px 18px;
+    }
+}
+
+/* ============================================
+   PRINT STYLES
+   ============================================ */
+
+@media print {
+    .category-badge {
+        background: white !important;
+        border: 1px solid #000 !important;
+        color: #000 !important;
+        box-shadow: none !important;
+    }
+
+    .category-tooltip {
+        display: none !important;
+    }
+}

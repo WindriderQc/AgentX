@@ -2192,6 +2192,157 @@ const BenchmarkAnalytics = (() => {
         }
     }
 
+    // ===============================================
+    // RESPONSIVE HELPERS
+    // ===============================================
+
+    function setupResponsiveHelpers() {
+        // Detect screen types
+        const isMobile = window.matchMedia('(max-width: 767px)').matches;
+        const isTouch = 'ontouchstart' in window;
+        const isUltraWide = window.matchMedia('(min-width: 1920px)').matches;
+
+        // Add device classes to body
+        if (isMobile || isTouch) {
+            document.body.classList.add('is-mobile');
+        }
+        if (isUltraWide) {
+            document.body.classList.add('is-ultra-wide');
+        }
+
+        // Mobile-specific enhancements
+        if (isMobile) {
+            // Add swipe hints for scrollable tables
+            const tables = document.querySelectorAll('.comparison-table');
+            tables.forEach(table => {
+                if (table.scrollWidth > table.clientWidth) {
+                    const hint = document.createElement('div');
+                    hint.className = 'mobile-scroll-hint';
+                    hint.innerHTML = '<i class="fa-solid fa-chevron-right"></i> Swipe to see more';
+                    hint.style.cssText = `
+                        position: sticky;
+                        left: 0;
+                        padding: 8px 12px;
+                        background: rgba(124, 240, 255, 0.1);
+                        border: 1px solid rgba(124, 240, 255, 0.3);
+                        border-radius: 6px;
+                        font-size: 0.8rem;
+                        color: var(--accent);
+                        margin: 10px 0;
+                        display: flex;
+                        align-items: center;
+                        gap: 6px;
+                        animation: pulse 2s infinite;
+                    `;
+
+                    table.parentElement.insertBefore(hint, table);
+
+                    // Hide hint after first scroll
+                    table.addEventListener('scroll', () => {
+                        hint.style.display = 'none';
+                    }, { once: true });
+                }
+            });
+
+            // Pull-to-refresh gesture
+            let touchStartY = 0;
+            document.addEventListener('touchstart', (e) => {
+                touchStartY = e.touches[0].clientY;
+            });
+
+            document.addEventListener('touchmove', (e) => {
+                const touchY = e.touches[0].clientY;
+                const touchDiff = touchY - touchStartY;
+
+                // If pulling down at top of page
+                if (window.scrollY === 0 && touchDiff > 100) {
+                    const hint = document.getElementById('pull-refresh-hint');
+                    if (!hint) {
+                        const refreshHint = document.createElement('div');
+                        refreshHint.id = 'pull-refresh-hint';
+                        refreshHint.innerHTML = '<i class="fa-solid fa-arrow-down"></i> Release to refresh';
+                        refreshHint.style.cssText = `
+                            position: fixed;
+                            top: 20px;
+                            left: 50%;
+                            transform: translateX(-50%);
+                            padding: 10px 20px;
+                            background: var(--accent);
+                            color: #000;
+                            border-radius: 20px;
+                            font-size: 0.9rem;
+                            font-weight: 600;
+                            z-index: 9999;
+                            animation: bounceIn 0.3s ease;
+                        `;
+                        document.body.appendChild(refreshHint);
+                    }
+                }
+            });
+
+            document.addEventListener('touchend', () => {
+                const hint = document.getElementById('pull-refresh-hint');
+                if (hint) {
+                    hint.remove();
+                    window.location.reload();
+                }
+            });
+        }
+
+        // Viewport height fix for mobile browsers
+        const setVH = () => {
+            const vh = window.innerHeight * 0.01;
+            document.documentElement.style.setProperty('--vh', `${vh}px`);
+        };
+
+        setVH();
+        window.addEventListener('resize', setVH);
+        window.addEventListener('orientationchange', setVH);
+
+        // Prevent double-tap zoom on touch devices
+        if (isTouch) {
+            document.querySelectorAll('.btn, .preset-card, .tag-chip').forEach(el => {
+                el.addEventListener('touchend', (e) => {
+                    e.preventDefault();
+                    el.click();
+                }, { passive: false });
+            });
+        }
+
+        // Ultra-wide screen optimizations
+        if (isUltraWide) {
+            // Add expand button for comparison table
+            const comparisonTables = document.querySelectorAll('.comparison-table');
+            comparisonTables.forEach(table => {
+                const container = table.closest('.comparison-section');
+                if (container && !container.querySelector('.expand-table-btn')) {
+                    const expandBtn = document.createElement('button');
+                    expandBtn.className = 'btn btn-sm expand-table-btn';
+                    expandBtn.innerHTML = '<i class="fa-solid fa-expand"></i> Expand';
+                    expandBtn.style.cssText = 'position: absolute; top: 10px; right: 10px; z-index: 10;';
+
+                    expandBtn.addEventListener('click', () => {
+                        container.classList.toggle('expanded');
+                        if (container.classList.contains('expanded')) {
+                            container.style.maxWidth = '100%';
+                            expandBtn.innerHTML = '<i class="fa-solid fa-compress"></i> Compress';
+                        } else {
+                            container.style.maxWidth = '';
+                            expandBtn.innerHTML = '<i class="fa-solid fa-expand"></i> Expand';
+                        }
+                    });
+
+                    container.style.position = 'relative';
+                    container.appendChild(expandBtn);
+                }
+            });
+        }
+
+        console.log('🎸 Benchmark responsive helpers loaded!');
+        console.log(`📱 Screen: ${window.innerWidth}x${window.innerHeight}`);
+        console.log(`📱 Mobile: ${isMobile}, Touch: ${isTouch}, Ultra-Wide: ${isUltraWide}`);
+    }
+
     // Public API
     return {
         init,
@@ -2208,7 +2359,8 @@ const BenchmarkAnalytics = (() => {
         filterByTag,
         getActiveFilters,
         clearAllFilters,
-        showToast
+        showToast,
+        setupResponsiveHelpers
     };
 })();
 
@@ -2217,7 +2369,11 @@ window.BenchmarkAnalytics = BenchmarkAnalytics;
 
 // Auto-initialize when DOM is ready
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => BenchmarkAnalytics.init());
+    document.addEventListener('DOMContentLoaded', () => {
+        BenchmarkAnalytics.init();
+        BenchmarkAnalytics.setupResponsiveHelpers();
+    });
 } else {
     BenchmarkAnalytics.init();
+    BenchmarkAnalytics.setupResponsiveHelpers();
 }

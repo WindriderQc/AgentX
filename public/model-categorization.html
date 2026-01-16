@@ -9,6 +9,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/css/components/category-badge.css">
     <link rel="stylesheet" href="/css/model-categorization.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
@@ -177,12 +178,15 @@
 
     <!-- Scripts -->
     <script src="/js/components/CategoryBadge.js"></script>
+    <script src="/js/components/ExecutionTimeline.js"></script>
     <script src="/js/components/nav.js"></script>
+    <script src="/js/workspace.js"></script>
     <script>
-        // Inject navigation 
+        // Inject navigation
         // Note: Using 'models' as active page since it's related
         if (typeof injectNav === 'function') injectNav('models');
     </script>
     <script src="/js/model-categorization.js"></script>
+    <script src="/js/model-categorization-enhancements.js"></script>
 </body>
 </html>

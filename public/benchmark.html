@@ -40,6 +40,11 @@
             position: relative;
             overflow: hidden;
         }
+        .timeline-model-row.judge-lane {
+            background: linear-gradient(90deg, rgba(168, 85, 247, 0.12) 0%, rgba(255,255,255,0.02) 100%);
+            border: 1px dashed rgba(168, 85, 247, 0.4);
+            box-shadow: inset 0 0 0 1px rgba(168, 85, 247, 0.15);
+        }
 
         .timeline-model-row::before {
             content: '';
@@ -73,6 +78,16 @@
             align-items: center;
             gap: 10px;
             padding-left: 8px;
+        }
+        .judge-lane-badge {
+            font-size: 0.7em;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #c084fc;
+            border: 1px solid rgba(168, 85, 247, 0.45);
+            padding: 2px 6px;
+            border-radius: 999px;
+            background: rgba(168, 85, 247, 0.18);
         }
 
         .timeline-model-label i {
@@ -205,6 +220,32 @@
             transform: translateY(-1px);
         }
 
+        .segment-warmup {
+            background: linear-gradient(135deg, rgba(100, 116, 139, 0.9) 0%, rgba(148, 163, 184, 0.9) 100%);
+            color: #0b1220;
+            border: 1px solid rgba(148, 163, 184, 0.45);
+            box-shadow: 0 2px 8px rgba(148, 163, 184, 0.3);
+            transition: all 0.3s ease;
+        }
+
+        .segment-warmup:hover {
+            box-shadow: 0 4px 16px rgba(148, 163, 184, 0.5);
+            transform: translateY(-1px);
+        }
+
+        .segment-warmup-judge {
+            background: linear-gradient(135deg, rgba(124, 58, 237, 0.9) 0%, rgba(192, 132, 252, 0.9) 100%);
+            color: white;
+            border: 1px dashed rgba(192, 132, 252, 0.75);
+            box-shadow: 0 2px 8px rgba(124, 58, 237, 0.35);
+            transition: all 0.3s ease;
+        }
+
+        .segment-warmup-judge:hover {
+            box-shadow: 0 4px 16px rgba(124, 58, 237, 0.55);
+            transform: translateY(-1px);
+        }
+
         .segment-running {
             background: linear-gradient(135deg, var(--theme-mid-from) 0%, var(--theme-mid-to) 100%);
             color: #1a1a1a;
@@ -223,21 +264,52 @@
             }
         }
 
+        /* Level-Based Timeline Segments (for successful tests) */
+        .segment-level-1 {
+            background: linear-gradient(135deg, #dc2626 0%, #f87171 100%) !important;
+            color: white;
+            box-shadow: 0 2px 8px rgba(220, 38, 38, 0.4);
+        }
+
+        .segment-level-2 {
+            background: linear-gradient(135deg, var(--theme-high-from) 0%, var(--theme-high-to) 100%) !important;
+            color: #0b1220;
+            box-shadow: 0 2px 8px var(--theme-high-glow);
+        }
+
+        .segment-level-3 {
+            background: linear-gradient(135deg, var(--theme-mid-from) 0%, var(--theme-mid-to) 100%) !important;
+            color: #0b1220;
+            box-shadow: 0 2px 8px var(--theme-mid-glow);
+        }
+
+        .segment-level-4 {
+            background: linear-gradient(135deg, var(--theme-veryhigh-from) 0%, var(--theme-veryhigh-to) 100%) !important;
+            color: #0b1220;
+            box-shadow: 0 2px 8px var(--theme-veryhigh-glow);
+        }
+
+        .segment-level-5 {
+            background: linear-gradient(135deg, var(--theme-ultra-from) 0%, var(--theme-ultra-to) 100%) !important;
+            color: #0b1220;
+            box-shadow: 0 2px 8px var(--theme-ultra-glow);
+        }
+
         /* Custom Tooltip */
         .custom-tooltip {
             position: fixed;
-            background: #14171e;
-            border: 1px solid rgba(255,255,255,0.1);
-            border-radius: 8px;
-            padding: 12px;
-            color: #eee;
+            background: radial-gradient(120% 140% at 0% 0%, rgba(26, 30, 42, 0.98), rgba(12, 14, 20, 0.98));
+            border: 1px solid rgba(124, 240, 255, 0.18);
+            border-radius: 14px;
+            padding: 14px 16px;
+            color: #e9f1ff;
             font-size: 0.85em;
-            line-height: 1.5;
+            line-height: 1.55;
             z-index: 9999;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            box-shadow: 0 18px 45px rgba(0,0,0,0.65), 0 0 0 1px rgba(124, 240, 255, 0.08);
             pointer-events: none;
-            max-width: 300px;
-            backdrop-filter: blur(10px);
+            max-width: 360px;
+            backdrop-filter: blur(14px);
         }
         .custom-tooltip h4 {
             margin: 0 0 8px;
@@ -254,6 +326,133 @@
         .custom-tooltip .label {
             color: var(--muted);
             margin-right: 12px;
+        }
+
+        .custom-tooltip .timeline-tooltip-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+            padding-bottom: 8px;
+            margin-bottom: 10px;
+            border-bottom: 1px solid rgba(124, 240, 255, 0.12);
+        }
+
+        .custom-tooltip .timeline-tooltip-title {
+            font-size: 1.02em;
+            font-weight: 600;
+            color: #eef5ff;
+        }
+
+        .custom-tooltip .timeline-tooltip-meta {
+            font-size: 0.76em;
+            color: rgba(255,255,255,0.5);
+        }
+
+        .custom-tooltip .timeline-tooltip-badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            justify-content: flex-end;
+        }
+
+        .custom-tooltip .timeline-tooltip-level,
+        .custom-tooltip .timeline-tooltip-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 3px 8px;
+            border-radius: 999px;
+            font-size: 0.72em;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+            background: rgba(10, 12, 18, 0.55);
+            border: 1px solid rgba(255,255,255,0.12);
+            color: rgba(233, 241, 255, 0.85);
+        }
+
+        .custom-tooltip .timeline-tooltip-level {
+            color: var(--level-color);
+            border-color: var(--level-color);
+        }
+
+        .custom-tooltip .timeline-tooltip-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--level-color);
+            box-shadow: 0 0 10px var(--level-color);
+            flex-shrink: 0;
+        }
+
+        .custom-tooltip .timeline-tooltip-status.success {
+            color: #34d399;
+            border-color: rgba(52, 211, 153, 0.5);
+        }
+
+        .custom-tooltip .timeline-tooltip-status.fail {
+            color: #f87171;
+            border-color: rgba(248, 113, 113, 0.5);
+        }
+
+        .custom-tooltip .timeline-tooltip-grid {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 6px 14px;
+            margin-bottom: 10px;
+        }
+
+        .custom-tooltip .timeline-tooltip-label {
+            color: rgba(255,255,255,0.5);
+            font-size: 0.75em;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
+        .custom-tooltip .timeline-tooltip-value {
+            font-weight: 600;
+            color: #e8eefc;
+        }
+
+        .custom-tooltip .timeline-tooltip-value.is-success {
+            color: #2ecc71;
+        }
+
+        .custom-tooltip .timeline-tooltip-value.is-fail {
+            color: #e74c3c;
+        }
+
+        .custom-tooltip .timeline-tooltip-value.is-judge {
+            color: #c084fc;
+        }
+
+        .custom-tooltip .timeline-tooltip-strong {
+            font-weight: 700;
+        }
+
+        .custom-tooltip .timeline-tooltip-strong.is-quality {
+            color: #fbbf24;
+        }
+
+        .custom-tooltip .timeline-tooltip-indicator {
+            font-size: 0.82em;
+            margin-left: 6px;
+        }
+
+        .custom-tooltip .timeline-tooltip-quote {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid rgba(255,255,255,0.08);
+            color: rgba(255,255,255,0.72);
+            font-style: italic;
+            font-size: 0.8em;
+            line-height: 1.5;
+        }
+
+        .custom-tooltip .timeline-tooltip-quote i {
+            font-size: 0.7em;
+            opacity: 0.5;
+            margin: 0 4px;
         }
         .segment-queued {
             background: rgba(255,255,255,0.1);
@@ -1646,6 +1845,166 @@
                 text-align: left;
                 min-width: 0;
             }
+        }
+
+        /* ============================================
+           COMPREHENSIVE RESPONSIVE DESIGN
+           Mobile-first approach (320px → 1920px+)
+           Priority: Mobile & Ultra-Wide
+           ============================================ */
+
+        /* Extra Small Mobile (< 360px) */
+        @media (max-width: 359px) {
+            .benchmark-container { padding: 8px; }
+            .preset-card, .active-stats-widget { padding: 12px; }
+            .section-header h3 { font-size: 1.1em; }
+            .timeline-model-label { width: 100px; font-size: 0.8em; }
+        }
+
+        /* Mobile Portrait (320px - 567px) - PRIORITY */
+        @media (max-width: 567px) {
+            .benchmark-container { padding: 12px; }
+            
+            /* Touch-friendly */
+            button, .btn, .btn-preset { min-height: 44px; padding: 12px 16px; font-size: 16px !important; }
+            select, input[type="text"], input[type="number"] { font-size: 16px !important; }
+            
+            /* Grids */
+            .presets-grid { grid-template-columns: 1fr; gap: 16px; }
+            .active-batches-grid { grid-template-columns: 1fr; }
+            .comparison-stats { grid-template-columns: 1fr 1fr; gap: 10px; }
+            .comparison-selectors { grid-template-columns: 1fr; gap: 10px; }
+            
+            /* Cards */
+            .preset-card { padding: 16px; }
+            .preset-header { flex-direction: column; gap: 8px; align-items: flex-start; }
+            
+            /* Tables */
+            .comparison-table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+            .comparison-table table { min-width: 600px; }
+            
+            /* Charts */
+            .trends-chart-container { height: 250px; padding: 16px; }
+            
+            /* Timeline */
+            .timeline-model-row { flex-direction: column; align-items: flex-start; gap: 10px; padding: 12px; }
+            .timeline-model-label { width: 100%; font-size: 0.9em; }
+            
+            /* Sections */
+            .section-header { flex-direction: column; align-items: flex-start; gap: 12px; }
+            .section-header h3 { font-size: 1.2em; }
+            
+            /* Chips */
+            .compare-chip-list { flex-direction: column; align-items: flex-start; }
+            .compare-chip { width: 100%; justify-content: space-between; }
+        }
+
+        /* Mobile Landscape (568px - 767px) */
+        @media (min-width: 568px) and (max-width: 767px) {
+            .benchmark-container { padding: 16px; }
+            .presets-grid { grid-template-columns: 1fr; }
+            .active-batches-grid { grid-template-columns: repeat(2, 1fr); }
+            .comparison-stats { grid-template-columns: repeat(2, 1fr); }
+            .comparison-selectors { grid-template-columns: 1fr 1fr; }
+            .trends-chart-container { height: 300px; }
+            .timeline-model-row { flex-direction: row; }
+            .timeline-model-label { width: 140px; }
+        }
+
+        /* Tablet Portrait (768px - 1023px) */
+        @media (min-width: 768px) and (max-width: 1023px) {
+            .benchmark-container { max-width: 100%; padding: 20px; }
+            .presets-grid { grid-template-columns: repeat(2, 1fr); }
+            .active-batches-grid { grid-template-columns: repeat(2, 1fr); }
+            .comparison-stats { grid-template-columns: repeat(3, 1fr); }
+            .comparison-selectors { grid-template-columns: 1fr 1fr auto; }
+            .trends-chart-container { height: 350px; }
+        }
+
+        /* Laptop/Desktop (1024px - 1919px) */
+        @media (min-width: 1024px) and (max-width: 1919px) {
+            .benchmark-container { max-width: 1400px; padding: 20px; }
+            .presets-grid { grid-template-columns: repeat(3, 1fr); }
+            .active-batches-grid { grid-template-columns: repeat(3, 1fr); }
+            .comparison-stats { grid-template-columns: repeat(4, 1fr); }
+            .trends-chart-container { height: 400px; }
+        }
+
+        /* Ultra-Wide (1920px+) - PRIORITY */
+        @media (min-width: 1920px) {
+            .benchmark-container { max-width: 1800px; padding: 40px; }
+            .section-header h3 { font-size: 1.5em; }
+            .preset-header h4 { font-size: 1.25em; }
+            .presets-grid { grid-template-columns: repeat(4, 1fr); gap: 24px; }
+            .active-batches-grid { grid-template-columns: repeat(4, 1fr); gap: 20px; }
+            .comparison-stats { grid-template-columns: repeat(6, 1fr); gap: 20px; }
+            .trends-chart-container { height: 500px; padding: 32px; }
+            .preset-card, .active-stats-widget { padding: 32px; }
+            .comparison-table th, .comparison-table td { padding: 18px 20px; font-size: 1rem; }
+            .timeline-model-row { min-height: 64px; padding: 16px; }
+            .timeline-model-label { width: 200px; font-size: 1.05em; }
+        }
+
+        /* Touch Device Optimizations */
+        @media (hover: none) and (pointer: coarse) {
+            .preset-card:hover, .timeline-model-row:hover { transform: none; }
+            .preset-card:active { transform: scale(0.98); }
+            button:hover, .btn:hover { transform: none; }
+            button:active, .btn:active { transform: scale(0.95); }
+            .btn-preset, button { min-height: 44px; min-width: 44px; }
+        }
+        }
+        /* ============================================
+           COLLAPSIBLE SECTIONS
+           ============================================ */
+        
+        .section-header.collapsible {
+            cursor: pointer;
+            user-select: none;
+            transition: all 0.2s ease;
+        }
+        
+        .section-header.collapsible:hover {
+            opacity: 0.8;
+        }
+        
+        .section-header.collapsible h3::before {
+            content: '▼';
+            display: inline-block;
+            margin-right: 8px;
+            font-size: 0.7em;
+            transition: transform 0.3s ease;
+            color: var(--accent);
+        }
+        
+        .section-header.collapsible.collapsed h3::before {
+            transform: rotate(-90deg);
+        }
+        
+        .collapsible-content {
+            overflow: hidden;
+            transition: max-height 0.3s ease, opacity 0.3s ease;
+            max-height: 5000px;
+            opacity: 1;
+        }
+        
+        .collapsible-content.collapsed {
+            max-height: 0;
+            opacity: 0;
+            margin: 0 !important;
+        }
+        
+        .section-collapsed-hint {
+            color: var(--muted);
+            font-size: 0.85em;
+            margin-top: 8px;
+            font-style: italic;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+        }
+        
+        .section-header.collapsed + .section-collapsed-hint {
+            opacity: 1;
         }
     </style>
     <link rel="stylesheet" href="/css/benchmark-analytics.css">
@@ -3082,62 +3441,12 @@
         }
     </style>
 
-    <script>
-        const BENCHMARK_API = '/api/benchmark';
-        let latencyChart, tokensChart, qualityChart, compositeChart;
-        let ollamaHosts = [];
-        let currentSortBy = 'composite';
-        let currentJudgeConfig = {};
-        let lastDashboardOverview = null;
-        let lastRecentTests = [];
-        let showSuccessRateDetails = false;
+    <script src="benchmark-inline.js"></script>
 
-        // Helper: Get headers with workspace context
-        function getWorkspaceHeaders() {
-            const headers = { 'Content-Type': 'application/json' };
-            if (window.WorkspaceManager && typeof window.WorkspaceManager.addWorkspaceHeader === 'function') {
-                const workspaceHeaders = window.WorkspaceManager.addWorkspaceHeader({});
-                Object.assign(headers, workspaceHeaders);
-            }
-            return headers;
-        }
 
-        // Debug logging (opt-in via ?debug=1 or localStorage.benchmarkDebug=true)
-        const BENCHMARK_DEBUG = (
-            new URLSearchParams(window.location.search).get('debug') === '1' ||
-            localStorage.getItem('benchmarkDebug') === 'true'
-        );
-        const __debugLastLogAt = Object.create(null);
-        function debugLog(...args) {
-            if (BENCHMARK_DEBUG) console.log(...args);
-        }
-        function debugLogThrottled(key, intervalMs, ...args) {
-            if (!BENCHMARK_DEBUG) return;
-            const now = Date.now();
-            const last = __debugLastLogAt[key] || 0;
-            if (now - last < intervalMs) return;
-            __debugLastLogAt[key] = now;
-            console.log(...args);
-        }
 
-        function buildRecentTestsModelOptions(recentTests) {
-            const select = document.getElementById('recentTestsModelFilter');
-            if (!select) return;
 
-            const prevValue = select.value;
-            const models = new Set();
-            for (const t of (Array.isArray(recentTests) ? recentTests : [])) {
-                if (t && t.model) models.add(String(t.model));
-            }
-            const sorted = Array.from(models).sort((a, b) => a.localeCompare(b));
 
-            select.innerHTML = ['<option value="">All</option>']
-                .concat(sorted.map(m => `<option value="${String(m).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')}">${String(m).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')}</option>`))
-                .join('');
-
-            // Keep selection if still valid
-            if (prevValue && sorted.includes(prevValue)) select.value = prevValue;
-        }
 
         function getRecentTestsFilters() {
             const failuresOnlyEl = document.getElementById('recentTestsFailuresOnly');
@@ -3809,6 +4118,7 @@
 
             sortedCategories.forEach(cat => {
                 const isActive = activeCategory === cat;
+                const safeCat = escapeJsString(cat);
                 // Choose an icon based on category name
                 let icon = 'fa-tag';
                 const lowerCat = cat.toLowerCase();
@@ -3819,7 +4129,7 @@
                 else if (lowerCat.includes('general')) icon = 'fa-cubes';
 
                 html += `
-                    <button class="category-tab ${isActive ? 'active' : ''}" data-category="${cat}" onclick="switchCategoryTab('${cat}')" style="padding: 10px 20px; background: none; border: none; border-bottom: 3px solid ${isActive ? 'var(--accent)' : 'transparent'}; color: ${isActive ? 'var(--accent)' : 'var(--muted)'}; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: all 0.2s;">
+                    <button class="category-tab ${isActive ? 'active' : ''}" data-category="${cat}" onclick="switchCategoryTab('${safeCat}')" style="padding: 10px 20px; background: none; border: none; border-bottom: 3px solid ${isActive ? 'var(--accent)' : 'transparent'}; color: ${isActive ? 'var(--accent)' : 'var(--muted)'}; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: all 0.2s;">
                         <i class="fas ${icon}" style="margin-right: 6px;"></i> ${cat.charAt(0).toUpperCase() + cat.slice(1)}
                     </button>
                 `;
@@ -3926,6 +4236,7 @@
             if (host && host.models && host.models.length > 0) {
                 tbody.innerHTML = host.models.map(model => {
                     const safeId = model.replace(/[^a-zA-Z0-9]/g, '_');
+                    const safeModelJs = escapeJsString(model);
                     
                     // Get from registry or fallback to local storage (migration path) or empty
                     const registryEntry = modelRegistryCache[model];
@@ -3981,7 +4292,7 @@
                         </td>
                         <td style="padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.05);">
                             <input type="text" list="category-list-${safeId}" value="${category}" 
-                                onchange="saveModelCategory('${model}', this.value)"
+                                onchange="saveModelCategory('${safeModelJs}', this.value)"
                                 style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.1); color: var(--text); border-radius: 4px; padding: 4px 8px; font-size: 0.9em; width: 100%;">
                             <datalist id="category-list-${safeId}">
                                 ${datalistOptions}
@@ -3991,7 +4302,7 @@
                             <input type="text" class="model-note-input" data-model="${model}" value="${savedNote}" placeholder="Add note..." 
                                 style="width: 100%; background: transparent; border: none; color: var(--text); border-bottom: 1px solid transparent; padding: 4px;"
                                 onfocus="this.style.borderBottom='1px solid var(--accent)'"
-                                onblur="this.style.borderBottom='1px solid transparent'; saveModelNote('${model}', this.value)">
+                                onblur="this.style.borderBottom='1px solid transparent'; saveModelNote('${safeModelJs}', this.value)">
                         </td>
                     </tr>
                 `}).join('');
@@ -7609,18 +7920,9 @@
                 tooltip.className = 'custom-tooltip';
                 tooltip.style.cssText = `
                     position: fixed;
-                    background: linear-gradient(135deg, #1a1d26 0%, #14171e 100%);
-                    border: 1px solid rgba(124, 240, 255, 0.3);
-                    border-radius: 12px;
-                    padding: 16px;
-                    color: #eee;
-                    font-size: 0.85em;
-                    line-height: 1.6;
                     z-index: 9999;
-                    box-shadow: 0 12px 32px rgba(0,0,0,0.7), 0 0 0 1px rgba(124, 240, 255, 0.1);
                     pointer-events: none;
-                    max-width: 350px;
-                    backdrop-filter: blur(12px);
+                    max-width: 360px;
                     opacity: 0;
                     transform: translateY(5px);
                     transition: opacity 0.2s ease, transform 0.2s ease;
@@ -7740,34 +8042,222 @@
                     globalStats.successRate = (successCount / sorted.length) * 100;
                 }
 
-                // Group results by model
-                const resultsByModel = new Map();
+                const buildLaneKey = (model, host) => `${model || 'Unknown Model'}@@${host || ''}`;
+                const buildLaneLabel = (model, host) => {
+                    const hostLabel = formatHostLabel(host);
+                    return hostLabel ? `${model} @ ${hostLabel}` : model;
+                };
+
+                // Group results by model+host
+                let resultsByModel = new Map();
                 sorted.forEach((result) => {
                     const model = result.model || 'Unknown Model';
-                    if (!resultsByModel.has(model)) {
-                        resultsByModel.set(model, []);
+                    const host = result.host || '';
+                    const key = buildLaneKey(model, host);
+                    if (!resultsByModel.has(key)) {
+                        resultsByModel.set(key, {
+                            model,
+                            host,
+                            label: buildLaneLabel(model, host),
+                            results: [],
+                            role: 'model'
+                        });
                     }
-                    resultsByModel.get(model).push(result);
+                    resultsByModel.get(key).results.push(result);
                 });
                 
                 // Ensure active model is in the map if it doesn't have results yet
                 if (activeBatch && activeBatch.status === 'running' && activeBatch.model) {
-                    if (!resultsByModel.has(activeBatch.model)) {
-                        resultsByModel.set(activeBatch.model, []);
+                    const activeHost = activeBatch.host || '';
+                    const activeKey = buildLaneKey(activeBatch.model, activeHost);
+                    if (!resultsByModel.has(activeKey)) {
+                        resultsByModel.set(activeKey, {
+                            model: activeBatch.model,
+                            host: activeHost,
+                            label: buildLaneLabel(activeBatch.model, activeHost),
+                            results: [],
+                            role: 'model'
+                        });
                     }
+                }
+
+                // Inject model warmup events into their respective lanes
+                if (activeBatch && Array.isArray(activeBatch.timeline)) {
+                    const modelWarmupEvents = activeBatch.timeline.filter(e => {
+                        const meta = e.metadata || {};
+                        return e.event.startsWith('warmup_') && meta.warmup_scope === 'test';
+                    });
+
+                    modelWarmupEvents.forEach(evt => {
+                        const modelName = evt.model || activeBatch.model;
+                        if (!modelName) return;
+                        const host = activeBatch.host || '';
+                        const key = buildLaneKey(modelName, host);
+                        if (!resultsByModel.has(key)) {
+                            resultsByModel.set(key, {
+                                model: modelName,
+                                host,
+                                label: buildLaneLabel(modelName, host),
+                                results: [],
+                                role: 'model'
+                            });
+                        }
+
+                        let label = 'Warmup';
+                        let eventLabel = 'Warmup';
+                        if (evt.event === 'warmup_start') {
+                            label = 'Load/Warmup';
+                            eventLabel = 'Warmup';
+                        } else if (evt.event === 'warmup_complete') {
+                            label = 'Warmup done';
+                            eventLabel = 'Warmup';
+                        }
+
+                        resultsByModel.get(key).results.push({
+                            _id: `model-warmup-${evt.timestamp}-${evt.event}-${modelName}`,
+                            model: modelName,
+                            host,
+                            timestamp: evt.timestamp,
+                            latency: evt.duration_ms || 0,
+                            scoring_time_ms: 0,
+                            success: evt.success !== false,
+                            prompt: label,
+                            __lane: 'model_warmup',
+                            event_label: eventLabel
+                        });
+                    });
+                }
+
+                // Inject judge preparation lane on top (warmup/ready)
+                const judgePrepLaneKey = '__judge_prep__';
+                const judgePrepEvents = [];
+                if (activeBatch && Array.isArray(activeBatch.timeline)) {
+                    const judgeWarmupEvents = activeBatch.timeline.filter(e => {
+                        const meta = e.metadata || {};
+                        return e.event.startsWith('warmup_') && meta.warmup_scope === 'judge';
+                    });
+                    judgeWarmupEvents.forEach(evt => {
+                        const duration = evt.duration_ms || 0;
+                        let label = 'Warmup';
+                        let eventLabel = 'Warmup';
+                        if (evt.event === 'warmup_start') {
+                            label = 'Load/Warmup';
+                            eventLabel = 'Warmup';
+                        } else if (evt.event === 'warmup_complete') {
+                            label = 'Warmup done';
+                            eventLabel = 'Warmup';
+                        }
+                        judgePrepEvents.push({
+                            _id: `judge-prep-${evt.timestamp}-${evt.event}`,
+                            model: judgePrepLaneKey,
+                            host: activeBatch.judge_host || activeBatch.judge_config?.host || '',
+                            timestamp: evt.timestamp,
+                            latency: duration,
+                            scoring_time_ms: 0,
+                            success: evt.success !== false,
+                            prompt: label,
+                            __lane: 'judge_prep',
+                            event_label: eventLabel
+                        });
+
+                        if (evt.event === 'warmup_complete') {
+                            const meta = evt.metadata || {};
+                            if (meta.verified !== undefined) {
+                                judgePrepEvents.push({
+                                    _id: `judge-prep-${evt.timestamp}-validate`,
+                                    model: judgePrepLaneKey,
+                                    host: activeBatch.judge_host || activeBatch.judge_config?.host || '',
+                                    timestamp: evt.timestamp,
+                                    latency: Math.max(200, meta.avgLatency || 0),
+                                    scoring_time_ms: 0,
+                                    success: meta.verified,
+                                    prompt: meta.verified ? 'Validation' : 'Validation failed',
+                                    __lane: 'judge_prep',
+                                    event_label: 'Validate'
+                                });
+                            }
+
+                            judgePrepEvents.push({
+                                _id: `judge-prep-${evt.timestamp}-ready`,
+                                model: judgePrepLaneKey,
+                                host: activeBatch.judge_host || activeBatch.judge_config?.host || '',
+                                timestamp: evt.timestamp,
+                                latency: 200,
+                                scoring_time_ms: 0,
+                                success: true,
+                                prompt: 'Ready',
+                                __lane: 'judge_prep',
+                                event_label: 'Ready'
+                            });
+                        }
+                    });
+                }
+
+                if (activeBatch) {
+                    const startAt = activeBatch.execution_started_at || activeBatch.started_at || activeBatch.created_at;
+                    if (startAt) {
+                        judgePrepEvents.unshift({
+                            _id: `judge-prep-${startAt}-start`,
+                            model: judgePrepLaneKey,
+                            host: activeBatch.judge_host || activeBatch.judge_config?.host || '',
+                            timestamp: startAt,
+                            latency: 300,
+                            scoring_time_ms: 0,
+                            success: true,
+                            prompt: 'Batch start',
+                            __lane: 'judge_prep',
+                            event_label: 'Launch'
+                        });
+                    }
+                }
+
+                if (activeBatch && (judgePrepEvents.length > 0 || activeBatch.quality_scoring !== false)) {
+                    const judgeHostLabel = formatHostLabel(activeBatch.judge_host || activeBatch.judge_config?.host || (activeBatch.judge_same_host ? activeBatch.host : ''));
+                    const judgeModelLabel = activeBatch.judge_config?.model ? `Judge Prep (${activeBatch.judge_config.model})` : 'Judge Prep';
+                    const label = judgeHostLabel ? `${judgeModelLabel} @ ${judgeHostLabel}` : judgeModelLabel;
+                    const ordered = new Map();
+                    ordered.set(judgePrepLaneKey, {
+                        model: judgePrepLaneKey,
+                        host: activeBatch.judge_host || activeBatch.judge_config?.host || '',
+                        label,
+                        results: judgePrepEvents,
+                        role: 'judge_prep'
+                    });
+                    resultsByModel.forEach((value, key) => {
+                        ordered.set(key, value);
+                    });
+                    resultsByModel = ordered;
                 }
 
                 const stageVisuals = {
                     test: { icon: 'fa-robot', class: 'segment-success' },
                     'test-error': { icon: 'fa-exclamation-triangle', class: 'segment-error' },
                     judging: { icon: 'fa-gavel', class: 'segment-judging' },
+                    'judge-prep': { icon: 'fa-gavel', class: 'segment-warmup-judge' },
+                    warmup: { icon: 'fa-fire', class: 'segment-warmup' },
                     running: { icon: 'fa-cog fa-spin', class: 'segment-running' },
                     queued: { icon: 'fa-clock', class: 'segment-queued' }
                 };
 
                 const getSegmentVisual = (result) => {
-                    if (result.success) return stageVisuals['test'];
+                    if (result.__lane === 'judge_prep') return stageVisuals['judge-prep'];
+                    if (result.__lane === 'model_warmup') return stageVisuals['warmup'];
                     if (result.success === false) return stageVisuals['test-error'];
+
+                    const rawLevel = result.prompt_level ?? result.promptLevel ?? result.difficulty ?? result.level ?? result.test_level ?? result.testLevel;
+                    const level = (() => {
+                        if (rawLevel === null || rawLevel === undefined) return null;
+                        const numeric = Number(rawLevel);
+                        if (Number.isFinite(numeric)) return numeric;
+                        const match = String(rawLevel).match(/\d+/);
+                        return match ? Number(match[0]) : null;
+                    })();
+
+                    if (level && level >= 1 && level <= 5) {
+                        return { icon: 'fa-check-circle', class: `segment-level-${level}` };
+                    }
+
+                    // Fallback to generic success
                     return stageVisuals['test'];
                 };
                 
@@ -7776,10 +8266,24 @@
                     return `${(ms/1000).toFixed(1)}s`;
                 };
 
+                const getLevelColor = (level) => {
+                    switch (Number(level)) {
+                        case 1: return '#f87171';
+                        case 2: return '#34d399';
+                        case 3: return '#fbbf24';
+                        case 4: return '#22d3ee';
+                        case 5: return '#ffed4e';
+                        default: return '#7cf0ff';
+                    }
+                };
+
                 let rowsHtml = '';
 
                 // Iterate over models to build rows
-                for (const [model, modelResults] of resultsByModel.entries()) {
+                for (const [laneKey, laneData] of resultsByModel.entries()) {
+                    const model = laneData.model;
+                    const modelResults = (laneData.results || []).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+                    const isJudgePrepLane = laneData.role === 'judge_prep';
                     let segmentsHtml = '';
                     
                     // Render Completed Tests
@@ -7795,14 +8299,22 @@
                         const judgingStr = formatTime(judgingTime);
                         const totalStr = formatTime(totalTime);
                         
-                        const qScore = result.quality_score ? `Q${result.quality_score}` : '';
-                        const level = result.difficulty ? `L${result.difficulty}` : '';
+                        const testedModel = result.tested_model ? escapeHtml(result.tested_model) : '';
+                        const levelValue = result.prompt_level ?? result.difficulty;
+                        const levelLabel = levelValue ? `L${levelValue}` : '';
+                        const levelColor = levelLabel ? getLevelColor(levelValue) : '';
+                        const levelBadge = levelLabel
+                            ? `<span class="timeline-tooltip-level" style="--level-color:${levelColor};"><span class="timeline-tooltip-dot"></span>${levelLabel}</span>`
+                            : '';
+                        const statusBadge = result.success === false
+                            ? '<span class="timeline-tooltip-status fail"><i class="fas fa-times-circle"></i>Failed</span>'
+                            : (result.success === true ? '<span class="timeline-tooltip-status success"><i class="fas fa-check-circle"></i>Success</span>' : '');
                         const timestamp = new Date(result.timestamp).getTime();
 
                         // Tooltip HTML for Custom Tooltip with Performance Comparisons
                         const promptTextRaw = result.prompt ? (result.prompt.length > 60 ? result.prompt.substring(0, 60) + '...' : result.prompt) : 'No prompt';
                         const promptText = escapeHtml(promptTextRaw);
-                        const modelName = escapeHtml(result.model || 'Unknown Model');
+                        const modelName = escapeHtml(laneData.label || result.model || 'Unknown Model');
 
                         // Performance indicators
                         const latencyDiff = globalStats.avgLatency ? ((inferenceTime - globalStats.avgLatency) / globalStats.avgLatency * 100).toFixed(0) : 0;
@@ -7818,55 +8330,70 @@
                         const tpsIndicator = !isNaN(tokensPerSec) && tokensPerSec > 0 && globalStats.avgTps ? (tokensPerSec > globalStats.avgTps ? `<span style="color:#2ecc71">▲ ${Math.abs(tpsDiff)}%</span>` : (tokensPerSec < globalStats.avgTps ? `<span style="color:#e74c3c">▼ ${Math.abs(tpsDiff)}%</span>` : '<span style="color:#95a5a6">●</span>')) : '';
 
                         const tooltipHtml = `
-                            <div style="border-bottom: 2px solid rgba(124, 240, 255, 0.3); padding-bottom: 8px; margin-bottom: 10px;">
-                                <h4 style="margin: 0 0 4px; color: #7cf0ff; font-size: 1.15em; font-weight: 600;">${modelName}</h4>
-                                <div style="font-size: 0.8em; color: rgba(255,255,255,0.6);">${new Date(result.timestamp).toLocaleString()}</div>
-                            </div>
-                            <div style="display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; margin-bottom: 10px;">
-                                <span style="color: rgba(255,255,255,0.6);">Status:</span>
-                                <span style="font-weight: 600; color:${result.success?'#2ecc71':'#e74c3c'}">
-                                    ${result.success ? '<i class="fas fa-check-circle"></i> Success' : '<i class="fas fa-times-circle"></i> Failed'}
-                                </span>
-
-                                <span style="color: rgba(255,255,255,0.6);">Total Time:</span>
-                                <span style="font-weight: 600;">${totalStr}</span>
-
-                                <span style="color: rgba(255,255,255,0.6);">Inference:</span>
+                            <div class="timeline-tooltip-header">
                                 <div>
-                                    <span style="font-weight: 600;">${inferenceStr}</span>
-                                    <span style="font-size: 0.85em; margin-left: 6px;">${latencyIndicator}</span>
+                                    <div class="timeline-tooltip-title">${modelName}</div>
+                                    <div class="timeline-tooltip-meta">${new Date(result.timestamp).toLocaleString()}</div>
+                                </div>
+                                <div class="timeline-tooltip-badges">
+                                    ${levelBadge}
+                                    ${statusBadge}
+                                </div>
+                            </div>
+                            <div class="timeline-tooltip-grid">
+                                <div class="timeline-tooltip-label">Status</div>
+                                <div class="timeline-tooltip-value ${result.success ? 'is-success' : 'is-fail'}">${result.success ? 'Success' : 'Failed'}</div>
+
+                                ${result.event_label ? `
+                                <div class="timeline-tooltip-label">Event</div>
+                                <div class="timeline-tooltip-value">${escapeHtml(result.event_label)}</div>
+                                ` : ''}
+
+                                ${levelLabel ? `
+                                <div class="timeline-tooltip-label">Level</div>
+                                <div class="timeline-tooltip-value">${levelLabel}</div>
+                                ` : ''}
+
+                                <div class="timeline-tooltip-label">Total Time</div>
+                                <div class="timeline-tooltip-value">${totalStr}</div>
+
+                                <div class="timeline-tooltip-label">Inference</div>
+                                <div class="timeline-tooltip-value">
+                                    <span class="timeline-tooltip-strong">${inferenceStr}</span>
+                                    <span class="timeline-tooltip-indicator">${latencyIndicator}</span>
                                 </div>
 
                                 ${judgingTime ? `
-                                <span style="color: rgba(255,255,255,0.6);">Judging:</span>
-                                <span style="font-weight: 600; color:#9b59b6">${judgingStr}</span>
+                                <div class="timeline-tooltip-label">Judging</div>
+                                <div class="timeline-tooltip-value is-judge">${judgingStr}</div>
                                 ` : ''}
 
                                 ${result.quality_score ? `
-                                <span style="color: rgba(255,255,255,0.6);">Quality:</span>
-                                <div>
-                                    <span style="font-weight: 600; color:#f39c12">${result.quality_score.toFixed(1)}/10</span>
-                                    <span style="font-size: 0.85em; margin-left: 6px;">${qualityIndicator}</span>
+                                <div class="timeline-tooltip-label">Quality</div>
+                                <div class="timeline-tooltip-value">
+                                    <span class="timeline-tooltip-strong is-quality">${result.quality_score.toFixed(1)}/10</span>
+                                    <span class="timeline-tooltip-indicator">${qualityIndicator}</span>
                                 </div>
                                 ` : ''}
 
                                 ${result.tokens_per_sec ? `
-                                <span style="color: rgba(255,255,255,0.6);">Throughput:</span>
-                                <div>
-                                    <span style="font-weight: 600;">${tpsDisplay}</span>
-                                    <span style="font-size: 0.85em; margin-left: 6px;">${tpsIndicator}</span>
+                                <div class="timeline-tooltip-label">Throughput</div>
+                                <div class="timeline-tooltip-value">
+                                    <span class="timeline-tooltip-strong">${tpsDisplay}</span>
+                                    <span class="timeline-tooltip-indicator">${tpsIndicator}</span>
                                 </div>
                                 ` : ''}
 
-                                ${result.difficulty ? `
-                                <span style="color: rgba(255,255,255,0.6);">Difficulty:</span>
-                                <span style="font-weight: 600;">Level ${result.difficulty}</span>
+                                ${result.__lane === 'judge' && testedModel ? `
+                                <div class="timeline-tooltip-label">Tested</div>
+                                <div class="timeline-tooltip-value">${testedModel}</div>
                                 ` : ''}
                             </div>
-                            <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1); color: rgba(255,255,255,0.7); font-style: italic; font-size: 0.85em; line-height: 1.4;">
-                                <i class="fas fa-quote-left" style="font-size: 0.7em; opacity: 0.5; margin-right: 4px;"></i>${promptText}<i class="fas fa-quote-right" style="font-size: 0.7em; opacity: 0.5; margin-left: 4px;"></i>
+                            <div class="timeline-tooltip-quote">
+                                <i class="fas fa-quote-left"></i>${promptText}<i class="fas fa-quote-right"></i>
                             </div>
-                        `.replace(/"/g, '&quot;').replace(/'/g, "\\'").replace(/\n/g, '').trim();
+                        `.replace(/\\/g, '\\\\').replace(/"/g, '&quot;').replace(/'/g, "\\'").replace(/\n/g, '').trim();
+                        const tooltipEncoded = encodeURIComponent(tooltipHtml);
                         
                          let separator = '';
                         if (idx > 0 && (timestamp - lastTime > 300000)) {
@@ -7888,58 +8415,66 @@
                         const showInferenceIcon = inferencePx > 20;
                         const showJudgingIcon = judgingPx > 20;
 
-                        // Handle Small Bar "Floating" Badge
-                        let badgeStyle = '';
-                        if (totalWidthPx < 100) {
-                             // Float upper right
-                             badgeStyle = `position:absolute; right:-6px; top:-8px; background:rgba(20,20,30,0.95); border:1px solid rgba(255,255,255,0.2); backdrop-filter:blur(4px); font-weight:700; font-size:0.75em; padding:2px 6px; border-radius:10px; z-index:5; box-shadow:0 2px 4px rgba(0,0,0,0.5); transform:scale(0.9);`;
-                        } else {
-                             // Inside right
-                             badgeStyle = `position:absolute; right:2px; top:0; height:100%; display:flex; align-items:center; background:rgba(0,0,0,0.4); backdrop-filter:blur(2px); font-weight:700; font-size:0.75em; padding:0 6px; border-radius:3px;`;
-                        }
-
                         // Only split if we actually have judging time
                         // Use onmouseenter for custom tooltip
                         if (judgingTime > 0) {
                             return `${separator}
-                            <div class="timeline-segment-group" style="width: ${totalWidthPx}px;" onmouseenter="showTimelineTooltip(event, '${tooltipHtml}')">
+                            <div class="timeline-segment-group" style="width: ${totalWidthPx}px;" onmouseenter="showTimelineTooltip(event, decodeURIComponent('${tooltipEncoded}'))">
                                 <div class="timeline-segment ${visual.class}" style="width: ${inferencePct}%; border-radius: 0;">
                                     ${showInferenceIcon ? `<i class="fas ${visual.icon}"></i>` : ''}
                                 </div>
                                 <div class="timeline-segment segment-judging" style="width: ${judgingPct}%; border-radius: 0;">
                                     ${showJudgingIcon ? `<i class="fas fa-gavel"></i>` : ''}
                                 </div>
-                                ${qScore ? `<div style="${badgeStyle}" class="segment-badge">${qScore}</div>` : ''}
                             </div>`;
                         } else {
                             // Standard single block
                             return `${separator}
-                            <div class="timeline-segment-group" style="width: ${totalWidthPx}px; animation-delay: ${animationDelay}s;" onmouseenter="showTimelineTooltip(event, '${tooltipHtml}')">
+                            <div class="timeline-segment-group" style="width: ${totalWidthPx}px; animation-delay: ${animationDelay}s;" onmouseenter="showTimelineTooltip(event, decodeURIComponent('${tooltipEncoded}'))">
                                 <div class="timeline-segment ${visual.class}" style="width: 100%;">
                                     ${totalWidthPx > 20 ? `<i class="fas ${visual.icon}"></i>` : ''}
-                                    ${qScore ? `<div style="${badgeStyle}" class="segment-badge">${qScore}</div>` : ''}
-                                    ${level ? `<span class="segment-badge" style="margin-right:2px">${level}</span>` : ''}
                                 </div>
                             </div>`;
                         }
                     }).join('');
 
                     // Check for Active State - IMPROVED LOGIC
-                    if (activeBatch && activeBatch.status === 'running' && activeBatch.model === model) {
-                        const currentTest = activeBatch.current_test;
-                        
+                    const currentTest = activeBatch ? activeBatch.current_test : null;
+                    const activeHost = activeBatch ? (activeBatch.host || '') : '';
+                    const isActiveModel = laneData.role === 'model'
+                        && activeBatch
+                        && activeBatch.status === 'running'
+                        && activeBatch.model === model
+                        && activeHost === (laneData.host || '');
+                    const isActiveJudgePrep = isJudgePrepLane
+                        && currentTest
+                        && currentTest.stage === 'warmup'
+                        && currentTest.warmup_scope === 'judge';
+
+                    if (isActiveModel || isActiveJudgePrep) {
                         let activeStage = 'running';
                         let activeText = 'Running...';
                         let activeIcon = 'fa-cog fa-spin';
                         let bubbleText = 'Processing Test...';
-                        
+
                         if (currentTest) {
-                            if (currentTest.stage === 'judging' || (activeBatch.current_phase === 'judging')) {
+                            if (isActiveJudgePrep) {
+                                activeStage = 'judge-prep';
+                                activeText = 'Judge Prep';
+                                activeIcon = 'fa-gavel';
+                                bubbleText = 'Preparing judge...';
+                            } else if (currentTest.stage === 'warmup' && currentTest.warmup_scope === 'test') {
+                                activeStage = 'warmup';
+                                activeText = 'Warmup';
+                                activeIcon = 'fa-fire';
+                                bubbleText = 'Warming up model...';
+                            } else if (currentTest.stage === 'judging' || (activeBatch && activeBatch.current_phase === 'judging')) {
                                 activeStage = 'judging';
                                 activeText = 'Judging';
                                 activeIcon = 'fa-gavel';
                                 const promptSnippet = currentTest.prompt ? (currentTest.prompt.length > 20 ? currentTest.prompt.substring(0, 20) + '...' : currentTest.prompt) : 'Response';
-                                bubbleText = `Judging: ${escapeHtml(promptSnippet)}...`;
+                                const testedLabel = currentTest.model ? ` (${escapeHtml(currentTest.model)})` : '';
+                                bubbleText = `Judging${testedLabel}: ${escapeHtml(promptSnippet)}...`;
                             } else {
                                 const promptSnippet = currentTest.prompt ? (currentTest.prompt.length > 20 ? currentTest.prompt.substring(0, 20) + '...' : currentTest.prompt) : 'Prompt';
                                 bubbleText = `Running: ${escapeHtml(promptSnippet)}...`;
@@ -7947,9 +8482,8 @@
                         }
 
                         const visualClass = stageVisuals[activeStage].class;
-                        
+
                         // Force append to the track so it's always visible at end
-                        // Using a distinct style for the active bubble
                         segmentsHtml += `
                         <div class="timeline-segment-group" style="width: 140px; opacity: 1; margin-left:8px; display:flex; flex-direction:column; justify-content:center; align-items:flex-start; overflow:visible;">
                             <div class="timeline-segment ${visualClass}" style="width: 100%; height: 20px; margin-bottom: 2px;">
@@ -7962,13 +8496,17 @@
                         </div>`;
                     }
 
-                    const safeModelLabel = escapeHtml(model);
+                    const safeModelLabel = escapeHtml(laneData.label || model);
+                    const rowIcon = isJudgePrepLane ? 'fa-gavel' : 'fa-cube';
+                    const rowClass = isJudgePrepLane ? 'judge-lane' : '';
+                    const badgeHtml = isJudgePrepLane ? `<span class="judge-lane-badge">Judge Prep</span>` : '';
 
                     rowsHtml += `
-                    <div class="timeline-model-row">
+                    <div class="timeline-model-row ${rowClass}">
                         <div class="timeline-model-label">
-                            <i class="fas fa-cube" style="color:var(--accent)"></i>
+                            <i class="fas ${rowIcon}" style="color:${isJudgePrepLane ? '#c084fc' : 'var(--accent)'}"></i>
                             ${safeModelLabel}
+                            ${badgeHtml}
                         </div>
                         <div class="timeline-track">
                             ${segmentsHtml}
@@ -8033,31 +8571,33 @@
                 // Generate Performance Heatmap
                 const heatmapSection = document.getElementById('performanceHeatmapSection');
                 const heatmapContainer = document.getElementById('performanceHeatmap');
-                if (heatmapContainer && resultsByModel.size > 1) {
+                const modelLanes = Array.from(resultsByModel.values()).filter(lane => lane.role === 'model');
+                if (heatmapContainer && modelLanes.length > 1) {
                     // Calculate per-model stats
                     const modelStats = [];
-                    for (const [model, modelResults] of resultsByModel.entries()) {
-                        if (modelResults.length === 0) continue;
+                    for (const lane of modelLanes) {
+                        const laneResults = lane.results || [];
+                        if (laneResults.length === 0) continue;
 
-                        const successCount = modelResults.filter(r => r.success).length;
-                        const successRate = (successCount / modelResults.length) * 100;
-                        const latencies = modelResults.filter(r => r.latency).map(r => r.latency);
+                        const successCount = laneResults.filter(r => r.success).length;
+                        const successRate = (successCount / laneResults.length) * 100;
+                        const latencies = laneResults.filter(r => r.latency).map(r => r.latency);
                         const avgLatency = latencies.length ? latencies.reduce((a,b) => a+b, 0) / latencies.length : 0;
-                        const qualities = modelResults.filter(r => r.quality_score).map(r => r.quality_score);
+                        const qualities = laneResults.filter(r => r.quality_score).map(r => r.quality_score);
                         const avgQuality = qualities.length ? qualities.reduce((a,b) => a+b, 0) / qualities.length : 0;
                         // Parse tokens_per_sec as number (handles both string and number types)
-                        const tps = modelResults
+                        const tps = laneResults
                             .map(r => parseFloat(r.tokens_per_sec))
                             .filter(v => !isNaN(v) && v > 0);
                         const avgTps = tps.length ? tps.reduce((a,b) => a+b, 0) / tps.length : 0;
 
                         modelStats.push({
-                            model,
+                            model: lane.label || lane.model,
                             successRate,
                             avgLatency,
                             avgQuality,
                             avgTps,
-                            testCount: modelResults.length
+                            testCount: laneResults.length
                         });
                     }
 
@@ -8173,9 +8713,58 @@
                 loadRecentTestsTimeline(parseInt(timelineLimit.value));
             }
         }, 2000); // Refresh every 2s for live updates
+
+        // ============================================
+        // RESPONSIVE HELPERS
+        // ============================================
+        
+        (function() {
+            const isMobile = window.matchMedia('(max-width: 767px)').matches;
+            const isUltraWide = window.matchMedia('(min-width: 1920px)').matches;
+            
+            console.log('📱 Responsive helpers loaded!');
+            console.log(`Screen: ${window.innerWidth}x${window.innerHeight}, Mobile: ${isMobile}, Ultra-Wide: ${isUltraWide}`);
+            
+            // Simple viewport height fix
+            function setVH() {
+                const vh = window.innerHeight * 0.01;
+                document.documentElement.style.setProperty('--vh', `${vh}px`);
+            }
+            setVH();
+            window.addEventListener('resize', setVH);
+        })();
+
+        // ============================================
+        // COLLAPSIBLE SECTIONS
+        // ============================================
+        
+        function initCollapsibleSections() {
+            const sections = document.querySelectorAll('.presets-section');
+            sections.forEach(section => {
+                const header = section.querySelector('.section-header');
+                const content = section.querySelector('.presets-grid');
+                
+                if (!header || !content) return;
+                
+                header.classList.add('collapsible', 'collapsed');
+                content.classList.add('collapsible-content', 'collapsed');
+                
+                header.addEventListener('click', function(e) {
+                    if (e.target.closest('button')) return;
+                    this.classList.toggle('collapsed');
+                    content.classList.toggle('collapsed');
+                });
+            });
+            console.log('✅ Collapsible sections initialized');
+        }
+        
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initCollapsibleSections);
+        } else {
+            initCollapsibleSections();
+        }
     </script>
 
-    <!-- Benchmark Analytics Module -->
     <script type="module" src="/js/benchmark-analytics.js"></script>
 </body>
 
