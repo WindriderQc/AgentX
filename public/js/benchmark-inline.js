@@ -895,8 +895,7 @@
                             ${testCount}
                         </td>
                         <td style="padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.05);">
-                            <input type="text" list="category-list-${safeId}" value="${category}" 
-                                onchange="saveModelCategory('${model}', this.value)"
+                            <input type="text" class="model-category-input" data-model="${model}" list="category-list-${safeId}" value="${category}"
                                 style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.1); color: var(--text); border-radius: 4px; padding: 4px 8px; font-size: 0.9em; width: 100%;">
                             <datalist id="category-list-${safeId}">
                                 ${datalistOptions}
@@ -904,13 +903,31 @@
                         </td>
                         <td style="padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.05);">
                             <input type="text" class="model-note-input" data-model="${model}" value="${savedNote}" placeholder="Add note..." 
-                                style="width: 100%; background: transparent; border: none; color: var(--text); border-bottom: 1px solid transparent; padding: 4px;"
-                                onfocus="this.style.borderBottom='1px solid var(--accent)'"
-                                onblur="this.style.borderBottom='1px solid transparent'; saveModelNote('${model}', this.value)">
+                                style="width: 100%; background: transparent; border: none; color: var(--text); border-bottom: 1px solid transparent; padding: 4px;">
                         </td>
                     </tr>
                 `}).join('');
-                
+
+                const categoryInputs = tbody.querySelectorAll('.model-category-input');
+                categoryInputs.forEach(input => {
+                    input.addEventListener('change', (event) => {
+                        const model = event.target.dataset.model;
+                        if (model) saveModelCategory(model, event.target.value);
+                    });
+                });
+
+                const noteInputs = tbody.querySelectorAll('.model-note-input');
+                noteInputs.forEach(input => {
+                    input.addEventListener('focus', (event) => {
+                        event.target.style.borderBottom = '1px solid var(--accent)';
+                    });
+                    input.addEventListener('blur', (event) => {
+                        event.target.style.borderBottom = '1px solid transparent';
+                        const model = event.target.dataset.model;
+                        if (model) saveModelNote(model, event.target.value);
+                    });
+                });
+
                 // Update badges immediately after rendering
                 updateModelSelectionBadges();
             } else {
@@ -4680,9 +4697,29 @@
                     queued: { icon: 'fa-clock', class: 'segment-queued' }
                 };
 
+                const getResultLevel = (result) => {
+                    if (!result) return null;
+                    const rawLevel = result.prompt_level
+                        ?? result.promptLevel
+                        ?? result.difficulty
+                        ?? result.level
+                        ?? result.test_level
+                        ?? result.testLevel;
+                    if (rawLevel === null || rawLevel === undefined) return null;
+                    const numeric = Number(rawLevel);
+                    if (Number.isFinite(numeric)) return numeric;
+                    const match = String(rawLevel).match(/\d+/);
+                    return match ? Number(match[0]) : null;
+                };
+
                 const getSegmentVisual = (result) => {
-                    if (result.success) return stageVisuals['test'];
                     if (result.success === false) return stageVisuals['test-error'];
+                    if (result.success) {
+                        const level = getResultLevel(result);
+                        if (Number.isFinite(level) && level >= 1 && level <= 5) {
+                            return { icon: 'fa-check-circle', class: `segment-level-${level}` };
+                        }
+                    }
                     return stageVisuals['test'];
                 };
                 
@@ -4711,7 +4748,8 @@
                         const totalStr = formatTime(totalTime);
                         
                         const qScore = result.quality_score ? `Q${result.quality_score}` : '';
-                        const level = result.difficulty ? `L${result.difficulty}` : '';
+                        const levelNumber = getResultLevel(result);
+                        const level = Number.isFinite(levelNumber) && levelNumber >= 1 ? `L${levelNumber}` : '';
                         const timestamp = new Date(result.timestamp).getTime();
 
                         // Tooltip HTML for Custom Tooltip with Performance Comparisons
@@ -4773,9 +4811,9 @@
                                 </div>
                                 ` : ''}
 
-                                ${result.difficulty ? `
+                                ${Number.isFinite(levelNumber) && levelNumber >= 1 ? `
                                 <span style="color: rgba(255,255,255,0.6);">Difficulty:</span>
-                                <span style="font-weight: 600;">Level ${result.difficulty}</span>
+                                <span style="font-weight: 600;">Level ${levelNumber}</span>
                                 ` : ''}
                             </div>
                             <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1); color: rgba(255,255,255,0.7); font-style: italic; font-size: 0.85em; line-height: 1.4;">

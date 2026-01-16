@@ -339,6 +339,10 @@ app.use('/api/dashboard', dashboardRoutes);
 const operationsRoutes = require('../routes/operations');
 app.use('/api/operations', operationsRoutes);
 
+// Export routes (MD documentation download)
+const exportRoutes = require('../routes/export');
+app.use('/api/export', exportRoutes);
+
 // Legacy/Compatibility routes
 // Map /conversations -> history
 app.use('/api/conversations', historyRoutes);
