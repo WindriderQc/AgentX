@@ -4622,11 +4622,97 @@
             return Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
         };
 
+        let timelineScrollRaf = null;
+
+        const syncTimelineScroll = (stickToEnd = true) => {
+            const timelineVisual = document.getElementById('timelineVisual');
+            const controls = document.getElementById('timelineScrollControls');
+            const range = document.getElementById('timelineScrollRange');
+            if (!timelineVisual || !controls || !range) return;
+
+            if (timelineVisual.offsetParent === null) {
+                controls.style.display = 'none';
+                return;
+            }
+
+            const tracks = Array.from(timelineVisual.querySelectorAll('.timeline-track, .timeline-track-absolute'));
+            if (!tracks.length) {
+                controls.style.display = 'none';
+                return;
+            }
+
+            const maxScroll = tracks.reduce((max, track) => {
+                return Math.max(max, track.scrollWidth - track.clientWidth);
+            }, 0);
+
+            if (maxScroll <= 1) {
+                controls.style.display = 'none';
+                return;
+            }
+
+            controls.style.display = 'block';
+            range.min = 0;
+            range.max = Math.ceil(maxScroll);
+            range.step = 1;
+
+            const applyScroll = (value) => {
+                const maxValue = Number(range.max) || 0;
+                const ratio = maxValue > 0 ? value / maxValue : 0;
+                tracks.forEach((track) => {
+                    const trackMax = track.scrollWidth - track.clientWidth;
+                    if (trackMax > 0) {
+                        track.scrollLeft = trackMax * ratio;
+                    }
+                });
+            };
+
+            const targetValue = stickToEnd ? maxScroll : Math.min(Number(range.value) || 0, maxScroll);
+            range.value = Math.round(targetValue);
+            applyScroll(targetValue);
+
+            if (!range.dataset.bound) {
+                range.dataset.bound = 'true';
+                range.addEventListener('input', () => {
+                    const currentTracks = Array.from(timelineVisual.querySelectorAll('.timeline-track, .timeline-track-absolute'));
+                    const maxValue = Number(range.max) || 0;
+                    const value = Number(range.value) || 0;
+                    const ratio = maxValue > 0 ? value / maxValue : 0;
+                    currentTracks.forEach((track) => {
+                        const trackMax = track.scrollWidth - track.clientWidth;
+                        if (trackMax > 0) {
+                            track.scrollLeft = trackMax * ratio;
+                        }
+                    });
+                });
+            }
+
+            tracks.forEach((track) => {
+                if (track.dataset.scrollBound) return;
+                track.dataset.scrollBound = 'true';
+                track.addEventListener('scroll', () => {
+                    const trackMax = track.scrollWidth - track.clientWidth;
+                    const maxValue = Number(range.max) || 0;
+                    if (trackMax <= 0 || maxValue <= 0) return;
+                    const ratio = track.scrollLeft / trackMax;
+                    range.value = Math.round(ratio * maxValue);
+                }, { passive: true });
+            });
+        };
+
+        const scheduleTimelineScrollSync = (stickToEnd = true) => {
+            if (timelineScrollRaf) cancelAnimationFrame(timelineScrollRaf);
+            timelineScrollRaf = requestAnimationFrame(() => {
+                timelineScrollRaf = null;
+                syncTimelineScroll(stickToEnd);
+            });
+        };
+
         async function renderBatchEventTimeline(timelineVisual, timelineEmptyState, activeBatch) {
             if (!timelineVisual || !timelineEmptyState) return;
             if (!activeBatch || !activeBatch._id) {
                 timelineVisual.style.display = 'none';
                 timelineEmptyState.style.display = 'block';
+                scheduleTimelineScrollSync(false);
                 return;
             }
 
@@ -4638,6 +4724,7 @@
             if (!timeline.length) {
                 timelineVisual.style.display = 'none';
                 timelineEmptyState.style.display = 'block';
+                scheduleTimelineScrollSync(false);
                 return;
             }
 
@@ -4701,7 +4788,7 @@
 
             const totalDurationMs = Math.max(1, maxEndMs);
             const zoom = getTimelineZoom();
-            const baseWidth = Math.max(600, timelineVisual.clientWidth - 32);
+            const baseWidth = Math.max(600, Math.round((totalDurationMs / 1000) * 20));
             const trackWidth = Math.round(baseWidth * zoom);
             const scale = trackWidth / totalDurationMs;
             const markerDurationMs = Math.max(200, Math.round(totalDurationMs * 0.01));
@@ -4826,6 +4913,7 @@
                     ${rowsHtml}
                 </div>
             `;
+            scheduleTimelineScrollSync(true);
         }
 
         // Stacked Timeline functionality
@@ -4884,6 +4972,7 @@
                 if (!results.length && !activeBatch) {
                     timelineVisual.style.display = 'none';
                     timelineEmptyState.style.display = 'block';
+                    scheduleTimelineScrollSync(false);
                     return;
                 }
 
@@ -5321,6 +5410,7 @@
                         ${rowsHtml}
                     </div>
                 `;
+                scheduleTimelineScrollSync(true);
 
                 // Populate Performance Summary Panel
                 const statsSummary = document.getElementById('timelineStatsSummary');

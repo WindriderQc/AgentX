@@ -529,9 +529,9 @@
                     </select>
                     <select id="timelineZoom" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); color: var(--text); padding: 8px 12px; border-radius: 6px; display: none;">
                         <option value="1" selected>Zoom 1x</option>
-                        <option value="1.5">Zoom 1.5x</option>
-                        <option value="2">Zoom 2x</option>
-                        <option value="3">Zoom 3x</option>
+                        <option value="0.85">Zoom 0.85x</option>
+                        <option value="0.7">Zoom 0.7x</option>
+                        <option value="0.55">Zoom 0.55x</option>
                     </select>
                     <select id="timelineLimit" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); color: var(--text); padding: 8px 12px; border-radius: 6px;">
                         <option value="20">Last 20 tests</option>
@@ -551,6 +551,13 @@
 
             <div id="timelineVisual" style="background: rgba(0,0,0,0.2); border-radius: 8px; padding: 16px; min-height: 300px; position: relative;">
                 <!-- Timeline bars rendered here -->
+            </div>
+            <div id="timelineScrollControls" class="timeline-scroll-controls" style="display: none;">
+                <div class="timeline-scroll-label">
+                    <span>Timeline scroll</span>
+                    <span>Past -> Latest</span>
+                </div>
+                <input type="range" id="timelineScrollRange" min="0" max="100" value="100" aria-label="Scroll timeline horizontally" />
             </div>
             <!-- Execution Timeline (Collapsible) -->
             <div id="timelineContainer" style="display: none; margin: 12px 0 0; background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">

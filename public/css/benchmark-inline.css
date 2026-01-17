@@ -780,6 +780,56 @@
             box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
         }
 
+        /* Global timeline slider */
+        .timeline-scroll-controls {
+            margin-top: 12px;
+            padding: 10px 12px;
+            background: rgba(0, 0, 0, 0.25);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 10px;
+        }
+
+        .timeline-scroll-label {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.72em;
+            color: var(--muted);
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            margin-bottom: 6px;
+        }
+
+        #timelineScrollRange {
+            width: 100%;
+            appearance: none;
+            height: 6px;
+            border-radius: 999px;
+            background: linear-gradient(90deg, rgba(124, 240, 255, 0.55) 0%, rgba(124, 240, 255, 0.15) 100%);
+            outline: none;
+            cursor: pointer;
+        }
+
+        #timelineScrollRange::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #7cf0ff;
+            border: 2px solid rgba(0, 0, 0, 0.4);
+            box-shadow: 0 0 10px rgba(124, 240, 255, 0.6);
+        }
+
+        #timelineScrollRange::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #7cf0ff;
+            border: 2px solid rgba(0, 0, 0, 0.4);
+            box-shadow: 0 0 10px rgba(124, 240, 255, 0.6);
+        }
+
         /* Compare + Batch row */
         .benchmark-compare-batch-row {
             display: flex;
