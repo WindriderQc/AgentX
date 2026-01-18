@@ -127,7 +127,8 @@ Extract the most relevant sentences:`;
           stream: false,
           options: {
             temperature: 0.1,  // Low temperature for consistency
-            num_predict: 300   // Limit response length
+            num_predict: 300,   // Limit response length
+            num_ctx: 8192
           }
         })
       });

@@ -134,7 +134,14 @@ class BenchmarkService {
             const fetchOptions = getFetchOptions(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ model, prompt, stream: false }),
+                body: JSON.stringify({ 
+                    model, 
+                    prompt, 
+                    stream: false,
+                    options: {
+                        num_ctx: 8192
+                    }
+                }),
                 timeout: 120000  // 120 seconds for model loading on first request
             });
             const response = await fetch(url, fetchOptions);

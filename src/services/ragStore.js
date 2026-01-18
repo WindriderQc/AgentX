@@ -152,7 +152,8 @@ Return ONLY the queries, one per line, without numbering or explanation.`;
           stream: false,
           options: {
             temperature: 0.7,
-            num_predict: 150 // Short expansion
+            num_predict: 150, // Short expansion
+            num_ctx: 8192
           }
         })
       });
@@ -348,7 +349,8 @@ Score:`;
               stream: false,
               options: {
                 temperature: 0.1, // Low temperature for consistent scoring
-                num_predict: 10 // Just need a number
+                num_predict: 10, // Just need a number
+                num_ctx: 8192
               }
             })
           });

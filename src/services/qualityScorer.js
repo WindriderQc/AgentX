@@ -186,7 +186,8 @@ async function callJudge(evalPrompt, config = {}) {
                 stream: false,
                 options: {
                     temperature: judgeConfig.temperature,
-                    num_predict: judgeConfig.num_predict
+                    num_predict: judgeConfig.num_predict,
+                    num_ctx: 8192
                 }
             }),
             signal: controller.signal

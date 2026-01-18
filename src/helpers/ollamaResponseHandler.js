@@ -184,6 +184,8 @@ function buildOllamaPayload(params) {
     messages,
     stream: streamEnabled,
     options: {
+      // Set default num_ctx to 8192 for benchmark and chat
+      num_ctx: 8192,
       ...options,
       // For non-streaming: disable token limit to get complete responses
       num_predict: streamEnabled ? (options.num_predict || 256) : -1
@@ -197,7 +199,7 @@ function buildOllamaPayload(params) {
 
   // For thinking models in non-streaming mode, ensure proper token limits
   if (!streamEnabled && isThinkingModel(model)) {
-    // Allow larger context for thinking models
+    // Allow larger context for thinking models (already set to 8192 above)
     payload.options.num_ctx = options.num_ctx || 8192;
   }
 

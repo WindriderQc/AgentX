@@ -298,7 +298,8 @@ async function classifyQuery(message, timeout = 10000) {
                 stream: false,
                 options: {
                     temperature: 0.1,  // Low temp for consistent classification
-                    num_predict: 20    // Short response expected
+                    num_predict: 20,    // Short response expected
+                    num_ctx: 8192
                 }
             }),
             signal: controller.signal
