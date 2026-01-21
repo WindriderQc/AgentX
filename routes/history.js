@@ -25,13 +25,23 @@ router.get('/', optionalAuth, attachWorkspace, async (req, res) => {
             .select('title updatedAt model messages');
 
         // Transform for frontend preview
-        const previews = conversations.map(c => ({
-            id: c._id,
-            title: c.title,
-            date: c.updatedAt,
-            model: c.model,
-            preview: c.messages[c.messages.length - 1]?.content.substring(0, 60) + '...'
-        }));
+        const previews = conversations.map(c => {
+            // Fix: Handle empty messages array and undefined content
+            const lastMessage = c.messages && c.messages.length > 0
+                ? c.messages[c.messages.length - 1]
+                : null;
+            const previewText = lastMessage?.content
+                ? lastMessage.content.substring(0, 60) + '...'
+                : '';
+
+            return {
+                id: c._id,
+                title: c.title,
+                date: c.updatedAt,
+                model: c.model,
+                preview: previewText
+            };
+        });
 
         res.json({ status: 'success', data: previews });
     } catch (err) {

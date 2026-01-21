@@ -124,10 +124,10 @@ class MetricsCollector {
   async getLatest(componentId, type = null) {
     if (!componentId) return null;
 
-    const query = MetricsSnapshot.getLatest(componentId, type);
-    if (!query) return null;
-
-    return typeof query.lean === 'function' ? query.lean() : query;
+    // Fix: await the async getLatest method - it returns a Mongoose query
+    // Without await, we get a Promise and the null check/lean() calls fail
+    const doc = await MetricsSnapshot.getLatest(componentId, type);
+    return doc || null;
   }
 
   async flush() {
