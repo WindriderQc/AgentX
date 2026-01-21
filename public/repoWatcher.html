@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Repo Watcher • AgentX</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="/css/agentx.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    .watcher-container {
+      max-width: 1600px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    .watcher-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 30px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid rgba(124, 240, 255, 0.2);
+    }
+
+    .watcher-header h1 {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--text);
+      margin: 0;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .watcher-actions {
+      display: flex;
+      gap: 12px;
+    }
+
+    /* Status Card */
+    .status-card {
+      background: var(--surface);
+      border: 1px solid rgba(124, 240, 255, 0.2);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+
+    .status-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 24px;
+      font-weight: 700;
+    }
+
+    .status-indicator.ok {
+      color: #10b981;
+    }
+
+    .status-indicator.warn {
+      color: #f59e0b;
+    }
+
+    .status-indicator.fail {
+      color: #ef4444;
+    }
+
+    .status-icon {
+      font-size: 32px;
+    }
+
+    .status-meta {
+      text-align: right;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .status-meta p {
+      margin: 4px 0;
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-top: 20px;
+    }
+
+    .summary-item {
+      background: var(--bg);
+      border: 1px solid rgba(124, 240, 255, 0.1);
+      border-radius: 8px;
+      padding: 16px;
+      text-align: center;
+    }
+
+    .summary-value {
+      font-size: 32px;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 8px;
+    }
+
+    .summary-label {
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    /* Findings List */
+    .findings-section {
+      background: var(--surface);
+      border: 1px solid rgba(124, 240, 255, 0.2);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+
+    .findings-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .findings-header h2 {
+      font-size: 20px;
+      font-weight: 600;
+      margin: 0;
+      color: var(--text);
+    }
+
+    .findings-filter {
+      display: flex;
+      gap: 8px;
+    }
+
+    .filter-btn {
+      background: var(--bg);
+      border: 1px solid rgba(124, 240, 255, 0.2);
+      border-radius: 6px;
+      padding: 8px 16px;
+      color: var(--muted);
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .filter-btn.active {
+      background: rgba(124, 240, 255, 0.1);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .findings-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .finding-item {
+      background: var(--bg);
+      border-left: 4px solid;
+      border-radius: 8px;
+      padding: 16px;
+      transition: all 0.2s;
+    }
+
+    .finding-item:hover {
+      background: rgba(124, 240, 255, 0.05);
+    }
+
+    .finding-item.warn {
+      border-color: #f59e0b;
+    }
+
+    .finding-item.fail {
+      border-color: #ef4444;
+    }
+
+    .finding-item.info {
+      border-color: #3b82f6;
+    }
+
+    .finding-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 8px;
+    }
+
+    .finding-type {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .finding-badge {
+      font-size: 11px;
+      padding: 4px 8px;
+      border-radius: 4px;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+
+    .finding-badge.warn {
+      background: rgba(245, 158, 11, 0.2);
+      color: #f59e0b;
+    }
+
+    .finding-badge.fail {
+      background: rgba(239, 68, 68, 0.2);
+      color: #ef4444;
+    }
+
+    .finding-confidence {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .finding-path {
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      color: var(--accent);
+      margin: 8px 0;
+      padding: 8px 12px;
+      background: rgba(124, 240, 255, 0.05);
+      border-radius: 4px;
+      word-break: break-all;
+    }
+
+    .finding-evidence {
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    /* Trends Chart */
+    .trends-section {
+      background: var(--surface);
+      border: 1px solid rgba(124, 240, 255, 0.2);
+      border-radius: 12px;
+      padding: 24px;
+    }
+
+    .trends-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .trends-header h2 {
+      font-size: 20px;
+      font-weight: 600;
+      margin: 0;
+      color: var(--text);
+    }
+
+    .chart-controls {
+      display: flex;
+      gap: 8px;
+    }
+
+    .chart-canvas {
+      max-height: 300px;
+    }
+
+    /* Empty State */
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--muted);
+    }
+
+    .empty-state i {
+      font-size: 64px;
+      margin-bottom: 20px;
+      opacity: 0.5;
+    }
+
+    .empty-state h3 {
+      font-size: 20px;
+      margin-bottom: 12px;
+      color: var(--text);
+    }
+
+    .empty-state p {
+      font-size: 14px;
+      margin-bottom: 20px;
+    }
+
+    /* Loading */
+    .loading-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(4px);
+      z-index: 9999;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .loading-overlay.active {
+      display: flex;
+    }
+
+    .loading-content {
+      text-align: center;
+      color: var(--text);
+    }
+
+    .loading-content i {
+      font-size: 48px;
+      color: var(--accent);
+      animation: spin 1s linear infinite;
+      margin-bottom: 16px;
+    }
+
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    /* Scan Button */
+    .scan-btn {
+      background: linear-gradient(135deg, var(--accent) 0%, #00d4ff 100%);
+      color: var(--bg);
+      border: none;
+      border-radius: 8px;
+      padding: 12px 24px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .scan-btn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(124, 240, 255, 0.4);
+    }
+
+    .scan-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  </style>
+</head>
+<body>
+  <div class="watcher-container">
+    <!-- Header -->
+    <div class="watcher-header">
+      <h1>
+        <i class="fas fa-shield-alt"></i>
+        Repo Watcher
+      </h1>
+      <div class="watcher-actions">
+        <button class="btn" onclick="window.location.href='/dashboard.html'">
+          <i class="fas fa-home"></i> Dashboard
+        </button>
+        <button class="btn" onclick="viewHistory()">
+          <i class="fas fa-history"></i> History
+        </button>
+        <button class="scan-btn" id="scanBtn" onclick="triggerScan()">
+          <i class="fas fa-sync-alt"></i> Scan Now
+        </button>
+      </div>
+    </div>
+
+    <!-- Status Card -->
+    <div class="status-card">
+      <div class="status-header">
+        <div class="status-indicator" id="statusIndicator">
+          <i class="fas fa-circle-notch status-icon"></i>
+          <span>Loading...</span>
+        </div>
+        <div class="status-meta" id="statusMeta">
+          <p><strong>Last Scan:</strong> <span id="lastScan">Never</span></p>
+          <p><strong>Next Scan:</strong> <span id="nextScan">-</span></p>
+        </div>
+      </div>
+
+      <div class="summary-grid" id="summaryGrid">
+        <!-- Summary items will be inserted here -->
+      </div>
+    </div>
+
+    <!-- Findings Section -->
+    <div class="findings-section">
+      <div class="findings-header">
+        <h2>Findings <span id="findingsCount">(0)</span></h2>
+        <div class="findings-filter">
+          <button class="filter-btn active" data-filter="all" onclick="filterFindings('all')">All</button>
+          <button class="filter-btn" data-filter="fail" onclick="filterFindings('fail')">Failures</button>
+          <button class="filter-btn" data-filter="warn" onclick="filterFindings('warn')">Warnings</button>
+          <button class="filter-btn" data-filter="info" onclick="filterFindings('info')">Info</button>
+        </div>
+      </div>
+
+      <div class="findings-list" id="findingsList">
+        <!-- Findings will be inserted here -->
+      </div>
+
+      <div class="empty-state" id="emptyFindings" style="display: none;">
+        <i class="fas fa-check-circle"></i>
+        <h3>All Clear!</h3>
+        <p>No issues detected in the latest scan</p>
+      </div>
+    </div>
+
+    <!-- Trends Chart -->
+    <div class="trends-section">
+      <div class="trends-header">
+        <h2>Trends</h2>
+        <div class="chart-controls">
+          <button class="filter-btn active" onclick="changeTrend('duplication')">Duplication</button>
+          <button class="filter-btn" onclick="changeTrend('tests')">Test Coverage</button>
+          <button class="filter-btn" onclick="changeTrend('docs')">Documentation</button>
+        </div>
+      </div>
+      <canvas id="trendsChart" class="chart-canvas"></canvas>
+    </div>
+  </div>
+
+  <!-- Loading Overlay -->
+  <div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-content">
+      <i class="fas fa-spinner"></i>
+      <p>Scanning repository...</p>
+    </div>
+  </div>
+
+  <script>
+    let currentFilter = 'all';
+    let currentTrend = 'duplication';
+    let trendsChart = null;
+    let scanData = null;
+
+    // Load status on page load
+    async function loadStatus() {
+      try {
+        const token = localStorage.getItem('token');
+        const response = await fetch('/api/repoWatcher/status', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to load status');
+        }
+
+        scanData = await response.json();
+        renderStatus(scanData);
+        renderFindings(scanData.findings || []);
+        await loadTrends();
+      } catch (error) {
+        console.error('Error loading status:', error);
+        showError('Failed to load repository status');
+      }
+    }
+
+    // Render status card
+    function renderStatus(data) {
+      const statusIndicator = document.getElementById('statusIndicator');
+      const lastScan = document.getElementById('lastScan');
+      const nextScan = document.getElementById('nextScan');
+      const summaryGrid = document.getElementById('summaryGrid');
+
+      // Status indicator
+      const statusClass = data.status || 'ok';
+      const statusIcons = {
+        ok: 'fa-check-circle',
+        warn: 'fa-exclamation-triangle',
+        fail: 'fa-times-circle'
+      };
+      const statusLabels = {
+        ok: 'All Clear',
+        warn: 'Warnings Detected',
+        fail: 'Issues Found'
+      };
+
+      statusIndicator.className = `status-indicator ${statusClass}`;
+      statusIndicator.innerHTML = `
+        <i class="fas ${statusIcons[statusClass]} status-icon"></i>
+        <span>${statusLabels[statusClass]}</span>
+      `;
+
+      // Timestamps
+      lastScan.textContent = data.lastScan ? formatTimestamp(data.lastScan) : 'Never';
+      nextScan.textContent = data.nextScan ? formatCountdown(data.nextScan) : 'Manual only';
+
+      // Summary grid
+      const summary = data.summary || {};
+      summaryGrid.innerHTML = `
+        <div class="summary-item">
+          <div class="summary-value">${summary.totalFiles || 0}</div>
+          <div class="summary-label">Files Scanned</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-value">${summary.failures || 0}</div>
+          <div class="summary-label">Failures</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-value">${summary.warnings || 0}</div>
+          <div class="summary-label">Warnings</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-value">${summary.testCoverage || 0}%</div>
+          <div class="summary-label">Test Coverage</div>
+        </div>
+      `;
+    }
+
+    // Render findings list
+    function renderFindings(findings) {
+      const findingsList = document.getElementById('findingsList');
+      const emptyFindings = document.getElementById('emptyFindings');
+      const findingsCount = document.getElementById('findingsCount');
+
+      // Filter findings
+      const filtered = currentFilter === 'all'
+        ? findings
+        : findings.filter(f => f.severity === currentFilter);
+
+      findingsCount.textContent = `(${filtered.length})`;
+
+      if (filtered.length === 0) {
+        findingsList.style.display = 'none';
+        emptyFindings.style.display = 'block';
+        return;
+      }
+
+      findingsList.style.display = 'flex';
+      emptyFindings.style.display = 'none';
+
+      findingsList.innerHTML = filtered.map(finding => {
+        const typeLabels = {
+          missing_test: 'Missing Test',
+          doc_duplication: 'Doc Duplication',
+          code_duplication: 'Code Duplication',
+          architecture_violation: 'Architecture Violation',
+          missing_docs: 'Missing Documentation'
+        };
+
+        return `
+          <div class="finding-item ${finding.severity}">
+            <div class="finding-header">
+              <div class="finding-type">
+                <span>${typeLabels[finding.type] || finding.type}</span>
+                <span class="finding-badge ${finding.severity}">${finding.severity}</span>
+              </div>
+              <div class="finding-confidence">
+                Confidence: ${Math.round((finding.confidence || 0) * 100)}%
+              </div>
+            </div>
+            ${finding.path ? `<div class="finding-path">${finding.path}</div>` : ''}
+            <div class="finding-evidence">${finding.evidence}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Filter findings
+    function filterFindings(filter) {
+      currentFilter = filter;
+
+      // Update filter buttons
+      document.querySelectorAll('.findings-filter .filter-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.filter === filter);
+      });
+
+      renderFindings(scanData.findings || []);
+    }
+
+    // Load trends data
+    async function loadTrends() {
+      try {
+        const token = localStorage.getItem('token');
+        const response = await fetch('/api/repoWatcher/trends', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to load trends');
+        }
+
+        const trendsData = await response.json();
+        renderTrendsChart(trendsData);
+      } catch (error) {
+        console.error('Error loading trends:', error);
+      }
+    }
+
+    // Render trends chart
+    function renderTrendsChart(data) {
+      const ctx = document.getElementById('trendsChart').getContext('2d');
+
+      if (trendsChart) {
+        trendsChart.destroy();
+      }
+
+      const datasets = {
+        duplication: {
+          label: 'Duplication Issues',
+          data: data.duplication || [],
+          borderColor: '#f59e0b',
+          backgroundColor: 'rgba(245, 158, 11, 0.1)'
+        },
+        tests: {
+          label: 'Missing Tests',
+          data: data.tests || [],
+          borderColor: '#ef4444',
+          backgroundColor: 'rgba(239, 68, 68, 0.1)'
+        },
+        docs: {
+          label: 'Documentation Issues',
+          data: data.docs || [],
+          borderColor: '#3b82f6',
+          backgroundColor: 'rgba(59, 130, 246, 0.1)'
+        }
+      };
+
+      trendsChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: data.timestamps || [],
+          datasets: [datasets[currentTrend]]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false }
+          },
+          scales: {
+            y: { beginAtZero: true }
+          }
+        }
+      });
+    }
+
+    // Change trend view
+    function changeTrend(trend) {
+      currentTrend = trend;
+
+      // Update buttons
+      document.querySelectorAll('.chart-controls .filter-btn').forEach(btn => {
+        btn.classList.remove('active');
+      });
+      event.target.classList.add('active');
+
+      loadTrends();
+    }
+
+    // Trigger manual scan
+    async function triggerScan() {
+      const scanBtn = document.getElementById('scanBtn');
+      const loadingOverlay = document.getElementById('loadingOverlay');
+
+      scanBtn.disabled = true;
+      loadingOverlay.classList.add('active');
+
+      try {
+        const token = localStorage.getItem('token');
+        const response = await fetch('/api/repoWatcher/scan', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (!response.ok) {
+          throw new Error('Scan failed');
+        }
+
+        // Wait for scan to complete
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        // Reload status
+        await loadStatus();
+      } catch (error) {
+        console.error('Error triggering scan:', error);
+        showError('Failed to trigger scan');
+      } finally {
+        scanBtn.disabled = false;
+        loadingOverlay.classList.remove('active');
+      }
+    }
+
+    // View history
+    function viewHistory() {
+      window.location.href = '/repoWatcher-history.html';
+    }
+
+    // Utility functions
+    function formatTimestamp(timestamp) {
+      const date = new Date(timestamp);
+      const now = new Date();
+      const diff = now - date;
+
+      if (diff < 60000) return 'Just now';
+      if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+      if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+      return date.toLocaleString();
+    }
+
+    function formatCountdown(timestamp) {
+      const target = new Date(timestamp);
+      const now = new Date();
+      const diff = target - now;
+
+      if (diff < 0) return 'Soon';
+      if (diff < 60000) return `in ${Math.floor(diff / 1000)}s`;
+      if (diff < 3600000) return `in ${Math.floor(diff / 60000)}m`;
+      return `in ${Math.floor(diff / 3600000)}h`;
+    }
+
+    function showError(message) {
+      alert(message); // Replace with better error UI
+    }
+
+    // Auto-refresh every 30 seconds
+    setInterval(loadStatus, 30000);
+
+    // Initialize
+    loadStatus();
+  </script>
+</body>
+</html>

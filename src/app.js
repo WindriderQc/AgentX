@@ -347,6 +347,10 @@ app.use('/api/operations', operationsRoutes);
 const exportRoutes = require('../routes/export');
 app.use('/api/export', exportRoutes);
 
+// Repo Watcher routes (code quality monitoring)
+const repoWatcherRoutes = require('../routes/repoWatcher');
+app.use('/api/repoWatcher', repoWatcherRoutes);
+
 // Legacy/Compatibility routes
 // Map /conversations -> history
 app.use('/api/conversations', historyRoutes);
