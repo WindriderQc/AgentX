@@ -581,10 +581,10 @@ class BenchmarkService {
                 break;
             case 'latency':
             default:
-                sortedStats.sort((s => (a, b) => {
+                sortedStats.sort((a, b) => {
                     if (a.failure_only !== b.failure_only) return a.failure_only ? 1 : -1;
                     return a.avg_latency - b.avg_latency;
-                })());
+                });
         }
 
         return {
@@ -655,8 +655,8 @@ class BenchmarkService {
                 avg_composite: m.avg_composite ? m.avg_composite.toFixed(1) : null,
                 avg_latency: Math.round(m.avg_latency),
                 quality_range: {
-                    best: m.best_category.toFixed(1),
-                    worst: m.worst_category.toFixed(1)
+                    max: m.max_quality_score.toFixed(1),
+                    min: m.min_quality_score.toFixed(1)
                 },
                 tests: m.count
             })),
@@ -1893,10 +1893,17 @@ class BenchmarkService {
                     count: 1,
                     avg_latency: { $round: ['$avg_latency', 0] },
                     success_rate: {
-                        $multiply: [
-                            { $divide: ['$success_count', '$count'] },
-                            100
-                        ]
+                        // Guard against division by zero (returns 0 if count is 0)
+                        $cond: {
+                            if: { $eq: ['$count', 0] },
+                            then: 0,
+                            else: {
+                                $multiply: [
+                                    { $divide: ['$success_count', '$count'] },
+                                    100
+                                ]
+                            }
+                        }
                     },
                     avg_score_given: { $round: ['$avg_score_given', 1] },
                     avg_test_tokens: { $round: ['$avg_test_tokens', 0] }

@@ -243,10 +243,12 @@ async function judgeConversation(conversationId, judgeModel = null, judgeHost = 
         const avgLatency = calculateAvgLatency(conversation.messages);
 
         // Build quality assessment object
-        // Clamp all dimension scores to 0-10 range to prevent invalid data
+        // NOTE: overall_score is on 0-100 scale, dimensions are on 0-10 scale
+        // This is intentional - overall_score is the weighted average * 10 for percentage display
+        // When comparing with dimensions, divide overall_score by 10 or multiply dimensions by 10
         const qualityAssessment = {
-            overall_score: overallScore,
-            dimensions: {
+            overall_score: overallScore,  // 0-100 scale
+            dimensions: {                  // 0-10 scale (individual judge ratings)
                 accuracy: clamp(judgeResult.accuracy, 0, 10),
                 relevance: clamp(judgeResult.relevance, 0, 10),
                 coherence: clamp(judgeResult.coherence, 0, 10),

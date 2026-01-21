@@ -266,8 +266,8 @@ BenchmarkResultSchema.statics.getQualityBreakdown = async function(model = null,
                     avg_quality: { $avg: '$quality_score' },
                     avg_composite: { $avg: '$composite_score' },
                     avg_latency: { $avg: '$latency' },
-                    best_category: { $max: '$quality_score' },
-                    worst_category: { $min: '$quality_score' },
+                    max_quality_score: { $max: '$quality_score' },
+                    min_quality_score: { $min: '$quality_score' },
                     count: { $sum: 1 }
                 }
             },
