@@ -41,7 +41,7 @@ class SelfHealingEngine {
     this.config = {
       enableAutomation: process.env.SELF_HEALING_ENABLED !== 'false',
       requireApprovalForCritical: process.env.REQUIRE_APPROVAL !== 'false',
-      maxConcurrentActions: parseInt(process.env.MAX_CONCURRENT_ACTIONS || '3'),
+      maxConcurrentActions: parseInt(process.env.MAX_CONCURRENT_ACTIONS || '3', 10),
       defaultCooldownMs: 15 * 60 * 1000 // 15 minutes
     };
 
@@ -946,7 +946,7 @@ class SelfHealingEngine {
     const match = window.match(/^(\d+)([smhd])$/);
     if (!match) return this.config.defaultCooldownMs;
 
-    const value = parseInt(match[1]);
+    const value = parseInt(match[1], 10);
     const unit = match[2];
 
     const multipliers = {

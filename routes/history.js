@@ -481,8 +481,8 @@ router.get('/judged', optionalAuth, attachWorkspace, async (req, res) => {
         const { limit = '50', minScore = '0' } = req.query;
 
         const conversations = await conversationJudge.getJudgedConversations({
-            limit: parseInt(limit) || 50,
-            minScore: parseInt(minScore) || 0,
+            limit: parseInt(limit, 10) || 50,
+            minScore: parseInt(minScore, 10) || 0,
             workspaceId: req.workspace?._id
         });
 

@@ -30,8 +30,8 @@ router.get('/', requireAuth, requireAdmin, async (req, res) => {
     } = req.query;
 
     // Parse limit and offset
-    const parsedLimit = Math.min(parseInt(limit) || 100, 1000); // Max 1000
-    const parsedOffset = parseInt(offset) || 0;
+    const parsedLimit = Math.min(parseInt(limit, 10) || 100, 1000); // Max 1000
+    const parsedOffset = parseInt(offset, 10) || 0;
 
     // Build filters
     const filters = {};
@@ -256,7 +256,7 @@ router.get('/export/csv', requireAuth, requireAdmin, async (req, res) => {
     // Query logs
     const logs = await AuditLog.find(filters)
       .sort('-timestamp')
-      .limit(Math.min(parseInt(limit) || 10000, 10000))
+      .limit(Math.min(parseInt(limit, 10) || 10000, 10000))
       .lean();
 
     // Generate CSV

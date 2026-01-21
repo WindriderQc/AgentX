@@ -777,7 +777,7 @@ router.get('/activity', async (req, res) => {
     if (action) filters.action = action;
     if (userId) filters.userId = userId;
 
-    const logs = await ActivityLog.getRecentActivity(parseInt(limit), filters);
+    const logs = await ActivityLog.getRecentActivity(parseInt(limit, 10), filters);
 
     res.json({
       status: 'success',

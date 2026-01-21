@@ -33,8 +33,8 @@ router.get('/:slug/audit-logs', requireAuth, attachWorkspace, requireWorkspaceAc
     } = req.query;
 
     const options = {
-      limit: Math.min(parseInt(limit), 100), // Max 100 per page
-      skip: parseInt(skip),
+      limit: Math.min(parseInt(limit, 10), 100), // Max 100 per page
+      skip: parseInt(skip, 10),
       action,
       targetType,
       userId,

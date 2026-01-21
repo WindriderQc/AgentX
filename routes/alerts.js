@@ -381,8 +381,8 @@ router.get('/', optionalAuth, async (req, res) => {
     if (status) filters.status = status;
     if (ruleId) filters.ruleId = ruleId;
 
-    const limitNum = parseInt(limit);
-    const skipNum = parseInt(skip);
+    const limitNum = parseInt(limit, 10);
+    const skipNum = parseInt(skip, 10);
 
     // Sort by severity priority (critical -> error -> warning -> info), then recency
     const alerts = await Alert.aggregate([

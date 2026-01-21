@@ -255,7 +255,7 @@ const handleChatRequest = async ({
                         { 
                             compressionModel: process.env.COMPRESSION_MODEL || 'gemma2:2b',
                             minRelevanceScore: parseFloat(process.env.COMPRESSION_MIN_RELEVANCE) || 0.6,
-                            maxSentencesPerChunk: parseInt(process.env.COMPRESSION_MAX_SENTENCES) || 5
+                            maxSentencesPerChunk: parseInt(process.env.COMPRESSION_MAX_SENTENCES, 10) || 5
                         }
                     );
                 } catch (compErr) {
@@ -740,7 +740,7 @@ const handleChatRequestStream = async ({
                             { 
                                 compressionModel: process.env.COMPRESSION_MODEL || 'gemma2:2b',
                                 minRelevanceScore: parseFloat(process.env.COMPRESSION_MIN_RELEVANCE) || 0.6,
-                                maxSentencesPerChunk: parseInt(process.env.COMPRESSION_MAX_SENTENCES) || 5
+                                maxSentencesPerChunk: parseInt(process.env.COMPRESSION_MAX_SENTENCES, 10) || 5
                             }
                         );
                     } catch (compErr) {

@@ -16,7 +16,7 @@ class NotificationService {
       email: {
         enabled: process.env.EMAIL_ENABLED === 'true',
         host: process.env.SMTP_HOST,
-        port: parseInt(process.env.SMTP_PORT || '587'),
+        port: parseInt(process.env.SMTP_PORT || '587', 10),
         secure: process.env.SMTP_SECURE === 'true',
         auth: {
           user: process.env.SMTP_USER,
@@ -28,9 +28,9 @@ class NotificationService {
         enabled: process.env.SLACK_ENABLED === 'true',
         webhookUrl: process.env.SLACK_WEBHOOK_URL,
         retry: {
-          maxAttempts: parseInt(process.env.SLACK_RETRY_MAX_ATTEMPTS || '3'),
-          baseDelayMs: parseInt(process.env.SLACK_RETRY_BASE_DELAY_MS || '500'),
-          jitterMs: parseInt(process.env.SLACK_RETRY_JITTER_MS || '250')
+          maxAttempts: parseInt(process.env.SLACK_RETRY_MAX_ATTEMPTS || '3', 10),
+          baseDelayMs: parseInt(process.env.SLACK_RETRY_BASE_DELAY_MS || '500', 10),
+          jitterMs: parseInt(process.env.SLACK_RETRY_JITTER_MS || '250', 10)
         }
       },
       webhook: {
@@ -38,11 +38,11 @@ class NotificationService {
         url: process.env.WEBHOOK_URL,
         method: process.env.WEBHOOK_METHOD || 'POST',
         headers: this._parseHeaders(process.env.WEBHOOK_HEADERS),
-        timeoutMs: parseInt(process.env.WEBHOOK_TIMEOUT_MS || '5000'),
+        timeoutMs: parseInt(process.env.WEBHOOK_TIMEOUT_MS || '5000', 10),
         retry: {
-          maxAttempts: parseInt(process.env.WEBHOOK_RETRY_MAX_ATTEMPTS || '3'),
-          baseDelayMs: parseInt(process.env.WEBHOOK_RETRY_BASE_DELAY_MS || '500'),
-          jitterMs: parseInt(process.env.WEBHOOK_RETRY_JITTER_MS || '250')
+          maxAttempts: parseInt(process.env.WEBHOOK_RETRY_MAX_ATTEMPTS || '3', 10),
+          baseDelayMs: parseInt(process.env.WEBHOOK_RETRY_BASE_DELAY_MS || '500', 10),
+          jitterMs: parseInt(process.env.WEBHOOK_RETRY_JITTER_MS || '250', 10)
         }
       }
     };
