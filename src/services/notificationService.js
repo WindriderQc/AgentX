@@ -109,8 +109,17 @@ class NotificationService {
   _getTemplateValue(data, key) {
     if (!key) return '';
     const parts = key.split('.');
+    // Limit depth to prevent deep traversal that could expose sensitive properties
+    const MAX_DEPTH = 3;
+    if (parts.length > MAX_DEPTH) {
+      return '';
+    }
     let value = data;
     for (const part of parts) {
+      // Block access to prototype-related or internal properties
+      if (part === '__proto__' || part === 'constructor' || part === 'prototype') {
+        return '';
+      }
       if (value && Object.prototype.hasOwnProperty.call(value, part)) {
         value = value[part];
       } else {

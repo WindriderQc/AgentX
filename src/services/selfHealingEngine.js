@@ -528,7 +528,13 @@ class SelfHealingEngine {
 
       // Verify service is running
       const { stdout: statusOutput } = await execAsync(`pm2 jlist`);
-      const processes = JSON.parse(statusOutput);
+      let processes;
+      try {
+        processes = JSON.parse(statusOutput);
+      } catch (parseErr) {
+        logger.error('Failed to parse PM2 process list', { error: parseErr.message, output: statusOutput.substring(0, 200) });
+        throw new Error(`Invalid PM2 process list format: ${parseErr.message}`);
+      }
       const targetProcess = processes.find(p => p.name === pm2AppName);
 
       if (!targetProcess) {
@@ -722,8 +728,12 @@ class SelfHealingEngine {
       type: this._mapMetricToType(metric)
     };
 
-    if (componentPattern && componentPattern !== '*') {
-      query.componentId = new RegExp(componentPattern.replace('*', '.*'));
+    if (componentPattern && componentPattern !== '*' && typeof componentPattern === 'string' && componentPattern.length < 200) {
+      // Escape regex special chars to prevent ReDoS attacks, then replace * with .*
+      const escapedPattern = componentPattern
+        .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+        .replace(/\*/g, '.*');
+      query.componentId = new RegExp('^' + escapedPattern + '$');
     }
 
     // Fetch and aggregate

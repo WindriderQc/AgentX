@@ -31,40 +31,58 @@ const isValidEmail = (email) => {
  */
 const isValidWebhookUrl = (url) => {
   if (!url || typeof url !== 'string') return false;
-  
+
   try {
     const parsed = new URL(url);
-    
+
     // Only allow HTTP/HTTPS protocols
     if (!['http:', 'https:'].includes(parsed.protocol)) {
       return false;
     }
-    
+
     // Block localhost and private IP ranges
     const hostname = parsed.hostname.toLowerCase();
-    
-    // Block localhost variations
+
+    // Block localhost variations (IPv4 and IPv6)
     if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') {
       return false;
     }
-    
+
+    // Block IPv6-mapped IPv4 addresses (::ffff:127.0.0.1, etc.)
+    if (hostname.startsWith('::ffff:')) {
+      const ipv4 = hostname.slice(7);
+      if (/^127\.|^10\.|^172\.(1[6-9]|2\d|3[01])\.|^192\.168\.|^169\.254\./.test(ipv4)) {
+        return false;
+      }
+    }
+
+    // Block IPv6 private ranges (fc00::/7 unique local, fe80::/10 link-local)
+    if (/^(fc|fd|fe80)/i.test(hostname)) {
+      return false;
+    }
+
+    // Block IPv6 loopback variations (brackets stripped by URL parser)
+    if (hostname === '[::1]' || hostname.includes('0:0:0:0:0:0:0:1')) {
+      return false;
+    }
+
     // Block private IPv4 ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16)
-    if (/^10\./.test(hostname) || 
+    if (/^10\./.test(hostname) ||
         /^172\.(1[6-9]|2\d|3[01])\./.test(hostname) ||
         /^192\.168\./.test(hostname)) {
       return false;
     }
-    
+
     // Block link-local addresses (169.254.0.0/16)
     if (/^169\.254\./.test(hostname)) {
       return false;
     }
-    
+
     // Block cloud metadata endpoints
     if (hostname === '169.254.169.254' || hostname === 'metadata.google.internal') {
       return false;
     }
-    
+
     return true;
   } catch {
     return false;
