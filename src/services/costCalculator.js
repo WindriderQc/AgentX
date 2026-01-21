@@ -70,9 +70,21 @@ function getPricingFromEnv(provider, modelName) {
 
   if (process.env[modelSpecificPromptKey] !== undefined &&
       process.env[modelSpecificCompletionKey] !== undefined) {
+    const promptCost = parseFloat(process.env[modelSpecificPromptKey]);
+    const completionCost = parseFloat(process.env[modelSpecificCompletionKey]);
+    // Validate parsed values are valid numbers
+    if (Number.isNaN(promptCost) || Number.isNaN(completionCost)) {
+      logger.warn('Invalid model-specific pricing env vars', {
+        provider: providerUpper,
+        model: modelUpper,
+        promptCost,
+        completionCost
+      });
+      return null; // Fall through to next pricing source
+    }
     return {
-      promptTokenCost: parseFloat(process.env[modelSpecificPromptKey]),
-      completionTokenCost: parseFloat(process.env[modelSpecificCompletionKey]),
+      promptTokenCost: promptCost,
+      completionTokenCost: completionCost,
       source: 'environment',
       sourceDetail: 'model-specific'
     };
@@ -84,9 +96,20 @@ function getPricingFromEnv(provider, modelName) {
 
   if (process.env[providerDefaultPromptKey] !== undefined &&
       process.env[providerDefaultCompletionKey] !== undefined) {
+    const promptCost = parseFloat(process.env[providerDefaultPromptKey]);
+    const completionCost = parseFloat(process.env[providerDefaultCompletionKey]);
+    // Validate parsed values are valid numbers
+    if (Number.isNaN(promptCost) || Number.isNaN(completionCost)) {
+      logger.warn('Invalid provider-default pricing env vars', {
+        provider: providerUpper,
+        promptCost,
+        completionCost
+      });
+      return null; // Fall through to database/fallback
+    }
     return {
-      promptTokenCost: parseFloat(process.env[providerDefaultPromptKey]),
-      completionTokenCost: parseFloat(process.env[providerDefaultCompletionKey]),
+      promptTokenCost: promptCost,
+      completionTokenCost: completionCost,
       source: 'environment',
       sourceDetail: 'provider-default'
     };
@@ -130,8 +153,9 @@ function getGlobalFallback() {
   const completionCost = parseFloat(process.env.DEFAULT_FALLBACK_COMPLETION_COST_PER_1M || '0.00');
 
   return {
-    promptTokenCost: promptCost,
-    completionTokenCost: completionCost,
+    // Default to 0 if parsing failed (NaN)
+    promptTokenCost: Number.isNaN(promptCost) ? 0 : promptCost,
+    completionTokenCost: Number.isNaN(completionCost) ? 0 : completionCost,
     source: 'default',
     sourceDetail: 'global-fallback'
   };

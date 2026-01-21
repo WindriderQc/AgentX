@@ -191,6 +191,14 @@ router.get('/:slug', requireAuth, async (req, res) => {
     // Get workspace
     const workspace = await Workspace.getBySlug(slug);
 
+    // Check workspace exists
+    if (!workspace) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Workspace not found'
+      });
+    }
+
     // Check if user is a member
     const member = await WorkspaceMember.getMember(workspace._id, userProfileId);
 
@@ -392,6 +400,14 @@ router.get('/:slug/members', requireAuth, async (req, res) => {
 
     // Get workspace
     const workspace = await Workspace.getBySlug(slug);
+
+    // Check workspace exists
+    if (!workspace) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Workspace not found'
+      });
+    }
 
     // Check if user is a member
     const member = await WorkspaceMember.getMember(workspace._id, userProfileId);

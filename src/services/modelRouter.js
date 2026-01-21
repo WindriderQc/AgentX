@@ -61,9 +61,12 @@ async function getModelHealth(hostUrl, _model = null) {
     const cacheKey = `${hostUrl}|${_model || ''}`;
     const start = Date.now();
     const cached = _healthCache.get(cacheKey);
-    const cacheAgeMs = cached ? (start - cached.checkedAt) : null;
-    if (cached && cacheAgeMs >= 0 && cacheAgeMs < HEALTH_CACHE_TTL_MS) {
-        return cached;
+    // Guard against undefined/null checkedAt which would result in NaN
+    if (cached && typeof cached.checkedAt === 'number') {
+        const cacheAgeMs = start - cached.checkedAt;
+        if (cacheAgeMs >= 0 && cacheAgeMs < HEALTH_CACHE_TTL_MS) {
+            return cached;
+        }
     }
 
     try {

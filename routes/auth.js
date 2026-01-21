@@ -10,14 +10,15 @@ const { validatePasswordMiddleware } = require('../src/helpers/passwordValidator
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 5, // Limit each IP to 5 requests per windowMs
-  message: { 
-    status: 'error', 
-    message: 'Too many attempts. Please try again in 15 minutes.' 
+  message: {
+    status: 'error',
+    message: 'Too many attempts. Please try again in 15 minutes.'
   },
   standardHeaders: true,
   legacyHeaders: false,
-  // Skip rate limiting for successful logins
-  skipSuccessfulRequests: false,
+  // Skip rate limiting for successful requests - only count failed attempts
+  // This prevents attackers from wasting rate limit quota with successful logins
+  skipSuccessfulRequests: true,
   handler: (req, res) => {
     securityLogger.logRateLimitExceeded(req, 5, 15 * 60 * 1000);
     res.status(429).json({

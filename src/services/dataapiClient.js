@@ -61,7 +61,17 @@ async function requestJson(method, pathname, { query, body, timeoutMs = 30000 } 
     let parsed;
     try {
       parsed = text ? JSON.parse(text) : null;
-    } catch (_e) {
+    } catch (parseErr) {
+      // Log the parse failure for debugging, return text as fallback
+      // This can cause type mismatches downstream if code expects object
+      if (text && text.length > 0) {
+        // Only warn if there was actual content that failed to parse
+        console.warn('DataAPI response JSON parse failed', {
+          error: parseErr.message,
+          textLength: text.length,
+          textPreview: text.substring(0, 100)
+        });
+      }
       parsed = text;
     }
 

@@ -159,20 +159,31 @@ class EmbeddingCache {
       if (pending.miss) inc.missCount = pending.miss;
       if (pending.evict) inc.evictionCount = pending.evict;
 
+      // Store values before reset so we can restore on failure
+      const savedPending = { ...pending };
+
       // Reset before write to reduce duplicate increments if multiple flushes overlap.
       this._pendingGlobal = { hit: 0, miss: 0, evict: 0 };
 
-      await EmbeddingCacheStats.updateOne(
-        { _id: 'embedding' },
-        {
-          $inc: inc,
-          $set: { updatedAt: new Date() },
-          $setOnInsert: { _id: 'embedding' }
-        },
-        { upsert: true }
-      );
+      try {
+        await EmbeddingCacheStats.updateOne(
+          { _id: 'embedding' },
+          {
+            $inc: inc,
+            $set: { updatedAt: new Date() },
+            $setOnInsert: { _id: 'embedding' }
+          },
+          { upsert: true }
+        );
+      } catch (writeErr) {
+        // Restore counters if write fails to prevent data loss
+        this._pendingGlobal.hit += savedPending.hit;
+        this._pendingGlobal.miss += savedPending.miss;
+        this._pendingGlobal.evict += savedPending.evict;
+        throw writeErr; // Re-throw to outer catch
+      }
     } catch (err) {
-      // If flush fails, keep the counters (best-effort)
+      // If flush fails, counters have been restored (best-effort)
       logger.debug('EmbeddingCache global stats flush failed', { error: err.message });
     }
   }

@@ -643,9 +643,10 @@ Score:`;
       // Critical: Ensure nextStart is always greater than start
       if (nextStart <= start) {
         // Force advance by minimum amount
-        start = start + minAdvance;
+        const oldStart = start;
+        start = oldStart + minAdvance;
         logger.warn('Chunking forced advance', {
-          oldStart: start,
+          oldStart,
           newStart: start,
           chunkSize: this.chunkSize,
           chunkOverlap: this.chunkOverlap,
