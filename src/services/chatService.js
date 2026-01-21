@@ -255,7 +255,7 @@ const handleChatRequest = async ({
                         { 
                             compressionModel: process.env.COMPRESSION_MODEL || 'gemma2:2b',
                             minRelevanceScore: parseFloat(process.env.COMPRESSION_MIN_RELEVANCE) || 0.6,
-                            maxSentencesPerChunk: parseInt(process.env.COMPRESSION_MAX_SENTENCES) || 5
+                            maxSentencesPerChunk: parseInt(process.env.COMPRESSION_MAX_SENTENCES, 10) || 5
                         }
                     );
                 } catch (compErr) {
@@ -418,18 +418,32 @@ const handleChatRequest = async ({
                     streamEnabled: false
                 });
 
-                const followUpResponse = await fetch(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(followUpPayload)
-                });
+                // Add timeout protection for follow-up request (same as initial request)
+                const followUpController = new AbortController();
+                const followUpTimeout = setTimeout(() => followUpController.abort(), 120000);
 
-                if (!followUpResponse.ok) {
-                    throw new Error(`Ollama follow-up request failed: ${followUpResponse.statusText}`);
+                let followUpResponse;
+                try {
+                    followUpResponse = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(followUpPayload),
+                        signal: followUpController.signal
+                    });
+                    if (!followUpResponse.ok) {
+                        throw new Error(`Ollama follow-up request failed: ${followUpResponse.statusText}`);
+                    }
+                } catch (followUpErr) {
+                    if (followUpErr.name === 'AbortError') {
+                        throw new Error('Ollama follow-up request timed out (2m limit).');
+                    }
+                    throw followUpErr;
+                } finally {
+                    clearTimeout(followUpTimeout);
                 }
 
                 const followUpData = await followUpResponse.json();
-                const extracted = extractResponse(followUpData, model);
+                const extracted = extractResponse(followUpData, effectiveModel);
                 assistantMessageContent = extracted.content;
                 thinking = extracted.thinking;
                 warning = extracted.warning;
@@ -726,7 +740,7 @@ const handleChatRequestStream = async ({
                             { 
                                 compressionModel: process.env.COMPRESSION_MODEL || 'gemma2:2b',
                                 minRelevanceScore: parseFloat(process.env.COMPRESSION_MIN_RELEVANCE) || 0.6,
-                                maxSentencesPerChunk: parseInt(process.env.COMPRESSION_MAX_SENTENCES) || 5
+                                maxSentencesPerChunk: parseInt(process.env.COMPRESSION_MAX_SENTENCES, 10) || 5
                             }
                         );
                     } catch (compErr) {
@@ -1004,7 +1018,7 @@ const handleChatRequestStream = async ({
                 }
                 conversation.promptConfigId = activePrompt._id;
                 conversation.promptName = activePrompt.name;
-                conversation.promptVersion = isNaN(activePrompt.version) ? 1 : Number(activePrompt.version);
+                conversation.promptVersion = (activePrompt.version == null || Number.isNaN(Number(activePrompt.version))) ? 1 : Number(activePrompt.version);
 
                 try {
                     const totalCost = calculateConversationCost(conversation.messages);

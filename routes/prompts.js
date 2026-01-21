@@ -467,7 +467,7 @@ router.post('/:name/analyze-failures', optionalAuth, attachWorkspace, async (req
         // Find the prompt
         let prompt;
         if (version) {
-            prompt = await PromptConfig.findOne({ ...query, version: parseInt(version) });
+            prompt = await PromptConfig.findOne({ ...query, version: parseInt(version, 10) });
         } else {
             prompt = await PromptConfig.findOne({ ...query, isActive: true });
         }
@@ -494,7 +494,7 @@ router.post('/:name/analyze-failures', optionalAuth, attachWorkspace, async (req
 
         const conversations = await Conversation.find(convQuery)
             .sort({ createdAt: -1 })
-            .limit(parseInt(limit))
+            .limit(parseInt(limit, 10))
             .lean();
         
         if (conversations.length === 0) {

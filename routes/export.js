@@ -2,9 +2,9 @@ const express = require('express');
 const router = express.Router();
 const path = require('path');
 const fs = require('fs').promises;
-const { exec } = require('child_process');
+const { execFile, execFileSync } = require('child_process');
 const util = require('util');
-const execAsync = util.promisify(exec);
+const execFileAsync = util.promisify(execFile);
 const logger = require('../config/logger');
 
 // Import RAG routes to access watcher instance
@@ -27,12 +27,12 @@ router.post('/md-docs', async (req, res) => {
     const zipPath = path.join(exportsDir, zipFilename);
 
     // Run Python script to pack MD files
+    // Using execFile with array args to prevent command injection
     const scriptPath = path.join(__dirname, '..', 'scripts', 'pack_md_docs.py');
-    const command = `python3 "${scriptPath}" "${docsDir}" "${zipPath}"`;
 
     logger.info('Starting MD docs export', { docsDir, zipPath });
 
-    const { stdout, stderr } = await execAsync(command, { timeout: 30000 }); // 30 second timeout
+    const { stdout, stderr } = await execFileAsync('python3', [scriptPath, docsDir, zipPath], { timeout: 30000 }); // 30 second timeout
 
     if (stderr) {
       logger.warn('MD docs export warnings', { stderr });
@@ -85,11 +85,18 @@ router.post('/md-docs', async (req, res) => {
 router.get('/download/:filename', async (req, res) => {
   try {
     const filename = req.params.filename;
-    const filePath = path.join(__dirname, '..', 'exports', filename);
 
-    // Security check - only allow .zip files
-    if (!filename.endsWith('.zip')) {
-      return res.status(400).json({ error: 'Invalid file type' });
+    // Security check - prevent path traversal and only allow .zip files
+    if (!filename.endsWith('.zip') || filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+      return res.status(400).json({ error: 'Invalid filename' });
+    }
+
+    const exportsDir = path.resolve(path.join(__dirname, '..', 'exports'));
+    const filePath = path.resolve(path.join(exportsDir, filename));
+
+    // Verify resolved path is within exports directory (prevent path traversal)
+    if (!filePath.startsWith(exportsDir + path.sep)) {
+      return res.status(403).json({ error: 'Access denied' });
     }
 
     // Check if file exists
@@ -132,12 +139,6 @@ router.post('/copy-to-rag', async (req, res) => {
   try {
     console.log('COPY-TO-RAG: Route called');
 
-    const fs = require('fs').promises;
-    const path = require('path');
-    const { exec } = require('child_process');
-    const util = require('util');
-    const execAsync = util.promisify(exec);
-
     const exportsDir = path.join(__dirname, '..', 'exports');
     const ragDir = '/mnt/datalake/RAG';
 
@@ -165,17 +166,13 @@ router.post('/copy-to-rag', async (req, res) => {
     await fs.mkdir(ragDir, { recursive: true });
 
     // Extract ZIP to RAG directory
-    // Using unzip command since it's more reliable than node.js zip extraction
-    const command = `/usr/bin/unzip -o "${latestZip}" -d "${ragDir}"`;
+    // Using execFileSync with array args to prevent command injection
+    console.log('COPY-TO-RAG: Extracting ZIP:', latestZip, 'to:', ragDir);
 
-    console.log('COPY-TO-RAG: Executing command:', command);
-
-    // Try synchronous exec first
-    const { execSync } = require('child_process');
     let execResult = '';
     let execError = null;
     try {
-      execResult = execSync(command, { timeout: 60000, encoding: 'utf8' });
+      execResult = execFileSync('/usr/bin/unzip', ['-o', latestZip, '-d', ragDir], { timeout: 60000, encoding: 'utf8' });
       console.log('COPY-TO-RAG: Sync exec result:', execResult.substring(0, 200));
     } catch (syncError) {
       console.error('COPY-TO-RAG: Sync exec failed:', syncError.message);

@@ -454,11 +454,15 @@ router.get('/metrics', async (req, res) => {
     totalChunks += doc.chunkCount || 0;
 
     if (doc.createdAt) {
-      const docDate = new Date(doc.createdAt);
-      if (!oldestDoc || docDate < new Date(oldestDoc)) {
+      // Fix: Compare timestamps directly to avoid creating new Date objects repeatedly
+      const docTime = new Date(doc.createdAt).getTime();
+      const oldestTime = oldestDoc ? new Date(oldestDoc).getTime() : Infinity;
+      const newestTime = newestDoc ? new Date(newestDoc).getTime() : -Infinity;
+
+      if (docTime < oldestTime) {
         oldestDoc = doc.createdAt;
       }
-      if (!newestDoc || docDate > new Date(newestDoc)) {
+      if (docTime > newestTime) {
         newestDoc = doc.createdAt;
       }
     }

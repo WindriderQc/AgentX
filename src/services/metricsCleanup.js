@@ -28,22 +28,22 @@ class MetricsCleanup {
     this.config = {
       // Retention periods in days
       retentionPeriods: {
-        raw: parseInt(process.env.METRICS_RETENTION_RAW_DAYS || '90'),
-        '5m': parseInt(process.env.METRICS_RETENTION_5M_DAYS || '90'),
-        '15m': parseInt(process.env.METRICS_RETENTION_15M_DAYS || '90'),
-        '1h': parseInt(process.env.METRICS_RETENTION_1H_DAYS || '180'),
-        '6h': parseInt(process.env.METRICS_RETENTION_6H_DAYS || '180'),
-        '1d': parseInt(process.env.METRICS_RETENTION_1D_DAYS || '365'),
-        '7d': parseInt(process.env.METRICS_RETENTION_7D_DAYS || '730'), // 2 years
+        raw: parseInt(process.env.METRICS_RETENTION_RAW_DAYS || '90', 10),
+        '5m': parseInt(process.env.METRICS_RETENTION_5M_DAYS || '90', 10),
+        '15m': parseInt(process.env.METRICS_RETENTION_15M_DAYS || '90', 10),
+        '1h': parseInt(process.env.METRICS_RETENTION_1H_DAYS || '180', 10),
+        '6h': parseInt(process.env.METRICS_RETENTION_6H_DAYS || '180', 10),
+        '1d': parseInt(process.env.METRICS_RETENTION_1D_DAYS || '365', 10),
+        '7d': parseInt(process.env.METRICS_RETENTION_7D_DAYS || '730', 10), // 2 years
         '30d': null // Keep indefinitely
       },
 
       // Cleanup schedule (default: 2 AM daily)
-      cleanupHour: parseInt(process.env.METRICS_CLEANUP_HOUR || '2'),
-      cleanupMinute: parseInt(process.env.METRICS_CLEANUP_MINUTE || '0'),
+      cleanupHour: parseInt(process.env.METRICS_CLEANUP_HOUR || '2', 10),
+      cleanupMinute: parseInt(process.env.METRICS_CLEANUP_MINUTE || '0', 10),
 
       // Batch size for deletion operations
-      batchSize: parseInt(process.env.METRICS_CLEANUP_BATCH_SIZE || '1000'),
+      batchSize: parseInt(process.env.METRICS_CLEANUP_BATCH_SIZE || '1000', 10),
 
       // Enable/disable auto-cleanup
       // In tests, never schedule timers (they keep Jest alive).

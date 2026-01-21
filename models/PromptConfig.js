@@ -88,11 +88,13 @@ PromptConfigSchema.statics.getActive = async function(name = 'default_chat', wor
   if (activePrompts.length === 1) return activePrompts[0];
 
   // Weighted random selection for A/B testing
-  const totalWeight = activePrompts.reduce((sum, p) => sum + (p.trafficWeight || 100), 0);
+  // Fix: Use ?? instead of || to properly handle trafficWeight=0 (0% traffic)
+  // With ||, trafficWeight=0 would fallback to 100 (wrong), ?? only fallbacks for null/undefined
+  const totalWeight = activePrompts.reduce((sum, p) => sum + (p.trafficWeight ?? 100), 0);
   let random = Math.random() * totalWeight;
 
   for (const prompt of activePrompts) {
-    random -= prompt.trafficWeight || 100;
+    random -= prompt.trafficWeight ?? 100;
     if (random <= 0) return prompt;
   }
 

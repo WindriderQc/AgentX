@@ -16,7 +16,7 @@ class NotificationService {
       email: {
         enabled: process.env.EMAIL_ENABLED === 'true',
         host: process.env.SMTP_HOST,
-        port: parseInt(process.env.SMTP_PORT || '587'),
+        port: parseInt(process.env.SMTP_PORT || '587', 10),
         secure: process.env.SMTP_SECURE === 'true',
         auth: {
           user: process.env.SMTP_USER,
@@ -28,9 +28,9 @@ class NotificationService {
         enabled: process.env.SLACK_ENABLED === 'true',
         webhookUrl: process.env.SLACK_WEBHOOK_URL,
         retry: {
-          maxAttempts: parseInt(process.env.SLACK_RETRY_MAX_ATTEMPTS || '3'),
-          baseDelayMs: parseInt(process.env.SLACK_RETRY_BASE_DELAY_MS || '500'),
-          jitterMs: parseInt(process.env.SLACK_RETRY_JITTER_MS || '250')
+          maxAttempts: parseInt(process.env.SLACK_RETRY_MAX_ATTEMPTS || '3', 10),
+          baseDelayMs: parseInt(process.env.SLACK_RETRY_BASE_DELAY_MS || '500', 10),
+          jitterMs: parseInt(process.env.SLACK_RETRY_JITTER_MS || '250', 10)
         }
       },
       webhook: {
@@ -38,11 +38,11 @@ class NotificationService {
         url: process.env.WEBHOOK_URL,
         method: process.env.WEBHOOK_METHOD || 'POST',
         headers: this._parseHeaders(process.env.WEBHOOK_HEADERS),
-        timeoutMs: parseInt(process.env.WEBHOOK_TIMEOUT_MS || '5000'),
+        timeoutMs: parseInt(process.env.WEBHOOK_TIMEOUT_MS || '5000', 10),
         retry: {
-          maxAttempts: parseInt(process.env.WEBHOOK_RETRY_MAX_ATTEMPTS || '3'),
-          baseDelayMs: parseInt(process.env.WEBHOOK_RETRY_BASE_DELAY_MS || '500'),
-          jitterMs: parseInt(process.env.WEBHOOK_RETRY_JITTER_MS || '250')
+          maxAttempts: parseInt(process.env.WEBHOOK_RETRY_MAX_ATTEMPTS || '3', 10),
+          baseDelayMs: parseInt(process.env.WEBHOOK_RETRY_BASE_DELAY_MS || '500', 10),
+          jitterMs: parseInt(process.env.WEBHOOK_RETRY_JITTER_MS || '250', 10)
         }
       }
     };
@@ -109,8 +109,17 @@ class NotificationService {
   _getTemplateValue(data, key) {
     if (!key) return '';
     const parts = key.split('.');
+    // Limit depth to prevent deep traversal that could expose sensitive properties
+    const MAX_DEPTH = 3;
+    if (parts.length > MAX_DEPTH) {
+      return '';
+    }
     let value = data;
     for (const part of parts) {
+      // Block access to prototype-related or internal properties
+      if (part === '__proto__' || part === 'constructor' || part === 'prototype') {
+        return '';
+      }
       if (value && Object.prototype.hasOwnProperty.call(value, part)) {
         value = value[part];
       } else {
