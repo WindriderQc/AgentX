@@ -1,4 +1,15 @@
-     const BENCHMARK_API = '/api/benchmark';
+     // SECURITY: Escape HTML to prevent XSS
+        function escapeHtml(unsafe) {
+            if (unsafe === null || unsafe === undefined) return '';
+            return String(unsafe)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        const BENCHMARK_API = '/api/benchmark';
         let latencyChart, tokensChart, qualityChart, compositeChart;
         let ollamaHosts = [];
         let currentSortBy = 'composite';
@@ -655,7 +666,7 @@
             if (host && host.models && host.models.length > 0) {
                 // Populate model dropdown
                 modelSelect.innerHTML = host.models.map(model =>
-                    `<option value="${model}">${model}</option>`
+                    `<option value="${escapeHtml(model)}">${escapeHtml(model)}</option>`
                 ).join('');
 
                 // Select first model by default
@@ -895,13 +906,13 @@
                     ).join('');
                     
                     return `
-                    <tr data-model="${model}">
+                    <tr data-model="${escapeHtml(model)}">
                         <td style="text-align: center; padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.05);">
-                            <input type="checkbox" id="batch_${safeId}" value="${model}" class="batch-model-checkbox">
+                            <input type="checkbox" id="batch_${safeId}" value="${escapeHtml(model)}" class="batch-model-checkbox">
                         </td>
                         <td style="padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.05);">
                             <div style="display: flex; align-items: center; gap: 8px;">
-                                <label for="batch_${safeId}" style="cursor: pointer; font-weight: 500;">${model}</label>
+                                <label for="batch_${safeId}" style="cursor: pointer; font-weight: 500;">${escapeHtml(model)}</label>
                                 <div class="model-badges" style="display: flex; gap: 4px;"></div>
                             </div>
                         </td>
@@ -1042,15 +1053,15 @@
                     }
                     
                     const catDisplay = cat.charAt(0).toUpperCase() + cat.slice(1);
-                    
-                    badgesHtml += `<span title="Category: ${catDisplay}" style="
-                        color: ${color}; 
+
+                    badgesHtml += `<span title="Category: ${escapeHtml(catDisplay)}" style="
+                        color: ${color};
                         background: ${bg};
                         border: 1px solid ${color}40;
-                        font-size: 0.75rem; 
+                        font-size: 0.75rem;
                         font-weight: 600;
-                        padding: 2px 8px; 
-                        border-radius: 12px; 
+                        padding: 2px 8px;
+                        border-radius: 12px;
                         margin-right: 6px;
                         display: inline-flex;
                         align-items: center;
@@ -1058,7 +1069,7 @@
                         text-transform: uppercase;
                         letter-spacing: 0.05em;
                     ">
-                        <i class="fas ${icon}" style="font-size: 0.9em;"></i> ${catDisplay}
+                        <i class="fas ${icon}" style="font-size: 0.9em;"></i> ${escapeHtml(catDisplay)}
                     </span>`;
                 }
 
@@ -1175,7 +1186,7 @@
         });
 
         function updateBatchInfo() {
-            const selectedLevels = [1, 2, 3, 4, 5].filter(l => {
+            const selectedLevels = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].filter(l => {
                 const el = document.getElementById(`level${l}`);
                 return !!(el && el.checked);
             });
@@ -1580,7 +1591,7 @@
         });
 
         document.getElementById('runBatchBtn').addEventListener('click', async () => {
-            const selectedLevels = [1, 2, 3, 4, 5].filter(l =>
+            const selectedLevels = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].filter(l =>
                 document.getElementById(`level${l}`).checked
             );
             const selectedModels = Array.from(document.querySelectorAll('.batch-model-checkbox:checked'))
@@ -1735,7 +1746,7 @@
                 const quickInfo = result.quick_pattern ? ` Pattern: "${result.quick_pattern}"` : '';
                 explanationText = result.quality_explanation || `Quick scoring compared response against expected answer "${expectedAnswer}".${quickInfo}`;
             } else if (scoringMethod === 'llm_judge' || scoringMethod === 'llm_judged') {
-                methodBadge = `<span style="background: linear-gradient(135deg, #9b59b6 0%, #e74c3c 100%); color: white; padding: 4px 12px; border-radius: 12px; font-size: 0.85em; font-weight: 600; display: inline-block; margin-bottom: 8px;">🤖 LLM Judge</span> <span style="color: var(--muted); font-size: 0.85em; margin-left: 8px;">Model: ${judgeModel}</span>`;
+                methodBadge = `<span style="background: linear-gradient(135deg, #9b59b6 0%, #e74c3c 100%); color: white; padding: 4px 12px; border-radius: 12px; font-size: 0.85em; font-weight: 600; display: inline-block; margin-bottom: 8px;">🤖 LLM Judge</span> <span style="color: var(--muted); font-size: 0.85em; margin-left: 8px;">Model: ${escapeHtml(judgeModel)}</span>`;
                 judgePromptText = result.judge_prompt || 'Judge prompt not available';
                 explanationText = result.quality_explanation || 'No explanation available';
             } else if (scoringMethod === 'exec_failed') {
@@ -1987,10 +1998,10 @@
                                     ${batch.current_test && batch.current_test.model ? `
                                         <div style="margin-top: 8px; padding: 8px; background: rgba(0,0,0,0.3); border-radius: 6px;">
                                             <div style="font-size: 0.85em; color: var(--accent); font-weight: 500;">
-                                                <i class="fas fa-cogs"></i> Currently testing: <strong>${batch.current_test.model}</strong>
+                                                <i class="fas fa-cogs"></i> Currently testing: <strong>${escapeHtml(batch.current_test.model)}</strong>
                                             </div>
                                             <div style="font-size: 0.8em; color: var(--muted); margin-top: 2px;">
-                                                ${batch.current_test.prompt_name || batch.current_test.prompt_id || 'Unknown prompt'}
+                                                ${escapeHtml(batch.current_test.prompt_name || batch.current_test.prompt_id || 'Unknown prompt')}
                                             </div>
                                         </div>
                                     ` : ''}
@@ -2837,7 +2848,7 @@
                                     <td style="padding: 10px 10px; font-weight: 600; color: var(--text); white-space: nowrap;">
                                         <div style="display:flex; align-items:center; justify-content: space-between; gap: 10px;">
                                             <div style="display:flex; flex-direction: column; gap: 4px;">
-                                                <span>${model}</span>
+                                                <span>${escapeHtml(model)}</span>
                                                 ${reasons.length > 0 ? `<div style="display:flex; gap: 6px; flex-wrap: wrap;">${reasons.join('')}</div>` : ''}
                                             </div>
                                             ${hyperToggle}
@@ -2859,7 +2870,7 @@
                                         <div class="advanced-details" style="margin-top: 0;">
                                             <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom: 6px;">
                                                 <div style="display:flex; align-items:center; gap: 10px; flex-wrap: wrap;">
-                                                    <div style="font-weight: 700; color: var(--text);">${model} — hyper snapshot</div>
+                                                    <div style="font-weight: 700; color: var(--text);">${escapeHtml(model)} — hyper snapshot</div>
                                                     <button type="button" class="btn-secondary" data-action="inspect-model" data-mode="failure" data-model="${String(model).replace(/\"/g, '&quot;')}" style="padding: 6px 10px;">Inspect failure</button>
                                                     <button type="button" class="btn-secondary" data-action="inspect-model" data-mode="worst_latency" data-model="${String(model).replace(/\"/g, '&quot;')}" style="padding: 6px 10px;">Inspect worst latency</button>
                                                     <button type="button" class="btn-secondary" data-action="inspect-model" data-mode="worst_throughput" data-model="${String(model).replace(/\"/g, '&quot;')}" style="padding: 6px 10px;">Inspect worst throughput</button>
@@ -2985,10 +2996,10 @@
                         return `
                             <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
                                 <td style="padding: 8px 12px;">
-                                    ${r.model}
+                                    ${escapeHtml(r.model)}
                                     ${hostInfo}
                                 </td>
-                                <td style="padding: 8px 12px;">${r.prompt_name}${perfLine}</td>
+                                <td style="padding: 8px 12px;">${escapeHtml(r.prompt_name)}${perfLine}</td>
                                 <td style="padding: 8px 12px; text-align: center;" class="${qualityClass}">
                                     ${qualityScore}
                                     ${judgeInfo}
@@ -3679,8 +3690,8 @@
                             return `
                             <div class="stat-card" style="padding: 16px;">
                                 <div class="stat-label" style="margin-bottom: 8px;">
-                                    ${model}
-                                    ${host ? `<div style="font-size: 0.8em; opacity: 0.7; margin-top: 2px;">${host}</div>` : ''}
+                                    ${escapeHtml(model)}
+                                    ${host ? `<div style="font-size: 0.8em; opacity: 0.7; margin-top: 2px;">${escapeHtml(host)}</div>` : ''}
                                 </div>
                                 <div class="stat-value" style="font-size: 1.8em;">${Math.round(stat.avg_latency)}<span class="stat-unit">ms</span></div>
                                 <div style="font-size: 0.8em; color: var(--muted); margin-top: 4px;">${stat.count} evaluations</div>
@@ -3716,7 +3727,7 @@
                         const uniqueModels = [...new Set(statsForCharts.map(m => m.model))];
                         const currentSelection = trendsModelFilter.value;
                         trendsModelFilter.innerHTML = '<option value="">All Models</option>' +
-                            uniqueModels.map(model => `<option value="${model}">${model}</option>`).join('');
+                            uniqueModels.map(model => `<option value="${escapeHtml(model)}">${escapeHtml(model)}</option>`).join('');
                         if (currentSelection) trendsModelFilter.value = currentSelection;
                     }
 
@@ -4396,7 +4407,7 @@
 
             // Dynamic category view
             if (insightsTitle) insightsTitle.textContent = `📂 ${category.charAt(0).toUpperCase() + category.slice(1)} Category`;
-            if (insightsContent) insightsContent.innerHTML = `<strong>Overview:</strong> Showing models tagged with <code>${category}</code>.<br><strong>Tip:</strong> Use this view to compare models within this specific domain.`;
+            if (insightsContent) insightsContent.innerHTML = `<strong>Overview:</strong> Showing models tagged with <code>${escapeHtml(category)}</code>.<br><strong>Tip:</strong> Use this view to compare models within this specific domain.`;
             if (insightsPanel) insightsPanel.style.display = 'block';
         }
 
@@ -5632,3 +5643,220 @@
                 loadRecentTestsTimeline(parseInt(timelineLimit.value));
             }
         }, 2000); // Refresh every 2s for live updates
+
+        // ========================================
+        // 10-LEVEL DIFFICULTY UI ENHANCEMENTS
+        // ========================================
+
+        // Preset configurations
+        const BENCHMARK_PRESETS = {
+            quick: {
+                name: 'Quick Test',
+                levels: [1, 2, 3, 4],
+                description: '20 prompts, levels 1-4',
+                estimatedTime: '~5 minutes',
+                details: [
+                    '20 prompts, levels 1-4',
+                    'Core categories only (coding, reasoning, factual)',
+                    'Estimated time: ~5 minutes'
+                ]
+            },
+            standard: {
+                name: 'Standard Benchmark',
+                levels: [3, 4, 5, 6, 7],
+                description: '60 prompts, levels 3-7',
+                estimatedTime: '~15 minutes',
+                details: [
+                    '60 prompts, levels 3-7',
+                    'All 12 categories (5 prompts each)',
+                    'Recommended for most models',
+                    'Estimated time: ~15 minutes'
+                ]
+            },
+            comprehensive: {
+                name: 'Comprehensive Benchmark',
+                levels: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+                description: '120 prompts, levels 1-10',
+                estimatedTime: '~45 minutes',
+                details: [
+                    '120 prompts, levels 1-10',
+                    'All 12 categories (10 prompts each)',
+                    'For detailed model profiling',
+                    'Estimated time: ~45 minutes'
+                ]
+            },
+            overkill: {
+                name: 'Overkill Benchmark',
+                levels: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+                description: '240 prompts, levels 1-10 (with variations)',
+                estimatedTime: '~2 hours',
+                details: [
+                    '240 prompts, levels 1-10 (with variations)',
+                    'All 12 categories, multiple samples per level',
+                    'For exhaustive testing and leaderboards',
+                    'Estimated time: ~2 hours'
+                ]
+            }
+        };
+
+        // Level preset button handlers
+        const levelPresetButtons = document.querySelectorAll('.level-preset-btn');
+        levelPresetButtons.forEach(btn => {
+            btn.addEventListener('click', function() {
+                const preset = this.getAttribute('data-preset');
+                applyLevelPreset(preset);
+            });
+        });
+
+        function applyLevelPreset(preset) {
+            let levelsToSelect = [];
+
+            switch(preset) {
+                case 'all':
+                    levelsToSelect = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+                    break;
+                case 'basic':
+                    levelsToSelect = [1, 2, 3, 4];
+                    break;
+                case 'intermediate':
+                    levelsToSelect = [3, 4, 5, 6, 7];
+                    break;
+                case 'advanced':
+                    levelsToSelect = [6, 7, 8, 9, 10];
+                    break;
+            }
+
+            // Uncheck all first
+            for (let i = 1; i <= 10; i++) {
+                const checkbox = document.getElementById(`level${i}`);
+                if (checkbox) checkbox.checked = false;
+            }
+
+            // Check selected levels
+            levelsToSelect.forEach(level => {
+                const checkbox = document.getElementById(`level${level}`);
+                if (checkbox) checkbox.checked = true;
+            });
+
+            updateLevelsSummary();
+            updateBatchInfo();
+        }
+
+        // Update levels summary
+        function updateLevelsSummary() {
+            const selectedLevels = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].filter(l => {
+                const el = document.getElementById(`level${l}`);
+                return !!(el && el.checked);
+            });
+
+            const summaryEl = document.getElementById('levelsSummary');
+            if (summaryEl) {
+                if (selectedLevels.length === 0) {
+                    summaryEl.textContent = 'No levels selected';
+                } else if (selectedLevels.length === 10) {
+                    summaryEl.textContent = 'All 10 levels selected (1-10)';
+                } else {
+                    const levelStr = selectedLevels.join(', ');
+                    summaryEl.textContent = `${selectedLevels.length} level${selectedLevels.length > 1 ? 's' : ''} selected (${levelStr})`;
+                }
+            }
+        }
+
+        // Clear all levels button
+        const clearLevelsBtn = document.getElementById('clearLevelsBtn');
+        if (clearLevelsBtn) {
+            clearLevelsBtn.addEventListener('click', function() {
+                for (let i = 1; i <= 10; i++) {
+                    const checkbox = document.getElementById(`level${i}`);
+                    if (checkbox) checkbox.checked = false;
+                }
+                updateLevelsSummary();
+                updateBatchInfo();
+            });
+        }
+
+        // Listen to level checkbox changes
+        for (let i = 1; i <= 10; i++) {
+            const checkbox = document.getElementById(`level${i}`);
+            if (checkbox) {
+                checkbox.addEventListener('change', function() {
+                    updateLevelsSummary();
+                    updateBatchInfo();
+                });
+            }
+        }
+
+        // Benchmark preset selector
+        const presetSelect = document.getElementById('benchmarkPresetSelect');
+        const presetSummary = document.getElementById('presetSummary');
+        const presetSummaryTitle = document.getElementById('presetSummaryTitle');
+        const presetSummaryDetails = document.getElementById('presetSummaryDetails');
+
+        if (presetSelect) {
+            presetSelect.addEventListener('change', function() {
+                const selectedPreset = this.value;
+
+                if (selectedPreset === 'custom') {
+                    // Hide summary
+                    if (presetSummary) presetSummary.style.display = 'none';
+                } else {
+                    // Show summary and apply preset
+                    const preset = BENCHMARK_PRESETS[selectedPreset];
+                    if (preset) {
+                        // Update summary display
+                        if (presetSummaryTitle) presetSummaryTitle.textContent = preset.name;
+                        if (presetSummaryDetails) {
+                            presetSummaryDetails.innerHTML = preset.details.map(d => `<li>${d}</li>`).join('');
+                        }
+                        if (presetSummary) presetSummary.style.display = 'block';
+
+                        // Apply preset levels
+                        applyPresetLevels(preset.levels);
+                    }
+                }
+            });
+
+            // Initialize with standard preset
+            if (presetSelect.value === 'standard') {
+                presetSelect.dispatchEvent(new Event('change'));
+            }
+        }
+
+        function applyPresetLevels(levels) {
+            // Uncheck all first
+            for (let i = 1; i <= 10; i++) {
+                const checkbox = document.getElementById(`level${i}`);
+                if (checkbox) checkbox.checked = false;
+            }
+
+            // Check preset levels
+            levels.forEach(level => {
+                const checkbox = document.getElementById(`level${level}`);
+                if (checkbox) checkbox.checked = true;
+            });
+
+            updateLevelsSummary();
+            updateBatchInfo();
+        }
+
+        // Manage presets button
+        const managePresetsBtn = document.getElementById('managePresetsBtn');
+        const presetManagementModal = document.getElementById('presetManagementModal');
+
+        if (managePresetsBtn && presetManagementModal) {
+            managePresetsBtn.addEventListener('click', function() {
+                presetManagementModal.style.display = 'block';
+            });
+        }
+
+        // View preset details button
+        const viewPresetDetailsBtn = document.getElementById('viewPresetDetailsBtn');
+        if (viewPresetDetailsBtn && presetManagementModal) {
+            viewPresetDetailsBtn.addEventListener('click', function() {
+                presetManagementModal.style.display = 'block';
+            });
+        }
+
+        // Initialize UI
+        updateLevelsSummary();
+        updateBatchInfo();

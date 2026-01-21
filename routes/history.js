@@ -5,6 +5,7 @@ const { getUserId } = require('../src/helpers/userHelpers');
 const { optionalAuth } = require('../src/middleware/auth');
 const { attachWorkspace } = require('../src/middleware/workspace');
 const conversationSearchService = require('../src/services/conversationSearchService');
+const conversationJudge = require('../src/services/conversationJudge');
 const logger = require('../config/logger');
 
 // HISTORY: Get list (workspace-aware)
@@ -67,7 +68,8 @@ router.get('/:id', optionalAuth, attachWorkspace, async (req, res) => {
 
 
         // Build query with security filters FIRST
-        const query = { _id: req.params.id, userId };
+        // SECURITY: Cast to ObjectId to prevent NoSQL injection
+        const query = { _id: mongoose.Types.ObjectId(req.params.id), userId };
 
         // Add workspace filter if in workspace context
         if (req.workspace) {
@@ -128,7 +130,8 @@ router.get('/conversations/:id', optionalAuth, attachWorkspace, async (req, res)
         const userId = getUserId(res);
 
         // Build query with security filters FIRST
-        const query = { _id: req.params.id, userId };
+        // SECURITY: Cast to ObjectId to prevent NoSQL injection
+        const query = { _id: mongoose.Types.ObjectId(req.params.id), userId };
 
         // Add workspace filter if in workspace context
         if (req.workspace) {
@@ -394,6 +397,129 @@ router.get('/tags', optionalAuth, attachWorkspace, async (req, res) => {
             userId: getUserId(res)
         });
         res.status(500).json({ status: 'error', message: err.message });
+    }
+});
+
+// ========== Phase 3 Week 11: Conversation Quality Judging ==========
+
+/**
+ * POST /api/conversations/:id/judge
+ * Judge conversation quality on 10 dimensions
+ * Query params:
+ *   - judgeModel: Model to use for judging (optional, defaults to llama3.1:8b)
+ */
+router.post('/:id/judge', optionalAuth, attachWorkspace, async (req, res) => {
+    try {
+        const mongoose = require('mongoose');
+
+        // Validate ObjectId format
+        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+            return res.status(400).json({
+                status: 'error',
+                message: 'Invalid conversation ID format'
+            });
+        }
+
+        const conversationId = req.params.id;
+        const judgeModel = req.query.judgeModel || req.body.judgeModel || null;
+
+        // Verify conversation belongs to user/workspace
+        const userId = getUserId(res);
+        const query = { _id: conversationId, userId };
+        if (req.workspace) {
+            query.workspaceId = req.workspace._id;
+        }
+
+        const conversation = await Conversation.findOne(query);
+        if (!conversation) {
+            return res.status(404).json({
+                status: 'error',
+                message: 'Conversation not found or access denied'
+            });
+        }
+
+        // Judge conversation
+        const result = await conversationJudge.judgeConversation(conversationId, judgeModel);
+
+        res.json({
+            status: 'success',
+            data: result
+        });
+
+    } catch (err) {
+        logger.error('Failed to judge conversation', {
+            conversationId: req.params.id,
+            error: err.message,
+            userId: getUserId(res)
+        });
+        res.status(500).json({
+            status: 'error',
+            message: err.message
+        });
+    }
+});
+
+/**
+ * GET /api/conversations/judged
+ * Get conversations with quality assessments
+ * Query params:
+ *   - limit: Max results (default 50)
+ *   - minScore: Min quality score (default 0)
+ */
+router.get('/judged', optionalAuth, attachWorkspace, async (req, res) => {
+    try {
+        const { limit = '50', minScore = '0' } = req.query;
+
+        const conversations = await conversationJudge.getJudgedConversations({
+            limit: parseInt(limit) || 50,
+            minScore: parseInt(minScore) || 0,
+            workspaceId: req.workspace?._id
+        });
+
+        res.json({
+            status: 'success',
+            data: {
+                conversations,
+                total: conversations.length
+            }
+        });
+
+    } catch (err) {
+        logger.error('Failed to get judged conversations', {
+            error: err.message,
+            userId: getUserId(res)
+        });
+        res.status(500).json({
+            status: 'error',
+            message: err.message
+        });
+    }
+});
+
+/**
+ * GET /api/conversations/judge-stats
+ * Get judge-human correlation statistics
+ */
+router.get('/judge-stats', optionalAuth, attachWorkspace, async (req, res) => {
+    try {
+        const stats = await conversationJudge.getJudgeHumanCorrelation(
+            req.workspace?._id
+        );
+
+        res.json({
+            status: 'success',
+            data: stats
+        });
+
+    } catch (err) {
+        logger.error('Failed to get judge stats', {
+            error: err.message,
+            userId: getUserId(res)
+        });
+        res.status(500).json({
+            status: 'error',
+            message: err.message
+        });
     }
 });
 

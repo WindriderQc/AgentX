@@ -127,7 +127,31 @@ const ConversationSchema = new mongoose.Schema({
   },
 
   // V7: Search & Tagging (2026-01-08)
-  tags: [{ type: String, index: true }]
+  tags: [{ type: String, index: true }],
+
+  // Phase 3 Week 11: Conversation Quality Judging
+  quality_assessment: {
+    overall_score: { type: Number, min: 0, max: 100 },
+    dimensions: {
+      accuracy: { type: Number, min: 0, max: 10 },       // Factual correctness
+      relevance: { type: Number, min: 0, max: 10 },      // On-topic responses
+      coherence: { type: Number, min: 0, max: 10 },      // Logical flow across turns
+      helpfulness: { type: Number, min: 0, max: 10 },    // Achieved user's goal?
+      engagement: { type: Number, min: 0, max: 10 },     // Natural conversation?
+      context_retention: { type: Number, min: 0, max: 10 }, // Remembered previous turns?
+      instruction_following: { type: Number, min: 0, max: 10 }, // Followed user requests?
+      response_quality: { type: Number, min: 0, max: 10 }, // Individual response quality
+      efficiency: { type: Number, min: 0, max: 10 },     // Concise vs. verbose?
+      safety: { type: Number, min: 0, max: 10 }          // Appropriate content?
+    },
+    judge_model: String,
+    judged_at: Date,
+    explanation: String,  // Brief summary from judge
+    human_rating: { type: Number, min: -1, max: 1, default: 0 }, // User's thumbs up/down
+    disagreement: Number, // |judge - human|
+    conversation_length: Number, // # of turns
+    avg_latency_ms: Number
+  }
 });
 
 // Indexes for V4 analytics queries

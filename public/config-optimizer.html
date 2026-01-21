@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgentX • Config Optimizer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/css/config-optimizer.css">
+</head>
+
+<body>
+    <div id="nav-container"></div>
+    <script src="/js/components/CategoryBadge.js"></script>
+    <script src="/js/components/nav.js"></script>
+    <script src="/js/workspace.js"></script>
+    <script>injectNav('config-optimizer');</script>
+
+    <div class="bg-grid"></div>
+
+    <div class="config-optimizer-container">
+        <!-- Header -->
+        <div class="optimizer-header">
+            <div class="eyebrow">AgentX • Benchmark Configuration</div>
+            <h1><i class="fas fa-sliders-h"></i> Config Optimizer</h1>
+            <p>Test and compare different configuration presets to find the optimal settings for your use case</p>
+        </div>
+
+        <!-- Config Preset Gallery -->
+        <div class="section-header">
+            <h2><i class="fas fa-th-large"></i> Available Configuration Presets</h2>
+            <p class="section-description">Select up to 4 configs to compare side-by-side</p>
+        </div>
+
+        <div id="configGallery" class="config-gallery loading-state">
+            <i class="fas fa-spinner fa-spin"></i>
+            <p>Loading configuration presets...</p>
+        </div>
+
+        <!-- Testing Panel -->
+        <div class="testing-panel">
+            <div class="section-header">
+                <h2><i class="fas fa-flask"></i> Live Testing</h2>
+                <p class="section-description">Run parallel tests with selected configs to compare performance</p>
+            </div>
+
+            <div class="testing-form">
+                <!-- Prompt Input -->
+                <div class="form-group">
+                    <label for="testPrompt">
+                        <i class="fas fa-edit"></i> Test Prompt
+                    </label>
+                    <textarea
+                        id="testPrompt"
+                        placeholder="Enter your test prompt here... (e.g., 'Write a Python function to sort a list')"
+                        rows="4"
+                    ></textarea>
+                </div>
+
+                <!-- Model Selector -->
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="modelSelector">
+                            <i class="fas fa-cube"></i> Model
+                        </label>
+                        <select id="modelSelector">
+                            <option value="">Loading models...</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>
+                            <i class="fas fa-check-square"></i> Selected Configs
+                        </label>
+                        <div id="selectedConfigsList" class="selected-configs-list">
+                            <div class="empty-state-small">
+                                <i class="fas fa-hand-pointer"></i>
+                                Select up to 4 configs from the gallery above
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Run Tests Button -->
+                <div class="form-actions">
+                    <button id="runTestsBtn" class="btn-primary" disabled>
+                        <i class="fas fa-play"></i> Run Tests
+                    </button>
+                    <button id="clearResultsBtn" class="btn-secondary" style="display: none;">
+                        <i class="fas fa-eraser"></i> Clear Results
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results Comparison Panel -->
+        <div id="resultsPanel" class="results-panel" style="display: none;">
+            <div class="section-header">
+                <h2><i class="fas fa-chart-bar"></i> Results Comparison</h2>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <p class="section-description">Side-by-side comparison of outputs and performance metrics</p>
+                    <button class="export-btn" onclick="exportComparison()">
+                        <i class="fas fa-download"></i> Export Comparison
+                    </button>
+                </div>
+            </div>
+
+            <!-- Performance Metrics Table -->
+            <div class="metrics-table-container">
+                <table class="metrics-table" id="metricsTable">
+                    <thead>
+                        <tr>
+                            <th>Config</th>
+                            <th>Latency</th>
+                            <th>Tokens</th>
+                            <th>Tokens/sec</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="metricsTableBody">
+                        <!-- Populated by JS -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Side-by-Side Results Grid -->
+            <div id="resultsGrid" class="results-grid">
+                <!-- Populated by JS -->
+            </div>
+        </div>
+
+        <!-- Recommendations Panel -->
+        <div id="recommendationsPanel" class="recommendations-panel" style="display: none;">
+            <div class="section-header">
+                <h2><i class="fas fa-lightbulb"></i> Recommended Configuration</h2>
+                <p class="section-description">Based on your prompt analysis</p>
+            </div>
+            <div id="recommendationContent" class="recommendation-content">
+                <!-- Populated by JS -->
+            </div>
+        </div>
+
+        <!-- Test Scenarios Panel -->
+        <div class="test-scenarios-panel">
+            <div class="section-header">
+                <h2><i class="fas fa-vial"></i> Test Scenarios</h2>
+                <p class="section-description">Pre-defined scenarios to test specific use cases</p>
+            </div>
+
+            <div class="scenarios-filter">
+                <button class="filter-btn active" data-category="all">
+                    <i class="fas fa-th"></i> All
+                </button>
+                <button class="filter-btn" data-category="code">
+                    <i class="fas fa-code"></i> Code
+                </button>
+                <button class="filter-btn" data-category="reasoning">
+                    <i class="fas fa-brain"></i> Reasoning
+                </button>
+                <button class="filter-btn" data-category="creative">
+                    <i class="fas fa-palette"></i> Creative
+                </button>
+                <button class="filter-btn" data-category="factual">
+                    <i class="fas fa-book"></i> Factual
+                </button>
+                <button class="filter-btn" data-category="conversational">
+                    <i class="fas fa-comments"></i> Conversational
+                </button>
+            </div>
+
+            <div id="scenariosGrid" class="scenarios-grid loading-state">
+                <i class="fas fa-spinner fa-spin"></i>
+                <p>Loading test scenarios...</p>
+            </div>
+
+            <div class="scenarios-actions">
+                <button id="runSuiteBtn" class="btn-secondary" disabled>
+                    <i class="fas fa-play-circle"></i> Run Full Suite
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/config-optimizer.js"></script>
+</body>
+
+</html>

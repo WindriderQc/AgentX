@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgentX • Model Explorer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/css/model-explorer.css">
+</head>
+
+<body>
+    <div id="nav-container"></div>
+    <script src="/js/components/CategoryBadge.js"></script>
+    <script src="/js/components/nav.js"></script>
+    <script src="/js/workspace.js"></script>
+    <script>injectNav('model-explorer');</script>
+
+    <div class="bg-grid"></div>
+
+    <div class="model-explorer-container">
+        <!-- Header -->
+        <div class="explorer-header">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div>
+                    <div class="eyebrow">AgentX • Intelligence</div>
+                    <h1><i class="fas fa-microscope"></i> Model Explorer</h1>
+                    <p>Comprehensive model performance analysis across 12 benchmark categories</p>
+                </div>
+                <div style="display: flex; gap: 10px; margin-top: 10px;">
+                    <button id="compareBtn" class="btn-secondary" style="height: 42px;">
+                        <i class="fas fa-code-compare"></i> Compare Models
+                    </button>
+                    <button id="exportBtn" class="btn-secondary" style="height: 42px;">
+                        <i class="fas fa-download"></i> Export CSV
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="explorer-filters">
+            <div class="filter-group">
+                <label><i class="fas fa-filter"></i> Category</label>
+                <select id="categoryFilter">
+                    <option value="all">All Categories</option>
+                    <option value="coding">Coding</option>
+                    <option value="reasoning">Reasoning</option>
+                    <option value="factual">Factual</option>
+                    <option value="math">Math</option>
+                    <option value="creative">Creative</option>
+                    <option value="general">General</option>
+                    <option value="instruction-following">Instruction Following</option>
+                    <option value="summarization">Summarization</option>
+                    <option value="translation">Translation</option>
+                    <option value="multi-turn-reasoning">Multi-Turn Reasoning</option>
+                    <option value="context-retention">Context Retention</option>
+                    <option value="edge-cases">Edge Cases</option>
+                </select>
+            </div>
+
+            <div class="filter-group">
+                <label><i class="fas fa-sort"></i> Sort By</label>
+                <select id="sortFilter">
+                    <option value="overall">Overall Score</option>
+                    <option value="category">Category Score</option>
+                    <option value="speed">Speed (tokens/sec)</option>
+                    <option value="latency">Latency (ms)</option>
+                    <option value="tests">Total Tests</option>
+                </select>
+            </div>
+
+            <div class="filter-group">
+                <label><i class="fas fa-tags"></i> Tags</label>
+                <select id="tagFilter">
+                    <option value="all">All Tags</option>
+                    <option value="coding-specialist">Coding Specialist</option>
+                    <option value="reasoning-expert">Reasoning Expert</option>
+                    <option value="generalist">Generalist</option>
+                    <option value="fast">Fast</option>
+                    <option value="efficient">Efficient</option>
+                    <option value="small-model">Small Model</option>
+                    <option value="large-model">Large Model</option>
+                </select>
+            </div>
+
+            <div class="filter-group">
+                <label><i class="fas fa-star"></i> Min Score</label>
+                <input type="number" id="minScoreFilter" min="0" max="100" value="0" placeholder="0-100">
+            </div>
+        </div>
+
+        <!-- Stats Summary -->
+        <div id="statsSummary" class="stats-summary">
+            <div class="stat-card">
+                <div class="stat-value" id="totalModels">-</div>
+                <div class="stat-label">Models</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="avgOverallScore">-</div>
+                <div class="stat-label">Avg Score</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="totalTests">-</div>
+                <div class="stat-label">Total Tests</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="topCategory">-</div>
+                <div class="stat-label">Top Category</div>
+            </div>
+        </div>
+
+        <!-- Model Cards Grid -->
+        <div id="modelGrid" class="model-grid">
+            <div class="loading-state">
+                <i class="fas fa-spinner fa-spin"></i>
+                <p>Loading model data...</p>
+            </div>
+        </div>
+
+        <!-- Comparison Modal -->
+        <div id="comparisonModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2><i class="fas fa-code-compare"></i> Model Comparison</h2>
+                    <button class="modal-close" onclick="closeComparisonModal()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div id="comparisonContent">
+                        <p>Select 2-4 models from the grid below to compare</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/model-explorer.js"></script>
+</body>
+
+</html>

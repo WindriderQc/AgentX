@@ -4,19 +4,25 @@
  * Usage: injectNav('activePageId') where activePageId is one of:
  * 'chat', 'operations', 'self-healing', 'alerts', 'backup', 'models', 'benchmark',
  * 'performance', 'analytics', 'features-inventory', 'features-telemetry',
- * 'features-adoption', 'features-admin', 'feature-alignment', 'workspaces', 'audit-logs', 'rag', 'personas', 'profile'
+ * 'features-adoption', 'features-admin', 'feature-alignment', 'workspaces', 'audit-logs', 'rag', 'personas', 'profile',
+ * 'results-explorer', 'model-explorer', 'generalist-leaderboard', 'hardware-matrix', 'config-optimizer'
  */
 
 function injectNav(activePageId = '') {
     const navStructure = [
         { label: 'Chat', href: 'index.html', icon: 'fa-comments', id: 'chat' },
-        { 
+        {
             label: 'Agent', icon: 'fa-robot', id: 'grp-agent',
             children: [
                 { label: 'Models', href: 'models.html', icon: 'fa-cube', id: 'models' },
                 { label: 'RAG', href: 'rag.html', icon: 'fa-database', id: 'rag' },
                 { label: 'Prompts', href: 'prompts.html', icon: 'fa-users', id: 'personas' },
-                { label: 'Benchmark', href: 'benchmark.html', icon: 'fa-rocket', id: 'benchmark' }
+                { label: 'Benchmark', href: 'benchmark.html', icon: 'fa-rocket', id: 'benchmark' },
+                { label: 'Config Optimizer', href: 'config-optimizer.html', icon: 'fa-sliders-h', id: 'config-optimizer' },
+                { label: 'Model Explorer', href: 'model-explorer.html', icon: 'fa-microscope', id: 'model-explorer' },
+                { label: 'Results Explorer', href: 'results-explorer.html', icon: 'fa-magnifying-glass-chart', id: 'results-explorer' },
+                { label: 'Leaderboard', href: 'generalist-leaderboard.html', icon: 'fa-trophy', id: 'generalist-leaderboard' },
+                { label: 'Hardware Matrix', href: 'hardware-matrix.html', icon: 'fa-server', id: 'hardware-matrix' }
             ]
         },
         {

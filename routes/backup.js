@@ -1,10 +1,13 @@
 const express = require('express');
 const router = express.Router();
-const { exec } = require('child_process');
+const { exec, execFile } = require('child_process');
+const util = require('util');
 const fs = require('fs').promises;
 const path = require('path');
 const logger = require('../config/logger');
 const os = require('os');
+
+const execFilePromise = util.promisify(execFile);
 
 // Path to AgentX ops scripts
 const AGENTX_SCRIPTS = path.join(__dirname, '..', 'scripts');
@@ -39,6 +42,53 @@ function executeCommand(command, description) {
             }
         });
     });
+}
+
+/**
+ * Validate git hash to prevent command injection
+ */
+function validateGitHash(hash) {
+    if (!hash || typeof hash !== 'string') {
+        throw new Error('Git hash is required');
+    }
+    // Git hashes are 7-40 character hex strings
+    if (!/^[a-f0-9]{7,40}$/i.test(hash)) {
+        throw new Error('Invalid git hash format');
+    }
+    return hash;
+}
+
+/**
+ * Validate backup filename to prevent path traversal
+ */
+function validateBackupFilename(filename, backupType) {
+    if (!filename || typeof filename !== 'string') {
+        throw new Error('Filename is required');
+    }
+
+    // Reject path traversal attempts
+    if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+        throw new Error('Invalid filename: path traversal detected');
+    }
+
+    // Whitelist allowed extensions
+    const validExtensions = backupType === 'mongodb'
+        ? ['.tar.gz', '.gz']
+        : ['.snapshot', '.tar.gz', '.gz'];
+
+    if (!validExtensions.some(ext => filename.endsWith(ext))) {
+        throw new Error(`Invalid file extension for ${backupType} backup`);
+    }
+
+    // Ensure resolved path is within backup directory
+    const baseDir = path.join(BACKUP_DIR, backupType);
+    const resolvedPath = path.resolve(baseDir, filename);
+
+    if (!resolvedPath.startsWith(path.resolve(baseDir))) {
+        throw new Error('Path traversal detected');
+    }
+
+    return resolvedPath;
 }
 
 /**
@@ -169,14 +219,17 @@ router.post('/mongodb/delete', async (req, res) => {
             });
         }
 
-    const filePath = resolveBackupPath('mongodb', filename);
+        // SECURITY: Validate filename to prevent path traversal
+        const filePath = validateBackupFilename(filename, 'mongodb');
         await fs.unlink(filePath);
 
+        logger.info('MongoDB backup deleted', { filename });
         res.json({
             success: true,
             message: 'Backup deleted successfully'
         });
     } catch (error) {
+        logger.error('Failed to delete MongoDB backup', { error: error.message, filename: req.body.filename });
         res.status(500).json({
             success: false,
             message: 'Failed to delete backup',
@@ -275,14 +328,17 @@ router.post('/qdrant/delete', async (req, res) => {
             });
         }
 
-    const filePath = resolveBackupPath('qdrant', filename);
+        // SECURITY: Validate filename to prevent path traversal
+        const filePath = validateBackupFilename(filename, 'qdrant');
         await fs.unlink(filePath);
 
+        logger.info('Qdrant snapshot deleted', { filename });
         res.json({
             success: true,
             message: 'Snapshot deleted successfully'
         });
     } catch (error) {
+        logger.error('Failed to delete Qdrant snapshot', { error: error.message, filename: req.body.filename });
         res.status(500).json({
             success: false,
             message: 'Failed to delete snapshot',
@@ -296,27 +352,48 @@ router.post('/qdrant/delete', async (req, res) => {
 router.post('/workflows/commit', async (req, res) => {
     try {
         const workflowDir = path.join(__dirname, '..', 'AgentC');
-        const command = `cd ${workflowDir} && git add *.json && git commit -m "backup: automated workflow backup $(date +%Y-%m-%d_%H:%M:%S)" && git push origin main`;
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const commitMessage = `backup: automated workflow backup ${timestamp}`;
 
-        const result = await executeCommand(command, 'Workflow commit');
+        // SECURITY: Use execFile with separate commands to prevent injection
+        // Step 1: git add
+        await execFilePromise('git', ['add', '*.json'], {
+            cwd: workflowDir,
+            shell: true // Need shell for glob expansion
+        });
+
+        // Step 2: git commit
+        let commitResult;
+        try {
+            commitResult = await execFilePromise('git', ['commit', '-m', commitMessage], {
+                cwd: workflowDir
+            });
+        } catch (error) {
+            // Check if error is "nothing to commit"
+            if (error.message && error.message.includes('nothing to commit')) {
+                return res.json({
+                    success: true,
+                    message: 'No changes to commit',
+                    changes: 0
+                });
+            }
+            throw error;
+        }
+
+        // Step 3: git push
+        const pushResult = await execFilePromise('git', ['push', 'origin', 'main'], {
+            cwd: workflowDir
+        });
 
         res.json({
             success: true,
             message: 'Workflows committed successfully',
-            output: result.stdout,
+            output: commitResult.stdout + '\n' + pushResult.stdout,
             lastCommit: new Date(),
             changes: 0
         });
     } catch (error) {
-        // Check if error is "nothing to commit"
-        if (error.message.includes('nothing to commit')) {
-            return res.json({
-                success: true,
-                message: 'No changes to commit',
-                changes: 0
-            });
-        }
-
+        logger.error('Workflow commit failed', { error: error.message });
         res.status(500).json({
             success: false,
             message: 'Workflow commit failed',
@@ -328,9 +405,18 @@ router.post('/workflows/commit', async (req, res) => {
 router.get('/workflows/history', async (req, res) => {
     try {
         const workflowDir = path.join(__dirname, '..', 'AgentC');
-        const command = `cd ${workflowDir} && git log --oneline --all --since="30 days ago" -20`;
 
-        const result = await executeCommand(command, 'Workflow history');
+        // SECURITY: Use execFile with array arguments to prevent injection
+        const result = await execFilePromise('git', [
+            'log',
+            '--oneline',
+            '--all',
+            '--since=30 days ago',
+            '-20'
+        ], {
+            cwd: workflowDir,
+            maxBuffer: 10 * 1024 * 1024
+        });
 
         // Parse git log output
         const commits = result.stdout.split('\n')
@@ -349,6 +435,7 @@ router.get('/workflows/history', async (req, res) => {
             commits
         });
     } catch (error) {
+        logger.error('Failed to load workflow history', { error: error.message });
         res.status(500).json({
             success: false,
             message: 'Failed to load workflow history',
@@ -360,16 +447,24 @@ router.get('/workflows/history', async (req, res) => {
 router.get('/workflows/diff/:hash', async (req, res) => {
     try {
         const { hash } = req.params;
-        const workflowDir = path.join(__dirname, '..', 'AgentC');
-        const command = `cd ${workflowDir} && git show ${hash}`;
 
-        const result = await executeCommand(command, 'Workflow diff');
+        // SECURITY: Validate git hash to prevent command injection
+        const validatedHash = validateGitHash(hash);
+
+        const workflowDir = path.join(__dirname, '..', 'AgentC');
+
+        // SECURITY: Use execFile instead of exec to prevent command injection
+        const result = await execFilePromise('git', ['show', validatedHash], {
+            cwd: workflowDir,
+            maxBuffer: 10 * 1024 * 1024
+        });
 
         res.json({
             success: true,
             diff: result.stdout
         });
     } catch (error) {
+        logger.error('Failed to load diff', { error: error.message, hash: req.params.hash });
         res.status(500).json({
             success: false,
             message: 'Failed to load diff',

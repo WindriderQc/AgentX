@@ -3907,3 +3907,104 @@ button:active {
 .w-full { width: 100%; }
 .text-red { color: #ef4444; }
 
+/* Phase 3 Week 11: Conversation Quality Assessment */
+.quality-assessment {
+  background: rgba(99, 102, 241, 0.05);
+  border-left: 4px solid #6366f1;
+  padding: 1.5rem;
+  margin: 1rem 0;
+}
+
+.quality-overall {
+  text-align: center;
+  margin-bottom: 1.5rem;
+}
+
+.quality-overall h3 {
+  margin: 0 0 1rem 0;
+  color: var(--text-primary, #fff);
+  font-size: 1.25rem;
+}
+
+.quality-score-circle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  border: 8px solid;
+  font-size: 2.5rem;
+  font-weight: 700;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.quality-score-max {
+  font-size: 1.25rem;
+  font-weight: 400;
+  opacity: 0.7;
+  margin-left: 0.25rem;
+}
+
+.quality-dimensions {
+  display: grid;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.quality-dimension {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.quality-dimension-label {
+  flex: 0 0 200px;
+  font-size: 0.875rem;
+  color: rgba(255, 255, 255, 0.9);
+  font-weight: 500;
+}
+
+.quality-dimension-bar {
+  flex: 1;
+  height: 28px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 14px;
+  position: relative;
+  overflow: hidden;
+}
+
+.quality-dimension-fill {
+  height: 100%;
+  transition: width 0.6s ease;
+  border-radius: 14px;
+}
+
+.quality-dimension-value {
+  position: absolute;
+  right: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.quality-explanation {
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.quality-explanation p {
+  margin: 0.5rem 0;
+  color: rgba(255, 255, 255, 0.9);
+  line-height: 1.6;
+}
+
+.quality-meta {
+  font-size: 0.875rem;
+  color: rgba(255, 255, 255, 0.6);
+  margin-top: 1rem;
+}
+

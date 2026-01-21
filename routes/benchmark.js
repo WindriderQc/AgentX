@@ -12,6 +12,7 @@ const benchmarkService = require('../src/services/benchmarkService');
 const { JUDGE_CONFIG, SCORING_CONFIGS } = require('../src/services/qualityScorer');
 const { validateObjectId } = require('../src/helpers/objectIdValidator');
 const BenchmarkBatch = require('../models/BenchmarkBatch');
+const hardwareProfileService = require('../src/services/hardwareProfileService');
 
 // Cleanup stale batches on startup
 // Skip in tests to avoid timers/open handles and cross-test DB interference.
@@ -98,6 +99,145 @@ router.get('/results', async (req, res) => {
         });
     } catch (err) {
         logger.error('Failed to fetch results', { error: err.message });
+        res.status(500).json({ status: 'error', error: err.message });
+    }
+});
+
+/**
+ * GET /api/benchmark/results/advanced
+ * Advanced filtering and querying for Results Explorer
+ * Query params:
+ *   - dateFrom: ISO date string
+ *   - dateTo: ISO date string
+ *   - models: comma-separated model names
+ *   - categories: comma-separated category names
+ *   - levelMin: minimum prompt level (1-10)
+ *   - levelMax: maximum prompt level (1-10)
+ *   - qualityMin: minimum quality score (0-100)
+ *   - qualityMax: maximum quality score (0-100)
+ *   - host: host filter
+ *   - backend: backend filter (CUDA, Metal, CPU, etc.)
+ *   - quantization: quantization filter
+ *   - success: success filter (true/false)
+ *   - batchId: batch ID filter
+ *   - scoringMethod: scoring method filter
+ *   - sort: sort field
+ *   - sortDir: sort direction (asc/desc)
+ *   - limit: max results (default 1000)
+ *   - offset: pagination offset
+ */
+router.get('/results/advanced', async (req, res) => {
+    try {
+        const BenchmarkResult = require('../models/BenchmarkResult');
+
+        // Build query object
+        const query = {};
+
+        // Date range
+        if (req.query.dateFrom || req.query.dateTo) {
+            query.timestamp = {};
+            if (req.query.dateFrom) {
+                query.timestamp.$gte = new Date(req.query.dateFrom);
+            }
+            if (req.query.dateTo) {
+                const dateTo = new Date(req.query.dateTo);
+                dateTo.setHours(23, 59, 59, 999);
+                query.timestamp.$lte = dateTo;
+            }
+        }
+
+        // Model filter
+        if (req.query.models) {
+            const models = req.query.models.split(',').map(m => m.trim());
+            query.model = { $in: models };
+        }
+
+        // Category filter
+        if (req.query.categories) {
+            const categories = req.query.categories.split(',').map(c => c.trim());
+            query.prompt_category = { $in: categories };
+        }
+
+        // Level range
+        if (req.query.levelMin || req.query.levelMax) {
+            query.prompt_level = {};
+            if (req.query.levelMin) {
+                query.prompt_level.$gte = parseInt(req.query.levelMin);
+            }
+            if (req.query.levelMax) {
+                query.prompt_level.$lte = parseInt(req.query.levelMax);
+            }
+        }
+
+        // Quality range
+        if (req.query.qualityMin || req.query.qualityMax) {
+            query.quality_score = { $ne: null };
+            if (req.query.qualityMin) {
+                query.quality_score.$gte = parseFloat(req.query.qualityMin);
+            }
+            if (req.query.qualityMax) {
+                query.quality_score.$lte = parseFloat(req.query.qualityMax);
+            }
+        }
+
+        // Host filter
+        if (req.query.host) {
+            query.host = req.query.host;
+        }
+
+        // Backend filter
+        if (req.query.backend) {
+            query['hardware_snapshot.backend'] = req.query.backend;
+        }
+
+        // Quantization filter
+        if (req.query.quantization) {
+            query['hardware_snapshot.quantization'] = req.query.quantization;
+        }
+
+        // Success filter
+        if (req.query.success !== undefined && req.query.success !== '') {
+            query.success = req.query.success === 'true';
+        }
+
+        // Batch ID filter
+        if (req.query.batchId) {
+            query.batch_id = req.query.batchId;
+        }
+
+        // Scoring method filter
+        if (req.query.scoringMethod) {
+            query.scoring_method = req.query.scoringMethod;
+        }
+
+        // Pagination and sorting
+        const limit = parseInt(req.query.limit) || 1000;
+        const offset = parseInt(req.query.offset) || 0;
+        const sortField = req.query.sort || 'timestamp';
+        const sortDir = req.query.sortDir === 'asc' ? 1 : -1;
+
+        // Execute query
+        const [results, total] = await Promise.all([
+            BenchmarkResult.find(query)
+                .sort({ [sortField]: sortDir })
+                .skip(offset)
+                .limit(limit)
+                .lean(),
+            BenchmarkResult.countDocuments(query)
+        ]);
+
+        res.json({
+            status: 'success',
+            data: {
+                results,
+                total,
+                limit,
+                offset,
+                hasMore: (offset + results.length) < total
+            }
+        });
+    } catch (err) {
+        logger.error('Failed to fetch advanced results', { error: err.message, query: req.query });
         res.status(500).json({ status: 'error', error: err.message });
     }
 });
@@ -704,6 +844,127 @@ router.get('/presets', (req, res) => {
         });
     } catch (err) {
         logger.error('Failed to fetch presets', { error: err.message });
+        res.status(500).json({ status: 'error', error: err.message });
+    }
+});
+
+// ========== Phase 3 Week 10: Hardware Profiling Endpoints ==========
+
+/**
+ * GET /api/benchmark/hardware/compare/:model
+ * Compare hardware performance across different hosts for a model
+ * Example: GET /api/benchmark/hardware/compare/llama3.1:70b-instruct-q4_K_M
+ */
+router.get('/hardware/compare/:model', async (req, res) => {
+    try {
+        const { model } = req.params;
+
+        if (!model) {
+            return res.status(400).json({
+                status: 'error',
+                error: 'Model name is required'
+            });
+        }
+
+        const data = await hardwareProfileService.compareHosts(model);
+
+        res.json({
+            status: 'success',
+            data
+        });
+    } catch (err) {
+        logger.error('Failed to compare hosts', { model: req.params.model, error: err.message });
+        res.status(500).json({ status: 'error', error: err.message });
+    }
+});
+
+/**
+ * GET /api/benchmark/hardware/optimal-quantization/:model
+ * Find optimal quantization for a model (highest efficiency)
+ * Query params: backend (optional) - filter by backend (CUDA, Metal, CPU, etc.)
+ * Example: GET /api/benchmark/hardware/optimal-quantization/llama3.1:70b?backend=CUDA
+ */
+router.get('/hardware/optimal-quantization/:model', async (req, res) => {
+    try {
+        const { model } = req.params;
+        const { backend } = req.query;
+
+        if (!model) {
+            return res.status(400).json({
+                status: 'error',
+                error: 'Model name is required'
+            });
+        }
+
+        const data = await hardwareProfileService.getOptimalQuantization(model, backend || null);
+
+        res.json({
+            status: 'success',
+            data
+        });
+    } catch (err) {
+        logger.error('Failed to get optimal quantization', {
+            model: req.params.model,
+            backend: req.query.backend,
+            error: err.message
+        });
+        res.status(500).json({ status: 'error', error: err.message });
+    }
+});
+
+/**
+ * GET /api/benchmark/hardware/backend-stats
+ * Get aggregate statistics across all backends (CUDA, Metal, CPU, etc.)
+ */
+router.get('/hardware/backend-stats', async (req, res) => {
+    try {
+        const data = await hardwareProfileService.getBackendStats();
+
+        res.json({
+            status: 'success',
+            data
+        });
+    } catch (err) {
+        logger.error('Failed to get backend stats', { error: err.message });
+        res.status(500).json({ status: 'error', error: err.message });
+    }
+});
+
+/**
+ * GET /api/benchmark/hardware/profiles
+ * Get all hardware profiles (paginated)
+ * Query params:
+ *   - host: filter by host
+ *   - model: filter by model
+ *   - backend: filter by backend
+ *   - limit: max results (default 50)
+ */
+router.get('/hardware/profiles', async (req, res) => {
+    try {
+        const HardwareProfile = require('../models/HardwareProfile');
+        const { host, model, backend, limit } = req.query;
+
+        const query = {};
+        if (host) query.host = host;
+        if (model) query.model = model;
+        if (backend) query.backend = backend;
+
+        const profiles = await HardwareProfile.find(query)
+            .sort({ timestamp: -1 })
+            .limit(parseInt(limit) || 50);
+
+        const total = await HardwareProfile.countDocuments(query);
+
+        res.json({
+            status: 'success',
+            data: {
+                profiles,
+                total,
+                filters: { host, model, backend, limit }
+            }
+        });
+    } catch (err) {
+        logger.error('Failed to fetch hardware profiles', { error: err.message });
         res.status(500).json({ status: 'error', error: err.message });
     }
 });

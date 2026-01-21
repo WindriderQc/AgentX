@@ -252,6 +252,10 @@ app.use('/api/dataset', datasetRoutes);
 const metricsRoutes = require('../routes/metrics');
 app.use('/api/metrics', metricsRoutes);
 
+// Config Variant routes (configuration presets for benchmarking)
+const configVariantRoutes = require('../routes/configVariant');
+app.use('/api/config-variants', configVariantRoutes);
+
 // Alert routes (Track 1: Alerts & Notifications)
 const alertRoutes = require('../routes/alerts');
 app.use('/api/alerts', alertRoutes);

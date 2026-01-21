@@ -1,0 +1,244 @@
+{
+  "test_scenarios": [
+    {
+      "scenario_id": "code_review_001",
+      "name": "Code Review - Security Vulnerability",
+      "category": "code",
+      "prompt": "Review this authentication function for security issues, highlight any timing attacks, input validation gaps, and recommend mitigations with code snippets.",
+      "optimal_config": "Code Review Precision",
+      "alternative_configs": ["Deterministic", "Edge-Case Guard"],
+      "expected_characteristics": {
+        "tone": "analytical, security-focused",
+        "structure": "systematic line-by-line review with bullet findings",
+        "output_length": "medium (250-400 words)",
+        "creativity_needed": "low",
+        "reasoning_depth": "high"
+      },
+      "why_this_config": "Code Review Precision sets temperature=0.2 and repeat_penalty=1.2 to keep findings deterministic while allowing sufficient context for detailed critiques."
+    },
+    {
+      "scenario_id": "code_generation_002",
+      "name": "Code Generation - Feature Implementation",
+      "category": "code",
+      "prompt": "Implement a REST endpoint that validates JWT tokens, logs suspicious payloads, and adheres to clean architecture principles. Include TypeScript types and test hooks.",
+      "optimal_config": "Deterministic",
+      "alternative_configs": ["Balanced", "Longform Analyst"],
+      "expected_characteristics": {
+        "tone": "professional, precise",
+        "structure": "clear sections (design, implementation, tests)",
+        "output_length": "long (500+ words/code lines)",
+        "creativity_needed": "medium",
+        "reasoning_depth": "medium-high"
+      },
+      "why_this_config": "Deterministic uses temperature=0.0 with a moderate top_p so code is consistent every run and logic stays tightly scoped."
+    },
+    {
+      "scenario_id": "code_debugging_003",
+      "name": "Debugging - Race Condition Trace",
+      "category": "code",
+      "prompt": "You are debugging a multi-threaded queue consumer in Go that loses items under load. Diagnose the race condition, describe reproducible steps, and suggest code fixes.",
+      "optimal_config": "Debugging Trace",
+      "alternative_configs": ["Socratic Reasoner", "Balanced"],
+      "expected_characteristics": {
+        "tone": "methodical, investigative",
+        "structure": "hypothesis → reproduction → fix → verification",
+        "output_length": "medium (300-450 words)",
+        "creativity_needed": "low",
+        "reasoning_depth": "very high"
+      },
+      "why_this_config": "Debugging Trace keeps temperature at 0.45 and num_predict=768 so the model elaborates multi-step reasoning without veering off-topic."
+    },
+    {
+      "scenario_id": "reasoning_deep_004",
+      "name": "Reasoning - Long-form System Analysis",
+      "category": "reasoning",
+      "prompt": "Analyze this distributed ledger proposal checking for single points of failure, throughput bottlenecks, and security trade-offs across consensus layers.",
+      "optimal_config": "Longform Analyst",
+      "alternative_configs": ["Socratic Reasoner", "Extended Context"],
+      "expected_characteristics": {
+        "tone": "critical, balanced",
+        "structure": "layer-by-layer examination with summary table",
+        "output_length": "long (600+ words)",
+        "creativity_needed": "medium",
+        "reasoning_depth": "very high"
+      },
+      "why_this_config": "Longform Analyst extends context to 16K tokens and boosts analyze depth, enabling multi-section explanations of complex systems."
+    },
+    {
+      "scenario_id": "reasoning_quick_005",
+      "name": "Reasoning - Quick Logic Puzzle",
+      "category": "reasoning",
+      "prompt": "Solve this logic grid puzzle in minimal steps, explaining deductions succinctly and stating the final assignment table.",
+      "optimal_config": "Socratic Reasoner",
+      "alternative_configs": ["Factual Fast", "Balanced"],
+      "expected_characteristics": {
+        "tone": "focused, concise",
+        "structure": "assumptions → deductions → solution grid",
+        "output_length": "short (150-250 words)",
+        "creativity_needed": "low",
+        "reasoning_depth": "medium"
+      },
+      "why_this_config": "Socratic Reasoner uses temperature=0.6 and top_p=0.92 to encourage questions and verification while finishing quickly."
+    },
+    {
+      "scenario_id": "reasoning_chain_006",
+      "name": "Reasoning - Chain-of-Thought Comparison",
+      "category": "reasoning",
+      "prompt": "Compare two strategic approaches for scaling an AI assistant; outline assumptions, pros/cons, and reach a recommendation with a chain-of-thought log.",
+      "optimal_config": "Brainstorm Burst",
+      "alternative_configs": ["Longform Analyst", "Creative"],
+      "expected_characteristics": {
+        "tone": "analytical, explorative",
+        "structure": "step-by-step reasoning log with conclusion",
+        "output_length": "medium-long (400-500 words)",
+        "creativity_needed": "medium-high",
+        "reasoning_depth": "high"
+      },
+      "why_this_config": "Brainstorm Burst’s high temperature/top_p encourages diverse rationale while still supporting structured chain-of-thought entries."
+    },
+    {
+      "scenario_id": "creative_story_007",
+      "name": "Creative - Short Story Pitch",
+      "category": "creative",
+      "prompt": "Craft a short speculative fiction story about climate-positive cities, emphasizing character growth and futuristic sensory details.",
+      "optimal_config": "Storyteller Rich",
+      "alternative_configs": ["Brainstorm Burst", "Creative"],
+      "expected_characteristics": {
+        "tone": "evocative, optimistic",
+        "structure": "scene-setting → conflict → resolution",
+        "output_length": "long (600+ words)",
+        "creativity_needed": "very high",
+        "reasoning_depth": "medium"
+      },
+      "why_this_config": "Storyteller Rich’s temperature=1.1 and repeat_penalty=0.95 maximize expressive variation while maintaining coherence."
+    },
+    {
+      "scenario_id": "creative_poetry_008",
+      "name": "Creative - Thematic Poetry",
+      "category": "creative",
+      "prompt": "Compose a lyrical poem about resilience in the face of automation, using internal rhyme and three stanzas with distinct moods.",
+      "optimal_config": "Brainstorm Burst",
+      "alternative_configs": ["Creative", "Storyteller Rich"],
+      "expected_characteristics": {
+        "tone": "lyrical, emotive",
+        "structure": "three stanzas with varied cadence",
+        "output_length": "medium (250-350 words)",
+        "creativity_needed": "very high",
+        "reasoning_depth": "low"
+      },
+      "why_this_config": "Brainstorm Burst’s top_k=100 and high temperature surface serendipitous phrasing that poetry demands."
+    },
+    {
+      "scenario_id": "creative_ideation_009",
+      "name": "Creative - Campaign Brainstorm",
+      "category": "creative",
+      "prompt": "Generate ten multimedia campaign ideas for an eco-education platform; include taglines, format, and audience hooks.",
+      "optimal_config": "Storyteller Rich",
+      "alternative_configs": ["Brainstorm Burst", "Creative"],
+      "expected_characteristics": {
+        "tone": "inventive, energetic",
+        "structure": "numbered list with format and rationale",
+        "output_length": "medium (350-450 words)",
+        "creativity_needed": "very high",
+        "reasoning_depth": "medium"
+      },
+      "why_this_config": "Storyteller Rich balances vivid prose with enough structure to keep idea descriptions grounded."
+    },
+    {
+      "scenario_id": "factual_research_010",
+      "name": "Factual - Comparative Research Brief",
+      "category": "factual",
+      "prompt": "Summarize the latest findings on battery recycling technologies, compare energy efficiency, and cite relevant standards.",
+      "optimal_config": "Factual Fast",
+      "alternative_configs": ["Deterministic", "Concise Assistant"],
+      "expected_characteristics": {
+        "tone": "informative, concise",
+        "structure": "intro → comparison table → citations",
+        "output_length": "medium (300-400 words)",
+        "creativity_needed": "low",
+        "reasoning_depth": "medium"
+      },
+      "why_this_config": "Factual Fast keeps temperature low and tokens short to maximize accuracy and speed for data-heavy summaries."
+    },
+    {
+      "scenario_id": "factual_summary_011",
+      "name": "Factual - Executive Summary",
+      "category": "factual",
+      "prompt": "Read this 2,500-word report and produce a one-page executive summary that highlights key metrics, risks, and next steps.",
+      "optimal_config": "Longform Analyst",
+      "alternative_configs": ["Extended Context", "Balanced"],
+      "expected_characteristics": {
+        "tone": "executive, polished",
+        "structure": "bullet metrics + risks + recommendations",
+        "output_length": "short (200-300 words)",
+        "creativity_needed": "low",
+        "reasoning_depth": "high"
+      },
+      "why_this_config": "Longform Analyst’s extended context retains the full report so summary statements align with source insights."
+    },
+    {
+      "scenario_id": "factual_techwrite_012",
+      "name": "Factual - Technical Writing",
+      "category": "factual",
+      "prompt": "Draft developer-facing documentation for a publish-subscribe streaming library, covering setup, architecture, and failure scenarios.",
+      "optimal_config": "Deterministic",
+      "alternative_configs": ["Extended Context", "Balanced"],
+      "expected_characteristics": {
+        "tone": "formal, clear",
+        "structure": "sections (overview → setup → architecture → failures)",
+        "output_length": "long (500+ words)",
+        "creativity_needed": "medium",
+        "reasoning_depth": "medium-high"
+      },
+      "why_this_config": "Deterministic ensures the docs always map to the same structure while still allowing multi-section depth."
+    },
+    {
+      "scenario_id": "conversational_chat_013",
+      "name": "Conversational - Assistant Empathy",
+      "category": "conversational",
+      "prompt": "Act as a career coach helping a mid-level engineer navigate burnout and propose realistic next steps.",
+      "optimal_config": "Concise Assistant",
+      "alternative_configs": ["Socratic Reasoner", "Balanced"],
+      "expected_characteristics": {
+        "tone": "empathetic, calm",
+        "structure": "validate → clarify → recommend",
+        "output_length": "medium (250-350 words)",
+        "creativity_needed": "medium",
+        "reasoning_depth": "medium"
+      },
+      "why_this_config": "Concise Assistant enforces brevity and clarity so the coach response stays focused and easy to digest."
+    },
+    {
+      "scenario_id": "conversational_longcontext_014",
+      "name": "Conversational - Long-context Support",
+      "category": "conversational",
+      "prompt": "Summarize the main action items from this 25-turn support conversation and propose a follow-up plan that references earlier context.",
+      "optimal_config": "Extended Context",
+      "alternative_configs": ["Longform Analyst", "Balanced"],
+      "expected_characteristics": {
+        "tone": "professional, organized",
+        "structure": "timeline → key actions → follow-up",
+        "output_length": "medium-long (350-500 words)",
+        "creativity_needed": "low",
+        "reasoning_depth": "high"
+      },
+      "why_this_config": "Extended Context retains 16K tokens so earlier conversation points inform the summary accurately."
+    },
+    {
+      "scenario_id": "conversational_repetition_015",
+      "name": "Conversational - Firm Guidance with Repetition Control",
+      "category": "conversational",
+      "prompt": "Provide a firm but friendly reminder for users to complete onboarding steps without repeating phrases or rambling.",
+      "optimal_config": "Edge-Case Guard",
+      "alternative_configs": ["Concise Assistant", "Deterministic"],
+      "expected_characteristics": {
+        "tone": "assertive yet friendly",
+        "structure": "purpose → steps → encouragement",
+        "output_length": "short (150-220 words)",
+        "creativity_needed": "low",
+        "reasoning_depth": "medium"
+      },
+      "why_this_config": "Edge-Case Guard increases repeat_penalty so the response avoids redundancy while staying cautious and precise."
+    }
+  ]
+}

@@ -1,0 +1,439 @@
+[
+  {
+    "name": "Deterministic",
+    "description": "Stable, low-variance responses for code and factual tasks that require repeatability.",
+    "use_cases": ["coding", "factual", "reasoning"],
+    "parameters": {
+      "temperature": 0.0,
+      "top_p": 0.9,
+      "top_k": 40,
+      "repeat_penalty": 1.1,
+      "num_ctx": 8192,
+      "num_predict": 512
+    },
+    "tags": ["default", "deterministic", "production"],
+    "expected_characteristics": {
+      "quality_impact": "+4-6% for correctness-focused tasks",
+      "speed_impact": "Baseline",
+      "output_style": "Precise, concise, minimal creativity"
+    }
+  },
+  {
+    "name": "Balanced",
+    "description": "Default mid-ground preset for mixed workloads and general benchmarking.",
+    "use_cases": ["coding", "reasoning", "creative", "general"],
+    "parameters": {
+      "temperature": 0.7,
+      "top_p": 0.95,
+      "top_k": 50,
+      "repeat_penalty": 1.0,
+      "num_ctx": 8192,
+      "num_predict": 768
+    },
+    "tags": ["default", "balanced", "general"],
+    "expected_characteristics": {
+      "quality_impact": "Even across categories (baseline)",
+      "speed_impact": "Baseline",
+      "output_style": "Moderately expressive, stable"
+    }
+  },
+  {
+    "name": "Creative",
+    "description": "High-temperature preset that boosts diversity for storytelling and ideation.",
+    "use_cases": ["creative", "conversational", "reasoning"],
+    "parameters": {
+      "temperature": 1.2,
+      "top_p": 0.98,
+      "top_k": 80,
+      "repeat_penalty": 0.9,
+      "num_ctx": 8192,
+      "num_predict": 1024
+    },
+    "tags": ["default", "creative", "high-variance"],
+    "expected_characteristics": {
+      "quality_impact": "+5-8% on creative richness",
+      "speed_impact": "Slightly slower",
+      "output_style": "Vivid, varied, exploratory"
+    }
+  },
+  {
+    "name": "Extended Context",
+    "description": "Keeps more history for long-context tasks such as summarization and analysis.",
+    "use_cases": ["summarization", "reasoning", "factual"],
+    "parameters": {
+      "temperature": 0.7,
+      "top_p": 0.95,
+      "top_k": 50,
+      "repeat_penalty": 1.0,
+      "num_ctx": 16384,
+      "num_predict": 1024
+    },
+    "tags": ["default", "long-context", "analysis"],
+    "expected_characteristics": {
+      "quality_impact": "+3-5% on long-context accuracy",
+      "speed_impact": "Slower",
+      "output_style": "Thorough, structured, context-aware"
+    }
+  },
+  {
+    "name": "Code Review Precision",
+    "description": "Low-variance, high-precision config for code review, refactors, and correctness checks.",
+    "use_cases": ["coding", "reasoning", "refactoring"],
+    "parameters": {
+      "temperature": 0.2,
+      "top_p": 0.9,
+      "top_k": 30,
+      "repeat_penalty": 1.2,
+      "num_ctx": 8192,
+      "num_predict": 512
+    },
+    "tags": ["precision", "low-temp", "quality"],
+    "expected_characteristics": {
+      "quality_impact": "+4-7% for code correctness",
+      "speed_impact": "Slightly slower",
+      "output_style": "Concise, strict, low creativity"
+    }
+  },
+  {
+    "name": "Debugging Trace",
+    "description": "Step-by-step debugging with clear hypotheses and verification, tuned for complex fixes.",
+    "use_cases": ["coding", "reasoning", "debugging"],
+    "parameters": {
+      "temperature": 0.45,
+      "top_p": 0.92,
+      "top_k": 40,
+      "repeat_penalty": 1.15,
+      "num_ctx": 8192,
+      "num_predict": 768
+    },
+    "tags": ["debugging", "analysis", "verbose"],
+    "expected_characteristics": {
+      "quality_impact": "+3-6% on bug-fix tasks",
+      "speed_impact": "Moderate",
+      "output_style": "Structured, multi-step reasoning"
+    }
+  },
+  {
+    "name": "Factual Fast",
+    "description": "Fast, low-variance responses for factual queries and short summaries.",
+    "use_cases": ["factual", "summarization"],
+    "parameters": {
+      "temperature": 0.2,
+      "top_p": 0.85,
+      "top_k": 30,
+      "repeat_penalty": 1.2,
+      "num_ctx": 4096,
+      "num_predict": 256
+    },
+    "tags": ["fast", "factual", "low-temp"],
+    "expected_characteristics": {
+      "quality_impact": "+2-4% for factual accuracy",
+      "speed_impact": "10-20% faster",
+      "output_style": "Short, direct answers"
+    }
+  },
+  {
+    "name": "Concise Assistant",
+    "description": "High brevity for quick Q&A and user-facing assistants with strict length control.",
+    "use_cases": ["conversational", "factual"],
+    "parameters": {
+      "temperature": 0.35,
+      "top_p": 0.9,
+      "top_k": 40,
+      "repeat_penalty": 1.2,
+      "num_ctx": 4096,
+      "num_predict": 192
+    },
+    "tags": ["concise", "fast", "assistant"],
+    "expected_characteristics": {
+      "quality_impact": "Neutral to +2% on clarity",
+      "speed_impact": "15-25% faster",
+      "output_style": "Very concise, minimal explanations"
+    }
+  },
+  {
+    "name": "Socratic Reasoner",
+    "description": "Balanced reasoning with questions and assumption checks for ambiguous tasks.",
+    "use_cases": ["reasoning", "conversational"],
+    "parameters": {
+      "temperature": 0.6,
+      "top_p": 0.92,
+      "top_k": 50,
+      "repeat_penalty": 1.05,
+      "num_ctx": 8192,
+      "num_predict": 640
+    },
+    "tags": ["reasoning", "socratic", "balanced"],
+    "expected_characteristics": {
+      "quality_impact": "+3-5% on reasoning clarity",
+      "speed_impact": "Moderate",
+      "output_style": "Clarifying questions + structured reasoning"
+    }
+  },
+  {
+    "name": "Longform Analyst",
+    "description": "Deep analysis for long documents and multi-part reasoning with extended context.",
+    "use_cases": ["summarization", "reasoning", "factual"],
+    "parameters": {
+      "temperature": 0.55,
+      "top_p": 0.95,
+      "top_k": 60,
+      "repeat_penalty": 1.05,
+      "num_ctx": 16384,
+      "num_predict": 1024
+    },
+    "tags": ["long-context", "analysis", "quality"],
+    "expected_characteristics": {
+      "quality_impact": "+4-6% on long-context accuracy",
+      "speed_impact": "Slower",
+      "output_style": "Thorough, structured, multi-section"
+    }
+  },
+  {
+    "name": "Storyteller Rich",
+    "description": "Creative storytelling with vivid prose and higher variation.",
+    "use_cases": ["creative", "conversational"],
+    "parameters": {
+      "temperature": 1.1,
+      "top_p": 0.97,
+      "top_k": 80,
+      "repeat_penalty": 0.95,
+      "num_ctx": 8192,
+      "num_predict": 1024
+    },
+    "tags": ["creative", "narrative", "expressive"],
+    "expected_characteristics": {
+      "quality_impact": "+4-8% on creative richness",
+      "speed_impact": "Moderate",
+      "output_style": "Vivid, descriptive, varied"
+    }
+  },
+  {
+    "name": "Brainstorm Burst",
+    "description": "High-diversity ideation for brainstorming and alternative generation.",
+    "use_cases": ["creative", "reasoning"],
+    "parameters": {
+      "temperature": 1.4,
+      "top_p": 0.99,
+      "top_k": 100,
+      "repeat_penalty": 0.9,
+      "num_ctx": 4096,
+      "num_predict": 512
+    },
+    "tags": ["creative", "ideation", "high-variance"],
+    "expected_characteristics": {
+      "quality_impact": "+3-6% on idea diversity",
+      "speed_impact": "Moderate",
+      "output_style": "Many options, varied tone"
+    }
+  },
+  {
+    "name": "Edge-Case Guard",
+    "description": "Robustness-focused config to reduce repetition and enforce careful handling of edge cases.",
+    "use_cases": ["coding", "reasoning", "edge-cases"],
+    "parameters": {
+      "temperature": 0.25,
+      "top_p": 0.9,
+      "top_k": 40,
+      "repeat_penalty": 1.25,
+      "num_ctx": 8192,
+      "num_predict": 512
+    },
+    "tags": ["robustness", "edge-cases", "low-temp"],
+    "expected_characteristics": {
+      "quality_impact": "+3-5% on edge-case handling",
+      "speed_impact": "Slightly slower",
+      "output_style": "Cautious, explicit constraints"
+    }
+  },
+  {
+    "name": "Code Review",
+    "description": "Optimized for code review tasks requiring consistency, attention to detail, and constructive feedback",
+    "use_cases": ["coding"],
+    "parameters": {
+      "temperature": 0.2,
+      "top_p": 0.92,
+      "top_k": 30,
+      "repeat_penalty": 1.2,
+      "num_ctx": 8192,
+      "num_predict": 1024
+    },
+    "tags": ["coding", "quality", "consistency"],
+    "expected_characteristics": {
+      "quality_impact": "+8% for code review accuracy",
+      "speed_impact": "15% slower (more thorough analysis)",
+      "output_style": "Detailed, constructive feedback with specific examples"
+    }
+  },
+  {
+    "name": "Storytelling",
+    "description": "Ideal for creative writing, narrative generation, and storytelling with engaging, vivid descriptions",
+    "use_cases": ["creative"],
+    "parameters": {
+      "temperature": 1.1,
+      "top_p": 0.97,
+      "top_k": 60,
+      "repeat_penalty": 0.95,
+      "num_ctx": 8192,
+      "num_predict": 1024
+    },
+    "tags": ["creative", "narrative", "engaging"],
+    "expected_characteristics": {
+      "quality_impact": "+12% for creative originality",
+      "speed_impact": "5% slower (richer descriptions)",
+      "output_style": "Vivid, immersive narratives with emotional depth"
+    }
+  },
+  {
+    "name": "Technical Writing",
+    "description": "For documentation, tutorials, and technical explanations requiring clarity and precision",
+    "use_cases": ["factual", "coding"],
+    "parameters": {
+      "temperature": 0.4,
+      "top_p": 0.94,
+      "top_k": 35,
+      "repeat_penalty": 1.1,
+      "num_ctx": 8192,
+      "num_predict": 512
+    },
+    "tags": ["documentation", "educational", "formal"],
+    "expected_characteristics": {
+      "quality_impact": "+6% for technical accuracy",
+      "speed_impact": "Neutral",
+      "output_style": "Clear, structured explanations with proper terminology"
+    }
+  },
+  {
+    "name": "Conversational",
+    "description": "Natural, engaging dialogue for chat applications and interactive conversations",
+    "use_cases": ["conversational"],
+    "parameters": {
+      "temperature": 0.8,
+      "top_p": 0.96,
+      "top_k": 50,
+      "repeat_penalty": 1.05,
+      "num_ctx": 4096,
+      "num_predict": 256
+    },
+    "tags": ["chat", "interactive", "natural"],
+    "expected_characteristics": {
+      "quality_impact": "+4% for conversation flow",
+      "speed_impact": "10% faster (shorter responses)",
+      "output_style": "Friendly, context-aware responses"
+    }
+  },
+  {
+    "name": "Deep Reasoning",
+    "description": "Complex problem-solving and analytical reasoning requiring step-by-step thinking",
+    "use_cases": ["reasoning"],
+    "parameters": {
+      "temperature": 0.3,
+      "top_p": 0.91,
+      "top_k": 25,
+      "repeat_penalty": 1.15,
+      "num_ctx": 16384,
+      "num_predict": 1024
+    },
+    "tags": ["reasoning", "analytical", "step-by-step"],
+    "expected_characteristics": {
+      "quality_impact": "+10% for logical accuracy",
+      "speed_impact": "20% slower (thorough analysis)",
+      "output_style": "Structured reasoning with clear logical steps"
+    }
+  },
+  {
+    "name": "Factual Research",
+    "description": "Precise, evidence-based responses for research and factual queries",
+    "use_cases": ["factual"],
+    "parameters": {
+      "temperature": 0.1,
+      "top_p": 0.9,
+      "top_k": 20,
+      "repeat_penalty": 1.25,
+      "num_ctx": 16384,
+      "num_predict": 512
+    },
+    "tags": ["factual", "research", "precise"],
+    "expected_characteristics": {
+      "quality_impact": "+7% for factual accuracy",
+      "speed_impact": "5% slower (verification steps)",
+      "output_style": "Concise, evidence-supported answers"
+    }
+  },
+  {
+    "name": "Speed Optimized",
+    "description": "Fast generation for time-sensitive tasks where speed is prioritized over maximum quality",
+    "use_cases": ["conversational", "factual"],
+    "parameters": {
+      "temperature": 0.6,
+      "top_p": 0.95,
+      "top_k": 40,
+      "repeat_penalty": 1.0,
+      "num_ctx": 4096,
+      "num_predict": 128
+    },
+    "tags": ["fast", "efficient", "real-time"],
+    "expected_characteristics": {
+      "quality_impact": "-3% quality for +25% speed",
+      "speed_impact": "25% faster generation",
+      "output_style": "Direct, concise responses"
+    }
+  },
+  {
+    "name": "Quality Maximized",
+    "description": "Maximum quality output for critical applications where accuracy is paramount",
+    "use_cases": ["reasoning", "coding", "factual"],
+    "parameters": {
+      "temperature": 0.2,
+      "top_p": 0.9,
+      "top_k": 25,
+      "repeat_penalty": 1.2,
+      "num_ctx": 16384,
+      "num_predict": 2048
+    },
+    "tags": ["quality", "accurate", "thorough"],
+    "expected_characteristics": {
+      "quality_impact": "+15% for complex tasks",
+      "speed_impact": "30% slower (comprehensive output)",
+      "output_style": "Detailed, well-reasoned responses"
+    }
+  },
+  {
+    "name": "Long Document Analysis",
+    "description": "Processing and analyzing lengthy documents, reports, and extended content",
+    "use_cases": ["factual", "reasoning"],
+    "parameters": {
+      "temperature": 0.4,
+      "top_p": 0.93,
+      "top_k": 40,
+      "repeat_penalty": 1.1,
+      "num_ctx": 32768,
+      "num_predict": 1024
+    },
+    "tags": ["long-context", "analysis", "comprehensive"],
+    "expected_characteristics": {
+      "quality_impact": "+9% for document understanding",
+      "speed_impact": "10% slower (context processing)",
+      "output_style": "Comprehensive analysis with full context awareness"
+    }
+  },
+  {
+    "name": "Repetition Control",
+    "description": "Tasks requiring minimal repetition, such as poetry, slogans, or varied content generation",
+    "use_cases": ["creative"],
+    "parameters": {
+      "temperature": 0.9,
+      "top_p": 0.98,
+      "top_k": 70,
+      "repeat_penalty": 1.3,
+      "num_ctx": 8192,
+      "num_predict": 512
+    },
+    "tags": ["creative", "varied", "original"],
+    "expected_characteristics": {
+      "quality_impact": "+6% for content originality",
+      "speed_impact": "Neutral",
+      "output_style": "Highly varied, non-repetitive content"
+    }
+  }
+]

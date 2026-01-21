@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Conversation = require('../models/Conversation');
 const Workspace = require('../models/Workspace');
+const ConfigVariant = require('../models/ConfigVariant');
 const { resolveTarget } = require('../src/utils');
 const { optionalAuth } = require('../src/middleware/auth');
 const { attachWorkspace } = require('../src/middleware/workspace');
@@ -21,14 +22,28 @@ const ragStore = getRagStore({
 });
 
 // DEBUG: Temporary endpoint to inspect conversation
+// SECURITY: Disabled in production, requires authentication
 router.get('/debug/conversation/:id', async (req, res) => {
     try {
-        const conv = await Conversation.findOne({ _id: req.params.id });
+        // SECURITY: Disable in production
+        if (process.env.NODE_ENV === 'production') {
+            return res.status(404).json({ error: 'Not found' });
+        }
+
+        const mongoose = require('mongoose');
+
+        // SECURITY: Validate ObjectId format
+        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+            return res.status(400).json({ error: 'Invalid conversation ID format' });
+        }
+
+        // SECURITY: Cast to ObjectId to prevent NoSQL injection
+        const conv = await Conversation.findOne({ _id: mongoose.Types.ObjectId(req.params.id) });
         if (!conv) return res.status(404).json({ error: 'Not found' });
-        
+
         const userId = getUserId(res);
         const workspaceId = req.workspace ? req.workspace._id : null;
-        
+
         res.json({
             status: 'success',
             conversation: conv,
@@ -40,7 +55,8 @@ router.get('/debug/conversation/:id', async (req, res) => {
             }
         });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        logger.error('Debug endpoint error', { error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -471,6 +487,53 @@ router.post('/feedback', async (req, res) => {
         res.json({ status: 'success', message: 'Feedback saved' });
     } catch (err) {
         res.status(500).json({ status: 'error', message: err.message });
+    }
+});
+
+// Config Variants - Get all config presets
+router.get('/config-variants', async (req, res) => {
+    try {
+        const variants = await ConfigVariant.find()
+            .sort({ isSystem: -1, name: 1 }); // System configs first, then alphabetically
+
+        res.json({
+            status: 'success',
+            data: {
+                variants,
+                count: variants.length
+            }
+        });
+    } catch (err) {
+        logger.error('Failed to fetch config variants', { error: err.message });
+        res.status(500).json({
+            status: 'error',
+            message: err.message
+        });
+    }
+});
+
+// Config Variants - Get specific config by ID
+router.get('/config-variants/:id', async (req, res) => {
+    try {
+        const variant = await ConfigVariant.findById(req.params.id);
+
+        if (!variant) {
+            return res.status(404).json({
+                status: 'error',
+                message: 'Config variant not found'
+            });
+        }
+
+        res.json({
+            status: 'success',
+            data: { variant }
+        });
+    } catch (err) {
+        logger.error('Failed to fetch config variant', { error: err.message, id: req.params.id });
+        res.status(500).json({
+            status: 'error',
+            message: err.message
+        });
     }
 });
 

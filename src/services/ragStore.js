@@ -587,16 +587,40 @@ Score:`;
 
   /**
    * Split text into overlapping chunks
+   *
+   * CRITICAL BUG FIX (2026-01-21):
+   * - Added safety limit (MAX_CHUNKS = 10000) to prevent infinite loops
+   * - Added minimum advance guarantee: max(50, 10% of chunkSize)
+   * - Fixed edge case where chunkSize <= chunkOverlap would cause infinite loop
+   * - Ensures nextStart > start always (forced advance if needed)
+   *
+   * Edge cases handled:
+   * - chunkSize = chunkOverlap (e.g., 100 = 100): Forces 10-50 char advance
+   * - chunkOverlap > chunkSize (e.g., 200 > 100): Caps overlap to allow progress
+   * - Very small chunkSize (e.g., 10): Still guarantees minimum 1 char advance
+   *
    * @private
    */
   _splitIntoChunks(text) {
     const chunks = [];
     let start = 0;
+    const MAX_CHUNKS = 10000; // Safety limit to prevent infinite loops
 
     while (start < text.length) {
+      // Safety check: prevent infinite loop from bad configuration
+      if (chunks.length >= MAX_CHUNKS) {
+        logger.error('Chunking safety limit reached', {
+          chunkCount: chunks.length,
+          chunkSize: this.chunkSize,
+          chunkOverlap: this.chunkOverlap,
+          textLength: text.length
+        });
+        break;
+      }
+
       // Find chunk end
       let end = Math.min(start + this.chunkSize, text.length);
-      
+
       // Try to break at sentence boundary if possible
       if (end < text.length) {
         const breakPoint = text.lastIndexOf('. ', end);
@@ -610,15 +634,27 @@ Score:`;
         chunks.push(chunk);
       }
 
-      // Move start forward with overlap, ensuring we always advance
-      const nextStart = end - this.chunkOverlap;
+      // Move start forward with overlap, ensuring we ALWAYS advance
+      // Minimum advance: max(50, 10% of chunkSize) to guarantee progress
+      const minAdvance = Math.max(50, Math.floor(this.chunkSize * 0.1));
+      const overlap = Math.min(this.chunkOverlap, this.chunkSize - minAdvance);
+      const nextStart = end - overlap;
+
+      // Critical: Ensure nextStart is always greater than start
       if (nextStart <= start) {
-        // Prevent infinite loop: if we're not advancing, force move forward
-        start = start + Math.max(1, this.chunkSize - this.chunkOverlap);
+        // Force advance by minimum amount
+        start = start + minAdvance;
+        logger.warn('Chunking forced advance', {
+          oldStart: start,
+          newStart: start,
+          chunkSize: this.chunkSize,
+          chunkOverlap: this.chunkOverlap,
+          minAdvance
+        });
       } else {
         start = nextStart;
       }
-      
+
       if (start >= text.length) break;
     }
 

@@ -177,28 +177,87 @@
                             </div>
 
                             <div>
-                                <h3>Select Prompt Levels</h3>
-                                <div class="level-grid">
-                                    <div class="level-checkbox">
-                                        <input type="checkbox" id="level1" checked>
-                                        <label for="level1">Level 1 <small>· Quick</small></label>
+                                <h3>Select Difficulty Levels (10-level scale)</h3>
+
+                                <!-- Quick Presets -->
+                                <div class="level-presets-row">
+                                    <button type="button" class="level-preset-btn" data-preset="all">All Levels (1-10)</button>
+                                    <button type="button" class="level-preset-btn" data-preset="basic">Basic Models (1-4)</button>
+                                    <button type="button" class="level-preset-btn recommended" data-preset="intermediate">Intermediate Models (3-7) <i class="fas fa-star"></i></button>
+                                    <button type="button" class="level-preset-btn" data-preset="advanced">Advanced Models (6-10)</button>
+                                </div>
+
+                                <!-- Custom Selection with Grouping -->
+                                <div class="level-selection-grouped">
+                                    <div class="level-group">
+                                        <div class="level-group-header">Beginner (1-3)</div>
+                                        <div class="level-group-checkboxes">
+                                            <div class="level-checkbox">
+                                                <input type="checkbox" id="level1">
+                                                <label for="level1">1 <small>· Trivial</small></label>
+                                            </div>
+                                            <div class="level-checkbox">
+                                                <input type="checkbox" id="level2">
+                                                <label for="level2">2 <small>· Simple</small></label>
+                                            </div>
+                                            <div class="level-checkbox">
+                                                <input type="checkbox" id="level3" checked>
+                                                <label for="level3">3 <small>· Easy</small></label>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div class="level-checkbox">
-                                        <input type="checkbox" id="level2">
-                                        <label for="level2">Level 2 <small>· Basic</small></label>
+
+                                    <div class="level-group recommended-group">
+                                        <div class="level-group-header">Intermediate (4-6) <i class="fas fa-star"></i></div>
+                                        <div class="level-group-checkboxes">
+                                            <div class="level-checkbox">
+                                                <input type="checkbox" id="level4" checked>
+                                                <label for="level4">4 <small>· Moderate</small></label>
+                                            </div>
+                                            <div class="level-checkbox">
+                                                <input type="checkbox" id="level5" checked>
+                                                <label for="level5">5 <small>· Medium</small></label>
+                                            </div>
+                                            <div class="level-checkbox">
+                                                <input type="checkbox" id="level6" checked>
+                                                <label for="level6">6 <small>· Challenging</small></label>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div class="level-checkbox">
-                                        <input type="checkbox" id="level3">
-                                        <label for="level3">Level 3 <small>· Medium</small></label>
+
+                                    <div class="level-group">
+                                        <div class="level-group-header">Advanced (7-9)</div>
+                                        <div class="level-group-checkboxes">
+                                            <div class="level-checkbox">
+                                                <input type="checkbox" id="level7" checked>
+                                                <label for="level7">7 <small>· Hard</small></label>
+                                            </div>
+                                            <div class="level-checkbox">
+                                                <input type="checkbox" id="level8">
+                                                <label for="level8">8 <small>· Very Hard</small></label>
+                                            </div>
+                                            <div class="level-checkbox">
+                                                <input type="checkbox" id="level9">
+                                                <label for="level9">9 <small>· Extreme</small></label>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div class="level-checkbox">
-                                        <input type="checkbox" id="level4">
-                                        <label for="level4">Level 4 <small>· Advanced</small></label>
+
+                                    <div class="level-group">
+                                        <div class="level-group-header">Expert (10)</div>
+                                        <div class="level-group-checkboxes">
+                                            <div class="level-checkbox">
+                                                <input type="checkbox" id="level10">
+                                                <label for="level10">10 <small>· Master</small></label>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div class="level-checkbox">
-                                        <input type="checkbox" id="level5">
-                                        <label for="level5">Level 5 <small>· Expert</small></label>
-                                    </div>
+                                </div>
+
+                                <!-- Selection Summary -->
+                                <div class="level-selection-summary">
+                                    <span id="levelsSummary">5 levels selected (3, 4, 5, 6, 7)</span>
+                                    <button type="button" class="btn-link" id="clearLevelsBtn">Clear All</button>
                                 </div>
                             </div>
 
@@ -411,13 +470,40 @@
             </div><!-- end .benchmark-compare-batch-row -->
         </div>
 
-        <!-- Configuration Presets Section -->
-        <div class="presets-section">
-            <div class="section-header">
-                <h3><i class="fas fa-magic"></i> Quick Start Presets</h3>
+        <!-- Configuration Presets Section (Compact) -->
+        <div class="presets-section-compact" style="margin-bottom: 32px;">
+            <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+                <label for="benchmarkPresetSelect" style="font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 8px;">
+                    <i class="fas fa-magic" style="color: var(--accent);"></i> Benchmark Preset:
+                </label>
+                <select id="benchmarkPresetSelect" style="padding: 10px 14px; border: 1px solid var(--panel-border); background: rgba(0,0,0,0.3); border-radius: 8px; color: var(--text); font-size: 0.95em; min-width: 280px;">
+                    <option value="custom">Custom (manual selection)</option>
+                    <option value="quick">Quick Test (5 min, 20 prompts)</option>
+                    <option value="standard" selected>Standard Benchmark (15 min, 60 prompts)</option>
+                    <option value="comprehensive">Comprehensive Benchmark (45 min, 120 prompts)</option>
+                    <option value="overkill">Overkill Benchmark (2hr, 240 prompts)</option>
+                </select>
+                <button type="button" class="btn-secondary btn-sm" id="managePresetsBtn">
+                    <i class="fas fa-cog"></i> Manage Presets
+                </button>
             </div>
-            <div id="presetsContainer" class="presets-grid">
-                <!-- Presets loaded dynamically -->
+
+            <!-- Preset Summary (shown when non-custom preset selected) -->
+            <div id="presetSummary" class="preset-summary" style="display: none; margin-top: 12px; padding: 12px 16px; background: rgba(0, 255, 159, 0.05); border: 1px solid rgba(0, 255, 159, 0.15); border-radius: 8px;">
+                <div style="display: flex; align-items: flex-start; gap: 12px;">
+                    <i class="fas fa-clipboard-list" style="color: var(--accent); margin-top: 3px;"></i>
+                    <div style="flex: 1;">
+                        <div style="font-weight: 600; margin-bottom: 6px;" id="presetSummaryTitle">Standard Benchmark</div>
+                        <ul id="presetSummaryDetails" style="margin: 0; padding-left: 20px; color: var(--muted); font-size: 0.9em; line-height: 1.6;">
+                            <li>60 prompts across 12 categories</li>
+                            <li>Levels 3-7 (intermediate focus)</li>
+                            <li>~15 minutes estimated</li>
+                        </ul>
+                    </div>
+                    <button type="button" class="btn-link" id="viewPresetDetailsBtn" style="color: var(--accent);">
+                        View Details <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -1307,6 +1393,85 @@
             <div class="modal-footer">
                 <button class="btn-secondary" id="refreshJudgeDetailsBtn">Refresh</button>
                 <button class="btn-primary close-btn">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Preset Management Modal -->
+    <div id="presetManagementModal" class="modal">
+        <div class="modal-content" style="max-width: 900px;">
+            <div class="modal-header">
+                <h2><i class="fas fa-sliders-h"></i> Manage Benchmark Presets</h2>
+                <span class="close" onclick="document.getElementById('presetManagementModal').style.display='none'">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div style="margin-bottom: 20px; color: var(--muted);">
+                    Presets allow you to quickly configure benchmark runs with predefined level and category combinations.
+                </div>
+
+                <!-- Built-in Presets -->
+                <div id="builtInPresetsList">
+                    <div class="preset-card">
+                        <div class="preset-card-header">
+                            <h4><i class="fas fa-bolt"></i> Quick Test</h4>
+                            <span class="preset-badge">Built-in</span>
+                        </div>
+                        <ul class="preset-details">
+                            <li>20 prompts, levels 1-4</li>
+                            <li>Core categories only (coding, reasoning, factual)</li>
+                            <li>Estimated time: ~5 minutes</li>
+                        </ul>
+                    </div>
+
+                    <div class="preset-card recommended">
+                        <div class="preset-card-header">
+                            <h4><i class="fas fa-star"></i> Standard Benchmark</h4>
+                            <span class="preset-badge">Built-in • Recommended</span>
+                        </div>
+                        <ul class="preset-details">
+                            <li>60 prompts, levels 3-7</li>
+                            <li>All 12 categories (5 prompts each)</li>
+                            <li>Recommended for most models</li>
+                            <li>Estimated time: ~15 minutes</li>
+                        </ul>
+                    </div>
+
+                    <div class="preset-card">
+                        <div class="preset-card-header">
+                            <h4><i class="fas fa-layer-group"></i> Comprehensive Benchmark</h4>
+                            <span class="preset-badge">Built-in</span>
+                        </div>
+                        <ul class="preset-details">
+                            <li>120 prompts, levels 1-10</li>
+                            <li>All 12 categories (10 prompts each)</li>
+                            <li>For detailed model profiling</li>
+                            <li>Estimated time: ~45 minutes</li>
+                        </ul>
+                    </div>
+
+                    <div class="preset-card">
+                        <div class="preset-card-header">
+                            <h4><i class="fas fa-fire"></i> Overkill Benchmark</h4>
+                            <span class="preset-badge">Built-in</span>
+                        </div>
+                        <ul class="preset-details">
+                            <li>240 prompts, levels 1-10 (with variations)</li>
+                            <li>All 12 categories, multiple samples per level</li>
+                            <li>For exhaustive testing and leaderboards</li>
+                            <li>Estimated time: ~2 hours</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Custom Presets Section (Future) -->
+                <div style="margin-top: 32px; padding: 20px; background: rgba(0,0,0,0.2); border: 1px solid var(--panel-border); border-radius: 8px; text-align: center;">
+                    <i class="fas fa-info-circle" style="color: var(--muted); font-size: 1.5em; margin-bottom: 12px;"></i>
+                    <p style="color: var(--muted); margin: 0;">Custom preset creation coming soon!</p>
+                    <p style="color: var(--muted); font-size: 0.85em; margin-top: 8px;">For now, use the "Custom" option and manually select levels and categories.</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="document.getElementById('presetManagementModal').style.display='none'">Close</button>
             </div>
         </div>
     </div>

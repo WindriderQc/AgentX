@@ -9,6 +9,7 @@ const router = express.Router();
 const Conversation = require('../models/Conversation');
 const Feedback = require('../models/Feedback');
 const { optionalAuth } = require('../src/middleware/auth');
+const { optionalWorkspaceContext } = require('../src/middleware/workspace');
 const logger = require('../config/logger');
 
 /**
@@ -20,19 +21,39 @@ const logger = require('../config/logger');
  *   - groupBy (optional: 'model' | 'promptVersion' | 'day')
  * Response: { totalConversations, totalMessages, breakdown: [...] }
  */
-router.get('/usage', optionalAuth, async (req, res) => {
+router.get('/usage', optionalAuth, optionalWorkspaceContext, async (req, res) => {
   try {
     const { from, to, groupBy } = req.query;
-    // In requireAuth middleware, user is attached to res.locals.user
-    
+    const userId = res.locals.user?.userId;
+    const workspaceId = req.workspace?._id;
+
     // Parse date range (default: last 7 days)
     const toDate = to ? new Date(to) : new Date();
     const fromDate = from ? new Date(from) : new Date(toDate.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-    // Remove userId filter for now to see all data
     const dateFilter = {
       createdAt: { $gte: fromDate, $lte: toDate }
     };
+
+    // CRITICAL: Add workspace isolation
+    if (workspaceId) {
+      dateFilter.workspaceId = workspaceId;
+    } else if (userId) {
+      dateFilter.userId = userId;
+    } else {
+      // No auth context - return empty data
+      return res.json({
+        status: 'success',
+        data: {
+          from: fromDate.toISOString(),
+          to: toDate.toISOString(),
+          currency: process.env.COST_CURRENCY || 'USD',
+          totalConversations: 0,
+          totalMessages: 0,
+          breakdown: []
+        }
+      });
+    }
 
     // Total counts
     const totalConversations = await Conversation.countDocuments(dateFilter);
@@ -158,18 +179,40 @@ router.get('/usage', optionalAuth, async (req, res) => {
  *   - groupBy (optional: 'promptVersion' | 'model')
  * Response: { totalFeedback, positive, negative, positiveRate, breakdown: [...] }
  */
-router.get('/feedback', optionalAuth, async (req, res) => {
+router.get('/feedback', optionalAuth, optionalWorkspaceContext, async (req, res) => {
   try {
     const { from, to, groupBy } = req.query;
-    
+    const userId = res.locals.user?.userId;
+    const workspaceId = req.workspace?._id;
+
     // Parse date range
     const toDate = to ? new Date(to) : new Date();
     const fromDate = from ? new Date(from) : new Date(toDate.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-    // Remove userId filter for now
     const dateFilter = {
       createdAt: { $gte: fromDate, $lte: toDate }
     };
+
+    // CRITICAL: Add workspace isolation
+    if (workspaceId) {
+      dateFilter.workspaceId = workspaceId;
+    } else if (userId) {
+      dateFilter.userId = userId;
+    } else {
+      // No auth context - return empty data
+      return res.json({
+        status: 'success',
+        data: {
+          from: fromDate.toISOString(),
+          to: toDate.toISOString(),
+          totalFeedback: 0,
+          positive: 0,
+          negative: 0,
+          positiveRate: 0,
+          breakdown: []
+        }
+      });
+    }
 
     // Total feedback counts
     const feedbackAgg = await Conversation.aggregate([
@@ -297,18 +340,44 @@ router.get('/feedback', optionalAuth, async (req, res) => {
  *   - to (ISO date, default: now)
  * Response: { ragUsageRate, ragPositiveRate, noRagPositiveRate, ... }
  */
-router.get('/rag-stats', optionalAuth, async (req, res) => {
+router.get('/rag-stats', optionalAuth, optionalWorkspaceContext, async (req, res) => {
   try {
     const { from, to } = req.query;
-    
+    const userId = res.locals.user?.userId;
+    const workspaceId = req.workspace?._id;
+
     // Parse date range
     const toDate = to ? new Date(to) : new Date();
     const fromDate = from ? new Date(from) : new Date(toDate.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-    // Remove userId filter for now
     const dateFilter = {
       createdAt: { $gte: fromDate, $lte: toDate }
     };
+
+    // CRITICAL: Add workspace isolation
+    if (workspaceId) {
+      dateFilter.workspaceId = workspaceId;
+    } else if (userId) {
+      dateFilter.userId = userId;
+    } else {
+      // No auth context - return empty data
+      return res.json({
+        status: 'success',
+        data: {
+          from: fromDate.toISOString(),
+          to: toDate.toISOString(),
+          totalConversations: 0,
+          ragRequestedConversations: 0,
+          ragConversations: 0,
+          noRagConversations: 0,
+          ragUsageRate: 0,
+          feedback: {
+            rag: { total: 0, positive: 0, positiveRate: 0 },
+            noRag: { total: 0, positive: 0, positiveRate: 0 }
+          }
+        }
+      });
+    }
 
     // RAG usage counts
     const totalConversations = await Conversation.countDocuments(dateFilter);
@@ -394,10 +463,11 @@ router.get('/rag-stats', optionalAuth, async (req, res) => {
  *   - groupBy (optional: 'model', default: 'model')
  * Response: { totalTokens, avgDuration, breakdown: [...] }
  */
-router.get('/stats', optionalAuth, async (req, res) => {
+router.get('/stats', optionalAuth, optionalWorkspaceContext, async (req, res) => {
   try {
     const { from, to, groupBy = 'model' } = req.query;
     const userId = res.locals.user?.userId;
+    const workspaceId = req.workspace?._id;
 
     // Parse date range
     const toDate = to ? new Date(to) : new Date();
@@ -407,9 +477,33 @@ router.get('/stats', optionalAuth, async (req, res) => {
       createdAt: { $gte: fromDate, $lte: toDate }
     };
 
-    // Optional user isolation (only if authenticated)
-    if (userId) {
+    // CRITICAL: Add workspace isolation
+    if (workspaceId) {
+      dateFilter.workspaceId = workspaceId;
+    } else if (userId) {
       dateFilter.userId = userId;
+    } else {
+      // No auth context - return empty data
+      return res.json({
+        status: 'success',
+        data: {
+          from: fromDate.toISOString(),
+          to: toDate.toISOString(),
+          currency: process.env.COST_CURRENCY || 'USD',
+          totals: {
+            promptTokens: 0,
+            completionTokens: 0,
+            totalTokens: 0,
+            durationSec: 0,
+            messages: 0,
+            totalCost: 0,
+            avgDurationSec: 0,
+            avgCostPerMessage: 0,
+            costPerThousandTokens: 0
+          },
+          breakdown: []
+        }
+      });
     }
 
     // Grouping key selection
@@ -527,15 +621,48 @@ router.get('/stats', optionalAuth, async (req, res) => {
  *   - minCost (number, default: 0) - Filter out entries below this cost
  * Response: { summary: {...}, breakdown: [...] }
  */
-router.get('/costs', optionalAuth, async (req, res) => {
+router.get('/costs', optionalAuth, optionalWorkspaceContext, async (req, res) => {
   try {
     const { from, to, groupBy = 'model', minCost = 0 } = req.query;
+    const userId = res.locals.user?.userId;
+    const workspaceId = req.workspace?._id;
 
     // Parse date range
     const toDate = to ? new Date(to) : new Date();
     const fromDate = from ? new Date(from) : new Date(toDate.getTime() - 7 * 24 * 60 * 60 * 1000);
 
     const dateFilter = { createdAt: { $gte: fromDate, $lte: toDate } };
+
+    // CRITICAL: Add workspace isolation
+    if (workspaceId) {
+      dateFilter.workspaceId = workspaceId;
+    } else if (userId) {
+      dateFilter.userId = userId;
+    } else {
+      // No auth context - return empty data
+      return res.json({
+        status: 'success',
+        data: {
+          from: fromDate.toISOString(),
+          to: toDate.toISOString(),
+          currency: process.env.COST_CURRENCY || 'USD',
+          groupBy,
+          minCost: parseFloat(minCost),
+          summary: {
+            totalCost: 0,
+            totalMessages: 0,
+            totalConversations: 0,
+            totalTokens: 0,
+            promptTokenCost: 0,
+            completionTokenCost: 0,
+            avgCostPerMessage: 0,
+            avgCostPerConversation: 0,
+            costPer1kTokens: 0
+          },
+          breakdown: []
+        }
+      });
+    }
 
     // Determine grouping key
     let groupKey;
@@ -689,10 +816,11 @@ router.get('/costs', optionalAuth, async (req, res) => {
  *   - threshold (number, default: 0.7 - flag prompts below this)
  *   - promptName (string, optional) - filter by specific prompt name
  */
-router.get('/feedback/summary', optionalAuth, async (req, res) => {
+router.get('/feedback/summary', optionalAuth, optionalWorkspaceContext, async (req, res) => {
   try {
     const { from, to, startDate, endDate, threshold = 0.7, promptName } = req.query;
     const userId = res.locals.user?.userId;
+    const workspaceId = req.workspace?._id;
     const minPositiveRate = parseFloat(threshold);
 
     // Default to 30 days for summary, support both from/to and startDate/endDate
@@ -703,9 +831,34 @@ router.get('/feedback/summary', optionalAuth, async (req, res) => {
       createdAt: { $gte: fromDate, $lte: toDate }
     };
 
-    // Optional user isolation (only if authenticated)
-    if (userId) {
+    // CRITICAL: Add workspace isolation
+    if (workspaceId) {
+      dateFilter.workspaceId = workspaceId;
+    } else if (userId) {
       dateFilter.userId = userId;
+    } else {
+      // No auth context - return empty data
+      return res.json({
+        status: 'success',
+        dateRange: {
+          start: fromDate.toISOString(),
+          end: toDate.toISOString()
+        },
+        data: {
+          from: fromDate.toISOString(),
+          to: toDate.toISOString(),
+          dateRange: {
+            start: fromDate.toISOString(),
+            end: toDate.toISOString()
+          },
+          threshold: minPositiveRate,
+          overall: { totalFeedback: 0, positive: 0, negative: 0, positiveRate: 0 },
+          byModel: [],
+          byPromptVersion: [],
+          lowPerformingPrompts: [],
+          abComparisons: []
+        }
+      });
     }
 
     // Optional prompt name filter
@@ -802,9 +955,14 @@ router.get('/feedback/summary', optionalAuth, async (req, res) => {
     const convDateFilter = {
       createdAt: { $gte: fromDate, $lte: toDate }
     };
-    if (userId) {
+
+    // CRITICAL: Apply same workspace isolation to conversation queries
+    if (workspaceId) {
+      convDateFilter.workspaceId = workspaceId;
+    } else if (userId) {
       convDateFilter.userId = userId;
     }
+
     if (promptName) {
       convDateFilter.promptName = promptName;
     }
@@ -1018,9 +1176,11 @@ router.get('/feedback/summary', optionalAuth, async (req, res) => {
  *   - promptVersion (optional)
  *   - promptName (optional)
  */
-router.post('/feedback', optionalAuth, async (req, res) => {
+router.post('/feedback', optionalAuth, optionalWorkspaceContext, async (req, res) => {
   try {
     const { conversationId, messageId, rating, comment, model, promptVersion, promptName } = req.body;
+    const userId = res.locals.user?.userId;
+    const workspaceId = req.workspace?._id;
 
     // Validate required fields
     if (!conversationId || !messageId || !rating) {
@@ -1036,7 +1196,38 @@ router.post('/feedback', optionalAuth, async (req, res) => {
       });
     }
 
-    // Create feedback record
+    // CRITICAL: Verify the conversation belongs to this user/workspace before allowing feedback
+    const conversation = await Conversation.findById(conversationId);
+    if (!conversation) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Conversation not found'
+      });
+    }
+
+    // Verify ownership
+    if (workspaceId) {
+      if (!conversation.workspaceId || conversation.workspaceId.toString() !== workspaceId.toString()) {
+        return res.status(403).json({
+          status: 'error',
+          message: 'Access denied: conversation does not belong to this workspace'
+        });
+      }
+    } else if (userId) {
+      if (conversation.userId !== userId) {
+        return res.status(403).json({
+          status: 'error',
+          message: 'Access denied: conversation does not belong to this user'
+        });
+      }
+    } else {
+      return res.status(401).json({
+        status: 'error',
+        message: 'Authentication required'
+      });
+    }
+
+    // Create feedback record with workspace context
     const feedback = new Feedback({
       conversationId,
       messageId,
@@ -1045,7 +1236,8 @@ router.post('/feedback', optionalAuth, async (req, res) => {
       model,
       promptVersion,
       promptName,
-      userId: res.locals.user?.userId
+      userId,
+      workspaceId
     });
 
     await feedback.save();
@@ -1087,9 +1279,11 @@ router.post('/feedback', optionalAuth, async (req, res) => {
  *   - model (string, optional) - Filter by specific model
  * Response: { prompts: [{ name, version, overall, byModel: [...] }] }
  */
-router.get('/prompt-metrics', optionalAuth, async (req, res) => {
+router.get('/prompt-metrics', optionalAuth, optionalWorkspaceContext, async (req, res) => {
   try {
     const { days = 7, model: filterModel } = req.query;
+    const userId = res.locals.user?.userId;
+    const workspaceId = req.workspace?._id;
 
     // Date range
     const toDate = new Date();
@@ -1098,6 +1292,25 @@ router.get('/prompt-metrics', optionalAuth, async (req, res) => {
     const dateFilter = {
       createdAt: { $gte: fromDate, $lte: toDate }
     };
+
+    // CRITICAL: Add workspace isolation
+    if (workspaceId) {
+      dateFilter.workspaceId = workspaceId;
+    } else if (userId) {
+      dateFilter.userId = userId;
+    } else {
+      // No auth context - return empty data
+      return res.json({
+        status: 'success',
+        data: {
+          from: fromDate.toISOString(),
+          to: toDate.toISOString(),
+          days: parseInt(days),
+          filterModel: filterModel || null,
+          prompts: []
+        }
+      });
+    }
 
     // Add model filter if specified
     if (filterModel) {
@@ -1210,10 +1423,40 @@ router.get('/prompt-metrics', optionalAuth, async (req, res) => {
  *   - days: number of days for current period (default: 7)
  *   - model: filter by specific model (optional)
  */
-router.get('/trending', optionalAuth, async (req, res) => {
+router.get('/trending', optionalAuth, optionalWorkspaceContext, async (req, res) => {
   try {
     const { days = 7, model: filterModel } = req.query;
+    const userId = res.locals.user?.userId;
+    const workspaceId = req.workspace?._id;
     const daysNum = parseInt(days);
+
+    // Check auth context first
+    if (!workspaceId && !userId) {
+      // No auth context - return empty data
+      const currentTo = new Date();
+      const currentFrom = new Date(currentTo.getTime() - daysNum * 24 * 60 * 60 * 1000);
+      const previousTo = currentFrom;
+      const previousFrom = new Date(previousTo.getTime() - daysNum * 24 * 60 * 60 * 1000);
+
+      return res.json({
+        status: 'success',
+        data: {
+          periods: {
+            current: {
+              from: currentFrom.toISOString(),
+              to: currentTo.toISOString()
+            },
+            previous: {
+              from: previousFrom.toISOString(),
+              to: previousTo.toISOString()
+            }
+          },
+          days: daysNum,
+          filterModel: filterModel || null,
+          trending: []
+        }
+      });
+    }
 
     // Current period
     const currentTo = new Date();
@@ -1228,6 +1471,13 @@ router.get('/trending', optionalAuth, async (req, res) => {
       const dateFilter = {
         createdAt: { $gte: fromDate, $lte: toDate }
       };
+
+      // CRITICAL: Add workspace isolation
+      if (workspaceId) {
+        dateFilter.workspaceId = workspaceId;
+      } else if (userId) {
+        dateFilter.userId = userId;
+      }
 
       if (filterModel) {
         dateFilter.model = filterModel;
@@ -1357,7 +1607,6 @@ router.get('/trending', optionalAuth, async (req, res) => {
    ========================================================================== */
 
 const { getUsageAnalytics } = require('../src/services/usageAnalyticsService');
-const { optionalWorkspaceContext } = require('../src/middleware/workspace');
 const optionalWorkspace = optionalWorkspaceContext; // Alias for local use
 
 /**

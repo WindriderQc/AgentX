@@ -45,12 +45,18 @@ const BenchmarkResultSchema = new mongoose.Schema({
     prompt_level: {
         type: Number,
         min: 1,
-        max: 5,
+        max: 10, // Enhanced judging system: expanded from 5 to 10 levels for finer differentiation
         index: true
     },
     prompt_category: {
         type: String,
-        enum: ['coding', 'reasoning', 'factual', 'math', 'creative', 'general'],
+        enum: [
+            // Original 6 categories
+            'coding', 'reasoning', 'factual', 'math', 'creative', 'general',
+            // Enhanced judging system: 6 new categories for better model differentiation
+            'instruction-following', 'summarization', 'translation',
+            'multi-turn-reasoning', 'context-retention', 'edge-cases'
+        ],
         index: true
     },
     expected_answer: {
@@ -86,7 +92,7 @@ const BenchmarkResultSchema = new mongoose.Schema({
     quality_score: {
         type: Number,
         min: 0,
-        max: 100,
+        max: 10,  // Changed from 100 to match actual 0-10 scale from qualityScorer
         default: null
     },
     quality_breakdown: {
@@ -129,9 +135,21 @@ const BenchmarkResultSchema = new mongoose.Schema({
         max: 100,
         default: null
     },
+    composite_profile_used: {
+        type: String,
+        default: null,
+        description: 'Tracks which composite profile was used (e.g., "category:coding", "profile:interactive")'
+    },
     normalized_scores: {
         type: Object,
         default: null
+    },
+    // Phase 3 Week 10: Hardware profiling snapshot
+    hardware_snapshot: {
+        backend: { type: String, default: null },
+        vram_usage_mb: { type: Number, default: null },
+        quantization: { type: String, default: null },
+        detection_metadata: { type: Object, default: null }
     },
     timestamp: {
         type: Date,

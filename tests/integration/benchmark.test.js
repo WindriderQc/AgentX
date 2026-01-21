@@ -625,7 +625,7 @@ describe('Benchmark System - Integration Tests', () => {
                     prompt_category: 'math',
                     latency: 1000,
                     tokens: 100,
-                    quality_score: 85,
+                    quality_score: 8.5,  // Changed from 85 to match 0-10 scale
                     composite_score: 90,
                     success: true
                 },
@@ -637,7 +637,7 @@ describe('Benchmark System - Integration Tests', () => {
                     prompt_category: 'reasoning',
                     latency: 1500,
                     tokens: 150,
-                    quality_score: 75,
+                    quality_score: 7.5,  // Changed from 75 to match 0-10 scale
                     composite_score: 80,
                     success: true
                 }

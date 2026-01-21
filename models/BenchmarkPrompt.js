@@ -19,13 +19,19 @@ const BenchmarkPromptSchema = new mongoose.Schema({
         type: Number,
         required: true,
         min: 1,
-        max: 5,
+        max: 10, // Enhanced judging system: expanded from 5 to 10 levels for finer differentiation
         index: true
     },
     category: {
         type: String,
         required: true,
-        enum: ['coding', 'reasoning', 'factual', 'math', 'creative', 'general'],
+        enum: [
+            // Original 6 categories
+            'coding', 'reasoning', 'factual', 'math', 'creative', 'general',
+            // Enhanced judging system: 6 new categories for better model differentiation
+            'instruction-following', 'summarization', 'translation',
+            'multi-turn-reasoning', 'context-retention', 'edge-cases'
+        ],
         index: true
     },
     expected_answer: {
@@ -34,8 +40,44 @@ const BenchmarkPromptSchema = new mongoose.Schema({
     },
     scoring_type: {
         type: String,
-        enum: ['reasoning', 'quick', 'pattern', 'code', 'factual', 'math', 'creative'],
+        enum: [
+            'reasoning', 'quick', 'pattern', 'code', 'factual', 'math', 'creative',
+            // Enhanced judging system: additional scoring types for new categories
+            'instruction-following', 'summarization', 'translation',
+            'multi-turn-reasoning', 'context-retention', 'edge-cases'
+        ],
         default: 'reasoning'
+    },
+    scoring_dimensions: {
+        type: [{
+            name: {
+                type: String,
+                required: true,
+                trim: true
+            },
+            weight: {
+                type: Number,
+                required: true,
+                min: 0,
+                max: 1
+            },
+            description: {
+                type: String,
+                required: true,
+                trim: true
+            },
+            scale: {
+                type: String,
+                default: '0-10',
+                trim: true
+            },
+            rubric: {
+                type: String,
+                default: '',
+                trim: true
+            }
+        }],
+        default: undefined
     },
     custom: {
         type: Boolean,

@@ -2,17 +2,106 @@
 
 /**
  * Seed Prompt Templates
- * Seeds 15 system templates across 4 categories
+ * Seeds legacy quick templates and system prompt templates for benchmarking.
  * Run: node scripts/seed-prompt-templates.js
  */
 
 require('dotenv').config();
+const fs = require('fs');
 const mongoose = require('mongoose');
+const path = require('path');
 const PromptTemplate = require('../models/PromptTemplate');
 const logger = require('../config/logger');
 
-// System templates organized by category
-const SYSTEM_TEMPLATES = [
+const DATA_PROMPT_TEMPLATES_PATH = path.join(__dirname, '..', 'data', 'prompt-templates.json');
+
+const CATEGORY_MAP = {
+  coding: 'code',
+  reasoning: 'analysis',
+  creative: 'writing',
+  factual: 'analysis',
+  conversational: 'general'
+};
+const ALLOWED_CATEGORIES = new Set(['code', 'writing', 'analysis', 'general', 'custom']);
+
+function mapCategory(category) {
+  if (!category) {
+    return 'general';
+  }
+
+  const mapped = CATEGORY_MAP[category] || category;
+  return ALLOWED_CATEGORIES.has(mapped) ? mapped : 'general';
+}
+
+function normalizeTags(tags = [], extraTags = []) {
+  return Array.from(new Set([...tags, ...extraTags]));
+}
+
+function loadSystemPromptTemplates() {
+  if (!fs.existsSync(DATA_PROMPT_TEMPLATES_PATH)) {
+    logger.warn('Prompt template data file not found; skipping system prompt templates.', {
+      path: DATA_PROMPT_TEMPLATES_PATH
+    });
+    return [];
+  }
+
+  let raw;
+  try {
+    raw = fs.readFileSync(DATA_PROMPT_TEMPLATES_PATH, 'utf8');
+  } catch (err) {
+    logger.error('Failed to read prompt template data file.', { error: err.message });
+    return [];
+  }
+
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch (err) {
+    logger.error('Failed to parse prompt template data JSON.', { error: err.message });
+    return [];
+  }
+
+  if (!Array.isArray(data)) {
+    logger.error('Prompt template data JSON is not an array.', { path: DATA_PROMPT_TEMPLATES_PATH });
+    return [];
+  }
+
+  return data
+    .filter(entry => entry && entry.name && (entry.content || entry.template))
+    .map(entry => {
+      const sourceCategory = entry.category || 'general';
+      const mappedCategory = mapCategory(sourceCategory);
+      const content = entry.content || entry.template;
+      const tags = normalizeTags(entry.tags || [], [
+        'system-prompt',
+        'benchmarking',
+        `source-category:${sourceCategory}`
+      ]);
+      const variants = Array.isArray(entry.variants)
+        ? entry.variants.map(variant => ({
+          version: variant.version,
+          content: variant.content,
+          description: variant.description || ''
+        }))
+        : [];
+
+      return {
+        name: entry.name,
+        category: mappedCategory,
+        description: entry.description || '',
+        tags,
+        template: content,
+        targetModels: Array.isArray(entry.target_models) ? entry.target_models : [],
+        expectedQualityBoost: typeof entry.expected_quality_boost === 'number'
+          ? entry.expected_quality_boost
+          : null,
+        variants
+      };
+    });
+}
+
+// Legacy quick templates organized by category
+const LEGACY_TEMPLATES = [
   // CODE CATEGORY (4 templates)
   {
     name: 'Debug Code',
@@ -307,6 +396,9 @@ Focus area: {{focusArea}}`
   }
 ];
 
+const SYSTEM_PROMPT_TEMPLATES = loadSystemPromptTemplates();
+const SYSTEM_TEMPLATES = [...LEGACY_TEMPLATES, ...SYSTEM_PROMPT_TEMPLATES];
+
 /**
  * Connect to MongoDB
  */
@@ -351,8 +443,17 @@ async function seedTemplates() {
         existing.template = templateData.template;
         existing.category = templateData.category;
         existing.description = templateData.description;
-        existing.tags = templateData.tags;
+        existing.tags = templateData.tags || [];
         existing.placeholders = placeholders;
+        if (templateData.targetModels) {
+          existing.targetModels = templateData.targetModels;
+        }
+        if (templateData.expectedQualityBoost !== undefined) {
+          existing.expectedQualityBoost = templateData.expectedQualityBoost;
+        }
+        if (templateData.variants) {
+          existing.variants = templateData.variants;
+        }
         await existing.save();
 
         logger.info(`Updated system template: ${templateData.name}`);
@@ -364,8 +465,11 @@ async function seedTemplates() {
           template: templateData.template,
           category: templateData.category,
           description: templateData.description,
-          tags: templateData.tags,
+          tags: templateData.tags || [],
           placeholders,
+          targetModels: templateData.targetModels || [],
+          expectedQualityBoost: templateData.expectedQualityBoost ?? null,
+          variants: templateData.variants || [],
           isSystem: true,
           userId: null, // System templates have no owner
           workspaceId: null

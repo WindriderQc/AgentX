@@ -56,9 +56,25 @@ const PromptTemplateSchema = new mongoose.Schema({
   // Tags for search
   tags: {
     type: [String],
-    default: [],
-    index: true
+    default: []
   },
+
+  // System prompt benchmarking metadata (optional)
+  targetModels: {
+    type: [String],
+    default: []
+  },
+
+  expectedQualityBoost: {
+    type: Number,
+    default: null
+  },
+
+  variants: [{
+    version: Number,
+    content: String,
+    description: String
+  }],
 
   // Extracted placeholders (auto-generated)
   placeholders: [{

@@ -24,6 +24,20 @@ router.use(requireAuth);
 router.use(attachWorkspace);
 router.use(requireWorkspaceAccess);
 
+// SECURITY: Middleware to validate ObjectId parameters
+function validateObjectIdParam(paramName = 'id') {
+    return (req, res, next) => {
+        const id = req.params[paramName];
+        if (id && !mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({
+                status: 'error',
+                message: `Invalid ${paramName} format`
+            });
+        }
+        next();
+    };
+}
+
 const canEditDashboard = (req, dashboard) => {
     if (!dashboard || !req.user) return false;
     if (dashboard.createdBy.toString() === req.user._id.toString()) return true;
@@ -91,10 +105,11 @@ router.post('/', requireAdmin, async (req, res) => {
  * GET /api/dashboards/:id
  * Get dashboard details
  */
-router.get('/:id', async (req, res) => {
+router.get('/:id', validateObjectIdParam('id'), async (req, res) => {
     try {
+        // SECURITY: Cast to ObjectId to prevent NoSQL injection
         const dashboard = await CustomDashboard.findOne({
-            _id: req.params.id,
+            _id: mongoose.Types.ObjectId(req.params.id),
             workspaceId: req.workspace._id
         });
 
@@ -122,7 +137,7 @@ router.patch('/:id', async (req, res) => {
         const { name, description, layout, isPublic } = req.body;
 
         const dashboard = await CustomDashboard.findOne({
-            _id: req.params.id,
+            _id: mongoose.Types.ObjectId(req.params.id),
             workspaceId: req.workspace._id
         });
 
@@ -164,7 +179,7 @@ router.patch('/:id', async (req, res) => {
 router.post('/:id/panels', async (req, res) => {
     try {
         const dashboard = await CustomDashboard.findOne({
-            _id: req.params.id,
+            _id: mongoose.Types.ObjectId(req.params.id),
             workspaceId: req.workspace._id
         });
 
@@ -208,7 +223,7 @@ router.post('/:id/panels', async (req, res) => {
 router.patch('/:id/panels/:panelId', async (req, res) => {
     try {
         const dashboard = await CustomDashboard.findOne({
-            _id: req.params.id,
+            _id: mongoose.Types.ObjectId(req.params.id),
             workspaceId: req.workspace._id
         });
 
@@ -261,7 +276,7 @@ router.patch('/:id/panels/:panelId', async (req, res) => {
 router.delete('/:id/panels/:panelId', async (req, res) => {
     try {
         const dashboard = await CustomDashboard.findOne({
-            _id: req.params.id,
+            _id: mongoose.Types.ObjectId(req.params.id),
             workspaceId: req.workspace._id
         });
 
@@ -295,7 +310,7 @@ router.delete('/:id/panels/:panelId', async (req, res) => {
 router.delete('/:id', async (req, res) => {
     try {
         const dashboard = await CustomDashboard.findOne({
-            _id: req.params.id,
+            _id: mongoose.Types.ObjectId(req.params.id),
             workspaceId: req.workspace._id
         });
 
@@ -321,7 +336,7 @@ router.delete('/:id', async (req, res) => {
 router.post('/:id/refresh', async (req, res) => {
     try {
         const dashboard = await CustomDashboard.findOne({
-            _id: req.params.id,
+            _id: mongoose.Types.ObjectId(req.params.id),
             workspaceId: req.workspace._id
         });
 

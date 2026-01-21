@@ -20,6 +20,7 @@ const BenchmarkBatch = require('../../models/BenchmarkBatch');
 // Services
 const { scoreResponse, calculateCompositeScore, JUDGE_CONFIG } = require('./qualityScorer');
 const { HOSTS, MODEL_ROUTING } = require('./modelRouter');
+const hardwareProfileService = require('./hardwareProfileService');
 
 // Simple Concurrency Queue for managing parallel judge tasks
 class ConcurrencyQueue {
@@ -420,9 +421,8 @@ class BenchmarkService {
         let sortedStats = modelStats.map(m => {
             const hasQuality = m.avg_quality != null && !isNaN(m.avg_quality);
             
-            // Normalize quality to 0-10 for calculation (handle mixed 0-10 and 0-100 data)
-            let rawQuality = m.avg_quality || 0;
-            if (rawQuality > 10) rawQuality = rawQuality / 10;
+            // Normalize quality to 0-10 for calculation (data should already be standardized)
+            const rawQuality = m.avg_quality || 0;
 
             const avgLatency = Number(m.avg_latency) || 0;
             const avgTokens = parseFloat(m.avg_tokens_per_sec) || 0;
@@ -859,7 +859,8 @@ class BenchmarkService {
                 
                 // Trigger model load with a minimal request
                 const url = `${hostUrl}/api/generate`;
-                const fetchOptions = getFetchOptions(url, {
+                const warmupController = new AbortController();
+                const warmupOptions = getFetchOptions(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ 
@@ -868,12 +869,26 @@ class BenchmarkService {
                         stream: false, 
                         options: { num_predict: 1 } 
                     }),
-                    timeout: 10000  // Just trigger the load, don't wait for completion
+                    timeout: 10000,  // Just trigger the load, don't wait for completion
+                    signal: warmupController.signal
                 });
                 
                 // Start the request but don't wait for it (model will start loading)
-                fetch(url, fetchOptions).catch(() => {}); // Ignore errors, we'll check VRAM
-                
+                const warmupFetch = fetch(url, warmupOptions)
+                    .then(async (response) => {
+                        try {
+                            if (response.body?.cancel) {
+                                await response.body.cancel();
+                            } else if (response.body?.destroy) {
+                                response.body.destroy();
+                            }
+                        } catch (cancelErr) {
+                            logger.debug('Warmup body cancel failed', { error: cancelErr.message });
+                        }
+                        return response;
+                    })
+                    .catch(() => {}); // Ignore errors, we'll check VRAM
+               
                 // Wait for model to finish loading by monitoring VRAM
                 const loadResult = await waitForModelLoadWithFallback(hostUrl, model, {
                     maxWaitMs: 120000,      // Max 120s to wait
@@ -881,6 +896,9 @@ class BenchmarkService {
                     stabilityChecks: 2,     // Need 2 stable readings
                     fallbackTimeoutMs: 30000 // If VRAM monitoring unavailable, wait 30s
                 });
+                
+                warmupController.abort();
+                await warmupFetch.catch(() => {});
                 
                 const durationMs = loadResult.durationMs || (Date.now() - warmupStart);
                 const success = loadResult.loaded !== false;
@@ -987,6 +1005,9 @@ class BenchmarkService {
                 // Warmup tested model (await ensures accurate latency for first prompt)
                 await warmupModel(hostUrl, model, 'model_warmup');
 
+                // Phase 3 Week 10: Detect hardware info after model is loaded
+                const hardwareSnapshot = await hardwareProfileService.detectHardware(hostUrl, model);
+
                 for (const prompt of prompts) {
                     // Check if batch was stopped
                     const currentBatch = await BenchmarkBatch.findById(batchId);
@@ -1050,7 +1071,8 @@ class BenchmarkService {
                             timestamp: new Date(),
                             quality_score: null,
                             scoring_method: enableQualityScoring ? 'pending' : 'disabled',
-                            judge_model: enableQualityScoring ? (judgeConfig.model || JUDGE_CONFIG.model) : null
+                            judge_model: enableQualityScoring ? (judgeConfig.model || JUDGE_CONFIG.model) : null,
+                            hardware_snapshot: hardwareSnapshot
                         });
 
                         await result.save();
@@ -1115,11 +1137,13 @@ class BenchmarkService {
                                     });
                                     const judgeDuration = Date.now() - judgeStart;
 
+                                    // Use category-specific composite scoring if category is available
+                                    const categoryOrProfile = prompt.category || 'interactive';
                                     const composite = calculateCompositeScore({
                                         latency,
                                         tokens_per_sec,
                                         quality_score: scores.quality_score
-                                    });
+                                    }, categoryOrProfile);
 
                                     await BenchmarkResult.updateOne(
                                         { _id: resultId },
@@ -1135,6 +1159,7 @@ class BenchmarkService {
                                                 scoring_time_ms: scores.scoring_time_ms,
                                                 quick_pattern: scores.quick_pattern,
                                                 composite_score: composite.composite_score,
+                                                composite_profile_used: composite.composite_profile_used,
                                                 normalized_scores: composite.normalized
                                             }
                                         }
@@ -1315,6 +1340,54 @@ class BenchmarkService {
                 total_duration: finalBatch.execution_metrics?.total_duration_ms,
                 tests_per_minute: finalBatch.execution_metrics?.tests_per_minute
             });
+
+            // Phase 3 Week 10: Update hardware profiles for all tested model+host combinations
+            try {
+                const uniqueCombos = await BenchmarkResult.distinct('model', {
+                    batch_id: batchId,
+                    success: true,
+                    quality_score: { $ne: null }
+                });
+
+                for (const model of uniqueCombos) {
+                    // Get all hosts that tested this model
+                    const hosts = await BenchmarkResult.distinct('host', {
+                        batch_id: batchId,
+                        model,
+                        success: true,
+                        'hardware_snapshot.backend': { $ne: null }
+                    });
+
+                    for (const host of hosts) {
+                        // Get representative hardware snapshot from this batch
+                        const sampleResult = await BenchmarkResult.findOne({
+                            batch_id: batchId,
+                            model,
+                            host,
+                            'hardware_snapshot.backend': { $ne: null }
+                        });
+
+                        if (sampleResult && sampleResult.hardware_snapshot) {
+                            await hardwareProfileService.updateProfile({
+                                host,
+                                model,
+                                hardwareSnapshot: sampleResult.hardware_snapshot,
+                                workspaceId: finalBatch.workspaceId
+                            });
+                        }
+                    }
+                }
+
+                logger.info('Hardware profiles updated', {
+                    batchId,
+                    models: uniqueCombos.length
+                });
+            } catch (err) {
+                logger.warn('Failed to update hardware profiles', {
+                    batchId,
+                    error: err.message
+                });
+            }
         }
     }
 

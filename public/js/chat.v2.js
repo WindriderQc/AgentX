@@ -86,6 +86,7 @@ document.addEventListener('DOMContentLoaded', () => {
     messageInput: document.getElementById('messageInput'),
     sendBtn: document.getElementById('sendBtn'),
     clearBtn: document.getElementById('clearBtn'),
+    analyzeQualityBtn: document.getElementById('analyzeQualityBtn'),
     hostInput: document.getElementById('hostInput'),
     portInput: document.getElementById('portInput'),
     modelSelect: document.getElementById('modelSelect'),
@@ -684,6 +685,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Show only AI assistant message count
     elements.statMessages.textContent = state.stats.replies;
     renderLogList(state.history);
+    updateAnalyzeButtonVisibility();
   }
 
   function renderLogList(messages) {
@@ -723,10 +725,149 @@ document.addEventListener('DOMContentLoaded', () => {
       { persist: false, count: false },
     );
     renderLogList([]);
+    updateAnalyzeButtonVisibility();
 
     // User feedback
     if (typeof Toast !== 'undefined') {
       Toast.success('New conversation started');
+    }
+  }
+
+  // Phase 3 Week 11: Conversation Quality Judging
+  async function analyzeConversationQuality() {
+    if (!state.conversationId) {
+      if (typeof Toast !== 'undefined') {
+        Toast.error('No conversation to analyze. Start a conversation first.');
+      }
+      return;
+    }
+
+    // Check if conversation has at least 2 messages (1 user + 1 assistant)
+    if (state.history.length < 2) {
+      if (typeof Toast !== 'undefined') {
+        Toast.error('Conversation must have at least 2 messages to analyze.');
+      }
+      return;
+    }
+
+    // Show loading state
+    elements.analyzeQualityBtn.disabled = true;
+    elements.analyzeQualityBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Analyzing...';
+
+    try {
+      const fetchOptions = {
+        method: 'POST',
+        credentials: 'include'
+      };
+
+      const res = await fetch(
+        `/api/conversations/${state.conversationId}/judge`,
+        window.WorkspaceManager ? WorkspaceManager.addWorkspaceHeader(fetchOptions) : fetchOptions
+      );
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      }
+
+      const data = await res.json();
+
+      if (data.status !== 'success') {
+        throw new Error(data.message || 'Quality analysis failed');
+      }
+
+      // Display quality assessment
+      displayQualityAssessment(data.data.quality_assessment);
+
+      if (typeof Toast !== 'undefined') {
+        Toast.success('Quality analysis complete!');
+      }
+
+    } catch (err) {
+      console.error('Quality analysis failed:', err);
+      if (typeof Toast !== 'undefined') {
+        Toast.error(`Analysis failed: ${err.message}`);
+      }
+    } finally {
+      // Restore button
+      elements.analyzeQualityBtn.disabled = false;
+      elements.analyzeQualityBtn.innerHTML = '<i class="fas fa-star"></i> Analyze Quality';
+    }
+  }
+
+  function displayQualityAssessment(assessment) {
+    if (!assessment) return;
+
+    const dimensionLabels = {
+      accuracy: 'Accuracy',
+      relevance: 'Relevance',
+      coherence: 'Coherence',
+      helpfulness: 'Helpfulness',
+      engagement: 'Engagement',
+      context_retention: 'Context Retention',
+      instruction_following: 'Instruction Following',
+      response_quality: 'Response Quality',
+      efficiency: 'Efficiency',
+      safety: 'Safety'
+    };
+
+    // Build dimension bars
+    let dimensionHTML = '';
+    if (assessment.dimensions) {
+      for (const [key, value] of Object.entries(assessment.dimensions)) {
+        const label = dimensionLabels[key] || key;
+        const percentage = (value / 10) * 100;
+        const color = value >= 8 ? '#22c55e' : value >= 6 ? '#eab308' : value >= 4 ? '#f59e0b' : '#ef4444';
+
+        dimensionHTML += `
+          <div class="quality-dimension">
+            <div class="quality-dimension-label">${label}</div>
+            <div class="quality-dimension-bar">
+              <div class="quality-dimension-fill" style="width: ${percentage}%; background-color: ${color};"></div>
+              <span class="quality-dimension-value">${value.toFixed(1)}/10</span>
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    const overallColor = assessment.overall_score >= 80 ? '#22c55e' :
+                         assessment.overall_score >= 60 ? '#eab308' :
+                         assessment.overall_score >= 40 ? '#f59e0b' : '#ef4444';
+
+    const resultHTML = `
+      <div class="bubble assistant quality-assessment">
+        <div class="meta">Quality Assessment</div>
+        <div class="quality-overall">
+          <h3>Overall Score</h3>
+          <div class="quality-score-circle" style="border-color: ${overallColor}; color: ${overallColor};">
+            ${assessment.overall_score}<span class="quality-score-max">/100</span>
+          </div>
+        </div>
+        <div class="quality-dimensions">
+          ${dimensionHTML}
+        </div>
+        <div class="quality-explanation">
+          <p><strong>Analysis:</strong> ${assessment.explanation}</p>
+          <p class="quality-meta">
+            Judged by ${assessment.judge_model} •
+            ${assessment.conversation_length} turns •
+            Avg latency: ${assessment.avg_latency_ms}ms
+          </p>
+        </div>
+      </div>
+    `;
+
+    // Append to chat window
+    elements.chatWindow.insertAdjacentHTML('beforeend', resultHTML);
+    elements.chatWindow.scrollTop = elements.chatWindow.scrollHeight;
+  }
+
+  function updateAnalyzeButtonVisibility() {
+    // Show button if conversation has at least 2 messages and conversationId exists
+    if (state.conversationId && state.history.length >= 2) {
+      elements.analyzeQualityBtn.style.display = 'inline-flex';
+    } else {
+      elements.analyzeQualityBtn.style.display = 'none';
     }
   }
 
@@ -1615,6 +1756,7 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.ttsToggle.addEventListener('change', persistSettings);
     elements.sendBtn.addEventListener('click', sendMessage);
     elements.clearBtn.addEventListener('click', clearChat);
+    elements.analyzeQualityBtn.addEventListener('click', analyzeConversationQuality);
     elements.refreshModels.addEventListener('click', () => fetchModels(true));
     elements.saveDefaults.addEventListener('click', persistSettings);
     

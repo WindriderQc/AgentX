@@ -52,6 +52,16 @@ Regular benchmark prompts used for general model performance testing.
 }
 ```
 
+### prompt-templates.json
+
+Predefined system prompt templates used for prompt template benchmarking (Phase 3).
+
+- **Purpose:** Standardized system prompts for evaluating prompt style impact
+- **Categories:** coding, reasoning, creative, factual, conversational
+- **Variants:** Short and medium variants per template
+- **Usage:** Seed via `/scripts/seed-prompt-templates.js`
+- **Notes:** Seeding maps categories into PromptTemplate categories and adds `source-category:<name>` tags
+
 ## Documentation
 
 - [Benchmark System](../docs/operations/BENCHMARK_SYSTEM.md) - Overview of benchmarking architecture
@@ -62,6 +72,7 @@ Regular benchmark prompts used for general model performance testing.
 
 - `/scripts/run-categorization-test.sh` - Automated categorization test runner
 - `/scripts/test-category-filtering.sh` - Integration tests for category filtering
+- `/scripts/seed-prompt-templates.js` - Seed quick templates and system prompt templates
 
 ## Usage Examples
 
@@ -113,6 +124,7 @@ Validate JSON syntax and structure:
 # Check syntax
 jq . data/benchmark-prompts.json > /dev/null && echo "Valid"
 jq . data/categorization-prompts.json > /dev/null && echo "Valid"
+jq . data/prompt-templates.json > /dev/null && echo "Valid"
 
 # Count category test prompts
 jq '[.[] | select(.category_test == true)] | length' data/categorization-prompts.json
@@ -136,6 +148,25 @@ interface BenchmarkPrompt {
   expected_answer: string;
   judge_criteria: string[];
   scoring_type: 'code' | 'reasoning' | 'factual' | 'math' | 'creative' | 'general';
+}
+```
+
+System prompt templates follow this schema:
+
+```typescript
+interface PromptTemplateSeed {
+  name: string;
+  category: 'coding' | 'reasoning' | 'creative' | 'factual' | 'conversational';
+  content: string;
+  description: string;
+  tags: string[];
+  target_models: string[];
+  expected_quality_boost: number;
+  variants: Array<{
+    version: number;
+    content: string;
+    description: string;
+  }>;
 }
 ```
 
