@@ -263,7 +263,7 @@ router.post('/:id/deploy', attachWorkspace, async (req, res) => {
  * POST /api/custom-models/:id/rollback
  * Rollback to a previous version
  */
-router.post('/:id/rollback', async (req, res) => {
+router.post('/:id/rollback', attachWorkspace, async (req, res) => {
   try {
     const { id } = req.params;
     const { targetVersion } = req.body;
@@ -295,7 +295,7 @@ router.post('/:id/rollback', async (req, res) => {
  * GET /api/custom-models/:id/stats
  * Get model performance statistics
  */
-router.get('/:id/stats', async (req, res) => {
+router.get('/:id/stats', attachWorkspace, async (req, res) => {
   try {
     const { id } = req.params;
     const { period } = req.query;
@@ -319,7 +319,7 @@ router.get('/:id/stats', async (req, res) => {
  * GET /api/custom-models/compare
  * Compare two model versions
  */
-router.get('/compare', async (req, res) => {
+router.get('/compare', attachWorkspace, async (req, res) => {
   try {
     const { model1, model2 } = req.query;
 
@@ -349,7 +349,7 @@ router.get('/compare', async (req, res) => {
  * POST /api/custom-models/:id/validate
  * Validate Modelfile syntax
  */
-router.post('/:id/validate', async (req, res) => {
+router.post('/:id/validate', attachWorkspace, async (req, res) => {
   try {
     const { id } = req.params;
     const { modelfileContent } = req.body;
@@ -386,7 +386,7 @@ router.post('/:id/validate', async (req, res) => {
  * POST /api/custom-models/:id/inference
  * Record inference statistics
  */
-router.post('/:id/inference', async (req, res) => {
+router.post('/:id/inference', attachWorkspace, async (req, res) => {
   try {
     const { id } = req.params;
     const { responseTime, tokensPerSecond, feedback } = req.body;
@@ -418,7 +418,7 @@ router.post('/:id/inference', async (req, res) => {
  * POST /api/custom-models/:id/deprecate
  * Deprecate a model version
  */
-router.post('/:id/deprecate', async (req, res) => {
+router.post('/:id/deprecate', attachWorkspace, async (req, res) => {
   try {
     const { id } = req.params;
     const { reason } = req.body;
@@ -443,7 +443,7 @@ router.post('/:id/deprecate', async (req, res) => {
  * GET /api/custom-models/:id/history
  * Get version history for a model
  */
-router.get('/:id/history', async (req, res) => {
+router.get('/:id/history', attachWorkspace, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -467,7 +467,7 @@ router.get('/:id/history', async (req, res) => {
  * GET /api/custom-models/ab-test/select
  * Select a model for A/B testing
  */
-router.get('/ab-test/select', async (req, res) => {
+router.get('/ab-test/select', attachWorkspace, async (req, res) => {
   try {
     const model = await customModelService.selectModelForABTest();
 

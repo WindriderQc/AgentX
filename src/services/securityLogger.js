@@ -92,7 +92,8 @@ function logSecurityEvent(eventType, details = {}, severity = SecuritySeverity.I
  */
 function getRequestContext(req) {
   return {
-    ip: req.ip || req.connection.remoteAddress,
+    // Fix: req.connection is deprecated, use req.socket instead with fallback
+    ip: req.ip || req.socket?.remoteAddress || 'unknown',
     userAgent: req.get('user-agent'),
     path: req.path,
     method: req.method

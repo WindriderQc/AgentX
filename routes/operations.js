@@ -400,7 +400,7 @@ router.get('/activity', async (req, res) => {
     // 1. Activity Logs
     const activityLogs = await ActivityLog.find({ timestamp: { $gte: cutoff } })
       .sort({ timestamp: -1 })
-      .limit(parseInt(limit))
+      .limit(parseInt(limit, 10))
       .lean();
 
     // 2. Recent Alerts (if Alert model exists)
@@ -434,7 +434,7 @@ router.get('/activity', async (req, res) => {
         resolved: alert.status === 'resolved'
       }))
     ].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-      .slice(0, parseInt(limit));
+      .slice(0, parseInt(limit, 10));
 
     res.json({
       status: 'success',

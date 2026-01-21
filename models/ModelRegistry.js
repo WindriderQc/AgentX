@@ -430,7 +430,12 @@ ModelRegistrySchema.statics.syncBenchmarkStats = async function(modelName) {
     { latency: 1 }
   ).sort({ latency: 1 }).lean();
 
-  const p95Index = Math.floor(latencies.length * 0.95);
+  // Fix: Use correct percentile calculation (nearest rank method)
+  // For array of length N, P95 index = ceil(0.95 * N) - 1
+  // This ensures we get the 95th percentile, not the 96th
+  const p95Index = latencies.length > 0
+    ? Math.min(Math.ceil(latencies.length * 0.95) - 1, latencies.length - 1)
+    : 0;
   const p95Latency = latencies[p95Index]?.latency || data.avgLatency;
 
   // Update model

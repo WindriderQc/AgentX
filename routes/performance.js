@@ -36,7 +36,7 @@ router.get('/dashboard', async (req, res) => {
   try {
     logger.info('Fetching performance dashboard metrics');
 
-    const hours = parseInt(req.query.hours) || 24;
+    const hours = parseInt(req.query.hours, 10) || 24;
     const startDate = new Date(Date.now() - hours * 60 * 60 * 1000);
     const now = new Date();
 
@@ -448,7 +448,7 @@ router.get('/dashboard', async (req, res) => {
  */
 router.get('/load-tests', async (req, res) => {
   try {
-    const limit = parseInt(req.query.limit) || 20;
+    const limit = parseInt(req.query.limit, 10) || 20;
     const scenario = req.query.scenario;
 
     logger.info('Fetching load test history', { limit, scenario });
@@ -571,7 +571,7 @@ router.post('/load-tests', async (req, res) => {
  */
 router.get('/latency-trends', async (req, res) => {
   try {
-    const hours = parseInt(req.query.hours) || 24;
+    const hours = parseInt(req.query.hours, 10) || 24;
     const endpoint = req.query.endpoint;
 
     logger.info('Fetching latency trends', { hours, endpoint });
@@ -608,7 +608,7 @@ router.get('/latency-trends', async (req, res) => {
  */
 router.get('/throughput', async (req, res) => {
   try {
-    const hours = parseInt(req.query.hours) || 24;
+    const hours = parseInt(req.query.hours, 10) || 24;
 
     logger.info('Fetching throughput trends', { hours });
 
@@ -645,7 +645,7 @@ router.get('/throughput', async (req, res) => {
 router.get('/percentiles', async (req, res) => {
   try {
     const endpoint = req.query.endpoint;
-    const hours = parseInt(req.query.hours) || 24;
+    const hours = parseInt(req.query.hours, 10) || 24;
 
     logger.info('Fetching percentile breakdown', { endpoint, hours });
 
@@ -693,7 +693,7 @@ router.get('/percentiles', async (req, res) => {
  */
 router.get('/endpoints', async (req, res) => {
   try {
-    const hours = parseInt(req.query.hours) || 24;
+    const hours = parseInt(req.query.hours, 10) || 24;
     const startDate = new Date(Date.now() - hours * 60 * 60 * 1000);
 
     logger.info('Fetching known endpoints', { hours });
@@ -881,7 +881,7 @@ router.post('/baselines', async (req, res) => {
 router.get('/baseline-compare', async (req, res) => {
   try {
     const baselineId = req.query.baseline_id;
-    const hours = parseInt(req.query.hours) || 24;
+    const hours = parseInt(req.query.hours, 10) || 24;
 
     logger.info('Comparing against baseline', { baselineId, hours });
 

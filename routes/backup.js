@@ -27,7 +27,8 @@ const BACKUP_DIR = process.env.BACKUP_DIR || DEFAULT_BACKUP_DIR;
 })();
 
 /**
- * Execute shell command with promise
+ * Execute shell command with promise (DEPRECATED - use executeScript instead)
+ * @deprecated Use executeScript for safer command execution
  */
 function executeCommand(command, description) {
     return new Promise((resolve, reject) => {
@@ -42,6 +43,37 @@ function executeCommand(command, description) {
             }
         });
     });
+}
+
+/**
+ * Safely execute a script with arguments using execFile (no shell interpretation)
+ * Prevents command injection by passing args as array
+ */
+async function executeScript(scriptPath, args, description) {
+    logger.info(`Executing: ${description}`, { script: scriptPath, args });
+    try {
+        const { stdout, stderr } = await execFilePromise(scriptPath, args, { maxBuffer: 10 * 1024 * 1024 });
+        logger.info(`Command completed: ${description}`);
+        return { stdout, stderr };
+    } catch (error) {
+        logger.error(`Command failed: ${description}`, { error: error.message, stderr: error.stderr });
+        throw new Error(error.stderr || error.message);
+    }
+}
+
+/**
+ * Safely execute git command with cwd option (no shell required)
+ */
+async function executeGit(args, cwd, description) {
+    logger.info(`Executing git: ${description}`, { args, cwd });
+    try {
+        const { stdout, stderr } = await execFilePromise('git', args, { cwd, maxBuffer: 10 * 1024 * 1024 });
+        logger.info(`Git command completed: ${description}`);
+        return { stdout, stderr };
+    } catch (error) {
+        logger.error(`Git command failed: ${description}`, { error: error.message, stderr: error.stderr });
+        throw new Error(error.stderr || error.message);
+    }
 }
 
 /**
@@ -137,7 +169,8 @@ router.post('/mongodb', async (req, res) => {
     try {
         const script = path.join(AGENTX_SCRIPTS, 'backup-mongodb.sh');
         const mongoBackupDir = path.join(BACKUP_DIR, 'mongodb');
-        const result = await executeCommand(`${script} ${mongoBackupDir}`, 'MongoDB backup');
+        // Use executeScript with array args to prevent command injection
+        const result = await executeScript(script, [mongoBackupDir], 'MongoDB backup');
 
         // Resolve backup metadata from the latest file actually created.
         const backups = await listBackupFiles(mongoBackupDir, /agentx_.*\.tar\.gz$/);
@@ -192,7 +225,8 @@ router.post('/mongodb/restore', async (req, res) => {
 
         const script = path.join(AGENTX_SCRIPTS, 'restore-mongodb.sh');
         const backupPath = resolveBackupPath('mongodb', filename);
-        const result = await executeCommand(`${script} ${backupPath}`, 'MongoDB restore');
+        // Use executeScript with array args to prevent command injection
+        const result = await executeScript(script, [backupPath], 'MongoDB restore');
 
         res.json({
             success: true,
@@ -244,7 +278,8 @@ router.post('/qdrant', async (req, res) => {
     try {
         const script = path.join(AGENTX_SCRIPTS, 'backup-qdrant.sh');
         const qdrantBackupDir = path.join(BACKUP_DIR, 'qdrant');
-        const result = await executeCommand(`${script} ${qdrantBackupDir}`, 'Qdrant snapshot');
+        // Use executeScript with array args to prevent command injection
+        const result = await executeScript(script, [qdrantBackupDir], 'Qdrant snapshot');
 
         const backups = await listBackupFiles(qdrantBackupDir, /(\.snapshot|\.tar\.gz)$/);
         const latest = backups[0] || null;
@@ -301,7 +336,8 @@ router.post('/qdrant/restore', async (req, res) => {
 
         const script = path.join(AGENTX_SCRIPTS, 'restore-qdrant.sh');
         const backupPath = resolveBackupPath('qdrant', filename);
-        const result = await executeCommand(`${script} ${backupPath}`, 'Qdrant restore');
+        // Use executeScript with array args to prevent command injection
+        const result = await executeScript(script, [backupPath], 'Qdrant restore');
 
         res.json({
             success: true,
@@ -491,7 +527,8 @@ router.post('/cron/install', async (req, res) => {
             });
         }
         
-        const result = await executeCommand(`bash ${script}`, 'Cron installation');
+        // Use executeScript with array args to prevent command injection
+        const result = await executeScript('bash', [script], 'Cron installation');
 
         res.json({
             success: true,
@@ -571,14 +608,17 @@ router.get('/stats', async (req, res) => {
         let workflowStats = { lastCommit: null, uncommitted: 0 };
 
         try {
-            const lastCommitResult = await executeCommand(
-                `cd ${workflowDir} && git log -1 --format=%cd`,
+            // Use executeGit with cwd option to avoid shell injection
+            const lastCommitResult = await executeGit(
+                ['log', '-1', '--format=%cd'],
+                workflowDir,
                 'Get last commit'
             );
             workflowStats.lastCommit = lastCommitResult.stdout.trim();
 
-            const statusResult = await executeCommand(
-                `cd ${workflowDir} && git status --porcelain`,
+            const statusResult = await executeGit(
+                ['status', '--porcelain'],
+                workflowDir,
                 'Get workflow changes'
             );
             workflowStats.uncommitted = statusResult.stdout.split('\n').filter(l => l.trim()).length;

@@ -79,7 +79,7 @@ class HardwareProfileService {
 
         // Fallback: try to parse from size field
         if (modelData.size) {
-            const sizeBytes = parseInt(modelData.size);
+            const sizeBytes = parseInt(modelData.size, 10);
             if (!isNaN(sizeBytes)) {
                 return Math.round(sizeBytes / (1024 * 1024));
             }

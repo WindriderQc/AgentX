@@ -191,6 +191,14 @@ router.get('/:slug', requireAuth, async (req, res) => {
     // Get workspace
     const workspace = await Workspace.getBySlug(slug);
 
+    // Check workspace exists
+    if (!workspace) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Workspace not found'
+      });
+    }
+
     // Check if user is a member
     const member = await WorkspaceMember.getMember(workspace._id, userProfileId);
 
@@ -392,6 +400,14 @@ router.get('/:slug/members', requireAuth, async (req, res) => {
 
     // Get workspace
     const workspace = await Workspace.getBySlug(slug);
+
+    // Check workspace exists
+    if (!workspace) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Workspace not found'
+      });
+    }
 
     // Check if user is a member
     const member = await WorkspaceMember.getMember(workspace._id, userProfileId);
@@ -976,16 +992,20 @@ router.post('/:slug/invitations', requireAuth, attachWorkspace, requireAdmin, as
     }
 
     // Check if user already a member
-    const existingMember = await WorkspaceMember.findOne({
-      workspaceId: workspace._id,
-      email: email.toLowerCase()
-    });
-
-    if (existingMember) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'User is already a member of this workspace'
+    // Fix: WorkspaceMember doesn't have email field - need to find user by email first
+    const existingUser = await UserProfile.findOne({ email: email.toLowerCase() });
+    if (existingUser) {
+      const existingMember = await WorkspaceMember.findOne({
+        workspaceId: workspace._id,
+        userId: existingUser._id
       });
+
+      if (existingMember) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'User is already a member of this workspace'
+        });
+      }
     }
 
     // Check for existing pending invitation

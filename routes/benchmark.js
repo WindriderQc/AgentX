@@ -89,7 +89,7 @@ router.post('/test', optionalWorkspaceContext, async (req, res) => {
  */
 router.get('/results', async (req, res) => {
     try {
-        const limit = parseInt(req.query.limit) || 20;
+        const limit = parseInt(req.query.limit, 10) || 20;
 
         const { results, total } = await benchmarkService.getResults({ limit });
 
@@ -162,10 +162,10 @@ router.get('/results/advanced', async (req, res) => {
         if (req.query.levelMin || req.query.levelMax) {
             query.prompt_level = {};
             if (req.query.levelMin) {
-                query.prompt_level.$gte = parseInt(req.query.levelMin);
+                query.prompt_level.$gte = parseInt(req.query.levelMin, 10);
             }
             if (req.query.levelMax) {
-                query.prompt_level.$lte = parseInt(req.query.levelMax);
+                query.prompt_level.$lte = parseInt(req.query.levelMax, 10);
             }
         }
 
@@ -211,8 +211,8 @@ router.get('/results/advanced', async (req, res) => {
         }
 
         // Pagination and sorting
-        const limit = parseInt(req.query.limit) || 1000;
-        const offset = parseInt(req.query.offset) || 0;
+        const limit = parseInt(req.query.limit, 10) || 1000;
+        const offset = parseInt(req.query.offset, 10) || 0;
         const sortField = req.query.sort || 'timestamp';
         const sortDir = req.query.sortDir === 'asc' ? 1 : -1;
 
@@ -496,7 +496,7 @@ router.get('/batch/:id', async (req, res) => {
  */
 router.get('/batches', async (req, res) => {
     try {
-        const limit = parseInt(req.query.limit) || 20;
+        const limit = parseInt(req.query.limit, 10) || 20;
 
         const data = await benchmarkService.getBatches({ limit });
 
@@ -549,7 +549,7 @@ router.get('/batches/active', async (req, res) => {
  */
 router.get('/batches/stuck', async (req, res) => {
     try {
-        const thresholdSeconds = parseInt(req.query.threshold) || 300;
+        const thresholdSeconds = parseInt(req.query.threshold, 10) || 300;
         const stuck = await BenchmarkBatch.findStuck(thresholdSeconds);
 
         res.json({
@@ -693,7 +693,7 @@ router.get('/trends', async (req, res) => {
 
         const data = await benchmarkService.getModelTrends({
             model,
-            days: parseInt(days) || 7,
+            days: parseInt(days, 10) || 7,
             groupBy: groupBy || 'day'
         });
 
@@ -951,7 +951,7 @@ router.get('/hardware/profiles', async (req, res) => {
 
         const profiles = await HardwareProfile.find(query)
             .sort({ timestamp: -1 })
-            .limit(parseInt(limit) || 50);
+            .limit(parseInt(limit, 10) || 50);
 
         const total = await HardwareProfile.countDocuments(query);
 

@@ -41,7 +41,7 @@ class SelfHealingEngine {
     this.config = {
       enableAutomation: process.env.SELF_HEALING_ENABLED !== 'false',
       requireApprovalForCritical: process.env.REQUIRE_APPROVAL !== 'false',
-      maxConcurrentActions: parseInt(process.env.MAX_CONCURRENT_ACTIONS || '3'),
+      maxConcurrentActions: parseInt(process.env.MAX_CONCURRENT_ACTIONS || '3', 10),
       defaultCooldownMs: 15 * 60 * 1000 // 15 minutes
     };
 
@@ -528,7 +528,13 @@ class SelfHealingEngine {
 
       // Verify service is running
       const { stdout: statusOutput } = await execAsync(`pm2 jlist`);
-      const processes = JSON.parse(statusOutput);
+      let processes;
+      try {
+        processes = JSON.parse(statusOutput);
+      } catch (parseErr) {
+        logger.error('Failed to parse PM2 process list', { error: parseErr.message, output: statusOutput.substring(0, 200) });
+        throw new Error(`Invalid PM2 process list format: ${parseErr.message}`);
+      }
       const targetProcess = processes.find(p => p.name === pm2AppName);
 
       if (!targetProcess) {
@@ -722,8 +728,12 @@ class SelfHealingEngine {
       type: this._mapMetricToType(metric)
     };
 
-    if (componentPattern && componentPattern !== '*') {
-      query.componentId = new RegExp(componentPattern.replace('*', '.*'));
+    if (componentPattern && componentPattern !== '*' && typeof componentPattern === 'string' && componentPattern.length < 200) {
+      // Escape regex special chars to prevent ReDoS attacks, then replace * with .*
+      const escapedPattern = componentPattern
+        .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+        .replace(/\*/g, '.*');
+      query.componentId = new RegExp('^' + escapedPattern + '$');
     }
 
     // Fetch and aggregate
@@ -936,7 +946,7 @@ class SelfHealingEngine {
     const match = window.match(/^(\d+)([smhd])$/);
     if (!match) return this.config.defaultCooldownMs;
 
-    const value = parseInt(match[1]);
+    const value = parseInt(match[1], 10);
     const unit = match[2];
 
     const multipliers = {

@@ -51,8 +51,8 @@ function parseColoredOutput(output) {
     if (sectionMatch) {
       currentSection = `step_${sectionMatch[1]}`;
       result.sections[currentSection] = {
-        step: parseInt(sectionMatch[1]),
-        total: parseInt(sectionMatch[2]),
+        step: parseInt(sectionMatch[1], 10),
+        total: parseInt(sectionMatch[2], 10),
         lines: []
       };
     }

@@ -12,7 +12,7 @@ class RAGCompressionService {
     // Use a fast, small model for compression
     this.compressionModel = process.env.COMPRESSION_MODEL || 'gemma2:2b';
     this.compressionCache = new Map(); // Cache compressed results
-    this.cacheTTL = parseInt(process.env.COMPRESSION_CACHE_TTL) || 3600000; // 1 hour
+    this.cacheTTL = parseInt(process.env.COMPRESSION_CACHE_TTL, 10) || 3600000; // 1 hour
     this.ollamaHost = process.env.OLLAMA_HOST || 'http://localhost:11434';
   }
 

@@ -1287,7 +1287,7 @@ router.get('/prompt-metrics', optionalAuth, optionalWorkspaceContext, async (req
 
     // Date range
     const toDate = new Date();
-    const fromDate = new Date(toDate.getTime() - parseInt(days) * 24 * 60 * 60 * 1000);
+    const fromDate = new Date(toDate.getTime() - parseInt(days, 10) * 24 * 60 * 60 * 1000);
 
     const dateFilter = {
       createdAt: { $gte: fromDate, $lte: toDate }
@@ -1305,7 +1305,7 @@ router.get('/prompt-metrics', optionalAuth, optionalWorkspaceContext, async (req
         data: {
           from: fromDate.toISOString(),
           to: toDate.toISOString(),
-          days: parseInt(days),
+          days: parseInt(days, 10),
           filterModel: filterModel || null,
           prompts: []
         }
@@ -1405,7 +1405,7 @@ router.get('/prompt-metrics', optionalAuth, optionalWorkspaceContext, async (req
       data: {
         from: fromDate.toISOString(),
         to: toDate.toISOString(),
-        days: parseInt(days),
+        days: parseInt(days, 10),
         filterModel: filterModel || null,
         prompts
       }
@@ -1428,7 +1428,7 @@ router.get('/trending', optionalAuth, optionalWorkspaceContext, async (req, res)
     const { days = 7, model: filterModel } = req.query;
     const userId = res.locals.user?.userId;
     const workspaceId = req.workspace?._id;
-    const daysNum = parseInt(days);
+    const daysNum = parseInt(days, 10);
 
     // Check auth context first
     if (!workspaceId && !userId) {

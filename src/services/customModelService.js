@@ -445,8 +445,14 @@ class CustomModelService {
         query.baseModel = filters.baseModel;
       }
 
+      // Fix: Use $in operator for array matching (tags is an array field)
       if (filters.tag) {
-        query.tags = filters.tag;
+        query.tags = { $in: [filters.tag] };
+      }
+
+      // Fix: Apply workspace filter for multi-tenancy isolation
+      if (filters.workspaceId) {
+        query.workspaceId = filters.workspaceId;
       }
 
       const models = await CustomModel.find(query)
