@@ -302,11 +302,13 @@ CustomModelSchema.methods.recordInference = async function(responseTime, tokensP
   this.stats.avgResponseTime = ((this.stats.avgResponseTime * currentTotal) + responseTime) / (currentTotal + 1);
   this.stats.avgTokensPerSecond = ((this.stats.avgTokensPerSecond * currentTotal) + tokensPerSecond) / (currentTotal + 1);
 
+  // Fix: Round to prevent floating-point drift when reconstructing counts from rates
+  // Without rounding, repeated rate*count calculations accumulate errors
   if (feedback === 'positive') {
-    const currentPositive = this.stats.positiveRate * currentTotal;
+    const currentPositive = Math.round(this.stats.positiveRate * currentTotal);
     this.stats.positiveRate = (currentPositive + 1) / (currentTotal + 1);
   } else if (feedback === 'negative') {
-    const currentNegative = this.stats.negativeRate * currentTotal;
+    const currentNegative = Math.round(this.stats.negativeRate * currentTotal);
     this.stats.negativeRate = (currentNegative + 1) / (currentTotal + 1);
   }
 
