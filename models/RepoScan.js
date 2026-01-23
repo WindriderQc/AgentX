@@ -10,7 +10,8 @@ const FindingSchema = new mongoose.Schema({
       'architecture_violation',
       'missing_docs',
       'stale_docs',
-      'structural_drift'
+      'structural_drift',
+      'code_quality'
     ],
     required: true
   },
@@ -82,8 +83,7 @@ const RepoScanSchema = new mongoose.Schema({
     fileCount: { type: Number, default: 0 },
     totalSize: { type: Number, default: 0 }, // bytes
     fileTypes: {
-      type: Map,
-      of: Number,
+      type: mongoose.Schema.Types.Mixed,
       default: {}
     },
     directories: {

@@ -100,7 +100,7 @@ class AgentListView {
                         <p>Select an AgentX to start your conversation</p>
                     </div>
                     ${showFilters ? this.renderFiltersHtml() : ''}
-                    <div class="agentx-launcher-grid" id="agentGrid">
+                    <div class="agentx-launcher-grid" id="agentxLauncherGrid">
                         <!-- Agents rendered here -->
                     </div>
                 </div>
@@ -170,7 +170,8 @@ class AgentListView {
      * Render loading state
      */
     renderLoading() {
-        const grid = this.container.querySelector('#agentGrid');
+        // Support both launcher mode (#agentxLauncherGrid) and library mode (#agentGrid)
+        const grid = this.container.querySelector('#agentxLauncherGrid, #agentGrid');
         if (grid) {
             grid.innerHTML = `
                 <div class="agentx-loading">
@@ -185,39 +186,11 @@ class AgentListView {
      * Render agents grid
      */
     renderAgents() {
-        const grid = this.container.querySelector('#agentGrid');
+        // Support both launcher mode (#agentxLauncherGrid) and library mode (#agentGrid)
+        const grid = this.container.querySelector('#agentxLauncherGrid, #agentGrid');
         if (!grid) return;
 
         let html = '';
-
-        // Add "Manual / No Agent" option if in launcher mode
-        // Only show if no search/filter is active (or maybe always?) - Always seems better for "Reset"
-        if (this.options.launcherMode && !this.filters.search) {
-             html += `
-                <div class="agentx-card manual-card" data-manual="true">
-                    <div class="agentx-card-avatar" style="--avatar-color: #64748b">
-                        <i class="fas fa-terminal"></i>
-                    </div>
-                    <div class="agentx-card-content">
-                        <div class="agentx-card-header">
-                            <h4 class="agentx-card-name">Manual Override</h4>
-                        </div>
-                        <p class="agentx-card-description">Standard chat mode without any specific agent persona or tools.</p>
-                        <div class="agentx-card-meta">
-                             <span class="agentx-category-badge" style="--badge-color: #64748b">
-                                <i class="fas fa-cog"></i>
-                                <span>System</span>
-                            </span>
-                        </div>
-                    </div>
-                    <div class="agentx-card-actions">
-                        <button class="agentx-select-btn">
-                            Select
-                        </button>
-                    </div>
-                </div>
-            `;
-        }
 
         if (this.agents.length === 0 && !html) {
             grid.innerHTML = `
@@ -243,8 +216,13 @@ class AgentListView {
 
         grid.innerHTML = html;
 
-        // Re-attach card click listeners
-        grid.querySelectorAll('.agentx-card').forEach(card => {
+        // Fire event for persona-selector to inject personas after agent render
+        window.dispatchEvent(new CustomEvent('agentx:agents-rendered', {
+            detail: { agentCount: this.agents.length }
+        }));
+
+        // Re-attach card click listeners (exclude persona cards)
+        grid.querySelectorAll('.agentx-card:not(.persona-card)').forEach(card => {
              if (card.dataset.manual === 'true') {
                  card.addEventListener('click', () => this.handleManualSelect());
              } else {

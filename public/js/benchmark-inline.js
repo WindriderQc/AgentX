@@ -4712,14 +4712,14 @@
             });
         };
 
-        async function renderBatchEventTimeline(timelineVisual, timelineEmptyState, activeBatch) {
-            if (!timelineVisual || !timelineEmptyState) return;
-            if (!activeBatch || !activeBatch._id) {
-                timelineVisual.style.display = 'none';
-                timelineEmptyState.style.display = 'block';
-                scheduleTimelineScrollSync(false);
-                return;
-            }
+	        async function renderBatchEventTimeline(timelineVisual, timelineEmptyState, activeBatch) {
+	            if (!timelineVisual || !timelineEmptyState) return;
+	            if (!activeBatch || !activeBatch._id) {
+	                timelineVisual.style.display = 'none';
+	                timelineEmptyState.style.display = 'block';
+	                scheduleTimelineScrollSync(false);
+	                return;
+	            }
 
             const res = await fetch(`${BENCHMARK_API}/batch/${activeBatch._id}/timeline`);
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -4733,21 +4733,24 @@
                 return;
             }
 
-            timelineVisual.style.display = 'block';
-            timelineEmptyState.style.display = 'none';
+	            timelineVisual.style.display = 'block';
+	            timelineEmptyState.style.display = 'none';
 
-            const prepLaneKey = '__prep__';
-            const prepEvents = new Set([
-                'prep_start',
-                'judge_warmup_start',
-                'judge_warmup_complete',
-                'tests_start'
-            ]);
-            const renderableEvents = new Set([
-                'prep_start',
-                'judge_warmup_start',
-                'judge_warmup_complete',
-                'tests_start',
+	            const prepLaneKey = '__prep__';
+	            const judgePrepLaneKey = '__judge_prep__';
+	            const prepEvents = new Set([
+	                'prep_start',
+	                'tests_start'
+	            ]);
+	            const judgePrepEvents = new Set([
+	                'judge_warmup_start',
+	                'judge_warmup_complete'
+	            ]);
+	            const renderableEvents = new Set([
+	                'prep_start',
+	                'judge_warmup_start',
+	                'judge_warmup_complete',
+	                'tests_start',
                 'model_warmup_complete',
                 'test_complete',
                 'judge_complete',
@@ -4764,19 +4767,22 @@
                 error: { icon: 'fa-exclamation-triangle', class: 'segment-error', label: 'Test Failed' }
             };
 
-            const getEventLevel = (event) => {
-                const level = Number(event.prompt_level);
-                return Number.isFinite(level) ? level : null;
-            };
+	            const getEventLevel = (event) => {
+	                const level = Number(event.prompt_level);
+	                return Number.isFinite(level) ? level : null;
+	            };
 
-            const getLaneKey = (event) => {
-                if (prepEvents.has(event.event)) return prepLaneKey;
-                return event.model || prepLaneKey;
-            };
+	            const getLaneKey = (event) => {
+	                if (prepEvents.has(event.event)) return prepLaneKey;
+	                if (judgePrepEvents.has(event.event)) return judgePrepLaneKey;
+	                const model = event.model || 'Unknown';
+	                if (event.event === 'judge_complete') return `${model}::judge`;
+	                return `${model}::test`;
+	            };
 
-            const eventsByLane = new Map();
-            const filtered = timeline.filter(event => renderableEvents.has(event.event));
-            filtered.forEach((event) => {
+	            const eventsByLane = new Map();
+	            const filtered = timeline.filter(event => renderableEvents.has(event.event));
+	            filtered.forEach((event) => {
                 const laneKey = getLaneKey(event);
                 if (!eventsByLane.has(laneKey)) {
                     eventsByLane.set(laneKey, []);
@@ -4796,25 +4802,60 @@
             const baseWidth = Math.max(600, Math.round((totalDurationMs / 1000) * 20));
             const trackWidth = Math.round(baseWidth * zoom);
             const scale = trackWidth / totalDurationMs;
-            const markerDurationMs = Math.max(200, Math.round(totalDurationMs * 0.01));
+	            const markerDurationMs = Math.max(200, Math.round(totalDurationMs * 0.01));
 
-            const orderedLanes = [];
-            if (eventsByLane.has(prepLaneKey)) {
-                orderedLanes.push(prepLaneKey);
-            }
-            const preferredModels = Array.isArray(activeBatch.models) ? activeBatch.models : [];
-            preferredModels.forEach((model) => {
-                if (eventsByLane.has(model)) orderedLanes.push(model);
-            });
-            Array.from(eventsByLane.keys())
-                .filter(key => key !== prepLaneKey && !orderedLanes.includes(key))
-                .sort()
-                .forEach(key => orderedLanes.push(key));
+	            const orderedLanes = [];
+	            if (eventsByLane.has(prepLaneKey)) {
+	                orderedLanes.push(prepLaneKey);
+	            }
+	            if (eventsByLane.has(judgePrepLaneKey)) {
+	                orderedLanes.push(judgePrepLaneKey);
+	            }
+	            const preferredModels = Array.isArray(activeBatch.models)
+	                ? activeBatch.models
+	                : (typeof activeBatch.model === 'string' && activeBatch.model ? [activeBatch.model] : []);
+	            preferredModels.forEach((model) => {
+	                const testLane = `${model}::test`;
+	                const judgeLane = `${model}::judge`;
+	                if (eventsByLane.has(testLane)) orderedLanes.push(testLane);
+	                if (eventsByLane.has(judgeLane)) orderedLanes.push(judgeLane);
+	            });
+	            Array.from(eventsByLane.keys())
+	                .filter(key => key !== prepLaneKey && key !== judgePrepLaneKey && !orderedLanes.includes(key))
+	                .sort()
+	                .forEach(key => orderedLanes.push(key));
 
-            const formatTimelineMs = (ms) => {
-                if (!Number.isFinite(ms)) return '-';
-                if (ms < 1000) return `${Math.round(ms)}ms`;
-                return `${(ms / 1000).toFixed(2)}s`;
+	            const getLaneMeta = (laneKey) => {
+	                if (laneKey === prepLaneKey) {
+	                    return {
+	                        baseLabel: 'Prep',
+	                        rowClass: 'timeline-model-row prep-lane',
+	                        rowIcon: 'fa-flask',
+	                        rowBadge: '<span class="prep-lane-badge">Prep</span>'
+	                    };
+	                }
+	                if (laneKey === judgePrepLaneKey) {
+	                    return {
+	                        baseLabel: 'Judge Prep',
+	                        rowClass: 'timeline-model-row judge-lane',
+	                        rowIcon: 'fa-gavel',
+	                        rowBadge: '<span class="judge-lane-badge">Judge</span>'
+	                    };
+	                }
+	                const [model, kind] = String(laneKey).split('::');
+	                const isJudge = kind === 'judge';
+	                return {
+	                    baseLabel: model || laneKey,
+	                    rowClass: isJudge ? 'timeline-model-row judge-lane' : 'timeline-model-row',
+	                    rowIcon: isJudge ? 'fa-gavel' : 'fa-cube',
+	                    rowBadge: isJudge ? '<span class="judge-lane-badge">Judge</span>' : ''
+	                };
+	            };
+
+	            const formatTimelineMs = (ms) => {
+	                if (!Number.isFinite(ms)) return '-';
+	                if (ms < 1000) return `${Math.round(ms)}ms`;
+	                return `${(ms / 1000).toFixed(2)}s`;
             };
 
             const buildTooltip = (event, laneLabel, visual, durationMs) => {
@@ -4850,26 +4891,59 @@
                 `.trim();
             };
 
-            const rowsHtml = orderedLanes.map((laneKey) => {
-                const laneEvents = eventsByLane.get(laneKey) || [];
-                laneEvents.sort((a, b) => (a.time_since_start_ms || 0) - (b.time_since_start_ms || 0));
-                const laneLabel = laneKey === prepLaneKey ? 'Prep' : laneKey;
-                const rowClass = laneKey === prepLaneKey ? 'timeline-model-row prep-lane' : 'timeline-model-row';
-                const rowIcon = laneKey === prepLaneKey ? 'fa-flask' : 'fa-cube';
-                const rowBadge = laneKey === prepLaneKey ? '<span class="prep-lane-badge">Prep</span>' : '';
+	            const rowsHtml = orderedLanes.map((laneKey) => {
+	                const laneEvents = eventsByLane.get(laneKey) || [];
+	                laneEvents.sort((a, b) => (a.time_since_start_ms || 0) - (b.time_since_start_ms || 0));
+	                const { baseLabel: laneLabel, rowClass, rowIcon, rowBadge } = getLaneMeta(laneKey);
 
-                const segmentsHtml = laneEvents.map((event) => {
-                    const endMs = Number(event.time_since_start_ms) || 0;
-                    const rawDuration = Number(event.duration_ms) || 0;
-                    const durationMs = rawDuration > 0 ? rawDuration : markerDurationMs;
-                    const startMs = rawDuration > 0 ? Math.max(0, endMs - rawDuration) : endMs;
-                    const left = Math.round(startMs * scale);
-                    const width = Math.max(6, Math.round(durationMs * scale));
+	                const trackHeight = 22;
+	                const segmentPadding = 2;
+	                const segmentHeight = trackHeight - segmentPadding;
 
-                    let visual = eventVisuals[event.event] || eventVisuals.test_complete;
-                    if (event.event === 'test_complete' && event.success === false) {
-                        visual = eventVisuals.error;
-                    }
+	                const layoutEvents = laneEvents
+	                    .map((event) => {
+	                        const endMs = Number(event.time_since_start_ms) || 0;
+	                        const rawDuration = Number(event.duration_ms) || 0;
+	                        const durationMs = rawDuration > 0 ? rawDuration : markerDurationMs;
+	                        const startMs = rawDuration > 0 ? Math.max(0, endMs - rawDuration) : endMs;
+	                        return {
+	                            event,
+	                            startMs,
+	                            endMs: startMs + durationMs,
+	                            rawDuration,
+	                            durationMs
+	                        };
+	                    })
+	                    .sort((a, b) => a.startMs - b.startMs || a.endMs - b.endMs);
+
+	                const trackEndTimes = [];
+	                layoutEvents.forEach((item) => {
+	                    let assignedTrack = 0;
+	                    while (assignedTrack < trackEndTimes.length) {
+	                        if (item.startMs >= trackEndTimes[assignedTrack]) break;
+	                        assignedTrack += 1;
+	                    }
+	                    if (assignedTrack === trackEndTimes.length) trackEndTimes.push(0);
+	                    trackEndTimes[assignedTrack] = item.endMs;
+	                    item.trackIndex = assignedTrack;
+	                });
+
+	                const trackCount = Math.max(1, trackEndTimes.length);
+	                const minLaneHeight = 32;
+	                const computedLaneHeight = trackCount * trackHeight;
+	                const laneHeight = Math.max(minLaneHeight, computedLaneHeight);
+	                const verticalOffset = Math.max(0, Math.floor((laneHeight - computedLaneHeight) / 2));
+
+	                const segmentsHtml = layoutEvents.map((item) => {
+	                    const { event, rawDuration, durationMs, startMs, trackIndex } = item;
+	                    const left = Math.round(startMs * scale);
+	                    const width = Math.max(6, Math.round(durationMs * scale));
+	                    const top = verticalOffset + (trackIndex * trackHeight) + 1;
+
+	                    let visual = eventVisuals[event.event] || eventVisuals.test_complete;
+	                    if (event.event === 'test_complete' && event.success === false) {
+	                        visual = eventVisuals.error;
+	                    }
 
                     if (event.event === 'test_complete' && event.success !== false) {
                         const level = getEventLevel(event);
@@ -4878,39 +4952,39 @@
                         }
                     }
 
-                    const tooltipHtml = buildTooltip(event, laneLabel, visual, rawDuration || null);
-                    const tooltipEncoded = encodeTooltip(tooltipHtml);
-                    const showIcon = width > 18;
-                    const levelBadge = (() => {
-                        const level = getEventLevel(event);
-                        if (event.event === 'test_complete' && Number.isFinite(level) && width > 40) {
-                            return `<span class="segment-badge" style="margin-right:2px">L${level}</span>`;
-                        }
-                        return '';
-                    })();
+	                    const tooltipHtml = buildTooltip(event, laneLabel, visual, rawDuration || null);
+	                    const tooltipEncoded = encodeTooltip(tooltipHtml);
+	                    const showIcon = width > 18;
+	                    const levelBadge = (() => {
+	                        const level = getEventLevel(event);
+	                        if (event.event === 'test_complete' && Number.isFinite(level) && width > 40) {
+	                            return `<span class="segment-badge" style="margin-right:2px">L${level}</span>`;
+	                        }
+	                        return '';
+	                    })();
 
-                    return `
-                        <div class="timeline-segment ${visual.class}" style="position:absolute; left:${left}px; width:${width}px; height:100%;"
-                            onmouseenter="showTimelineTooltip(event, '${tooltipEncoded}')">
-                            ${showIcon ? `<i class="fas ${visual.icon}"></i>` : ''}
-                            ${levelBadge}
-                        </div>
-                    `;
-                }).join('');
+	                    return `
+	                        <div class="timeline-segment ${visual.class}" style="position:absolute; left:${left}px; top:${top}px; width:${width}px; height:${segmentHeight}px;"
+	                            onmouseenter="showTimelineTooltip(event, '${tooltipEncoded}')">
+	                            ${showIcon ? `<i class="fas ${visual.icon}"></i>` : ''}
+	                            ${levelBadge}
+	                        </div>
+	                    `;
+	                }).join('');
 
-                return `
-                    <div class="${rowClass}">
-                        <div class="timeline-model-label">
-                            <i class="fas ${rowIcon}" style="color:var(--accent)"></i>
-                            ${escapeHtml(laneLabel)} ${rowBadge}
-                        </div>
-                        <div class="timeline-track timeline-track-absolute">
-                            <div style="position: relative; width: ${trackWidth}px; height: 32px;">
-                                ${segmentsHtml}
-                            </div>
-                        </div>
-                    </div>
-                `;
+	                return `
+	                    <div class="${rowClass}">
+	                        <div class="timeline-model-label">
+	                            <i class="fas ${rowIcon}" style="color:var(--accent)"></i>
+	                            ${escapeHtml(laneLabel)} ${rowBadge}
+	                        </div>
+	                        <div class="timeline-track timeline-track-absolute" style="height:${laneHeight}px;">
+	                            <div style="position: relative; width: ${trackWidth}px; height: ${laneHeight}px;">
+	                                ${segmentsHtml}
+	                            </div>
+	                        </div>
+	                    </div>
+	                `;
             }).join('');
 
             timelineVisual.innerHTML = `

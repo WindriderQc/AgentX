@@ -1228,24 +1228,34 @@
             `;
         }
 
-        async function loadRagMetrics() {
-            try {
-                const response = await fetch('/api/rag/metrics');
-                const data = await response.json();
+	        async function loadRagMetrics() {
+	            try {
+	                const response = await fetch('/api/rag/metrics', { credentials: 'include' });
+	                if (!response.ok) {
+	                    throw new Error(`HTTP ${response.status}`);
+	                }
 
-                if (data.status === 'success') {
-                    const metrics = data.data;
-                    
-                    document.getElementById('rag-total-docs').textContent = metrics.totalDocuments || '0';
-                    document.getElementById('rag-total-chunks').textContent = metrics.totalChunks || '0';
-                    document.getElementById('rag-last-update').textContent = metrics.lastUpdated ? new Date(metrics.lastUpdated).toLocaleTimeString() : '-';
-                    document.getElementById('rag-folder-size').textContent = metrics.collectionSize ? `${(metrics.collectionSize / 1024 / 1024).toFixed(1)}MB` : '-';
-                }
-            } catch (error) {
-                console.error('Failed to load RAG metrics:', error);
-                // Don't show error to user, just leave as default
-            }
-        }
+	                let data;
+	                try {
+	                    data = await response.json();
+	                } catch {
+	                    return;
+	                }
+
+	                const metrics = (data && (data.stats || data.data || data.metrics)) || null;
+	                if (metrics) {
+	                    const lastUpdate = metrics.newestDocument || metrics.lastUpdated || data.timestamp;
+	                    
+	                    document.getElementById('rag-total-docs').textContent = metrics.totalDocuments || '0';
+	                    document.getElementById('rag-total-chunks').textContent = metrics.totalChunks || '0';
+	                    document.getElementById('rag-last-update').textContent = lastUpdate ? new Date(lastUpdate).toLocaleTimeString() : '-';
+	                    document.getElementById('rag-folder-size').textContent = metrics.collectionSize ? `${(metrics.collectionSize / 1024 / 1024).toFixed(1)}MB` : '-';
+	                }
+	            } catch (error) {
+	                console.error('Failed to load RAG metrics:', error);
+	                // Don't show error to user, just leave as default
+	            }
+	        }
 
         async function triggerWatcherScan() {
             const btn = document.getElementById('watcher-scan');

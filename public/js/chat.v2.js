@@ -2139,6 +2139,11 @@ async function refreshStats(conversationId) {
     try {
         await agentListView.load();
         console.log(`Loaded ${agentListView.agents.length} agents for launcher.`);
+
+        // Fire custom event so persona-selector can inject personas after agents load
+        window.dispatchEvent(new CustomEvent('agentx:agents-loaded', {
+            detail: { agentCount: agentListView.agents.length }
+        }));
     } catch (e) {
         console.error('Failed to load agents in initAgentSystem:', e);
     }

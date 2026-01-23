@@ -41,17 +41,19 @@ router.get('/', optionalAuth, optionalWorkspaceContext, async (req, res) => {
         const grouped = {};
         prompts.forEach(p => {
             if (!grouped[p.name]) grouped[p.name] = [];
+            const obj = p.toObject ? p.toObject() : p; // Convert to plain object
             grouped[p.name].push({
-                _id: p._id,
-                name: p.name,
-                version: p.version,
-                systemPrompt: p.systemPrompt,
-                isActive: p.isActive,
-                trafficWeight: p.trafficWeight,
-                description: p.description,
-                stats: p.stats,
-                createdAt: p.createdAt,
-                updatedAt: p.updatedAt
+                _id: obj._id,
+                name: obj.name,
+                version: obj.version,
+                systemPrompt: obj.systemPrompt,
+                isActive: obj.isActive,
+                trafficWeight: obj.trafficWeight,
+                description: obj.description,
+                stats: obj.stats,
+                uiConfig: obj.uiConfig, // Include UI configuration for personas
+                createdAt: obj.createdAt,
+                updatedAt: obj.updatedAt
             });
         });
 

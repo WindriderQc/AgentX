@@ -243,6 +243,28 @@
         gap: 12px;
     }
     
+    /* Persona Type Badge (for dashboard/gallery personas) */
+    .persona-type-badge {
+      font-size: 10px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: rgba(124, 240, 255, 0.15);
+      color: var(--accent);
+      text-transform: uppercase;
+      font-weight: 600;
+      margin-left: 8px;
+    }
+
+    /* Capability Badge */
+    .capability-badge {
+      font-size: 10px;
+      padding: 3px 6px;
+      border-radius: 3px;
+      background: rgba(124, 240, 255, 0.1);
+      color: var(--accent);
+      border: 1px solid rgba(124, 240, 255, 0.2);
+    }
+
     .chat-agent-avatar {
         display: flex;
         align-items: center;
@@ -1013,6 +1035,8 @@
   <!-- Components -->
   <script src="/js/components/AgentXCard.js"></script>
   <script src="/js/components/AgentListView.js"></script>
+  <!-- Persona Selector -->
+  <script src="/js/persona-selector.js"></script>
   <!-- Main Application -->
   <script src="/js/chat.v2.js"></script>
 </body>

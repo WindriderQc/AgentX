@@ -3,6 +3,9 @@
  * Unified styling for AgentX cards, grid, sidebar, and related components
  */
 
+/* Import dependent stylesheets first */
+@import 'agent-builder.css';
+
 /* ============================================
    CSS Variables
    ============================================ */
@@ -654,4 +657,3 @@
     padding-top: 4px;
     border-top: 1px solid rgba(255,255,255,0.05);
 }
-@import 'agent-builder.css';

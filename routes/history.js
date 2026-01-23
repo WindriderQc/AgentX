@@ -79,7 +79,7 @@ router.get('/:id', optionalAuth, attachWorkspace, async (req, res) => {
 
         // Build query with security filters FIRST
         // SECURITY: Cast to ObjectId to prevent NoSQL injection
-        const query = { _id: mongoose.Types.ObjectId(req.params.id), userId };
+        const query = { _id: new mongoose.Types.ObjectId(req.params.id), userId };
 
         // Add workspace filter if in workspace context
         if (req.workspace) {
@@ -141,7 +141,7 @@ router.get('/conversations/:id', optionalAuth, attachWorkspace, async (req, res)
 
         // Build query with security filters FIRST
         // SECURITY: Cast to ObjectId to prevent NoSQL injection
-        const query = { _id: mongoose.Types.ObjectId(req.params.id), userId };
+        const query = { _id: new mongoose.Types.ObjectId(req.params.id), userId };
 
         // Add workspace filter if in workspace context
         if (req.workspace) {

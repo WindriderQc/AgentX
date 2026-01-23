@@ -171,6 +171,7 @@ Use the filter buttons to view:
 ### Trend Analysis
 
 Click trend buttons to view historical data:
+- **All**: Show all trend lines together
 - **Duplication**: Track duplicate code/docs over time
 - **Test Coverage**: Monitor missing tests trend
 - **Documentation**: Track doc coverage percentage

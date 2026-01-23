@@ -42,6 +42,52 @@
       gap: 12px;
     }
 
+    /* Export Dropdown */
+    .export-dropdown {
+      position: relative;
+    }
+
+    .export-menu {
+      position: absolute;
+      top: 100%;
+      right: 0;
+      margin-top: 8px;
+      background: var(--surface);
+      border: 1px solid rgba(124, 240, 255, 0.3);
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      z-index: 1000;
+      min-width: 150px;
+    }
+
+    .export-menu a {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      color: var(--text);
+      text-decoration: none;
+      transition: background 0.2s;
+    }
+
+    .export-menu a:hover {
+      background: rgba(124, 240, 255, 0.1);
+    }
+
+    .export-menu a:first-child {
+      border-radius: 8px 8px 0 0;
+    }
+
+    .export-menu a:last-child {
+      border-radius: 0 0 8px 8px;
+    }
+
+    .export-menu i {
+      width: 16px;
+      text-align: center;
+      color: var(--accent);
+    }
+
     /* Status Card */
     .status-card {
       background: var(--surface);
@@ -249,6 +295,81 @@
       line-height: 1.6;
     }
 
+    /* Grouped Findings */
+    .findings-group {
+      margin-bottom: 20px;
+      border: 1px solid rgba(124, 240, 255, 0.1);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .findings-group-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px;
+      background: rgba(124, 240, 255, 0.05);
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .findings-group-header:hover {
+      background: rgba(124, 240, 255, 0.08);
+    }
+
+    .findings-group-title {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .findings-group-count {
+      background: rgba(124, 240, 255, 0.15);
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 13px;
+      color: var(--accent);
+    }
+
+    .findings-group-toggle {
+      color: var(--muted);
+      transition: transform 0.3s;
+    }
+
+    .findings-group-toggle.collapsed {
+      transform: rotate(-90deg);
+    }
+
+    .findings-group-body {
+      padding: 0 16px 16px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .findings-group-body.collapsed {
+      display: none;
+    }
+
+    .finding-path {
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      color: var(--accent);
+      margin: 8px 0;
+      padding: 8px 12px;
+      background: rgba(124, 240, 255, 0.05);
+      border-radius: 4px;
+      word-break: break-all;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .finding-path:hover {
+      background: rgba(124, 240, 255, 0.1);
+    }
+
     /* Trends Chart */
     .trends-section {
       background: var(--surface);
@@ -364,6 +485,29 @@
       opacity: 0.5;
       cursor: not-allowed;
     }
+
+    /* Animations */
+    @keyframes slideIn {
+      from {
+        transform: translateX(400px);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+
+    @keyframes slideOut {
+      from {
+        transform: translateX(0);
+        opacity: 1;
+      }
+      to {
+        transform: translateX(400px);
+        opacity: 0;
+      }
+    }
   </style>
 </head>
 <body>
@@ -375,6 +519,16 @@
         Repo Watcher
       </h1>
       <div class="watcher-actions">
+        <div class="export-dropdown">
+          <button class="btn" onclick="toggleExportMenu()">
+            <i class="fas fa-download"></i> Export <i class="fas fa-caret-down"></i>
+          </button>
+          <div class="export-menu" id="exportMenu" style="display: none;">
+            <a href="#" onclick="exportData('json')"><i class="fas fa-code"></i> JSON</a>
+            <a href="#" onclick="exportData('csv')"><i class="fas fa-table"></i> CSV</a>
+            <a href="#" onclick="exportData('markdown')"><i class="fas fa-file-text"></i> Markdown</a>
+          </div>
+        </div>
         <button class="btn" onclick="window.location.href='/dashboard.html'">
           <i class="fas fa-home"></i> Dashboard
         </button>
@@ -405,6 +559,20 @@
       </div>
     </div>
 
+    <!-- Trends Chart -->
+    <div class="trends-section">
+      <div class="trends-header">
+        <h2>Trends</h2>
+        <div class="chart-controls">
+          <button class="filter-btn" data-trend="all" onclick="changeTrend(event, 'all')">All</button>
+          <button class="filter-btn active" data-trend="duplication" onclick="changeTrend(event, 'duplication')">Duplication</button>
+          <button class="filter-btn" data-trend="tests" onclick="changeTrend(event, 'tests')">Test Coverage</button>
+          <button class="filter-btn" data-trend="docs" onclick="changeTrend(event, 'docs')">Documentation</button>
+        </div>
+      </div>
+      <canvas id="trendsChart" class="chart-canvas"></canvas>
+    </div>
+
     <!-- Findings Section -->
     <div class="findings-section">
       <div class="findings-header">
@@ -427,19 +595,6 @@
         <p>No issues detected in the latest scan</p>
       </div>
     </div>
-
-    <!-- Trends Chart -->
-    <div class="trends-section">
-      <div class="trends-header">
-        <h2>Trends</h2>
-        <div class="chart-controls">
-          <button class="filter-btn active" onclick="changeTrend('duplication')">Duplication</button>
-          <button class="filter-btn" onclick="changeTrend('tests')">Test Coverage</button>
-          <button class="filter-btn" onclick="changeTrend('docs')">Documentation</button>
-        </div>
-      </div>
-      <canvas id="trendsChart" class="chart-canvas"></canvas>
-    </div>
   </div>
 
   <!-- Loading Overlay -->
@@ -459,9 +614,9 @@
     // Load status on page load
     async function loadStatus() {
       try {
-        const token = localStorage.getItem('token');
         const response = await fetch('/api/repoWatcher/status', {
-          headers: { 'Authorization': `Bearer ${token}` }
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include'
         });
 
         if (!response.ok) {
@@ -530,7 +685,7 @@
       `;
     }
 
-    // Render findings list
+    // Render findings list (grouped by type)
     function renderFindings(findings) {
       const findingsList = document.getElementById('findingsList');
       const emptyFindings = document.getElementById('emptyFindings');
@@ -552,31 +707,89 @@
       findingsList.style.display = 'flex';
       emptyFindings.style.display = 'none';
 
-      findingsList.innerHTML = filtered.map(finding => {
-        const typeLabels = {
-          missing_test: 'Missing Test',
-          doc_duplication: 'Doc Duplication',
-          code_duplication: 'Code Duplication',
-          architecture_violation: 'Architecture Violation',
-          missing_docs: 'Missing Documentation'
-        };
+      // Group findings by type
+      const grouped = filtered.reduce((acc, finding) => {
+        if (!acc[finding.type]) acc[finding.type] = [];
+        acc[finding.type].push(finding);
+        return acc;
+      }, {});
 
+      const typeLabels = {
+        missing_test: 'Missing Tests',
+        doc_duplication: 'Documentation Duplication',
+        code_duplication: 'Code Duplication',
+        architecture_violation: 'Architecture Violations',
+        missing_docs: 'Missing Documentation',
+        structural_drift: 'Structural Drift',
+        stale_docs: 'Stale Documentation'
+      };
+
+      const typeIcons = {
+        missing_test: 'fa-vial',
+        doc_duplication: 'fa-copy',
+        code_duplication: 'fa-clone',
+        architecture_violation: 'fa-exclamation-triangle',
+        missing_docs: 'fa-file-alt',
+        structural_drift: 'fa-project-diagram',
+        stale_docs: 'fa-clock'
+      };
+
+      findingsList.innerHTML = Object.entries(grouped).map(([type, items]) => {
+        const typeId = type.replace(/_/g, '-');
         return `
-          <div class="finding-item ${finding.severity}">
-            <div class="finding-header">
-              <div class="finding-type">
-                <span>${typeLabels[finding.type] || finding.type}</span>
-                <span class="finding-badge ${finding.severity}">${finding.severity}</span>
+          <div class="findings-group">
+            <div class="findings-group-header" onclick="toggleGroup('${typeId}')">
+              <div class="findings-group-title">
+                <i class="fas ${typeIcons[type] || 'fa-circle'}"></i>
+                <span>${typeLabels[type] || type}</span>
+                <span class="findings-group-count">${items.length}</span>
               </div>
-              <div class="finding-confidence">
-                Confidence: ${Math.round((finding.confidence || 0) * 100)}%
-              </div>
+              <i class="fas fa-chevron-down findings-group-toggle collapsed" id="${typeId}-toggle"></i>
             </div>
-            ${finding.path ? `<div class="finding-path">${finding.path}</div>` : ''}
-            <div class="finding-evidence">${finding.evidence}</div>
+            <div class="findings-group-body collapsed" id="${typeId}-body">
+              ${items.map(finding => `
+                <div class="finding-item ${finding.severity}">
+                  <div class="finding-header">
+                    <div class="finding-type">
+                      <span class="finding-badge ${finding.severity}">${finding.severity.toUpperCase()}</span>
+                    </div>
+                    <div class="finding-confidence">
+                      Confidence: ${Math.round((finding.confidence || 0) * 100)}%
+                    </div>
+                  </div>
+                  ${finding.path ? `<div class="finding-path" onclick="copyToClipboard('${finding.path.replace(/'/g, "\\'")}');" title="Click to copy">${finding.path}</div>` : ''}
+                  <div class="finding-evidence">${finding.evidence}</div>
+                </div>
+              `).join('')}
+            </div>
           </div>
         `;
       }).join('');
+    }
+
+    // Toggle finding group
+    function toggleGroup(groupId) {
+      const body = document.getElementById(`${groupId}-body`);
+      const toggle = document.getElementById(`${groupId}-toggle`);
+
+      if (body && toggle) {
+        body.classList.toggle('collapsed');
+        toggle.classList.toggle('collapsed');
+      }
+    }
+
+    // Copy to clipboard
+    function copyToClipboard(text) {
+      navigator.clipboard.writeText(text).then(() => {
+        // Visual feedback
+        const tooltip = document.createElement('div');
+        tooltip.textContent = 'Copied!';
+        tooltip.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(124,240,255,0.9);color:#000;padding:12px 24px;border-radius:8px;z-index:9999;';
+        document.body.appendChild(tooltip);
+        setTimeout(() => tooltip.remove(), 1500);
+      }).catch(err => {
+        console.error('Failed to copy:', err);
+      });
     }
 
     // Filter findings
@@ -594,9 +807,9 @@
     // Load trends data
     async function loadTrends() {
       try {
-        const token = localStorage.getItem('token');
         const response = await fetch('/api/repoWatcher/trends', {
-          headers: { 'Authorization': `Bearer ${token}` }
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include'
         });
 
         if (!response.ok) {
@@ -639,17 +852,22 @@
         }
       };
 
+      const selectedDatasets =
+        currentTrend === 'all'
+          ? [datasets.duplication, datasets.tests, datasets.docs]
+          : [datasets[currentTrend]];
+
       trendsChart = new Chart(ctx, {
         type: 'line',
         data: {
           labels: data.timestamps || [],
-          datasets: [datasets[currentTrend]]
+          datasets: selectedDatasets
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
           plugins: {
-            legend: { display: false }
+            legend: { display: currentTrend === 'all' }
           },
           scales: {
             y: { beginAtZero: true }
@@ -659,14 +877,13 @@
     }
 
     // Change trend view
-    function changeTrend(trend) {
+    function changeTrend(evt, trend) {
       currentTrend = trend;
 
       // Update buttons
       document.querySelectorAll('.chart-controls .filter-btn').forEach(btn => {
-        btn.classList.remove('active');
+        btn.classList.toggle('active', btn.dataset.trend === trend);
       });
-      event.target.classList.add('active');
 
       loadTrends();
     }
@@ -680,10 +897,10 @@
       loadingOverlay.classList.add('active');
 
       try {
-        const token = localStorage.getItem('token');
         const response = await fetch('/api/repoWatcher/scan', {
           method: 'POST',
-          headers: { 'Authorization': `Bearer ${token}` }
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include'
         });
 
         if (!response.ok) {
@@ -734,6 +951,77 @@
 
     function showError(message) {
       alert(message); // Replace with better error UI
+    }
+
+    // Toggle export menu
+    function toggleExportMenu() {
+      const menu = document.getElementById('exportMenu');
+      menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+    }
+
+    // Close export menu when clicking outside
+    document.addEventListener('click', (e) => {
+      const menu = document.getElementById('exportMenu');
+      const dropdown = document.querySelector('.export-dropdown');
+      if (menu && !dropdown.contains(e.target)) {
+        menu.style.display = 'none';
+      }
+    });
+
+    // Export data
+    async function exportData(format) {
+      try {
+        const response = await fetch(`/api/repoWatcher/export/${format}`, {
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include'
+        });
+
+        if (!response.ok) {
+          throw new Error(`Export failed: ${response.statusText}`);
+        }
+
+        // Get filename from Content-Disposition header or create one
+        const contentDisposition = response.headers.get('Content-Disposition');
+        let filename = `repo-scan.${format}`;
+        if (contentDisposition) {
+          const match = contentDisposition.match(/filename="(.+)"/);
+          if (match) filename = match[1];
+        }
+
+        // Download the file
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+
+        // Close the export menu
+        toggleExportMenu();
+
+        // Show success message
+        showSuccessToast(`Export successful! Downloaded ${filename}`);
+      } catch (error) {
+        console.error('Export failed:', error);
+        showError('Failed to export data');
+      }
+
+      return false; // Prevent default link behavior
+    }
+
+    // Show success toast
+    function showSuccessToast(message) {
+      const toast = document.createElement('div');
+      toast.textContent = message;
+      toast.style.cssText = 'position:fixed;top:20px;right:20px;background:#10b981;color:white;padding:16px 24px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.3);z-index:9999;animation:slideIn 0.3s ease;';
+      document.body.appendChild(toast);
+      setTimeout(() => {
+        toast.style.animation = 'slideOut 0.3s ease';
+        setTimeout(() => toast.remove(), 300);
+      }, 3000);
     }
 
     // Auto-refresh every 30 seconds

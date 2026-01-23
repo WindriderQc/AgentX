@@ -30,6 +30,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - [Benchmark System](docs/operations/BENCHMARK_SYSTEM.md) - Quality scoring
 - [Categorization Tests](docs/operations/CATEGORIZATION_TESTS.md) - Model category assignment
 - [Benchmark Color Theme](docs/operations/BENCHMARK_COLOR_THEME.md) - Level-based color system
+- [Enhanced Judging System Plan](docs/operations/ENHANCED_JUDGING_SYSTEM_PLAN.md) - Future benchmark enhancements (planning doc)
 - [Critical Gotchas](docs/operations/CRITICAL_GOTCHAS.md) - Known issues & pitfalls
 
 ---
@@ -40,7 +41,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **User manual**: [docs/user-manual/README.md](docs/user-manual/README.md)
 - **UI pages map** (URLs + what each page does): [docs/user-manual/README.md#2-the-ui-pages--navigation](docs/user-manual/README.md#2-the-ui-pages--navigation)
 - **Project roadmap** (current status & priorities): [ROADMAP.md](ROADMAP.md)
-- **Stack documentation hub**: [docs/SBQC-Stack-Final/](docs/SBQC-Stack-Final/)
+- **Stack documentation hub**: [docs/architecture/SBQC-Stack-Final/](docs/architecture/SBQC-Stack-Final/)
 
 AgentX is the SBQC stack system-of-record; DataAPI docs defer to AgentX for stack-level truth.
 
@@ -85,9 +86,10 @@ node scripts/seed-model-registry.js  # Seed model registry with 11 models
 
 ### Production Deployment (PM2)
 ```bash
-
-
-
+pm2 start ecosystem.config.js                # Start all services
+pm2 start ecosystem.config.js --only agentx  # Start AgentX only
+pm2 restart agentx                           # Restart AgentX
+pm2 stop agentx                              # Stop AgentX
 pm2 save                                     # Persist for reboot
 pm2 status                                   # Check process status
 pm2 logs agentx --lines 200                  # View AgentX logs
@@ -206,7 +208,7 @@ try {
 
 ## Self-Healing System (Track 4)
 
-Automated remediation system (`/src/services/selfHealingEngine.js` - 883 lines) with 5 strategies: model failover, prompt rollback, service restart, request throttling, and alert-only monitoring. Rules loaded from `/config/self-healing-rules.json` with cooldown enforcement and approval workflows for critical actions.
+Automated remediation system (`/src/services/selfHealingEngine.js` - 1015 lines) with 5 strategies: model failover, prompt rollback, service restart, request throttling, and alert-only monitoring. Rules loaded from `/config/self-healing-rules.json` with cooldown enforcement and approval workflows for critical actions.
 
 **Integration:** N4.4 Self-Healing Orchestrator (n8n) triggers remediation via webhook, scheduled evaluation every 5 minutes.
 
@@ -318,7 +320,7 @@ BACKUP_DIR=/mnt/datalake/backups
 PORT=3080
 ```
 
-→ [Deployment Guide](docs/SBQC-Stack-Final/05-DEPLOYMENT.md) for complete list.
+→ [Deployment Guide](docs/architecture/SBQC-Stack-Final/05-DEPLOYMENT.md) for complete list.
 
 ---
 
@@ -341,10 +343,58 @@ npm run test:e2e            # End-to-end tests
 
 ---
 
+## Repository Health Monitoring
+
+AgentX includes an automated **Repo Watcher** tool that scans the codebase for quality and structural issues.
+
+**Detection Capabilities:**
+- **Missing Test Coverage** - Identifies source files without corresponding test files
+- **Code Duplication** - Detects duplicate 20-line code blocks across files (excludes common patterns like imports, schemas)
+- **Doc Duplication** - Finds duplicate documentation files
+- **Architecture Violations** - Checks for missing critical paths (README, package.json, docs/, src/, etc.)
+- **Structural Drift** - Identifies unexpected top-level directories
+
+**Key Metrics:**
+- Test coverage percentage (based on file-level coverage)
+- Duplication rate (percentage of files with duplicates)
+- Doc coverage (docs per source files ratio)
+- Findings grouped by severity: fail, warn, info
+
+**Access Points:**
+- **UI Dashboard:** `/repoWatcher.html` - Visual dashboard with trends, charts, and drill-down
+- **API Status:** `GET /api/repowatcher/status` - Get latest scan results
+- **Manual Scan:** `POST /api/repowatcher/scan` - Trigger new scan
+- **Export:** `GET /api/repowatcher/export/{json|csv|markdown}` - Download scan results
+
+**Implementation Files:**
+- Service: `src/services/repoWatcherService.js` (821 lines) - Singleton with detection algorithms and context-aware scanning
+- Model: `models/RepoScan.js` - MongoDB schema with trend analysis methods
+- Route: `routes/repoWatcher.js` - API endpoints
+- Frontend: `public/repoWatcher.html` + `public/js/repoWatcher.js`
+
+**Ignore Patterns:**
+- Auto-excludes: node_modules, .git, dist, build, test-results, .backups, archive
+- Filters binary files: .webm, .zip, .gz, .bin, .dat, .mmap
+
+**Configuration:**
+```bash
+REPO_WATCHER_PATH=/path/to/repo  # Override default (process.cwd())
+```
+
+**Usage Example:**
+```javascript
+const { getRepoWatcherService } = require('./src/services/repoWatcherService');
+const service = getRepoWatcherService();
+const result = await service.scan('/path/to/repo', workspaceId);
+// Returns: { status, summary, findings, scanDuration, lastScan }
+```
+
+---
+
 ## Current Implementation Status
 
 **Quick Stats:**
-- 18 services, 21 route files, 15 data models
+- 39 services, 40 route files, 38 data models
 - All 6 development tracks complete and production-ready
 - Full UI dashboards, n8n workflows (N1-N6), comprehensive test coverage
 
@@ -385,10 +435,10 @@ For detailed contribution guidelines including branching strategy, git conventio
 - [ROADMAP.md](ROADMAP.md) - Project status and priorities
 - [docs/INDEX.md](docs/INDEX.md) - Complete documentation index
 - [docs/user-manual/README.md](docs/user-manual/README.md) - User guide
-- [docs/SBQC-Stack-Final/](docs/SBQC-Stack-Final/) - Stack documentation
+- [docs/architecture/SBQC-Stack-Final/](docs/architecture/SBQC-Stack-Final/) - Stack documentation
 
 **API References:**
-- [docs/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md](docs/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md) - All 40+ endpoints
+- [docs/architecture/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md](docs/architecture/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md) - All 40+ endpoints
 
 **Architecture Deep Dives:**
 - See `/docs/architecture/` for detailed component documentation

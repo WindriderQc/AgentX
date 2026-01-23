@@ -47,6 +47,26 @@ const PromptConfigSchema = new mongoose.Schema({
     positiveCount: { type: Number, default: 0 },
     negativeCount: { type: Number, default: 0 }
   },
+  // UI Configuration (for specialized persona interfaces)
+  uiConfig: {
+    type: {
+      type: String,
+      enum: ['chat', 'dashboard', 'gallery', 'hybrid'],
+      default: 'chat'
+    },
+    route: {
+      type: String,
+      default: '/index.html'
+    },
+    capabilities: [{
+      type: String,
+      enum: ['text', 'images', 'charts', 'files', 'realtime', 'code']
+    }],
+    layoutConfig: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {}
+    }
+  },
   createdAt: {
     type: Date,
     default: Date.now

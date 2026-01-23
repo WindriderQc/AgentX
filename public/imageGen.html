@@ -111,6 +111,12 @@
       cursor: pointer;
     }
 
+    .model-status {
+      margin: 0;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
     .gallery-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -321,11 +327,10 @@
       </div>
       <div class="model-selector">
         <label for="modelSelect"><i class="fas fa-brain"></i> Model:</label>
-        <select id="modelSelect">
-          <option value="llama-vision-v1">llama-vision-v1</option>
-          <option value="stable-diffusion-xl">stable-diffusion-xl</option>
-          <option value="midjourney-v6">midjourney-v6</option>
+        <select id="modelSelect" disabled>
+          <option>Loading models…</option>
         </select>
+        <p class="model-status" id="modelStatus" aria-live="polite"></p>
       </div>
     </div>
 
@@ -359,6 +364,7 @@
   </div>
 
   <script>
+    const DEFAULT_MODEL = 'x/flux2-klein:9b';
     let images = [];
 
     // Load existing images on page load
@@ -480,6 +486,73 @@
       `).join('');
     }
 
+    // Populate model dropdown from Ollama models
+    async function populateModelSelect() {
+      const select = document.getElementById('modelSelect');
+      const status = document.getElementById('modelStatus');
+      const fallbackOption = `<option value="${DEFAULT_MODEL}">${DEFAULT_MODEL} (default)</option>`;
+      select.innerHTML = '<option>Loading models…</option>';
+      select.disabled = true;
+      if (status) status.textContent = '';
+
+      try {
+        const response = await fetch('/api/ollama/models');
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const payload = await response.json();
+        const models = Array.isArray(payload.data) ? payload.data : [];
+        const names = Array.from(new Set(models
+          .map(model => model?.name)
+          .filter(Boolean)));
+
+        if (names.length === 0) {
+          throw new Error('No models returned from Ollama');
+        }
+
+        const options = names
+          .map((name) => `<option value="${escapeHtml(name)}"${name === DEFAULT_MODEL ? ' selected' : ''}>${escapeHtml(name)}</option>`)
+          .join('');
+
+        select.innerHTML = options;
+        if (!names.includes(DEFAULT_MODEL)) {
+          const defaultOption = document.createElement('option');
+          defaultOption.value = DEFAULT_MODEL;
+          defaultOption.textContent = `${DEFAULT_MODEL} (default)`;
+          defaultOption.selected = true;
+          select.appendChild(defaultOption);
+          select.value = DEFAULT_MODEL;
+        } else {
+          select.value = DEFAULT_MODEL;
+        }
+      } catch (error) {
+        console.error('Failed to load Ollama models:', error);
+        select.innerHTML = fallbackOption;
+        select.value = DEFAULT_MODEL;
+        if (status) {
+          status.textContent = 'Unable to load Ollama models right now; using default.';
+        }
+      } finally {
+        select.disabled = false;
+      }
+    }
+
+    function escapeHtml(text) {
+      const safeText = text == null ? '' : String(text);
+      return safeText.replace(/[&<>"']/g, (match) => {
+        const map = {
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          '"': '&quot;',
+          "'": '&#39;'
+        };
+        return map[match] || match;
+      });
+    }
+
+
     // Lightbox controls
     function openLightbox(imageUrl) {
       document.getElementById('lightboxImage').src = imageUrl;
@@ -531,6 +604,7 @@
     });
 
     // Initialize
+    populateModelSelect();
     loadImages();
   </script>
 </body>
