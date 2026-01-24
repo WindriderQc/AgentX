@@ -151,6 +151,17 @@ const BenchmarkResultSchema = new mongoose.Schema({
         quantization: { type: String, default: null },
         detection_metadata: { type: Object, default: null }
     },
+    // Truncation detection for model/judge responses
+    truncation: {
+        response_truncated: { type: Boolean, default: false },
+        response_tokens: { type: Number, default: null },
+        response_limit: { type: Number, default: null },
+        input_to_judge_truncated: { type: Boolean, default: false },
+        input_original_chars: { type: Number, default: null },
+        input_sent_chars: { type: Number, default: null },
+        judge_truncated: { type: Boolean, default: false },
+        judge_tokens: { type: Number, default: null }
+    },
     timestamp: {
         type: Date,
         default: Date.now,

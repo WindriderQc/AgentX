@@ -16,7 +16,8 @@ const JUDGE_CONFIG = {
     host: null,                           // Will be set dynamically from env
     timeout: 30000,                       // 30s timeout for judge calls
     temperature: 0.1,                     // Low temp for consistent scoring
-    num_predict: 200                      // Max tokens to generate for judge output
+    num_predict: 200,                     // Max tokens to generate for judge output
+    response_char_limit: 2000             // Max response chars sent to judge
 };
 
 // Initialize host from env
@@ -418,7 +419,11 @@ async function callJudge(evalPrompt, config = {}) {
         
         const data = await response.json();
         const text = data.response || '';
-        
+
+        // Detect if judge output was truncated (hit token limit)
+        const judgeTruncated = data.done_reason === 'length';
+        const judgeTokens = data.eval_count || 0;
+
         // Extract JSON from response
         let jsonStr = null;
         
@@ -455,7 +460,9 @@ async function callJudge(evalPrompt, config = {}) {
             return {
                 success: true,
                 scores,
-                raw: text
+                raw: text,
+                judge_truncated: judgeTruncated,
+                judge_tokens: judgeTokens
             };
         } catch (parseErr) {
             throw new Error(`JSON parse failed: ${parseErr.message}`);
@@ -526,6 +533,12 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
     // Use LLM-as-judge for complex evaluation
     const scoringType = prompt.scoring_type || 'reasoning';
     const dimensionsInfo = getScoringDimensions(prompt);
+    const responseCharLimitRaw = (judgeConfig && judgeConfig.response_char_limit !== undefined)
+        ? judgeConfig.response_char_limit
+        : JUDGE_CONFIG.response_char_limit;
+    const responseCharLimit = Math.max(200, Math.min(20000, Math.floor(Number(responseCharLimitRaw) || 2000)));
+    const responseForJudge = response.substring(0, responseCharLimit);
+    const inputTruncated = response.length > responseCharLimit;
 
     let evalPrompt;
     let config;
@@ -542,14 +555,14 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
         evalPrompt = config.prompt
             .replace('{{task}}', prompt.prompt || prompt)
             .replace('{{expected}}', prompt.expected_answer || 'See criteria')
-            .replace('{{response}}', response.substring(0, 2000)); // Limit response length
+            .replace('{{response}}', responseForJudge);
     } else {
         // Enhanced scoring: use dynamic dimensions
         evalPrompt = buildDynamicJudgePrompt(
             dimensionsInfo.dimensions,
             prompt.prompt || prompt,
             prompt.expected_answer || 'See criteria',
-            response.substring(0, 2000)
+            responseForJudge
         );
         config = { weight: dimensionsInfo.weights };
     }
@@ -595,6 +608,26 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
         time_ms: Date.now() - startTime
     });
 
+    // Build truncation info
+    const truncation = {
+        input_truncated: inputTruncated,
+        input_original_chars: response.length,
+        input_sent_chars: responseForJudge.length,
+        judge_truncated: judgeResult.judge_truncated || false,
+        judge_tokens: judgeResult.judge_tokens || 0
+    };
+
+    // Log warning if any truncation occurred
+    if (inputTruncated || judgeResult.judge_truncated) {
+        logger.warn('Truncation detected during scoring', {
+            prompt: prompt.name || prompt.prompt_name || 'unknown',
+            input_truncated: inputTruncated,
+            input_chars: `${responseForJudge.length}/${response.length}`,
+            judge_truncated: judgeResult.judge_truncated,
+            judge_tokens: judgeResult.judge_tokens
+        });
+    }
+
     return {
         quality_score: overallScore,
         scoring_method: 'llm_judge',
@@ -603,7 +636,8 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
         explanation: scores.explanation || '',
         judge_model: judgeConfig.model || JUDGE_CONFIG.model,
         scoring_time_ms: Date.now() - startTime,
-        judge_prompt: evalPrompt
+        judge_prompt: evalPrompt,
+        truncation
     };
 }
 

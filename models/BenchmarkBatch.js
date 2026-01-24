@@ -43,6 +43,10 @@ const BenchmarkBatchSchema = new mongoose.Schema({
         type: Object,
         default: {}
     },
+    execution_config: {
+        type: Object,
+        default: {}
+    },
     judge_same_host: {
         type: Boolean,
         default: false
@@ -63,6 +67,10 @@ const BenchmarkBatchSchema = new mongoose.Schema({
         }],
         judge_model: String,
         judge_same_host: Boolean,
+        execution_config: {
+            type: Object,
+            default: {}
+        },
         total_models: Number,
         total_prompts: Number,
         categories: [{

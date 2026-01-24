@@ -413,9 +413,8 @@ function setupResponsiveHelpers() {
             tableContainer.appendChild(expandBtn);
         }
     }
-}
 
-console.log('🎸 Model Categorization enhancements loaded!');
-console.log(`📱 Screen: ${window.innerWidth}x${window.innerHeight}`);
+    console.log('🎸 Model Categorization enhancements loaded!');
+    console.log(`📱 Screen: ${window.innerWidth}x${window.innerHeight}`);
     }, 200);
 });

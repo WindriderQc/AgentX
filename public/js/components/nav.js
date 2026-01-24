@@ -2,7 +2,7 @@
  * Navigation Component
  * Injects the standard AgentX navigation bar with all pages.
  * Usage: injectNav('activePageId') where activePageId is one of:
- * 'chat', 'operations', 'self-healing', 'alerts', 'backup', 'models', 'benchmark',
+ * 'chat', 'operations', 'self-healing', 'alerts', 'backup', 'models', 'benchmark', 'courthouse',
  * 'performance', 'analytics', 'features-inventory', 'features-telemetry',
  * 'features-adoption', 'features-admin', 'feature-alignment', 'workspaces', 'audit-logs', 'rag', 'personas', 'profile',
  * 'results-explorer', 'model-explorer', 'leaderboard', 'hardware-matrix', 'config-optimizer', 'docjanitor'
@@ -18,6 +18,7 @@ function injectNav(activePageId = '') {
                 { label: 'RAG', href: 'rag.html', icon: 'fa-database', id: 'rag' },
                 { label: 'Prompts', href: 'prompts.html', icon: 'fa-users', id: 'personas' },
                 { label: 'Benchmark', href: 'benchmark.html', icon: 'fa-rocket', id: 'benchmark' },
+                { label: 'Courthouse', href: 'courthouse.html', icon: 'fa-balance-scale', id: 'courthouse' },
                 { label: 'Compare Insights', href: 'compare-insights.html', icon: 'fa-chart-radar', id: 'compare-insights' },
                 { label: 'Config Optimizer', href: 'config-optimizer.html', icon: 'fa-sliders-h', id: 'config-optimizer' },
                 { label: 'Model Explorer', href: 'model-explorer.html', icon: 'fa-microscope', id: 'model-explorer' },

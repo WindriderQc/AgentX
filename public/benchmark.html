@@ -33,6 +33,7 @@
                     <p>Real-time performance metrics for Ollama models across configured hosts</p>
                 </div>
                 <div style="display: flex; gap: 10px; margin-top: 10px;">
+                    <a href="courthouse.html" class="btn-secondary" style="text-decoration: none; display: inline-flex; align-items: center; justify-content: center; width: auto; height: 42px;"><i class="fas fa-balance-scale"></i> Courthouse</a>
                     <a href="model-categorization.html" class="btn-secondary" style="text-decoration: none; display: inline-flex; align-items: center; justify-content: center; width: auto; height: 42px;"><i class="fas fa-tags"></i> Manage Categories</a>
                     <button id="helpBtn" class="btn-secondary" style="height: 42px;"><i class="fas fa-book"></i> Methodology & Guide</button>
                 </div>
@@ -103,7 +104,7 @@
                 <p>Run comprehensive tests across selected models with standardized prompts</p>
 
                 <!-- Active Batch Warning (Single Batch System) -->
-                <div id="activeBatchWarning" style="display: none; margin-bottom: 24px; padding: 16px; background: rgba(241, 196, 15, 0.1); border: 1px solid rgba(241, 196, 15, 0.3); border-radius: 8px;">
+                <div id="activeBatchWarning" style="display: none; margin: 0 12px 24px; padding: 16px 20px; background: rgba(241, 196, 15, 0.1); border: 1px solid rgba(241, 196, 15, 0.3); border-radius: 8px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                         <div style="display: flex; align-items: center; gap: 10px;">
                             <i class="fas fa-info-circle" style="color: #f1c40f; font-size: 1.2em;"></i>
@@ -384,9 +385,7 @@
                                     </table>
                                 </div>
                             </div>
-                        </div>
 
-                        <div class="batch-side">
                             <!-- Batch History -->
                             <div class="batch-history-section" style="margin-top: 25px; border-top: 1px solid var(--panel-border); padding-top: 20px;">
                                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
@@ -398,28 +397,9 @@
                                 </div>
                             </div>
 
-                            <div class="batch-history-section" style="margin-top: 18px; border-top: 1px solid var(--panel-border); padding-top: 18px;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                                    <h3 style="margin: 0; font-size: 1.1em; color: var(--text);"><i class="fas fa-list text-muted me-2"></i> Recent Tests</h3>
-                                    <span style="color: var(--muted); font-size: 0.85em;">Includes failures</span>
-                                </div>
-                                <div style="display:flex; gap: 10px; align-items:center; margin-bottom: 10px; flex-wrap: wrap;">
-                                    <label style="display:flex; gap: 8px; align-items:center; color: var(--muted); font-size: 0.85em;">
-                                        <input id="recentTestsFailuresOnly" type="checkbox" />
-                                        Failures only
-                                    </label>
-                                    <label style="display:flex; gap: 8px; align-items:center; color: var(--muted); font-size: 0.85em;">
-                                        Model
-                                        <select id="recentTestsModelFilter" class="form-control" style="width: 240px; padding: 6px 10px; margin-top: 0;">
-                                            <option value="">All</option>
-                                        </select>
-                                    </label>
-                                </div>
-                                <div id="recentTestsList" style="max-height: 250px; overflow-y: auto; border: 1px solid var(--panel-border); border-radius: 6px; background: rgba(0,0,0,0.1);">
-                                    <div style="text-align: center; color: var(--muted); padding: 20px;">Loading tests...</div>
-                                </div>
-                            </div>
                         </div>
+
+                
                     </div>
                 </div>
             </div>
@@ -580,52 +560,7 @@
                 </div>
             </div>
 
-            <!-- Add CSS for live animations -->
-            <style>
-                @keyframes pulse-glow {
-                    0%, 100% { box-shadow: 0 0 8px rgba(124, 240, 255, 0.4), inset 0 0 8px rgba(124, 240, 255, 0.2); }
-                    50% { box-shadow: 0 0 16px rgba(124, 240, 255, 0.8), inset 0 0 16px rgba(124, 240, 255, 0.4); }
-                }
-                @keyframes pulse-dot {
-                    0%, 100% { transform: scale(1); opacity: 1; }
-                    50% { transform: scale(1.3); opacity: 0.7; }
-                }
-                @keyframes shimmer {
-                    0% { background-position: -200% 0; }
-                    100% { background-position: 200% 0; }
-                }
-                .gantt-bar-running {
-                    animation: pulse-glow 2s ease-in-out infinite;
-                    background: linear-gradient(90deg,
-                        rgba(52, 152, 219, 0.9) 0%,
-                        rgba(124, 240, 255, 0.9) 50%,
-                        rgba(52, 152, 219, 0.9) 100%) !important;
-                    background-size: 200% 100%;
-                    animation: shimmer 3s linear infinite, pulse-glow 2s ease-in-out infinite;
-                }
-                .gantt-bar-judging {
-                    background: linear-gradient(90deg,
-                        rgba(155, 89, 182, 0.9) 0%,
-                        rgba(142, 68, 173, 0.9) 100%) !important;
-                    animation: pulse-glow 2s ease-in-out infinite;
-                }
-                .gantt-bar-queued {
-                    background: linear-gradient(90deg,
-                        rgba(149, 165, 166, 0.5) 0%,
-                        rgba(127, 140, 141, 0.5) 100%) !important;
-                }
-                .stage-icon {
-                    position: absolute;
-                    left: 4px;
-                    top: 50%;
-                    transform: translateY(-50%);
-                    font-size: 0.75em;
-                    color: white;
-                }
-                .stage-icon-pulse {
-                    animation: pulse-dot 1.5s ease-in-out infinite;
-                }
-            </style>
+        
         </div>
 
 
@@ -646,357 +581,39 @@
             </div>
         </div>
 
-        <div class="charts-grid">
-            <div class="chart-card">
-                <div class="chart-title"><i class="fas fa-clock"></i> Latency Comparison</div>
-                <canvas id="latencyChart"></canvas>
-            </div>
-            <div class="chart-card">
-                <div class="chart-title"><i class="fas fa-tachometer-alt"></i> Tokens per Second</div>
-                <canvas id="tokensChart"></canvas>
-            </div>
-            <div class="chart-card">
-                <div class="chart-title"><i class="fas fa-star"></i> Quality Score</div>
-                <canvas id="qualityChart"></canvas>
-            </div>
-            <div class="chart-card">
-                <div class="chart-title"><i class="fas fa-balance-scale"></i> Composite Score</div>
-                <canvas id="compositeChart"></canvas>
-            </div>
-        </div>
-
-        <!-- Judge Stats Section -->
-        <div class="judge-stats-container" style="margin-bottom: 32px; display: none;" id="judgeStatsContainer">
-            <h3 style="margin-bottom: 16px; font-size: 1.2em; color: var(--text); display: flex; align-items: center; gap: 10px;">
-                <i class="fas fa-gavel" style="color: var(--accent);"></i> Judge Performance
-            </h3>
-            <div class="stats-grid" id="judgeStatsGrid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
-                <!-- Populated by JS -->
-            </div>
-        </div>
-
-        <!-- Judge Radar Compare -->
-        <div class="judge-compare-section" style="margin-bottom: 32px; background: var(--card-bg); border: 1px solid var(--panel-border); border-radius: 12px; padding: 24px; display: none;" id="judgeCompareContainer">
-            <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px;">
-                <h3 style="margin: 0; font-size: 1.2em; color: var(--text); display: flex; align-items: center; gap: 10px;">
-                    <i class="fas fa-gavel" style="color: var(--accent);"></i> Judge Radar Compare
-                </h3>
-                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                    <select id="judgeCompareSelect" style="padding: 8px 12px; border-radius: 6px; border: 1px solid var(--panel-border); background: rgba(0,0,0,0.2); color: var(--text); font-size: 0.9em; min-width: 320px;">
-                        <option value="">Loading judges...</option>
-                    </select>
-                    <button id="judgeAddCompareBtn" class="btn-secondary btn-sm">
-                        <i class="fas fa-plus"></i> Add
-                    </button>
-                    <button id="judgeAddTopCompareBtn" class="btn-secondary btn-sm" title="Adds the top judge from the courthouse leaderboard">
-                        <i class="fas fa-trophy"></i> Add Top
-                    </button>
-                    <button id="judgeClearCompareBtn" class="btn-secondary btn-sm">
-                        <i class="fas fa-trash"></i> Clear
-                    </button>
-                    <button id="judgeRefreshCompareBtn" class="btn-secondary btn-sm">
-                        <i class="fas fa-sync-alt"></i> Refresh
-                    </button>
-                </div>
-            </div>
-            <div style="color: var(--muted); font-size: 0.9em; margin-bottom: 14px;">
-                Compares <strong>judge@host</strong> performance across Speed, Reliability, Diligence, and Avg Score Given.
-            </div>
-
-            <div id="judgeCompareList" class="compare-chip-list" style="margin-bottom: 14px;"></div>
-
-            <div class="chart-card" style="margin: 0; padding: 18px;">
-                <div style="height: 320px;">
-                    <canvas id="judgeRadarChart"></canvas>
-                </div>
-                <div id="judgeRadarEmpty" class="chart-empty" style="display: none; margin-top: 10px;">Add judges to compare.</div>
-            </div>
-        </div>
-
-        <!-- Judge Leaderboard (The Courthouse) -->
-        <div class="judge-leaderboard-section" style="margin-bottom: 32px; display: none;" id="judgeLeaderboardContainer">
-            <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                <h3 style="font-size: 1.2em; color: var(--text); display: flex; align-items: center; gap: 10px;">
-                    <i class="fas fa-balance-scale" style="color: var(--accent);"></i> The Courthouse
-                </h3>
-                <button class="btn-secondary btn-sm" onclick="window.BenchmarkAnalytics.loadJudgeStats()">
-                    <i class="fas fa-sync-alt"></i> Refresh
+        <!-- Truncation Stats Widget -->
+        <div id="truncationStatsWidget" class="truncation-widget" style="display: none; margin-bottom: 24px; background: rgba(255, 107, 107, 0.08); border: 1px solid rgba(255, 107, 107, 0.25); border-radius: 10px; padding: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <h4 style="margin: 0; font-size: 1em; color: var(--text); display: flex; align-items: center; gap: 8px;">
+                    <i class="fas fa-cut" style="color: #ff6b6b;"></i> Truncation Detected
+                </h4>
+                <button id="truncationRefreshBtn" class="btn-secondary btn-sm" style="padding: 4px 10px; font-size: 0.8em;">
+                    <i class="fas fa-sync-alt"></i>
                 </button>
             </div>
-            <div class="table-container">
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>Judge Model</th>
-                            <th>Host</th>
-                            <th>Evaluations</th>
-                            <th>Avg Latency</th>
-                            <th>Success Rate</th>
-                            <th>Avg Explanation</th>
-                        </tr>
-                    </thead>
-                    <tbody id="judgeLeaderboardBody">
-                        <tr><td colspan="6" style="text-align: center; padding: 20px; color: var(--muted);">Loading judge data...</td></tr>
-                    </tbody>
-                </table>
+            <div id="truncationStatsGrid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px;">
+                <!-- Stats populated by JS -->
             </div>
+            <div id="truncationDetails" style="margin-top: 12px; font-size: 0.85em; color: var(--muted);"></div>
         </div>
 
-        <!-- Judge Breakdown (By Level / By Model) -->
-        <div class="judge-leaderboard-section" style="margin-bottom: 32px; display: none;" id="judgeBreakdownContainer">
-            <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px;">
-                <h3 style="font-size: 1.2em; color: var(--text); display: flex; align-items: center; gap: 10px; margin: 0;">
-                    <i class="fas fa-gavel" style="color: var(--accent);"></i> Judge Breakdown
-                </h3>
-                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                    <span id="judgeBreakdownStatus" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px; border: 1px solid var(--panel-border); background: rgba(255,255,255,0.03); color: var(--muted); font-size: 0.85em;">
-                        <span style="width: 8px; height: 8px; border-radius: 999px; background: var(--muted);"></span>
-                        <span>API: idle</span>
-                    </span>
-                    <select id="judgeBreakdownSelect" style="padding: 8px 12px; border-radius: 6px; border: 1px solid var(--panel-border); background: rgba(0,0,0,0.2); color: var(--text); font-size: 0.9em; min-width: 320px;">
-                        <option value="">Loading judges...</option>
-                    </select>
-                    <select id="judgeBreakdownGroupBy" style="padding: 8px 12px; border-radius: 6px; border: 1px solid var(--panel-border); background: rgba(0,0,0,0.2); color: var(--text); font-size: 0.9em;">
-                        <option value="level" selected>By Level</option>
-                        <option value="model">By Model Tested</option>
-                    </select>
-                    <select id="judgeBreakdownSort" style="padding: 8px 12px; border-radius: 6px; border: 1px solid var(--panel-border); background: rgba(0,0,0,0.2); color: var(--text); font-size: 0.9em;">
-                        <option value="count" selected>Sort: Evaluations</option>
-                        <option value="latency">Sort: Judge Latency</option>
-                        <option value="tokens">Sort: Test Tokens</option>
-                        <option value="success">Sort: Success Rate</option>
-                    </select>
-                    <button id="judgeBreakdownRefreshBtn" class="btn-secondary btn-sm">
-                        <i class="fas fa-sync-alt"></i> Refresh
-                    </button>
-                </div>
-            </div>
-            <div style="color: var(--muted); font-size: 0.9em; margin-bottom: 14px;">
-                Helps confirm whether higher judge latency is driven by harder prompts (levels) or longer model outputs (tokens).
-            </div>
-
-            <div class="capability-compare-grid" style="display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 16px; align-items: stretch; margin-bottom: 16px;">
-                <div class="chart-card" style="margin: 0; padding: 18px;">
-                    <div style="height: 320px;">
-                        <canvas id="judgeBreakdownChart"></canvas>
-                    </div>
-                    <div id="judgeBreakdownChartEmpty" class="chart-empty" style="display: none; margin-top: 10px;">Select a judge to view breakdown.</div>
-                </div>
-                <div class="chart-card" style="margin: 0; padding: 18px;">
-                    <div id="judgeBreakdownInsights" style="height: 100%;"></div>
-                </div>
-            </div>
-            <div class="table-container">
-                <table class="data-table">
-                    <thead id="judgeBreakdownHead">
-                        <tr>
-                            <th>Group</th>
-                            <th>Evaluations</th>
-                            <th>Avg Judge Latency</th>
-                            <th>Success Rate</th>
-                            <th>Avg Score Given</th>
-                            <th>Avg Test Tokens</th>
-                        </tr>
-                    </thead>
-                    <tbody id="judgeBreakdownBody">
-                        <tr><td colspan="6" style="text-align: center; padding: 20px; color: var(--muted);">Loading breakdown...</td></tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <div class="leaderboard">
-            <div
-                style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+        <!-- Judge Analytics Link -->
+        <div class="courthouse-link-section" style="margin-bottom: 32px; background: linear-gradient(135deg, rgba(124, 240, 255, 0.08) 0%, rgba(124, 240, 255, 0.03) 100%); border: 1px solid rgba(124, 240, 255, 0.2); border-radius: 12px; padding: 24px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
                 <div>
-                    <h2 style="display: flex; align-items: center; gap: 10px; margin: 0;"><i class="fas fa-trophy"
-                            style="color: var(--accent);"></i> Model Leaderboard</h2>
-                    <span id="bestOverallText"
-                        style="font-size: 13px; color: #888; margin-top: 4px; display: block;"></span>
+                    <h3 style="margin: 0 0 8px; font-size: 1.2em; color: var(--text); display: flex; align-items: center; gap: 10px;">
+                        <i class="fas fa-balance-scale" style="color: var(--accent);"></i> The Courthouse
+                    </h3>
+                    <p style="margin: 0; color: var(--muted); font-size: 0.95em;">
+                        View detailed judge performance analytics, leaderboards, radar comparisons, and breakdown analysis.
+                    </p>
                 </div>
-                <div class="sort-controls" style="display: flex; gap: 8px; align-items: center;">
-                    <label style="color: #666; font-size: 13px;">Profile:</label>
-                    <select id="scoringProfile"
-                        style="padding: 6px 12px; border-radius: 6px; background: var(--card-bg); border: 1px solid rgba(255,255,255,0.1); color: #fff; font-size: 13px;">
-                        <option value="interactive" selected>Interactive (Chat)</option>
-                        <option value="reasoning">Reasoning (Deep)</option>
-                        <option value="coding">Coding (Dev)</option>
-                    </select>
-                    <div style="width: 1px; height: 20px; background: rgba(255,255,255,0.1); margin: 0 8px;"></div>
-                    <label style="color: #666; font-size: 13px;">Sort:</label>
-                    <select id="sortBy"
-                        style="padding: 6px 12px; border-radius: 6px; background: var(--card-bg); border: 1px solid rgba(255,255,255,0.1); color: #fff; font-size: 13px;">
-                        <option value="composite" selected>Composite ⭐</option>
-                        <option value="quality">Quality</option>
-                        <option value="reliability">Reliability</option>
-                        <option value="latency">Latency</option>
-                        <option value="speed">Tokens/sec</option>
-                    </select>
-                </div>
-            </div>
-
-            <!-- Category Tabs -->
-            <div class="category-tabs" style="display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 2px solid rgba(255,255,255,0.1); padding-bottom: 2px; overflow-x: auto;">
-                <button class="category-tab active" data-category="" onclick="switchCategoryTab('')" style="padding: 10px 20px; background: none; border: none; border-bottom: 3px solid var(--accent); color: var(--accent); font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: all 0.2s;">
-                    <i class="fas fa-globe" style="margin-right: 6px;"></i> Universal
-                </button>
-                <button class="category-tab" data-category="ops" onclick="switchCategoryTab('ops')" style="padding: 10px 20px; background: none; border: none; border-bottom: 3px solid transparent; color: var(--muted); font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: all 0.2s;">
-                    <i class="fas fa-bolt" style="margin-right: 6px;"></i> Ops/Glue
-                </button>
-                <button class="category-tab" data-category="coding" onclick="switchCategoryTab('coding')" style="padding: 10px 20px; background: none; border: none; border-bottom: 3px solid transparent; color: var(--muted); font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: all 0.2s;">
-                    <i class="fas fa-code" style="margin-right: 6px;"></i> Coding
-                </button>
-                <button class="category-tab" data-category="reasoning" onclick="switchCategoryTab('reasoning')" style="padding: 10px 20px; background: none; border: none; border-bottom: 3px solid transparent; color: var(--muted); font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: all 0.2s;">
-                    <i class="fas fa-brain" style="margin-right: 6px;"></i> Reasoning
-                </button>
-                <button class="category-tab" data-category="specialist" onclick="switchCategoryTab('specialist')" style="padding: 10px 20px; background: none; border: none; border-bottom: 3px solid transparent; color: var(--muted); font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: all 0.2s;">
-                    <i class="fas fa-star" style="margin-right: 6px;"></i> Specialists
-                </button>
-                <button class="category-tab" data-category="generalist" onclick="switchCategoryTab('generalist')" style="padding: 10px 20px; background: none; border: none; border-bottom: 3px solid transparent; color: var(--muted); font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: all 0.2s;">
-                    <i class="fas fa-cubes" style="margin-right: 6px;"></i> Generalists
-                </button>
-            </div>
-
-            <!-- Category Insights Panel -->
-            <div id="categoryInsights" style="display: none; background: linear-gradient(135deg, rgba(124, 240, 255, 0.1) 0%, rgba(124, 240, 255, 0.05) 100%); border: 1px solid rgba(124, 240, 255, 0.2); border-radius: 8px; padding: 16px 20px; margin-bottom: 20px;">
-                <div style="display: flex; align-items: start; gap: 12px;">
-                    <i class="fas fa-info-circle" style="color: var(--accent); font-size: 20px; margin-top: 2px;"></i>
-                    <div style="flex: 1;">
-                        <div style="font-weight: 600; color: var(--accent); margin-bottom: 6px; font-size: 14px;" id="insightsTitle">Category Insights</div>
-                        <div style="color: rgba(255,255,255,0.8); font-size: 13px; line-height: 1.5;" id="insightsContent">
-                            Select a category to see specialized insights and recommendations.
-                        </div>
-                        <div id="insightsMetrics" style="display: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(124, 240, 255, 0.2); display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;">
-                            <!-- Populated by JS -->
-                        </div>
-                    </div>
-                    <button onclick="document.getElementById('categoryInsights').style.display='none'" style="background: none; border: none; color: var(--muted); cursor: pointer; font-size: 18px; padding: 0 4px; transition: color 0.2s;" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">×</button>
-                </div>
-            </div>
-
-            <div class="filter-controls" style="display: flex; gap: 16px; margin-bottom: 20px; align-items: center; flex-wrap: wrap;">
-                <!-- Hidden but kept for programmatic sync with tabs -->
-                <select id="modelCategoryFilter" class="filter-select" onchange="BenchmarkAnalytics.filterByModelCategory(this.value)" style="display: none;">
-                    <option value="">All Models</option>
-                    <option value="ops">Ops/Glue</option>
-                    <option value="coding">Coding</option>
-                    <option value="reasoning">Reasoning</option>
-                    <option value="specialist">Specialists</option>
-                    <option value="generalist">Generalists</option>
-                </select>
-
-                <div class="filter-group">
-                    <label for="promptCategoryFilter" style="color: var(--muted); font-size: 0.85em; margin-right: 8px;">Task Type:</label>
-                    <select id="promptCategoryFilter" class="filter-select" onchange="BenchmarkAnalytics.filterByPromptCategory(this.value)" style="padding: 6px 12px; border-radius: 6px; background: var(--card-bg); border: 1px solid rgba(255,255,255,0.1); color: #fff; font-size: 13px;">
-                        <option value="">All Tasks</option>
-                        <option value="coding">Coding Tasks</option>
-                        <option value="reasoning">Reasoning Tasks</option>
-                        <option value="factual">Factual Recall</option>
-                        <option value="math">Math Problems</option>
-                        <option value="creative">Creative Writing</option>
-                        <option value="general">General</option>
-                    </select>
-                </div>
-
-                <button onclick="BenchmarkAnalytics.clearAllFilters()" class="btn-secondary" style="padding: 6px 12px; font-size: 13px; margin-left: auto; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; border-radius: 6px; cursor: pointer;">Clear Filters</button>
-            </div>
-            <table>
-                <thead>
-                    <tr>
-                        <th style="width: 70px;">#</th>
-                        <th>Model</th>
-                        <th>
-                            <span class="tooltip-wrapper">
-                                Latency
-                                <span class="help-icon">?</span>
-                                <span class="tooltip-content">
-                                    <div class="tooltip-title">Response Time</div>
-                                    <div class="tooltip-text">Time to complete response. Lower = faster.</div>
-                                </span>
-                            </span>
-                        </th>
-                        <th>
-                            <span class="tooltip-wrapper">
-                                Speed
-                                <span class="help-icon">?</span>
-                                <span class="tooltip-content">
-                                    <div class="tooltip-title">Tokens/Second</div>
-                                    <div class="tooltip-text">Generation throughput. Higher = faster output.</div>
-                                </span>
-                            </span>
-                        </th>
-                        <th>
-                            <span class="tooltip-wrapper">
-                                Quality
-                                <span class="help-icon">?</span>
-                                <span class="tooltip-content">
-                                    <div class="tooltip-title">Quality Score (0-100)</div>
-                                    <div class="tooltip-text">LLM-judged accuracy & reasoning quality.</div>
-                                </span>
-                            </span>
-                        </th>
-                        <th style="width: 110px;">
-                            <span class="tooltip-wrapper">
-                                Reliability
-                                <span class="help-icon">?</span>
-                                <span class="tooltip-content">
-                                    <div class="tooltip-title">Success Rate</div>
-                                    <div class="tooltip-text">Percentage of successful tests. Higher is better.</div>
-                                </span>
-                            </span>
-                        </th>
-                        <th style="width: 80px;">
-                            <span class="tooltip-wrapper">
-                                Tests
-                                <span class="help-icon">?</span>
-                                <span class="tooltip-content">
-                                    <div class="tooltip-title">Sample Size</div>
-                                    <div class="tooltip-text">Number of benchmark test results included for this model
-                                        (used to compute averages). Informational only — it does not affect ranking.
-                                    </div>
-                                </span>
-                            </span>
-                        </th>
-                        <th style="width: 120px;">
-                            <span class="tooltip-wrapper">
-                                Best At
-                                <span class="help-icon">?</span>
-                                <span class="tooltip-content">
-                                    <div class="tooltip-title">Recommended Category</div>
-                                    <div class="tooltip-text">Category where this model performs best based on actual benchmark scores (prompt_category with highest quality_score).</div>
-                                </span>
-                            </span>
-                        </th>
-                        <th>
-                            <span class="tooltip-wrapper">
-                                <span id="compositeHeader">Composite</span>
-                                <span class="help-icon">?</span>
-                                <span class="tooltip-content">
-                                    <div class="tooltip-title">Balanced Score</div>
-                                    <div class="tooltip-text">Weighted score based on selected profile.</div>
-                                </span>
-                            </span>
-                        </th>
-                    </tr>
-                </thead>
-                <tbody id="leaderboard">
-                    <tr>
-                        <td colspan="9" style="text-align: center; color: #999;">No tests run yet</td>
-                    </tr>
-                </tbody>
-            </table>
-
-            <div style="display:flex; justify-content:flex-end; gap: 10px; margin-top: 12px; flex-wrap: wrap;">
-                <button id="resetFailedLeaderboardBtn" type="button" class="btn-secondary btn-sm"
-                    style="background: rgba(231, 76, 60, 0.08); border-color: rgba(231, 76, 60, 0.35); color: rgba(231, 76, 60, 0.9);">
-                    <i class="fas fa-ban"></i> Reset Failed
-                </button>
-                <button id="resetLeaderboardBtn" type="button" class="btn-secondary btn-sm"
-                    style="background: rgba(231, 76, 60, 0.12); border-color: rgba(231, 76, 60, 0.45); color: rgba(231, 76, 60, 0.95);">
-                    <i class="fas fa-trash"></i> Reset Tests
-                </button>
+                <a href="courthouse.html" class="btn-primary" style="text-decoration: none; display: inline-flex; align-items: center; gap: 8px;">
+                    <i class="fas fa-gavel"></i> Open Courthouse
+                </a>
             </div>
         </div>
+
     </div>
 
     <!-- Modals -->
@@ -1032,6 +649,12 @@
                 </div>
 
                 <div class="form-group">
+                    <label for="judgeInputChars">Judge Input Max Chars</label>
+                    <input type="number" id="judgeInputChars" value="2000" step="100" min="200">
+                    <small class="form-text text-muted">Limits response length sent to judge.</small>
+                </div>
+
+                <div class="form-group">
                     <label for="judgeConcurrency">Judge Concurrency: <span id="judgeConcurrencyVal">2</span></label>
                     <input type="range" id="judgeConcurrency" min="1" max="10" step="1" value="2" oninput="document.getElementById('judgeConcurrencyVal').textContent = this.value">
                     <small class="form-text text-muted">Number of parallel judge requests. Increase for powerful judge hosts.</small>
@@ -1044,6 +667,37 @@
                     </label>
                     <small class="form-text text-muted">Default is off (judge runs on the configured judge host for the
                         model/exec host).</small>
+                </div>
+
+                <div style="margin-top: 20px; border-top: 1px solid var(--panel-border); padding-top: 15px;">
+                    <label style="display: block; margin-bottom: 8px; color: var(--accent); font-weight: 600;">
+                        Execution & Response Caps
+                    </label>
+                    <div class="form-group">
+                        <label for="execTokenMultiplier">Response Tokens Multiplier</label>
+                        <input type="number" id="execTokenMultiplier" value="2" step="0.1" min="0.25">
+                        <small class="form-text text-muted">num_predict = expected_tokens * multiplier (clamped).</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="execTokenMin">Response Min Tokens</label>
+                        <input type="number" id="execTokenMin" value="100" step="10" min="1">
+                    </div>
+                    <div class="form-group">
+                        <label for="execTokenMax">Response Max Tokens</label>
+                        <input type="number" id="execTokenMax" value="2000" step="50" min="1">
+                    </div>
+                    <div class="form-group">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                            <input type="checkbox" id="execIncludeLengthHint" style="width: 16px; height: 16px;" />
+                            Inject length requirement into prompt
+                        </label>
+                        <small class="form-text text-muted">Appends length line to each prompt using template below.</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="execLengthTemplate">Length Hint Template</label>
+                        <input type="text" id="execLengthTemplate" class="form-control" value="Answer in ~{target} tokens (max {max} tokens).">
+                        <small class="form-text text-muted">Variables: {target}, {max}, {min}, {multiplier}</small>
+                    </div>
                 </div>
 
                 <div style="margin-top: 20px; border-top: 1px solid var(--panel-border); padding-top: 15px;">
@@ -1390,166 +1044,14 @@
         </div>
     </div>
 
-    <style>
-        /* Modal Styles */
-        .modal {
-            display: none;
-            position: fixed;
-            z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.6);
-            backdrop-filter: blur(5px);
-        }
 
-        .modal-content {
-            background-color: var(--panel);
-            margin: 10% auto;
-            padding: 0;
-            border: 1px solid var(--panel-border);
-            border-radius: var(--radius);
-            width: 90%;
-            max-width: 600px;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-            animation: modalSlideIn 0.3s ease;
-        }
-
-        @keyframes modalSlideIn {
-            from {
-                transform: translateY(-20px);
-                opacity: 0;
-            }
-
-            to {
-                transform: translateY(0);
-                opacity: 1;
-            }
-        }
-
-        @keyframes pulse {
-            0%, 100% {
-                transform: scale(1);
-                opacity: 1;
-            }
-            50% {
-                transform: scale(1.2);
-                opacity: 0.6;
-            }
-        }
-
-        .modal-header {
-            padding: 20px 24px;
-            border-bottom: 1px solid var(--panel-border);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .modal-header h2 {
-            margin: 0;
-            font-size: 1.5em;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .close {
-            color: var(--muted);
-            font-size: 28px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: color 0.2s;
-        }
-
-        .close:hover {
-            color: var(--text);
-        }
-
-        .modal-body {
-            padding: 24px;
-            max-height: 60vh;
-            overflow-y: auto;
-        }
-
-        .modal-footer {
-            padding: 16px 24px;
-            border-top: 1px solid var(--panel-border);
-            display: flex;
-            justify-content: flex-end;
-            gap: 12px;
-        }
-
-        .modal-body h3 {
-            margin-top: 0;
-            color: var(--accent);
-            font-size: 1.2em;
-            margin-bottom: 12px;
-        }
-
-        .modal-body h4 {
-            margin: 16px 0 8px;
-            color: var(--text);
-        }
-
-        .modal-body ul {
-            padding-left: 20px;
-            color: var(--muted);
-        }
-
-        .modal-body li {
-            margin-bottom: 6px;
-        }
-
-        .form-control {
-            width: 100%;
-            padding: 10px;
-            border-radius: 6px;
-            border: 1px solid var(--panel-border);
-            background: rgba(0, 0, 0, 0.2);
-            color: var(--text);
-            margin-top: 6px;
-        }
-
-        .btn-icon {
-            background: none;
-            border: none;
-            color: var(--muted);
-            font-size: 1.2em;
-            cursor: pointer;
-            transition: color 0.2s;
-        }
-
-        .btn-icon:hover {
-            color: var(--accent);
-        }
-
-        .btn-sm {
-            padding: 6px 12px;
-            font-size: 0.85em;
-        }
-
-        .btn-secondary {
-            background: rgba(255, 255, 255, 0.1);
-            color: var(--text);
-            border: 1px solid var(--panel-border);
-            border-radius: 6px;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .btn-secondary:hover {
-            background: rgba(255, 255, 255, 0.15);
-        }
-    </style>
 
 
 
     <!-- Benchmark Analytics Module -->
     <script type="module" src="/js/benchmark-analytics.js"></script>
 
-     <script src="/js/benchmark-inline.js"></script>
+    <script src="/js/benchmark-inline.js"></script>
 
 </body>
 

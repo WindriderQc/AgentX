@@ -22,6 +22,67 @@ const { scoreResponse, calculateCompositeScore, JUDGE_CONFIG } = require('./qual
 const { HOSTS, MODEL_ROUTING } = require('./modelRouter');
 const hardwareProfileService = require('./hardwareProfileService');
 
+const DEFAULT_EXECUTION_CONFIG = {
+    response_tokens_multiplier: 2,
+    response_min_tokens: 100,
+    response_max_tokens: 2000,
+    include_length_hint: false,
+    length_hint_template: 'Answer in ~{target} tokens (max {max} tokens).'
+};
+
+function normalizeExecutionConfig(config = {}) {
+    const merged = { ...DEFAULT_EXECUTION_CONFIG, ...(config || {}) };
+    const toNumber = (value, fallback, min, max) => {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return fallback;
+        let v = n;
+        if (min !== undefined) v = Math.max(min, v);
+        if (max !== undefined) v = Math.min(max, v);
+        return v;
+    };
+
+    merged.response_tokens_multiplier = toNumber(
+        merged.response_tokens_multiplier,
+        DEFAULT_EXECUTION_CONFIG.response_tokens_multiplier,
+        0.25,
+        10
+    );
+    merged.response_min_tokens = Math.round(toNumber(
+        merged.response_min_tokens,
+        DEFAULT_EXECUTION_CONFIG.response_min_tokens,
+        1,
+        50000
+    ));
+    merged.response_max_tokens = Math.round(toNumber(
+        merged.response_max_tokens,
+        DEFAULT_EXECUTION_CONFIG.response_max_tokens,
+        merged.response_min_tokens,
+        50000
+    ));
+    if (merged.response_max_tokens < merged.response_min_tokens) {
+        merged.response_max_tokens = merged.response_min_tokens;
+    }
+    merged.include_length_hint = !!merged.include_length_hint;
+    if (typeof merged.length_hint_template !== 'string' || !merged.length_hint_template.trim()) {
+        merged.length_hint_template = DEFAULT_EXECUTION_CONFIG.length_hint_template;
+    }
+    return merged;
+}
+
+function applyLengthHint(promptText, expectedTokens, numPredict, config) {
+    if (!config || !config.include_length_hint) return promptText;
+    const template = (config.length_hint_template || DEFAULT_EXECUTION_CONFIG.length_hint_template).trim();
+    if (!template) return promptText;
+    const tokensTarget = Math.round(Number(expectedTokens) || 0);
+    const maxTokens = Math.round(Number(numPredict) || 0);
+    const hint = template
+        .replace(/\{target\}/g, String(tokensTarget))
+        .replace(/\{max\}/g, String(maxTokens))
+        .replace(/\{min\}/g, String(config.response_min_tokens))
+        .replace(/\{multiplier\}/g, String(config.response_tokens_multiplier));
+    return `${promptText}\n\n${hint}`;
+}
+
 // Track active batch for graceful shutdown
 let activeBatchId = null;
 let activeHeartbeatInterval = null;
@@ -257,6 +318,10 @@ class BenchmarkService {
         };
     }
 
+    getExecutionConfigDefaults() {
+        return { ...DEFAULT_EXECUTION_CONFIG };
+    }
+
     /**
      * Run a single benchmark test
      */
@@ -473,12 +538,17 @@ class BenchmarkService {
                         avg_latency: { $avg: '$latency' },
                         avg_tokens_per_sec: { $avg: { $toDouble: '$tokens_per_sec' } },
                         
-                        // Level breakdown
+                        // Level breakdown (1-10)
                         tests_level_1: { $sum: { $cond: [{ $eq: ['$prompt_level', 1] }, 1, 0] } },
                         tests_level_2: { $sum: { $cond: [{ $eq: ['$prompt_level', 2] }, 1, 0] } },
                         tests_level_3: { $sum: { $cond: [{ $eq: ['$prompt_level', 3] }, 1, 0] } },
                         tests_level_4: { $sum: { $cond: [{ $eq: ['$prompt_level', 4] }, 1, 0] } },
                         tests_level_5: { $sum: { $cond: [{ $eq: ['$prompt_level', 5] }, 1, 0] } },
+                        tests_level_6: { $sum: { $cond: [{ $eq: ['$prompt_level', 6] }, 1, 0] } },
+                        tests_level_7: { $sum: { $cond: [{ $eq: ['$prompt_level', 7] }, 1, 0] } },
+                        tests_level_8: { $sum: { $cond: [{ $eq: ['$prompt_level', 8] }, 1, 0] } },
+                        tests_level_9: { $sum: { $cond: [{ $eq: ['$prompt_level', 9] }, 1, 0] } },
+                        tests_level_10: { $sum: { $cond: [{ $eq: ['$prompt_level', 10] }, 1, 0] } },
                         
                         avg_quality: {
                             $avg: {
@@ -617,7 +687,12 @@ class BenchmarkService {
                     2: m.tests_level_2 || 0,
                     3: m.tests_level_3 || 0,
                     4: m.tests_level_4 || 0,
-                    5: m.tests_level_5 || 0
+                    5: m.tests_level_5 || 0,
+                    6: m.tests_level_6 || 0,
+                    7: m.tests_level_7 || 0,
+                    8: m.tests_level_8 || 0,
+                    9: m.tests_level_9 || 0,
+                    10: m.tests_level_10 || 0
                 },
                 tests: successTests,
                 failed_tests: failedTests,
@@ -833,7 +908,7 @@ class BenchmarkService {
     /**
      * Start a batch benchmark test
      */
-    async startBatch({ host, models, levels, run_name, quality_scoring = true, judge_config = {}, tags = [], description = '', execution_mode = 'latency' }) {
+    async startBatch({ host, models, levels, run_name, quality_scoring = true, judge_config = {}, execution_config = {}, tags = [], description = '', execution_mode = 'latency' }) {
         if (!host || !models || !Array.isArray(models) || !levels || !Array.isArray(levels)) {
             throw new Error('host, models (array), and levels (array) are required');
         }
@@ -859,6 +934,7 @@ class BenchmarkService {
         const judgeSameHost = (judge_config && judge_config.judge_same_host !== undefined)
             ? !!judge_config.judge_same_host
             : false;
+        const normalizedExecutionConfig = normalizeExecutionConfig(execution_config);
 
         const execHosts = Object.entries(modelsByHost).map(([exec_host, hostModels]) => {
             let judge_host = exec_host;
@@ -894,6 +970,7 @@ class BenchmarkService {
             exec_hosts: execHosts,
             judge_model: (judge_config && judge_config.model) ? judge_config.model : JUDGE_CONFIG.model,
             judge_same_host: judgeSameHost,
+            execution_config: normalizedExecutionConfig,
             total_models: models.length,
             total_prompts: selectedPrompts.length,
             categories
@@ -905,6 +982,7 @@ class BenchmarkService {
             levels,
             quality_scoring,
             judge_config,
+            execution_config: normalizedExecutionConfig,
             run_name: run_name || `Batch ${new Date().toLocaleString()}`,
             total_tests: models.length * selectedPrompts.length,
             plan,
@@ -926,7 +1004,7 @@ class BenchmarkService {
         // Start batch execution in background.
         // Skip in tests to keep Jest deterministic and avoid runaway async work.
         if (process.env.NODE_ENV !== 'test') {
-            this.executeBatch(batchId, host, models, selectedPrompts, { quality_scoring, judge_config, execution_mode }).catch(err => {
+            this.executeBatch(batchId, host, models, selectedPrompts, { quality_scoring, judge_config, execution_config: normalizedExecutionConfig, execution_mode }).catch(err => {
                 logger.error('Batch execution failed', { batchId, error: err.message });
             });
         }
@@ -977,6 +1055,8 @@ class BenchmarkService {
         }
 
         logger.info('Batch execution lock acquired', { batchId, pid: process.pid });
+
+        const executionConfig = normalizeExecutionConfig(options.execution_config || batch.execution_config || {});
 
         // Track active batch for graceful shutdown
         activeBatchId = batchId;
@@ -1232,9 +1312,16 @@ class BenchmarkService {
                         // If model wasn't warmed up properly, this may still timeout
                         const url = `${hostUrl}/api/generate`;
 
-                        // Limit response length based on expected_tokens (with 2x buffer, min 100, max 2000)
+                        // Limit response length based on expected_tokens and execution config
                         const expectedTokens = prompt.expected_tokens || 200;
-                        const numPredict = Math.min(2000, Math.max(100, Math.round(expectedTokens * 2)));
+                        const numPredict = Math.min(
+                            executionConfig.response_max_tokens,
+                            Math.max(
+                                executionConfig.response_min_tokens,
+                                Math.round(expectedTokens * executionConfig.response_tokens_multiplier)
+                            )
+                        );
+                        const promptText = applyLengthHint(prompt.prompt, expectedTokens, numPredict, executionConfig);
 
                         // Use AbortController for proper timeout (fetch ignores timeout option)
                         const testController = new AbortController();
@@ -1245,7 +1332,7 @@ class BenchmarkService {
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
                                 model,
-                                prompt: prompt.prompt,
+                                prompt: promptText,
                                 stream: false,
                                 options: { num_predict: numPredict }
                             }),
@@ -1267,6 +1354,18 @@ class BenchmarkService {
                         const tokenSource = data.eval_count ? 'ollama' : 'estimated';
                         const tokens_per_sec = tokens > 0 ? (tokens / (latency / 1000)).toFixed(2) : 0;
 
+                        // Detect if model response was truncated (hit token limit)
+                        const responseTruncated = data.done_reason === 'length';
+                        if (responseTruncated) {
+                            logger.warn('Model response truncated', {
+                                model,
+                                prompt_name: prompt.name,
+                                tokens,
+                                num_predict: numPredict,
+                                done_reason: data.done_reason
+                            });
+                        }
+
                         // Create result
                         const result = new BenchmarkResult({
                             model,
@@ -1287,7 +1386,12 @@ class BenchmarkService {
                             quality_score: null,
                             scoring_method: enableQualityScoring ? 'pending' : 'disabled',
                             judge_model: enableQualityScoring ? (judgeConfig.model || JUDGE_CONFIG.model) : null,
-                            hardware_snapshot: hardwareSnapshot
+                            hardware_snapshot: hardwareSnapshot,
+                            truncation: {
+                                response_truncated: responseTruncated,
+                                response_tokens: tokens,
+                                response_limit: numPredict
+                            }
                         });
 
                         await result.save();
@@ -1397,6 +1501,15 @@ class BenchmarkService {
                                         scoring_method: scores.scoring_method
                                     });
 
+                                    // Build truncation update if present
+                                    const truncationUpdate = scores.truncation ? {
+                                        'truncation.input_to_judge_truncated': scores.truncation.input_truncated,
+                                        'truncation.input_original_chars': scores.truncation.input_original_chars,
+                                        'truncation.input_sent_chars': scores.truncation.input_sent_chars,
+                                        'truncation.judge_truncated': scores.truncation.judge_truncated,
+                                        'truncation.judge_tokens': scores.truncation.judge_tokens
+                                    } : {};
+
                                     const updateResult = await BenchmarkResult.updateOne(
                                         { _id: resultId },
                                         {
@@ -1412,7 +1525,8 @@ class BenchmarkService {
                                                 quick_pattern: scores.quick_pattern,
                                                 composite_score: composite.composite_score,
                                                 composite_profile_used: composite.composite_profile_used,
-                                                normalized_scores: composite.normalized
+                                                normalized_scores: composite.normalized,
+                                                ...truncationUpdate
                                             }
                                         }
                                     );
@@ -2327,6 +2441,97 @@ class BenchmarkService {
         .sort({ timestamp: -1 })
         .limit(limit)
         .select('judge_model judge_host model quality_score scoring_time_ms timestamp prompt_category');
+    }
+
+    /**
+     * Get truncation statistics for diagnostics
+     * Shows how many responses/judge outputs were truncated
+     * @param {Object} opts - Options
+     * @param {string} [opts.batch_id] - Optional batch ID to filter
+     * @param {number} [opts.limit=1000] - Max results to analyze
+     */
+    async getTruncationStats({ batch_id = null, limit = 1000 } = {}) {
+        const match = { success: true };
+        if (batch_id) match.batch_id = batch_id;
+
+        const results = await BenchmarkResult.find(match)
+            .sort({ timestamp: -1 })
+            .limit(limit)
+            .select('model truncation scoring_method prompt_level prompt_category')
+            .lean();
+
+        const stats = {
+            total_analyzed: results.length,
+            response_truncated: 0,
+            input_to_judge_truncated: 0,
+            judge_truncated: 0,
+            by_model: {},
+            by_level: {},
+            examples: []
+        };
+
+        results.forEach(r => {
+            const t = r.truncation || {};
+
+            if (t.response_truncated) {
+                stats.response_truncated++;
+                if (stats.examples.length < 5) {
+                    stats.examples.push({
+                        type: 'response',
+                        model: r.model,
+                        level: r.prompt_level,
+                        tokens: t.response_tokens,
+                        limit: t.response_limit
+                    });
+                }
+            }
+            if (t.input_to_judge_truncated) {
+                stats.input_to_judge_truncated++;
+            }
+            if (t.judge_truncated) {
+                stats.judge_truncated++;
+                if (stats.examples.length < 10) {
+                    stats.examples.push({
+                        type: 'judge',
+                        model: r.model,
+                        level: r.prompt_level,
+                        judge_tokens: t.judge_tokens
+                    });
+                }
+            }
+
+            // Aggregate by model
+            if (!stats.by_model[r.model]) {
+                stats.by_model[r.model] = { response: 0, input: 0, judge: 0, total: 0 };
+            }
+            stats.by_model[r.model].total++;
+            if (t.response_truncated) stats.by_model[r.model].response++;
+            if (t.input_to_judge_truncated) stats.by_model[r.model].input++;
+            if (t.judge_truncated) stats.by_model[r.model].judge++;
+
+            // Aggregate by level
+            const level = r.prompt_level || 'unknown';
+            if (!stats.by_level[level]) {
+                stats.by_level[level] = { response: 0, input: 0, judge: 0, total: 0 };
+            }
+            stats.by_level[level].total++;
+            if (t.response_truncated) stats.by_level[level].response++;
+            if (t.input_to_judge_truncated) stats.by_level[level].input++;
+            if (t.judge_truncated) stats.by_level[level].judge++;
+        });
+
+        // Calculate percentages
+        stats.response_truncated_pct = stats.total_analyzed > 0
+            ? ((stats.response_truncated / stats.total_analyzed) * 100).toFixed(1) + '%'
+            : '0%';
+        stats.input_truncated_pct = stats.total_analyzed > 0
+            ? ((stats.input_to_judge_truncated / stats.total_analyzed) * 100).toFixed(1) + '%'
+            : '0%';
+        stats.judge_truncated_pct = stats.total_analyzed > 0
+            ? ((stats.judge_truncated / stats.total_analyzed) * 100).toFixed(1) + '%'
+            : '0%';
+
+        return stats;
     }
 
     /**

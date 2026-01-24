@@ -64,6 +64,9 @@ const BenchmarkAnalytics = (() => {
 
         // New compare UIs
         setupJudgeCompareUI();
+
+        // Truncation stats widget
+        setupTruncationWidget();
     }
 
     function restoreCompareSelections() {
@@ -1889,6 +1892,105 @@ const BenchmarkAnalytics = (() => {
         console.log(`📱 Mobile: ${isMobile}, Touch: ${isTouch}, Ultra-Wide: ${isUltraWide}`);
     }
 
+    /**
+     * Load and display truncation statistics
+     */
+    async function loadTruncationStats() {
+        const widget = document.getElementById('truncationStatsWidget');
+        const grid = document.getElementById('truncationStatsGrid');
+        const details = document.getElementById('truncationDetails');
+        if (!widget || !grid) return;
+
+        try {
+            const res = await fetch(`${BENCHMARK_API}/truncation-stats?limit=500`);
+            const json = await res.json();
+            if (json.status !== 'success') throw new Error(json.error);
+
+            const stats = json.data;
+            const hasIssues = stats.response_truncated > 0 ||
+                              stats.input_to_judge_truncated > 0 ||
+                              stats.judge_truncated > 0;
+
+            if (!hasIssues || stats.total_analyzed === 0) {
+                widget.style.display = 'none';
+                return;
+            }
+
+            widget.style.display = 'block';
+
+            // Determine severity color
+            const totalTruncPct = ((stats.response_truncated + stats.judge_truncated) / stats.total_analyzed) * 100;
+            let borderColor = 'rgba(241, 196, 15, 0.3)'; // warning yellow
+            let bgColor = 'rgba(241, 196, 15, 0.08)';
+            if (totalTruncPct > 10) {
+                borderColor = 'rgba(255, 107, 107, 0.4)';
+                bgColor = 'rgba(255, 107, 107, 0.1)';
+            }
+            widget.style.borderColor = borderColor;
+            widget.style.background = bgColor;
+
+            grid.innerHTML = `
+                <div style="text-align: center; padding: 8px; background: rgba(0,0,0,0.15); border-radius: 6px;">
+                    <div style="font-size: 1.4em; font-weight: 700; color: ${stats.response_truncated > 0 ? '#ff6b6b' : 'var(--text)'};">
+                        ${stats.response_truncated}
+                    </div>
+                    <div style="font-size: 0.75em; color: var(--muted);">Response Truncated</div>
+                    <div style="font-size: 0.7em; color: var(--muted);">${stats.response_truncated_pct}</div>
+                </div>
+                <div style="text-align: center; padding: 8px; background: rgba(0,0,0,0.15); border-radius: 6px;">
+                    <div style="font-size: 1.4em; font-weight: 700; color: ${stats.input_to_judge_truncated > 0 ? '#f1c40f' : 'var(--text)'};">
+                        ${stats.input_to_judge_truncated}
+                    </div>
+                    <div style="font-size: 0.75em; color: var(--muted);">Input to Judge Cut</div>
+                    <div style="font-size: 0.7em; color: var(--muted);">${stats.input_truncated_pct}</div>
+                </div>
+                <div style="text-align: center; padding: 8px; background: rgba(0,0,0,0.15); border-radius: 6px;">
+                    <div style="font-size: 1.4em; font-weight: 700; color: ${stats.judge_truncated > 0 ? '#ff6b6b' : 'var(--text)'};">
+                        ${stats.judge_truncated}
+                    </div>
+                    <div style="font-size: 0.75em; color: var(--muted);">Judge Truncated</div>
+                    <div style="font-size: 0.7em; color: var(--muted);">${stats.judge_truncated_pct}</div>
+                </div>
+                <div style="text-align: center; padding: 8px; background: rgba(0,0,0,0.15); border-radius: 6px;">
+                    <div style="font-size: 1.4em; font-weight: 700; color: var(--text);">
+                        ${stats.total_analyzed}
+                    </div>
+                    <div style="font-size: 0.75em; color: var(--muted);">Tests Analyzed</div>
+                </div>
+            `;
+
+            // Build tips based on issues
+            const tips = [];
+            if (stats.response_truncated > 0) {
+                tips.push('<i class="fas fa-lightbulb"></i> Increase <strong>Response Max Tokens</strong> in settings');
+            }
+            if (stats.judge_truncated > 0) {
+                tips.push('<i class="fas fa-exclamation-circle"></i> Increase <strong>Judge Max Tokens</strong> - judge output cut off!');
+            }
+            if (stats.input_to_judge_truncated > 0 && stats.input_to_judge_truncated > stats.total_analyzed * 0.2) {
+                tips.push('<i class="fas fa-info-circle"></i> Many responses exceed <strong>Judge Input Chars</strong> limit');
+            }
+
+            if (details) {
+                details.innerHTML = tips.length > 0
+                    ? tips.map(t => `<div style="margin-top: 4px;">${t}</div>`).join('')
+                    : '';
+            }
+
+        } catch (err) {
+            console.error('Failed to load truncation stats:', err);
+            widget.style.display = 'none';
+        }
+    }
+
+    function setupTruncationWidget() {
+        const refreshBtn = document.getElementById('truncationRefreshBtn');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', loadTruncationStats);
+        }
+        loadTruncationStats();
+    }
+
     // Public API
     return {
         init,
@@ -1897,7 +1999,8 @@ const BenchmarkAnalytics = (() => {
         loadActiveStats,
         loadTagStats,
         loadJudgeStats,
-        // loadCapabilityAnalysis removed - now in compare-insights.html
+        loadTruncationStats,
+        setupTruncationWidget,
         compareBatches,
         stopActiveMonitoring,
         filterByModelCategory,

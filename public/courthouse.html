@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgentX • The Courthouse</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/css/benchmark-analytics.css">
+    <style>
+        .courthouse-container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+
+        .courthouse-header {
+            margin-bottom: 32px;
+        }
+
+        .courthouse-header h1 {
+            font-size: 2.5em;
+            font-weight: 700;
+            margin: 0 0 8px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .courthouse-header h1 i {
+            color: var(--accent);
+        }
+
+        .courthouse-header p {
+            color: var(--muted);
+            font-size: 1.1em;
+            margin: 0;
+        }
+
+        .courthouse-header .eyebrow {
+            font-size: 0.85em;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--accent);
+            margin-bottom: 8px;
+        }
+
+        .section-card {
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+
+        .section-card h3 {
+            margin: 0 0 16px;
+            font-size: 1.2em;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .section-card h3 i {
+            color: var(--accent);
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+        }
+
+        .stat-card {
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            padding: 16px;
+            text-align: center;
+        }
+
+        .stat-card .stat-value {
+            font-size: 2em;
+            font-weight: 700;
+            color: var(--accent);
+        }
+
+        .stat-card .stat-label {
+            color: var(--muted);
+            font-size: 0.9em;
+            margin-top: 4px;
+        }
+
+        .table-container {
+            overflow-x: auto;
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .data-table th,
+        .data-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .data-table th {
+            background: rgba(0, 0, 0, 0.2);
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .data-table tbody tr:hover {
+            background: rgba(124, 240, 255, 0.03);
+        }
+
+        .chart-card {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+            padding: 16px;
+        }
+
+        .chart-empty {
+            text-align: center;
+            color: var(--muted);
+            padding: 20px;
+        }
+
+        .compare-chip-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .compare-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            background: rgba(124, 240, 255, 0.1);
+            border: 1px solid rgba(124, 240, 255, 0.3);
+            border-radius: 999px;
+            font-size: 0.85em;
+            color: var(--text);
+        }
+
+        .compare-chip .meta {
+            color: var(--muted);
+            font-size: 0.9em;
+        }
+
+        .compare-chip-remove {
+            background: none;
+            border: none;
+            color: var(--muted);
+            cursor: pointer;
+            padding: 0 4px;
+            font-size: 1.1em;
+            line-height: 1;
+        }
+
+        .compare-chip-remove:hover {
+            color: #e74c3c;
+        }
+
+        .capability-compare-grid {
+            display: grid;
+            grid-template-columns: 1.2fr 0.8fr;
+            gap: 16px;
+            align-items: stretch;
+        }
+
+        @media (max-width: 900px) {
+            .capability-compare-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 16px;
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text);
+            border: 1px solid var(--panel-border);
+            border-radius: 6px;
+            padding: 10px 16px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            text-decoration: none;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 0.85em;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="nav-container"></div>
+    <script src="/js/components/nav.js"></script>
+    <script src="/js/workspace.js"></script>
+    <script>injectNav('courthouse');</script>
+    <div class="bg-grid"></div>
+
+    <div class="courthouse-container">
+        <div class="courthouse-header">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div>
+                    <div class="eyebrow">AgentX • Judge Analytics</div>
+                    <h1><i class="fas fa-balance-scale"></i> The Courthouse</h1>
+                    <p>Performance metrics and analytics for LLM-as-Judge evaluations</p>
+                </div>
+                <div class="header-actions">
+                    <a href="benchmark.html" class="btn-secondary">
+                        <i class="fas fa-rocket"></i> Back to Benchmark
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Judge Stats Summary -->
+        <div class="section-card" id="judgeStatsContainer">
+            <h3><i class="fas fa-gavel"></i> Judge Performance Overview</h3>
+            <div class="stats-grid" id="judgeStatsGrid">
+                <!-- Populated by JS -->
+                <div class="stat-card">
+                    <div class="stat-value" id="statTotalEvaluations">-</div>
+                    <div class="stat-label">Total Evaluations</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="statActiveJudges">-</div>
+                    <div class="stat-label">Active Judges</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="statAvgLatency">-</div>
+                    <div class="stat-label">Avg Judge Latency</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="statOverallSuccess">-</div>
+                    <div class="stat-label">Overall Success Rate</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Judge Radar Compare -->
+        <div class="section-card" id="judgeCompareContainer">
+            <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px;">
+                <h3 style="margin: 0;"><i class="fas fa-gavel"></i> Judge Radar Compare</h3>
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <select id="judgeCompareSelect" style="padding: 8px 12px; border-radius: 6px; border: 1px solid var(--panel-border); background: rgba(0,0,0,0.2); color: var(--text); font-size: 0.9em; min-width: 320px;">
+                        <option value="">Loading judges...</option>
+                    </select>
+                    <button id="judgeAddCompareBtn" class="btn-secondary btn-sm">
+                        <i class="fas fa-plus"></i> Add
+                    </button>
+                    <button id="judgeAddTopCompareBtn" class="btn-secondary btn-sm" title="Adds the top judge from the leaderboard">
+                        <i class="fas fa-trophy"></i> Add Top
+                    </button>
+                    <button id="judgeClearCompareBtn" class="btn-secondary btn-sm">
+                        <i class="fas fa-trash"></i> Clear
+                    </button>
+                    <button id="judgeRefreshCompareBtn" class="btn-secondary btn-sm">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                </div>
+            </div>
+            <div style="color: var(--muted); font-size: 0.9em; margin-bottom: 14px;">
+                Compares <strong>judge@host</strong> performance across Speed, Reliability, Diligence, and Avg Score Given.
+            </div>
+
+            <div id="judgeCompareList" class="compare-chip-list" style="margin-bottom: 14px;"></div>
+
+            <div class="chart-card" style="margin: 0; padding: 18px;">
+                <div style="height: 320px;">
+                    <canvas id="judgeRadarChart"></canvas>
+                </div>
+                <div id="judgeRadarEmpty" class="chart-empty" style="display: none; margin-top: 10px;">Add judges to compare.</div>
+            </div>
+        </div>
+
+        <!-- Judge Leaderboard -->
+        <div class="section-card" id="judgeLeaderboardContainer">
+            <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h3 style="margin: 0;"><i class="fas fa-trophy"></i> Judge Leaderboard</h3>
+                <button class="btn-secondary btn-sm" onclick="window.CourthouseAnalytics.loadJudgeStats()">
+                    <i class="fas fa-sync-alt"></i> Refresh
+                </button>
+            </div>
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Judge Model</th>
+                            <th>Host</th>
+                            <th>Evaluations</th>
+                            <th>Avg Latency</th>
+                            <th>Success Rate</th>
+                            <th>Avg Score Given</th>
+                        </tr>
+                    </thead>
+                    <tbody id="judgeLeaderboardBody">
+                        <tr><td colspan="6" style="text-align: center; padding: 20px; color: var(--muted);">Loading judge data...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Judge Breakdown (By Level / By Model) -->
+        <div class="section-card" id="judgeBreakdownContainer">
+            <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px;">
+                <h3 style="margin: 0;"><i class="fas fa-chart-bar"></i> Judge Breakdown</h3>
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <span id="judgeBreakdownStatus" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px; border: 1px solid var(--panel-border); background: rgba(255,255,255,0.03); color: var(--muted); font-size: 0.85em;">
+                        <span style="width: 8px; height: 8px; border-radius: 999px; background: var(--muted);"></span>
+                        <span>API: idle</span>
+                    </span>
+                    <select id="judgeBreakdownSelect" style="padding: 8px 12px; border-radius: 6px; border: 1px solid var(--panel-border); background: rgba(0,0,0,0.2); color: var(--text); font-size: 0.9em; min-width: 320px;">
+                        <option value="">Loading judges...</option>
+                    </select>
+                    <select id="judgeBreakdownGroupBy" style="padding: 8px 12px; border-radius: 6px; border: 1px solid var(--panel-border); background: rgba(0,0,0,0.2); color: var(--text); font-size: 0.9em;">
+                        <option value="level" selected>By Level</option>
+                        <option value="model">By Model Tested</option>
+                    </select>
+                    <select id="judgeBreakdownSort" style="padding: 8px 12px; border-radius: 6px; border: 1px solid var(--panel-border); background: rgba(0,0,0,0.2); color: var(--text); font-size: 0.9em;">
+                        <option value="count" selected>Sort: Evaluations</option>
+                        <option value="latency">Sort: Judge Latency</option>
+                        <option value="tokens">Sort: Test Tokens</option>
+                        <option value="success">Sort: Success Rate</option>
+                    </select>
+                    <button id="judgeBreakdownRefreshBtn" class="btn-secondary btn-sm">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                </div>
+            </div>
+            <div style="color: var(--muted); font-size: 0.9em; margin-bottom: 14px;">
+                Helps confirm whether higher judge latency is driven by harder prompts (levels) or longer model outputs (tokens).
+            </div>
+
+            <div class="capability-compare-grid" style="margin-bottom: 16px;">
+                <div class="chart-card" style="margin: 0; padding: 18px;">
+                    <div style="height: 320px;">
+                        <canvas id="judgeBreakdownChart"></canvas>
+                    </div>
+                    <div id="judgeBreakdownChartEmpty" class="chart-empty" style="display: none; margin-top: 10px;">Select a judge to view breakdown.</div>
+                </div>
+                <div class="chart-card" style="margin: 0; padding: 18px;">
+                    <div id="judgeBreakdownInsights" style="height: 100%;"></div>
+                </div>
+            </div>
+            <div class="table-container">
+                <table class="data-table">
+                    <thead id="judgeBreakdownHead">
+                        <tr>
+                            <th>Group</th>
+                            <th>Evaluations</th>
+                            <th>Avg Judge Latency</th>
+                            <th>Success Rate</th>
+                            <th>Avg Score Given</th>
+                            <th>Avg Test Tokens</th>
+                        </tr>
+                    </thead>
+                    <tbody id="judgeBreakdownBody">
+                        <tr><td colspan="6" style="text-align: center; padding: 20px; color: var(--muted);">Loading breakdown...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Courthouse Analytics Module -->
+    <script type="module" src="/js/courthouse-analytics.js"></script>
+
+</body>
+</html>

@@ -40,6 +40,7 @@ router.get('/config', (req, res) => {
                 concurrency: 2,
                 judge_same_host: false
             },
+            execution_config: benchmarkService.getExecutionConfigDefaults(),
             scoring_configs: SCORING_CONFIGS
         }
     });
@@ -382,7 +383,7 @@ router.get('/prompts', async (req, res) => {
  * Start a batch benchmark test with optional quality scoring - workspace-aware
  */
 router.post('/batch', optionalWorkspaceContext, async (req, res) => {
-    const { host, models, levels, run_name, quality_scoring, judge_config, execution_mode } = req.body;
+    const { host, models, levels, run_name, quality_scoring, judge_config, execution_config, execution_mode } = req.body;
 
     // Validation
     if (!host || !models || !Array.isArray(models) || !levels || !Array.isArray(levels)) {
@@ -428,6 +429,7 @@ router.post('/batch', optionalWorkspaceContext, async (req, res) => {
             run_name,
             quality_scoring,
             judge_config,
+            execution_config,
             execution_mode: execution_mode || 'latency', // Default to latency mode
             workspaceId: req.workspace ? req.workspace._id : null
         });
@@ -763,6 +765,32 @@ router.get('/judge-breakdown', async (req, res) => {
         });
     } catch (err) {
         logger.error('Failed to fetch judge breakdown', { error: err.message });
+        res.status(500).json({ status: 'error', error: err.message });
+    }
+});
+
+/**
+ * GET /api/benchmark/truncation-stats
+ * Get truncation statistics for diagnostics
+ * Query params:
+ *  - batch_id: optional batch ID to filter
+ *  - limit: max results to analyze (default 1000)
+ */
+router.get('/truncation-stats', async (req, res) => {
+    try {
+        const { batch_id, limit } = req.query;
+
+        const data = await benchmarkService.getTruncationStats({
+            batch_id: batch_id || null,
+            limit: limit ? parseInt(limit, 10) : 1000
+        });
+
+        res.json({
+            status: 'success',
+            data
+        });
+    } catch (err) {
+        logger.error('Failed to fetch truncation stats', { error: err.message });
         res.status(500).json({ status: 'error', error: err.message });
     }
 });

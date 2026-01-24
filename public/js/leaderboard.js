@@ -44,8 +44,8 @@ const PROFILE_WEIGHTS = {
     },
     reasoning: {
         title: 'Reasoning Profile',
-        quality: 60,
-        speed: 20,
+        quality: 70,
+        speed: 10,
         reliability: 20,
         note: 'Optimized for complex analysis & problem-solving where accuracy trumps speed'
     },
@@ -73,6 +73,13 @@ let qualityData = [];      // Calculated from /api/benchmark/results
 let rawResults = [];       // Raw results for quality calculations
 let charts = {};
 
+// Sorting and filtering state
+let currentCategoryFilter = '';  // Model category filter
+let currentPerfSort = 'composite';
+let currentPerfSortDir = 'desc';
+let currentQualSort = 'generalist';
+let currentQualSortDir = 'desc';
+
 // ============================================================================
 // INITIALIZATION
 // ============================================================================
@@ -91,12 +98,215 @@ async function refreshAllData() {
             loadQualityData()
         ]);
         updateStats();
+        updateBestOverallBanner(currentCategoryFilter);
         initCharts();  // Create charts first
         renderPerformanceBoard();  // Then render (which updates charts)
         renderQualityBoard();
     } catch (err) {
         console.error('Failed to load data:', err);
         showError(err.message);
+    }
+}
+
+// ============================================================================
+// CATEGORY FILTERING & SORTING
+// ============================================================================
+
+/**
+ * Switch category filter tab
+ */
+function switchCategoryTab(category) {
+    currentCategoryFilter = category;
+
+    // Update tab styling
+    document.querySelectorAll('.category-tab').forEach(tab => {
+        const isActive = tab.dataset.category === category;
+        tab.classList.toggle('active', isActive);
+    });
+
+    // Update best overall banner
+    updateBestOverallBanner(category);
+
+    // Re-render both boards with new filter
+    renderPerformanceBoard();
+    renderQualityBoard();
+}
+
+/**
+ * Update the Best Overall banner based on current category filter
+ */
+function updateBestOverallBanner(category) {
+    const profile = document.getElementById('perfProfile')?.value || 'balanced';
+
+    // Get filtered data
+    let data = performanceData.map(model => ({
+        ...model,
+        calculated_composite: calculateCompositeScore(model, profile)
+    }));
+
+    if (category) {
+        data = filterByCategory(data, 'recommended_category');
+    }
+
+    const modelEl = document.getElementById('bestOverallModel');
+    const scoreEl = document.getElementById('bestOverallScore');
+    const subtitleEl = document.getElementById('bestOverallSubtitle');
+
+    if (data.length === 0) {
+        if (modelEl) modelEl.textContent = 'No models';
+        if (scoreEl) scoreEl.textContent = '';
+        if (subtitleEl) subtitleEl.textContent = category ? `No models in ${category} category` : 'Run benchmarks to see rankings';
+        return;
+    }
+
+    // Find best model
+    const best = data.reduce((a, b) => a.calculated_composite > b.calculated_composite ? a : b);
+
+    if (modelEl) modelEl.textContent = best.model;
+    if (scoreEl) scoreEl.textContent = `Score: ${best.calculated_composite.toFixed(1)}`;
+
+    // Update subtitle based on category
+    if (category) {
+        const catConfig = getCategoryConfig(category);
+        if (subtitleEl) subtitleEl.textContent = `Top ${catConfig.label} model by composite score`;
+    } else {
+        if (subtitleEl) subtitleEl.textContent = 'All models ranked by composite score';
+    }
+}
+
+/**
+ * Sort Performance Board by column
+ */
+function sortPerformanceBy(column) {
+    // Toggle direction if same column, otherwise default to desc
+    if (currentPerfSort === column) {
+        currentPerfSortDir = currentPerfSortDir === 'desc' ? 'asc' : 'desc';
+    } else {
+        currentPerfSort = column;
+        currentPerfSortDir = (column === 'latency' || column === 'model') ? 'asc' : 'desc';
+    }
+
+    // Update header icons
+    updateSortIcons('perfTable', currentPerfSort, currentPerfSortDir);
+
+    renderPerformanceBoard();
+}
+
+/**
+ * Sort Quality Board by column
+ */
+function sortQualityBy(column) {
+    if (currentQualSort === column) {
+        currentQualSortDir = currentQualSortDir === 'desc' ? 'asc' : 'desc';
+    } else {
+        currentQualSort = column;
+        currentQualSortDir = column === 'model' ? 'asc' : 'desc';
+    }
+
+    updateSortIcons('qualTable', currentQualSort, currentQualSortDir);
+
+    renderQualityBoard();
+}
+
+/**
+ * Update sort icons in table header
+ */
+function updateSortIcons(tableId, sortColumn, sortDir) {
+    const table = document.getElementById(tableId);
+    if (!table) return;
+
+    table.querySelectorAll('th.sortable').forEach(th => {
+        const col = th.dataset.sort;
+        const icon = th.querySelector('i');
+        if (!icon) return;
+
+        if (col === sortColumn) {
+            th.classList.add('active');
+            icon.className = sortDir === 'desc' ? 'fas fa-sort-down' : 'fas fa-sort-up';
+        } else {
+            th.classList.remove('active');
+            icon.className = 'fas fa-sort';
+        }
+    });
+}
+
+/**
+ * Filter data by model category
+ */
+function filterByCategory(data, categoryField = 'recommended_category') {
+    if (!currentCategoryFilter) return data;
+    return data.filter(m => (m[categoryField] || '').toLowerCase() === currentCategoryFilter.toLowerCase());
+}
+
+// ============================================================================
+// RESET FUNCTIONS
+// ============================================================================
+
+/**
+ * Reset all benchmark tests
+ */
+async function resetAllTests() {
+    const first = confirm('Reset ALL benchmark tests? This will clear the leaderboard and charts.');
+    if (!first) return;
+    const second = confirm('Are you ABSOLUTELY sure? This cannot be undone.');
+    if (!second) return;
+
+    const btn = document.getElementById('resetAllBtn');
+    try {
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Resetting...';
+        }
+
+        const res = await fetch('/api/benchmark/results', { method: 'DELETE' });
+        if (!res.ok) {
+            const json = await res.json().catch(() => null);
+            const msg = json?.error || json?.message || `HTTP ${res.status}`;
+            throw new Error(msg);
+        }
+
+        await refreshAllData();
+    } catch (err) {
+        console.error('Failed to reset benchmark results:', err);
+        alert(`Failed to reset results: ${err.message}`);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-trash"></i> Reset All';
+        }
+    }
+}
+
+/**
+ * Reset only failed benchmark tests
+ */
+async function resetFailedTests() {
+    const first = confirm('Reset FAILED benchmark tests only? Successful results will be kept.');
+    if (!first) return;
+
+    const btn = document.getElementById('resetFailedBtn');
+    try {
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Resetting...';
+        }
+
+        const res = await fetch('/api/benchmark/results?status=failed', { method: 'DELETE' });
+        if (!res.ok) {
+            const json = await res.json().catch(() => null);
+            const msg = json?.error || json?.message || `HTTP ${res.status}`;
+            throw new Error(msg);
+        }
+
+        await refreshAllData();
+    } catch (err) {
+        console.error('Failed to reset failed results:', err);
+        alert(`Failed to reset failed results: ${err.message}`);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-redo"></i> Reset Failed';
+        }
     }
 }
 
@@ -311,7 +521,6 @@ function calculateCompositeScore(model, profile) {
 }
 
 function renderPerformanceBoard() {
-    const sortBy = document.getElementById('perfSortBy').value;
     const profile = document.getElementById('perfProfile')?.value || 'balanced';
 
     // Calculate composite scores based on selected profile
@@ -320,20 +529,43 @@ function renderPerformanceBoard() {
         calculated_composite: calculateCompositeScore(model, profile)
     }));
 
-    // Sort
+    // Apply category filter
+    data = filterByCategory(data, 'recommended_category');
+
+    // Calculate offenders and best overall (from filtered data)
+    const offenders = calculateOffenders(data);
+    const bestOverall = data.length > 0 ? data.reduce((a, b) => a.calculated_composite > b.calculated_composite ? a : b) : null;
+
+    // Sort using state variables
+    const sortMultiplier = currentPerfSortDir === 'desc' ? 1 : -1;
     data.sort((a, b) => {
-        switch (sortBy) {
+        let comparison = 0;
+        switch (currentPerfSort) {
             case 'composite':
-                return b.calculated_composite - a.calculated_composite;
+                comparison = b.calculated_composite - a.calculated_composite;
+                break;
             case 'quality':
-                return parseFloat(b.avg_quality || 0) - parseFloat(a.avg_quality || 0);
+                comparison = parseFloat(b.avg_quality || 0) - parseFloat(a.avg_quality || 0);
+                break;
             case 'latency':
-                return (a.avg_latency || 99999) - (b.avg_latency || 99999);
+                // Latency: lower is better, so reverse default
+                comparison = (a.avg_latency || 99999) - (b.avg_latency || 99999);
+                return currentPerfSortDir === 'desc' ? comparison : -comparison;
             case 'tokens':
-                return parseFloat(b.avg_tokens_per_sec || 0) - parseFloat(a.avg_tokens_per_sec || 0);
+                comparison = parseFloat(b.avg_tokens_per_sec || 0) - parseFloat(a.avg_tokens_per_sec || 0);
+                break;
+            case 'reliability':
+                const relA = ((a.tests || 1) - (a.failed_tests || 0)) / (a.tests || 1);
+                const relB = ((b.tests || 1) - (b.failed_tests || 0)) / (b.tests || 1);
+                comparison = relB - relA;
+                break;
+            case 'model':
+                comparison = (a.model || '').localeCompare(b.model || '');
+                return currentPerfSortDir === 'asc' ? comparison : -comparison;
             default:
                 return 0;
         }
+        return comparison * sortMultiplier;
     });
 
     const tbody = document.getElementById('perfTableBody');
@@ -353,13 +585,19 @@ function renderPerformanceBoard() {
         const reliabilityPct = Math.round(((tests - failed) / tests) * 100);
 
         const hostName = model.host ? extractHostName(model.host) : '';
+        const levelStats = model.level_stats || {};
+        const levelStarsHtml = buildLevelStars(levelStats);
+        const isBestOverall = bestOverall && model.model === bestOverall.model && model.host === bestOverall.host;
+        const badgesHtml = buildModelBadges(model, offenders, isBestOverall);
 
         return `
-            <tr class="${idx < 3 ? 'top-rank rank-' + (idx + 1) : ''}" onclick="showModelDetail('${escapeHtml(model.model)}', 'performance')">
+            <tr class="${idx < 3 ? 'top-rank rank-' + (idx + 1) : ''} ${isBestOverall ? 'best-overall' : ''}" onclick="showModelDetail('${escapeHtml(model.model)}', 'performance')">
                 <td class="rank-col">${getRankDisplay(idx)}</td>
                 <td class="model-col">
-                    <span class="model-name">${escapeHtml(model.model)}</span>
+                    <span class="model-name">${isBestOverall ? '👑 ' : ''}${escapeHtml(model.model)}</span>
                     ${hostName ? `<span class="model-host">${escapeHtml(hostName)}</span>` : ''}
+                    <div class="model-badges">${badgesHtml}</div>
+                    <div class="level-stars">${levelStarsHtml}</div>
                 </td>
                 <td class="score-col ${getScoreClass(quality, 10)}">${quality.toFixed(1)}</td>
                 <td class="latency-col">${latency.toLocaleString()}ms</td>
@@ -379,28 +617,47 @@ function renderPerformanceBoard() {
 // ============================================================================
 
 function renderQualityBoard() {
-    const sortBy = document.getElementById('qualSortBy').value;
-    const minCoverage = parseInt(document.getElementById('qualMinCoverage').value) || 0;
+    const minCoverage = parseInt(document.getElementById('qualMinCoverage')?.value, 10) || 0;
 
     let data = [...qualityData];
+
+    // Apply category filter - look up category from performance data
+    if (currentCategoryFilter) {
+        data = data.filter(m => {
+            // Find matching model in performance data to get its category
+            const perfModel = performanceData.find(p => p.model === m.name && p.host === m.host);
+            const category = perfModel?.recommended_category || '';
+            return category.toLowerCase() === currentCategoryFilter.toLowerCase();
+        });
+    }
 
     // Filter by coverage
     data = data.filter(m => m.coverage >= minCoverage);
 
-    // Sort
+    // Sort using state variables
+    const sortMultiplier = currentQualSortDir === 'desc' ? 1 : -1;
     data.sort((a, b) => {
-        switch (sortBy) {
+        let comparison = 0;
+        switch (currentQualSort) {
             case 'generalist':
-                return b.generalistScore - a.generalistScore;
+                comparison = b.generalistScore - a.generalistScore;
+                break;
             case 'coverage':
-                return b.coverage - a.coverage;
+                comparison = b.coverage - a.coverage;
+                break;
             case 'consistency':
-                return b.consistencyScore - a.consistencyScore;
+                comparison = b.consistencyScore - a.consistencyScore;
+                break;
             case 'avgScore':
-                return b.avgScore - a.avgScore;
+                comparison = b.avgScore - a.avgScore;
+                break;
+            case 'model':
+                comparison = (a.name || '').localeCompare(b.name || '');
+                return currentQualSortDir === 'asc' ? comparison : -comparison;
             default:
                 return 0;
         }
+        return comparison * sortMultiplier;
     });
 
     const tbody = document.getElementById('qualTableBody');
@@ -458,83 +715,87 @@ function renderQualityBoard() {
 // ============================================================================
 
 function initCharts() {
-    // Performance Composite Chart
-    const compositeCtx = document.getElementById('perfCompositeChart');
-    if (compositeCtx) {
-        if (charts.composite) charts.composite.destroy();
-        charts.composite = new Chart(compositeCtx, {
-            type: 'bar',
-            data: {
-                labels: [],
-                datasets: [{
-                    label: 'Composite Score',
-                    data: [],
-                    backgroundColor: 'rgba(241, 196, 15, 0.7)',
-                    borderColor: 'rgba(241, 196, 15, 1)',
-                    borderWidth: 1
-                }]
+    const chartConfig = (label, color) => ({
+        type: 'bar',
+        data: {
+            labels: [],
+            datasets: [{
+                label,
+                data: [],
+                backgroundColor: color.replace('1)', '0.7)'),
+                borderColor: color,
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false }
             },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false },
-                    title: { display: true, text: 'Composite Score (Higher = Better)' }
-                },
-                scales: {
-                    y: { beginAtZero: false, grace: '15%' }
-                }
+            scales: {
+                y: { beginAtZero: false, grace: '15%' }
             }
-        });
+        }
+    });
+
+    // Latency Chart
+    const latencyCtx = document.getElementById('perfLatencyChart');
+    if (latencyCtx) {
+        if (charts.latency) charts.latency.destroy();
+        charts.latency = new Chart(latencyCtx, chartConfig('Latency (ms)', 'rgba(231, 76, 60, 1)'));
     }
 
-    // Performance Quality Chart
+    // Tokens/sec Chart
+    const tokensCtx = document.getElementById('perfTokensChart');
+    if (tokensCtx) {
+        if (charts.tokens) charts.tokens.destroy();
+        charts.tokens = new Chart(tokensCtx, chartConfig('Tokens/sec', 'rgba(52, 152, 219, 1)'));
+    }
+
+    // Quality Chart
     const qualityCtx = document.getElementById('perfQualityChart');
     if (qualityCtx) {
         if (charts.quality) charts.quality.destroy();
-        charts.quality = new Chart(qualityCtx, {
-            type: 'bar',
-            data: {
-                labels: [],
-                datasets: [{
-                    label: 'Quality Score',
-                    data: [],
-                    backgroundColor: 'rgba(46, 204, 113, 0.7)',
-                    borderColor: 'rgba(46, 204, 113, 1)',
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false },
-                    title: { display: true, text: 'Quality Score (Higher = Better)' }
-                },
-                scales: {
-                    y: { beginAtZero: false, grace: '15%' }
-                }
-            }
-        });
+        charts.quality = new Chart(qualityCtx, chartConfig('Quality Score', 'rgba(46, 204, 113, 1)'));
     }
 
-    // Don't call updatePerformanceCharts here - renderPerformanceBoard() will call it with calculated data
+    // Composite Chart
+    const compositeCtx = document.getElementById('perfCompositeChart');
+    if (compositeCtx) {
+        if (charts.composite) charts.composite.destroy();
+        charts.composite = new Chart(compositeCtx, chartConfig('Composite Score', 'rgba(241, 196, 15, 1)'));
+    }
 }
 
 function updatePerformanceCharts(data) {
-    if (!charts.composite || !charts.quality) return;
+    const top10 = data.slice(0, 10);
+    const labels = top10.map(m => truncateLabel(m.model));
 
-    const labels = data.slice(0, 10).map(m => truncateLabel(m.model));
-    const compositeScores = data.slice(0, 10).map(m => m.calculated_composite || 0);
-    const qualityScores = data.slice(0, 10).map(m => parseFloat(m.avg_quality) || 0);
+    // Update each chart if it exists
+    if (charts.latency) {
+        charts.latency.data.labels = labels;
+        charts.latency.data.datasets[0].data = top10.map(m => m.avg_latency || 0);
+        charts.latency.update();
+    }
 
-    charts.composite.data.labels = labels;
-    charts.composite.data.datasets[0].data = compositeScores;
-    charts.composite.update();
+    if (charts.tokens) {
+        charts.tokens.data.labels = labels;
+        charts.tokens.data.datasets[0].data = top10.map(m => parseFloat(m.avg_tokens_per_sec) || 0);
+        charts.tokens.update();
+    }
 
-    charts.quality.data.labels = labels;
-    charts.quality.data.datasets[0].data = qualityScores;
-    charts.quality.update();
+    if (charts.quality) {
+        charts.quality.data.labels = labels;
+        charts.quality.data.datasets[0].data = top10.map(m => parseFloat(m.avg_quality) || 0);
+        charts.quality.update();
+    }
+
+    if (charts.composite) {
+        charts.composite.data.labels = labels;
+        charts.composite.data.datasets[0].data = top10.map(m => m.calculated_composite || 0);
+        charts.composite.update();
+    }
 }
 
 function truncateLabel(label) {
@@ -577,48 +838,66 @@ function showModelDetail(modelName, board) {
         const model = performanceData.find(m => m.model === modelName);
         if (!model) return;
 
+        const tests = model.tests || 1;
+        const failed = model.failed_tests || 0;
+        const reliabilityPct = Math.round(((tests - failed) / tests) * 100);
+
         modalBody.innerHTML = `
             <div class="detail-grid">
-                <div class="detail-item">
-                    <span class="detail-label">Composite Score</span>
-                    <span class="detail-value">${parseFloat(model.avg_composite || 0).toFixed(1)}</span>
+                <div class="detail-item" title="Weighted combination of Quality, Speed, and Reliability based on selected profile">
+                    <span class="detail-label">Composite Score <i class="fas fa-info-circle tip-icon"></i></span>
+                    <span class="detail-value highlight">${parseFloat(model.avg_composite || 0).toFixed(1)}</span>
                 </div>
-                <div class="detail-item">
-                    <span class="detail-label">Quality Score</span>
+                <div class="detail-item" title="Average quality score from judge evaluations (0-10 scale)">
+                    <span class="detail-label">Quality Score <i class="fas fa-info-circle tip-icon"></i></span>
                     <span class="detail-value">${parseFloat(model.avg_quality || 0).toFixed(1)}</span>
                 </div>
-                <div class="detail-item">
-                    <span class="detail-label">Avg Latency</span>
+                <div class="detail-item" title="Average time from request to first response. Lower is better for interactive use.">
+                    <span class="detail-label">Avg Latency <i class="fas fa-info-circle tip-icon"></i></span>
                     <span class="detail-value">${(model.avg_latency || 0).toLocaleString()}ms</span>
                 </div>
-                <div class="detail-item">
-                    <span class="detail-label">Tokens/sec</span>
+                <div class="detail-item" title="Output generation speed. Higher is better for long responses.">
+                    <span class="detail-label">Tokens/sec <i class="fas fa-info-circle tip-icon"></i></span>
                     <span class="detail-value">${parseFloat(model.avg_tokens_per_sec || 0).toFixed(1)}</span>
                 </div>
-                <div class="detail-item">
-                    <span class="detail-label">Total Tests</span>
-                    <span class="detail-value">${model.tests || 0}</span>
+                <div class="detail-item" title="Success rate: ${tests - failed} successful out of ${tests} total tests">
+                    <span class="detail-label">Reliability <i class="fas fa-info-circle tip-icon"></i></span>
+                    <span class="detail-value">${reliabilityPct}%</span>
                 </div>
                 <div class="detail-item">
-                    <span class="detail-label">Failed Tests</span>
-                    <span class="detail-value">${model.failed_tests || 0}</span>
+                    <span class="detail-label">Tests (Pass/Fail)</span>
+                    <span class="detail-value">${tests - failed} / ${failed}</span>
                 </div>
             </div>
-            <h4>Profile Scores</h4>
+
+            <h4>Profile Scores <span class="tip-text" title="Pre-calculated composite scores for different use case profiles">ⓘ</span></h4>
+            <div class="info-box">
+                <span class="info-note">Each profile weights Quality, Speed, and Reliability differently for specific use cases.</span>
+            </div>
             <div class="detail-grid">
-                <div class="detail-item">
-                    <span class="detail-label">Interactive</span>
+                <div class="detail-item" title="Optimized for chatbots & real-time apps: Quality 25%, Speed 55%, Reliability 20%">
+                    <span class="detail-label">Interactive <i class="fas fa-info-circle tip-icon"></i></span>
                     <span class="detail-value">${parseFloat(model.interactive_score || 0).toFixed(1)}</span>
                 </div>
-                <div class="detail-item">
-                    <span class="detail-label">Reasoning</span>
+                <div class="detail-item" title="Optimized for analysis & problem-solving: Quality 60%, Speed 20%, Reliability 20%">
+                    <span class="detail-label">Reasoning <i class="fas fa-info-circle tip-icon"></i></span>
                     <span class="detail-value">${parseFloat(model.reasoning_score || 0).toFixed(1)}</span>
                 </div>
-                <div class="detail-item">
-                    <span class="detail-label">Coding</span>
+                <div class="detail-item" title="Balanced for code generation: Quality 45%, Speed 35%, Reliability 20%">
+                    <span class="detail-label">Coding <i class="fas fa-info-circle tip-icon"></i></span>
                     <span class="detail-value">${parseFloat(model.coding_score || 0).toFixed(1)}</span>
                 </div>
             </div>
+
+            ${model.host ? `
+            <h4>Host Information</h4>
+            <div class="info-box">
+                <div class="info-row">
+                    <span class="info-label">Host:</span>
+                    <span class="info-value">${extractHostName(model.host)}</span>
+                </div>
+            </div>
+            ` : ''}
         `;
     } else {
         const model = qualityData.find(m => m.name === modelName);
@@ -661,33 +940,33 @@ function showModelDetail(modelName, board) {
 
         modalBody.innerHTML = `
             <div class="detail-grid">
-                <div class="detail-item">
-                    <span class="detail-label">Generalist Score</span>
+                <div class="detail-item" title="Final calculated score combining weighted performance, coverage penalty, and consistency bonus">
+                    <span class="detail-label">Generalist Score <i class="fas fa-info-circle tip-icon"></i></span>
                     <span class="detail-value highlight">${model.generalistScore.toFixed(1)}</span>
                 </div>
-                <div class="detail-item">
-                    <span class="detail-label">Coverage</span>
+                <div class="detail-item" title="Percentage of the 12 task categories this model has been tested on. Higher coverage = more reliable ranking.">
+                    <span class="detail-label">Coverage <i class="fas fa-info-circle tip-icon"></i></span>
                     <span class="detail-value">${model.coverage}%</span>
                 </div>
-                <div class="detail-item">
-                    <span class="detail-label">Consistency</span>
+                <div class="detail-item" title="How consistent the model performs across categories. Lower standard deviation (σ) = more predictable performance.">
+                    <span class="detail-label">Consistency <i class="fas fa-info-circle tip-icon"></i></span>
                     <span class="detail-value">${model.consistencyScore}%</span>
                     <span class="detail-sub">σ = ${model.stdDev}</span>
                 </div>
-                <div class="detail-item">
+                <div class="detail-item" title="Total number of benchmark tests run for this model">
                     <span class="detail-label">Total Tests</span>
                     <span class="detail-value">${model.totalTests}</span>
                 </div>
             </div>
 
-            <h4>Tests by Difficulty Level</h4>
+            <h4>Tests by Difficulty Level <span class="tip-text" title="Distribution of tests across difficulty levels 1-10. Green=easy, Yellow=medium, Red=hard, Purple=extreme">ⓘ</span></h4>
             <div class="level-distribution">
                 ${levelBars || '<span class="no-data">No level data</span>'}
             </div>
 
             <div class="info-box">
                 <div class="info-row">
-                    <span class="info-label">Unweighted Avg (${testedCats} categories):</span>
+                    <span class="info-label" title="Simple arithmetic mean of scores, treating all categories equally regardless of their assigned weights">Unweighted Avg (${testedCats} categories): <i class="fas fa-info-circle tip-icon"></i></span>
                     <span class="info-value">${model.avgScore.toFixed(1)}</span>
                 </div>
                 <span class="info-note">Simple mean across tested categories, ignoring weights</span>
@@ -695,7 +974,7 @@ function showModelDetail(modelName, board) {
 
             <div class="info-box consistency-info">
                 <div class="info-row">
-                    <span class="info-label">Standard Deviation (σ):</span>
+                    <span class="info-label" title="Statistical measure of how much scores vary between categories. Lower = more consistent performance.">Standard Deviation (σ): <i class="fas fa-info-circle tip-icon"></i></span>
                     <span class="info-value">${model.stdDev}</span>
                 </div>
                 <span class="info-note">
@@ -705,37 +984,37 @@ function showModelDetail(modelName, board) {
                 </span>
             </div>
 
-            <h4>Score Breakdown</h4>
+            <h4>Score Breakdown <span class="tip-text" title="How the final Generalist Score is calculated from components">ⓘ</span></h4>
             <div class="formula-breakdown">
-                <div class="formula-line">
-                    <span>Weighted Sum:</span>
+                <div class="formula-line" title="Sum of (category_score × category_weight) for all tested categories. Core component of the generalist score.">
+                    <span>Weighted Sum: <i class="fas fa-info-circle tip-icon"></i></span>
                     <span class="formula-value">+${model.weightedSum.toFixed(1)}</span>
                 </div>
                 ${model.coveragePenalty > 0 ? `
-                    <div class="formula-line penalty">
-                        <span>Coverage Penalty:</span>
+                    <div class="formula-line penalty" title="Penalty for missing category coverage. Max penalty is -20 points. Formula: (1 - coverage%) × 20. Test more categories to reduce this!">
+                        <span>Coverage Penalty: <i class="fas fa-info-circle tip-icon"></i></span>
                         <span class="formula-value">-${model.coveragePenalty.toFixed(1)}</span>
                     </div>
                 ` : ''}
                 ${model.consistencyBonus > 0 ? `
-                    <div class="formula-line bonus">
-                        <span>Consistency Bonus:</span>
+                    <div class="formula-line bonus" title="Bonus awarded for consistent performance across categories. Earned when standard deviation (σ) is less than 10.">
+                        <span>Consistency Bonus: <i class="fas fa-info-circle tip-icon"></i></span>
                         <span class="formula-value">+${model.consistencyBonus}</span>
                     </div>
                 ` : ''}
-                <div class="formula-line total">
+                <div class="formula-line total" title="Weighted Sum - Coverage Penalty + Consistency Bonus">
                     <span><strong>Final Score:</strong></span>
                     <span class="formula-value"><strong>${model.generalistScore.toFixed(1)}</strong></span>
                 </div>
             </div>
 
-            <h4>Category Performance</h4>
+            <h4>Category Performance <span class="tip-text" title="Breakdown by task category showing score, assigned weight, and contribution to final score">ⓘ</span></h4>
             <div class="category-breakdown">
                 <div class="category-header">
-                    <span>Category</span>
-                    <span>Score</span>
-                    <span>Weight</span>
-                    <span>Contrib</span>
+                    <span title="Task category type">Category</span>
+                    <span title="Average quality score (0-10) in this category">Score</span>
+                    <span title="How much this category contributes to the total (weights sum to 100%)">Weight</span>
+                    <span title="Actual points contributed: score × weight">Contrib</span>
                 </div>
                 ${categoryRows}
             </div>
@@ -841,6 +1120,139 @@ function extractHostName(hostUrl) {
     if (hostUrl.includes('localhost') || hostUrl.includes('127.0.0.1')) return 'Local';
     // Fallback: strip protocol and port
     return hostUrl.replace('http://', '').replace('https://', '').replace(':11434', '');
+}
+
+// ============================================================================
+// BADGES (Offenders, Best Overall, Categories)
+// ============================================================================
+
+function calculateOffenders(data) {
+    if (!data || data.length === 0) return {};
+
+    // Find worst performers
+    const withLatency = data.filter(m => m.avg_latency > 0);
+    const withTps = data.filter(m => parseFloat(m.avg_tokens_per_sec) > 0);
+    const withQuality = data.filter(m => parseFloat(m.avg_quality) > 0);
+    const withFailures = data.filter(m => (m.failed_tests || 0) > 0);
+
+    return {
+        slowest: withLatency.length ? withLatency.reduce((a, b) => a.avg_latency > b.avg_latency ? a : b) : null,
+        lowestTps: withTps.length ? withTps.reduce((a, b) => parseFloat(a.avg_tokens_per_sec) < parseFloat(b.avg_tokens_per_sec) ? a : b) : null,
+        lowestQuality: withQuality.length ? withQuality.reduce((a, b) => parseFloat(a.avg_quality) < parseFloat(b.avg_quality) ? a : b) : null,
+        mostFailures: withFailures.length ? withFailures.reduce((a, b) => (a.failed_tests || 0) > (b.failed_tests || 0) ? a : b) : null
+    };
+}
+
+function buildModelBadges(model, offenders, isBestOverall) {
+    let badges = '';
+
+    // Best Overall Crown
+    if (isBestOverall) {
+        badges += `<span class="badge badge-best" title="👑 Best Overall Composite Score">👑 BEST</span>`;
+    }
+
+    // Category badge from recommended_category
+    if (model.recommended_category) {
+        const cat = model.recommended_category;
+        const catConfig = getCategoryConfig(cat);
+        badges += `<span class="badge badge-category ${catConfig.cssClass}" style="--cat-color: ${catConfig.color}; --cat-bg: ${catConfig.bg};" title="Best at: ${catConfig.label}">
+            <i class="fas ${catConfig.icon}"></i> ${catConfig.label}
+        </span>`;
+    }
+
+    // Offender badges
+    if (offenders) {
+        if (offenders.slowest && offenders.slowest.model === model.model && offenders.slowest.host === model.host) {
+            badges += `<span class="badge badge-offender badge-slow" title="⚠️ Worst Latency">🐌 SLOW</span>`;
+        }
+        if (offenders.lowestTps && offenders.lowestTps.model === model.model && offenders.lowestTps.host === model.host) {
+            badges += `<span class="badge badge-offender badge-slug" title="⚠️ Worst Throughput">🐢 SLUG</span>`;
+        }
+        if (offenders.lowestQuality && offenders.lowestQuality.model === model.model && offenders.lowestQuality.host === model.host) {
+            badges += `<span class="badge badge-offender badge-poor" title="⚠️ Lowest Quality">⭐ POOR</span>`;
+        }
+        if (offenders.mostFailures && offenders.mostFailures.model === model.model && offenders.mostFailures.host === model.host) {
+            badges += `<span class="badge badge-offender badge-unstable" title="⚠️ Most Failures">⚠️ UNSTABLE</span>`;
+        }
+    }
+
+    return badges;
+}
+
+function getCategoryConfig(category) {
+    const lower = (category || '').toLowerCase();
+
+    if (lower.includes('code') || lower.includes('coding') || lower.includes('dev')) {
+        return {
+            icon: 'fa-code',
+            color: '#9b59b6',
+            bg: 'rgba(155, 89, 182, 0.15)',
+            cssClass: 'badge-coding',
+            label: 'Coding'
+        };
+    }
+    if (lower.includes('reason') || lower.includes('reasoning') || lower.includes('think')) {
+        return {
+            icon: 'fa-brain',
+            color: '#e91e63',
+            bg: 'rgba(233, 30, 99, 0.15)',
+            cssClass: 'badge-reasoning',
+            label: 'Reasoning'
+        };
+    }
+    if (lower.includes('ops') || lower.includes('glue') || lower.includes('interactive') || lower.includes('chat')) {
+        return {
+            icon: 'fa-bolt',
+            color: '#3498db',
+            bg: 'rgba(52, 152, 219, 0.15)',
+            cssClass: 'badge-ops',
+            label: 'Ops/Glue'
+        };
+    }
+    if (lower.includes('special')) {
+        return {
+            icon: 'fa-star',
+            color: '#f39c12',
+            bg: 'rgba(243, 156, 18, 0.15)',
+            cssClass: 'badge-specialist',
+            label: 'Specialist'
+        };
+    }
+    if (lower.includes('general')) {
+        return {
+            icon: 'fa-cubes',
+            color: '#2ecc71',
+            bg: 'rgba(46, 204, 113, 0.15)',
+            cssClass: 'badge-generalist',
+            label: 'Generalist'
+        };
+    }
+    return {
+        icon: 'fa-tag',
+        color: '#95a5a6',
+        bg: 'rgba(149, 165, 166, 0.15)',
+        cssClass: '',
+        label: category || 'Unknown'
+    };
+}
+
+function buildLevelStars(levelStats) {
+    if (!levelStats || typeof levelStats !== 'object') return '';
+
+    // Show all 10 levels
+    return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(level => {
+        const count = Number(levelStats[level] || levelStats[String(level)] || 0);
+        if (count <= 0) {
+            return `<span class="level-star-slot empty" title="Level ${level}: 0 tests"><span class="level-num">${level}</span></span>`;
+        }
+        const displayCount = count >= 100 ? '99+' : count;
+        return `
+            <span class="level-star-slot" title="Level ${level}: ${count} tests">
+                <span class="level-star level-${level}"><i class="fas fa-star"></i></span>
+                <span class="level-star-count">${displayCount}</span>
+            </span>
+        `;
+    }).join('');
 }
 
 function escapeHtml(unsafe) {

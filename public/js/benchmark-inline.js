@@ -23,6 +23,7 @@
         let ollamaHosts = [];
         let currentSortBy = 'composite';
         let currentJudgeConfig = {};
+        let currentExecutionConfig = {};
         let lastDashboardOverview = null;
         let lastRecentTests = [];
         let showSuccessRateDetails = false;
@@ -230,6 +231,7 @@
                         temperature: parseFloat(document.getElementById('judgeTemp').value),
                         timeout: parseInt(document.getElementById('judgeTimeout').value),
                         num_predict: parseInt(document.getElementById('judgeMaxTokens')?.value) || 200,
+                        response_char_limit: parseInt(document.getElementById('judgeInputChars')?.value) || 2000,
                         concurrency: parseInt(document.getElementById('judgeConcurrency').value) || 2,
                         judge_same_host: !!document.getElementById('judgeSameHost')?.checked,
                         prompts: {
@@ -239,6 +241,13 @@
                             math: document.getElementById('promptMath').value,
                             creative: document.getElementById('promptCreative').value
                         }
+                    };
+                    currentExecutionConfig = {
+                        response_tokens_multiplier: parseFloat(document.getElementById('execTokenMultiplier')?.value) || 2,
+                        response_min_tokens: parseInt(document.getElementById('execTokenMin')?.value) || 100,
+                        response_max_tokens: parseInt(document.getElementById('execTokenMax')?.value) || 2000,
+                        include_length_hint: !!document.getElementById('execIncludeLengthHint')?.checked,
+                        length_hint_template: document.getElementById('execLengthTemplate')?.value || 'Answer in ~{target} tokens (max {max} tokens).'
                     };
                     settingsModal.style.display = 'none';
                 };
@@ -463,6 +472,11 @@
                 const modeIcon = executionMode === 'throughput' ? '🔥' : '⚡';
                 const modeLabel = executionMode === 'throughput' ? 'Throughput Mode' : 'Latency Mode';
                 const modeColor = executionMode === 'throughput' ? 'warning' : 'info';
+                const execConfig = currentExecutionConfig || {};
+                const capsLabel = (execConfig.response_max_tokens || execConfig.response_tokens_multiplier)
+                    ? `Caps: min ${execConfig.response_min_tokens || '-'} / max ${execConfig.response_max_tokens || '-'} / x${execConfig.response_tokens_multiplier || '-'}`
+                    : null;
+                const hintLabel = execConfig.include_length_hint ? 'Length hint: on' : 'Length hint: off';
 
                 return `
                     <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
@@ -473,6 +487,9 @@
                         <span class="badge bg-light text-dark border">Judge Host: ${judgeHost}</span>
                         <span class="text-muted">•</span>
                         <span class="badge bg-${modeColor} text-dark">${modeIcon} ${modeLabel}</span>
+                        ${capsLabel ? `<span class="text-muted">•</span><span class="badge bg-light text-dark border">${capsLabel}</span>` : ''}
+                        <span class="text-muted">•</span>
+                        <span class="badge bg-light text-dark border">${hintLabel}</span>
                     </div>
                 `;
             }
@@ -481,6 +498,11 @@
             const modeIcon = executionMode === 'throughput' ? '🔥' : '⚡';
             const modeLabel = executionMode === 'throughput' ? 'Throughput Mode' : 'Latency Mode';
             const modeColor = executionMode === 'throughput' ? 'warning' : 'info';
+            const execConfig = plan.execution_config || currentExecutionConfig || {};
+            const capsLabel = (execConfig.response_max_tokens || execConfig.response_tokens_multiplier)
+                ? `Caps: min ${execConfig.response_min_tokens || '-'} / max ${execConfig.response_max_tokens || '-'} / x${execConfig.response_tokens_multiplier || '-'}`
+                : null;
+            const hintLabel = execConfig.include_length_hint ? 'Length hint: on' : 'Length hint: off';
 
             let html = '';
 
@@ -494,6 +516,12 @@
             }
             html += `<span class="text-muted me-2">•</span>`;
             html += `<span class="badge bg-${modeColor} text-dark">${modeIcon} ${modeLabel}</span>`;
+            if (capsLabel) {
+                html += `<span class="text-muted mx-2">•</span>`;
+                html += `<span class="badge bg-light text-dark border">${capsLabel}</span>`;
+            }
+            html += `<span class="text-muted mx-2">•</span>`;
+            html += `<span class="badge bg-light text-dark border">${hintLabel}</span>`;
             html += `</div>`;
 
             // 2. Execution Nodes
@@ -554,6 +582,7 @@
                 if (json.status === 'success') {
                     const config = json.data.judge_config;
                     const scoringConfigs = json.data.scoring_configs;
+                    const execConfig = json.data.execution_config || {};
 
                     // Populate Judge Model Dropdown (using all available models from current host)
                     const hostUrl = document.getElementById('host').value;
@@ -581,6 +610,9 @@
                         if (document.getElementById('judgeMaxTokens')) {
                             document.getElementById('judgeMaxTokens').value = config.num_predict || 200;
                         }
+                        if (document.getElementById('judgeInputChars')) {
+                            document.getElementById('judgeInputChars').value = config.response_char_limit || 2000;
+                        }
                         if (document.getElementById('judgeConcurrency')) {
                             document.getElementById('judgeConcurrency').value = config.concurrency || 2;
                             document.getElementById('judgeConcurrencyVal').textContent = config.concurrency || 2;
@@ -592,6 +624,40 @@
 
                         // Initialize current config
                         currentJudgeConfig = { ...config };
+                        currentExecutionConfig = { ...execConfig };
+                        if (document.getElementById('execTokenMultiplier')) {
+                            document.getElementById('execTokenMultiplier').value = execConfig.response_tokens_multiplier ?? 2;
+                        }
+                        if (document.getElementById('execTokenMin')) {
+                            document.getElementById('execTokenMin').value = execConfig.response_min_tokens ?? 100;
+                        }
+                        if (document.getElementById('execTokenMax')) {
+                            document.getElementById('execTokenMax').value = execConfig.response_max_tokens ?? 2000;
+                        }
+                        if (document.getElementById('execIncludeLengthHint')) {
+                            document.getElementById('execIncludeLengthHint').checked = !!execConfig.include_length_hint;
+                        }
+                        if (document.getElementById('execLengthTemplate')) {
+                            document.getElementById('execLengthTemplate').value = execConfig.length_hint_template || 'Answer in ~{target} tokens (max {max} tokens).';
+                        }
+                    }
+                    if (Object.keys(currentExecutionConfig).length === 0) {
+                        currentExecutionConfig = { ...execConfig };
+                        if (document.getElementById('execTokenMultiplier')) {
+                            document.getElementById('execTokenMultiplier').value = execConfig.response_tokens_multiplier ?? 2;
+                        }
+                        if (document.getElementById('execTokenMin')) {
+                            document.getElementById('execTokenMin').value = execConfig.response_min_tokens ?? 100;
+                        }
+                        if (document.getElementById('execTokenMax')) {
+                            document.getElementById('execTokenMax').value = execConfig.response_max_tokens ?? 2000;
+                        }
+                        if (document.getElementById('execIncludeLengthHint')) {
+                            document.getElementById('execIncludeLengthHint').checked = !!execConfig.include_length_hint;
+                        }
+                        if (document.getElementById('execLengthTemplate')) {
+                            document.getElementById('execLengthTemplate').value = execConfig.length_hint_template || 'Answer in ~{target} tokens (max {max} tokens).';
+                        }
                     }
 
                     // Keep checkbox in sync with current config
@@ -602,6 +668,9 @@
                     // Keep max tokens in sync with current config
                     if (document.getElementById('judgeMaxTokens')) {
                         document.getElementById('judgeMaxTokens').value = currentJudgeConfig.num_predict || config.num_predict || 200;
+                    }
+                    if (document.getElementById('judgeInputChars')) {
+                        document.getElementById('judgeInputChars').value = currentJudgeConfig.response_char_limit || config.response_char_limit || 2000;
                     }
 
                     // Populate Prompts (either from current config or default)
@@ -1681,6 +1750,7 @@
                         levels: selectedLevels,
                         quality_scoring: qualityScoring,
                         judge_config: currentJudgeConfig,
+                        execution_config: currentExecutionConfig,
                         tags,
                         description,
                         execution_mode: executionMode
@@ -3512,6 +3582,10 @@
                         } else {
                             status.className = 'status success';
                             status.textContent = `✓ Batch completed! ${batch.completed} tests run (${batch.success_rate} success)`;
+                            // Refresh truncation stats after batch completes
+                            if (window.BenchmarkAnalytics?.loadTruncationStats) {
+                                window.BenchmarkAnalytics.loadTruncationStats();
+                            }
                         }
                     } else if (batch.status === 'stopped') {
                         status.className = 'status warning';
@@ -3535,8 +3609,7 @@
 
                     status.style.display = 'block';
 
-                    // Refresh dashboard
-                    loadDashboard();
+                  
                 }
             } catch (err) {
                 console.error('Failed to poll batch progress:', err);
@@ -3547,649 +3620,10 @@
             }
         }
 
-        // Initialize charts
-        function initCharts() {
-            const latencyCtx = document.getElementById('latencyChart').getContext('2d');
-            const tokensCtx = document.getElementById('tokensChart').getContext('2d');
-            const qualityCtx = document.getElementById('qualityChart').getContext('2d');
-            const compositeCtx = document.getElementById('compositeChart').getContext('2d');
+       
+        
 
-            latencyChart = new Chart(latencyCtx, {
-                type: 'bar',
-                data: {
-                    labels: [],
-                    datasets: [{
-                        label: 'Average Latency (ms)',
-                        data: [],
-                        backgroundColor: 'rgba(102, 126, 234, 0.8)',
-                        borderColor: 'rgba(102, 126, 234, 1)',
-                        borderWidth: 2
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: true,
-                    animation: false,
-                    plugins: { legend: { display: false } },
-                    scales: { y: { beginAtZero: true } }
-                }
-            });
-
-            tokensChart = new Chart(tokensCtx, {
-                type: 'bar',
-                data: {
-                    labels: [],
-                    datasets: [{
-                        label: 'Tokens per Second',
-                        data: [],
-                        backgroundColor: 'rgba(118, 75, 162, 0.8)',
-                        borderColor: 'rgba(118, 75, 162, 1)',
-                        borderWidth: 2
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: true,
-                    animation: false,
-                    plugins: { legend: { display: false } },
-                    scales: { y: { beginAtZero: true } }
-                }
-            });
-
-            qualityChart = new Chart(qualityCtx, {
-                type: 'bar',
-                data: {
-                    labels: [],
-                    datasets: [{
-                        label: 'Quality Score (0-10)',
-                        data: [],
-                        backgroundColor: 'rgba(46, 204, 113, 0.8)',
-                        borderColor: 'rgba(46, 204, 113, 1)',
-                        borderWidth: 2
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: true,
-                    animation: false,
-                    plugins: { legend: { display: false } },
-                    scales: { y: { beginAtZero: true, max: 10 } }
-                }
-            });
-
-            compositeChart = new Chart(compositeCtx, {
-                type: 'bar',
-                data: {
-                    labels: [],
-                    datasets: [{
-                        label: 'Composite Score (0-10)',
-                        data: [],
-                        backgroundColor: 'rgba(241, 196, 15, 0.8)',
-                        borderColor: 'rgba(241, 196, 15, 1)',
-                        borderWidth: 2
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: true,
-                    animation: false,
-                    plugins: { legend: { display: false } },
-                    scales: { y: { beginAtZero: true, max: 10 } }
-                }
-            });
-        }
-
-        // Load dashboard data
-        async function loadDashboard() {
-            try {
-                const params = new URLSearchParams();
-                params.append('sort', currentSortBy);
-                
-                if (window.BenchmarkAnalytics && typeof window.BenchmarkAnalytics.getActiveFilters === 'function') {
-                    const filters = window.BenchmarkAnalytics.getActiveFilters();
-                    if (filters.modelCategory) params.append('modelCategory', filters.modelCategory);
-                    if (filters.promptCategory) params.append('promptCategory', filters.promptCategory);
-                    if (filters.tag) params.append('tag', filters.tag);
-                }
-
-                const res = await fetch(`${BENCHMARK_API}/dashboard?${params.toString()}`);
-
-                if (res.status === 429) {
-                    console.warn('Rate limited loading dashboard, skipping...');
-                    return;
-                }
-
-                if (!res.ok) {
-                    throw new Error(`HTTP error! status: ${res.status}`);
-                }
-
-                const json = await res.json();
-                const data = json.data || json; // Handle both wrapped and unwrapped responses
-                window.latestBenchmarkData = data; // Store globally for other components
-
-
-                if (!data || !data.overview) {
-                    throw new Error('Invalid dashboard data structure');
-                }
-
-                lastDashboardOverview = data.overview;
-                renderSuccessRateDetails();
-
-                lastRecentTests = Array.isArray(data.recent_tests) ? data.recent_tests : [];
-                buildRecentTestsModelOptions(lastRecentTests);
-                rerenderRecentTests();
-
-                // Update stats
-                document.getElementById('totalTests').textContent = data.overview.total_tests;
-                document.getElementById('successRate').innerHTML =
-                    data.overview.success_rate.replace('%', '<span class="stat-unit">%</span>');
-
-                const statsForCharts = (data.model_stats || []).filter(m => Number(m && m.tests) > 0);
-
-                // Define profileKey and currentProfile in a broader scope
-                const currentProfile = document.getElementById('scoringProfile') ? document.getElementById('scoringProfile').value : 'interactive';
-                let profileKey = 'interactive_score';
-                if (currentProfile === 'reasoning') profileKey = 'reasoning_score';
-                if (currentProfile === 'coding') profileKey = 'coding_score';
-
-                if (statsForCharts.length > 0) {
-                    const fastest = statsForCharts[0];
-                    document.getElementById('avgLatency').innerHTML =
-                        `${fastest.avg_latency}<span class="stat-unit">ms</span>`;
-
-                    // Update charts
-                    const chartLabels = statsForCharts.map(m => {
-                        const hostLabel = m.host ? formatHostLabel(m.host) : '';
-                        // Only append host if it's not localhost or if we have multiple hosts
-                        return hostLabel && hostLabel !== 'localhost' ? `${m.model} (${hostLabel})` : m.model;
-                    });
-
-                    // Track previous data count to highlight new bars (skip on initial load)
-                    const prevCount = latencyChart.data.labels.length;
-                    const newCount = chartLabels.length;
-                    const shouldHighlight = chartsInitialized && newCount > prevCount;
-
-                    // Helper to create highlight colors array (bright cyan for new, normal for existing)
-                    const createHighlightColors = (baseColor, highlightColor) => {
-                        return chartLabels.map((_, i) => i >= prevCount ? highlightColor : baseColor);
-                    };
-
-                    // Clear any pending highlight fade timeout
-                    if (chartHighlightTimeout) {
-                        clearTimeout(chartHighlightTimeout);
-                        chartHighlightTimeout = null;
-                    }
-
-                    // Update latency chart
-                    latencyChart.data.labels = chartLabels;
-                    latencyChart.data.datasets[0].data = statsForCharts.map(m => m.avg_latency);
-                    if (shouldHighlight) {
-                        latencyChart.data.datasets[0].backgroundColor = createHighlightColors(
-                            'rgba(102, 126, 234, 0.8)', 'rgba(0, 255, 255, 0.9)'
-                        );
-                        latencyChart.data.datasets[0].borderColor = createHighlightColors(
-                            'rgba(102, 126, 234, 1)', 'rgba(0, 255, 255, 1)'
-                        );
-                    }
-                    latencyChart.update();
-
-                    // Update tokens chart
-                    tokensChart.data.labels = chartLabels;
-                    tokensChart.data.datasets[0].data = statsForCharts.map(m => parseFloat(m.avg_tokens_per_sec));
-                    if (shouldHighlight) {
-                        tokensChart.data.datasets[0].backgroundColor = createHighlightColors(
-                            'rgba(118, 75, 162, 0.8)', 'rgba(0, 255, 255, 0.9)'
-                        );
-                        tokensChart.data.datasets[0].borderColor = createHighlightColors(
-                            'rgba(118, 75, 162, 1)', 'rgba(0, 255, 255, 1)'
-                        );
-                    }
-                    tokensChart.update();
-
-                    // Update quality chart
-                    qualityChart.data.labels = chartLabels;
-                    qualityChart.data.datasets[0].data = statsForCharts.map(m => parseFloat(m.avg_quality) || 0);
-                    if (shouldHighlight) {
-                        qualityChart.data.datasets[0].backgroundColor = createHighlightColors(
-                            'rgba(46, 204, 113, 0.8)', 'rgba(0, 255, 255, 0.9)'
-                        );
-                        qualityChart.data.datasets[0].borderColor = createHighlightColors(
-                            'rgba(46, 204, 113, 1)', 'rgba(0, 255, 255, 1)'
-                        );
-                    }
-                    qualityChart.update();
-
-                    // Update composite chart
-                    compositeChart.data.labels = chartLabels;
-                    compositeChart.data.datasets[0].data = statsForCharts.map(m => parseFloat(m[profileKey]) || 0);
-                    if (shouldHighlight) {
-                        compositeChart.data.datasets[0].backgroundColor = createHighlightColors(
-                            'rgba(241, 196, 15, 0.8)', 'rgba(0, 255, 255, 0.9)'
-                        );
-                        compositeChart.data.datasets[0].borderColor = createHighlightColors(
-                            'rgba(241, 196, 15, 1)', 'rgba(0, 255, 255, 1)'
-                        );
-                    }
-                    compositeChart.update();
-
-                    // Mark charts as initialized after first update
-                    chartsInitialized = true;
-
-                    // Fade highlight back to normal after 1.5 seconds
-                    if (shouldHighlight) {
-                        chartHighlightTimeout = setTimeout(() => {
-                            chartHighlightTimeout = null;
-                            latencyChart.data.datasets[0].backgroundColor = 'rgba(102, 126, 234, 0.8)';
-                            latencyChart.data.datasets[0].borderColor = 'rgba(102, 126, 234, 1)';
-                            tokensChart.data.datasets[0].backgroundColor = 'rgba(118, 75, 162, 0.8)';
-                            tokensChart.data.datasets[0].borderColor = 'rgba(118, 75, 162, 1)';
-                            qualityChart.data.datasets[0].backgroundColor = 'rgba(46, 204, 113, 0.8)';
-                            qualityChart.data.datasets[0].borderColor = 'rgba(46, 204, 113, 1)';
-                            compositeChart.data.datasets[0].backgroundColor = 'rgba(241, 196, 15, 0.8)';
-                            compositeChart.data.datasets[0].borderColor = 'rgba(241, 196, 15, 1)';
-                            latencyChart.update();
-                            tokensChart.update();
-                            qualityChart.update();
-                            compositeChart.update();
-                        }, 1500);
-                    }
-                } else {
-                    // Clear charts if no data
-                    document.getElementById('avgLatency').innerHTML = '-<span class="stat-unit">ms</span>';
-                    
-                    [latencyChart, tokensChart, qualityChart, compositeChart].forEach(chart => {
-                        if (chart) {
-                            chart.data.labels = [];
-                            chart.data.datasets.forEach(ds => ds.data = []);
-                            chart.update();
-                        }
-                    });
-                }
-
-                // Update Judge Stats
-                    const judgeContainer = document.getElementById('judgeStatsContainer');
-                    const judgeGrid = document.getElementById('judgeStatsGrid');
-                    
-                    if (data.judge_stats && data.judge_stats.length > 0 && judgeContainer && judgeGrid) {
-                        judgeContainer.style.display = 'block';
-                        judgeGrid.innerHTML = data.judge_stats.map(stat => {
-                            const model = stat._id.model || stat._id || 'Unknown Judge';
-                            const host = stat._id.host ? formatHostLabel(stat._id.host) : '';
-                            return `
-                            <div class="stat-card" style="padding: 16px;">
-                                <div class="stat-label" style="margin-bottom: 8px;">
-                                    ${escapeHtml(model)}
-                                    ${host ? `<div style="font-size: 0.8em; opacity: 0.7; margin-top: 2px;">${escapeHtml(host)}</div>` : ''}
-                                </div>
-                                <div class="stat-value" style="font-size: 1.8em;">${Math.round(stat.avg_latency)}<span class="stat-unit">ms</span></div>
-                                <div style="font-size: 0.8em; color: var(--muted); margin-top: 4px;">${stat.count} evaluations</div>
-                            </div>
-                        `}).join('');
-                    } else if (judgeContainer) {
-                        judgeContainer.style.display = 'none';
-                    }
-
-                    // Find best overall model (highest composite score)
-                    const modelsWithComposite = statsForCharts.filter(m => m[profileKey] && parseFloat(m[profileKey]) > 0);
-                    let bestOverallModel = null;
-                    if (modelsWithComposite.length > 0) {
-                        bestOverallModel = modelsWithComposite.reduce((best, current) =>
-                            parseFloat(current[profileKey]) > parseFloat(best[profileKey]) ? current : best
-                        );
-                    }
-
-                    // Update best overall text
-                    const bestOverallText = document.getElementById('bestOverallText');
-                    if (bestOverallText) {
-                        if (bestOverallModel) {
-                            const score = bestOverallModel[profileKey];
-                            bestOverallText.innerHTML = `👑 Best Overall: <strong style="color: #2ecc71;">${bestOverallModel.model}</strong> <span style="color: #888;">(${score} ${currentProfile})</span>`;
-                        } else {
-                            bestOverallText.innerHTML = `👑 Best Overall: <span style="color: #888;">Run tests with quality scoring</span>`;
-                        }
-                    }
-
-                    // Populate trends model filter
-                    const trendsModelFilter = document.getElementById('trendsModelFilter');
-                    if (trendsModelFilter && statsForCharts.length > 0) {
-                        const uniqueModels = [...new Set(statsForCharts.map(m => m.model))];
-                        const currentSelection = trendsModelFilter.value;
-                        trendsModelFilter.innerHTML = '<option value="">All Models</option>' +
-                            uniqueModels.map(model => `<option value="${escapeHtml(model)}">${escapeHtml(model)}</option>`).join('');
-                        if (currentSelection) trendsModelFilter.value = currentSelection;
-                    }
-
-                    // Calculate Top Offenders FIRST (before rendering table)
-                    const allModels = Array.isArray(data.model_stats) ? data.model_stats : [];
-                    const toNum = (v) => {
-                        const n = typeof v === 'string' ? parseFloat(v) : Number(v);
-                        return Number.isFinite(n) ? n : null;
-                    };
-
-                    const pickMax = (arr, getVal) => {
-                        let best = null;
-                        for (const item of arr) {
-                            const v = getVal(item);
-                            if (!Number.isFinite(v)) continue;
-                            if (!best || v > best.v) best = { item, v };
-                        }
-                        return best ? best.item : null;
-                    };
-                    const pickMin = (arr, getVal) => {
-                        let best = null;
-                        for (const item of arr) {
-                            const v = getVal(item);
-                            if (!Number.isFinite(v)) continue;
-                            if (!best || v < best.v) best = { item, v };
-                        }
-                        return best ? best.item : null;
-                    };
-
-                    const hasSuccess = (m) => Number(m && m.tests) > 0;
-                    const successModels = allModels.filter(hasSuccess);
-
-                    const slowestLatency = pickMax(successModels, (m) => toNum(m.avg_latency));
-                    const lowestTps = pickMin(successModels, (m) => {
-                        const t = toNum(m.avg_tokens_per_sec);
-                        return t !== null && t > 0 ? t : null;
-                    });
-                    const lowestQuality = pickMin(
-                        allModels.filter(m => {
-                            const q = toNum(m && m.avg_quality);
-                            return q !== null && q > 0 && Number(m && m.quality_tests) > 0;
-                        }),
-                        (m) => toNum(m.avg_quality)
-                    );
-
-                    let mostFailures = null;
-                    for (const m of allModels) {
-                        const failed = Number(m && m.failed_tests) || 0;
-                        if (failed <= 0) continue;
-                        const total = Number(m && m.total_tests) || (Number(m && m.tests) || 0) + failed;
-                        const rate = total > 0 ? (failed / total) : 0;
-                        if (!mostFailures || failed > mostFailures.failed || (failed === mostFailures.failed && rate > mostFailures.rate)) {
-                            mostFailures = { item: m, failed, total, rate };
-                        }
-                    }
-
-                    // Helper to check if current model is an offender
-                    const isOffender = (model, offenderModel) => {
-                        return offenderModel && model.model === offenderModel.model && model.host === offenderModel.host;
-                    };
-
-                    // Update leaderboard
-                    const tbody = document.getElementById('leaderboard');
-                    tbody.innerHTML = (data.model_stats || []).map((model, idx) => {
-                        let badge = '';
-                        if (idx === 0) badge = '<span class="badge gold">🥇 1st</span>';
-                        else if (idx === 1) badge = '<span class="badge silver">🥈 2nd</span>';
-                        else if (idx === 2) badge = '<span class="badge bronze">🥉 3rd</span>';
-                        else badge = `<span>${idx + 1}</span>`;
-
-                        const qualityVal = parseFloat(model.avg_quality);
-                        const compositeVal = parseFloat(model[profileKey]);
-                        const qualityDisplay = !isNaN(qualityVal) ? model.avg_quality : '-';
-
-                        // Debug: avoid spamming console during 10s dashboard refresh polling
-                        if (idx === 0) {
-                            debugLogThrottled(
-                                'dashboardFirstModel',
-                                30000,
-                                'First model data:',
-                                model,
-                                'Profile:',
-                                currentProfile,
-                                'Key:',
-                                profileKey,
-                                'Composite value:',
-                                model[profileKey],
-                                'Parsed:',
-                                compositeVal
-                            );
-                        }
-
-                        const compositeDisplay = !isNaN(compositeVal) ? compositeVal.toFixed(1) : '-';
-                        const qualityClass = qualityVal >= 70 ? 'quality-high' : qualityVal >= 40 ? 'quality-mid' : (qualityVal > 0 ? 'quality-low' : '');
-
-                        const hasSuccessSamples = Number(model.tests) > 0;
-                        const latencyDisplay = hasSuccessSamples ? `${model.avg_latency} ms` : '-';
-                        const tpsDisplay = hasSuccessSamples ? `${model.avg_tokens_per_sec}` : '-';
-
-                        const totalTests = Number(model.total_tests || (Number(model.tests) + Number(model.failed_tests || 0)));
-                        const failedTests = Number(model.failed_tests || 0);
-                        const successRate = totalTests > 0 ? ((totalTests - failedTests) / totalTests) : 0;
-                        const reliabilityDisplay = totalTests > 0
-                            ? `${(successRate * 100).toFixed(1)}%`
-                            : '-';
-
-                        const levelStats = (model && typeof model.level_stats === 'object' && model.level_stats) ? model.level_stats : {};
-                        const formatStarCount = (count) => {
-                            const n = Number(count || 0);
-                            if (!Number.isFinite(n) || n <= 0) return '';
-                            if (n >= 100) return '99+';
-                            return String(n);
-                        };
-                        // Get intensity class based on test count (for opacity/brightness)
-                        const getIntensityClass = (count) => {
-                            const n = Number(count || 0);
-                            if (!Number.isFinite(n) || n <= 0) return 'intensity-none';
-                            if (n >= 50) return 'intensity-ultra';
-                            if (n >= 30) return 'intensity-veryhigh';
-                            if (n >= 15) return 'intensity-high';
-                            if (n >= 8) return 'intensity-mid';
-                            if (n >= 3) return 'intensity-low';
-                            return 'intensity-minimal'; // 1-2 tests
-                        };
-                        // Get size scale based on count
-                        const getSizeScale = (count) => {
-                            const n = Number(count || 0);
-                            if (n >= 50) return 1.15;
-                            if (n >= 30) return 1.08;
-                            if (n >= 15) return 1.0;
-                            if (n >= 8) return 0.95;
-                            if (n >= 3) return 0.9;
-                            return 0.85; // 1-2 tests - smaller
-                        };
-                        // Build stars HTML - each star gets level-based color + count-based intensity + size
-                        const starsHtml = [1, 2, 3, 4, 5].map((level) => {
-                            const count = Number(levelStats[level] ?? levelStats[String(level)] ?? 0);
-                            if (!Number.isFinite(count) || count <= 0) {
-                                return '<span class="test-star-slot" aria-hidden="true"></span>';
-                            }
-                            const levelClass = `test-star-level-${level}`;
-                            const intensityClass = getIntensityClass(count);
-                            const sizeScale = getSizeScale(count);
-                            const displayCount = formatStarCount(count);
-                            return `
-                                <span class="test-star-slot" title="Level ${level}: ${count} tests" style="transform: scale(${sizeScale});">
-                                    <span class="test-star ${levelClass} ${intensityClass}" aria-label="Level ${level}: ${count} tests">
-                                        <i class="fas fa-star"></i>
-                                    </span>
-                                    <span class="test-star-count">${displayCount}</span>
-                                </span>
-                            `;
-                        }).join('');
-
-                        // Highlight best overall model
-                        const isBestOverall = bestOverallModel && model.model === bestOverallModel.model;
-                        const rowClass = isBestOverall ? 'best-overall' : '';
-
-                        const crown = isBestOverall ? '👑 ' : '';
-                        const hostLabel = model.host ? formatHostLabel(model.host) : 'Unknown';
-
-                        // Recommended category formatting with CategoryBadge component
-                        const formatRecommendedCategory = (category, benchmarkScores = null) => {
-                            if (!category) return '<span style="color: var(--muted); font-size: 0.85em;">—</span>';
-                            
-                            // Calculate confidence based on benchmark scores
-                            let confidence = null;
-                            if (benchmarkScores && Object.keys(benchmarkScores).length > 0) {
-                                const scores = Object.values(benchmarkScores);
-                                confidence = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
-                            }
-                            
-                            // Use CategoryBadge component if available
-                            if (typeof CategoryBadge !== 'undefined') {
-                                return CategoryBadge.render(category, confidence, {
-                                    benchmarkScores: benchmarkScores,
-                                    showRing: confidence !== null,
-                                    interactive: true,
-                                    animated: true,
-                                    size: 'small'
-                                });
-                            }
-                            
-                            // Fallback to simple badge
-                            const categoryColors = {
-                                'coding': '#7c9fff',
-                                'reasoning': '#a78bfa',
-                                'factual': '#34d399',
-                                'math': '#fbbf24',
-                                'creative': '#f87171',
-                                'general': '#94a3b8'
-                            };
-                            const color = categoryColors[category] || '#94a3b8';
-                            const icon = category === 'coding' ? '💻' :
-                                        category === 'reasoning' ? '🧠' :
-                                        category === 'factual' ? '📚' :
-                                        category === 'math' ? '🔢' :
-                                        category === 'creative' ? '✨' : '📝';
-                            return `<span style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 12px; background: linear-gradient(135deg, ${color}22 0%, ${color}11 100%); border: 1px solid ${color}44; color: ${color}; font-size: 0.85em; font-weight: 600;">${icon} ${category}</span>`;
-                        };
-                        
-                        // Get benchmark scores for tooltip
-                        const benchmarkScores = {};
-                        if (model.stats && Array.isArray(model.stats)) {
-                            model.stats.forEach(stat => {
-                                if (stat.score !== undefined && stat.score !== null) {
-                                    benchmarkScores[stat.benchmark || 'Overall'] = stat.score;
-                                }
-                            });
-                        }
-                        
-                        const recommendedCategoryHtml = formatRecommendedCategory(
-                            model.recommended_category,
-                            Object.keys(benchmarkScores).length > 0 ? benchmarkScores : null
-                        );
-
-                        // Build offender badges - these represent actual performance issues from test data
-                        let offenderBadges = '';
-                        
-                        if (isOffender(model, slowestLatency)) {
-                            offenderBadges += `<span title="⚠️ Worst Latency" style="
-                                display: inline-flex;
-                                align-items: center;
-                                gap: 4px;
-                                font-size: 0.7rem;
-                                padding: 3px 8px;
-                                margin-left: 8px;
-                                border-radius: 12px;
-                                background: linear-gradient(135deg, rgba(231, 76, 60, 0.25) 0%, rgba(192, 57, 43, 0.15) 100%);
-                                border: 1.5px solid rgba(231, 76, 60, 0.5);
-                                color: #e74c3c;
-                                font-weight: 700;
-                                text-transform: uppercase;
-                                letter-spacing: 0.05em;
-                                box-shadow: 0 2px 4px rgba(231, 76, 60, 0.2);
-                            ">🐌 SLOW</span>`;
-                        }
-                        if (isOffender(model, lowestTps)) {
-                            offenderBadges += `<span title="⚠️ Worst Throughput" style="
-                                display: inline-flex;
-                                align-items: center;
-                                gap: 4px;
-                                font-size: 0.7rem;
-                                padding: 3px 8px;
-                                margin-left: 8px;
-                                border-radius: 12px;
-                                background: linear-gradient(135deg, rgba(230, 126, 34, 0.25) 0%, rgba(211, 84, 0, 0.15) 100%);
-                                border: 1.5px solid rgba(230, 126, 34, 0.5);
-                                color: #e67e22;
-                                font-weight: 700;
-                                text-transform: uppercase;
-                                letter-spacing: 0.05em;
-                                box-shadow: 0 2px 4px rgba(230, 126, 34, 0.2);
-                            ">🐢 SLUG</span>`;
-                        }
-                        if (isOffender(model, lowestQuality)) {
-                            offenderBadges += `<span title="⚠️ Lowest Quality Score" style="
-                                display: inline-flex;
-                                align-items: center;
-                                gap: 4px;
-                                font-size: 0.7rem;
-                                padding: 3px 8px;
-                                margin-left: 8px;
-                                border-radius: 12px;
-                                background: linear-gradient(135deg, rgba(243, 156, 18, 0.25) 0%, rgba(230, 126, 34, 0.15) 100%);
-                                border: 1.5px solid rgba(243, 156, 18, 0.5);
-                                color: #f39c12;
-                                font-weight: 700;
-                                text-transform: uppercase;
-                                letter-spacing: 0.05em;
-                                box-shadow: 0 2px 4px rgba(243, 156, 18, 0.2);
-                            ">⭐ POOR</span>`;
-                        }
-                        if (mostFailures && isOffender(model, mostFailures.item)) {
-                            offenderBadges += `<span title="⚠️ Most Test Failures" style="
-                                display: inline-flex;
-                                align-items: center;
-                                gap: 4px;
-                                font-size: 0.7rem;
-                                padding: 3px 8px;
-                                margin-left: 8px;
-                                border-radius: 12px;
-                                background: linear-gradient(135deg, rgba(192, 57, 43, 0.3) 0%, rgba(142, 36, 36, 0.2) 100%);
-                                border: 1.5px solid rgba(192, 57, 43, 0.6);
-                                color: #c0392b;
-                                font-weight: 700;
-                                text-transform: uppercase;
-                                letter-spacing: 0.05em;
-                                box-shadow: 0 2px 4px rgba(192, 57, 43, 0.25);
-                            ">⚠️ UNSTABLE</span>`;
-                        }
-                        
-                        return `
-                            <tr class="${rowClass}">
-                                <td>${badge}</td>
-                                <td>
-                                    <strong>${crown}${model.model}</strong>${offenderBadges}
-                                    <div style="font-size: 0.8em; color: var(--muted); margin-top: 2px; opacity: 0.7;">${hostLabel}</div>
-                                </td>
-                                <td>${latencyDisplay}</td>
-                                <td>${tpsDisplay}</td>
-                                <td class="${qualityClass}">${qualityDisplay}</td>
-                                <td>${reliabilityDisplay}</td>
-                                <td title="Per-level tests (Levels 1–5)">
-                                    <div class="tests-stars">${starsHtml}</div>
-                                    ${model.failed_tests && Number(model.failed_tests) > 0
-                                        ? `<div style="margin-top: 2px; color: rgba(231, 76, 60, 0.9); font-size: 0.8em;">Failed: ${model.failed_tests}</div>`
-                                        : ''}
-                                </td>
-                                <td>${recommendedCategoryHtml}</td>
-                                <td style="font-weight: bold;">${compositeDisplay}</td>
-                            </tr>
-                        `;
-                    }).join('');
-
-                    // Store offenders globally for the model selection table
-                    window.benchmarkOffenders = {
-                        slowest: slowestLatency ? { model: slowestLatency.model, host: slowestLatency.host } : null,
-                        lowestTps: lowestTps ? { model: lowestTps.model, host: lowestTps.host } : null,
-                        lowestQuality: lowestQuality ? { model: lowestQuality.model, host: lowestQuality.host } : null,
-                        mostFailures: mostFailures ? { model: mostFailures.item.model, host: mostFailures.item.host } : null
-                    };
-
-                    // Update Model Selection Table if it exists
-                    if (typeof updateModelSelectionBadges === 'function') {
-                        updateModelSelectionBadges();
-                    }
-            } catch (err) {
-                console.error('Failed to load dashboard:', err);
-            }
-        }
-
-        // Expose dashboard loader globally for UI handlers defined outside this scope
-        window.loadDashboard = loadDashboard;
+   
 
         // Profile selector change handler
         const profileSelector = document.getElementById('scoringProfile');
@@ -4203,7 +3637,7 @@
                     currentSortBy = profile;
                     if (sortSelector) sortSelector.value = 'composite';
                 }
-                loadDashboard();
+             
             });
         }
 
@@ -4219,7 +3653,7 @@
                 } else {
                     currentSortBy = val;
                 }
-                loadDashboard();
+          
             });
         }
 
@@ -4258,7 +3692,7 @@
                 }
 
                 status.style.display = 'block';
-                loadDashboard();
+               
             } catch (err) {
                 status.className = 'status error';
                 status.textContent = `✗ Error: ${err.message}`;
@@ -4401,10 +3835,7 @@
             // Load judge defaults so the UI can display the actual judge model (not just "default")
             loadJudgeConfig();
 
-            // Load dashboard after models are loaded
-            if (typeof loadDashboard === 'function') {
-                loadDashboard();
-            }
+         
 
             // Check for active batch - with validation
             const savedBatchId = localStorage.getItem('currentBatchId');
@@ -4463,10 +3894,7 @@
                             localStorage.removeItem('currentBatchId');
                             currentBatchId = null;
 
-                            // Refresh dashboard and history to show completed batch
-                            if (typeof loadDashboard === 'function') {
-                                loadDashboard();
-                            }
+                        
                             loadBatchHistory();
 
                             // Show notification
@@ -4505,7 +3933,8 @@
             setInterval(refreshActiveBatches, 15000); // Check every 15 seconds
 
         });
-        initCharts();
+       
+
         /**
          * Switch between category tabs
          */
@@ -4617,7 +4046,6 @@
 
                 try {
                     resetLeaderboardBtn.disabled = true;
-                    const prev = resetLeaderboardBtn.textContent;
                     resetLeaderboardBtn.textContent = 'Resetting...';
 
                     const res = await fetch(`${BENCHMARK_API}/results`, { method: 'DELETE' });
@@ -4652,7 +4080,6 @@
 
                 try {
                     resetFailedLeaderboardBtn.disabled = true;
-                    const prev = resetFailedLeaderboardBtn.textContent;
                     resetFailedLeaderboardBtn.textContent = 'Resetting...';
 
                     const res = await fetch(`${BENCHMARK_API}/results/failed`, { method: 'DELETE' });

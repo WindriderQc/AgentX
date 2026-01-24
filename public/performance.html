@@ -1205,21 +1205,7 @@
                 });
             },
 
-            // Load dashboard stats
-            async loadDashboard() {
-                try {
-                    const response = await fetch(`/api/performance/dashboard?hours=${this.currentTimeRange}`, {
-                        headers: getWorkspaceHeaders()
-                    });
-                    const result = await response.json();
-
-                    if (result.status === 'success' && result.data) {
-                        this.updateStatsCards(result.data);
-                    }
-                } catch (err) {
-                    console.error('Failed to load dashboard stats:', err);
-                }
-            },
+  
 
             // Update stats cards
             updateStatsCards(data) {
