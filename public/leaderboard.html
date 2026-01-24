@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Model Leaderboard - AgentX</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/css/leaderboard.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">
+            <a href="/">AgentX</a>
+            <span class="nav-separator">/</span>
+            <span>Leaderboard</span>
+        </div>
+        <div class="nav-links">
+            <a href="/benchmark.html"><i class="fas fa-flask"></i> Run Benchmarks</a>
+            <a href="/benchmark-analytics.html"><i class="fas fa-chart-line"></i> Analytics</a>
+            <a href="/results-explorer.html"><i class="fas fa-search"></i> Explorer</a>
+        </div>
+    </nav>
+
+    <main class="container">
+        <header class="page-header">
+            <h1><i class="fas fa-trophy"></i> Model Leaderboard</h1>
+            <p class="subtitle">Compare model performance across different scoring methodologies</p>
+            <div class="header-actions">
+                <button id="refreshBtn" class="btn-primary" onclick="refreshAllData()">
+                    <i class="fas fa-sync-alt"></i> Refresh
+                </button>
+                <button id="exportBtn" class="btn-secondary" onclick="exportAllToCSV()">
+                    <i class="fas fa-download"></i> Export CSV
+                </button>
+            </div>
+        </header>
+
+       
+
+        <!-- Two-Board Layout -->
+        <div class="boards-container">
+
+            <!-- Performance Board (Composite Scoring) -->
+            <section class="board-section" id="performanceBoard">
+                <div class="board-header">
+                    <h2><i class="fas fa-tachometer-alt"></i> Performance Board</h2>
+                    <div class="header-profile-select">
+                        <select id="perfProfile" onchange="updateProfileWeights(); renderPerformanceBoard()">
+                            <option value="balanced">Balanced</option>
+                            <option value="interactive">Interactive (Speed-focused)</option>
+                            <option value="reasoning">Reasoning (Quality-focused)</option>
+                            <option value="coding">Coding (Balanced++)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Profile Weights Documentation -->
+                <div class="profile-weights-box" id="profileWeightsBox">
+                    <div class="profile-weights-title">
+                        <i class="fas fa-sliders-h"></i> <span id="profileTitle">Balanced Profile</span>
+                    </div>
+                    <div class="profile-weights-grid">
+                        <div class="weight-pill" id="weightQuality">
+                            <span class="weight-label">Quality</span>
+                            <span class="weight-pct">40%</span>
+                        </div>
+                        <div class="weight-pill" id="weightSpeed">
+                            <span class="weight-label">Speed</span>
+                            <span class="weight-pct">40%</span>
+                        </div>
+                        <div class="weight-pill" id="weightReliability">
+                            <span class="weight-label">Reliability</span>
+                            <span class="weight-pct">20%</span>
+                        </div>
+                    </div>
+                    <p class="profile-note" id="profileNote">Best for general-purpose use cases</p>
+                </div>
+
+                <div class="board-controls">
+                    <div class="control-group">
+                        <label>Sort by:</label>
+                        <select id="perfSortBy" onchange="renderPerformanceBoard()">
+                            <option value="composite">Composite Score</option>
+                            <option value="quality">Quality Score</option>
+                            <option value="latency">Latency (fastest)</option>
+                            <option value="tokens">Tokens/sec (fastest)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="board-table-container">
+                    <table class="board-table" id="perfTable">
+                        <thead>
+                            <tr>
+                                <th class="rank-col">#</th>
+                                <th>Model</th>
+                                <th>Quality</th>
+                                <th>Latency</th>
+                                <th>Tok/s</th>
+                                <th>Reliability</th>
+                                <th>Composite</th>
+                                <th>Tests</th>
+                            </tr>
+                        </thead>
+                        <tbody id="perfTableBody">
+                            <tr><td colspan="8" class="loading-cell"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Performance Charts -->
+                <div class="board-charts">
+                    <div class="chart-container">
+                        <canvas id="perfCompositeChart"></canvas>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="perfQualityChart"></canvas>
+                    </div>
+                </div>
+            </section>
+
+             <!-- Data Stats Bar -->
+            <div class="stats-bar" id="statsBar">
+                <div class="stat-item">
+                    <span class="stat-label">Models</span>
+                    <span class="stat-value" id="statModels">-</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Total Tests</span>
+                    <span class="stat-value" id="statTests">-</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Categories</span>
+                    <span class="stat-value" id="statCategories">-</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Last Updated</span>
+                    <span class="stat-value" id="statUpdated">-</span>
+                </div>
+            </div>
+
+
+            <!-- Quality Board (Generalist Scoring) -->
+            <section class="board-section" id="qualityBoard">
+                <div class="board-header">
+                    <h2><i class="fas fa-brain"></i> Quality Board</h2>
+                    <p class="board-description">Weighted category scoring across 12 task types (speed-independent)</p>
+                    <button class="btn-info btn-sm" onclick="showMethodology()">
+                        <i class="fas fa-info-circle"></i> Methodology
+                    </button>
+                </div>
+
+                <div class="board-controls">
+                    <div class="control-group">
+                        <label>Sort by:</label>
+                        <select id="qualSortBy" onchange="renderQualityBoard()">
+                            <option value="generalist">Generalist Score</option>
+                            <option value="coverage">Coverage %</option>
+                            <option value="consistency">Consistency</option>
+                            <option value="avgScore">Avg Quality</option>
+                        </select>
+                    </div>
+                    <div class="control-group">
+                        <label>Min Coverage:</label>
+                        <select id="qualMinCoverage" onchange="renderQualityBoard()">
+                            <option value="0">Any</option>
+                            <option value="50">50%+</option>
+                            <option value="75">75%+</option>
+                            <option value="90">90%+</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="board-table-container">
+                    <table class="board-table" id="qualTable">
+                        <thead>
+                            <tr>
+                                <th class="rank-col">#</th>
+                                <th>Model</th>
+                                <th>Generalist</th>
+                                <th>Coverage</th>
+                                <th>Consistency</th>
+                                <th>Top Category</th>
+                                <th>Tests</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="qualTableBody">
+                            <tr><td colspan="8" class="loading-cell"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Category Weights Display -->
+                <div class="category-weights" id="categoryWeights">
+                    <h4>Category Weights</h4>
+                    <div class="weights-grid" id="weightsGrid"></div>
+                </div>
+            </section>
+
+        </div>
+    </main>
+
+    <!-- Model Detail Modal -->
+    <div id="modelDetailModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalModelName">Model Details</h3>
+                <button class="modal-close" onclick="closeModal('modelDetailModal')">&times;</button>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <!-- Populated by JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Methodology Modal -->
+    <div id="methodologyModal" class="modal">
+        <div class="modal-content modal-lg">
+            <div class="modal-header">
+                <h3>Quality Board Methodology</h3>
+                <button class="modal-close" onclick="closeModal('methodologyModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <h4>Generalist Score Calculation</h4>
+                <p>The Quality Board ranks models by their ability to perform well across ALL task categories, not just speed.</p>
+
+                <h5>Formula:</h5>
+                <code>Generalist Score = Weighted Sum - Coverage Penalty + Consistency Bonus</code>
+
+                <h5>Category Weights (Total: 100%)</h5>
+                <ul>
+                    <li><strong>Core Capabilities (60%):</strong> Coding (15%), Reasoning (15%), Factual (10%), Creative (10%), Instruction-Following (10%)</li>
+                    <li><strong>Specialized (30%):</strong> Math (8%), Summarization (7%), Multi-turn (7%), Context-Retention (5%), Translation (3%)</li>
+                    <li><strong>Quality Assurance (10%):</strong> Edge-Cases (5%), General (5%)</li>
+                </ul>
+
+                <h5>Penalties & Bonuses</h5>
+                <ul>
+                    <li><strong>Coverage Penalty:</strong> -20 points max for missing categories (proportional to weight)</li>
+                    <li><strong>Consistency Bonus:</strong> +5 points if std deviation &lt; 10 across categories</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="/js/leaderboard.js"></script>
+</body>
+</html>

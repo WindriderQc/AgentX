@@ -9,8 +9,17 @@
                 .replace(/'/g, "&#039;");
         }
 
+        // Disable Chart.js animations globally to prevent distracting refreshes
+        if (typeof Chart !== 'undefined') {
+            Chart.defaults.animation = false;
+            Chart.defaults.animations = { colors: false, x: false };
+            Chart.defaults.transitions = { active: { animation: { duration: 0 } } };
+        }
+
         const BENCHMARK_API = '/api/benchmark';
         let latencyChart, tokensChart, qualityChart, compositeChart;
+        let chartHighlightTimeout = null;  // Track highlight fade timeout
+        let chartsInitialized = false;     // Skip highlight on initial load
         let ollamaHosts = [];
         let currentSortBy = 'composite';
         let currentJudgeConfig = {};
@@ -262,7 +271,7 @@
             if (!eventsContainer || !summaryContainer) return;
 
             const timeline = batch.timeline || [];
-            const recentEvents = timeline.slice(-20); // Show last 20 events
+            const recentEvents = timeline.slice(-20).reverse(); // Show last 20 events, newest first
 
             // Calculate event type icons and colors
             const getEventDisplay = (event) => {
@@ -295,29 +304,44 @@
             };
 
             // Render timeline events
-            const eventsHtml = recentEvents.map((event, index) => {
-                const display = getEventDisplay(event);
-                const timestamp = new Date(event.timestamp).toLocaleTimeString();
-                const durationText = event.duration_ms ? ` (${event.duration_ms < 1000 ? `${event.duration_ms}ms` : `${(event.duration_ms / 1000).toFixed(1)}s`})` : '';
-                const modelText = event.model ? `<span style="color: ${display.color}; font-weight: 500;">${event.model}</span>` : '';
-                const isWarmupEvent = typeof event.event === 'string' && event.event.includes('warmup');
-                const errorColor = isWarmupEvent ? 'var(--muted)' : '#e74c3c';
-                const errorText = event.error ? `<div style="color: ${errorColor}; font-size: 0.9em; margin-top: 2px;">${event.error}</div>` : '';
+	            const eventsHtml = recentEvents.map((event, index) => {
+	                const display = getEventDisplay(event);
+	                const timestamp = new Date(event.timestamp).toLocaleTimeString();
+	                const isTestCompleteEvent = event.event === 'test_complete' && event.success !== false;
+	                const durationText = event.duration_ms ? ` (${event.duration_ms < 1000 ? `${event.duration_ms}ms` : `${(event.duration_ms / 1000).toFixed(1)}s`})` : '';
+	                const modelPrefix = isTestCompleteEvent ? '✓ ' : '';
+	                const modelText = event.model ? `<span style="color: ${display.color}; font-weight: 500;">${modelPrefix}${event.model}</span>` : '';
+	                const isWarmupEvent = typeof event.event === 'string' && event.event.includes('warmup');
+	                const errorColor = isWarmupEvent ? 'var(--muted)' : '#e74c3c';
+	                const errorText = event.error ? `<div style="color: ${errorColor}; font-size: 0.9em; margin-top: 2px;">${event.error}</div>` : '';
+	                const tokensPerSecText = isTestCompleteEvent
+	                    ? (event.tokens_per_sec === null || event.tokens_per_sec === undefined || event.tokens_per_sec === '' ? '-' : event.tokens_per_sec)
+	                    : null;
+	                const testDetailsHtml = isTestCompleteEvent ? `
+	                    <div style="color: var(--muted); font-size: 0.85em; margin-top: 6px; display: grid; gap: 2px;">
+	                        <div>${new Date(event.timestamp).toLocaleString()}</div>
+	                        ${event.host ? `<div>${event.host}</div>` : ''}
+	                        ${Number.isFinite(event.duration_ms) ? `<div>Latency: ${event.duration_ms} ms</div>` : ''}
+	                        <div>Tokens/s: ${tokensPerSecText}</div>
+	                        ${Number.isFinite(event.prompt_level) ? `<div>Level: ${event.prompt_level}</div>` : ''}
+	                    </div>
+	                ` : '';
 
-                return `
-                    <div style="display: flex; align-items: start; gap: 10px; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
-                        <i class="fas ${display.icon}" style="color: ${display.color}; margin-top: 2px;"></i>
-                        <div style="flex: 1;">
-                            <div style="color: var(--text);">${display.label}${durationText}</div>
-                            <div style="color: var(--muted); font-size: 0.9em; margin-top: 2px;">
-                                ${modelText}${modelText && event.prompt_id ? ' → ' : ''}${event.prompt_id || ''}
-                            </div>
-                            ${errorText}
-                        </div>
-                        <div style="color: var(--muted); font-size: 0.85em; white-space: nowrap;">${timestamp}</div>
-                    </div>
-                `;
-            }).join('');
+	                return `
+	                    <div style="display: flex; align-items: start; gap: 10px; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
+	                        <i class="fas ${display.icon}" style="color: ${display.color}; margin-top: 2px;"></i>
+	                        <div style="flex: 1;">
+	                            <div style="color: var(--text);">${display.label}${durationText}</div>
+	                            <div style="color: var(--muted); font-size: 0.9em; margin-top: 2px;">
+	                                ${modelText}${modelText && event.prompt_id ? ' → ' : ''}${event.prompt_id || ''}
+	                            </div>
+	                            ${testDetailsHtml}
+	                            ${errorText}
+	                        </div>
+	                        <div style="color: var(--muted); font-size: 0.85em; white-space: nowrap;">${timestamp}</div>
+	                    </div>
+	                `;
+	            }).join('');
 
             eventsContainer.innerHTML = eventsHtml || '<div style="color: var(--muted); padding: 8px 0;">No events yet</div>';
 
@@ -1963,12 +1987,6 @@
 
                     const batch = json.data[0]; // Single batch system
 
-                    // If this is OUR current batch, don't show the warning
-                    if (batch._id === currentBatchId) {
-                        warning.style.display = 'none';
-                        return;
-                    }
-
                     warning.style.display = 'block';
                     const inactiveSeconds = batch.inactive_seconds || 0;
                     const activityStatus = batch.activity_status || 'active';
@@ -2053,7 +2071,7 @@
                 currentBatchId = batchId;
                 localStorage.setItem('currentBatchId', batchId);
                 await loadBatchDetails(batchId);
-                refreshActiveBatch(); // Hide warning once attached
+                refreshActiveBatch(); // Keep banner updated after switching
             }
         }
 
@@ -2196,7 +2214,7 @@
                 currentBatchId = batchId;
                 localStorage.setItem('currentBatchId', batchId);
                 await loadBatchDetails(batchId);
-                refreshActiveBatches(); // Hide it from discovery once attached
+                refreshActiveBatches(); // Keep banner updated after switching
             }
         }
 
@@ -2976,6 +2994,7 @@
 
                     window.currentBatchResults = results;
                     tbody.innerHTML = results.map((r, idx) => {
+                        const isFailed = r.success === false;
                         const qualityScore = r.quality_score !== undefined && r.quality_score !== null ? r.quality_score : '-';
                         const qualityClass = qualityScore >= 7 ? 'quality-high' : qualityScore >= 4 ? 'quality-mid' : (qualityScore !== '-' ? 'quality-low' : '');
 
@@ -2993,22 +3012,33 @@
                         const judgeInfo = r.judge_host ? `<div style="font-size: 0.75em; color: var(--muted);">Judge: ${formatHostLabel(r.judge_host)}</div>` : '';
                         const judgeStatus = r.scoring_method ? `<div style="font-size: 0.75em; color: var(--muted);">Status: ${r.scoring_method}</div>` : '';
 
+                        // Failed test indicators
+                        const failureIcon = isFailed ? '<i class="fas fa-exclamation-triangle" style="color: #e74c3c; margin-right: 6px;"></i>' : '';
+                        const errorPreview = isFailed && r.error
+                            ? `<div style="font-size: 0.75em; color: #e74c3c; margin-top: 4px; padding: 4px 8px; background: rgba(231, 76, 60, 0.1); border-left: 2px solid #e74c3c; border-radius: 3px;">${escapeHtml(r.error.substring(0, 80))}${r.error.length > 80 ? '...' : ''}</div>`
+                            : '';
+                        const rowStyle = isFailed
+                            ? 'border-bottom: 1px solid rgba(231, 76, 60, 0.3); background: rgba(231, 76, 60, 0.05);'
+                            : 'border-bottom: 1px solid rgba(255,255,255,0.05);';
+
                         return `
-                            <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                            <tr style="${rowStyle}">
                                 <td style="padding: 8px 12px;">
-                                    ${escapeHtml(r.model)}
+                                    ${failureIcon}${escapeHtml(r.model)}
                                     ${hostInfo}
                                 </td>
-                                <td style="padding: 8px 12px;">${escapeHtml(r.prompt_name)}${perfLine}</td>
+                                <td style="padding: 8px 12px;">
+                                    ${escapeHtml(r.prompt_name)}${perfLine}${errorPreview}
+                                </td>
                                 <td style="padding: 8px 12px; text-align: center;" class="${qualityClass}">
-                                    ${qualityScore}
+                                    ${isFailed ? '<span style="color: #e74c3c; font-weight: 600;">FAILED</span>' : qualityScore}
                                     ${judgeInfo}
                                     ${judgeStatus}
                                     ${judgeLine}
                                 </td>
                                 <td style="padding: 8px 12px; text-align: center;">
-                                    <button class="btn-secondary btn-sm" onclick="showJudgeDetails('${r.id || idx}')">
-                                        <i class="fas fa-eye"></i> Details
+                                    <button class="btn-secondary btn-sm" onclick="showJudgeDetails('${r.id || idx}')" ${isFailed ? 'style="background: rgba(231, 76, 60, 0.2); border-color: #e74c3c;"' : ''}>
+                                        <i class="fas fa-${isFailed ? 'exclamation-circle' : 'eye'}"></i> ${isFailed ? 'Error' : 'Details'}
                                     </button>
                                 </td>
                             </tr>
@@ -3443,44 +3473,67 @@
                     }
                 }
 
-                if (batch.status === 'completed') {
+                // Handle all terminal batch states (completed, stopped, failed, interrupted)
+                const isTerminalState = ['completed', 'stopped', 'failed', 'interrupted'].includes(batch.status);
+
+                if (isTerminalState) {
                     clearInterval(batchPollInterval);
                     batchPollInterval = null;
                     localStorage.removeItem('currentBatchId');
+                    currentBatchId = null;
 
                     const status = document.getElementById('batchStatus');
-                    
-                    // Check if judging is actually complete
-                    const judgeTotal = Number(batch.judge_total) || 0;
-                    const judgeTotalEffective = Number(
-                        batch.judge_total_effective ??
-                        (batch.judge_stats ? batch.judge_stats.total : null) ??
-                        judgeTotal
-                    ) || 0;
-                    const judgeCompleted = Number(batch.judge_completed) || 0;
-                    
-                    if (judgeTotalEffective > 0 && judgeCompleted < judgeTotalEffective) {
+                    const btn = document.getElementById('runBatchBtn');
+                    const stopBtn = document.getElementById('stopBatchBtn');
+
+                    btn.disabled = false;
+                    btn.textContent = 'Start Batch Test';
+                    stopBtn.style.display = 'none';
+
+                    if (batch.status === 'completed') {
+                        // Check if judging is actually complete
+                        const judgeTotal = Number(batch.judge_total) || 0;
+                        const judgeTotalEffective = Number(
+                            batch.judge_total_effective ??
+                            (batch.judge_stats ? batch.judge_stats.total : null) ??
+                            judgeTotal
+                        ) || 0;
+                        const judgeCompleted = Number(batch.judge_completed) || 0;
+
+                        if (judgeTotalEffective > 0 && judgeCompleted < judgeTotalEffective) {
+                            status.className = 'status warning';
+                            status.style.background = 'rgba(241, 196, 15, 0.1)';
+                            status.style.borderColor = 'rgba(241, 196, 15, 0.3)';
+                            status.style.color = '#f1c40f';
+                            status.innerHTML = `
+                                <i class="fas fa-exclamation-triangle"></i> Batch execution finished, but judging is incomplete (${judgeCompleted}/${judgeTotalEffective}).<br>
+                                <small>The server process may have stopped or judging failed silently. Check logs.</small>
+                            `;
+                        } else {
+                            status.className = 'status success';
+                            status.textContent = `✓ Batch completed! ${batch.completed} tests run (${batch.success_rate} success)`;
+                        }
+                    } else if (batch.status === 'stopped') {
+                        status.className = 'status warning';
+                        status.style.background = 'rgba(241, 196, 15, 0.1)';
+                        status.style.borderColor = 'rgba(241, 196, 15, 0.3)';
+                        status.style.color = '#f1c40f';
+                        status.textContent = `⏹ Batch stopped by user (${batch.completed}/${batch.total_tests} tests completed)`;
+                    } else if (batch.status === 'interrupted') {
                         status.className = 'status warning';
                         status.style.background = 'rgba(241, 196, 15, 0.1)';
                         status.style.borderColor = 'rgba(241, 196, 15, 0.3)';
                         status.style.color = '#f1c40f';
                         status.innerHTML = `
-                            <i class="fas fa-exclamation-triangle"></i> Batch execution finished, but judging is incomplete (${judgeCompleted}/${judgeTotalEffective}).<br>
-                            <small>The server process may have stopped or judging failed silently. Check logs.</small>
+                            <i class="fas fa-exclamation-triangle"></i> Batch interrupted (${batch.completed}/${batch.total_tests} tests completed)<br>
+                            <small>Process stopped unexpectedly or exceeded timeout. Check server logs.</small>
                         `;
-                    } else {
-                        status.className = 'status success';
-                        status.textContent = `✓ Batch completed! ${batch.completed} tests run (${batch.success_rate} success)`;
+                    } else if (batch.status === 'failed') {
+                        status.className = 'status error';
+                        status.textContent = `✗ Batch failed (${batch.completed}/${batch.total_tests} tests completed)`;
                     }
-                    
-                    status.style.display = 'block';
-                    status.style.display = 'block';
 
-                    const btn = document.getElementById('runBatchBtn');
-                    const stopBtn = document.getElementById('stopBatchBtn');
-                    btn.disabled = false;
-                    btn.textContent = 'Start Batch Test';
-                    stopBtn.style.display = 'none';
+                    status.style.display = 'block';
 
                     // Refresh dashboard
                     loadDashboard();
@@ -3516,6 +3569,7 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: true,
+                    animation: false,
                     plugins: { legend: { display: false } },
                     scales: { y: { beginAtZero: true } }
                 }
@@ -3536,6 +3590,7 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: true,
+                    animation: false,
                     plugins: { legend: { display: false } },
                     scales: { y: { beginAtZero: true } }
                 }
@@ -3556,6 +3611,7 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: true,
+                    animation: false,
                     plugins: { legend: { display: false } },
                     scales: { y: { beginAtZero: true, max: 10 } }
                 }
@@ -3576,6 +3632,7 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: true,
+                    animation: false,
                     plugins: { legend: { display: false } },
                     scales: { y: { beginAtZero: true, max: 10 } }
                 }
@@ -3647,24 +3704,95 @@
                         return hostLabel && hostLabel !== 'localhost' ? `${m.model} (${hostLabel})` : m.model;
                     });
 
+                    // Track previous data count to highlight new bars (skip on initial load)
+                    const prevCount = latencyChart.data.labels.length;
+                    const newCount = chartLabels.length;
+                    const shouldHighlight = chartsInitialized && newCount > prevCount;
+
+                    // Helper to create highlight colors array (bright cyan for new, normal for existing)
+                    const createHighlightColors = (baseColor, highlightColor) => {
+                        return chartLabels.map((_, i) => i >= prevCount ? highlightColor : baseColor);
+                    };
+
+                    // Clear any pending highlight fade timeout
+                    if (chartHighlightTimeout) {
+                        clearTimeout(chartHighlightTimeout);
+                        chartHighlightTimeout = null;
+                    }
+
+                    // Update latency chart
                     latencyChart.data.labels = chartLabels;
                     latencyChart.data.datasets[0].data = statsForCharts.map(m => m.avg_latency);
+                    if (shouldHighlight) {
+                        latencyChart.data.datasets[0].backgroundColor = createHighlightColors(
+                            'rgba(102, 126, 234, 0.8)', 'rgba(0, 255, 255, 0.9)'
+                        );
+                        latencyChart.data.datasets[0].borderColor = createHighlightColors(
+                            'rgba(102, 126, 234, 1)', 'rgba(0, 255, 255, 1)'
+                        );
+                    }
                     latencyChart.update();
 
+                    // Update tokens chart
                     tokensChart.data.labels = chartLabels;
                     tokensChart.data.datasets[0].data = statsForCharts.map(m => parseFloat(m.avg_tokens_per_sec));
+                    if (shouldHighlight) {
+                        tokensChart.data.datasets[0].backgroundColor = createHighlightColors(
+                            'rgba(118, 75, 162, 0.8)', 'rgba(0, 255, 255, 0.9)'
+                        );
+                        tokensChart.data.datasets[0].borderColor = createHighlightColors(
+                            'rgba(118, 75, 162, 1)', 'rgba(0, 255, 255, 1)'
+                        );
+                    }
                     tokensChart.update();
 
                     // Update quality chart
                     qualityChart.data.labels = chartLabels;
                     qualityChart.data.datasets[0].data = statsForCharts.map(m => parseFloat(m.avg_quality) || 0);
+                    if (shouldHighlight) {
+                        qualityChart.data.datasets[0].backgroundColor = createHighlightColors(
+                            'rgba(46, 204, 113, 0.8)', 'rgba(0, 255, 255, 0.9)'
+                        );
+                        qualityChart.data.datasets[0].borderColor = createHighlightColors(
+                            'rgba(46, 204, 113, 1)', 'rgba(0, 255, 255, 1)'
+                        );
+                    }
                     qualityChart.update();
 
                     // Update composite chart
                     compositeChart.data.labels = chartLabels;
-                    
                     compositeChart.data.datasets[0].data = statsForCharts.map(m => parseFloat(m[profileKey]) || 0);
+                    if (shouldHighlight) {
+                        compositeChart.data.datasets[0].backgroundColor = createHighlightColors(
+                            'rgba(241, 196, 15, 0.8)', 'rgba(0, 255, 255, 0.9)'
+                        );
+                        compositeChart.data.datasets[0].borderColor = createHighlightColors(
+                            'rgba(241, 196, 15, 1)', 'rgba(0, 255, 255, 1)'
+                        );
+                    }
                     compositeChart.update();
+
+                    // Mark charts as initialized after first update
+                    chartsInitialized = true;
+
+                    // Fade highlight back to normal after 1.5 seconds
+                    if (shouldHighlight) {
+                        chartHighlightTimeout = setTimeout(() => {
+                            chartHighlightTimeout = null;
+                            latencyChart.data.datasets[0].backgroundColor = 'rgba(102, 126, 234, 0.8)';
+                            latencyChart.data.datasets[0].borderColor = 'rgba(102, 126, 234, 1)';
+                            tokensChart.data.datasets[0].backgroundColor = 'rgba(118, 75, 162, 0.8)';
+                            tokensChart.data.datasets[0].borderColor = 'rgba(118, 75, 162, 1)';
+                            qualityChart.data.datasets[0].backgroundColor = 'rgba(46, 204, 113, 0.8)';
+                            qualityChart.data.datasets[0].borderColor = 'rgba(46, 204, 113, 1)';
+                            compositeChart.data.datasets[0].backgroundColor = 'rgba(241, 196, 15, 0.8)';
+                            compositeChart.data.datasets[0].borderColor = 'rgba(241, 196, 15, 1)';
+                            latencyChart.update();
+                            tokensChart.update();
+                            qualityChart.update();
+                            compositeChart.update();
+                        }, 1500);
+                    }
                 } else {
                     // Clear charts if no data
                     document.getElementById('avgLatency').innerHTML = '-<span class="stat-unit">ms</span>';
@@ -4278,45 +4406,94 @@
                 loadDashboard();
             }
 
-            // Check for active batch
+            // Check for active batch - with validation
             const savedBatchId = localStorage.getItem('currentBatchId');
             if (savedBatchId) {
-                debugLog('Resuming batch:', savedBatchId);
-                currentBatchId = savedBatchId;
+                debugLog('Attempting to resume batch:', savedBatchId);
 
-                const btn = document.getElementById('runBatchBtn');
-                const stopBtn = document.getElementById('stopBatchBtn');
-                const execProgressBar = document.getElementById('execProgressBar');
-                const judgeProgressBar = document.getElementById('judgeProgressBar');
-                const status = document.getElementById('batchStatus');
+                // Validate batch exists and check its status before resuming
+                try {
+                    const res = await fetch(`${BENCHMARK_API}/batch/${savedBatchId}`);
 
-                btn.disabled = true;
-                btn.textContent = 'Resuming...';
-                stopBtn.style.display = 'inline-block';
-                execProgressBar.classList.add('active');
-                judgeProgressBar.classList.add('active');
+                    if (res.ok) {
+                        const json = await res.json();
+                        const batch = json.data;
 
-                // Initialize progress bar visual state
-                document.getElementById('execProgressFill').style.width = '100%'; // Show full width but indeterminate or waiting
-                document.getElementById('execProgressFill').style.background = 'linear-gradient(90deg, var(--muted) 0%, var(--panel-border) 100%)'; // Grey out until update
-                document.getElementById('execProgressText').textContent = 'Exec: Connecting...';
+                        if (batch && (batch.status === 'running' || batch.status === 'judging')) {
+                            // Batch is still active - resume polling
+                            debugLog('Resuming active batch:', savedBatchId);
+                            currentBatchId = savedBatchId;
 
-                document.getElementById('judgeProgressFill').style.width = '100%';
-                document.getElementById('judgeProgressFill').style.background = 'linear-gradient(90deg, var(--muted) 0%, var(--panel-border) 100%)';
-                document.getElementById('judgeProgressText').textContent = 'Judge: Connecting...';
+                            const btn = document.getElementById('runBatchBtn');
+                            const stopBtn = document.getElementById('stopBatchBtn');
+                            const execProgressBar = document.getElementById('execProgressBar');
+                            const judgeProgressBar = document.getElementById('judgeProgressBar');
+                            const status = document.getElementById('batchStatus');
 
-                const judgeStatsContainer = document.getElementById('judgeStatsContainer');
-                if (judgeStatsContainer) judgeStatsContainer.style.display = 'none';
-                const perModelContainer = document.getElementById('perModelProgressContainer');
-                if (perModelContainer) perModelContainer.style.display = 'none';
+                            btn.disabled = true;
+                            btn.textContent = 'Resuming...';
+                            stopBtn.style.display = 'inline-block';
+                            execProgressBar.classList.add('active');
+                            judgeProgressBar.classList.add('active');
 
-                status.style.display = 'block';
-                status.className = 'status';
-                status.textContent = 'Resuming session...';
+                            // Initialize progress bar visual state
+                            document.getElementById('execProgressFill').style.width = '100%';
+                            document.getElementById('execProgressFill').style.background = 'linear-gradient(90deg, var(--muted) 0%, var(--panel-border) 100%)';
+                            document.getElementById('execProgressText').textContent = 'Exec: Connecting...';
 
-                // Start polling immediately
-                pollBatchProgress();
-                batchPollInterval = setInterval(pollBatchProgress, 2000);
+                            document.getElementById('judgeProgressFill').style.width = '100%';
+                            document.getElementById('judgeProgressFill').style.background = 'linear-gradient(90deg, var(--muted) 0%, var(--panel-border) 100%)';
+                            document.getElementById('judgeProgressText').textContent = 'Judge: Connecting...';
+
+                            const judgeStatsContainer = document.getElementById('judgeStatsContainer');
+                            if (judgeStatsContainer) judgeStatsContainer.style.display = 'none';
+                            const perModelContainer = document.getElementById('perModelProgressContainer');
+                            if (perModelContainer) perModelContainer.style.display = 'none';
+
+                            status.style.display = 'block';
+                            status.className = 'status';
+                            status.textContent = 'Resuming session...';
+
+                            // Start polling immediately
+                            pollBatchProgress();
+                            batchPollInterval = setInterval(pollBatchProgress, 2000);
+                        } else if (batch && ['completed', 'stopped', 'failed', 'interrupted'].includes(batch.status)) {
+                            // Batch finished while page was closed - display results
+                            debugLog('Batch already finished:', savedBatchId, 'status:', batch.status);
+                            localStorage.removeItem('currentBatchId');
+                            currentBatchId = null;
+
+                            // Refresh dashboard and history to show completed batch
+                            if (typeof loadDashboard === 'function') {
+                                loadDashboard();
+                            }
+                            loadBatchHistory();
+
+                            // Show notification
+                            const status = document.getElementById('batchStatus');
+                            if (status) {
+                                status.style.display = 'block';
+                                status.className = `status ${batch.status === 'completed' ? 'success' : 'error'}`;
+                                status.textContent = `Previous batch ${batch.status}`;
+                                setTimeout(() => {
+                                    status.style.display = 'none';
+                                }, 5000);
+                            }
+                        } else {
+                            // Unknown status - clear localStorage
+                            debugLog('Batch in unexpected state:', batch.status);
+                            localStorage.removeItem('currentBatchId');
+                        }
+                    } else {
+                        // Batch not found - clear localStorage
+                        debugLog('Saved batch not found, clearing localStorage');
+                        localStorage.removeItem('currentBatchId');
+                    }
+                } catch (err) {
+                    console.error('Failed to validate saved batch:', err);
+                    // Clear localStorage on error to avoid getting stuck
+                    localStorage.removeItem('currentBatchId');
+                }
             }
 
             // Load history
@@ -4972,16 +5149,17 @@
 	                    `;
 	                }).join('');
 
-	                return `
-	                    <div class="${rowClass}">
-	                        <div class="timeline-model-label">
-	                            <i class="fas ${rowIcon}" style="color:var(--accent)"></i>
-	                            ${escapeHtml(laneLabel)} ${rowBadge}
-	                        </div>
-	                        <div class="timeline-track timeline-track-absolute" style="height:${laneHeight}px;">
-	                            <div style="position: relative; width: ${trackWidth}px; height: ${laneHeight}px;">
-	                                ${segmentsHtml}
-	                            </div>
+		                return `
+		                    <div class="${rowClass}">
+		                        <div class="timeline-model-label">
+		                            <i class="fas ${rowIcon}" style="color:var(--accent)"></i>
+		                            <span class="timeline-model-name" title="${escapeHtml(laneLabel)}">${escapeHtml(laneLabel)}</span>
+		                            ${rowBadge}
+		                        </div>
+		                        <div class="timeline-track timeline-track-absolute" style="height:${laneHeight}px;">
+		                            <div style="position: relative; width: ${trackWidth}px; height: ${laneHeight}px;">
+		                                ${segmentsHtml}
+		                            </div>
 	                        </div>
 	                    </div>
 	                `;
@@ -4997,42 +5175,77 @@
 
         // Stacked Timeline functionality
         let lastTimelineResultIds = new Set();
-        
-        async function loadRecentTestsTimeline(limit = 100) {
+
+        async function loadRecentTestsTimeline() {
             try {
-                // Fetch both results and active batch status
-                const [resResults, resActive] = await Promise.all([
-                    fetch(`${BENCHMARK_API}/results?limit=${limit}`),
-                    fetch(`${BENCHMARK_API}/batches/active`)
-                ]);
+                // First check for active batch, then fall back to most recent batch
+                const resActive = await fetch(`${BENCHMARK_API}/batches/active`);
 
-                if (!resResults.ok) throw new Error(`HTTP ${resResults.status}`);
-
-                const json = await resResults.json();
-                let results = json.data?.results || [];
-
-                // Get active batch info for live state detection
-                let activeBatch = null;
+                let targetBatch = null;
                 if (resActive.ok) {
                     const activeJson = await resActive.json();
-                    activeBatch = activeJson.data?.[0] || null;
+                    targetBatch = activeJson.data?.[0] || null;
                 }
 
-                // If a batch is active, only show results for that batch
-                if (activeBatch && activeBatch._id) {
-                    results = results.filter(r => r.batch_id === activeBatch._id);
-                }
-
-                let batchTimeline = [];
-                if (activeBatch && activeBatch._id) {
+                // If no active batch, get the most recent batch
+                if (!targetBatch) {
                     try {
-                        const timelineRes = await fetch(`${BENCHMARK_API}/batch/${activeBatch._id}/timeline`);
-                        if (timelineRes.ok) {
-                            const timelineJson = await timelineRes.json();
+                        const resBatches = await fetch(`${BENCHMARK_API}/batches?limit=1`);
+                        if (resBatches.ok) {
+                            const batchesJson = await resBatches.json();
+                            const batches = batchesJson.data?.batches || batchesJson.data || [];
+                            targetBatch = batches[0] || null;
+                        }
+                    } catch (err) {
+                        console.warn('Failed to fetch recent batches', err);
+                    }
+                }
+
+                let results = [];
+                let batchTimeline = [];
+
+                // Fetch results for the target batch
+                if (targetBatch && targetBatch._id) {
+                    try {
+                        const [resResults, resTimeline] = await Promise.all([
+                            fetch(`${BENCHMARK_API}/results/advanced?batchId=${targetBatch._id}&limit=5000`),
+                            fetch(`${BENCHMARK_API}/batch/${targetBatch._id}/timeline`)
+                        ]);
+
+                        if (resResults.ok) {
+                            const resultsJson = await resResults.json();
+                            results = resultsJson.data?.results || [];
+                        }
+
+                        if (resTimeline.ok) {
+                            const timelineJson = await resTimeline.json();
                             batchTimeline = timelineJson.data?.timeline || [];
                         }
                     } catch (err) {
-                        console.warn('Failed to load batch timeline for results view', err);
+                        console.warn('Failed to load batch data', err);
+                    }
+                }
+
+                // Use targetBatch as activeBatch for compatibility with rest of function
+                const activeBatch = targetBatch;
+
+                // Update batch info label
+                const batchInfoEl = document.getElementById('timelineBatchInfo');
+                const batchLabelEl = document.getElementById('timelineBatchLabel');
+                if (batchInfoEl && batchLabelEl) {
+                    if (targetBatch) {
+                        const batchName = targetBatch.name || targetBatch._id?.slice(-8) || 'Unknown';
+                        const status = targetBatch.status || 'unknown';
+                        const statusIcon = status === 'running' ? '<i class="fas fa-sync fa-spin"></i>' :
+                                          status === 'completed' ? '<i class="fas fa-check-circle" style="color:#2ecc71"></i>' :
+                                          status === 'failed' ? '<i class="fas fa-times-circle" style="color:#e74c3c"></i>' :
+                                          '<i class="fas fa-clock"></i>';
+                        const resultCount = results.length;
+                        const modelCount = targetBatch.models?.length || new Set(results.map(r => r.model)).size;
+                        batchLabelEl.innerHTML = `${statusIcon} <strong>${escapeHtml(batchName)}</strong> &mdash; ${modelCount} model${modelCount !== 1 ? 's' : ''}, ${resultCount} test${resultCount !== 1 ? 's' : ''}`;
+                        batchInfoEl.style.display = 'block';
+                    } else {
+                        batchInfoEl.style.display = 'none';
                     }
                 }
 
@@ -5051,6 +5264,7 @@
                 if (!results.length && !activeBatch) {
                     timelineVisual.style.display = 'none';
                     timelineEmptyState.style.display = 'block';
+                    if (batchInfoEl) batchInfoEl.style.display = 'none';
                     scheduleTimelineScrollSync(false);
                     return;
                 }
@@ -5192,10 +5406,57 @@
                 };
 
                 let rowsHtml = '';
-                const widthFromDuration = (durationMs, minWidth = 60, maxWidth = 200) => {
-                    const base = 50 + (durationMs / 2000) * 40;
-                    return Math.min(maxWidth, Math.max(minWidth, Math.round(base)));
+
+                // Calculate global max latency for proportional width scaling ("race view")
+                // Include all test results, prep events, and warmup events
+                let globalMaxLatency = 0;
+                for (const results of resultsByModel.values()) {
+                    for (const r of results) {
+                        const lat = r.latency || 0;
+                        if (lat > globalMaxLatency) globalMaxLatency = lat;
+                    }
+                }
+                for (const event of prepLaneEvents) {
+                    const dur = Number(event.duration_ms) || 0;
+                    if (dur > globalMaxLatency) globalMaxLatency = dur;
+                }
+                for (const warmup of modelWarmups.values()) {
+                    const dur = Number(warmup.duration_ms) || 0;
+                    if (dur > globalMaxLatency) globalMaxLatency = dur;
+                }
+                // Ensure a minimum max to avoid division issues
+                if (globalMaxLatency < 500) globalMaxLatency = 500;
+
+                // Calculate total duration per model for "race view" scaling
+                const modelTotalDurations = new Map();
+                for (const [model, results] of resultsByModel.entries()) {
+                    const warmup = modelWarmups.get(model);
+                    const warmupTime = warmup ? (Number(warmup.duration_ms) || 0) : 0;
+                    const testsTime = results.reduce((sum, r) => sum + (r.latency || 0), 0);
+                    modelTotalDurations.set(model, warmupTime + testsTime);
+                }
+
+                // Find the max total duration (this model fills the track)
+                let maxTotalDuration = 0;
+                for (const total of modelTotalDurations.values()) {
+                    if (total > maxTotalDuration) maxTotalDuration = total;
+                }
+                if (maxTotalDuration < 1000) maxTotalDuration = 1000;
+
+                // Get actual track width dynamically from the container
+                const timelineContainer = document.getElementById('timelineVisual');
+                const containerWidth = timelineContainer ? timelineContainer.offsetWidth : 1200;
+                // Account for label width (~180px) and padding (~40px)
+                const TRACK_WIDTH = Math.max(400, containerWidth - 220);
+
+                // Calculate pixel width for a segment based on its duration
+                // Scaled so the slowest model fills the track
+                const calcSegmentWidth = (durationMs) => {
+                    if (!durationMs || durationMs <= 0) return 6;
+                    const width = Math.round((durationMs / maxTotalDuration) * TRACK_WIDTH);
+                    return Math.max(6, Math.min(width, TRACK_WIDTH));
                 };
+
                 const prepEventVisuals = {
                     prep_start: { icon: 'fa-plug', class: 'segment-warmup-judge', label: 'Prep Started' },
                     judge_warmup_start: { icon: 'fa-gavel', class: 'segment-warmup-judge', label: 'Judge Warmup' },
@@ -5207,7 +5468,7 @@
                     const prepSegmentsHtml = prepLaneEvents.map((event) => {
                         const visual = prepEventVisuals[event.event] || prepEventVisuals.prep_start;
                         const durationMs = Number(event.duration_ms) || 0;
-                        const widthPx = widthFromDuration(durationMs || 1200, 60, 180);
+                        const widthPx = calcSegmentWidth(durationMs || 500);
                         const tooltipHtml = `
                             <div style="border-bottom: 1px solid rgba(124, 240, 255, 0.2); padding-bottom: 6px; margin-bottom: 6px;">
                                 <strong>${escapeHtml(visual.label)}</strong>
@@ -5231,7 +5492,7 @@
                         return `
                             <div class="timeline-segment-group" style="width: ${widthPx}px;" onmouseenter="showTimelineTooltip(event, '${tooltipEncoded}')">
                                 <div class="timeline-segment ${visual.class}" style="width: 100%;">
-                                    ${widthPx > 20 ? `<i class="fas ${visual.icon}"></i>` : ''}
+                                    <i class="fas ${visual.icon}"></i>
                                 </div>
                             </div>
                         `;
@@ -5265,9 +5526,10 @@
                     let segmentsHtml = '';
 
                     const warmupEvent = modelWarmups.get(model);
+
                     if (warmupEvent) {
                         const durationMs = Number(warmupEvent.duration_ms) || 0;
-                        const widthPx = widthFromDuration(durationMs || 1800, 60, 180);
+                        const warmupWidthPx = calcSegmentWidth(durationMs);
                         const tooltipHtml = `
                             <div style="border-bottom: 1px solid rgba(124, 240, 255, 0.2); padding-bottom: 6px; margin-bottom: 6px;">
                                 <strong>Model Warmup Ready</strong>
@@ -5287,16 +5549,15 @@
                         `.trim();
                         const tooltipEncoded = encodeTooltip(tooltipHtml);
                         segmentsHtml += `
-                            <div class="timeline-segment-group" style="width: ${widthPx}px;" onmouseenter="showTimelineTooltip(event, '${tooltipEncoded}')">
+                            <div class="timeline-segment-group" style="width: ${warmupWidthPx}px;" onmouseenter="showTimelineTooltip(event, '${tooltipEncoded}')">
                                 <div class="timeline-segment segment-warmup" style="width: 100%;">
-                                    ${widthPx > 20 ? '<i class="fas fa-bolt"></i>' : ''}
+                                    <i class="fas fa-bolt"></i>
                                 </div>
                             </div>
                         `;
                     }
 
                     segmentsHtml += modelResults.map((result, idx) => {
-                        const animationDelay = idx * 0.03; // Stagger animations
                         const visual = getSegmentVisual(result);
                         const inferenceTime = result.latency || 0;
                         const judgingTime = result.scoring_time_ms || 0;
@@ -5312,8 +5573,10 @@
                         const levelNumber = getResultLevel(result);
 
                         // Tooltip HTML for Custom Tooltip with Performance Comparisons
-                        const promptTextRaw = result.prompt ? (result.prompt.length > 60 ? result.prompt.substring(0, 60) + '...' : result.prompt) : 'No prompt';
+                        const promptTextRaw = result.prompt ? (result.prompt.length > 80 ? result.prompt.substring(0, 80) + '...' : result.prompt) : 'No prompt';
                         const promptText = escapeHtml(promptTextRaw);
+                        const responseTextRaw = result.response ? (result.response.length > 200 ? result.response.substring(0, 200) + '...' : result.response) : '';
+                        const responseText = escapeHtml(responseTextRaw);
                         const modelName = escapeHtml(result.model || 'Unknown Model');
 
                         // Performance indicators
@@ -5390,44 +5653,31 @@
                                 <span style="font-weight: 600;">Level ${levelNumber}</span>
                                 ` : ''}
                             </div>
-                            <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1); color: rgba(255,255,255,0.7); font-style: italic; font-size: 0.85em; line-height: 1.4;">
-                                <i class="fas fa-quote-left" style="font-size: 0.7em; opacity: 0.5; margin-right: 4px;"></i>${promptText}<i class="fas fa-quote-right" style="font-size: 0.7em; opacity: 0.5; margin-left: 4px;"></i>
+                            <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1);">
+                                <div style="color: rgba(255,255,255,0.5); font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Prompt:</div>
+                                <div style="color: rgba(255,255,255,0.7); font-style: italic; font-size: 0.85em; line-height: 1.4;">
+                                    <i class="fas fa-quote-left" style="font-size: 0.7em; opacity: 0.5; margin-right: 4px;"></i>${promptText}<i class="fas fa-quote-right" style="font-size: 0.7em; opacity: 0.5; margin-left: 4px;"></i>
+                                </div>
                             </div>
+                            ${responseText ? `
+                            <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.05);">
+                                <div style="color: rgba(255,255,255,0.5); font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Response:</div>
+                                <div style="color: rgba(124, 240, 255, 0.8); font-size: 0.85em; line-height: 1.4; max-height: 100px; overflow-y: auto;">
+                                    ${responseText}
+                                </div>
+                            </div>
+                            ` : ''}
                         `.trim();
                         const tooltipEncoded = encodeTooltip(tooltipHtml);
 
-                        // Width scale (min 80px, max 220px)
-                        const totalWidthPx = Math.min(220, Math.max(80, 60 + (totalTime / 2000) * 40));
-                        
-                        // Calculate percentage widths for sub-segments
-                        const inferencePct = totalTime > 0 ? (inferenceTime / totalTime) * 100 : 100;
-                        const judgingPct = totalTime > 0 ? (judgingTime / totalTime) * 100 : 0;
-                        
-                        // Calculate pixel widths to control text visibility
-                        const inferencePx = totalWidthPx * (inferencePct / 100);
-                        const judgingPx = totalWidthPx * (judgingPct / 100);
-                        
-                        const showInferenceIcon = inferencePx > 20;
-                        const showJudgingIcon = judgingPx > 20;
+                        // Width proportional to latency - race view effect
+                        const widthPx = calcSegmentWidth(inferenceTime);
 
-                        // Only split if we actually have judging time
-                        // Use onmouseenter for custom tooltip
-                        if (judgingTime > 0) {
-                            return `
-                            <div class="timeline-segment-group" style="width: ${totalWidthPx}px;" onmouseenter="showTimelineTooltip(event, '${tooltipEncoded}')">
-                                <div class="timeline-segment ${visual.class}" style="width: ${inferencePct}%; border-radius: 0;">
-                                    ${showInferenceIcon ? `<i class="fas ${visual.icon}"></i>` : ''}
-                                </div>
-                                <div class="timeline-segment segment-judging" style="width: ${judgingPct}%; border-radius: 0;">
-                                    ${showJudgingIcon ? `<i class="fas fa-gavel"></i>` : ''}
-                                </div>
-                            </div>`;
-                        }
-                        // Standard single block
+                        // Single segment block showing inference only
                         return `
-                            <div class="timeline-segment-group" style="width: ${totalWidthPx}px; animation-delay: ${animationDelay}s;" onmouseenter="showTimelineTooltip(event, '${tooltipEncoded}')">
+                            <div class="timeline-segment-group" style="width: ${widthPx}px;" onmouseenter="showTimelineTooltip(event, '${tooltipEncoded}')">
                                 <div class="timeline-segment ${visual.class}" style="width: 100%;">
-                                    ${totalWidthPx > 20 ? `<i class="fas ${visual.icon}"></i>` : ''}
+                                    <i class="fas ${visual.icon}"></i>
                                 </div>
                             </div>`;
                     }).join('');
@@ -5549,16 +5799,22 @@
                         if (modelResults.length === 0) continue;
 
                         const successCount = modelResults.filter(r => r.success).length;
+                        const failCount = modelResults.length - successCount;
                         const successRate = (successCount / modelResults.length) * 100;
                         const latencies = modelResults.filter(r => r.latency).map(r => r.latency);
-                        const avgLatency = latencies.length ? latencies.reduce((a,b) => a+b, 0) / latencies.length : 0;
                         const qualities = modelResults.filter(r => r.quality_score).map(r => r.quality_score);
-                        const avgQuality = qualities.length ? qualities.reduce((a,b) => a+b, 0) / qualities.length : 0;
                         // Parse tokens_per_sec as number (handles both string and number types)
                         const tps = modelResults
                             .map(r => parseFloat(r.tokens_per_sec))
                             .filter(v => !isNaN(v) && v > 0);
-                        const avgTps = tps.length ? tps.reduce((a,b) => a+b, 0) / tps.length : 0;
+
+                        const latencyStats = summarizeNumbers(latencies);
+                        const qualityStats = summarizeNumbers(qualities);
+                        const tpsStats = summarizeNumbers(tps);
+
+                        const avgLatency = latencyStats.mean || 0;
+                        const avgQuality = qualityStats.mean || 0;
+                        const avgTps = tpsStats.mean || 0;
 
                         modelStats.push({
                             model,
@@ -5566,15 +5822,23 @@
                             avgLatency,
                             avgQuality,
                             avgTps,
-                            testCount: modelResults.length
+                            testCount: modelResults.length,
+                            successCount,
+                            failCount,
+                            latencyStats,
+                            qualityStats,
+                            tpsStats
                         });
                     }
 
                     if (modelStats.length > 0) {
-                        // Find min/max for normalization
-                        const maxLatency = Math.max(...modelStats.map(m => m.avgLatency));
-                        const minLatency = Math.min(...modelStats.map(m => m.avgLatency).filter(l => l > 0));
-                        const maxTps = Math.max(...modelStats.map(m => m.avgTps));
+                        // Find min/max for normalization (avoid NaN when values are missing)
+                        const latencyMeans = modelStats.map(m => m.avgLatency).filter(l => Number.isFinite(l) && l > 0);
+                        const minLatency = latencyMeans.length ? Math.min(...latencyMeans) : 0;
+                        const maxLatency = latencyMeans.length ? Math.max(...latencyMeans) : 0;
+
+                        const tpsMeans = modelStats.map(m => m.avgTps).filter(v => Number.isFinite(v) && v > 0);
+                        const maxTps = tpsMeans.length ? Math.max(...tpsMeans) : 0;
 
                         // Themed color scale function (0-100) using test level themes
                         const getHeatColor = (value, reverse = false) => {
@@ -5591,6 +5855,17 @@
                             return 'linear-gradient(135deg, #dc2626 0%, #ef4444 100%)';
                         };
 
+                        const getHeatLabel = (value) => {
+                            if (!Number.isFinite(value)) return '—';
+                            if (value >= 80) return 'Great';
+                            if (value >= 60) return 'Good';
+                            if (value >= 40) return 'OK';
+                            if (value >= 20) return 'Low';
+                            return 'Poor';
+                        };
+
+                        const statByModel = new Map(modelStats.map(s => [s.model, s]));
+
                         const heatmapHtml = `
                             <table style="width: 100%; border-collapse: separate; border-spacing: 4px; font-size: 0.9em;">
                                 <thead>
@@ -5605,26 +5880,33 @@
                                 </thead>
                                 <tbody>
                                     ${modelStats.map(stat => {
-                                        const latencyNorm = maxLatency > 0 ? (1 - ((stat.avgLatency - minLatency) / (maxLatency - minLatency))) * 100 : 50;
+                                        const latencyNorm = (maxLatency > minLatency && stat.avgLatency > 0)
+                                            ? (1 - ((stat.avgLatency - minLatency) / (maxLatency - minLatency))) * 100
+                                            : 50;
                                         const qualityNorm = (stat.avgQuality / 10) * 100;
                                         const tpsNorm = maxTps > 0 ? (stat.avgTps / maxTps) * 100 : 50;
 
                                         const formatMs = (ms) => ms < 1000 ? `${Math.round(ms)}ms` : `${(ms/1000).toFixed(1)}s`;
+                                        const safeModel = escapeHtml(stat.model);
 
                                         return `
                                             <tr style="transition: all 0.2s ease;">
-                                                <td style="padding: 10px 12px; color: var(--text); font-weight: 600; background: rgba(0,0,0,0.2); border-radius: 4px;">${stat.model}</td>
-                                                <td style="padding: 10px 12px; text-align: center; color: var(--text); background: rgba(0,0,0,0.2); border-radius: 4px;">${stat.testCount}</td>
-                                                <td style="padding: 10px 12px; text-align: center; font-weight: 600; background: ${getHeatColor(stat.successRate)}; color: white; border-radius: 4px; cursor: help; transition: all 0.2s ease;" title="Success Rate: ${stat.successRate.toFixed(1)}%">
+                                                <td style="padding: 10px 12px; color: var(--text); font-weight: 600; background: rgba(0,0,0,0.2); border-radius: 4px; cursor: help;" class="heatmap-cell" data-model="${safeModel}" data-metric="model" data-score="" title="${safeModel}">
+                                                    ${safeModel}
+                                                </td>
+                                                <td style="padding: 10px 12px; text-align: center; color: var(--text); background: rgba(0,0,0,0.2); border-radius: 4px; cursor: help;" class="heatmap-cell" data-model="${safeModel}" data-metric="tests" data-score="" title="Tests: ${stat.testCount} (pass ${stat.successCount}, fail ${stat.failCount})">
+                                                    ${stat.testCount}
+                                                </td>
+                                                <td style="padding: 10px 12px; text-align: center; font-weight: 600; background: ${getHeatColor(stat.successRate)}; color: white; border-radius: 4px; cursor: help; transition: all 0.2s ease;" class="heatmap-cell" data-model="${safeModel}" data-metric="success" data-score="${stat.successRate}" title="Success: ${stat.successRate.toFixed(1)}% (${stat.successCount}/${stat.testCount})">
                                                     ${stat.successRate.toFixed(1)}%
                                                 </td>
-                                                <td style="padding: 10px 12px; text-align: center; font-weight: 600; background: ${getHeatColor(latencyNorm)}; color: white; border-radius: 4px; cursor: help; transition: all 0.2s ease;" title="Avg Latency: ${formatMs(stat.avgLatency)}">
+                                                <td style="padding: 10px 12px; text-align: center; font-weight: 600; background: ${getHeatColor(latencyNorm)}; color: white; border-radius: 4px; cursor: help; transition: all 0.2s ease;" class="heatmap-cell" data-model="${safeModel}" data-metric="latency" data-score="${latencyNorm}" title="Latency: avg ${formatMs(stat.avgLatency)} • p95 ${stat.latencyStats?.p95 ? formatMs(stat.latencyStats.p95) : '-'} (${getHeatLabel(latencyNorm)})">
                                                     ${formatMs(stat.avgLatency)}
                                                 </td>
-                                                <td style="padding: 10px 12px; text-align: center; font-weight: 600; background: ${getHeatColor(qualityNorm)}; color: white; border-radius: 4px; cursor: help; transition: all 0.2s ease;" title="Avg Quality: ${stat.avgQuality.toFixed(1)}/10">
+                                                <td style="padding: 10px 12px; text-align: center; font-weight: 600; background: ${getHeatColor(qualityNorm)}; color: white; border-radius: 4px; cursor: help; transition: all 0.2s ease;" class="heatmap-cell" data-model="${safeModel}" data-metric="quality" data-score="${qualityNorm}" title="Quality: avg ${stat.avgQuality.toFixed(1)}/10 (${getHeatLabel(qualityNorm)})">
                                                     ${stat.avgQuality.toFixed(1)}/10
                                                 </td>
-                                                <td style="padding: 10px 12px; text-align: center; font-weight: 600; background: ${getHeatColor(tpsNorm)}; color: white; border-radius: 4px; cursor: help; transition: all 0.2s ease;" title="Avg Throughput: ${stat.avgTps.toFixed(1)} tok/s">
+                                                <td style="padding: 10px 12px; text-align: center; font-weight: 600; background: ${getHeatColor(tpsNorm)}; color: white; border-radius: 4px; cursor: help; transition: all 0.2s ease;" class="heatmap-cell" data-model="${safeModel}" data-metric="tps" data-score="${tpsNorm}" title="Throughput: avg ${stat.avgTps.toFixed(1)} tok/s (${getHeatLabel(tpsNorm)})">
                                                     ${stat.avgTps.toFixed(1)} tok/s
                                                 </td>
                                             </tr>
@@ -5637,16 +5919,117 @@
                         heatmapContainer.innerHTML = heatmapHtml;
                         heatmapSection.style.display = 'block';
 
-                        // Add hover effect to cells
-                        const cells = heatmapContainer.querySelectorAll('td[title]');
+                        // Update legend ranges (latency + throughput are relative across this matrix)
+                        const legendLatencyEl = document.getElementById('heatmapLegendLatency');
+                        const legendTpsEl = document.getElementById('heatmapLegendTps');
+                        const formatMsLegend = (ms) => ms < 1000 ? `${Math.round(ms)}ms` : `${(ms/1000).toFixed(1)}s`;
+                        if (legendLatencyEl) {
+                            legendLatencyEl.textContent = (minLatency > 0 && maxLatency > 0)
+                                ? `Latency scale: ${formatMsLegend(minLatency)} → ${formatMsLegend(maxLatency)} (avg)`
+                                : 'Latency scale: —';
+                        }
+                        if (legendTpsEl) {
+                            legendTpsEl.textContent = (maxTps > 0)
+                                ? `Throughput scale: 0 → ${maxTps.toFixed(1)} tok/s (avg)`
+                                : 'Throughput scale: —';
+                        }
+
+                        // Rich hover details tooltip
+                        const ensureHeatmapTooltip = () => {
+                            let el = document.getElementById('heatmapTooltip');
+                            if (!el) {
+                                el = document.createElement('div');
+                                el.id = 'heatmapTooltip';
+                                el.className = 'heatmap-tooltip';
+                                document.body.appendChild(el);
+                            }
+                            return el;
+                        };
+
+                        const tooltipEl = ensureHeatmapTooltip();
+                        const hideTooltip = () => {
+                            tooltipEl.style.display = 'none';
+                            tooltipEl.innerHTML = '';
+                        };
+
+                        const positionTooltip = (evt) => {
+                            const pad = 12;
+                            const offset = 14;
+                            const rect = tooltipEl.getBoundingClientRect();
+                            let x = evt.clientX + offset;
+                            let y = evt.clientY + offset;
+                            if (x + rect.width + pad > window.innerWidth) x = evt.clientX - rect.width - offset;
+                            if (y + rect.height + pad > window.innerHeight) y = evt.clientY - rect.height - offset;
+                            x = Math.max(pad, Math.min(window.innerWidth - rect.width - pad, x));
+                            y = Math.max(pad, Math.min(window.innerHeight - rect.height - pad, y));
+                            tooltipEl.style.left = `${x}px`;
+                            tooltipEl.style.top = `${y}px`;
+                        };
+
+                        const fmtPct = (p) => `${Number(p).toFixed(1)}%`;
+                        const fmtTok = (t) => `${Number(t).toFixed(1)} tok/s`;
+                        const fmtQ = (q) => `${Number(q).toFixed(1)}/10`;
+                        const fmtMs = (ms) => ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}s`;
+                        const fmtOrDash = (v, fmt) => (Number.isFinite(v) ? fmt(v) : '—');
+
+                        const renderTooltip = (stat, metric, score) => {
+                            const metricLabel = ({
+                                model: 'Model',
+                                tests: 'Tests',
+                                success: 'Success rate',
+                                latency: 'Latency',
+                                quality: 'Quality',
+                                tps: 'Throughput'
+                            })[metric] || 'Details';
+
+                            const scoreLabel = getHeatLabel(score);
+                            const headline = metric === 'tests'
+                                ? `${stat.testCount} tests`
+                                : metric === 'model'
+                                    ? 'Summary'
+                                    : `${metricLabel} • ${scoreLabel}`;
+
+                            const latencyP50 = stat.latencyStats ? stat.latencyStats.p50 : null;
+                            const latencyP95 = stat.latencyStats ? stat.latencyStats.p95 : null;
+                            const tpsP10 = stat.tpsStats ? stat.tpsStats.p10 : null;
+                            const tpsP50 = stat.tpsStats ? stat.tpsStats.p50 : null;
+                            const qP10 = stat.qualityStats ? stat.qualityStats.p10 : null;
+                            const qP50 = stat.qualityStats ? stat.qualityStats.p50 : null;
+
+                            tooltipEl.innerHTML = `
+                                <div class="title">${escapeHtml(stat.model)}</div>
+                                <div class="sub">${escapeHtml(headline)}</div>
+                                <div class="grid">
+                                    <div class="k">Tests</div><div class="v">${stat.testCount}</div>
+                                    <div class="k">Success</div><div class="v">${fmtPct(stat.successRate)} (${stat.successCount}/${stat.testCount})</div>
+                                    <div class="k">Latency</div><div class="v">avg ${fmtMs(stat.avgLatency)} • p50 ${fmtOrDash(latencyP50, fmtMs)} • p95 ${fmtOrDash(latencyP95, fmtMs)}</div>
+                                    <div class="k">Quality</div><div class="v">avg ${fmtQ(stat.avgQuality)} • p50 ${fmtOrDash(qP50, fmtQ)} • p10 ${fmtOrDash(qP10, fmtQ)}</div>
+                                    <div class="k">Throughput</div><div class="v">avg ${fmtTok(stat.avgTps)} • p50 ${fmtOrDash(tpsP50, fmtTok)} • p10 ${fmtOrDash(tpsP10, fmtTok)}</div>
+                                </div>
+                            `;
+                        };
+
+                        const cells = heatmapContainer.querySelectorAll('.heatmap-cell');
                         cells.forEach(cell => {
-                            cell.addEventListener('mouseenter', function() {
+                            cell.addEventListener('mouseenter', function(evt) {
                                 this.style.transform = 'scale(1.05)';
                                 this.style.zIndex = '10';
+
+                                const model = this.dataset.model;
+                                const metric = this.dataset.metric;
+                                const stat = statByModel.get(model);
+                                if (!stat) return;
+
+                                const score = Number(this.dataset.score);
+                                renderTooltip(stat, metric, score);
+                                tooltipEl.style.display = 'block';
+                                positionTooltip(evt);
                             });
+                            cell.addEventListener('mousemove', positionTooltip);
                             cell.addEventListener('mouseleave', function() {
                                 this.style.transform = 'scale(1)';
                                 this.style.zIndex = '1';
+                                hideTooltip();
                             });
                         });
                     }
@@ -5664,13 +6047,10 @@
         // Event listener for timeline controls
         const timelineModeSelect = document.getElementById('timelineMode');
         const timelineZoomSelect = document.getElementById('timelineZoom');
-        const timelineLimitSelect = document.getElementById('timelineLimit');
         const updateTimelineControls = () => {
             const mode = getTimelineMode();
-            if (timelineLimitSelect) {
-                timelineLimitSelect.style.display = mode === 'events' ? 'none' : '';
-            }
             if (timelineZoomSelect) {
+                // Zoom only visible in events mode
                 timelineZoomSelect.style.display = mode === 'events' ? '' : 'none';
             }
         };
@@ -5678,38 +6058,27 @@
         if (timelineModeSelect) {
             timelineModeSelect.addEventListener('change', () => {
                 updateTimelineControls();
-                const limit = timelineLimitSelect ? parseInt(timelineLimitSelect.value) : 100;
-                loadRecentTestsTimeline(limit);
+                loadRecentTestsTimeline();
             });
         }
 
         if (timelineZoomSelect) {
             timelineZoomSelect.addEventListener('change', () => {
-                const limit = timelineLimitSelect ? parseInt(timelineLimitSelect.value) : 100;
-                loadRecentTestsTimeline(limit);
-            });
-        }
-
-        if (timelineLimitSelect) {
-            timelineLimitSelect.addEventListener('change', (e) => {
-                loadRecentTestsTimeline(parseInt(e.target.value));
+                loadRecentTestsTimeline();
             });
         }
 
         updateTimelineControls();
 
         // Load timeline on page load
-        loadRecentTestsTimeline(100);
+        loadRecentTestsTimeline();
 
         setInterval(() => {
             if (typeof window.loadDashboard === 'function') {
                 window.loadDashboard();
             }
             // Also refresh timeline
-            const timelineLimit = document.getElementById('timelineLimit');
-            if (timelineLimit) {
-                loadRecentTestsTimeline(parseInt(timelineLimit.value));
-            }
+            loadRecentTestsTimeline();
         }, 2000); // Refresh every 2s for live updates
 
         // ========================================

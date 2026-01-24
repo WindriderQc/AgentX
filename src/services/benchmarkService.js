@@ -10,7 +10,7 @@ const fs = require('fs').promises;
 const path = require('path');
 const { ObjectId } = require('mongoose').Types;
 const { getFetchOptions } = require('../helpers/httpAgent');
-const { waitForModelLoadWithFallback } = require('../helpers/modelLoadWaiter');
+// Model load waiter removed - using simple warmup instead
 
 // Models
 const BenchmarkPrompt = require('../../models/BenchmarkPrompt');
@@ -22,6 +22,66 @@ const { scoreResponse, calculateCompositeScore, JUDGE_CONFIG } = require('./qual
 const { HOSTS, MODEL_ROUTING } = require('./modelRouter');
 const hardwareProfileService = require('./hardwareProfileService');
 
+// Track active batch for graceful shutdown
+let activeBatchId = null;
+let activeHeartbeatInterval = null;
+
+// Graceful shutdown handler - mark batch as interrupted when PM2 restarts
+process.on('SIGTERM', async () => {
+    const SHUTDOWN_DEADLINE_MS = 5000;  // 5 second hard deadline
+    const deadline = Date.now() + SHUTDOWN_DEADLINE_MS;
+
+    const shutdown = async () => {
+        if (activeBatchId) {
+            logger.warn('SIGTERM received - marking active batch as interrupted', { batchId: activeBatchId });
+            try {
+                if (activeHeartbeatInterval) {
+                    clearInterval(activeHeartbeatInterval);
+                }
+                await BenchmarkBatch.updateOne(
+                    { _id: activeBatchId, status: { $in: ['running', 'judging'] } },
+                    {
+                        $set: {
+                            status: 'interrupted',
+                            completed_at: new Date()
+                        },
+                        $push: {
+                            timeline: {
+                                $each: [{
+                                    timestamp: new Date(),
+                                    event: 'sigterm_interrupted',
+                                    success: false,
+                                    error: 'Process received SIGTERM signal'
+                                }],
+                                $slice: -2500
+                            }
+                        }
+                    }
+                );
+                logger.info('Batch marked as interrupted', { batchId: activeBatchId });
+            } catch (err) {
+                logger.error('Failed to mark batch as interrupted on SIGTERM', {
+                    batchId: activeBatchId,
+                    error: err.message
+                });
+            }
+        }
+    };
+
+    // Race between shutdown logic and hard deadline
+    const sleepUntilDeadline = () => new Promise(resolve => {
+        const remaining = deadline - Date.now();
+        if (remaining > 0) setTimeout(resolve, remaining);
+        else resolve();
+    });
+
+    try {
+        await Promise.race([shutdown(), sleepUntilDeadline()]);
+    } finally {
+        process.exit(0);
+    }
+});
+
 // Simple Concurrency Queue for managing parallel judge tasks
 class ConcurrencyQueue {
     constructor(concurrency) {
@@ -29,42 +89,120 @@ class ConcurrencyQueue {
         this.running = 0;
         this.queue = [];
         this.activePromises = [];
+        this.completed = 0;
+        this.failed = 0;
+        this.lastActivityAt = Date.now();
     }
 
     add(task) {
         return new Promise((resolve, reject) => {
-            this.queue.push({ task, resolve, reject });
+            this.queue.push({ task, resolve, reject, addedAt: Date.now() });
+            logger.debug('Judge task queued', { queueLength: this.queue.length, running: this.running });
             this.process();
         });
     }
 
-    async process() {
-        if (this.running >= this.concurrency || this.queue.length === 0) return;
+    process() {
+        // Fill up to concurrency limit (not just one task per call)
+        while (this.running < this.concurrency && this.queue.length > 0) {
+            this.running++;
+            const { task, resolve, reject } = this.queue.shift();
+            logger.debug('Starting judge task', { running: this.running, queueLength: this.queue.length });
 
-        this.running++;
-        const { task, resolve, reject } = this.queue.shift();
+            const promise = (async () => {
+                try {
+                    const result = await task();
+                    this.completed++;
+                    this.lastActivityAt = Date.now();
+                    logger.debug('Judge task completed', { completed: this.completed, failed: this.failed });
+                    resolve(result);
+                } catch (err) {
+                    this.failed++;
+                    this.lastActivityAt = Date.now();
+                    logger.warn('Judge task failed', { error: err.message, completed: this.completed, failed: this.failed });
+                    reject(err);
+                } finally {
+                    this.running--;
+                    const idx = this.activePromises.indexOf(promise);
+                    if (idx > -1) this.activePromises.splice(idx, 1);
+                    this.process();  // Refill when a slot opens
+                }
+            })();
 
-        const promise = (async () => {
-            try {
-                const result = await task();
-                resolve(result);
-            } catch (err) {
-                reject(err);
-            } finally {
-                this.running--;
-                const idx = this.activePromises.indexOf(promise);
-                if (idx > -1) this.activePromises.splice(idx, 1);
-                this.process();
-            }
-        })();
-
-        this.activePromises.push(promise);
+            this.activePromises.push(promise);
+        }
     }
 
-    async drain() {
+    /**
+     * Get current queue status for monitoring
+     */
+    getStatus() {
+        return {
+            queued: this.queue.length,
+            running: this.running,
+            completed: this.completed,
+            failed: this.failed,
+            lastActivityAt: this.lastActivityAt,
+            stalledMs: Date.now() - this.lastActivityAt
+        };
+    }
+
+    /**
+     * Drain the queue with timeout protection
+     * @param {Object} options - Drain options
+     * @param {number} options.timeoutMs - Maximum time to wait (default: 30 minutes)
+     * @param {number} options.stallTimeoutMs - Max time without activity before considered stalled (default: 2 minutes)
+     * @param {function} options.onProgress - Callback for progress updates
+     * @returns {Promise<{completed: number, failed: number, timedOut: boolean}>}
+     */
+    async drain(options = {}) {
+        const {
+            timeoutMs = 30 * 60 * 1000,  // 30 minutes max
+            stallTimeoutMs = 2 * 60 * 1000,  // 2 minutes stall detection
+            onProgress = null
+        } = options;
+
+        const startTime = Date.now();
+        let lastProgressReport = Date.now();
+
         while (this.queue.length > 0 || this.running > 0) {
+            const elapsed = Date.now() - startTime;
+            const stalledFor = Date.now() - this.lastActivityAt;
+
+            // Check for overall timeout
+            if (elapsed > timeoutMs) {
+                logger.warn('Judge queue drain timed out', {
+                    elapsed,
+                    queued: this.queue.length,
+                    running: this.running,
+                    completed: this.completed,
+                    failed: this.failed
+                });
+                return { completed: this.completed, failed: this.failed, timedOut: true, reason: 'timeout' };
+            }
+
+            // Check for stall (no activity for stallTimeoutMs)
+            if (stalledFor > stallTimeoutMs && (this.queue.length > 0 || this.running > 0)) {
+                logger.warn('Judge queue appears stalled', {
+                    stalledFor,
+                    queued: this.queue.length,
+                    running: this.running,
+                    completed: this.completed,
+                    failed: this.failed
+                });
+                return { completed: this.completed, failed: this.failed, timedOut: true, reason: 'stalled' };
+            }
+
+            // Report progress every 10 seconds
+            if (onProgress && Date.now() - lastProgressReport > 10000) {
+                onProgress(this.getStatus());
+                lastProgressReport = Date.now();
+            }
+
             await new Promise(resolve => setTimeout(resolve, 100));
         }
+
+        return { completed: this.completed, failed: this.failed, timedOut: false };
     }
 }
 
@@ -153,7 +291,10 @@ class BenchmarkService {
 
             const data = await response.json();
             const latency = Date.now() - start;
-            const tokens = Math.ceil((data.response || '').length / 4);
+            // Use actual token count from Ollama if available (eval_count = response tokens)
+            // Fall back to character-based estimate only if Ollama doesn't provide it
+            const tokens = data.eval_count || Math.ceil((data.response || '').length / 4);
+            const tokenSource = data.eval_count ? 'ollama' : 'estimated';
 
             // Look up prompt metadata to store level/category
             let promptMeta = {};
@@ -807,19 +948,38 @@ class BenchmarkService {
         const judgeSameHost = judgeConfig.judge_same_host !== undefined ? !!judgeConfig.judge_same_host : false;
         const executionMode = options.execution_mode || 'latency';
 
-        // Prevent duplicate execution
-        const batch = await BenchmarkBatch.findById(batchId);
+        // Prevent duplicate execution with atomic lock (prevents race conditions)
+        const batch = await BenchmarkBatch.findOneAndUpdate(
+            { _id: batchId, execution_started_at: null },  // Only update if not already locked
+            {
+                $set: {
+                    execution_started_at: new Date(),
+                    execution_pid: process.pid,
+                    last_activity_at: new Date()
+                }
+            },
+            { new: true }  // Return updated document
+        );
+
         if (!batch) {
-            logger.error('Batch not found', { batchId });
+            // Either batch doesn't exist or already locked by another process
+            const existingBatch = await BenchmarkBatch.findById(batchId);
+            if (!existingBatch) {
+                logger.error('Batch not found', { batchId });
+            } else {
+                logger.warn('Skipping duplicate batch execution - already locked', {
+                    batchId,
+                    pid: process.pid,
+                    lockedBy: existingBatch.execution_pid
+                });
+            }
             return;
         }
 
-        if (batch.execution_started_at) {
-            logger.warn('Skipping duplicate batch execution', { batchId, pid: process.pid });
-            return;
-        }
+        logger.info('Batch execution lock acquired', { batchId, pid: process.pid });
 
-        await batch.lockForExecution(process.pid);
+        // Track active batch for graceful shutdown
+        activeBatchId = batchId;
 
         const recordBatchTimelineEvent = async (event, data = {}) => {
             try {
@@ -828,9 +988,12 @@ class BenchmarkService {
                     {
                         $push: {
                             timeline: {
-                                timestamp: new Date(),
-                                event,
-                                ...data
+                                $each: [{
+                                    timestamp: new Date(),
+                                    event,
+                                    ...data
+                                }],
+                                $slice: -2500  // Cap timeline to prevent memory growth
                             }
                         },
                         $set: { last_activity_at: new Date() }
@@ -846,102 +1009,94 @@ class BenchmarkService {
             success: true
         });
 
-        // Helper for model warmup
-        // Uses intelligent VRAM monitoring to detect when model is loaded
-        // Falls back to timeout if VRAM monitoring unavailable (e.g., Windows hosts)
+        // Model warmup - send minimal request and wait for response
+        // When response comes back, model is loaded in VRAM and ready for fast tests
         const warmupModel = async (hostUrl, model, timelinePrefix = null) => {
             const warmupStart = Date.now();
             if (timelinePrefix) {
                 await recordBatchTimelineEvent(`${timelinePrefix}_start`, { model, success: null });
             }
+
             try {
-                logger.info('Starting model warmup', { host: hostUrl, model });
-                
-                // Trigger model load with a minimal request
-                const url = `${hostUrl}/api/generate`;
-                const warmupController = new AbortController();
-                const warmupOptions = getFetchOptions(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        model, 
-                        prompt: 'warmup', 
-                        stream: false, 
-                        options: { num_predict: 1 } 
-                    }),
-                    timeout: 10000,  // Just trigger the load, don't wait for completion
-                    signal: warmupController.signal
-                });
-                
-                // Start the request but don't wait for it (model will start loading)
-                const warmupFetch = fetch(url, warmupOptions)
-                    .then(async (response) => {
-                        try {
-                            if (response.body?.cancel) {
-                                await response.body.cancel();
-                            } else if (response.body?.destroy) {
-                                response.body.destroy();
-                            }
-                        } catch (cancelErr) {
-                            logger.debug('Warmup body cancel failed', { error: cancelErr.message });
-                        }
-                        return response;
-                    })
-                    .catch(() => {}); // Ignore errors, we'll check VRAM
-               
-                // Wait for model to finish loading by monitoring VRAM
-                const loadResult = await waitForModelLoadWithFallback(hostUrl, model, {
-                    maxWaitMs: 120000,      // Max 120s to wait
-                    pollIntervalMs: 2000,   // Check every 2s
-                    stabilityChecks: 2,     // Need 2 stable readings
-                    fallbackTimeoutMs: 30000 // If VRAM monitoring unavailable, wait 30s
-                });
-                
-                warmupController.abort();
-                await warmupFetch.catch(() => {});
-                
-                const durationMs = loadResult.durationMs || (Date.now() - warmupStart);
-                const success = loadResult.loaded !== false;
-                if (timelinePrefix) {
-                    await recordBatchTimelineEvent(`${timelinePrefix}_complete`, {
-                        model,
-                        duration_ms: durationMs,
-                        success,
-                        error: loadResult.error || null
+                // Check if model is already loaded in VRAM via /api/ps
+                let modelAlreadyLoaded = false;
+                try {
+                    const psController = new AbortController();
+                    const psTimeoutId = setTimeout(() => psController.abort(), 5000);
+                    const psResponse = await fetch(`${hostUrl}/api/ps`, {
+                        method: 'GET',
+                        signal: psController.signal
                     });
+                    clearTimeout(psTimeoutId);
+
+                    if (psResponse.ok) {
+                        const psData = await psResponse.json();
+                        const loadedModels = (psData.models || []).map(m => m.name);
+                        // Normalize model name matching: Ollama may return name:tag or full hashes
+                        // Compare base names (before colon) or check if loaded model starts with requested model
+                        const normalizeModelName = (name) => name.split(':')[0].toLowerCase();
+                        const requestedBase = normalizeModelName(model);
+                        modelAlreadyLoaded = loadedModels.some(loaded => {
+                            const loadedBase = normalizeModelName(loaded);
+                            return loaded === model ||  // Exact match
+                                   loadedBase === requestedBase ||  // Base name match
+                                   loaded.startsWith(model);  // Prefix match (e.g., "llama3" matches "llama3:latest")
+                        });
+                        if (modelAlreadyLoaded) {
+                            logger.debug('Model already loaded in VRAM', { host: hostUrl, model, loadedModels });
+                        }
+                    }
+                } catch (psErr) {
+                    // Ignore /api/ps errors, proceed with warmup
+                    logger.debug('Could not check /api/ps', { host: hostUrl, error: psErr.message });
                 }
 
-                if (loadResult.loaded) {
-                    logger.info('Model warmed up successfully (VRAM-verified)', { 
-                        host: hostUrl, 
+                // Use shorter timeout if model already loaded (should respond instantly)
+                // Use longer timeout if model needs to load from disk to VRAM
+                const timeoutMs = modelAlreadyLoaded ? 30000 : 180000; // 30s vs 3min
+                logger.info('Warming up model', { host: hostUrl, model, alreadyLoaded: modelAlreadyLoaded, timeoutMs });
+
+                const url = `${hostUrl}/api/generate`;
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
                         model,
-                        durationMs: loadResult.durationMs,
-                        vramUsedMiB: loadResult.vramUsedMiB
-                    });
-                } else if (loadResult.loaded === null) {
-                    logger.info('Model warmup completed (VRAM monitoring unavailable)', {
-                        host: hostUrl,
-                        model,
-                        reason: loadResult.error
-                    });
+                        prompt: 'Hi',
+                        stream: false,
+                        options: { num_predict: 1 }
+                    }),
+                    signal: controller.signal
+                });
+
+                clearTimeout(timeoutId);
+                const durationMs = Date.now() - warmupStart;
+
+                if (response.ok) {
+                    await response.json(); // Consume response
+                    logger.info('Model ready', { host: hostUrl, model, durationMs, wasLoaded: modelAlreadyLoaded });
+                    if (timelinePrefix) {
+                        await recordBatchTimelineEvent(`${timelinePrefix}_complete`, {
+                            model, duration_ms: durationMs, success: true
+                        });
+                    }
                 } else {
-                    logger.warn('Model warmup may not be complete', {
-                        host: hostUrl,
-                        model,
-                        reason: loadResult.error
-                    });
+                    const errorText = await response.text().catch(() => '');
+                    throw new Error(`Warmup failed: HTTP ${response.status} - ${errorText.substring(0, 100)}`);
                 }
             } catch (err) {
-                // Non-fatal, just log
-                logger.debug('Warmup encountered error', { host: hostUrl, model, error: err.message });
+                const durationMs = Date.now() - warmupStart;
+                logger.warn('Model warmup failed', { host: hostUrl, model, error: err.message, durationMs });
+
                 if (timelinePrefix) {
                     await recordBatchTimelineEvent(`${timelinePrefix}_complete`, {
-                        model,
-                        duration_ms: Date.now() - warmupStart,
-                        success: false,
-                        error: err.message
+                        model, duration_ms: durationMs, success: false, error: err.message
                     });
                 }
+                // Don't throw - let tests try anyway
             }
         };
 
@@ -957,11 +1112,14 @@ class BenchmarkService {
                     await currentBatch.heartbeat();
                 } else {
                     clearInterval(heartbeatInterval);
+                    activeHeartbeatInterval = null;
                 }
             } catch (err) {
                 logger.warn('Heartbeat failed', { batchId, error: err.message });
             }
         }, 10000);
+        // Store reference for graceful shutdown
+        activeHeartbeatInterval = heartbeatInterval;
 
         // Sync total_tests to actual plan
         const plannedTotalTests = models.length * prompts.length;
@@ -981,39 +1139,73 @@ class BenchmarkService {
             modelsByHost[targetHost].push(model);
         }
 
-        // Create execution promises for each host
+        // Create execution task functions (thunks) for each host
+        // IMPORTANT: Using functions (not promises) so we control when execution starts
+        // map(async ...) would start all promises immediately, breaking latency mode
         let testsStarted = false;
-        const hostPromises = Object.entries(modelsByHost).map(async ([hostUrl, hostModels]) => {
-            // Determine judge host
-            let judgeHostUrl = hostUrl;
-            if (!judgeSameHost) {
-                judgeHostUrl = HOSTS.primary;
-                if (hostUrl === HOSTS.primary) {
-                    judgeHostUrl = HOSTS.secondary;
-                } else if (hostUrl === HOSTS.secondary) {
+        const hostTasks = Object.entries(modelsByHost).map(([hostUrl, hostModels]) => async () => {
+            try {
+                // Determine judge host
+                let judgeHostUrl = hostUrl;
+                if (!judgeSameHost) {
                     judgeHostUrl = HOSTS.primary;
+                    if (hostUrl === HOSTS.primary) {
+                        judgeHostUrl = HOSTS.secondary;
+                    } else if (hostUrl === HOSTS.secondary) {
+                        judgeHostUrl = HOSTS.primary;
+                    }
                 }
-            }
 
-            // Warmup judge if separate host (async background, don't block)
-            if (enableQualityScoring && !judgeSameHost) {
-                const jModel = judgeConfig.model || JUDGE_CONFIG.model;
-                warmupModel(judgeHostUrl, jModel, 'judge_warmup').catch(() => {});
-            }
+                // Warmup judge BEFORE starting tests (if separate host)
+                // This ensures judge model is loaded and ready before any test results need scoring
+                if (enableQualityScoring && !judgeSameHost) {
+                    const jModel = judgeConfig.model || JUDGE_CONFIG.model;
+                    try {
+                        await warmupModel(judgeHostUrl, jModel, 'judge_warmup');
+                        logger.info('Judge model ready', { host: judgeHostUrl, model: jModel });
+                    } catch (err) {
+                        logger.warn('Judge warmup failed, judge calls may be slow', { error: err.message });
+                    }
+                }
 
-            for (const model of hostModels) {
-                // Warmup tested model (await ensures accurate latency for first prompt)
-                await warmupModel(hostUrl, model, 'model_warmup');
+                for (const model of hostModels) {
+                    // Warmup tested model (await ensures accurate latency for first prompt)
+                    await warmupModel(hostUrl, model, 'model_warmup');
 
-                // Phase 3 Week 10: Detect hardware info after model is loaded
-                const hardwareSnapshot = await hardwareProfileService.detectHardware(hostUrl, model);
+                    // Phase 3 Week 10: Detect hardware info after model is loaded
+                    const hardwareSnapshot = await hardwareProfileService.detectHardware(hostUrl, model);
+
+                    // Fetch batch once per model (outside prompt loop to avoid stale object issues)
+                    let currentBatch;
+                    try {
+                        currentBatch = await BenchmarkBatch.findById(batchId);
+                        if (!currentBatch) {
+                            logger.error('Batch not found during execution', { batchId, model });
+                            continue; // Skip this model but continue with others
+                        }
+                    } catch (batchErr) {
+                        logger.error('Failed to fetch batch object', { batchId, model, error: batchErr.message });
+                        continue; // Skip this model but continue with others
+                    }
 
                 for (const prompt of prompts) {
-                    // Check if batch was stopped
-                    const currentBatch = await BenchmarkBatch.findById(batchId);
-                    if (currentBatch && currentBatch.status === 'stopped') {
-                        logger.info('Batch execution stopped by user', { batchId });
-                        return;
+                    // Check if batch was stopped (lightweight query for status only)
+                    try {
+                        const stopCheck = await BenchmarkBatch.findById(batchId).select('status').lean();
+                        if (stopCheck && stopCheck.status === 'stopped') {
+                            logger.info('Batch execution stopped by user', { batchId });
+                            clearInterval(heartbeatInterval);
+                            activeHeartbeatInterval = null;
+                            activeBatchId = null;
+                            return;
+                        }
+                    } catch (stopCheckErr) {
+                        logger.warn('Failed to check batch status', {
+                            batchId,
+                            model,
+                            error: stopCheckErr.message
+                        });
+                        // Continue anyway - assume not stopped
                     }
 
                     if (!testsStarted) {
@@ -1039,17 +1231,40 @@ class BenchmarkService {
                         // After warmup, model should be loaded, so use standard timeout
                         // If model wasn't warmed up properly, this may still timeout
                         const url = `${hostUrl}/api/generate`;
+
+                        // Limit response length based on expected_tokens (with 2x buffer, min 100, max 2000)
+                        const expectedTokens = prompt.expected_tokens || 200;
+                        const numPredict = Math.min(2000, Math.max(100, Math.round(expectedTokens * 2)));
+
+                        // Use AbortController for proper timeout (fetch ignores timeout option)
+                        const testController = new AbortController();
+                        const testTimeoutId = setTimeout(() => testController.abort(), 180000); // 3 min
+
                         const fetchOptions = getFetchOptions(url, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ model, prompt: prompt.prompt, stream: false }),
-                            timeout: 90000  // 90s for actual inference (model should be loaded)
+                            body: JSON.stringify({
+                                model,
+                                prompt: prompt.prompt,
+                                stream: false,
+                                options: { num_predict: numPredict }
+                            }),
+                            signal: testController.signal
                         });
-                        const response = await fetch(url, fetchOptions);
+
+                        let response;
+                        try {
+                            response = await fetch(url, fetchOptions);
+                        } finally {
+                            clearTimeout(testTimeoutId);
+                        }
 
                         const data = await response.json();
                         const latency = Date.now() - start;
-                        const tokens = Math.ceil((data.response || '').length / 4);
+                        // Use actual token count from Ollama if available (eval_count = response tokens)
+                        // Fall back to character-based estimate only if Ollama doesn't provide it
+                        const tokens = data.eval_count || Math.ceil((data.response || '').length / 4);
+                        const tokenSource = data.eval_count ? 'ollama' : 'estimated';
                         const tokens_per_sec = tokens > 0 ? (tokens / (latency / 1000)).toFixed(2) : 0;
 
                         // Create result
@@ -1085,50 +1300,81 @@ class BenchmarkService {
                             latency,
                             true,
                             null,
-                            prompt.level
+                            prompt.level,
+                            hostUrl,
+                            tokens_per_sec
                         );
 
-                        // Update batch progress
+                        // Update batch progress with capped results array to prevent memory growth
                         await BenchmarkBatch.updateOne(
                             { _id: batchId },
                             {
                                 $inc: { completed: 1 },
                                 $push: {
                                     results: {
-                                        model,
-                                        host: hostUrl,
-                                        judge_host: enableQualityScoring ? judgeHostUrl : null,
-                                        prompt_name: prompt.name,
-                                        success: true,
-                                        latency,
-                                        response_preview: (data.response || '').substring(0, 100) + '...'
+                                        $each: [{
+                                            model,
+                                            host: hostUrl,
+                                            judge_host: enableQualityScoring ? judgeHostUrl : null,
+                                            prompt_name: prompt.name,
+                                            success: true,
+                                            latency,
+                                            response_preview: (data.response || '').substring(0, 100) + '...'
+                                        }],
+                                        $slice: -1000  // Keep only last 1000 result summaries
                                     }
                                 }
                             }
                         );
 
+                        // Use lean query to get only the fields we need, avoiding full document load
+                        try {
+                            const refreshedBatch = await BenchmarkBatch.findById(batchId)
+                                .select('completed status')
+                                .lean();
+                            if (refreshedBatch) {
+                                currentBatch.completed = refreshedBatch.completed;
+                            }
+                        } catch (refreshErr) {
+                            logger.warn('Failed to refresh batch object', {
+                                batchId,
+                                model,
+                                error: refreshErr.message
+                            });
+                            // Continue anyway - not critical for batch execution
+                        }
+
                         // Queue quality scoring if enabled
                         if (enableQualityScoring) {
+                            // Capture response string immediately, then allow data object to be GC'd
+                            const responseText = data.response || '';
+
                             judgeQueue.add(async () => {
                                 try {
-                                    // Update current test to judging stage
-                                    const batchForJudge = await BenchmarkBatch.findById(batchId);
-                                    if (batchForJudge) {
-                                        await batchForJudge.updateCurrentTest(
-                                            model,
-                                            prompt._id ? prompt._id.toString() : null,
-                                            prompt.name,
-                                            'judging',
-                                            {
-                                                testNumber,
-                                                promptLevel: prompt.level
+                                    // Update current test to judging stage using direct updateOne
+                                    // This avoids loading the entire batch document into memory
+                                    await BenchmarkBatch.updateOne(
+                                        { _id: batchId },
+                                        {
+                                            $set: {
+                                                current_test: {
+                                                    model,
+                                                    prompt_id: prompt._id ? prompt._id.toString() : null,
+                                                    prompt_name: prompt.name,
+                                                    prompt_level: prompt.level,
+                                                    stage: 'judging',
+                                                    started_at: new Date(),
+                                                    test_number: testNumber
+                                                },
+                                                last_activity_at: new Date()
                                             }
-                                        );
-                                    }
+                                        }
+                                    );
 
+                                    // Judge model was warmed up before tests started (see warmup section above)
                                     const judgeStart = Date.now();
                                     const scores = await scoreResponse({
-                                        response: data.response || '',
+                                        response: responseText,
                                         prompt: prompt,
                                         judgeConfig: {
                                             ...judgeConfig,
@@ -1145,7 +1391,13 @@ class BenchmarkService {
                                         quality_score: scores.quality_score
                                     }, categoryOrProfile);
 
-                                    await BenchmarkResult.updateOne(
+                                    logger.debug('Updating result with score', {
+                                        resultId: resultId?.toString(),
+                                        quality_score: scores.quality_score,
+                                        scoring_method: scores.scoring_method
+                                    });
+
+                                    const updateResult = await BenchmarkResult.updateOne(
                                         { _id: resultId },
                                         {
                                             $set: {
@@ -1165,20 +1417,34 @@ class BenchmarkService {
                                         }
                                     );
 
-                                    // Record judge completion with timeline tracking
-                                    if (batchForJudge) {
-                                        await batchForJudge.recordJudgeComplete(
-                                            model,
-                                            prompt._id ? prompt._id.toString() : null,
-                                            judgeDuration,
-                                            true,
-                                            prompt.level
-                                        );
-                                    }
+                                    logger.debug('Result update complete', {
+                                        resultId: resultId?.toString(),
+                                        matchedCount: updateResult.matchedCount,
+                                        modifiedCount: updateResult.modifiedCount
+                                    });
 
+                                    // Record judge completion with timeline tracking using direct updateOne
+                                    // This avoids loading the entire batch document into memory
                                     await BenchmarkBatch.updateOne(
                                         { _id: batchId },
-                                        { $inc: { judge_completed: 1 } }
+                                        {
+                                            $inc: { judge_completed: 1 },
+                                            $set: { last_activity_at: new Date() },
+                                            $push: {
+                                                timeline: {
+                                                    $each: [{
+                                                        timestamp: new Date(),
+                                                        event: 'judge_complete',
+                                                        model,
+                                                        prompt_id: prompt._id ? prompt._id.toString() : null,
+                                                        prompt_level: prompt.level,
+                                                        duration_ms: judgeDuration,
+                                                        success: true
+                                                    }],
+                                                    $slice: -2500  // Cap timeline to prevent memory growth
+                                                }
+                                            }
+                                        }
                                     );
                                 } catch (scoreErr) {
                                     logger.warn('Quality scoring failed', {
@@ -1218,84 +1484,144 @@ class BenchmarkService {
                     } catch (err) {
                         const errorDuration = Date.now() - start;
 
-                        const result = new BenchmarkResult({
-                            model,
-                            host: hostUrl,
-                            prompt: prompt.prompt,
-                            prompt_level: prompt.level,
-                            prompt_category: prompt.category,
-                            prompt_name: prompt.name,
-                            error: err.message,
-                            success: false,
-                            batch_id: batchId,
-                            timestamp: new Date(),
-                            quality_score: null,
-                            scoring_method: enableQualityScoring ? 'exec_failed' : 'disabled',
-                            judge_model: enableQualityScoring ? (judgeConfig.model || JUDGE_CONFIG.model) : null,
-                            judge_host: enableQualityScoring ? judgeHostUrl : null
-                        });
+                        try {
+                            const result = new BenchmarkResult({
+                                model,
+                                host: hostUrl,
+                                prompt: prompt.prompt,
+                                prompt_level: prompt.level,
+                                prompt_category: prompt.category,
+                                prompt_name: prompt.name,
+                                error: err.message,
+                                success: false,
+                                batch_id: batchId,
+                                timestamp: new Date(),
+                                quality_score: null,
+                                scoring_method: enableQualityScoring ? 'exec_failed' : 'disabled',
+                                judge_model: enableQualityScoring ? (judgeConfig.model || JUDGE_CONFIG.model) : null,
+                                judge_host: enableQualityScoring ? judgeHostUrl : null
+                            });
 
-                        await result.save();
+                            await result.save();
 
-                        // Record test failure with timeline tracking
-                        await currentBatch.recordTestComplete(
-                            model,
-                            prompt._id ? prompt._id.toString() : null,
-                            errorDuration,
-                            false,
-                            err,
-                            prompt.level
-                        );
+                            // Record test failure with timeline tracking
+                            await currentBatch.recordTestComplete(
+                                model,
+                                prompt._id ? prompt._id.toString() : null,
+                                errorDuration,
+                                false,
+                                err,
+                                prompt.level,
+                                hostUrl,
+                                null
+                            );
 
-                        await BenchmarkBatch.updateOne(
-                            { _id: batchId },
-                            {
-                                $inc: {
-                                    completed: 1,
-                                    failed: 1,
-                                    ...(enableQualityScoring
-                                        ? { judge_completed: 1, judge_failed: 1 }
-                                        : {})
-                                },
-                                $push: {
-                                    results: {
-                                        model,
-                                        prompt_name: prompt.name,
-                                        success: false,
-                                        error: err.message
+                            // Note: Do NOT increment judge_completed/judge_failed here
+                            // This is an EXECUTION failure, not a judge failure
+                            // judge_total will be set to actual successful executions later
+                            await BenchmarkBatch.updateOne(
+                                { _id: batchId },
+                                {
+                                    $inc: {
+                                        completed: 1,
+                                        failed: 1
+                                        // Removed: judge counters - exec failures are not judge failures
+                                    },
+                                    $push: {
+                                        results: {
+                                            $each: [{
+                                                model,
+                                                prompt_name: prompt.name,
+                                                success: false,
+                                                error: err.message
+                                            }],
+                                            $slice: -1000  // Cap results array
+                                        }
                                     }
                                 }
-                            }
-                        );
+                            );
 
-                        logger.error('Batch test failed', {
-                            batchId,
-                            model,
-                            prompt: prompt.name,
-                            error: err.message
-                        });
+                            // Use lean query to refresh only needed fields
+                            const refreshedBatch = await BenchmarkBatch.findById(batchId)
+                                .select('completed status')
+                                .lean();
+                            if (refreshedBatch) {
+                                currentBatch.completed = refreshedBatch.completed;
+                            }
+
+                            logger.error('Batch test failed', {
+                                batchId,
+                                model,
+                                prompt: prompt.name,
+                                error: err.message
+                            });
+                        } catch (saveErr) {
+                            // Critical: Don't let error handling failures stop the batch
+                            logger.error('Failed to save error result', {
+                                batchId,
+                                model,
+                                prompt: prompt.name,
+                                originalError: err.message,
+                                saveError: saveErr.message
+                            });
+                            // Continue to next prompt even if we couldn't save this error
+                        }
                     }
                 }
+            }
+            } catch (hostErr) {
+                // Critical: Catch any unhandled errors in host execution to prevent batch stoppage
+                logger.error('Host execution failed - continuing with other hosts', {
+                    batchId,
+                    host: hostUrl,
+                    models: hostModels,
+                    error: hostErr.message,
+                    stack: hostErr.stack
+                });
+                // Record timeline event for host failure
+                await recordBatchTimelineEvent('host_execution_failed', {
+                    host: hostUrl,
+                    models: hostModels,
+                    error: hostErr.message
+                }).catch(err => logger.error('Failed to record host failure event', { error: err.message }));
             }
         });
 
         // Execute serially (latency mode) or in parallel (throughput mode)
         if (executionMode === 'latency') {
             // Serial execution: run one host at a time for clean latency measurements
-            for (const hostPromise of hostPromises) {
-                await hostPromise;
+            // Each task is a thunk (function returning promise), so we invoke and await sequentially
+            for (const task of hostTasks) {
+                await task();
             }
         } else {
             // Parallel execution: maximize throughput
-            await Promise.all(hostPromises);
+            // Invoke all thunks simultaneously and wait for all to complete
+            await Promise.all(hostTasks.map(task => task()));
         }
 
         if (enableQualityScoring) {
             const postExecBatch = await BenchmarkBatch.findById(batchId);
             const wasStopped = postExecBatch && postExecBatch.status === 'stopped';
-            const executedCount = postExecBatch && typeof postExecBatch.completed === 'number'
-                ? postExecBatch.completed
-                : plannedTotalTests;
+
+            // judge_total = only SUCCESSFUL executions (tests that can actually be judged)
+            // Failed executions have nothing to judge, so don't count them
+            let judgeableCount = 0;
+            if (postExecBatch && typeof postExecBatch.completed === 'number') {
+                // completed includes failures, so subtract failed to get successful count
+                const failedCount = postExecBatch.failed || 0;
+                judgeableCount = Math.max(0, postExecBatch.completed - failedCount);
+            }
+
+            // Fallback: count successful results directly from database
+            if (judgeableCount === 0) {
+                // Note: BenchmarkResult is already imported at top of file
+                judgeableCount = await BenchmarkResult.countDocuments({
+                    batch_id: batchId,
+                    success: true  // Only count successful executions
+                });
+                logger.info('Using actual successful result count for judge_total', { batchId, judgeableCount });
+            }
 
             if (!wasStopped) {
                 await BenchmarkBatch.updateOne(
@@ -1304,30 +1630,71 @@ class BenchmarkService {
                         $set: {
                             status: 'judging',
                             generated_at: new Date(),
-                            judge_total: executedCount
+                            judge_total: judgeableCount
                         }
                     }
                 );
             } else {
                 await BenchmarkBatch.updateOne(
                     { _id: batchId },
-                    { $set: { judge_total: executedCount, generated_at: new Date() } }
+                    { $set: { judge_total: judgeableCount, generated_at: new Date() } }
                 );
+                clearInterval(heartbeatInterval);
+                activeHeartbeatInterval = null;
+                activeBatchId = null;
                 return;
             }
 
-            // Wait for all judge tasks to complete
-            await judgeQueue.drain();
+            // Wait for all judge tasks to complete with timeout protection
+            logger.info('Starting judge queue drain', {
+                batchId,
+                queueStatus: judgeQueue.getStatus()
+            });
+
+            const drainResult = await judgeQueue.drain({
+                timeoutMs: 30 * 60 * 1000,  // 30 minutes max
+                stallTimeoutMs: 2 * 60 * 1000,  // 2 minutes stall detection
+                onProgress: (status) => {
+                    logger.debug('Judge queue progress', { batchId, ...status });
+                }
+            });
+
+            if (drainResult.timedOut) {
+                logger.error('Judge queue drain failed', {
+                    batchId,
+                    reason: drainResult.reason,
+                    completed: drainResult.completed,
+                    failed: drainResult.failed
+                });
+                // Record timeline event for debugging
+                await recordBatchTimelineEvent('judge_drain_timeout', {
+                    reason: drainResult.reason,
+                    completed: drainResult.completed,
+                    failed: drainResult.failed
+                });
+            }
+
+            logger.info('Judge queue drain completed', {
+                batchId,
+                completed: drainResult.completed,
+                failed: drainResult.failed,
+                timedOut: drainResult.timedOut
+            });
 
             // Check if stopped during judging
             const postJudgeBatch = await BenchmarkBatch.findById(batchId);
             if (postJudgeBatch && postJudgeBatch.status === 'stopped') {
+                clearInterval(heartbeatInterval);
+                activeHeartbeatInterval = null;
+                activeBatchId = null;
                 return;
             }
         }
 
-        // Clear heartbeat interval
+        // Clear heartbeat interval and active batch tracking
         clearInterval(heartbeatInterval);
+        activeHeartbeatInterval = null;
+        activeBatchId = null;
 
         // Mark batch as completed and calculate metrics
         const finalBatch = await BenchmarkBatch.findById(batchId);
@@ -1541,16 +1908,38 @@ class BenchmarkService {
             ? Math.min(Math.round(((batch.judge_completed || 0) / effectiveJudgeTotal) * 100), 100)
             : 0;
 
+        // Verify actual results count matches batch.completed counter
+        // Fix for Bug #4: UI out of sync due to counter/results mismatch
+        const actualResultsCount = results.length;
+        const batchCompletedCount = Number(batch.completed) || 0;
+
+        if (actualResultsCount !== batchCompletedCount) {
+            logger.warn('Batch counter mismatch detected', {
+                batchId,
+                batchCompleted: batchCompletedCount,
+                actualResults: actualResultsCount,
+                diff: batchCompletedCount - actualResultsCount
+            });
+        }
+
+        // Use actual results count for progress calculation to ensure accuracy
+        const totalTests = Number(batch.total_tests) || 0;
+        const accurateProgress = totalTests > 0
+            ? Math.min(100, Math.round((actualResultsCount / totalTests) * 100))
+            : batch.progress;
+
         return {
             ...batch.toObject(),
+            completed: actualResultsCount,  // Override with actual count
             judge_total: rawJudgeTotal,
             judge_total_effective: effectiveJudgeTotal,
             results: formattedResults,
-            progress: batch.progress,
+            progress: accurateProgress,  // Use accurate progress based on actual results
             judge_progress,
             judge_progress_effective,
             judge_stats: judgeStats,
-            success_rate: batch.success_rate
+            success_rate: batch.success_rate,
+            _countMismatch: actualResultsCount !== batchCompletedCount  // Debug flag
         };
     }
 

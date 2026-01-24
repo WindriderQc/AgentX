@@ -5,7 +5,7 @@
  * 'chat', 'operations', 'self-healing', 'alerts', 'backup', 'models', 'benchmark',
  * 'performance', 'analytics', 'features-inventory', 'features-telemetry',
  * 'features-adoption', 'features-admin', 'feature-alignment', 'workspaces', 'audit-logs', 'rag', 'personas', 'profile',
- * 'results-explorer', 'model-explorer', 'generalist-leaderboard', 'hardware-matrix', 'config-optimizer'
+ * 'results-explorer', 'model-explorer', 'leaderboard', 'hardware-matrix', 'config-optimizer', 'docjanitor'
  */
 
 function injectNav(activePageId = '') {
@@ -18,10 +18,11 @@ function injectNav(activePageId = '') {
                 { label: 'RAG', href: 'rag.html', icon: 'fa-database', id: 'rag' },
                 { label: 'Prompts', href: 'prompts.html', icon: 'fa-users', id: 'personas' },
                 { label: 'Benchmark', href: 'benchmark.html', icon: 'fa-rocket', id: 'benchmark' },
+                { label: 'Compare Insights', href: 'compare-insights.html', icon: 'fa-chart-radar', id: 'compare-insights' },
                 { label: 'Config Optimizer', href: 'config-optimizer.html', icon: 'fa-sliders-h', id: 'config-optimizer' },
                 { label: 'Model Explorer', href: 'model-explorer.html', icon: 'fa-microscope', id: 'model-explorer' },
                 { label: 'Results Explorer', href: 'results-explorer.html', icon: 'fa-magnifying-glass-chart', id: 'results-explorer' },
-                { label: 'Leaderboard', href: 'generalist-leaderboard.html', icon: 'fa-trophy', id: 'generalist-leaderboard' },
+                { label: 'Leaderboard', href: 'leaderboard.html', icon: 'fa-trophy', id: 'leaderboard' },
                 { label: 'Hardware Matrix', href: 'hardware-matrix.html', icon: 'fa-server', id: 'hardware-matrix' }
             ]
         },
@@ -29,6 +30,7 @@ function injectNav(activePageId = '') {
             label: 'Monitor', icon: 'fa-heart-pulse', id: 'grp-monitor',
             children: [
                 { label: 'Operations', href: 'dashboard.html', icon: 'fa-tachometer-alt', id: 'operations' },
+                { label: 'DocJanitor', href: 'docjanitor.html', icon: 'fa-broom', id: 'docjanitor' },
                 { label: 'Self-Healing', href: 'self-healing.html', icon: 'fa-heart-pulse', id: 'self-healing' },
                 { label: 'Alerts', href: 'alerts.html', icon: 'fa-bell', id: 'alerts' },
                 { label: 'Performance', href: 'performance.html', icon: 'fa-gauge-high', id: 'performance' },

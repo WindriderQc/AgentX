@@ -15,6 +15,7 @@
   const personaIcons = {
     'default_chat': 'fa-comments',
     'repo_watcher': 'fa-shield-alt',
+    'doc_janitor': 'fa-broom',
     'visual_llm': 'fa-palette',
     'sbqc_workflow_architect': 'fa-project-diagram',
     'manual_override': 'fa-terminal'

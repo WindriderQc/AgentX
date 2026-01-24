@@ -128,6 +128,7 @@ async function flushToDatabase() {
     });
 
     // Step 1: Atomically update counters and min/max latency
+    // Note: $setOnInsert cannot include latency fields as it conflicts with $min/$max operators
     await PerformanceSnapshot.updateOne(
       { hour },
       {
@@ -137,12 +138,12 @@ async function flushToDatabase() {
           requests_failed: summary.requests_failed,
           ...statusCodeIncs
         },
-        $min: { 'latency.min': summary.latency.min || 0 },
+        $min: { 'latency.min': summary.latency.min || 999999 },
         $max: { 'latency.max': summary.latency.max || 0 },
         $setOnInsert: {
           hour,
-          by_endpoint: [],
-          latency: { min: 0, max: 0, avg: 0, p95: 0, p99: 0 }
+          by_endpoint: []
+          // latency fields initialized in Step 2 to avoid conflicts
         }
       },
       { upsert: true }

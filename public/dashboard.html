@@ -444,25 +444,29 @@
                         </div>
                         <div id="watcher-details" style="font-size: 14px; color: var(--muted); display: none;">
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
+                                <div><strong>Watching:</strong> <span id="watcher-path">-</span></div>
+                                <div><strong>MD Files (Disk):</strong> <span id="watcher-md-files">-</span></div>
+                                <div><strong>Folder Size:</strong> <span id="watcher-folder-size">-</span></div>
+                                <div><strong>Last Scan:</strong> <span id="watcher-last-scan">-</span></div>
                                 <div><strong>Files Processed:</strong> <span id="watcher-files">0</span></div>
                                 <div><strong>Processing Queue:</strong> <span id="watcher-queue">0</span></div>
-                                <div><strong>Last Scan:</strong> <span id="watcher-last-scan">-</span></div>
-                                <div><strong>Manifest Updates:</strong> <span id="watcher-manifest">-</span></div>
+                                <div><strong>Manifest Updated:</strong> <span id="watcher-manifest">-</span></div>
+                                <div><strong>Manifest Interval:</strong> <span id="watcher-manifest-interval">-</span></div>
                             </div>
                         </div>
                     </div>
 
                     <!-- Control Buttons -->
                     <div style="display: flex; gap: 12px; align-items: center; margin-top: 16px; flex-wrap: wrap;">
-                        <button class="btn" id="watcher-scan" style="display: flex; align-items: center; gap: 8px;">
+                        <button class="btn" id="watcher-scan" style="display: flex; align-items: center; gap: 8px;" title="Force an immediate filesystem scan and ingest any new/changed .md files">
                             <i class="fas fa-search"></i>
                             <span>Scan Now</span>
                         </button>
-                        <button class="btn-secondary" id="watcher-cleanup" style="display: flex; align-items: center; gap: 8px;">
+                        <button class="btn-secondary" id="watcher-cleanup" style="display: flex; align-items: center; gap: 8px;" title="Remove RAG documents whose source files no longer exist on disk (does not delete files)">
                             <i class="fas fa-broom"></i>
                             <span>Cleanup Obsolete</span>
                         </button>
-                        <button class="btn-secondary" id="watcher-refresh" style="display: flex; align-items: center; gap: 8px;">
+                        <button class="btn-secondary" id="watcher-refresh" style="display: flex; align-items: center; gap: 8px;" title="Reload watcher status and RAG metrics (no filesystem scan)">
                             <i class="fas fa-sync-alt"></i>
                             <span>Refresh Status</span>
                         </button>
@@ -1140,6 +1144,7 @@
 
         // RAG File Watcher functionality
         let watcherStatusInterval = null;
+        let lastWatcherStatus = null;
 
         // Initialize watcher functionality
         initWatcher();
@@ -1157,6 +1162,27 @@
             document.getElementById('watcher-refresh').addEventListener('click', loadWatcherStatus);
         }
 
+        function formatBytes(bytes) {
+            if (bytes === null || bytes === undefined || !Number.isFinite(Number(bytes))) return '-';
+            const value = Number(bytes);
+            if (value < 1024) return `${value} B`;
+            const units = ['KB', 'MB', 'GB', 'TB'];
+            let unitIndex = -1;
+            let size = value;
+            do {
+                size /= 1024;
+                unitIndex++;
+            } while (size >= 1024 && unitIndex < units.length - 1);
+            return `${size.toFixed(1)} ${units[unitIndex]}`;
+        }
+
+        function formatWhen(iso) {
+            if (!iso) return '-';
+            const date = new Date(iso);
+            if (Number.isNaN(date.getTime())) return '-';
+            return date.toLocaleString();
+        }
+
         async function loadWatcherStatus() {
             try {
                 const response = await fetch('/api/rag/watcher/status');
@@ -1169,11 +1195,15 @@
 
                 if (data.status === 'success') {
                     const status = data.data;
+                    lastWatcherStatus = status;
                     
                     if (status.isRunning) {
                         indicator.style.background = 'var(--success)';
                         statusText.textContent = 'RAG Watcher Active';
                         statusText.style.color = 'var(--success)';
+
+                        details.style.display = 'block';
+                        activity.style.display = 'block';
                         
                         // Show stats
                         document.getElementById('rag-stats').style.display = 'block';
@@ -1182,10 +1212,39 @@
                         loadRagMetrics();
                         
                         // Update stats
-                        document.getElementById('watcher-files').textContent = status.filesProcessed || '0';
-                        document.getElementById('watcher-queue').textContent = status.processingQueueSize || '0';
-                        document.getElementById('watcher-last-scan').textContent = new Date().toLocaleTimeString();
-                        document.getElementById('watcher-manifest').textContent = 'Auto-updating';
+                        document.getElementById('watcher-path').textContent = status.ragDir || status.root || '-';
+                        const mdCount =
+                            (status.lastManifestStats && typeof status.lastManifestStats.fileCount === 'number')
+                                ? status.lastManifestStats.fileCount
+                                : (typeof status.diskMdFiles === 'number')
+                                    ? status.diskMdFiles
+                                    : (status.lastScanTotals && typeof status.lastScanTotals.mdFiles === 'number')
+                                        ? status.lastScanTotals.mdFiles
+                                        : null;
+
+                        const totalBytes =
+                            (status.lastManifestStats && typeof status.lastManifestStats.totalBytes === 'number')
+                                ? status.lastManifestStats.totalBytes
+                                : (typeof status.diskTotalBytes === 'number')
+                                    ? status.diskTotalBytes
+                                    : null;
+
+                        document.getElementById('watcher-md-files').textContent = (mdCount === null) ? '-' : String(mdCount);
+                        document.getElementById('watcher-folder-size').textContent = formatBytes(totalBytes);
+                        document.getElementById('watcher-last-scan').textContent = formatWhen(status.lastScanAt);
+                        document.getElementById('watcher-files').textContent = String(status.filesProcessed ?? 0);
+                        document.getElementById('watcher-queue').textContent = String(status.processingQueueSize ?? 0);
+                        document.getElementById('watcher-manifest').textContent = formatWhen(status.lastManifestUpdateAt);
+                        document.getElementById('watcher-manifest-interval').textContent =
+                            status.manifestUpdateInterval ? `${Math.round(status.manifestUpdateInterval / 1000)}s` : '-';
+
+                        const actionStatus = document.getElementById('watcher-action-status');
+                        const watchedPath = status.ragDir || status.root;
+                        if (actionStatus && watchedPath) {
+                            const errorNote = status.lastError?.message ? ` (last error: ${status.lastError.message})` : '';
+                            actionStatus.textContent = `Watching ${watchedPath}${errorNote}`;
+                            actionStatus.style.color = status.lastError?.message ? 'var(--warning)' : 'var(--muted)';
+                        }
                         
                         // Load recent activity
                         loadWatcherActivity();
@@ -1216,14 +1275,22 @@
         }
 
         async function loadWatcherActivity() {
-            // This would load recent RAG processing activity
-            // For now, we'll show a placeholder
+            // SSE updates will populate recent activity in real time.
+            // This provides an initial "idle" view with the watched path.
             const activityList = document.getElementById('activity-list');
+            const watchedPath = lastWatcherStatus?.ragDir || lastWatcherStatus?.root || '/mnt/datalake/RAG';
+            const queueSize = lastWatcherStatus?.processingQueueSize || 0;
+            const queueSample = lastWatcherStatus?.processingQueueSample || [];
+            const queueText = queueSize > 0
+                ? `Currently processing: ${queueSample.slice(0, 3).join(', ')}${queueSize > 3 ? ` (+${queueSize - 3} more)` : ''}`
+                : 'No files in the processing queue';
+
             activityList.innerHTML = `
                 <div style="text-align: center; color: var(--muted); font-size: 14px; padding: 20px;">
                     <i class="fas fa-check-circle" style="color: var(--success); margin-bottom: 8px;"></i><br>
-                    Watcher is monitoring /mnt/datalake/RAG/<br>
-                    Files are processed automatically
+                    Watcher is monitoring ${watchedPath}<br>
+                    ${queueText}<br>
+                    Real-time events will appear here as files are added/updated/removed
                 </div>
             `;
         }
@@ -1248,8 +1315,18 @@
 	                    
 	                    document.getElementById('rag-total-docs').textContent = metrics.totalDocuments || '0';
 	                    document.getElementById('rag-total-chunks').textContent = metrics.totalChunks || '0';
-	                    document.getElementById('rag-last-update').textContent = lastUpdate ? new Date(lastUpdate).toLocaleTimeString() : '-';
-	                    document.getElementById('rag-folder-size').textContent = metrics.collectionSize ? `${(metrics.collectionSize / 1024 / 1024).toFixed(1)}MB` : '-';
+	                    document.getElementById('rag-last-update').textContent = lastUpdate ? new Date(lastUpdate).toLocaleString() : '-';
+
+                        const watchedBytes =
+                            (typeof lastWatcherStatus?.lastManifestStats?.totalBytes === 'number')
+                                ? lastWatcherStatus.lastManifestStats.totalBytes
+                                : (typeof lastWatcherStatus?.diskTotalBytes === 'number')
+                                    ? lastWatcherStatus.diskTotalBytes
+                                    : null;
+	                    document.getElementById('rag-folder-size').textContent =
+                            (watchedBytes !== null)
+                                ? formatBytes(watchedBytes)
+                                : (metrics.collectionSize ? `${(metrics.collectionSize / 1024 / 1024).toFixed(1)}MB` : '-');
 	                }
 	            } catch (error) {
 	                console.error('Failed to load RAG metrics:', error);

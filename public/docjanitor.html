@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DocJanitor • AgentX</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="/css/agentx.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    .dj-container { max-width: 1600px; margin: 0 auto; padding: 20px; }
+    .dj-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid rgba(124, 240, 255, 0.2); }
+    .dj-header h1 { font-size: 28px; font-weight: 700; color: var(--text); margin: 0; display: flex; align-items: center; gap: 12px; }
+    .dj-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .btn { background: rgba(124, 240, 255, 0.12); border: 1px solid rgba(124, 240, 255, 0.3); color: var(--text); padding: 10px 14px; border-radius: 10px; cursor: pointer; font-weight: 600; }
+    .btn:hover { background: rgba(124, 240, 255, 0.18); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn.primary { background: rgba(124, 240, 255, 0.22); }
+
+    .card { background: var(--surface); border: 1px solid rgba(124, 240, 255, 0.2); border-radius: 12px; padding: 20px; margin-bottom: 18px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+    .metric { background: var(--bg); border: 1px solid rgba(124, 240, 255, 0.1); border-radius: 10px; padding: 14px; }
+    .metric .value { font-size: 28px; font-weight: 800; color: var(--accent); }
+    .metric .label { color: var(--muted); font-size: 13px; margin-top: 6px; }
+
+    .status-pill { display: inline-flex; align-items: center; gap: 8px; font-weight: 800; }
+    .status-pill.ok { color: #10b981; }
+    .status-pill.warn { color: #f59e0b; }
+    .status-pill.fail { color: #ef4444; }
+
+    .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+    .select, .input { background: var(--bg); border: 1px solid rgba(124, 240, 255, 0.2); border-radius: 10px; padding: 10px 12px; color: var(--text); }
+    .input { min-width: 260px; }
+
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 10px 10px; border-bottom: 1px solid rgba(124, 240, 255, 0.12); vertical-align: top; }
+    th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }
+    .tag { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 999px; border: 1px solid rgba(124, 240, 255, 0.25); background: rgba(124, 240, 255, 0.08); font-size: 12px; font-weight: 700; }
+    .tag.perm { border-color: rgba(16, 185, 129, 0.35); background: rgba(16, 185, 129, 0.10); color: #10b981; }
+    .tag.trans { border-color: rgba(245, 158, 11, 0.35); background: rgba(245, 158, 11, 0.10); color: #f59e0b; }
+    .tag.unk { border-color: rgba(148, 163, 184, 0.35); background: rgba(148, 163, 184, 0.10); color: #94a3b8; }
+
+    .list { display: flex; flex-direction: column; gap: 10px; }
+    .item { padding: 12px; border-radius: 12px; background: var(--bg); border: 1px solid rgba(124, 240, 255, 0.12); }
+    .item h3 { margin: 0 0 6px 0; font-size: 14px; }
+    .item p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
+    .item .meta { margin-top: 8px; color: var(--muted); font-size: 12px; display: flex; gap: 10px; flex-wrap: wrap; }
+
+    .loading-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.65); backdrop-filter: blur(8px); display: none; align-items: center; justify-content: center; z-index: 9999; }
+    .loading-overlay.active { display: flex; }
+    .loading-content { background: var(--surface); border: 1px solid rgba(124, 240, 255, 0.25); border-radius: 14px; padding: 18px 20px; display: flex; align-items: center; gap: 12px; }
+    .loading-content i { color: var(--accent); animation: spin 1s linear infinite; }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div id="nav-container"></div>
+  <script src="/js/components/nav.js"></script>
+  <script src="/js/workspace.js"></script>
+  <script>injectNav('docjanitor');</script>
+
+  <div class="dj-container">
+    <div class="dj-header">
+      <h1><i class="fas fa-broom"></i> DocJanitor</h1>
+      <div class="dj-actions">
+        <button class="btn primary" id="scanBtn"><i class="fas fa-play"></i> Scan Now</button>
+        <button class="btn" id="exportDocsBtn"><i class="fas fa-file-zipper"></i> Export MD (docs)</button>
+        <button class="btn" id="exportRepoBtn"><i class="fas fa-file-zipper"></i> Export MD (repo)</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+        <div id="statusPill" class="status-pill ok"><i class="fas fa-check-circle"></i> <span>Loading…</span></div>
+        <div style="color:var(--muted);font-size:13px;">
+          <div>Last scan: <span id="lastScan">—</span></div>
+        </div>
+      </div>
+      <div class="grid" style="margin-top:14px;" id="metricsGrid"></div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+        <h2 style="margin:0;font-size:18px;">Recommendations</h2>
+        <span style="color:var(--muted);font-size:13px;" id="recoCount">0</span>
+      </div>
+      <div class="list" id="recommendationsList"></div>
+      <div id="emptyReco" style="display:none;color:var(--muted);font-size:13px;">No recommendations from the latest scan.</div>
+    </div>
+
+    <div class="card">
+      <div class="toolbar">
+        <select class="select" id="categoryFilter">
+          <option value="all">All categories</option>
+          <option value="PERMANENT">PERMANENT</option>
+          <option value="TRANSIENT">TRANSIENT</option>
+          <option value="UNKNOWN">UNKNOWN</option>
+        </select>
+        <input class="input" id="pathSearch" placeholder="Filter by path (substring)…" />
+        <div style="color:var(--muted);font-size:13px;">Files: <span id="fileCount">0</span></div>
+      </div>
+      <div style="overflow:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>Path</th>
+              <th>Category</th>
+              <th>Index</th>
+              <th>Reason</th>
+              <th>Modified</th>
+            </tr>
+          </thead>
+          <tbody id="filesTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-content">
+      <i class="fas fa-spinner"></i>
+      <span>Scanning documentation…</span>
+    </div>
+  </div>
+
+  <script>
+    let scanState = null;
+
+    function fmtTs(ts) {
+      if (!ts) return '—';
+      const d = new Date(ts);
+      const now = new Date();
+      const diff = now - d;
+      if (diff < 60000) return 'Just now';
+      if (diff < 3600000) return `${Math.floor(diff/60000)}m ago`;
+      if (diff < 86400000) return `${Math.floor(diff/3600000)}h ago`;
+      return d.toLocaleString();
+    }
+
+    function setStatus(status) {
+      const el = document.getElementById('statusPill');
+      const icon = status === 'fail' ? 'fa-times-circle' : status === 'warn' ? 'fa-exclamation-triangle' : 'fa-check-circle';
+      const label = status === 'fail' ? 'Issues Found' : status === 'warn' ? 'Needs Attention' : 'All Clear';
+      el.className = `status-pill ${status || 'ok'}`;
+      el.innerHTML = `<i class="fas ${icon}"></i> <span>${label}</span>`;
+    }
+
+    function renderMetrics(summary) {
+      const grid = document.getElementById('metricsGrid');
+      grid.innerHTML = `
+        <div class="metric"><div class="value">${summary.totalMdFiles || 0}</div><div class="label">Markdown files</div></div>
+        <div class="metric"><div class="value">${summary.permanent || 0}</div><div class="label">PERMANENT</div></div>
+        <div class="metric"><div class="value">${summary.transient || 0}</div><div class="label">TRANSIENT</div></div>
+        <div class="metric"><div class="value">${summary.unknown || 0}</div><div class="label">UNKNOWN</div></div>
+        <div class="metric"><div class="value">${summary.brokenIndexLinks || 0}</div><div class="label">Broken index links</div></div>
+      `;
+    }
+
+    function tagFor(cat) {
+      if (cat === 'PERMANENT') return '<span class="tag perm"><i class="fas fa-book"></i> PERMANENT</span>';
+      if (cat === 'TRANSIENT') return '<span class="tag trans"><i class="fas fa-clock"></i> TRANSIENT</span>';
+      return '<span class="tag unk"><i class="fas fa-question"></i> UNKNOWN</span>';
+    }
+
+    function renderFiles(files) {
+      const tbody = document.getElementById('filesTbody');
+      const cat = document.getElementById('categoryFilter').value;
+      const q = (document.getElementById('pathSearch').value || '').toLowerCase().trim();
+
+      const filtered = (files || []).filter(f => {
+        if (cat !== 'all' && f.category !== cat) return false;
+        if (q && !(f.path || '').toLowerCase().includes(q)) return false;
+        return true;
+      });
+
+      document.getElementById('fileCount').textContent = filtered.length;
+      tbody.innerHTML = filtered.map(f => `
+        <tr>
+          <td><code>${escapeHtml(f.path || '')}</code></td>
+          <td>${tagFor(f.category)}</td>
+          <td>${f.referencedByIndex ? '<span class="tag perm"><i class="fas fa-link"></i> linked</span>' : '<span class="tag unk"><i class="fas fa-unlink"></i> not linked</span>'}</td>
+          <td style="color:var(--muted);font-size:13px;">${escapeHtml(f.reason || '')}</td>
+          <td style="color:var(--muted);font-size:13px;">${fmtTs(f.mtime)}</td>
+        </tr>
+      `).join('');
+    }
+
+    function renderRecommendations(recos) {
+      const list = document.getElementById('recommendationsList');
+      const empty = document.getElementById('emptyReco');
+      document.getElementById('recoCount').textContent = `${(recos || []).length} item(s)`;
+
+      if (!recos || recos.length === 0) {
+        list.innerHTML = '';
+        empty.style.display = 'block';
+        return;
+      }
+      empty.style.display = 'none';
+
+      list.innerHTML = recos.map(r => `
+        <div class="item">
+          <h3>${escapeHtml(r.title || 'Recommendation')} <span class="tag ${r.severity === 'warn' ? 'trans' : r.severity === 'fail' ? 'trans' : 'unk'}"><i class="fas fa-lightbulb"></i> ${escapeHtml((r.severity || 'info').toUpperCase())}</span></h3>
+          <p>${escapeHtml(r.message || '')}</p>
+          ${(r.actions && r.actions.length) ? `<div class="meta"><span><i class="fas fa-list-check"></i> ${r.actions.length} action(s)</span></div>` : ''}
+        </div>
+      `).join('');
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text || '';
+      return div.innerHTML;
+    }
+
+    async function loadStatus() {
+      const res = await fetch('/api/docJanitor/status', { credentials: 'include' });
+      if (!res.ok) throw new Error('status failed');
+      scanState = await res.json();
+      setStatus(scanState.status || 'ok');
+      document.getElementById('lastScan').textContent = scanState.lastScan ? fmtTs(scanState.lastScan) : 'Never';
+      renderMetrics(scanState.summary || {});
+      renderRecommendations(scanState.recommendations || []);
+      renderFiles(scanState.files || []);
+    }
+
+    async function triggerScan() {
+      const overlay = document.getElementById('loadingOverlay');
+      const btn = document.getElementById('scanBtn');
+      btn.disabled = true;
+      overlay.classList.add('active');
+      try {
+        const res = await fetch('/api/docJanitor/scan', { method: 'POST', headers: {'Content-Type':'application/json'}, credentials: 'include' });
+        if (!res.ok) throw new Error('scan failed');
+        await new Promise(r => setTimeout(r, 500));
+        await loadStatus();
+      } finally {
+        overlay.classList.remove('active');
+        btn.disabled = false;
+      }
+    }
+
+    async function exportMd(scope) {
+      const btn = scope === 'repo' ? document.getElementById('exportRepoBtn') : document.getElementById('exportDocsBtn');
+      btn.disabled = true;
+      try {
+        const res = await fetch('/api/export/md-docs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scope })
+        });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.message || 'export failed');
+        window.location.href = data.downloadUrl;
+      } catch (e) {
+        alert(`Export failed: ${e.message}`);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    document.getElementById('scanBtn').addEventListener('click', triggerScan);
+    document.getElementById('exportDocsBtn').addEventListener('click', () => exportMd('docs'));
+    document.getElementById('exportRepoBtn').addEventListener('click', () => exportMd('repo'));
+    document.getElementById('categoryFilter').addEventListener('change', () => renderFiles(scanState?.files || []));
+    document.getElementById('pathSearch').addEventListener('input', () => renderFiles(scanState?.files || []));
+
+    loadStatus().catch(err => {
+      console.error(err);
+      setStatus('warn');
+      document.getElementById('metricsGrid').innerHTML = '<div style="color:var(--muted);">Failed to load DocJanitor status. Are you logged in?</div>';
+    });
+  </script>
+</body>
+</html>
+

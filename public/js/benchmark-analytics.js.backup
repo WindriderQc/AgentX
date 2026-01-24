@@ -10,13 +10,6 @@
 import { PollingController } from './utils/polling-controller.js';
 
 const BenchmarkAnalytics = (() => {
-    // Disable Chart.js animations globally to prevent distracting refreshes
-    if (typeof Chart !== 'undefined') {
-        Chart.defaults.animation = false;
-        Chart.defaults.animations = { colors: false, x: false };
-        Chart.defaults.transitions = { active: { animation: { duration: 0 } } };
-    }
-
     const BENCHMARK_API = '/api/benchmark';
     let poller = null;
     let trendsChart = null;
@@ -28,15 +21,18 @@ const BenchmarkAnalytics = (() => {
     let judgeBreakdownChart = null;
 
     // Compare charts
+    let capabilityChart = null;
     let judgeRadarChart = null;
 
     // Compare selections
+    const capabilitySelections = []; // { model, host }
     const judgeSelections = []; // { judge_model, judge_host }
 
     // Cache
     let judgeLeaderboardCache = null;
 
     const STORAGE_KEYS = {
+        capability: 'agentx_benchmark_capability_compare_v1',
         judges: 'agentx_benchmark_judge_compare_v1'
     };
     
@@ -54,15 +50,14 @@ const BenchmarkAnalytics = (() => {
         restoreCompareSelections();
         loadPresets();
         startActiveMonitoring();
-        if (document.getElementById('trendsChart')) {
-            loadTrends();
-        }
+        loadTrends();
         loadTagStats();
         loadJudgeStats();
         loadBatchHistory(); // Populate batch dropdowns
         setupEventListeners();
 
         // New compare UIs
+        setupCapabilityCompareUI();
         setupJudgeCompareUI();
     }
 
@@ -74,7 +69,11 @@ const BenchmarkAnalytics = (() => {
                 const parsed = JSON.parse(raw);
                 if (Array.isArray(parsed)) {
                     parsed.forEach(item => {
-                        // Capability restore code removed - now in compare-insights.html
+                        const model = item?.model;
+                        const host = item?.host;
+                        if (typeof model === 'string' && model && typeof host === 'string' && host) {
+                            capabilitySelections.push({ model, host });
+                        }
                     });
                 }
             }
@@ -105,7 +104,13 @@ const BenchmarkAnalytics = (() => {
         }
     }
 
-    // persistCapabilitySelections removed - now in compare-insights.html
+    function persistCapabilitySelections() {
+        try {
+            localStorage.setItem(STORAGE_KEYS.capability, JSON.stringify(capabilitySelections));
+        } catch (_) {
+            // ignore
+        }
+    }
 
     function persistJudgeSelections() {
         try {
@@ -267,7 +272,6 @@ const BenchmarkAnalytics = (() => {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                animation: false,
                 plugins: {
                     legend: {
                         labels: { color: '#888' }
@@ -446,6 +450,319 @@ const BenchmarkAnalytics = (() => {
         return div.innerHTML;
     }
 
+    function setupCapabilityCompareUI() {
+        const addBtn = document.getElementById('capabilityAddSelectedBtn');
+        const addTopBtn = document.getElementById('capabilityAddTopBtn');
+        const clearBtn = document.getElementById('capabilityClearBtn');
+        const refreshBtn = document.getElementById('capabilityRefreshBtn');
+
+        function updateAddButtonState() {
+            if (!addBtn) return;
+            const host = getSelectedHost();
+            const checkedCount = document.querySelectorAll('.batch-model-checkbox:checked').length;
+            addBtn.disabled = !host;
+            addBtn.title = host
+                ? `Adds ${checkedCount} checked model(s) using ${host}`
+                : 'Select an Ollama Host first';
+            addBtn.innerHTML = `<i class="fas fa-plus"></i> Add Checked (${checkedCount}) @ Host`;
+
+            if (addTopBtn) {
+                addTopBtn.disabled = !host;
+                addTopBtn.title = host
+                    ? `Adds top leaderboard models using ${host}`
+                    : 'Select an Ollama Host first';
+            }
+        }
+
+        if (addBtn) {
+            addBtn.addEventListener('click', () => {
+                addCheckedModelsToCapabilityCompare();
+                updateAddButtonState();
+            });
+        }
+
+        if (addTopBtn) {
+            addTopBtn.addEventListener('click', async () => {
+                await addTopModelsToCapabilityCompare(3);
+                updateAddButtonState();
+            });
+        }
+        if (clearBtn) {
+            clearBtn.addEventListener('click', () => {
+                capabilitySelections.splice(0, capabilitySelections.length);
+                refreshCapabilityCompare();
+                updateAddButtonState();
+            });
+        }
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', () => {
+                refreshCapabilityCompare();
+                updateAddButtonState();
+            });
+        }
+
+        const hostEl = document.getElementById('host');
+        if (hostEl) {
+            hostEl.addEventListener('change', () => {
+                updateAddButtonState();
+            });
+        }
+
+        document.addEventListener('change', (e) => {
+            const target = e.target;
+            if (target && target.classList && target.classList.contains('batch-model-checkbox')) {
+                updateAddButtonState();
+            }
+        });
+
+        // initial state
+        refreshCapabilityCompare();
+        updateAddButtonState();
+    }
+
+    async function addTopModelsToCapabilityCompare(topN = 3) {
+        const host = getSelectedHost();
+        if (!host) {
+            showToast('Select an Ollama host first', 'warning');
+            return;
+        }
+
+        await ensureDashboardLoaded();
+        const rows = Array.isArray(window.latestBenchmarkData?.model_stats)
+            ? window.latestBenchmarkData.model_stats
+            : [];
+
+        if (!rows.length) {
+            showToast('No leaderboard data yet — try Refresh or run a batch', 'warning');
+            return;
+        }
+
+        const profileKey = getActiveProfileKey();
+        const hostRows = rows
+            .filter(r => r && r.host === host)
+            .filter(r => Number(r.tests) > 0);
+
+        if (!hostRows.length) {
+            showToast('No leaderboard entries for this host yet', 'warning');
+            return;
+        }
+
+        const scored = hostRows
+            .map(r => {
+                const primary = Number.parseFloat(r[profileKey]);
+                const fallback = Number.parseFloat(r.composite);
+                const score = Number.isFinite(primary) ? primary : (Number.isFinite(fallback) ? fallback : null);
+                return { r, score };
+            })
+            .filter(x => x.score !== null)
+            .sort((a, b) => b.score - a.score)
+            .slice(0, Math.max(1, Number(topN) || 1));
+
+        if (!scored.length) {
+            showToast('No usable scores found for this host yet', 'warning');
+            return;
+        }
+
+        const existing = new Set(capabilitySelections.map(selectionKeyModel));
+        let added = 0;
+
+        for (const { r } of scored) {
+            const model = r?.model;
+            if (!model) continue;
+            const sel = { model, host };
+            const key = selectionKeyModel(sel);
+            if (existing.has(key)) continue;
+            capabilitySelections.push(sel);
+            existing.add(key);
+            added++;
+        }
+
+        if (added > 0) showToast(`Added top ${added} model(s)`, 'success');
+        refreshCapabilityCompare();
+    }
+
+    function addCheckedModelsToCapabilityCompare() {
+        const host = getSelectedHost();
+        if (!host) {
+            showToast('Select an Ollama host first', 'warning');
+            return;
+        }
+
+        const checked = Array.from(document.querySelectorAll('.batch-model-checkbox:checked'))
+            .map(cb => cb.value)
+            .filter(Boolean);
+
+        if (!checked.length) {
+            showToast('Check one or more models to add', 'warning');
+            return;
+        }
+
+        const existing = new Set(capabilitySelections.map(selectionKeyModel));
+        let added = 0;
+
+        for (const model of checked) {
+            const sel = { model, host };
+            const key = selectionKeyModel(sel);
+            if (existing.has(key)) continue;
+            capabilitySelections.push(sel);
+            existing.add(key);
+            added++;
+        }
+
+        if (added > 0) {
+            showToast(`Added ${added} model(s)`, 'success');
+        }
+        refreshCapabilityCompare();
+    }
+
+    async function refreshCapabilityCompare() {
+        persistCapabilitySelections();
+        // chips
+        renderChipList(
+            'capabilityCompareList',
+            capabilitySelections.map(sel => ({
+                label: sel.model,
+                meta: sel.host ? `@ ${sel.host}` : ''
+            })),
+            (idx) => {
+                capabilitySelections.splice(idx, 1);
+                refreshCapabilityCompare();
+            }
+        );
+
+        const emptyEl = document.getElementById('capabilityEmpty');
+        const insightsEl = document.getElementById('capabilityInsights');
+        if (insightsEl) insightsEl.innerHTML = '';
+
+        if (!capabilitySelections.length) {
+            if (emptyEl) emptyEl.style.display = 'block';
+            if (capabilityChart) {
+                capabilityChart.destroy();
+                capabilityChart = null;
+            }
+            return;
+        }
+        if (emptyEl) emptyEl.style.display = 'none';
+
+        const ctx = document.getElementById('capabilityRadarChart');
+        if (!ctx) return;
+
+        try {
+            const breakdowns = await Promise.all(
+                capabilitySelections.map(async sel => {
+                    const res = await fetch(`${BENCHMARK_API}/quality-breakdown?model=${encodeURIComponent(sel.model)}&host=${encodeURIComponent(sel.host)}`);
+                    const json = await res.json();
+                    return { sel, data: json.data };
+                })
+            );
+
+            // Derive categories from API response (fixed list today)
+            const categories = (breakdowns[0]?.data?.categories || []).slice();
+            const labels = categories.map(c => c.charAt(0).toUpperCase() + c.slice(1));
+
+            const datasets = breakdowns.map((b, idx) => {
+                const byModel = b.data?.by_category?.[b.sel.model] || {};
+                const values = categories.map(cat => {
+                    const raw = byModel?.[cat]?.avg_quality ?? byModel?.[cat]?.avg_score;
+                    const num = raw === null || raw === undefined ? 0 : parseFloat(raw);
+                    return Number.isFinite(num) ? num : 0;
+                });
+
+                const c = getPaletteColor(idx);
+                const label = `${b.sel.model} @ ${b.sel.host}`;
+
+                return {
+                    label,
+                    data: values,
+                    fill: true,
+                    backgroundColor: c.bg,
+                    borderColor: c.border,
+                    pointBackgroundColor: c.border,
+                    pointBorderColor: '#fff',
+                    pointHoverBackgroundColor: '#fff',
+                    pointHoverBorderColor: c.border
+                };
+            });
+
+            if (capabilityChart) capabilityChart.destroy();
+            capabilityChart = new Chart(ctx, {
+                type: 'radar',
+                data: { labels, datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        r: {
+                            angleLines: { color: 'rgba(255, 255, 255, 0.1)' },
+                            grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                            pointLabels: {
+                                color: '#fff',
+                                font: { size: 12, weight: 'bold' }
+                            },
+                            ticks: {
+                                backdropColor: 'transparent',
+                                color: 'rgba(255, 255, 255, 0.5)',
+                                min: 0,
+                                max: 10,
+                                stepSize: 2
+                            },
+                            suggestedMin: 0,
+                            suggestedMax: 10
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: { color: '#E0E7FF' }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(10, 14, 39, 0.9)',
+                            titleColor: '#fff',
+                            bodyColor: '#ccc',
+                            borderColor: 'rgba(255, 255, 255, 0.1)',
+                            borderWidth: 1,
+                            padding: 10,
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: ${context.raw.toFixed(1)} / 10`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Insights: best/worst per dataset
+            if (insightsEl) {
+                const insightRows = datasets.map(ds => {
+                    const values = ds.data;
+                    let bestIdx = 0;
+                    let worstIdx = 0;
+                    values.forEach((v, i) => {
+                        if (v > values[bestIdx]) bestIdx = i;
+                        if (v < values[worstIdx]) worstIdx = i;
+                    });
+                    return `
+                        <div style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; margin-bottom: 10px;">
+                            <div style="font-weight: 600; color: var(--text); margin-bottom: 6px;">${escapeHtml(ds.label)}</div>
+                            <div style="color: var(--muted); font-size: 0.9em; line-height: 1.5;">
+                                Strongest: <strong>${escapeHtml(labels[bestIdx])}</strong> (${values[bestIdx].toFixed(1)})<br>
+                                Weakest: <strong>${escapeHtml(labels[worstIdx])}</strong> (${values[worstIdx].toFixed(1)})
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+                insightsEl.innerHTML = `
+                    <h4 style="margin: 0 0 12px; color: var(--accent);"><i class="fas fa-lightbulb"></i> Compare Insights</h4>
+                    ${insightRows}
+                `;
+            }
+        } catch (err) {
+            console.error('Failed to refresh capability compare:', err);
+            showToast('Failed to load capability data', 'error');
+        }
+    }
 
     /**
      * Load and display configuration presets
@@ -459,7 +776,7 @@ const BenchmarkAnalytics = (() => {
             if (!container) return;
 
             container.innerHTML = data.presets.map(preset => `
-                <div class="preset-card">
+                <div class="preset-card" data-preset-id="${preset.id}">
                     <div class="preset-header">
                         <h4>${preset.name}</h4>
                         <span class="preset-duration">${preset.estimated_duration}</span>
@@ -502,21 +819,358 @@ const BenchmarkAnalytics = (() => {
             // Apply levels
             [1, 2, 3, 4, 5].forEach(level => {
                 const checkbox = document.getElementById(`level${level}`);
-                if (checkbox) checkbox.checked = preset.config.levels.includes(level);
+                if (checkbox) {
+                    checkbox.checked = preset.config.levels.includes(level);
+                }
             });
 
             // Apply quality scoring
             const qualityCheckbox = document.getElementById('qualityScoring');
-            if (qualityCheckbox) qualityCheckbox.checked = preset.config.quality_scoring;
+            if (qualityCheckbox) {
+                qualityCheckbox.checked = preset.config.quality_scoring;
+            }
 
-            showToast(`Applied preset: ${preset.name}`, 'success');
+            // Show confirmation
+            showToast(`✓ ${preset.name} preset applied`, 'success');
+
+            // Scroll to batch form
+            document.querySelector('.batch-section')?.scrollIntoView({ behavior: 'smooth' });
         } catch (err) {
             console.error('Failed to apply preset:', err);
             showToast('Failed to apply preset', 'error');
         }
     }
 
-    // Capability comparison functions removed - now in compare-insights.html
+    /**
+     * Start real-time monitoring of active batches
+     */
+    function startActiveMonitoring() {
+        // Initial load
+        loadActiveStats();
+
+        // Poll every 3 seconds (pause-on-blur via shared controller)
+        if (poller) poller.destroy();
+        poller = new PollingController();
+        poller.addTask('active-batches', loadActiveStats, 3000, { runOnStart: false });
+        poller.start();
+    }
+
+    /**
+     * Stop active monitoring
+     */
+    function stopActiveMonitoring() {
+        if (poller) {
+            poller.destroy();
+            poller = null;
+        }
+    }
+
+    /**
+     * Load active batch statistics
+     */
+    async function loadActiveStats() {
+        try {
+            const res = await fetch(`${BENCHMARK_API}/active-stats`);
+            const { data } = await res.json();
+
+            const container = document.getElementById('activeStatsContainer');
+            if (!container) return;
+
+            if (data.active_batches === 0) {
+                container.innerHTML = `
+                    <div class="no-active-batches">
+                        <i class="fas fa-check-circle"></i>
+                        <p>No active batches</p>
+                        <button class="btn-secondary btn-sm" onclick="document.querySelector('.batch-section')?.scrollIntoView({ behavior: 'smooth' })" style="margin-top: 12px;">
+                            <i class="fas fa-plus"></i> Start New Batch
+                        </button>
+                    </div>
+                `;
+                return;
+            }
+
+            // Update active batches widget
+            container.innerHTML = `
+                <div class="active-stats-header">
+                    <h3><i class="fas fa-play-circle"></i> Active Batches (${data.active_batches})</h3>
+                    ${data.estimated_completion_time ? `
+                        <div class="eta-badge">
+                            <i class="fas fa-clock"></i>
+                            ETA: ${formatDuration(data.estimated_completion_time)}
+                        </div>
+                    ` : ''}
+                </div>
+                <div class="active-batches-grid">
+                    ${data.batches.map(batch => `
+                        <div class="active-batch-card">
+                            <div class="batch-name">${batch.run_name}</div>
+                            <div class="batch-progress-bar">
+                                <div class="batch-progress-fill" style="width: ${batch.progress}%"></div>
+                            </div>
+                            <div class="batch-stats">
+                                <span>${batch.completed} / ${batch.total}</span>
+                                <span>${batch.progress.toFixed(1)}%</span>
+                                ${batch.eta_ms ? `<span class="eta">${formatDuration(batch.eta_ms)}</span>` : ''}
+                            </div>
+                            ${batch.judge_progress !== undefined ? `
+                                <div class="judge-progress">
+                                    <small>Quality Scoring: ${batch.judge_progress.toFixed(0)}%</small>
+                                </div>
+                            ` : ''}
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        } catch (err) {
+            console.error('Failed to load active stats:', err);
+        }
+    }
+
+    /**
+     * Load performance trends chart
+     */
+    async function loadTrends() {
+        try {
+            const period = document.getElementById('trendsPeriod')?.value || '7';
+            const model = document.getElementById('trendsModelFilter')?.value || '';
+
+            const res = await fetch(`${BENCHMARK_API}/trends?days=${period}${model ? `&model=${model}` : ''}`);
+            const { data } = await res.json();
+
+            const ctx = document.getElementById('trendsChart');
+            if (!ctx) return;
+
+            // Prepare chart data
+            const labels = data.trends.map(t => {
+                if (t._id.hour !== undefined) {
+                    return `${t._id.month}/${t._id.day} ${t._id.hour}:00`;
+                }
+                return `${t._id.month}/${t._id.day}`;
+            });
+
+            const datasets = [
+                {
+                    label: 'Avg Latency (ms)',
+                    data: data.trends.map(t => t.avg_latency),
+                    borderColor: '#7CF0FF',
+                    backgroundColor: 'rgba(124, 240, 255, 0.1)',
+                    yAxisID: 'y',
+                    tension: 0.3
+                },
+                {
+                    label: 'Avg Quality Score (x10)',
+                    data: data.trends.map(t => t.avg_quality ? t.avg_quality * 10 : null),
+                    borderColor: '#00FF9F',
+                    backgroundColor: 'rgba(0, 255, 159, 0.1)',
+                    yAxisID: 'y1',
+                    tension: 0.3
+                },
+                {
+                    label: 'Tokens/sec',
+                    data: data.trends.map(t => t.avg_tokens_per_sec || null),
+                    borderColor: '#FF6B9D',
+                    backgroundColor: 'rgba(255, 107, 157, 0.1)',
+                    yAxisID: 'y1',
+                    tension: 0.3
+                }
+            ];
+
+            // Destroy existing chart
+            if (trendsChart) {
+                trendsChart.destroy();
+            }
+
+            // Create new chart
+            trendsChart = new Chart(ctx, {
+                type: 'line',
+                data: { labels, datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: { color: '#E0E7FF' }
+                        },
+                        title: {
+                            display: true,
+                            text: `Performance Trends - ${data.model === 'all' ? 'All Models' : data.model}`,
+                            color: '#E0E7FF'
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { color: '#94A3B8' },
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' }
+                        },
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            title: { display: true, text: 'Latency (ms)', color: '#7CF0FF' },
+                            ticks: { color: '#7CF0FF' },
+                            grid: { color: 'rgba(124, 240, 255, 0.1)' }
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            title: { display: true, text: 'Quality / Tokens/sec', color: '#00FF9F' },
+                            ticks: { color: '#00FF9F' },
+                            grid: { display: false }
+                        }
+                    }
+                }
+            });
+        } catch (err) {
+            console.error('Failed to load trends:', err);
+        }
+    }
+
+    /**
+     * Load capability radar chart for a model
+     */
+    async function loadCapabilityAnalysis(modelName) {
+        if (!modelName) return;
+
+        try {
+            const host = getSelectedHost();
+            const res = await fetch(`${BENCHMARK_API}/quality-breakdown?model=${encodeURIComponent(modelName)}${host ? `&host=${encodeURIComponent(host)}` : ''}`);
+            const json = await res.json();
+            const data = json.data;
+
+            const ctx = document.getElementById('capabilityRadarChart');
+            const insightsContainer = document.getElementById('capabilityInsights');
+            
+            if (!ctx || !insightsContainer) return;
+
+            // Process data for chart (API shape: by_category[model][category])
+            const categories = data.categories || [];
+            const byModel = data.by_category?.[modelName] || {};
+            const scores = categories.map(cat => {
+                const raw = byModel?.[cat]?.avg_quality ?? byModel?.[cat]?.avg_score;
+                const num = raw === null || raw === undefined ? 0 : parseFloat(raw);
+                return Number.isFinite(num) ? num : 0;
+            });
+
+            // Destroy existing chart
+            if (capabilityChart) {
+                capabilityChart.destroy();
+            }
+
+            // Create Radar Chart
+            capabilityChart = new Chart(ctx, {
+                type: 'radar',
+                data: {
+                    labels: categories.map(c => c.charAt(0).toUpperCase() + c.slice(1)),
+                    datasets: [{
+                        label: host ? `${modelName} @ ${host}` : modelName,
+                        data: scores,
+                        fill: true,
+                        backgroundColor: 'rgba(0, 255, 159, 0.2)',
+                        borderColor: '#00FF9F',
+                        pointBackgroundColor: '#00FF9F',
+                        pointBorderColor: '#fff',
+                        pointHoverBackgroundColor: '#fff',
+                        pointHoverBorderColor: '#00FF9F'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        r: {
+                            angleLines: { color: 'rgba(255, 255, 255, 0.1)' },
+                            grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                            pointLabels: {
+                                color: '#fff',
+                                font: { size: 12, weight: 'bold' }
+                            },
+                            ticks: {
+                                backdropColor: 'transparent',
+                                color: 'rgba(255, 255, 255, 0.5)',
+                                min: 0,
+                                max: 10,
+                                stepSize: 2
+                            },
+                            suggestedMin: 0,
+                            suggestedMax: 10
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: 'rgba(10, 14, 39, 0.9)',
+                            titleColor: '#fff',
+                            bodyColor: '#ccc',
+                            borderColor: 'rgba(255, 255, 255, 0.1)',
+                            borderWidth: 1,
+                            padding: 10,
+                            callbacks: {
+                                label: function(context) {
+                                    return `Score: ${context.raw.toFixed(1)} / 10`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Generate Insights
+            const bestCat = categories.reduce((a, b) =>
+                (byModel?.[a]?.avg_quality || 0) > (byModel?.[b]?.avg_quality || 0) ? a : b
+            , categories[0]);
+            
+            const worstCat = categories.reduce((a, b) => 
+                (byModel?.[a]?.avg_quality || 0) < (byModel?.[b]?.avg_quality || 0) ? a : b
+            , categories[0]);
+
+            const bestScore = (byModel?.[bestCat]?.avg_quality !== undefined && byModel?.[bestCat]?.avg_quality !== null)
+                ? parseFloat(byModel[bestCat].avg_quality).toFixed(1)
+                : 'N/A';
+            const worstScore = (byModel?.[worstCat]?.avg_quality !== undefined && byModel?.[worstCat]?.avg_quality !== null)
+                ? parseFloat(byModel[worstCat].avg_quality).toFixed(1)
+                : 'N/A';
+            const totalTests = data.overall.length;
+
+            insightsContainer.innerHTML = `
+                <h4 style="margin: 0 0 16px; color: var(--accent);"><i class="fas fa-lightbulb"></i> Capability Insights</h4>
+                <div style="display: grid; gap: 12px;">
+                    <div style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px;">
+                        <div style="color: var(--muted); font-size: 0.9em;">Strongest Category</div>
+                        <div style="font-size: 1.1em; font-weight: 600; color: #fff;">
+                            ${bestCat.charAt(0).toUpperCase() + bestCat.slice(1)} 
+                            <span style="color: #00FF9F;">(${bestScore})</span>
+                        </div>
+                    </div>
+                    <div style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px;">
+                        <div style="color: var(--muted); font-size: 0.9em;">Weakest Category</div>
+                        <div style="font-size: 1.1em; font-weight: 600; color: #fff;">
+                            ${worstCat.charAt(0).toUpperCase() + worstCat.slice(1)} 
+                            <span style="color: #FF6B9D;">(${worstScore})</span>
+                        </div>
+                    </div>
+                    <div style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px;">
+                        <div style="color: var(--muted); font-size: 0.9em;">Data Points</div>
+                        <div style="font-size: 1.1em; font-weight: 600; color: #fff;">
+                            ${totalTests} tests analyzed
+                        </div>
+                    </div>
+                </div>
+                <div style="margin-top: 20px; font-size: 0.9em; color: var(--muted); line-height: 1.5;">
+                    This model excels at <strong>${bestCat}</strong> tasks but may struggle with <strong>${worstCat}</strong>. 
+                    ${totalTests < 5 ? '<br><br><i class="fas fa-exclamation-triangle" style="color: #FFD700;"></i> Low sample size - run more tests for accurate analysis.' : ''}
+                </div>
+            `;
+
+        } catch (err) {
+            console.error('Failed to load capability analysis:', err);
+        }
+    }
 
     function setupJudgeCompareUI() {
         const addBtn = document.getElementById('judgeAddCompareBtn');
@@ -874,7 +1528,6 @@ const BenchmarkAnalytics = (() => {
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    animation: false,
                     scales: {
                         r: {
                             angleLines: { color: 'rgba(255, 255, 255, 0.1)' },
@@ -982,7 +1635,7 @@ const BenchmarkAnalytics = (() => {
                         </tr>
                         <tr>
                             <td>Success Rate</td>
-	                            ${data.comparison.map(b => `<td>${formatPercent(b.success_rate)}</td>`).join('')}
+                            ${data.comparison.map(b => `<td>${b.success_rate}%</td>`).join('')}
                             <td class="${getDeltaClass(data.comparison, 'success_rate')}">
                                 ${calculateDelta(data.comparison, 'success_rate')}%
                             </td>
@@ -1091,197 +1744,6 @@ const BenchmarkAnalytics = (() => {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-    }
-
-    /**
-     * Start real-time monitoring of active batches
-     */
-    function startActiveMonitoring() {
-        // Initial load
-        loadActiveStats();
-
-        // Poll every 3 seconds (pause-on-blur via shared controller)
-        if (poller) poller.destroy();
-        poller = new PollingController();
-        poller.addTask('active-batches', loadActiveStats, 3000, { runOnStart: false });
-        poller.start();
-    }
-
-    /**
-     * Stop active monitoring
-     */
-    function stopActiveMonitoring() {
-        if (poller) {
-            poller.destroy();
-            poller = null;
-        }
-    }
-
-    /**
-     * Load active batch statistics
-     */
-    async function loadActiveStats() {
-        try {
-            const res = await fetch(`${BENCHMARK_API}/active-stats`);
-            const { data } = await res.json();
-
-            const container = document.getElementById('activeStatsContainer');
-            if (!container) return;
-
-            if (data.active_batches === 0) {
-                container.innerHTML = `
-                    <div class="no-active-batches">
-                        <i class="fas fa-check-circle"></i>
-                        <p>No active batches</p>
-                        <button class="btn-secondary btn-sm" onclick="document.querySelector('.batch-section')?.scrollIntoView({ behavior: 'smooth' })" style="margin-top: 12px;">
-                            <i class="fas fa-plus"></i> Start New Batch
-                        </button>
-                    </div>
-                `;
-                return;
-            }
-
-            // Update active batches widget
-            container.innerHTML = `
-                <div class="active-stats-header">
-                    <h3><i class="fas fa-play-circle"></i> Active Batches (${data.active_batches})</h3>
-                    ${data.estimated_completion_time ? `
-                        <div class="eta-badge">
-                            <i class="fas fa-clock"></i>
-                            ETA: ${formatDuration(data.estimated_completion_time)}
-                        </div>
-                    ` : ''}
-                </div>
-                <div class="active-batches-grid">
-                    ${data.batches.map(batch => `
-                        <div class="active-batch-card">
-                            <div class="batch-name">${batch.run_name}</div>
-                            <div class="batch-progress-bar">
-                                <div class="batch-progress-fill" style="width: ${batch.progress}%"></div>
-                            </div>
-                            <div class="batch-stats">
-                                <span>${batch.completed} / ${batch.total}</span>
-                                <span>${batch.progress.toFixed(1)}%</span>
-                                ${batch.eta_ms ? `<span class="eta">${formatDuration(batch.eta_ms)}</span>` : ''}
-                            </div>
-                            ${batch.judge_progress !== undefined ? `
-                                <div class="judge-progress">
-                                    <small>Quality Scoring: ${batch.judge_progress.toFixed(0)}%</small>
-                                </div>
-                            ` : ''}
-                        </div>
-                    `).join('')}
-                </div>
-            `;
-        } catch (err) {
-            console.error('Failed to load active stats:', err);
-        }
-    }
-
-    /**
-     * Load performance trends chart
-     */
-    async function loadTrends() {
-        try {
-            const period = document.getElementById('trendsPeriod')?.value || '7';
-            const model = document.getElementById('trendsModelFilter')?.value || '';
-
-            const res = await fetch(`${BENCHMARK_API}/trends?days=${period}${model ? `&model=${model}` : ''}`);
-            const { data } = await res.json();
-
-            const ctx = document.getElementById('trendsChart');
-            if (!ctx) return;
-
-            // Prepare chart data
-            const labels = data.trends.map(t => {
-                if (t._id.hour !== undefined) {
-                    return `${t._id.month}/${t._id.day} ${t._id.hour}:00`;
-                }
-                return `${t._id.month}/${t._id.day}`;
-            });
-
-            const datasets = [
-                {
-                    label: 'Avg Latency (ms)',
-                    data: data.trends.map(t => t.avg_latency),
-                    borderColor: '#7CF0FF',
-                    backgroundColor: 'rgba(124, 240, 255, 0.1)',
-                    yAxisID: 'y',
-                    tension: 0.3
-                },
-                {
-                    label: 'Avg Quality Score (x10)',
-                    data: data.trends.map(t => t.avg_quality ? t.avg_quality * 10 : null),
-                    borderColor: '#00FF9F',
-                    backgroundColor: 'rgba(0, 255, 159, 0.1)',
-                    yAxisID: 'y1',
-                    tension: 0.3
-                },
-                {
-                    label: 'Tokens/sec',
-                    data: data.trends.map(t => t.avg_tokens_per_sec || null),
-                    borderColor: '#FF6B9D',
-                    backgroundColor: 'rgba(255, 107, 157, 0.1)',
-                    yAxisID: 'y1',
-                    tension: 0.3
-                }
-            ];
-
-            // Destroy existing chart
-            if (trendsChart) {
-                trendsChart.destroy();
-            }
-
-            // Create new chart
-            trendsChart = new Chart(ctx, {
-                type: 'line',
-                data: { labels, datasets },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    animation: false,
-                    interaction: {
-                        mode: 'index',
-                        intersect: false
-                    },
-                    plugins: {
-                        legend: {
-                            position: 'top',
-                            labels: { color: '#E0E7FF' }
-                        },
-                        title: {
-                            display: true,
-                            text: `Performance Trends - ${data.model === 'all' ? 'All Models' : data.model}`,
-                            color: '#E0E7FF'
-                        }
-                    },
-                    scales: {
-                        x: {
-                            ticks: { color: '#94A3B8' },
-                            grid: { color: 'rgba(255, 255, 255, 0.05)' }
-                        },
-                        y: {
-                            type: 'linear',
-                            display: true,
-                            position: 'left',
-                            title: { display: true, text: 'Latency (ms)', color: '#7CF0FF' },
-                            ticks: { color: '#7CF0FF' },
-                            grid: { color: 'rgba(124, 240, 255, 0.1)' }
-                        },
-                        y1: {
-                            type: 'linear',
-                            display: true,
-                            position: 'right',
-                            title: { display: true, text: 'Quality / Tokens/sec', color: '#00FF9F' },
-                            ticks: { color: '#00FF9F' },
-                            grid: { display: false }
-                        }
-                    }
-                }
-            });
-        } catch (err) {
-            console.error('Failed to load trends:', err);
-        }
     }
 
     /**
@@ -1396,12 +1858,6 @@ const BenchmarkAnalytics = (() => {
         }
     }
 
-    function formatPercent(value) {
-        const n = parseFloat(value);
-        if (!Number.isFinite(n)) return 'N/A';
-        return `${n.toFixed(1)}%`;
-    }
-
     /**
      * Show toast notification
      */
@@ -1484,15 +1940,15 @@ const BenchmarkAnalytics = (() => {
                                 <td style="padding: 12px 8px; font-size: 0.9em; color: var(--muted);">${judge.judge_host || 'N/A'}</td>
                                 <td style="padding: 12px 8px; text-align: center;">${judge.count}</td>
                                 <td style="padding: 12px 8px; text-align: center;">
-                                    ${judge.avg_latency != null ? (judge.avg_latency / 1000).toFixed(2) + 's' : 'N/A'}
+                                    ${(judge.avg_latency / 1000).toFixed(2)}s
                                 </td>
                                 <td style="padding: 12px 8px; text-align: center;">
-                                    <span style="color: ${(judge.success_rate || 0) > 95 ? '#2ecc71' : (judge.success_rate || 0) > 80 ? '#f1c40f' : '#e74c3c'}">
-                                        ${judge.success_rate != null ? Math.round(judge.success_rate) + '%' : 'N/A'}
+                                    <span style="color: ${judge.success_rate > 95 ? '#2ecc71' : judge.success_rate > 80 ? '#f1c40f' : '#e74c3c'}">
+                                        ${Math.round(judge.success_rate)}%
                                     </span>
                                 </td>
                                 <td style="padding: 12px 8px; text-align: center;">
-                                    ${judge.avg_score_given != null ? judge.avg_score_given.toFixed(1) : 'N/A'}
+                                    ${judge.avg_score_given.toFixed(1)}
                                 </td>
                             </tr>
                         `;
@@ -1513,7 +1969,7 @@ const BenchmarkAnalytics = (() => {
                             <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: rgba(255,255,255,0.03); border-radius: 4px;">
                                 <div>
                                     <div style="color: var(--text); font-weight: 500;">${act.judge_model} <span style="color: var(--muted); font-weight: 400;">judged</span> ${act.model}</div>
-                                    <div style="color: var(--muted); font-size: 0.9em;">${act.prompt_category || 'general'} • ${act.scoring_time_ms != null ? (act.scoring_time_ms/1000).toFixed(1) + 's' : 'N/A'}</div>
+                                    <div style="color: var(--muted); font-size: 0.9em;">${act.prompt_category || 'general'} • ${(act.scoring_time_ms/1000).toFixed(1)}s</div>
                                 </div>
                                 <div style="text-align: right;">
                                     <div style="font-weight: 700; color: ${act.quality_score >= 8 ? '#2ecc71' : act.quality_score >= 5 ? '#f1c40f' : '#e74c3c'};">
@@ -1556,7 +2012,6 @@ const BenchmarkAnalytics = (() => {
                         options: {
                             responsive: true,
                             maintainAspectRatio: false,
-                            animation: false,
                             plugins: {
                                 legend: { display: false },
                                 tooltip: {
@@ -1691,7 +2146,6 @@ const BenchmarkAnalytics = (() => {
                     indexAxis: 'y',
                     responsive: true,
                     maintainAspectRatio: false,
-                    animation: false,
                     plugins: {
                         legend: {
                             display: false
@@ -1722,7 +2176,7 @@ const BenchmarkAnalytics = (() => {
                             min: 0
                         },
                         y: {
-                            ticks: {
+                            ticks: { 
                                 color: '#E0E7FF',
                                 font: { size: 10 }
                             },
@@ -1897,7 +2351,7 @@ const BenchmarkAnalytics = (() => {
         loadActiveStats,
         loadTagStats,
         loadJudgeStats,
-        // loadCapabilityAnalysis removed - now in compare-insights.html
+        loadCapabilityAnalysis,
         compareBatches,
         stopActiveMonitoring,
         filterByModelCategory,

@@ -231,6 +231,10 @@ app.use('/api/invitations', invitationRoutes);
 const workspaceAuditRoutes = require('../routes/workspace-audit');
 app.use('/api/workspaces', workspaceAuditRoutes);
 
+// Image gallery routes (visual_llm UI)
+const galleryRoutes = require('../routes/gallery');
+app.use('/api/gallery', galleryRoutes);
+
 // V3: Mount RAG routes
 const ragRoutes = require('../routes/rag');
 app.use('/api/rag', ragRoutes);
@@ -350,6 +354,10 @@ app.use('/api/export', exportRoutes);
 // Repo Watcher routes (code quality monitoring)
 const repoWatcherRoutes = require('../routes/repoWatcher');
 app.use('/api/repoWatcher', repoWatcherRoutes);
+
+// DocJanitor routes (documentation maintenance scanning)
+const docJanitorRoutes = require('../routes/docJanitor');
+app.use('/api/docJanitor', docJanitorRoutes);
 
 // Legacy/Compatibility routes
 // Map /conversations -> history

@@ -12,10 +12,12 @@ const ragRoutes = require('./rag');
 let ragWatcherInstance = ragRoutes.ragWatcherInstance;
 
 // POST /api/export-md-docs
-// Triggers creation of ZIP archive containing all MD files from docs directory
+// Triggers creation of ZIP archive containing all MD files from docs directory (default) or repo root
 router.post('/md-docs', async (req, res) => {
   try {
-    const docsDir = path.join(__dirname, '..', 'docs');
+    const repoRoot = path.join(__dirname, '..');
+    const scope = (req.body?.scope || 'docs').toLowerCase();
+    const sourceDir = scope === 'repo' ? repoRoot : path.join(repoRoot, 'docs');
     const exportsDir = path.join(__dirname, '..', 'exports');
 
     // Ensure exports directory exists
@@ -23,16 +25,16 @@ router.post('/md-docs', async (req, res) => {
 
     // Generate timestamped filename
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const zipFilename = `md-docs-${timestamp}.zip`;
+    const zipFilename = `${scope === 'repo' ? 'md-repo' : 'md-docs'}-${timestamp}.zip`;
     const zipPath = path.join(exportsDir, zipFilename);
 
     // Run Python script to pack MD files
     // Using execFile with array args to prevent command injection
     const scriptPath = path.join(__dirname, '..', 'scripts', 'pack_md_docs.py');
 
-    logger.info('Starting MD docs export', { docsDir, zipPath });
+    logger.info('Starting MD docs export', { scope, sourceDir, zipPath });
 
-    const { stdout, stderr } = await execFileAsync('python3', [scriptPath, docsDir, zipPath], { timeout: 30000 }); // 30 second timeout
+    const { stdout, stderr } = await execFileAsync('python3', [scriptPath, sourceDir, zipPath], { timeout: 30000 }); // 30 second timeout
 
     if (stderr) {
       logger.warn('MD docs export warnings', { stderr });
@@ -62,7 +64,7 @@ router.post('/md-docs', async (req, res) => {
     res.json({
       success: true,
       message: 'MD documentation exported successfully',
-      downloadUrl: `/exports/${zipFilename}`,
+      downloadUrl: `/api/export/download/${zipFilename}`,
       fileSize: `${fileSizeMB} MB`,
       filePath: zipPath
     });
@@ -81,7 +83,7 @@ router.post('/md-docs', async (req, res) => {
   }
 });
 
-// GET /exports/:filename - Serve the ZIP file for download
+// GET /api/export/download/:filename - Serve the ZIP file for download
 router.get('/download/:filename', async (req, res) => {
   try {
     const filename = req.params.filename;

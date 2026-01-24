@@ -854,6 +854,7 @@ function updateQualityDistChart() {
         options: {
             responsive: true,
             maintainAspectRatio: true,
+            animation: false,
             plugins: {
                 legend: { display: false }
             },
@@ -900,6 +901,7 @@ function updateLatencyScatterChart() {
         options: {
             responsive: true,
             maintainAspectRatio: true,
+            animation: false,
             plugins: {
                 legend: { display: false }
             },
@@ -957,6 +959,7 @@ function updateCategoryRadarChart() {
         options: {
             responsive: true,
             maintainAspectRatio: true,
+            animation: false,
             plugins: {
                 legend: { display: false }
             },

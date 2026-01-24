@@ -167,17 +167,19 @@ const BenchmarkBatchSchema = new mongoose.Schema({
         test_number: { type: Number, default: null }  // Which test # out of total
     },
 
-    // Execution timeline (for detailed progress tracking)
-    timeline: [{
-        timestamp: { type: Date, default: Date.now },
-        event: { type: String, required: true },  // 'test_start', 'test_complete', 'judge_start', 'judge_complete', 'error'
-        model: String,
-        prompt_id: String,
-        prompt_level: Number,
-        duration_ms: Number,
-        success: Boolean,
-        error: String
-    }],
+	    // Execution timeline (for detailed progress tracking)
+	    timeline: [{
+	        timestamp: { type: Date, default: Date.now },
+	        event: { type: String, required: true },  // 'test_start', 'test_complete', 'judge_start', 'judge_complete', 'error'
+	        model: String,
+	        host: { type: String, default: null },
+	        prompt_id: String,
+	        prompt_level: Number,
+	        duration_ms: Number,
+	        tokens_per_sec: { type: mongoose.Schema.Types.Mixed, default: null },
+	        success: Boolean,
+	        error: String
+	    }],
 
     // Detailed execution metrics
     execution_metrics: {
@@ -261,17 +263,61 @@ BenchmarkBatchSchema.statics.getCompleted = function(limit = 20) {
         .limit(limit);
 };
 
-BenchmarkBatchSchema.statics.cleanupStale = async function() {
-    const result = await this.updateMany(
-        { status: { $in: ['running', 'judging'] } },
-        {
-            $set: {
-                status: 'interrupted',
-                completed_at: new Date()
+BenchmarkBatchSchema.statics.cleanupStale = async function(inactivityThresholdSeconds = 300) {
+    // Only mark batches as stale if they've been inactive for the threshold period
+    // This prevents killing active batches on server restart/reload
+    const threshold = new Date(Date.now() - (inactivityThresholdSeconds * 1000));
+
+    // Find stale batches first so we can fix them properly
+    const staleBatches = await this.find({
+        status: { $in: ['running', 'judging'] },
+        $or: [
+            { last_activity_at: { $lt: threshold } },
+            { last_activity_at: null }
+        ]
+    });
+
+    let fixedCount = 0;
+    const BenchmarkResult = require('./BenchmarkResult');
+
+    for (const batch of staleBatches) {
+        try {
+            // Count actual results to fix judge_total mismatch
+            const actualResultCount = await BenchmarkResult.countDocuments({ batch_id: batch._id });
+
+            // Determine appropriate status based on completion
+            let newStatus = 'interrupted';
+            if (actualResultCount > 0 && actualResultCount >= batch.total_tests) {
+                // All tests completed, check if judging was done
+                const judgedCount = await BenchmarkResult.countDocuments({
+                    batch_id: batch._id,
+                    scoring_method: { $nin: [null, 'pending', 'skipped'] }
+                });
+                if (judgedCount >= actualResultCount || !batch.quality_scoring) {
+                    newStatus = 'completed';
+                }
             }
+
+            await this.updateOne(
+                { _id: batch._id },
+                {
+                    $set: {
+                        status: newStatus,
+                        completed_at: new Date(),
+                        // Fix judge_total to match actual executed tests
+                        judge_total: batch.quality_scoring ? actualResultCount : 0,
+                        // Update completed counter if it's wrong
+                        completed: actualResultCount
+                    }
+                }
+            );
+            fixedCount++;
+        } catch (err) {
+            console.error('Failed to cleanup batch', batch._id, err.message);
         }
-    );
-    return result.modifiedCount;
+    }
+
+    return fixedCount;
 };
 
 BenchmarkBatchSchema.statics.findStuck = async function(inactivityThresholdSeconds = 300) {
@@ -347,59 +393,89 @@ BenchmarkBatchSchema.methods.updateCurrentTest = function(model, promptId, promp
     const testNumber = options.testNumber || this.completed + 1;
     const promptLevel = options.promptLevel || null;
 
-    this.current_test = {
-        model,
-        prompt_id: promptId,
-        prompt_name: promptName,
-        prompt_level: promptLevel,
-        stage,
-        started_at: new Date(),
-        test_number: testNumber
-    };
-    this.last_activity_at = new Date();
-
-    // Add timeline event
-    this.timeline.push({
-        timestamp: new Date(),
-        event: stage === 'executing' ? 'test_start' : 'judge_start',
-        model,
-        prompt_id: promptId,
-        prompt_level: promptLevel,
-        success: null
-    });
-
-    return this.save();
+    // Use direct MongoDB update to avoid loading entire document into memory
+    return mongoose.model('BenchmarkBatch').updateOne(
+        { _id: this._id },
+        {
+            $set: {
+                current_test: {
+                    model,
+                    prompt_id: promptId,
+                    prompt_name: promptName,
+                    prompt_level: promptLevel,
+                    stage,
+                    started_at: new Date(),
+                    test_number: testNumber
+                },
+                last_activity_at: new Date()
+            },
+            $push: {
+                timeline: {
+                    $each: [{
+                        timestamp: new Date(),
+                        event: stage === 'executing' ? 'test_start' : 'judge_start',
+                        model,
+                        prompt_id: promptId,
+                        prompt_level: promptLevel,
+                        success: null
+                    }],
+                    $slice: -2500  // Keep only last 2500 timeline events to cap memory
+                }
+            }
+        }
+    );
 };
 
-BenchmarkBatchSchema.methods.recordTestComplete = function(model, promptId, durationMs, success = true, error = null, promptLevel = null) {
-    this.timeline.push({
-        timestamp: new Date(),
-        event: success ? 'test_complete' : 'error',
-        model,
-        prompt_id: promptId,
-        prompt_level: promptLevel,
-        duration_ms: durationMs,
-        success,
-        error: error ? error.message || error.toString() : null
-    });
-
-    this.last_activity_at = new Date();
-    return this.save();
+BenchmarkBatchSchema.methods.recordTestComplete = function(model, promptId, durationMs, success = true, error = null, promptLevel = null, host = null, tokensPerSec = null) {
+    // Use direct MongoDB $push with $slice to avoid loading entire timeline into memory
+    // This is much more memory efficient than this.timeline.push() + this.save()
+    return mongoose.model('BenchmarkBatch').updateOne(
+        { _id: this._id },
+        {
+            $push: {
+                timeline: {
+                    $each: [{
+                        timestamp: new Date(),
+                        event: success ? 'test_complete' : 'error',
+                        model,
+                        host,
+                        prompt_id: promptId,
+                        prompt_level: promptLevel,
+                        duration_ms: durationMs,
+                        tokens_per_sec: tokensPerSec,
+                        success,
+                        error: error ? error.message || error.toString() : null
+                    }],
+                    $slice: -2500  // Keep only last 2500 timeline events to cap memory
+                }
+            },
+            $set: { last_activity_at: new Date() }
+        }
+    );
 };
 
 BenchmarkBatchSchema.methods.recordJudgeComplete = function(model, promptId, durationMs, success = true, promptLevel = null) {
-    this.timeline.push({
-        timestamp: new Date(),
-        event: 'judge_complete',
-        model,
-        prompt_id: promptId,
-        prompt_level: promptLevel,
-        duration_ms: durationMs,
-        success
-    });
-
-    this.last_activity_at = new Date();
-    return this.save();
+    // Use direct MongoDB $push with $slice to avoid loading entire timeline into memory
+    return mongoose.model('BenchmarkBatch').updateOne(
+        { _id: this._id },
+        {
+            $push: {
+                timeline: {
+                    $each: [{
+                        timestamp: new Date(),
+                        event: 'judge_complete',
+                        model,
+                        prompt_id: promptId,
+                        prompt_level: promptLevel,
+                        duration_ms: durationMs,
+                        success
+                    }],
+                    $slice: -2500  // Keep only last 2500 timeline events to cap memory
+                }
+            },
+            $set: { last_activity_at: new Date() }
+        }
+    );
 };
 
 BenchmarkBatchSchema.methods.clearCurrentTest = function() {

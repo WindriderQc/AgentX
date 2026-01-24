@@ -143,6 +143,18 @@ async function startServer() {
     systemHealth.mongodb = { status: 'connected', lastCheck: new Date().toISOString(), error: null };
     console.log(`   ✓ MongoDB:  Connected`);
     logger.info('MongoDB connected successfully');
+
+    // Cleanup orphaned benchmark batches after DB connection
+    try {
+      const benchmarkService = require('./src/services/benchmarkService');
+      const cleanedCount = await benchmarkService.cleanupStaleBatches();
+      if (cleanedCount > 0) {
+        console.log(`   ✓ Benchmark: Recovered ${cleanedCount} orphaned batch(es)`);
+        logger.info('Recovered orphaned benchmark batches', { count: cleanedCount });
+      }
+    } catch (cleanupErr) {
+      logger.warn('Failed to cleanup stale benchmark batches', { error: cleanupErr.message });
+    }
   } catch (err) {
     systemHealth.mongodb = { status: 'error', lastCheck: new Date().toISOString(), error: err.message };
     console.log(`   ✗ MongoDB:  ${err.message}`);

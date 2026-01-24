@@ -13,6 +13,8 @@
 
 const express = require('express');
 const router = express.Router();
+const fs = require('fs').promises;
+const path = require('path');
 const mongoose = require('mongoose');
 const { getRagStore } = require('../src/services/ragStore');
 const { resolveTarget } = require('../src/utils');
@@ -111,6 +113,50 @@ function normalizeRelativePath(filePath, root) {
 
   // Treat leading slash as non-relative; strip it for comparison.
   return normalized.replace(/^\/+/, '');
+}
+
+async function computeMdFolderStats(rootDir, options = {}) {
+  const maxFiles = Number.isFinite(options.maxFiles) ? options.maxFiles : 50000;
+  const result = { totalFiles: 0, mdFiles: 0, totalBytes: 0 };
+
+  async function walk(dir) {
+    if (result.totalFiles >= maxFiles) return;
+
+    let entries;
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true });
+    } catch (error) {
+      // If the directory can't be read, stop gracefully.
+      logger.warn('Failed to read RAG directory while computing stats', { dir, error: error.message });
+      return;
+    }
+
+    for (const entry of entries) {
+      if (result.totalFiles >= maxFiles) return;
+      const fullPath = path.join(dir, entry.name);
+
+      if (entry.isDirectory()) {
+        await walk(fullPath);
+        continue;
+      }
+
+      if (!entry.isFile()) continue;
+      result.totalFiles++;
+
+      if (!entry.name.toLowerCase().endsWith('.md')) continue;
+
+      try {
+        const stats = await fs.stat(fullPath);
+        result.mdFiles++;
+        result.totalBytes += stats.size || 0;
+      } catch (error) {
+        logger.warn('Failed to stat RAG file while computing stats', { filePath: fullPath, error: error.message });
+      }
+    }
+  }
+
+  await walk(rootDir);
+  return result;
 }
 
 /**
@@ -782,10 +828,39 @@ router.get('/watcher/status', async (req, res) => {
       });
     }
 
-    const status = watcher.getStatus();
+    const status = watcher.getStatus() || {};
+    const ragDir = status.ragDir || status.root || watcher.ragDir || '/mnt/datalake/RAG';
+
+    let diskStats = null;
+    try {
+      diskStats = await computeMdFolderStats(ragDir);
+    } catch (error) {
+      logger.warn('Failed to compute RAG disk stats', { ragDir, error: error.message });
+    }
+
+    const mergedStatus = {
+      ...status,
+      ragDir,
+      diskMdFiles: diskStats?.mdFiles,
+      diskTotalBytes: diskStats?.totalBytes,
+      diskTotalFiles: diskStats?.totalFiles
+    };
+
+    // Backfill for UIs that expect these fields.
+    if (
+      (!mergedStatus.lastManifestStats || typeof mergedStatus.lastManifestStats !== 'object') &&
+      diskStats &&
+      typeof diskStats.totalBytes === 'number'
+    ) {
+      mergedStatus.lastManifestStats = {
+        fileCount: diskStats.mdFiles || 0,
+        totalBytes: diskStats.totalBytes || 0
+      };
+    }
+
     res.json({
       status: 'success',
-      data: status
+      data: mergedStatus
     });
   } catch (error) {
     logger.error('RAG watcher status error', { error: error.message });

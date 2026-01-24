@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgentX • Compare Insights</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/css/benchmark-inline.css">
+    <link rel="stylesheet" href="/css/benchmark-analytics.css">
+</head>
+<body>
+    <div id="nav-container"></div>
+    <script src="/js/components/CategoryBadge.js"></script>
+    <script src="/js/components/nav.js"></script>
+    <script src="/js/workspace.js"></script>
+    <script>injectNav('compare-insights');</script>
+
+    <div class="bg-grid"></div>
+
+    <div class="benchmark-container">
+        <!-- Header -->
+        <div class="benchmark-header">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div>
+                    <div class="eyebrow">AgentX • Performance</div>
+                    <h1><i class="fas fa-chart-radar"></i> Compare Insights</h1>
+                    <p>Compare model capabilities across quality categories using historical test data</p>
+                </div>
+                <div style="display: flex; gap: 10px; margin-top: 10px;">
+                    <a href="benchmark.html" class="btn-secondary" style="text-decoration: none; display: inline-flex; align-items: center; justify-content: center; height: 42px;">
+                        <i class="fas fa-arrow-left"></i> Back to Benchmark
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Host Selection -->
+        <div style="margin-bottom: 24px; padding: 16px; background: var(--panel); border: 1px solid var(--panel-border); border-radius: var(--radius);">
+            <label for="host" style="display: block; margin-bottom: 8px; font-weight: 600;">
+                <i class="fas fa-server"></i> Select Ollama Host
+            </label>
+            <select id="host" required style="width: 100%; padding: 10px; border: 1px solid var(--panel-border); background: rgba(0,0,0,0.3); border-radius: 8px; color: var(--text);">
+                <option value="">Loading...</option>
+            </select>
+        </div>
+
+	        <!-- Model Selection -->
+	        <div style="margin-bottom: 24px; padding: 16px; background: var(--panel); border: 1px solid var(--panel-border); border-radius: var(--radius);">
+	            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+	                <h3 style="margin: 0;">
+	                    <i class="fas fa-cube"></i> Available Models
+	                </h3>
+	                <span id="modelCountDisplay" style="color: var(--muted); font-size: 0.9em;"></span>
+	            </div>
+	            <div id="modelListContainer" style="max-height: 200px; overflow-y: auto; border: 1px solid var(--panel-border); border-radius: 6px; background: rgba(0,0,0,0.2); padding: 12px;">
+	                <div style="text-align: center; color: var(--muted); padding: 20px;">Select a host to load models</div>
+	            </div>
+	        </div>
+
+	        <!-- Performance Trends Chart (Historical) -->
+	        <div class="trends-section" id="performanceTrends">
+	            <div class="section-header">
+	                <h3 style="display: flex; align-items: center; gap: 10px;">
+	                    <i class="fas fa-chart-line"></i> Performance Trends
+	                    <span style="font-size: 0.75em; font-weight: 500; color: var(--muted);">(historical)</span>
+	                    <i class="fas fa-info-circle" style="font-size: 0.6em; opacity: 0.5; cursor: help;" title="Quality Score is scaled x10 (0-100) for visibility. Latency is in ms."></i>
+	                </h3>
+	                <div class="trends-controls">
+	                    <select id="trendsPeriod">
+	                        <option value="7">Last 7 Days</option>
+	                        <option value="14">Last 14 Days</option>
+	                        <option value="30">Last 30 Days</option>
+	                    </select>
+	                    <select id="trendsModelFilter">
+	                        <option value="">All Models</option>
+	                        <!-- Populated dynamically -->
+	                    </select>
+	                </div>
+	            </div>
+	            <div class="trends-chart-container">
+	                <canvas id="trendsChart"></canvas>
+	            </div>
+	        </div>
+
+        <!-- Compare Insights Section -->
+        <div class="compare-insights-section" style="background: var(--panel); border: 1px solid var(--panel-border); border-radius: var(--radius); padding: 20px 24px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
+                <h2 style="margin: 0; font-size: 1.15em; font-weight: 600; display: flex; align-items: center; gap: 10px;">
+                    <i class="fas fa-chart-radar" style="color: #00ff9f;"></i> Compare Insights
+                </h2>
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <button id="capabilityAddSelectedBtn" class="btn-secondary btn-sm">
+                        <i class="fas fa-plus"></i> Add Checked
+                    </button>
+                    <button id="capabilityClearBtn" class="btn-secondary btn-sm">
+                        <i class="fas fa-trash"></i> Clear
+                    </button>
+                    <button id="capabilityRefreshBtn" class="btn-secondary btn-sm">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                </div>
+            </div>
+            <div style="color: var(--muted); font-size: 0.9em; margin-bottom: 14px;">
+                Compares quality scores across categories for multiple <strong>model@host</strong> selections using historical test data.
+            </div>
+
+            <div id="capabilityCompareList" class="compare-chip-list" style="margin-bottom: 14px;"></div>
+
+            <div class="capability-compare-grid" style="display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 16px; align-items: stretch;">
+                <div class="chart-card" style="margin: 0; padding: 18px;">
+                    <div style="height: 320px;">
+                        <canvas id="capabilityRadarChart"></canvas>
+                    </div>
+                    <div id="capabilityEmpty" class="chart-empty" style="display: none; margin-top: 10px;">Select models to compare.</div>
+                </div>
+                <div class="chart-card" style="margin: 0; padding: 18px;">
+                    <div id="capabilityInsights" style="height: 100%;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Batch Comparison -->
+        <div class="comparison-section" style="margin-top: 24px;">
+            <div class="section-header">
+                <h3><i class="fas fa-code-compare"></i> Batch Comparison</h3>
+            </div>
+            <div class="comparison-selectors">
+                <div class="form-group">
+                    <label>Batch 1</label>
+                    <select id="compareBatch1">
+                        <option value="">Select batch...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Batch 2</label>
+                    <select id="compareBatch2">
+                        <option value="">Select batch...</option>
+                    </select>
+                </div>
+                <button id="compareBatchesBtn" class="btn-primary">
+                    <i class="fas fa-balance-scale"></i> Compare
+                </button>
+                <button id="exportComparisonBtn" class="btn-secondary btn-sm" style="display: none;">
+                    <i class="fas fa-file-csv"></i> Export CSV
+                </button>
+            </div>
+            <div id="comparisonResults" style="display: none;">
+                <!-- Comparison results rendered here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script>
+        // Minimal standalone logic - extracts just what's needed from benchmark-analytics.js
+	        const BENCHMARK_API = '/api/benchmark';
+	        let capabilityChart = null;
+	        let trendsChart = null;
+	        const capabilitySelections = []; // { model, host }
+	        let lastComparisonData = null;
+
+        // Get workspace headers
+        function getWorkspaceHeaders(extra = {}) {
+            const baseHeaders = { 'Content-Type': 'application/json', ...extra };
+            if (window.WorkspaceManager && typeof window.WorkspaceManager.addWorkspaceHeader === 'function') {
+                const withWorkspace = window.WorkspaceManager.addWorkspaceHeader({ headers: baseHeaders });
+                return withWorkspace.headers || baseHeaders;
+            }
+            return baseHeaders;
+        }
+
+        // Escape HTML
+        function escapeHtml(unsafe) {
+            if (unsafe === null || unsafe === undefined) return '';
+            return String(unsafe)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        function showToast(message, type = 'info') {
+            // Try to use existing toast if available
+            if (window.Toast && typeof window.Toast.show === 'function') {
+                window.Toast.show(message, type);
+                return;
+            }
+
+            console.log(`[${String(type).toUpperCase()}] ${message}`);
+
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.textContent = message;
+            toast.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                padding: 12px 20px;
+                background: ${type === 'success' ? '#00FF9F' : type === 'error' ? '#FF6B9D' : '#7CF0FF'};
+                color: #0A0E27;
+                border-radius: 8px;
+                font-weight: 600;
+                z-index: 10000;
+                animation: slideIn 0.3s ease;
+            `;
+            document.body.appendChild(toast);
+            setTimeout(() => {
+                toast.style.animation = 'slideOut 0.3s ease';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // Get selected host
+        function getSelectedHost() {
+            const hostEl = document.getElementById('host');
+            return hostEl ? hostEl.value : '';
+        }
+
+        // Global state
+        let ollamaHosts = [];
+
+        // Load hosts
+        async function loadHosts() {
+            try {
+                const res = await fetch('/api/ollama-hosts', { headers: getWorkspaceHeaders() });
+                if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+
+                const json = await res.json();
+                const data = json.data || json;
+
+                if (!data.hosts || data.hosts.length === 0) {
+                    throw new Error('No hosts configured');
+                }
+
+                ollamaHosts = data.hosts;
+
+                const hostSelect = document.getElementById('host');
+                hostSelect.innerHTML = '<option value="">Select Ollama Host...</option>' +
+                    ollamaHosts.map(h => {
+                        const status = h.available ? '✓' : '✗';
+                        const modelCount = h.models ? ` [${h.models.length} models]` : '';
+                        return `<option value="${escapeHtml(h.url)}">${status} ${escapeHtml(h.name)} (${escapeHtml(h.url)})${modelCount}</option>`;
+                    }).join('');
+
+                // Auto-select first available host
+                const firstAvailable = ollamaHosts.find(h => h.available);
+                if (firstAvailable) {
+                    hostSelect.value = firstAvailable.url;
+                    loadModels(firstAvailable.url);
+                }
+            } catch (e) {
+                console.error('Failed to load hosts:', e);
+                const hostSelect = document.getElementById('host');
+                if (hostSelect) {
+                    hostSelect.innerHTML = '<option value="">Failed to load hosts - check server config</option>';
+                }
+            }
+        }
+
+	        // Load models for selected host
+	        function loadModels(hostUrl) {
+            const container = document.getElementById('modelListContainer');
+            if (!hostUrl) {
+                container.innerHTML = '<div style="text-align: center; color: var(--muted); padding: 20px;">Select a host to load models</div>';
+                return;
+	        }
+
+	        async function loadTrendsModelOptions() {
+	            const modelFilter = document.getElementById('trendsModelFilter');
+	            if (!modelFilter) return;
+
+	            try {
+	                const currentSelection = modelFilter.value;
+	                const res = await fetch(`${BENCHMARK_API}/batches?limit=50`, { headers: getWorkspaceHeaders() });
+	                if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+	                const json = await res.json();
+	                const data = json.data || {};
+
+	                const batches = Array.isArray(data.batches) ? data.batches : [];
+	                const models = new Set();
+	                for (const batch of batches) {
+	                    if (Array.isArray(batch?.models)) {
+	                        batch.models.forEach(m => {
+	                            if (typeof m === 'string' && m.trim()) models.add(m);
+	                        });
+	                    }
+	                }
+	                const sorted = Array.from(models).sort((a, b) => a.localeCompare(b));
+
+	                modelFilter.innerHTML = '<option value="">All Models</option>' +
+	                    sorted.map(m => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join('');
+
+	                if (currentSelection && models.has(currentSelection)) {
+	                    modelFilter.value = currentSelection;
+	                }
+	            } catch (e) {
+	                console.warn('Failed to load trends model options:', e);
+	            }
+	        }
+
+	        async function loadTrends() {
+	            try {
+	                const period = document.getElementById('trendsPeriod')?.value || '7';
+	                const model = document.getElementById('trendsModelFilter')?.value || '';
+
+	                const res = await fetch(
+	                    `${BENCHMARK_API}/trends?days=${encodeURIComponent(period)}${model ? `&model=${encodeURIComponent(model)}` : ''}`,
+	                    { headers: getWorkspaceHeaders() }
+	                );
+	                if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+
+	                const { data } = await res.json();
+	                const ctx = document.getElementById('trendsChart');
+	                if (!ctx || !data || !Array.isArray(data.trends)) return;
+
+	                const labels = data.trends.map(t => {
+	                    if (t?._id?.hour !== undefined) {
+	                        return `${t._id.month}/${t._id.day} ${t._id.hour}:00`;
+	                    }
+	                    return `${t?._id?.month}/${t?._id?.day}`;
+	                });
+
+	                const datasets = [
+	                    {
+	                        label: 'Avg Latency (ms)',
+	                        data: data.trends.map(t => t.avg_latency),
+	                        borderColor: '#7CF0FF',
+	                        backgroundColor: 'rgba(124, 240, 255, 0.1)',
+	                        yAxisID: 'y',
+	                        tension: 0.3
+	                    },
+	                    {
+	                        label: 'Avg Quality Score (x10)',
+	                        data: data.trends.map(t => t.avg_quality ? t.avg_quality * 10 : null),
+	                        borderColor: '#00FF9F',
+	                        backgroundColor: 'rgba(0, 255, 159, 0.1)',
+	                        yAxisID: 'y1',
+	                        tension: 0.3
+	                    },
+	                    {
+	                        label: 'Avg Tokens/sec',
+	                        data: data.trends.map(t => t.avg_tokens_per_sec || null),
+	                        borderColor: '#FF6B9D',
+	                        backgroundColor: 'rgba(255, 107, 157, 0.1)',
+	                        yAxisID: 'y1',
+	                        tension: 0.3
+	                    }
+	                ];
+
+	                if (trendsChart) trendsChart.destroy();
+	                trendsChart = new Chart(ctx, {
+	                    type: 'line',
+	                    data: { labels, datasets },
+	                    options: {
+	                        responsive: true,
+	                        maintainAspectRatio: false,
+	                        interaction: { mode: 'index', intersect: false },
+	                        plugins: {
+	                            legend: { position: 'top', labels: { color: '#E0E7FF' } },
+	                            title: {
+	                                display: true,
+	                                text: `Performance Trends - ${data.model === 'all' ? 'All Models' : data.model}`,
+	                                color: '#E0E7FF'
+	                            }
+	                        },
+	                        scales: {
+	                            x: {
+	                                ticks: { color: '#94A3B8' },
+	                                grid: { color: 'rgba(255, 255, 255, 0.05)' }
+	                            },
+	                            y: {
+	                                type: 'linear',
+	                                display: true,
+	                                position: 'left',
+	                                title: { display: true, text: 'Latency (ms)', color: '#7CF0FF' },
+	                                ticks: { color: '#7CF0FF' },
+	                                grid: { color: 'rgba(124, 240, 255, 0.1)' }
+	                            },
+	                            y1: {
+	                                type: 'linear',
+	                                display: true,
+	                                position: 'right',
+	                                title: { display: true, text: 'Quality / Tokens/sec', color: '#00FF9F' },
+	                                ticks: { color: '#00FF9F' },
+	                                grid: { display: false }
+	                            }
+	                        }
+	                    }
+	                });
+	            } catch (e) {
+	                console.error('Failed to load trends:', e);
+	            }
+	        }
+
+            const host = ollamaHosts.find(h => h.url === hostUrl);
+            if (!host || !host.models || host.models.length === 0) {
+                container.innerHTML = '<div style="text-align: center; color: var(--muted); padding: 20px;">No models found for this host</div>';
+                return;
+            }
+
+            container.innerHTML = host.models.map(m => `
+                <label style="display: block; padding: 8px; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                    <input type="checkbox" value="${escapeHtml(m)}" class="model-checkbox" style="margin-right: 8px;">
+                    ${escapeHtml(m)}
+                </label>
+            `).join('');
+
+            document.getElementById('modelCountDisplay').textContent = `${host.models.length} models available`;
+        }
+
+        // Add checked models to comparison
+        function addCheckedModelsToCapabilityCompare() {
+            const host = getSelectedHost();
+            if (!host) {
+                alert('Select an Ollama host first');
+                return;
+            }
+
+            const checked = Array.from(document.querySelectorAll('.model-checkbox:checked'))
+                .map(cb => cb.value)
+                .filter(Boolean);
+
+            if (!checked.length) {
+                alert('Check one or more models to add');
+                return;
+            }
+
+            const existing = new Set(capabilitySelections.map(s => `${s.model}@${s.host}`));
+            let added = 0;
+
+            for (const model of checked) {
+                const key = `${model}@${host}`;
+                if (existing.has(key)) continue;
+                capabilitySelections.push({ model, host });
+                existing.add(key);
+                added++;
+            }
+
+            if (added > 0) {
+                refreshCapabilityCompare();
+            }
+        }
+
+        // Clear all selections
+        function clearCapabilityCompare() {
+            capabilitySelections.length = 0;
+            refreshCapabilityCompare();
+        }
+
+        // Render chip list
+        function renderChipList() {
+            const listEl = document.getElementById('capabilityCompareList');
+            if (!capabilitySelections.length) {
+                listEl.innerHTML = '<div style="color: var(--muted); font-size: 0.9em; padding: 8px 0;">No models selected for comparison</div>';
+                return;
+            }
+
+            listEl.innerHTML = capabilitySelections.map((sel, idx) => `
+                <div class="compare-chip" style="display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; background: rgba(0,255,159,0.1); border: 1px solid rgba(0,255,159,0.3); border-radius: 6px; margin: 4px;">
+                    <span style="font-weight: 600;">${escapeHtml(sel.model)}</span>
+                    <span style="color: var(--muted); font-size: 0.85em;">@ ${escapeHtml(sel.host)}</span>
+                    <button onclick="removeSelection(${idx})" style="background: none; border: none; color: var(--muted); cursor: pointer; padding: 0; font-size: 1.1em;" title="Remove">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        // Remove selection
+        function removeSelection(idx) {
+            capabilitySelections.splice(idx, 1);
+            refreshCapabilityCompare();
+        }
+
+        // Get palette color
+        function getPaletteColor(idx) {
+            const colors = [
+                { border: '#00ff9f', bg: 'rgba(0, 255, 159, 0.2)' },
+                { border: '#3498db', bg: 'rgba(52, 152, 219, 0.2)' },
+                { border: '#e74c3c', bg: 'rgba(231, 76, 60, 0.2)' },
+                { border: '#f1c40f', bg: 'rgba(241, 196, 15, 0.2)' },
+                { border: '#9b59b6', bg: 'rgba(155, 89, 182, 0.2)' }
+            ];
+            return colors[idx % colors.length];
+        }
+
+        // Refresh capability compare chart
+        async function refreshCapabilityCompare() {
+            renderChipList();
+
+            const emptyEl = document.getElementById('capabilityEmpty');
+            const insightsEl = document.getElementById('capabilityInsights');
+            if (insightsEl) insightsEl.innerHTML = '';
+
+            if (!capabilitySelections.length) {
+                if (emptyEl) emptyEl.style.display = 'block';
+                if (capabilityChart) {
+                    capabilityChart.destroy();
+                    capabilityChart = null;
+                }
+                return;
+            }
+            if (emptyEl) emptyEl.style.display = 'none';
+
+            const ctx = document.getElementById('capabilityRadarChart');
+            if (!ctx) return;
+
+            try {
+                // Fetch quality breakdown for each model
+                const breakdowns = await Promise.all(
+                    capabilitySelections.map(async sel => {
+                        const res = await fetch(`${BENCHMARK_API}/quality-breakdown?model=${encodeURIComponent(sel.model)}&host=${encodeURIComponent(sel.host)}`, {
+                            headers: getWorkspaceHeaders()
+                        });
+                        const json = await res.json();
+                        return { sel, data: json.data };
+                    })
+                );
+
+                // Get categories from first result
+                const categories = (breakdowns[0]?.data?.categories || []).slice();
+                const labels = categories.map(c => c.charAt(0).toUpperCase() + c.slice(1));
+
+                // Build datasets
+                const datasets = breakdowns.map((b, idx) => {
+                    const byModel = b.data?.by_category?.[b.sel.model] || {};
+                    const values = categories.map(cat => {
+                        const raw = byModel?.[cat]?.avg_quality ?? byModel?.[cat]?.avg_score;
+                        const num = raw === null || raw === undefined ? 0 : parseFloat(raw);
+                        return Number.isFinite(num) ? num : 0;
+                    });
+
+                    const c = getPaletteColor(idx);
+                    const label = `${b.sel.model} @ ${b.sel.host}`;
+
+                    return {
+                        label,
+                        data: values,
+                        fill: true,
+                        backgroundColor: c.bg,
+                        borderColor: c.border,
+                        pointBackgroundColor: c.border,
+                        pointBorderColor: '#fff',
+                        pointHoverBackgroundColor: '#fff',
+                        pointHoverBorderColor: c.border
+                    };
+                });
+
+                // Destroy old chart
+                if (capabilityChart) capabilityChart.destroy();
+
+                // Create new chart
+                capabilityChart = new Chart(ctx, {
+                    type: 'radar',
+                    data: { labels, datasets },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            r: {
+                                angleLines: { color: 'rgba(255, 255, 255, 0.1)' },
+                                grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                                pointLabels: {
+                                    color: '#fff',
+                                    font: { size: 12, weight: 'bold' }
+                                },
+                                ticks: {
+                                    backdropColor: 'transparent',
+                                    color: 'rgba(255, 255, 255, 0.5)',
+                                    min: 0,
+                                    max: 10,
+                                    stepSize: 2
+                                },
+                                suggestedMin: 0,
+                                suggestedMax: 10
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                display: true,
+                                position: 'top',
+                                labels: { color: '#E0E7FF' }
+                            },
+                            tooltip: {
+                                backgroundColor: 'rgba(10, 14, 39, 0.9)',
+                                titleColor: '#fff',
+                                bodyColor: '#ccc',
+                                borderColor: 'rgba(255, 255, 255, 0.1)',
+                                borderWidth: 1,
+                                padding: 10,
+                                callbacks: {
+                                    label: function(context) {
+                                        return `${context.dataset.label}: ${context.raw.toFixed(1)} / 10`;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+
+                // Render insights
+                if (insightsEl) {
+                    const insightRows = datasets.map(ds => {
+                        const values = ds.data;
+                        let bestIdx = 0;
+                        let worstIdx = 0;
+                        values.forEach((v, i) => {
+                            if (v > values[bestIdx]) bestIdx = i;
+                            if (v < values[worstIdx]) worstIdx = i;
+                        });
+                        return `
+                            <div style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; margin-bottom: 10px;">
+                                <div style="font-weight: 600; color: var(--text); margin-bottom: 6px;">${escapeHtml(ds.label)}</div>
+                                <div style="color: var(--muted); font-size: 0.9em; line-height: 1.5;">
+                                    <div>✅ Best: ${labels[bestIdx]} (${values[bestIdx].toFixed(1)})</div>
+                                    <div>❌ Worst: ${labels[worstIdx]} (${values[worstIdx].toFixed(1)})</div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+
+                    insightsEl.innerHTML = `
+                        <div style="font-weight: 600; margin-bottom: 12px; color: var(--text);">Insights</div>
+                        ${insightRows}
+                    `;
+                }
+            } catch (e) {
+                console.error('Failed to load comparison data:', e);
+                if (insightsEl) {
+                    insightsEl.innerHTML = '<div style="color: #e74c3c; padding: 12px;">Failed to load data. Check console for details.</div>';
+                }
+            }
+        }
+
+        function calculateDelta(items, field) {
+            if (!Array.isArray(items) || items.length < 2) return '0';
+            const val1 = parseFloat(items[0]?.[field]) || 0;
+            const val2 = parseFloat(items[1]?.[field]) || 0;
+            const delta = val2 - val1;
+            return delta > 0 ? `+${delta.toFixed(1)}` : delta.toFixed(1);
+        }
+
+        function getDeltaClass(items, field) {
+            const delta = calculateDelta(items, field);
+            const val = parseFloat(delta);
+            if (val > 0) return 'delta-positive';
+            if (val < 0) return 'delta-negative';
+            return '';
+        }
+
+        function formatDuration(ms) {
+            if (!ms) return 'N/A';
+            const seconds = Math.floor(ms / 1000);
+            const minutes = Math.floor(seconds / 60);
+            const hours = Math.floor(minutes / 60);
+
+            if (hours > 0) return `${hours}h ${minutes % 60}m`;
+            if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
+            return `${seconds}s`;
+        }
+
+        function formatPercent(value) {
+            const n = parseFloat(value);
+            if (!Number.isFinite(n)) return 'N/A';
+            return `${n.toFixed(1)}%`;
+        }
+
+        async function loadBatchHistory() {
+            try {
+                const res = await fetch(`${BENCHMARK_API}/batches?limit=50`, {
+                    headers: getWorkspaceHeaders()
+                });
+                const json = await res.json();
+                const batches = json?.data?.batches || [];
+
+                const populate = (id) => {
+                    const el = document.getElementById(id);
+                    if (!el) return;
+                    const current = el.value;
+                    el.innerHTML = '<option value="">Select batch...</option>' +
+                        batches.map(b => {
+                            const runName = b.run_name || `Batch ${String(b._id || '').slice(0, 8)}`;
+                            const started = b.started_at ? ` (${new Date(b.started_at).toLocaleString()})` : '';
+                            return `<option value="${escapeHtml(b._id)}">${escapeHtml(runName)}${escapeHtml(started)}</option>`;
+                        }).join('');
+                    if (current) el.value = current;
+                };
+
+                populate('compareBatch1');
+                populate('compareBatch2');
+            } catch (e) {
+                console.error('Failed to load batch history:', e);
+            }
+        }
+
+        async function compareBatches() {
+            try {
+                const batch1 = document.getElementById('compareBatch1')?.value;
+                const batch2 = document.getElementById('compareBatch2')?.value;
+
+                if (!batch1 || !batch2) {
+                    showToast('Please select two batches to compare', 'warning');
+                    return;
+                }
+
+                const res = await fetch(`${BENCHMARK_API}/compare-batches`, {
+                    method: 'POST',
+                    headers: getWorkspaceHeaders({ 'Content-Type': 'application/json' }),
+                    body: JSON.stringify({ batch_ids: [batch1, batch2] })
+                });
+
+                const payload = await res.json();
+                const data = payload?.data;
+                lastComparisonData = data;
+
+                const exportBtn = document.getElementById('exportComparisonBtn');
+                if (exportBtn) exportBtn.style.display = 'inline-block';
+
+                const container = document.getElementById('comparisonResults');
+                if (!container) return;
+
+                container.innerHTML = `
+                    <div class="comparison-stats">
+                        <div class="comparison-stat">
+                            <div class="stat-label">Avg Duration</div>
+                            <div class="stat-value">${formatDuration(data?.stats?.avg_duration_ms)}</div>
+                        </div>
+                        ${data?.stats?.fastest_batch ? `
+                            <div class="comparison-stat">
+                                <div class="stat-label">Fastest</div>
+                                <div class="stat-value">${escapeHtml(data.stats.fastest_batch.name)}</div>
+                                <small>${formatDuration(data.stats.fastest_batch.duration)}</small>
+                            </div>
+                        ` : ''}
+                        ${data?.stats?.slowest_batch ? `
+                            <div class="comparison-stat">
+                                <div class="stat-label">Slowest</div>
+                                <div class="stat-value">${escapeHtml(data.stats.slowest_batch.name)}</div>
+                                <small>${formatDuration(data.stats.slowest_batch.duration)}</small>
+                            </div>
+                        ` : ''}
+                    </div>
+                    <table class="comparison-table">
+                        <thead>
+                            <tr>
+                                <th>Metric</th>
+                                ${(data?.comparison || []).map(b => `<th>${escapeHtml(b.run_name)}</th>`).join('')}
+                                <th>Delta</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Total Tests</td>
+                                ${(data?.comparison || []).map(b => `<td>${escapeHtml(b.total_tests)}</td>`).join('')}
+                                <td>${calculateDelta(data?.comparison || [], 'total_tests')}</td>
+                            </tr>
+                            <tr>
+                                <td>Success Rate</td>
+                                ${(data?.comparison || []).map(b => `<td>${formatPercent(b.success_rate)}</td>`).join('')}
+                                <td class="${getDeltaClass(data?.comparison || [], 'success_rate')}">
+                                    ${calculateDelta(data?.comparison || [], 'success_rate')}%
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>Avg Quality</td>
+                                ${(data?.comparison || []).map(b => `<td>${b.avg_quality !== null ? escapeHtml(b.avg_quality) : 'N/A'}</td>`).join('')}
+                                <td class="${getDeltaClass(data?.comparison || [], 'avg_quality')}">
+                                    ${calculateDelta(data?.comparison || [], 'avg_quality')}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>Avg Composite</td>
+                                ${(data?.comparison || []).map(b => `<td>${b.avg_composite !== null ? escapeHtml(b.avg_composite) : 'N/A'}</td>`).join('')}
+                                <td class="${getDeltaClass(data?.comparison || [], 'avg_composite')}">
+                                    ${calculateDelta(data?.comparison || [], 'avg_composite')}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>Duration</td>
+                                ${(data?.comparison || []).map(b => `
+                                    <td>${b.execution_metrics?.total_duration_ms
+                                        ? formatDuration(b.execution_metrics.total_duration_ms)
+                                        : 'N/A'}</td>
+                                `).join('')}
+                                <td>${(data?.comparison || [])[0]?.execution_metrics && (data?.comparison || [])[1]?.execution_metrics
+                                    ? formatDuration(Math.abs(
+                                        (data.comparison[0].execution_metrics.total_duration_ms || 0) -
+                                        (data.comparison[1].execution_metrics.total_duration_ms || 0)
+                                      ))
+                                    : 'N/A'}</td>
+                            </tr>
+                            <tr>
+                                <td>Tests/min</td>
+                                ${(data?.comparison || []).map(b => `
+                                    <td>${b.execution_metrics?.tests_per_minute || 'N/A'}</td>
+                                `).join('')}
+                                <td>${calculateDelta((data?.comparison || []).map(b => ({
+                                    tests_per_minute: b.execution_metrics?.tests_per_minute || 0
+                                })), 'tests_per_minute')}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                `;
+
+                container.style.display = 'block';
+            } catch (e) {
+                console.error('Failed to compare batches:', e);
+                showToast('Failed to compare batches', 'error');
+            }
+        }
+
+        function exportComparisonCSV() {
+            if (!lastComparisonData || !Array.isArray(lastComparisonData.comparison)) {
+                showToast('No comparison data to export', 'warning');
+                return;
+            }
+
+            const data = lastComparisonData.comparison;
+            const headers = ['Metric', ...data.map(b => b.run_name), 'Delta'];
+
+            const rows = [
+                ['Total Tests', ...data.map(b => b.total_tests), calculateDelta(data, 'total_tests')],
+                ['Success Rate', ...data.map(b => formatPercent(b.success_rate)), `${calculateDelta(data, 'success_rate')}%`],
+                ['Avg Quality', ...data.map(b => (b.avg_quality !== null ? b.avg_quality : 'N/A')), calculateDelta(data, 'avg_quality')],
+                ['Avg Composite', ...data.map(b => (b.avg_composite !== null ? b.avg_composite : 'N/A')), calculateDelta(data, 'avg_composite')],
+                [
+                    'Duration',
+                    ...data.map(b => (b.execution_metrics?.total_duration_ms ? formatDuration(b.execution_metrics.total_duration_ms) : 'N/A')),
+                    (data[0]?.execution_metrics && data[1]?.execution_metrics)
+                        ? formatDuration(Math.abs(
+                            (data[0].execution_metrics.total_duration_ms || 0) -
+                            (data[1].execution_metrics.total_duration_ms || 0)
+                          ))
+                        : 'N/A'
+                ],
+                [
+                    'Tests/min',
+                    ...data.map(b => (b.execution_metrics?.tests_per_minute || 'N/A')),
+                    calculateDelta(data.map(b => ({ tests_per_minute: b.execution_metrics?.tests_per_minute || 0 })), 'tests_per_minute')
+                ]
+            ];
+
+            const escapeCSV = (v) => {
+                const s = v === null || v === undefined ? '' : String(v);
+                if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+                return s;
+            };
+
+            const csv = [
+                headers.map(escapeCSV).join(','),
+                ...rows.map(r => r.map(escapeCSV).join(','))
+            ].join('\n');
+
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `batch-comparison-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+        }
+
+        // Event listeners
+	        document.getElementById('capabilityAddSelectedBtn')?.addEventListener('click', addCheckedModelsToCapabilityCompare);
+	        document.getElementById('capabilityClearBtn')?.addEventListener('click', clearCapabilityCompare);
+	        document.getElementById('capabilityRefreshBtn')?.addEventListener('click', refreshCapabilityCompare);
+	        document.getElementById('compareBatchesBtn')?.addEventListener('click', compareBatches);
+	        document.getElementById('exportComparisonBtn')?.addEventListener('click', exportComparisonCSV);
+	        document.getElementById('trendsPeriod')?.addEventListener('change', loadTrends);
+	        document.getElementById('trendsModelFilter')?.addEventListener('change', loadTrends);
+
+	        // Init
+	        window.addEventListener('DOMContentLoaded', () => {
+	            loadHosts();
+	            refreshCapabilityCompare();
+	            loadBatchHistory();
+	            loadTrendsModelOptions().then(loadTrends);
+
+	            // Add host change listener after DOM is ready
+	            document.getElementById('host')?.addEventListener('change', (e) => loadModels(e.target.value));
+	        });
+	    </script>
+</body>
+</html>

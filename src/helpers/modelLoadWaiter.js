@@ -1,15 +1,16 @@
 /**
  * Model Load Waiter Helper
- * 
+ *
  * Intelligently waits for a model to load into GPU VRAM by polling nvidia-smi
  * instead of using arbitrary timeout values.
- * 
+ *
  * This solves the problem where:
  * - Fixed timeouts are either too short (causing failures) or too long (wasting time)
  * - Different models take different times to load based on size
  * - We can detect when a model is actually loaded by monitoring VRAM usage
  */
 
+const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
 const logger = require('../../config/logger');
 const ollamaVramService = require('../services/ollamaVramService');
 
@@ -175,26 +176,32 @@ async function waitForModelLoad(hostUrl, modelName, options = {}) {
 }
 
 /**
- * Wrapper that attempts to use VRAM monitoring, falls back to simple wait
- * 
+ * Wrapper that attempts to use VRAM monitoring, falls back to polling Ollama
+ *
  * @param {string} hostUrl - Ollama host URL
  * @param {string} modelName - Model name
  * @param {Object} options - Options including fallbackTimeoutMs
- * @returns {Promise<void>} - Resolves when model is ready or timeout
+ * @returns {Promise<Object>} - Result with loaded status
  */
 async function waitForModelLoadWithFallback(hostUrl, modelName, options = {}) {
-    const { fallbackTimeoutMs = 120000, ...waitOptions } = options;
-    
+    const { fallbackTimeoutMs = 30000, ...waitOptions } = options;
+
     const result = await waitForModelLoad(hostUrl, modelName, waitOptions);
-    
+
     if (result.loaded === null) {
-        // VRAM monitoring not available, use simple timeout
-        logger.info('Using fallback timeout for model load', { 
-            hostUrl, 
-            modelName, 
-            timeoutMs: fallbackTimeoutMs 
+        // VRAM monitoring not available - poll Ollama directly to check if model responds
+        logger.info('VRAM unavailable, polling Ollama for model readiness', {
+            hostUrl,
+            modelName,
+            maxWaitMs: fallbackTimeoutMs
         });
-        await new Promise(resolve => setTimeout(resolve, fallbackTimeoutMs));
+
+        const pollResult = await pollModelReady(hostUrl, modelName, {
+            maxWaitMs: fallbackTimeoutMs,
+            pollIntervalMs: 2000
+        });
+
+        return pollResult;
     } else if (!result.loaded) {
         // Timed out waiting for VRAM to stabilize
         logger.warn('Model may not be fully loaded', {
@@ -203,11 +210,92 @@ async function waitForModelLoadWithFallback(hostUrl, modelName, options = {}) {
             ...result
         });
     }
-    
+
     return result;
+}
+
+/**
+ * Poll Ollama to check if model is ready by sending minimal requests
+ * This is the fallback when VRAM monitoring is unavailable
+ */
+async function pollModelReady(hostUrl, modelName, options = {}) {
+    const {
+        maxWaitMs = 30000,
+        pollIntervalMs = 2000
+    } = options;
+
+    const startTime = Date.now();
+    let attempts = 0;
+
+    while (Date.now() - startTime < maxWaitMs) {
+        attempts++;
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+            const response = await fetch(`${hostUrl}/api/generate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: modelName,
+                    prompt: 'hi',
+                    stream: false,
+                    options: { num_predict: 1 }
+                }),
+                signal: controller.signal
+            });
+
+            clearTimeout(timeoutId);
+
+            if (response.ok) {
+                const data = await response.json();
+                if (data.response !== undefined) {
+                    const durationMs = Date.now() - startTime;
+                    logger.info('Model ready (responded to test prompt)', {
+                        hostUrl,
+                        modelName,
+                        durationMs,
+                        attempts
+                    });
+                    return {
+                        loaded: true,
+                        durationMs,
+                        vramUsedMiB: null,
+                        error: null
+                    };
+                }
+            }
+        } catch (err) {
+            // Model still loading or error - continue polling
+            logger.debug('Model not ready yet', {
+                hostUrl,
+                modelName,
+                attempt: attempts,
+                error: err.message
+            });
+        }
+
+        await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+    }
+
+    const durationMs = Date.now() - startTime;
+    logger.warn('Model readiness poll timed out', {
+        hostUrl,
+        modelName,
+        durationMs,
+        attempts
+    });
+
+    return {
+        loaded: false,
+        durationMs,
+        vramUsedMiB: null,
+        error: `Polling timed out after ${attempts} attempts`
+    };
 }
 
 module.exports = {
     waitForModelLoad,
-    waitForModelLoadWithFallback
+    waitForModelLoadWithFallback,
+    pollModelReady
 };

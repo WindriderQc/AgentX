@@ -52,7 +52,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 // Load benchmark data and calculate generalist rankings
 async function loadAndCalculateRankings() {
     try {
-        const response = await fetch('/api/benchmark/results');
+        // Fetch ALL results (up to 10000) - default limit is only 20!
+        const response = await fetch('/api/benchmark/results?limit=10000');
         if (!response.ok) throw new Error('Failed to fetch benchmark results');
 
         const data = await response.json();

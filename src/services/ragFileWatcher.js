@@ -30,6 +30,17 @@ class RagFileWatcher {
     this.manifestUpdateInterval = config.manifestUpdateInterval || 300000; // 5 minutes
     this.manifestUpdateTimer = null;
 
+    // Lightweight runtime telemetry for UI/status endpoints (no external deps)
+    this.startedAt = new Date().toISOString();
+    this.lastScanAt = null;
+    this.lastManifestUpdateAt = null;
+    this.lastCleanupAt = null;
+    this.lastFileProcessedAt = null;
+    this.filesProcessed = 0;
+    this.lastScanTotals = { totalFiles: 0, mdFiles: 0 };
+    this.lastManifestStats = { fileCount: 0, totalBytes: 0 };
+    this.lastError = null;
+
     // Bind methods
     this.onFileAdded = this.onFileAdded.bind(this);
     this.onFileChanged = this.onFileChanged.bind(this);
@@ -76,6 +87,7 @@ class RagFileWatcher {
 
       logger.info('RAG file watcher started successfully');
     } catch (error) {
+      this.lastError = { message: error.message, at: new Date().toISOString() };
       logger.error('Failed to start RAG file watcher', { error: error.message });
       throw error;
     }
@@ -108,6 +120,7 @@ class RagFileWatcher {
       const files = await this.scanDirectory(this.ragDir);
       const mdFiles = files.filter(file => file.endsWith('.md'));
 
+      this.lastScanTotals = { totalFiles: files.length, mdFiles: mdFiles.length };
       logger.info('Initial scan complete', {
         totalFiles: files.length,
         mdFiles: mdFiles.length
@@ -120,8 +133,10 @@ class RagFileWatcher {
 
       // Update manifest
       await this.updateManifest();
+      this.lastScanAt = new Date().toISOString();
 
     } catch (error) {
+      this.lastError = { message: error.message, at: new Date().toISOString() };
       logger.error('Initial scan failed', { error: error.message });
     }
   }
@@ -322,6 +337,9 @@ class RagFileWatcher {
         sha256
       });
 
+      this.filesProcessed++;
+      this.lastFileProcessedAt = new Date().toISOString();
+
       // Broadcast RAG activity event
       systemEvents.emit('rag-activity', {
         type: 'file-processed',
@@ -337,6 +355,7 @@ class RagFileWatcher {
       await this.triggerIngestionWebhook(result);
 
     } catch (error) {
+      this.lastError = { message: error.message, at: new Date().toISOString() };
       logger.error('Failed to process file', {
         filePath,
         eventType,
@@ -413,6 +432,10 @@ class RagFileWatcher {
         }
       }
 
+      const totalBytes = manifestFiles.reduce((sum, file) => sum + (file.size || 0), 0);
+      this.lastManifestStats = { fileCount: manifestFiles.length, totalBytes };
+      this.lastManifestUpdateAt = new Date().toISOString();
+
       // Update or create manifest
       const manifestData = {
         source: this.source,
@@ -422,7 +445,7 @@ class RagFileWatcher {
         files: manifestFiles,
         stats: {
           fileCount: manifestFiles.length,
-          totalBytes: manifestFiles.reduce((sum, f) => sum + (f.size || 0), 0)
+          totalBytes
         }
       };
 
@@ -435,10 +458,11 @@ class RagFileWatcher {
       logger.info('Manifest updated', {
         source: this.source,
         fileCount: manifestFiles.length,
-        totalBytes: manifestData.stats.totalBytes
+        totalBytes
       });
 
     } catch (error) {
+      this.lastError = { message: error.message, at: new Date().toISOString() };
       logger.error('Failed to update manifest', { error: error.message });
     }
   }
@@ -487,7 +511,10 @@ class RagFileWatcher {
         });
       }
 
+      this.lastCleanupAt = new Date().toISOString();
+
     } catch (error) {
+      this.lastError = { message: error.message, at: new Date().toISOString() };
       logger.error('Failed to cleanup obsolete documents', { error: error.message });
     }
   }
@@ -543,11 +570,26 @@ class RagFileWatcher {
    * Get watcher status
    */
   getStatus() {
+    const processingQueueSample = Array.from(this.processingQueue)
+      .slice(0, 10)
+      .map(filePath => path.relative(this.ragDir, filePath));
+
     return {
       isRunning: this.watcher !== null,
       ragDir: this.ragDir,
       source: this.source,
+      root: this.root,
+      startedAt: this.startedAt,
+      lastScanAt: this.lastScanAt,
+      lastManifestUpdateAt: this.lastManifestUpdateAt,
+      lastCleanupAt: this.lastCleanupAt,
+      lastFileProcessedAt: this.lastFileProcessedAt,
+      filesProcessed: this.filesProcessed,
+      lastScanTotals: this.lastScanTotals,
+      lastManifestStats: this.lastManifestStats,
+      lastError: this.lastError,
       processingQueueSize: this.processingQueue.size,
+      processingQueueSample,
       manifestUpdateInterval: this.manifestUpdateInterval
     };
   }

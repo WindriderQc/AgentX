@@ -830,22 +830,7 @@ document.addEventListener('DOMContentLoaded', () => {
   async function sendMessageStreamFetch(msgInput, modelInput) {
     const message = msgInput || elements.messageInput.value.trim();
     const model = modelInput || elements.modelSelect.value;
-    
-    // REDIRECT TO EVENT SOURCE IMMEDIATELY
-    // The fetch stream implementation is causing "stream.getReader is not a function" errors
-    // in this specific environment, likely due to a browser/proxy incompatibility.
-    console.warn('Redirecting fetch stream to EventSource (safer implementation)');
-    return sendMessageStreamEventSource(message, model);
-  }
 
-  // OLD BROKEN IMPLEMENTATION (Disabled)
-  async function sendMessageStreamFetch_DISABLED(msgInput, modelInput) {
-    // ... code removed ...
-  }
-  // Streaming message handler (SSE via EventSource)
-  async function sendMessageStreamEventSource(msgInput, modelInput) {
-    const message = msgInput || elements.messageInput.value.trim();
-    const model = modelInput || elements.modelSelect.value;
     const ragOpts = getRagOptions();
 
     const payload = {
@@ -891,6 +876,265 @@ document.addEventListener('DOMContentLoaded', () => {
     // Change button to "Stop"
     elements.sendBtn.textContent = 'Stop';
     elements.sendBtn.onclick = () => {
+      if (state.streamAbortController) {
+        state.streamAbortController.abort();
+        state.streamAbortController = null;
+      }
+      state.sending = false;
+      elements.sendBtn.textContent = 'Send';
+      elements.sendBtn.onclick = () => sendMessage();
+      setFeedback('Streaming stopped.', 'warning');
+    };
+
+    let fullContent = '';
+    let thinkingContent = '';
+    let doneReceived = false;
+
+    const safeParseJson = (text, fallback) => {
+      try {
+        return JSON.parse(text);
+      } catch {
+        return fallback;
+      }
+    };
+
+    const dispatchEvent = (eventName, rawData) => {
+      if (eventName === 'token') {
+        const data = typeof rawData === 'string' ? safeParseJson(rawData, {}) : rawData;
+        fullContent += data.content || '';
+        try {
+          contentDiv.innerHTML = sanitizeHTML(marked.parse(fullContent));
+        } catch (e) {
+          console.error('Fetch stream render failed:', e);
+          contentDiv.textContent = fullContent;
+        }
+        elements.chatWindow.scrollTop = elements.chatWindow.scrollHeight;
+        return;
+      }
+
+      if (eventName === 'thinking') {
+        const data = typeof rawData === 'string' ? safeParseJson(rawData, {}) : rawData;
+        thinkingContent += data.content || '';
+        thinkingDiv.innerHTML = `<strong>Thinking:</strong><br>${marked.parse(thinkingContent)}`;
+        thinkingDiv.style.display = 'block';
+        elements.chatWindow.scrollTop = elements.chatWindow.scrollHeight;
+        return;
+      }
+
+      if (eventName === 'done') {
+        const finalData = typeof rawData === 'string' ? safeParseJson(rawData, {}) : rawData;
+        state.conversationId = finalData.conversationId || state.conversationId;
+
+        const assistantMessage = {
+          role: 'assistant',
+          content: fullContent,
+          createdAt: new Date().toISOString(),
+          id: finalData.messageId || null,
+          stats: finalData.stats || null,
+          thinking: thinkingContent || null
+        };
+
+        if (elements.chatWindow.contains(assistantMessageDiv)) {
+          elements.chatWindow.removeChild(assistantMessageDiv);
+        }
+        appendMessage(assistantMessage);
+
+        speakText(fullContent);
+        setFeedback('Response received.', 'success');
+        loadHistoryList();
+
+        if (state.conversationId) {
+          loadConversation(state.conversationId, true);
+        }
+
+        if (window.checkSetupProgress) {
+          setTimeout(() => window.checkSetupProgress(), 500);
+        }
+
+        doneReceived = true;
+        return;
+      }
+
+      if (eventName === 'error') {
+        const data = typeof rawData === 'string' ? safeParseJson(rawData, {}) : rawData;
+        const message = data.message || 'Streaming failed.';
+        throw new Error(message);
+      }
+    };
+
+    const parseAndDispatchSse = (chunk, bufferState) => {
+      bufferState.buffer += chunk;
+      bufferState.buffer = bufferState.buffer.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+      let sepIndex;
+      while ((sepIndex = bufferState.buffer.indexOf('\n\n')) !== -1) {
+        const frame = bufferState.buffer.slice(0, sepIndex);
+        bufferState.buffer = bufferState.buffer.slice(sepIndex + 2);
+        if (!frame.trim()) continue;
+
+        const lines = frame.split('\n');
+        let eventName = 'message';
+        const dataLines = [];
+        for (const line of lines) {
+          if (!line) continue;
+          if (line.startsWith(':')) continue;
+          if (line.startsWith('event:')) {
+            eventName = line.slice('event:'.length).trim() || 'message';
+            continue;
+          }
+          if (line.startsWith('data:')) {
+            dataLines.push(line.slice('data:'.length).trimStart());
+          }
+        }
+        const data = dataLines.join('\n');
+        if (eventName !== 'message') {
+          dispatchEvent(eventName, data);
+        }
+      }
+    };
+
+    try {
+      const abortController = new AbortController();
+      state.streamAbortController = abortController;
+
+      const fetchOptions = {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        credentials: 'include',
+        signal: abortController.signal
+      };
+
+      const res = await fetch('/api/chat/stream',
+        window.WorkspaceManager ? WorkspaceManager.addWorkspaceHeader(fetchOptions) : fetchOptions
+      );
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(text || `Streaming failed (${res.status})`);
+      }
+
+      if (!res.body || typeof res.body.getReader !== 'function') {
+        throw new Error('Streaming not supported by this browser/proxy (no readable stream).');
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      const bufferState = { buffer: '' };
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        const text = decoder.decode(value, { stream: true });
+        parseAndDispatchSse(text, bufferState);
+        if (doneReceived) {
+          abortController.abort();
+        }
+      }
+
+      if (!doneReceived) {
+        if (elements.chatWindow.contains(assistantMessageDiv)) {
+          elements.chatWindow.removeChild(assistantMessageDiv);
+        }
+        appendMessage({ role: 'assistant', content: fullContent || '(no content)', createdAt: new Date().toISOString() });
+        setFeedback('Response received.', 'success');
+      }
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        if (elements.chatWindow.contains(assistantMessageDiv)) {
+          elements.chatWindow.removeChild(assistantMessageDiv);
+        }
+        if (fullContent || thinkingContent) {
+          appendMessage(
+            { role: 'assistant', content: fullContent || '(stopped)', createdAt: new Date().toISOString(), thinking: thinkingContent || null },
+            { persist: false }
+          );
+        }
+        return;
+      }
+      console.error('Fetch streaming error:', err);
+      if (elements.chatWindow.contains(assistantMessageDiv)) {
+        elements.chatWindow.removeChild(assistantMessageDiv);
+      }
+      appendMessage(
+        { role: 'assistant', content: `⚠️ ${err.message || 'Streaming failed.'}`, createdAt: new Date().toISOString() },
+        { persist: false }
+      );
+      setFeedback(err.message, 'error');
+    } finally {
+      state.streamAbortController = null;
+      state.sending = false;
+      elements.sendBtn.textContent = 'Send';
+      elements.sendBtn.onclick = () => sendMessage();
+    }
+  }
+
+  // OLD BROKEN IMPLEMENTATION (Disabled)
+  async function sendMessageStreamFetch_DISABLED(msgInput, modelInput) {
+    // ... code removed ...
+  }
+  // Streaming message handler (SSE via EventSource)
+  async function sendMessageStreamEventSource(msgInput, modelInput) {
+    const message = msgInput || elements.messageInput.value.trim();
+    const model = modelInput || elements.modelSelect.value;
+    const ragOpts = getRagOptions();
+
+    const payload = {
+      target: targetHost(),
+      model,
+      system: elements.systemPrompt.value.trim(),
+      options: {
+        ...readOptions(),
+        persona: elements.promptSelect?.value || 'default_chat',
+        ragExpand: ragOpts.ragExpand,
+        ragHybrid: ragOpts.ragHybrid,
+        ragRerank: ragOpts.ragRerank,
+        ragCompress: ragOpts.ragCompress
+      },
+      useRag: ragOpts.useRag,
+      ragTopK: ragOpts.ragTopK,
+      threadId: state.threadId,
+      message,
+      profile: readProfileInputs(),
+      messages: state.history,
+      conversationId: state.conversationId
+    };
+
+    // EventSource is GET-only; keep URLs small to avoid 431/414 errors.
+    let encodedPayload = '';
+    try {
+      encodedPayload = encodeStreamPayload(payload);
+      if (encodedPayload.length > 1500) {
+        console.warn('EventSource payload too large; switching to fetch streaming transport.');
+        return sendMessageStreamFetch(message, model);
+      }
+    } catch (e) {
+      console.warn('Failed to encode EventSource payload; switching to fetch streaming transport.', e);
+      return sendMessageStreamFetch(message, model);
+    }
+
+    // Create placeholder assistant message for progressive rendering
+    const assistantMessageId = `a-${Date.now()}`;
+    const assistantMessageDiv = document.createElement('div');
+    assistantMessageDiv.className = 'message assistant';
+    assistantMessageDiv.dataset.messageId = assistantMessageId;
+
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'message-content';
+    assistantMessageDiv.appendChild(contentDiv);
+
+    const thinkingDiv = document.createElement('div');
+    thinkingDiv.className = 'thinking-content';
+    thinkingDiv.style.display = 'none';
+    thinkingDiv.innerHTML = '<strong>Thinking:</strong><br>';
+    assistantMessageDiv.appendChild(thinkingDiv);
+
+    elements.chatWindow.appendChild(assistantMessageDiv);
+    elements.chatWindow.scrollTop = elements.chatWindow.scrollHeight;
+
+    // Change button to "Stop"
+    elements.sendBtn.textContent = 'Stop';
+    elements.sendBtn.onclick = () => {
       if (state.eventSource) {
         state.eventSource.close();
         state.eventSource = null;
@@ -905,7 +1149,6 @@ document.addEventListener('DOMContentLoaded', () => {
     let thinkingContent = '';
 
     try {
-      const encodedPayload = encodeStreamPayload(payload);
       let streamUrl = `/api/chat/stream?payload=${encodeURIComponent(encodedPayload)}`;
       if (window.WorkspaceManager) {
         streamUrl = WorkspaceManager.addWorkspaceParam(streamUrl);
@@ -1027,12 +1270,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // Check if streaming is enabled
     if (elements.streamToggle && resolveStreamEnabled()) {
       const transport = resolveStreamTransport();
-      // FORCE EVENTSOURCE FOR NOW due to persistent fetch stream bugs
-      // if (transport === 'eventsource') {
+      if (transport === 'eventsource') {
         await sendMessageStreamEventSource(message, model);
-      // } else {
-      //   await sendMessageStreamFetch(message, model);
-      // }
+      } else {
+        await sendMessageStreamFetch(message, model);
+      }
       return;
     }
 

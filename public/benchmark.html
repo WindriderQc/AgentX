@@ -92,56 +92,12 @@
                             </tbody>
                         </table>
                     </div>
-                    <div class="model-selection-usage-hint">
-                        <i class="fas fa-lightbulb"></i>
-                        <span>Selected models are used for <strong>Compare Insights</strong> (radar chart) and <strong>Batch Benchmark</strong> (test runs).</span>
-                    </div>
                 </div>
             </div>
 
             <!-- Compare + Batch Row (side-by-side on ultra-wide) -->
             <div class="benchmark-compare-batch-row">
-                <!-- 3. Compare Insights Section -->
-                <div class="compare-insights-section" style="background: var(--panel); border: 1px solid var(--panel-border); border-radius: var(--radius); padding: 20px 24px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
-                    <h2 style="margin: 0; font-size: 1.15em; font-weight: 600; display: flex; align-items: center; gap: 10px;">
-                        <i class="fas fa-chart-radar" style="color: #00ff9f;"></i> Compare Insights
-                    </h2>
-                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                        <button id="capabilityAddSelectedBtn" class="btn-secondary btn-sm">
-                            <i class="fas fa-plus"></i> Add Checked
-                        </button>
-                        <button id="capabilityAddTopBtn" class="btn-secondary btn-sm" title="Adds top leaderboard models for the selected host">
-                            <i class="fas fa-trophy"></i> Add Top
-                        </button>
-                        <button id="capabilityClearBtn" class="btn-secondary btn-sm">
-                            <i class="fas fa-trash"></i> Clear
-                        </button>
-                        <button id="capabilityRefreshBtn" class="btn-secondary btn-sm">
-                            <i class="fas fa-sync-alt"></i> Refresh
-                        </button>
-                    </div>
-                </div>
-                <div style="color: var(--muted); font-size: 0.9em; margin-bottom: 14px;">
-                    Compares quality scores across categories for multiple <strong>model@host</strong> selections.
-                </div>
-
-                <div id="capabilityCompareList" class="compare-chip-list" style="margin-bottom: 14px;"></div>
-
-                <div class="capability-compare-grid" style="display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 16px; align-items: stretch;">
-                    <div class="chart-card" style="margin: 0; padding: 18px;">
-                        <div style="height: 320px;">
-                            <canvas id="capabilityRadarChart"></canvas>
-                        </div>
-                        <div id="capabilityEmpty" class="chart-empty" style="display: none; margin-top: 10px;">Select models to compare.</div>
-                    </div>
-                    <div class="chart-card" style="margin: 0; padding: 18px;">
-                        <div id="capabilityInsights" style="height: 100%;"></div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- 4. Batch Benchmark Section -->
+                <!-- 4. Batch Benchmark Section -->
             <div class="batch-section">
                 <h2>🔥 Batch Benchmark</h2>
                 <p>Run comprehensive tests across selected models with standardized prompts</p>
@@ -468,6 +424,8 @@
                 </div>
             </div>
             </div><!-- end .benchmark-compare-batch-row -->
+
+            <!-- Navigation to Compare Insights Page -->
         </div>
 
         <!-- Configuration Presets Section (Compact) -->
@@ -507,85 +465,27 @@
             </div>
         </div>
 
-        <!-- Real-Time Active Batches Monitor -->
-        <div class="active-stats-widget" id="activeStatsWidget">
-            <div id="activeStatsContainer">
-                <div class="no-active-batches">
-                    <i class="fas fa-check-circle"></i>
-                    <p>No active batches</p>
-                </div>
-            </div>
-        </div>
+
 
         <!-- Summary Stats Row -->
-        <div class="compact-stats-grid bottom-stats">
-            <div class="compact-stat-card">
-                <div class="stat-label">Total Tests</div>
-                <div class="stat-value" id="totalTests">0</div>
-            </div>
+	        <div class="compact-stats-grid bottom-stats">
+	            <div class="compact-stat-card">
+	                <div class="stat-label">Total Tests</div>
+	                <div class="stat-value" id="totalTests">0</div>
+	            </div>
             <div class="compact-stat-card" id="successRateCard">
                 <div class="stat-label">Success Rate</div>
                 <div class="stat-value" id="successRate">0<span class="stat-unit">%</span></div>
                 <div id="successRateDetails" style="display: none; margin-top: 4px; color: var(--muted); font-size: 0.75em;"></div>
             </div>
-            <div class="compact-stat-card">
-                <div class="stat-label">Avg Latency</div>
-                <div class="stat-value" id="avgLatency">0<span class="stat-unit">ms</span></div>
-            </div>
-        </div>
+	            <div class="compact-stat-card">
+	                <div class="stat-label">Avg Latency</div>
+	                <div class="stat-value" id="avgLatency">0<span class="stat-unit">ms</span></div>
+	            </div>
+	        </div>
 
-        <!-- Performance Trends Chart -->
-        <div class="trends-section">
-            <div class="section-header">
-                <h3 style="display: flex; align-items: center; gap: 10px;">
-                    <i class="fas fa-chart-line"></i> Performance Trends 
-                    <i class="fas fa-info-circle" style="font-size: 0.6em; opacity: 0.5; cursor: help;" title="Quality Score is scaled x10 (0-100) for visibility. Latency is in ms."></i>
-                </h3>
-                <div class="trends-controls">
-                    <select id="trendsPeriod">
-                        <option value="7">Last 7 Days</option>
-                        <option value="14">Last 14 Days</option>
-                        <option value="30">Last 30 Days</option>
-                    </select>
-                    <select id="trendsModelFilter">
-                        <option value="">All Models</option>
-                        <!-- Populated dynamically -->
-                    </select>
-                </div>
-            </div>
-            <div class="trends-chart-container">
-                <canvas id="trendsChart"></canvas>
-            </div>
-        </div>
-
-        <!-- Batch Comparison Section -->
-        <div class="comparison-section">
-            <div class="section-header">
-                <h3><i class="fas fa-code-compare"></i> Batch Comparison</h3>
-            </div>
-            <div class="comparison-selectors">
-                <div class="form-group">
-                    <label>Batch 1</label>
-                    <select id="compareBatch1">
-                        <option value="">Select batch...</option>
-                        <!-- Populated from batch history -->
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>Batch 2</label>
-                    <select id="compareBatch2">
-                        <option value="">Select batch...</option>
-                        <!-- Populated from batch history -->
-                    </select>
-                </div>
-                <button id="compareBatchesBtn" class="btn-primary">
-                    <i class="fas fa-balance-scale"></i> Compare
-                </button>
-            </div>
-            <div id="comparisonResults" style="display: none;">
-                <!-- Comparison results rendered here -->
-            </div>
-        </div>
+   
+        
 
         <!-- Task Execution Timeline Section -->
         <div class="timeline-section" style="margin-top: 32px; background: var(--panel); border: 1px solid var(--panel-border); border-radius: var(--radius); padding: 24px;">
@@ -608,6 +508,10 @@
                         </div>
                     </div>
                 </div>
+                <div id="timelineBatchInfo" style="display: none; flex: 1; padding: 8px 16px; background: rgba(0,0,0,0.2); border-radius: 6px; font-size: 0.85em; color: var(--muted);">
+                    <i class="fas fa-layer-group" style="color: var(--accent); margin-right: 6px;"></i>
+                    <span id="timelineBatchLabel">Batch</span>
+                </div>
                 <div class="timeline-controls">
                     <select id="timelineMode" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); color: var(--text); padding: 8px 12px; border-radius: 6px;">
                         <option value="results" selected>Results view</option>
@@ -619,21 +523,10 @@
                         <option value="0.7">Zoom 0.7x</option>
                         <option value="0.55">Zoom 0.55x</option>
                     </select>
-                    <select id="timelineLimit" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); color: var(--text); padding: 8px 12px; border-radius: 6px;">
-                        <option value="20">Last 20 tests</option>
-                        <option value="50">Last 50 tests</option>
-                        <option value="100" selected>Last 100 tests</option>
-                        <option value="200">Last 200 tests</option>
-                    </select>
                 </div>
             </div>
 
-            <!-- Performance Summary Panel -->
-            <div id="timelineStatsSummary" style="display: none; background: linear-gradient(135deg, rgba(124, 240, 255, 0.08) 0%, rgba(124, 240, 255, 0.03) 100%); border: 1px solid rgba(124, 240, 255, 0.15); border-radius: 8px; padding: 16px; margin-bottom: 20px;">
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px;">
-                    <!-- Stats will be populated by JavaScript -->
-                </div>
-            </div>
+            
 
             <div id="timelineVisual" style="background: rgba(0,0,0,0.2); border-radius: 8px; padding: 16px; min-height: 300px; position: relative;">
                 <!-- Timeline bars rendered here -->
@@ -667,8 +560,21 @@
             <div id="performanceHeatmapSection" style="display: none; margin-top: 24px; padding-top: 24px; border-top: 1px solid rgba(124, 240, 255, 0.15);">
                 <h4 style="margin: 0 0 16px; font-size: 1.1em; display: flex; align-items: center; gap: 10px; color: var(--text);">
                     <i class="fas fa-th" style="color: var(--accent);"></i> Model Performance Matrix
-                    <span style="font-size: 0.7em; color: var(--muted); font-weight: 400; margin-left: auto;">(Hover for details)</span>
+                    <span style="font-size: 0.7em; color: var(--muted); font-weight: 400; margin-left: auto;">(Hover a cell for details)</span>
                 </h4>
+                <div class="heatmap-legend" aria-label="Heatmap legend">
+                    <div class="heatmap-legend-scale" role="presentation">
+                        <div class="heatmap-legend-item"><span class="heatmap-swatch heatmap-swatch-poor"></span><span>Poor</span></div>
+                        <div class="heatmap-legend-item"><span class="heatmap-swatch heatmap-swatch-low"></span><span>Low</span></div>
+                        <div class="heatmap-legend-item"><span class="heatmap-swatch heatmap-swatch-ok"></span><span>OK</span></div>
+                        <div class="heatmap-legend-item"><span class="heatmap-swatch heatmap-swatch-good"></span><span>Good</span></div>
+                        <div class="heatmap-legend-item"><span class="heatmap-swatch heatmap-swatch-great"></span><span>Great</span></div>
+                    </div>
+                    <div class="heatmap-legend-notes">
+                        <div><span class="heatmap-legend-pill">Higher is better</span> Success, Quality, Throughput • <span class="heatmap-legend-pill">Lower is better</span> Latency</div>
+                        <div class="heatmap-legend-muted"><span id="heatmapLegendLatency">Latency scale: —</span> • <span id="heatmapLegendTps">Throughput scale: —</span></div>
+                    </div>
+                </div>
                 <div id="performanceHeatmap" style="overflow-x: auto;">
                     <!-- Heatmap will be populated by JavaScript -->
                 </div>
@@ -720,6 +626,14 @@
                     animation: pulse-dot 1.5s ease-in-out infinite;
                 }
             </style>
+        </div>
+
+
+             <!-- Performance Summary Panel -->
+        <div id="timelineStatsSummary" style="display: none; background: linear-gradient(135deg, rgba(124, 240, 255, 0.08) 0%, rgba(124, 240, 255, 0.03) 100%); border: 1px solid rgba(124, 240, 255, 0.15); border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px;">
+                <!-- Stats will be populated by JavaScript -->
+            </div>
         </div>
 
         <!-- Tag Statistics Section -->
@@ -1636,7 +1550,6 @@
     <script type="module" src="/js/benchmark-analytics.js"></script>
 
      <script src="/js/benchmark-inline.js"></script>
-
 
 </body>
 

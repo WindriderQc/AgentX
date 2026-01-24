@@ -17,6 +17,8 @@ const {
 } = require('./agentService');
 const logger = require('../../config/logger');
 const fetch = require('node-fetch');
+const fs = require('fs').promises;
+const path = require('path');
 
 // Helper to detect thinking models
 const isThinkingModel = (model) => {
@@ -218,6 +220,124 @@ const handleChatRequest = async ({
             tool: toolCommand.tool || null,
             toolOk: toolCommand.ok === true
         };
+    }
+
+    // 1.5. Image Generation Flow
+    if (personaName === 'visual_llm') {
+        try {
+            // Use OLLAMA_HOST_2 for image generation if available
+            const imageTarget = process.env.OLLAMA_HOST_2 || resolveTarget(effectiveTarget);
+            // Ensure generated directory exists
+            const generatedDir = path.join(__dirname, '../../public/generated');
+            await fs.mkdir(generatedDir, { recursive: true });
+
+            let data;
+            if (effectiveModel === 'x/flux2-klein:9b' || effectiveModel === 'flux2-klein:9b') {
+                // Use /api/chat for this model
+                const url = `${imageTarget}/api/chat`;
+                const payload = {
+                    model: effectiveModel,
+                    messages: [
+                        { role: 'user', content: message }
+                    ]
+                };
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 120000);
+                let response;
+                try {
+                    response = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload),
+                        signal: controller.signal
+                    });
+                    if (!response.ok) throw new Error(`Ollama chat request failed: ${response.statusText}`);
+                } catch (err) {
+                    if (err.name === 'AbortError') {
+                        throw new Error('Ollama chat request timed out (2m limit).');
+                    }
+                    throw new Error(`Failed to connect to Ollama at ${url}: ${err.message}`);
+                } finally {
+                    clearTimeout(timeout);
+                }
+                data = await response.json();
+                if (!data.message || !data.message.content) {
+                    throw new Error('No image data received from Ollama chat');
+                }
+                // The image is expected to be in message.content as base64
+                data.response = data.message.content;
+            } else {
+                // Default: use /api/generate
+                const url = `${imageTarget}/api/generate`;
+                const payload = {
+                    model: effectiveModel,
+                    prompt: message,
+                    stream: false
+                };
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 120000);
+                let response;
+                try {
+                    response = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload),
+                        signal: controller.signal
+                    });
+                    if (!response.ok) throw new Error(`Ollama generate request failed: ${response.statusText}`);
+                } catch (err) {
+                    if (err.name === 'AbortError') {
+                        throw new Error('Ollama generate request timed out (2m limit).');
+                    }
+                    throw new Error(`Failed to connect to Ollama at ${url}: ${err.message}`);
+                } finally {
+                    clearTimeout(timeout);
+                }
+                data = await response.json();
+            }
+
+            if (!data.response) {
+                throw new Error('No image data received from Ollama');
+            }
+
+            // Decode base64 and save image
+            const imageBuffer = Buffer.from(data.response, 'base64');
+            const filename = `image_${Date.now()}.png`;
+            const filepath = path.join(generatedDir, filename);
+            await fs.writeFile(filepath, imageBuffer);
+
+            // Save to conversation if conversationId provided
+            let conversation = null;
+            let assistantMessageId = null;
+            if (conversationId) {
+                try {
+                    conversation = await Conversation.findById(conversationId);
+                    if (conversation) {
+                        conversation.messages.push({ role: 'user', content: message });
+                        const assistantMsg = conversation.messages.create({
+                            role: 'assistant',
+                            content: 'Image generated successfully.',
+                            metadata: { imageUrl: `/generated/${filename}` }
+                        });
+                        conversation.messages.push(assistantMsg);
+                        assistantMessageId = assistantMsg._id;
+                        await conversation.save();
+                    }
+                } catch (err) {
+                    logger.error('Failed to save image generation conversation', { error: err.message });
+                }
+            }
+
+            return {
+                response: 'Image generated successfully.',
+                attachments: [{ type: 'image', url: `/generated/${filename}` }],
+                conversationId: conversation ? conversation._id : null,
+                assistantMessageId
+            };
+        } catch (err) {
+            logger.error('Image generation failed', { error: err.message });
+            throw new Error(`Image generation failed: ${err.message}`);
+        }
     }
 
     // 2. Standard Chat Flow
