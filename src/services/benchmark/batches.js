@@ -129,15 +129,25 @@ async function getBatch(batchId) {
             quick_pattern: r.quick_pattern,
             composite_score: r.composite_score,
             normalized_scores: r.normalized_scores,
+            quality_breakdown: r.quality_breakdown,
             success: r.success,
             error: r.error,
+            prompt: r.prompt,  // Full prompt for validation
+            response: r.response,  // Full response for validation
+            hardware_snapshot: r.hardware_snapshot,  // Backend, VRAM, quantization info
             response_preview: r.response
                 ? `${r.response.substring(0, 100)}...`
                 : '',
             timestamp: r.timestamp,
+            tokens: r.tokens,
+            // Warmup and validation data
+            warmup: r.warmup,
+            judge_warmup: r.judge_warmup,
+            judge_raw_response: r.judge_raw_response,
+            execution_settings: r.execution_settings,
             // Flatten truncation fields for easy access
+            truncation: r.truncation,
             response_truncated: r.truncation?.response_truncated || false,
-            input_to_judge_truncated: r.truncation?.input_to_judge_truncated || false,
             judge_response_truncated: r.truncation?.judge_truncated || false
         };
     });

@@ -103,20 +103,6 @@
                 <h2>🔥 Batch Benchmark</h2>
                 <p>Run comprehensive tests across selected models with standardized prompts</p>
 
-                <!-- Active Batch Warning (Single Batch System) -->
-                <div id="activeBatchWarning" style="display: none; margin: 0 12px 24px; padding: 16px 20px; background: rgba(241, 196, 15, 0.1); border: 1px solid rgba(241, 196, 15, 0.3); border-radius: 8px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                        <div style="display: flex; align-items: center; gap: 10px;">
-                            <i class="fas fa-info-circle" style="color: #f1c40f; font-size: 1.2em;"></i>
-                            <span style="font-weight: 600; color: var(--text);">Active Batch Running</span>
-                        </div>
-                        <button class="btn-secondary btn-sm" onclick="refreshActiveBatch()">
-                            <i class="fas fa-sync"></i> Refresh
-                        </button>
-                    </div>
-                    <div id="activeBatchInfo"></div>
-                </div>
-
                 <div class="batch-content">
                     <div class="batch-layout">
                         <div class="batch-main">
@@ -134,87 +120,101 @@
                             </div>
 
                             <div>
-                                <h3>Select Difficulty Levels (10-level scale)</h3>
-
-                                <!-- Quick Presets -->
-                                <div class="level-presets-row">
-                                    <button type="button" class="level-preset-btn" data-preset="all">All Levels (1-10)</button>
-                                    <button type="button" class="level-preset-btn" data-preset="basic">Basic Models (1-4)</button>
-                                    <button type="button" class="level-preset-btn recommended" data-preset="intermediate">Intermediate Models (3-7) <i class="fas fa-star"></i></button>
-                                    <button type="button" class="level-preset-btn" data-preset="advanced">Advanced Models (6-10)</button>
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                                    <h3 style="margin: 0;">Select Difficulty Levels (10-level scale)</h3>
+                                    <button type="button" class="btn-link" id="clearLevelsBtn" style="font-size: 0.85em;">Clear All</button>
                                 </div>
 
-                                <!-- Custom Selection with Grouping -->
-                                <div class="level-selection-grouped">
-                                    <div class="level-group">
-                                        <div class="level-group-header">Beginner (1-3)</div>
-                                        <div class="level-group-checkboxes">
-                                            <div class="level-checkbox">
+                                <!-- Simplified Level Selection Grid -->
+                                <div class="level-selection-container">
+                                    <!-- Quick Preset Chips -->
+                                    <div class="level-presets">
+                                        <button type="button" class="preset-chip" data-preset="all">All (1-10)</button>
+                                        <button type="button" class="preset-chip" data-preset="basic">Basic (1-4)</button>
+                                        <button type="button" class="preset-chip preset-recommended" data-preset="intermediate">
+                                            <i class="fas fa-star"></i> Intermediate (3-7)
+                                        </button>
+                                        <button type="button" class="preset-chip" data-preset="advanced">Advanced (6-10)</button>
+                                    </div>
+
+                                    <!-- Level Checkboxes in Flat Grid -->
+                                    <div class="level-grid">
+                                        <!-- Beginner Section -->
+                                        <div class="level-section">
+                                            <div class="section-label">Beginner (1-3)</div>
+                                            <label class="level-item">
                                                 <input type="checkbox" id="level1">
-                                                <label for="level1">1 <small>· Trivial</small></label>
-                                            </div>
-                                            <div class="level-checkbox">
+                                                <span class="level-number">1</span>
+                                                <span class="level-desc">Trivial</span>
+                                            </label>
+                                            <label class="level-item">
                                                 <input type="checkbox" id="level2">
-                                                <label for="level2">2 <small>· Simple</small></label>
-                                            </div>
-                                            <div class="level-checkbox">
+                                                <span class="level-number">2</span>
+                                                <span class="level-desc">Simple</span>
+                                            </label>
+                                            <label class="level-item">
                                                 <input type="checkbox" id="level3" checked>
-                                                <label for="level3">3 <small>· Easy</small></label>
-                                            </div>
+                                                <span class="level-number">3</span>
+                                                <span class="level-desc">Easy</span>
+                                            </label>
                                         </div>
-                                    </div>
 
-                                    <div class="level-group recommended-group">
-                                        <div class="level-group-header">Intermediate (4-6) <i class="fas fa-star"></i></div>
-                                        <div class="level-group-checkboxes">
-                                            <div class="level-checkbox">
+                                        <!-- Intermediate Section (Recommended) -->
+                                        <div class="level-section level-section-recommended">
+                                            <div class="section-label"><i class="fas fa-star"></i> Intermediate (4-6)</div>
+                                            <label class="level-item">
                                                 <input type="checkbox" id="level4" checked>
-                                                <label for="level4">4 <small>· Moderate</small></label>
-                                            </div>
-                                            <div class="level-checkbox">
+                                                <span class="level-number">4</span>
+                                                <span class="level-desc">Moderate</span>
+                                            </label>
+                                            <label class="level-item">
                                                 <input type="checkbox" id="level5" checked>
-                                                <label for="level5">5 <small>· Medium</small></label>
-                                            </div>
-                                            <div class="level-checkbox">
+                                                <span class="level-number">5</span>
+                                                <span class="level-desc">Medium</span>
+                                            </label>
+                                            <label class="level-item">
                                                 <input type="checkbox" id="level6" checked>
-                                                <label for="level6">6 <small>· Challenging</small></label>
-                                            </div>
+                                                <span class="level-number">6</span>
+                                                <span class="level-desc">Challenging</span>
+                                            </label>
                                         </div>
-                                    </div>
 
-                                    <div class="level-group">
-                                        <div class="level-group-header">Advanced (7-9)</div>
-                                        <div class="level-group-checkboxes">
-                                            <div class="level-checkbox">
+                                        <!-- Advanced Section -->
+                                        <div class="level-section">
+                                            <div class="section-label">Advanced (7-9)</div>
+                                            <label class="level-item">
                                                 <input type="checkbox" id="level7" checked>
-                                                <label for="level7">7 <small>· Hard</small></label>
-                                            </div>
-                                            <div class="level-checkbox">
+                                                <span class="level-number">7</span>
+                                                <span class="level-desc">Hard</span>
+                                            </label>
+                                            <label class="level-item">
                                                 <input type="checkbox" id="level8">
-                                                <label for="level8">8 <small>· Very Hard</small></label>
-                                            </div>
-                                            <div class="level-checkbox">
+                                                <span class="level-number">8</span>
+                                                <span class="level-desc">Very Hard</span>
+                                            </label>
+                                            <label class="level-item">
                                                 <input type="checkbox" id="level9">
-                                                <label for="level9">9 <small>· Extreme</small></label>
-                                            </div>
+                                                <span class="level-number">9</span>
+                                                <span class="level-desc">Extreme</span>
+                                            </label>
                                         </div>
-                                    </div>
 
-                                    <div class="level-group">
-                                        <div class="level-group-header">Expert (10)</div>
-                                        <div class="level-group-checkboxes">
-                                            <div class="level-checkbox">
+                                        <!-- Expert Section -->
+                                        <div class="level-section">
+                                            <div class="section-label">Expert (10)</div>
+                                            <label class="level-item">
                                                 <input type="checkbox" id="level10">
-                                                <label for="level10">10 <small>· Master</small></label>
-                                            </div>
+                                                <span class="level-number">10</span>
+                                                <span class="level-desc">Master</span>
+                                            </label>
                                         </div>
                                     </div>
-                                </div>
 
-                                <!-- Selection Summary -->
-                                <div class="level-selection-summary">
-                                    <span id="levelsSummary">5 levels selected (3, 4, 5, 6, 7)</span>
-                                    <button type="button" class="btn-link" id="clearLevelsBtn">Clear All</button>
+                                    <!-- Selection Summary -->
+                                    <div class="level-summary">
+                                        <i class="fas fa-check-circle" style="color: var(--accent);"></i>
+                                        <span id="levelsSummary">5 levels selected (3, 4, 5, 6, 7)</span>
+                                    </div>
                                 </div>
                             </div>
 
@@ -252,6 +252,46 @@
                                         <br>✅ Reproducible results
                                         <br><span style="color: #f39c12;">⚠️ Slower total execution time</span>
                                     </div>
+                                </div>
+                            </div>
+
+                            <!-- Prompt Hints Section -->
+                            <div style="margin-top: 24px; padding: 16px; background: linear-gradient(135deg, rgba(155, 89, 182, 0.15) 0%, rgba(155, 89, 182, 0.05) 100%); border: 1px solid rgba(155, 89, 182, 0.3); border-radius: 8px;">
+                                <h3 style="margin: 0 0 12px; display: flex; align-items: center; gap: 8px;">
+                                    <i class="fas fa-magic" style="color: #9b59b6;"></i> Prompt Hints
+                                </h3>
+                                <p style="color: var(--muted); font-size: 0.85em; margin: 0 0 16px;">
+                                    Hints are appended to every test prompt. Use them to constrain response length or add custom instructions.
+                                </p>
+
+                                <!-- Length Hint -->
+                                <div style="margin-bottom: 16px; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 6px;">
+                                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;">
+                                        <input type="checkbox" id="hintLengthEnabled" style="width: 16px; height: 16px;">
+                                        <span style="font-weight: 600;"><i class="fas fa-ruler" style="color: #9b59b6;"></i> Length Hint</span>
+                                    </label>
+                                    <input type="text" id="hintLengthTemplate" placeholder="Keep your response under {max} tokens."
+                                           value="Keep your response under {max} tokens."
+                                           style="padding: 8px 12px; border: 1px solid var(--panel-border); background: rgba(0,0,0,0.3); border-radius: 6px; color: var(--text); width: 100%; font-size: 0.9em; font-family: monospace;">
+                                    <small style="color: var(--muted); font-size: 0.8em; margin-top: 6px; display: block;">
+                                        Variables: <code style="background: rgba(0,0,0,0.3); padding: 1px 4px; border-radius: 3px;">{max}</code>
+                                        <code style="background: rgba(0,0,0,0.3); padding: 1px 4px; border-radius: 3px;">{target}</code>
+                                        <code style="background: rgba(0,0,0,0.3); padding: 1px 4px; border-radius: 3px;">{min}</code>
+                                    </small>
+                                </div>
+
+                                <!-- Custom Hint -->
+                                <div style="padding: 12px; background: rgba(0,0,0,0.2); border-radius: 6px;">
+                                    <label style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+                                        <i class="fas fa-edit" style="color: #9b59b6;"></i>
+                                        <span style="font-weight: 600;">Custom Hint</span>
+                                        <span style="color: var(--muted); font-size: 0.8em;">(optional)</span>
+                                    </label>
+                                    <textarea id="hintCustomText" rows="2" placeholder="Think step by step. Be concise and direct."
+                                              style="padding: 8px 12px; border: 1px solid var(--panel-border); background: rgba(0,0,0,0.3); border-radius: 6px; color: var(--text); width: 100%; font-size: 0.9em; resize: vertical; font-family: inherit;"></textarea>
+                                    <small style="color: var(--muted); font-size: 0.8em; margin-top: 6px; display: block;">
+                                        Free-form text appended to every prompt. Leave empty to disable.
+                                    </small>
                                 </div>
                             </div>
 
@@ -373,7 +413,7 @@
                                 <div
                                     style="max-height: 300px; overflow-y: auto; border: 1px solid var(--panel-border); border-radius: 6px;">
                                     <table style="width: 100%; border-collapse: collapse; font-size: 0.9em;">
-                                        <thead style="background: rgba(0,0,0,0.2); position: sticky; top: 0;">
+                                        <thead style="background: rgba(10, 22, 40, 0.98); backdrop-filter: blur(8px); position: sticky; top: 0; z-index: 10; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);">
                                             <tr>
                                                 <th style="padding: 8px 12px; text-align: left;">Model</th>
                                                 <th style="padding: 8px 12px; text-align: left;">Prompt</th>
@@ -497,6 +537,12 @@
                         <option value="results" selected>Results view</option>
                         <option value="events">Batch events</option>
                     </select>
+                    <select id="timelineOrder" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); color: var(--text); padding: 8px 12px; border-radius: 6px;">
+                        <option value="execution" selected>Order: Execution</option>
+                        <option value="prompt">Order: Prompt</option>
+                        <option value="level">Order: Level</option>
+                        <option value="quality">Order: Quality</option>
+                    </select>
                     <select id="timelineZoom" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); color: var(--text); padding: 8px 12px; border-radius: 6px; display: none;">
                         <option value="1" selected>Zoom 1x</option>
                         <option value="0.85">Zoom 0.85x</option>
@@ -510,6 +556,9 @@
 
             <div id="timelineVisual" style="background: rgba(0,0,0,0.2); border-radius: 8px; padding: 16px; min-height: 300px; position: relative;">
                 <!-- Timeline bars rendered here -->
+            </div>
+            <div class="timeline-note">
+                Colors represent prompt difficulty levels (1–10). Execution order reflects completion time; use prompt/level order to compare model consistency.
             </div>
             <div id="timelineScrollControls" class="timeline-scroll-controls" style="display: none;">
                 <div class="timeline-scroll-label">
@@ -653,11 +702,6 @@
                     <small class="form-text text-muted">Limits judge output length. Too low may truncate JSON.</small>
                 </div>
 
-                <div class="form-group">
-                    <label for="judgeInputChars">Judge Input Max Chars</label>
-                    <input type="number" id="judgeInputChars" value="2000" step="100" min="200">
-                    <small class="form-text text-muted">Limits response length sent to judge.</small>
-                </div>
 
                 <div class="form-group">
                     <label for="judgeConcurrency">Judge Concurrency: <span id="judgeConcurrencyVal">2</span></label>
@@ -689,20 +733,11 @@
                     </div>
                     <div class="form-group">
                         <label for="execTokenMax">Response Max Tokens</label>
-                        <input type="number" id="execTokenMax" value="4000" step="50" min="1">
+                        <input type="number" id="execTokenMax" value="32000" step="1000" min="1">
                     </div>
-                    <div class="form-group">
-                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-                            <input type="checkbox" id="execIncludeLengthHint" style="width: 16px; height: 16px;" checked />
-                            Inject length requirement into prompt
-                        </label>
-                        <small class="form-text text-muted">Appends length line to each prompt using template below.</small>
-                    </div>
-                    <div class="form-group">
-                        <label for="execLengthTemplate">Length Hint Template</label>
-                        <input type="text" id="execLengthTemplate" class="form-control" value="Answer in ~{target} tokens (max {max} tokens).">
-                        <small class="form-text text-muted">Variables: {target}, {max}, {min}, {multiplier}</small>
-                    </div>
+                    <small class="form-text text-muted" style="margin-top: 8px; display: block;">
+                        <i class="fas fa-info-circle"></i> Prompt hints are configured in the main batch panel above.
+                    </small>
                 </div>
 
                 <div style="margin-top: 20px; border-top: 1px solid var(--panel-border); padding-top: 15px;">
@@ -996,9 +1031,6 @@
                     </button>
                     <button class="truncation-filter-tab" data-type="response_truncated" style="padding: 8px 16px; border: 1px solid rgba(255, 107, 107, 0.3); background: rgba(255, 107, 107, 0.1); border-radius: 6px; cursor: pointer; color: var(--text);">
                         <i class="fas fa-cut"></i> Response (0)
-                    </button>
-                    <button class="truncation-filter-tab" data-type="input_truncated" style="padding: 8px 16px; border: 1px solid rgba(241, 196, 15, 0.3); background: rgba(241, 196, 15, 0.1); border-radius: 6px; cursor: pointer; color: var(--text);">
-                        <i class="fas fa-scissors"></i> Input (0)
                     </button>
                     <button class="truncation-filter-tab" data-type="judge_truncated" style="padding: 8px 16px; border: 1px solid rgba(255, 107, 107, 0.3); background: rgba(255, 107, 107, 0.1); border-radius: 6px; cursor: pointer; color: var(--text);">
                         <i class="fas fa-gavel"></i> Judge (0)

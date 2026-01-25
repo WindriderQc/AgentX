@@ -33,7 +33,6 @@ export async function loadTruncationStats() {
 
         const stats = json.data;
         const hasIssues = stats.response_truncated > 0 ||
-                          stats.input_to_judge_truncated > 0 ||
                           stats.judge_truncated > 0;
 
         if (!hasIssues || stats.total_analyzed === 0) {
@@ -81,7 +80,6 @@ export async function loadTruncationStats() {
 
         grid.innerHTML = `
             ${makeCard('response_truncated', stats.response_truncated, 'Response Truncated', stats.response_truncated_pct, stats.response_truncated > 0 ? '#ff6b6b' : 'var(--text)', true)}
-            ${makeCard('input_truncated', stats.input_to_judge_truncated, 'Input to Judge Cut', stats.input_truncated_pct, stats.input_to_judge_truncated > 0 ? '#f1c40f' : 'var(--text)', true)}
             ${makeCard('judge_truncated', stats.judge_truncated, 'Judge Truncated', stats.judge_truncated_pct, stats.judge_truncated > 0 ? '#ff6b6b' : 'var(--text)', true)}
             ${makeCard('total', stats.total_analyzed, scopeLabel, '', 'var(--text)', false)}
         `;
@@ -106,9 +104,6 @@ export async function loadTruncationStats() {
         }
         if (stats.judge_truncated > 0) {
             tips.push('<i class="fas fa-exclamation-circle"></i> Increase <strong>Judge Max Tokens</strong> - judge output cut off!');
-        }
-        if (stats.input_to_judge_truncated > 0 && stats.input_to_judge_truncated > stats.total_analyzed * 0.2) {
-            tips.push('<i class="fas fa-info-circle"></i> Many responses exceed <strong>Judge Input Chars</strong> limit');
         }
 
         if (details) {
@@ -140,9 +135,6 @@ export function applyTruncationFilter() {
         if (activeTruncationFilter) {
             shouldShow = false;
             if (activeTruncationFilter === 'response_truncated' && result.response_truncated === true) {
-                shouldShow = true;
-            }
-            if (activeTruncationFilter === 'input_truncated' && result.input_to_judge_truncated === true) {
                 shouldShow = true;
             }
             if (activeTruncationFilter === 'judge_truncated' && result.judge_response_truncated === true) {
@@ -216,12 +208,10 @@ async function loadInspectorData() {
 
         // Helper to check truncation with fallback for nested structure
         const isResponseTruncated = (r) => r.response_truncated === true || r.truncation?.response_truncated === true;
-        const isInputTruncated = (r) => r.input_to_judge_truncated === true || r.truncation?.input_to_judge_truncated === true;
         const isJudgeTruncated = (r) => r.judge_response_truncated === true || r.truncation?.judge_truncated === true;
 
         const newInspectorData = batchResults.filter(r =>
             isResponseTruncated(r) ||
-            isInputTruncated(r) ||
             isJudgeTruncated(r)
         );
         setInspectorData(newInspectorData);
@@ -231,16 +221,13 @@ async function loadInspectorData() {
 
         // Update counts
         const responseTruncated = inspectorData.filter(isResponseTruncated).length;
-        const inputTruncated = inspectorData.filter(isInputTruncated).length;
         const judgeTruncated = inspectorData.filter(isJudgeTruncated).length;
 
         const respCountEl = document.getElementById('inspectorResponseCount');
-        const inputCountEl = document.getElementById('inspectorInputCount');
         const judgeCountEl = document.getElementById('inspectorJudgeCount');
         const totalCountEl = document.getElementById('inspectorTotalCount');
 
         if (respCountEl) respCountEl.textContent = responseTruncated;
-        if (inputCountEl) inputCountEl.textContent = inputTruncated;
         if (judgeCountEl) judgeCountEl.textContent = judgeTruncated;
         if (totalCountEl) totalCountEl.textContent = inspectorData.length;
 
@@ -251,7 +238,6 @@ async function loadInspectorData() {
             let count = 0;
             if (type === 'all') count = inspectorData.length;
             else if (type === 'response_truncated') count = responseTruncated;
-            else if (type === 'input_truncated') count = inputTruncated;
             else if (type === 'judge_truncated') count = judgeTruncated;
 
             const text = tab.innerHTML.replace(/\(\d+\)/, `(${count})`);
@@ -287,7 +273,6 @@ function renderInspectorTests() {
 
     // Helper to check truncation with fallback
     const isResponseTruncated = (r) => r.response_truncated === true || r.truncation?.response_truncated === true;
-    const isInputTruncated = (r) => r.input_to_judge_truncated === true || r.truncation?.input_to_judge_truncated === true;
     const isJudgeTruncated = (r) => r.judge_response_truncated === true || r.truncation?.judge_truncated === true;
 
     // Filter based on active tab
@@ -295,7 +280,6 @@ function renderInspectorTests() {
     if (inspectorActiveFilter !== 'all') {
         filtered = inspectorData.filter(r => {
             if (inspectorActiveFilter === 'response_truncated') return isResponseTruncated(r);
-            if (inspectorActiveFilter === 'input_truncated') return isInputTruncated(r);
             if (inspectorActiveFilter === 'judge_truncated') return isJudgeTruncated(r);
             return true;
         });
@@ -313,7 +297,6 @@ function renderInspectorTests() {
     container.innerHTML = filtered.map((r, idx) => {
         const truncationTypes = [];
         if (isResponseTruncated(r)) truncationTypes.push('<span style="color: #ff6b6b;"><i class="fas fa-cut"></i> Response</span>');
-        if (isInputTruncated(r)) truncationTypes.push('<span style="color: #f1c40f;"><i class="fas fa-scissors"></i> Input</span>');
         if (isJudgeTruncated(r)) truncationTypes.push('<span style="color: #ff6b6b;"><i class="fas fa-gavel"></i> Judge</span>');
 
         const qualityScore = r.quality_score !== undefined && r.quality_score !== null ? r.quality_score : 'N/A';
@@ -406,19 +389,17 @@ function exportInspectorData() {
 
     // Helper to check truncation with fallback
     const isResponseTruncated = (r) => r.response_truncated === true || r.truncation?.response_truncated === true;
-    const isInputTruncated = (r) => r.input_to_judge_truncated === true || r.truncation?.input_to_judge_truncated === true;
     const isJudgeTruncated = (r) => r.judge_response_truncated === true || r.truncation?.judge_truncated === true;
 
     const filtered = inspectorActiveFilter === 'all' ? inspectorData :
         inspectorData.filter(r => {
             if (inspectorActiveFilter === 'response_truncated') return isResponseTruncated(r);
-            if (inspectorActiveFilter === 'input_truncated') return isInputTruncated(r);
             if (inspectorActiveFilter === 'judge_truncated') return isJudgeTruncated(r);
             return true;
         });
 
     const csv = [
-        ['Model', 'Prompt', 'Quality Score', 'Latency (ms)', 'Tokens/sec', 'Response Truncated', 'Input Truncated', 'Judge Truncated', 'Host'].join(','),
+        ['Model', 'Prompt', 'Quality Score', 'Latency (ms)', 'Tokens/sec', 'Response Truncated', 'Judge Truncated', 'Host'].join(','),
         ...filtered.map(r => [
             `"${(r.model || '').replace(/"/g, '""')}"`,
             `"${(r.prompt_name || '').replace(/"/g, '""')}"`,
@@ -426,7 +407,6 @@ function exportInspectorData() {
             r.latency || '',
             r.tokens_per_sec || '',
             isResponseTruncated(r) ? 'YES' : 'NO',
-            isInputTruncated(r) ? 'YES' : 'NO',
             isJudgeTruncated(r) ? 'YES' : 'NO',
             `"${(r.host || '').replace(/"/g, '""')}"`
         ].join(','))

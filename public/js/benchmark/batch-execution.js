@@ -10,6 +10,46 @@ import { pickRepresentativeResultId, pickRepresentativeResultIdForModel } from '
 import { showJudgeDetails } from './judge-details.js';
 
 /**
+ * Gather execution config from form inputs
+ * Merges with current config from server
+ */
+function gatherExecutionConfig() {
+    const config = { ...state.currentExecutionConfig };
+
+    // Hint settings from the prominent hints panel
+    const lengthEnabled = document.getElementById('hintLengthEnabled');
+    const lengthTemplate = document.getElementById('hintLengthTemplate');
+    const customHint = document.getElementById('hintCustomText');
+
+    if (lengthEnabled) {
+        config.include_length_hint = lengthEnabled.checked;
+    }
+    if (lengthTemplate && lengthTemplate.value.trim()) {
+        config.length_hint_template = lengthTemplate.value.trim();
+    }
+    if (customHint) {
+        config.custom_hint = customHint.value.trim();
+    }
+
+    // Also read from settings modal if present (for backwards compatibility)
+    const execTokenMax = document.getElementById('execTokenMax');
+    const execTokenMin = document.getElementById('execTokenMin');
+    const execTokenMultiplier = document.getElementById('execTokenMultiplier');
+
+    if (execTokenMax && execTokenMax.value) {
+        config.response_max_tokens = parseInt(execTokenMax.value, 10) || 32000;
+    }
+    if (execTokenMin && execTokenMin.value) {
+        config.response_min_tokens = parseInt(execTokenMin.value, 10) || 100;
+    }
+    if (execTokenMultiplier && execTokenMultiplier.value) {
+        config.response_tokens_multiplier = parseFloat(execTokenMultiplier.value) || 1;
+    }
+
+    return config;
+}
+
+/**
  * Reset batch UI to initial state
  */
 export function resetBatchUI() {
@@ -129,6 +169,9 @@ export async function runBatch() {
     // Get execution mode
     const executionMode = document.getElementById('executionMode')?.value || 'latency';
 
+    // Gather execution config from form inputs (hints, token limits, etc.)
+    const executionConfig = gatherExecutionConfig();
+
     try {
         const { res, json } = await startBatchTest({
             host,
@@ -136,7 +179,7 @@ export async function runBatch() {
             levels: selectedLevels,
             quality_scoring: qualityScoring,
             judge_config: state.currentJudgeConfig,
-            execution_config: state.currentExecutionConfig,
+            execution_config: executionConfig,
             tags,
             description,
             execution_mode: executionMode
@@ -154,9 +197,6 @@ export async function runBatch() {
             // Poll for progress
             const interval = setInterval(pollBatchProgress, 2000);
             state.setBatchPollInterval(interval);
-
-            // Hide active batch warning since we're now tracking it
-            refreshActiveBatch();
         } else if (res.status === 409) {
             btn.disabled = false;
             btn.textContent = 'Start Batch Test';
@@ -173,10 +213,8 @@ export async function runBatch() {
                     setTimeout(() => document.getElementById('runBatchBtn').click(), 1000);
                 }
             } else {
-                alert(message + '\n\nYou can view the running batch by clicking "View This Batch" in the warning banner above.');
+                alert(message);
             }
-
-            refreshActiveBatch();
         } else {
             throw new Error(json.error || 'Failed to start batch');
         }
@@ -826,56 +864,6 @@ function handleBatchComplete(batch) {
 }
 
 /**
- * Refresh active batch warning
- */
-export async function refreshActiveBatch() {
-    try {
-        const json = await fetchActiveBatches();
-
-        if (json.status === 'success' && Array.isArray(json.data) && json.data.length > 0) {
-            const warning = document.getElementById('activeBatchWarning');
-            const info = document.getElementById('activeBatchInfo');
-            const batch = json.data[0];
-
-            if (warning) warning.style.display = 'block';
-            if (info) {
-                const progress = batch.progress || 0;
-                info.innerHTML = `
-                    <div style="padding: 12px; background: rgba(0,0,0,0.2); border-radius: 8px;">
-                        <div style="font-weight: 600; color: var(--text);">${batch.run_name || 'Untitled Batch'}</div>
-                        <div style="font-size: 0.85em; color: var(--muted);">
-                            ${batch.models ? batch.models.length : 0} models - ${batch.completed}/${batch.total_tests} tests
-                        </div>
-                        <div style="margin-top: 8px;">
-                            <button class="btn-secondary btn-sm" onclick="attachToBatch('${batch._id}')">
-                                <i class="fas fa-link"></i> View This Batch
-                            </button>
-                        </div>
-                    </div>
-                `;
-            }
-        } else {
-            const warning = document.getElementById('activeBatchWarning');
-            if (warning) warning.style.display = 'none';
-        }
-    } catch (err) {
-        console.error('Failed to fetch active batch:', err);
-    }
-}
-
-/**
- * Attach to existing batch
- */
-export async function attachToBatch(batchId) {
-    if (!state.currentBatchId || confirm('Switch to viewing this batch? Your current view will be replaced.')) {
-        state.setCurrentBatchId(batchId);
-        localStorage.setItem('currentBatchId', batchId);
-        await loadBatchDetails(batchId);
-        refreshActiveBatch();
-    }
-}
-
-/**
  * Recover stuck batch
  */
 export async function recoverBatch(batchId) {
@@ -888,7 +876,6 @@ export async function recoverBatch(batchId) {
 
         if (json.status === 'success') {
             alert('Batch marked as stopped successfully. You can now start a new batch.');
-            refreshActiveBatch();
             loadBatchHistory();
         } else {
             alert(`Failed to recover batch: ${json.error || 'Unknown error'}`);
@@ -970,8 +957,6 @@ export async function loadBatchHistory() {
 // Expose to window for legacy code and onclick handlers
 if (typeof window !== 'undefined') {
     window.showJudgeDetails = showJudgeDetails;
-    window.attachToBatch = attachToBatch;
     window.recoverBatch = recoverBatch;
     window.loadBatchDetails = loadBatchDetails;
-    window.refreshActiveBatches = refreshActiveBatch;
 }

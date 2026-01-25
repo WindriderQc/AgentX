@@ -6,7 +6,7 @@ import { getWorkspaceHeaders, fetchBenchmarkConfig } from './api.js';
 import { initChartDefaults } from './charts.js';
 import { loadOllamaHosts, loadModelsForHost, loadBatchModels, filterModelList, selectAllVisibleModels, loadModelRegistry, renderCategoryTabs } from './models.js';
 import { BENCHMARK_PRESETS, updateBatchInfo, updateLevelsSummary, applyLevelPreset, applyPresetLevels, setAdvancedMode, setHyperMode, hydrateThresholdInputs, bindThresholdInputs } from './batch-config.js';
-import { runBatch, stopBatch, pollBatchProgress, resetBatchUI, refreshActiveBatch, attachToBatch, recoverBatch, loadBatchDetails, loadBatchHistory } from './batch-execution.js';
+import { runBatch, stopBatch, pollBatchProgress, resetBatchUI, recoverBatch, loadBatchDetails, loadBatchHistory } from './batch-execution.js';
 import { showJudgeDetails, closeJudgeDetails } from './judge-details.js';
 import { pickRepresentativeResultId } from './results-analysis.js';
 import { loadRecentTestsTimeline, getTimelineMode, scheduleTimelineScrollSync, showTimelineTooltip } from './timeline.js';
@@ -179,6 +179,12 @@ async function initBenchmarkUI() {
     }
     if (selectNoneBtn) {
         selectNoneBtn.addEventListener('click', () => selectAllVisibleModels(false));
+    }
+    const selectAllCheckbox = document.getElementById('selectAllModelsTable');
+    if (selectAllCheckbox) {
+        selectAllCheckbox.addEventListener('change', (e) => {
+            selectAllVisibleModels(e.target.checked);
+        });
     }
 
     // Batch model checkbox changes
@@ -406,10 +412,6 @@ async function initBenchmarkUI() {
         refreshHistoryBtn.addEventListener('click', loadBatchHistory);
     }
 
-    // Check for active batches
-    refreshActiveBatch();
-    setInterval(refreshActiveBatch, 15000);
-
     // Recent tests filters
     const recentTestsFailuresOnly = document.getElementById('recentTestsFailuresOnly');
     if (recentTestsFailuresOnly) {
@@ -455,8 +457,8 @@ async function initBenchmarkUI() {
         });
     }
 
-    // Level preset buttons
-    const levelPresetButtons = document.querySelectorAll('.level-preset-btn');
+    // Level preset buttons (updated to use new .preset-chip class)
+    const levelPresetButtons = document.querySelectorAll('.preset-chip');
     levelPresetButtons.forEach(btn => {
         btn.addEventListener('click', function() {
             applyLevelPreset(this.getAttribute('data-preset'));
@@ -527,6 +529,7 @@ async function initBenchmarkUI() {
 
     // Timeline controls
     const timelineModeSelect = document.getElementById('timelineMode');
+    const timelineOrderSelect = document.getElementById('timelineOrder');
     const timelineZoomSelect = document.getElementById('timelineZoom');
 
     const updateTimelineControls = () => {
@@ -534,7 +537,21 @@ async function initBenchmarkUI() {
         if (timelineZoomSelect) {
             timelineZoomSelect.style.display = mode === 'events' ? '' : 'none';
         }
+        if (timelineOrderSelect) {
+            timelineOrderSelect.style.display = mode === 'events' ? 'none' : '';
+        }
     };
+
+    if (timelineOrderSelect) {
+        const savedOrder = localStorage.getItem('benchmarkTimelineOrder');
+        if (savedOrder) {
+            timelineOrderSelect.value = savedOrder;
+        }
+        timelineOrderSelect.addEventListener('change', () => {
+            localStorage.setItem('benchmarkTimelineOrder', timelineOrderSelect.value);
+            loadRecentTestsTimeline();
+        });
+    }
 
     if (timelineModeSelect) {
         timelineModeSelect.addEventListener('change', () => {
@@ -567,10 +584,8 @@ async function initBenchmarkUI() {
 window.switchCategoryTab = switchCategoryTab;
 window.showJudgeDetails = showJudgeDetails;
 window.closeJudgeDetails = closeJudgeDetails;
-window.attachToBatch = attachToBatch;
 window.recoverBatch = recoverBatch;
 window.loadBatchDetails = loadBatchDetails;
-window.refreshActiveBatches = refreshActiveBatch;
 window.showTimelineTooltip = showTimelineTooltip;
 
 // Initialize on DOM ready

@@ -99,10 +99,7 @@ export function renderBatchPlan(plan, fallbackHostUrl, qualityScoringEnabled, ex
         const modeLabel = executionMode === 'throughput' ? 'Throughput Mode' : 'Latency Mode';
         const modeColor = executionMode === 'throughput' ? 'warning' : 'info';
         const execConfig = state.currentExecutionConfig || {};
-        const capsLabel = (execConfig.response_max_tokens || execConfig.response_tokens_multiplier)
-            ? `Caps: min ${execConfig.response_min_tokens || '-'} / max ${execConfig.response_max_tokens || '-'} / x${execConfig.response_tokens_multiplier || '-'}`
-            : null;
-        const hintLabel = execConfig.include_length_hint ? 'Length hint: on' : 'Length hint: off';
+        const maxTokens = execConfig.response_max_tokens || 32000;
 
         return `
             <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
@@ -113,9 +110,8 @@ export function renderBatchPlan(plan, fallbackHostUrl, qualityScoringEnabled, ex
                 <span class="badge bg-light text-dark border">Judge Host: ${judgeHost}</span>
                 <span class="text-muted">-</span>
                 <span class="badge bg-${modeColor} text-dark">${modeIcon} ${modeLabel}</span>
-                ${capsLabel ? `<span class="text-muted">-</span><span class="badge bg-light text-dark border">${capsLabel}</span>` : ''}
                 <span class="text-muted">-</span>
-                <span class="badge bg-light text-dark border">${hintLabel}</span>
+                <span class="badge bg-light text-dark border">Max: ${maxTokens} tokens</span>
             </div>
         `;
     }
@@ -125,15 +121,15 @@ export function renderBatchPlan(plan, fallbackHostUrl, qualityScoringEnabled, ex
     const modeLabel = executionMode === 'throughput' ? 'Throughput Mode' : 'Latency Mode';
     const modeColor = executionMode === 'throughput' ? 'warning' : 'info';
     const execConfig = plan.execution_config || state.currentExecutionConfig || {};
-    const capsLabel = (execConfig.response_max_tokens || execConfig.response_tokens_multiplier)
-        ? `Caps: min ${execConfig.response_min_tokens || '-'} / max ${execConfig.response_max_tokens || '-'} / x${execConfig.response_tokens_multiplier || '-'}`
-        : null;
-    const hintLabel = execConfig.include_length_hint ? 'Length hint: on' : 'Length hint: off';
+    const maxTokens = execConfig.response_max_tokens || 32000;
+    const hasLengthHint = execConfig.include_length_hint;
+    const hasCustomHint = execConfig.custom_hint && execConfig.custom_hint.trim();
+    const hasAnyHint = hasLengthHint || hasCustomHint;
 
     let html = '';
 
     // 1. Judge Info Header with Execution Mode
-    html += `<div class="d-flex align-items-center mb-3 p-2 bg-light rounded border">`;
+    html += `<div class="d-flex align-items-center mb-3 p-2 bg-light rounded border flex-wrap gap-1">`;
     html += `<i class="fas fa-gavel me-2 text-primary"></i>`;
     html += `<strong class="me-2">Judge Model:</strong>`;
     html += `<span class="badge bg-primary me-2">${judgeModel}</span>`;
@@ -142,12 +138,18 @@ export function renderBatchPlan(plan, fallbackHostUrl, qualityScoringEnabled, ex
     }
     html += `<span class="text-muted me-2">-</span>`;
     html += `<span class="badge bg-${modeColor} text-dark">${modeIcon} ${modeLabel}</span>`;
-    if (capsLabel) {
-        html += `<span class="text-muted mx-2">-</span>`;
-        html += `<span class="badge bg-light text-dark border">${capsLabel}</span>`;
-    }
     html += `<span class="text-muted mx-2">-</span>`;
-    html += `<span class="badge bg-light text-dark border">${hintLabel}</span>`;
+    html += `<span class="badge bg-light text-dark border">Max: ${maxTokens} tokens</span>`;
+    if (hasAnyHint) {
+        html += `<span class="text-muted mx-2">-</span>`;
+        html += `<span class="badge" style="background: rgba(155, 89, 182, 0.2); color: #9b59b6; border: 1px solid rgba(155, 89, 182, 0.4);">`;
+        html += `<i class="fas fa-magic"></i> Hints: `;
+        const hintParts = [];
+        if (hasLengthHint) hintParts.push('Length');
+        if (hasCustomHint) hintParts.push('Custom');
+        html += hintParts.join(' + ');
+        html += `</span>`;
+    }
     html += `</div>`;
 
     // 2. Execution Nodes

@@ -91,17 +91,23 @@ class HardwareProfileService {
     /**
      * Detect backend from model data
      * Look for GPU indicators in the response
+     * Primary detection: size_vram > 0 means GPU is being used
      */
     _detectBackend(modelData) {
-        // Check details field for GPU info
+        // Primary detection: if size_vram > 0, model is loaded on GPU
+        const vramBytes = modelData.size_vram || 0;
+        const hasVram = vramBytes > 0;
+
+        // Check details and parameters for specific backend hints
         const details = JSON.stringify(modelData.details || {}).toLowerCase();
         const params = JSON.stringify(modelData.parameters || {}).toLowerCase();
         const combined = (details + ' ' + params).toLowerCase();
 
-        if (combined.includes('cuda') || combined.includes('gpu_layers')) {
+        // Look for explicit backend indicators
+        if (combined.includes('cuda') || combined.includes('nvidia')) {
             return 'CUDA';
         }
-        if (combined.includes('metal')) {
+        if (combined.includes('metal') || combined.includes('apple')) {
             return 'Metal';
         }
         if (combined.includes('rocm') || combined.includes('amd')) {
@@ -113,7 +119,18 @@ class HardwareProfileService {
         if (combined.includes('opencl')) {
             return 'OpenCL';
         }
-        if (combined.includes('cpu') || modelData.size_vram === 0) {
+
+        // If VRAM is being used but no explicit indicator, it's GPU (likely CUDA on Linux/Windows, Metal on macOS)
+        if (hasVram) {
+            // Try to detect OS from other hints, default to GPU
+            if (combined.includes('darwin') || combined.includes('macos')) {
+                return 'Metal';
+            }
+            return 'GPU';  // Generic GPU - most likely CUDA
+        }
+
+        // No VRAM usage = CPU only
+        if (modelData.size_vram === 0 || combined.includes('cpu')) {
             return 'CPU';
         }
 

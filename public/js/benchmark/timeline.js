@@ -17,6 +17,15 @@ export function getTimelineMode() {
 }
 
 /**
+ * Get timeline ordering from selector or localStorage
+ */
+export function getTimelineOrder() {
+    const orderSelect = document.getElementById('timelineOrder');
+    if (orderSelect && orderSelect.value) return orderSelect.value;
+    return localStorage.getItem('benchmarkTimelineOrder') || 'execution';
+}
+
+/**
  * Get timeline zoom from selector
  */
 export function getTimelineZoom() {
@@ -292,6 +301,67 @@ function getResultLevel(result) {
     return match ? Number(match[0]) : null;
 }
 
+function normalizeString(value) {
+    return (value || '').toString().trim().toLowerCase();
+}
+
+function getTimestampValue(result) {
+    const ts = Date.parse(result?.timestamp);
+    return Number.isFinite(ts) ? ts : 0;
+}
+
+function compareArrays(a, b) {
+    const maxLen = Math.max(a.length, b.length);
+    for (let i = 0; i < maxLen; i++) {
+        const av = a[i];
+        const bv = b[i];
+        if (av === bv) continue;
+        if (av === undefined) return -1;
+        if (bv === undefined) return 1;
+        if (av < bv) return -1;
+        if (av > bv) return 1;
+    }
+    return 0;
+}
+
+function getPromptSortKey(result) {
+    const level = getResultLevel(result);
+    const levelSort = Number.isFinite(level) ? level : 999;
+    const category = normalizeString(result?.prompt_category);
+    const name = normalizeString(result?.prompt_name);
+    const prompt = normalizeString(result?.prompt);
+    const id = normalizeString(result?._id);
+    return [levelSort, category, name, prompt, id];
+}
+
+function getResultComparator(order) {
+    switch (order) {
+        case 'prompt':
+            return (a, b) => compareArrays(getPromptSortKey(a), getPromptSortKey(b));
+        case 'level':
+            return (a, b) => {
+                const levelA = getResultLevel(a);
+                const levelB = getResultLevel(b);
+                const aLevel = Number.isFinite(levelA) ? levelA : 999;
+                const bLevel = Number.isFinite(levelB) ? levelB : 999;
+                if (aLevel !== bLevel) return aLevel - bLevel;
+                return getTimestampValue(a) - getTimestampValue(b);
+            };
+        case 'quality':
+            return (a, b) => {
+                const qaRaw = Number(a?.quality_score);
+                const qbRaw = Number(b?.quality_score);
+                const qa = Number.isFinite(qaRaw) ? qaRaw : -1;
+                const qb = Number.isFinite(qbRaw) ? qbRaw : -1;
+                if (qa !== qb) return qb - qa;
+                return getTimestampValue(a) - getTimestampValue(b);
+            };
+        case 'execution':
+        default:
+            return (a, b) => getTimestampValue(a) - getTimestampValue(b);
+    }
+}
+
 /**
  * Load recent tests timeline - handles both 'results' and 'events' modes
  */
@@ -398,7 +468,8 @@ export async function loadRecentTestsTimeline() {
         const timelineHash = batchTimeline
             .map(e => `${e.event}-${e.model || ''}-${e.time_since_start_ms || 0}-${e.duration_ms || 0}-${e.success}`)
             .join('|');
-        const combinedHash = `${resultHash}::${timelineHash}`;
+        const timelineOrder = getTimelineOrder();
+        const combinedHash = `${resultHash}::${timelineHash}::${timelineOrder}`;
 
         // If no new results and data hasn't changed, skip the full re-render
         if (!hasNewResults && lastTimelineResultIds.size > 0 && window.lastTimelineHash === combinedHash) {
@@ -448,6 +519,11 @@ export async function loadRecentTestsTimeline() {
             }
             resultsByModel.get(model).push(result);
         });
+
+        const resultComparator = getResultComparator(timelineOrder);
+        for (const modelResults of resultsByModel.values()) {
+            modelResults.sort(resultComparator);
+        }
 
         const prepEventTypes = new Set([
             'prep_start',

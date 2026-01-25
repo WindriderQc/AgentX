@@ -151,6 +151,13 @@ const BenchmarkResultSchema = new mongoose.Schema({
         quantization: { type: String, default: null },
         detection_metadata: { type: Object, default: null }
     },
+    // Judge host hardware snapshot (captured during quality scoring)
+    judge_hardware_snapshot: {
+        backend: { type: String, default: null },
+        vram_usage_mb: { type: Number, default: null },
+        quantization: { type: String, default: null },
+        detection_metadata: { type: Object, default: null }
+    },
     // Truncation detection for model/judge responses
     truncation: {
         response_truncated: { type: Boolean, default: false },
@@ -161,6 +168,12 @@ const BenchmarkResultSchema = new mongoose.Schema({
         input_sent_chars: { type: Number, default: null },
         judge_truncated: { type: Boolean, default: false },
         judge_tokens: { type: Number, default: null }
+    },
+    // Execution settings used for this test
+    execution_settings: {
+        num_predict: { type: Number, default: null },
+        hint_applied: { type: Boolean, default: false },
+        hint_text: { type: String, default: null }
     },
     // Model warmup capture for validation
     warmup: {

@@ -37,7 +37,8 @@ const AVAILABLE_COLUMNS = {
 let charts = {
     qualityDist: null,
     latencyScatter: null,
-    categoryRadar: null
+    categoryRadar: null,
+    modelBar: null
 };
 
 // Categories for filters
@@ -468,8 +469,8 @@ function renderExpandedContent(result) {
             <div class="expanded-section">
                 <h4>Test Details</h4>
                 <div class="expanded-field">
-                    <label>Prompt</label>
-                    <div class="value">${escapeHtml(result.prompt?.substring(0, 200) || 'N/A')}${result.prompt?.length > 200 ? '...' : ''}</div>
+                    <label>Prompt (${result.prompt?.length || 0} chars)</label>
+                    <div class="response-box">${escapeHtml(result.prompt || 'N/A')}</div>
                 </div>
                 <div class="expanded-field">
                     <label>Response</label>
@@ -827,9 +828,11 @@ function updateCharts() {
     updateQualityDistChart();
     updateLatencyScatterChart();
     updateCategoryRadarChart();
+    updateModelBarChart();
+    renderCategoryStats();
 }
 
-// Update quality distribution chart
+// Update quality distribution chart - ENHANCED
 function updateQualityDistChart() {
     const ctx = document.getElementById('qualityDistChart');
     if (!ctx) return;
@@ -841,7 +844,7 @@ function updateQualityDistChart() {
     // Create histogram buckets for 0-10 scale
     const buckets = Array(10).fill(0);
     scores.forEach(score => {
-        const bucket = Math.min(Math.floor(score), 9);  // Direct floor for 0-10 scale
+        const bucket = Math.min(Math.floor(score), 9);
         buckets[bucket]++;
     });
 
@@ -856,9 +859,32 @@ function updateQualityDistChart() {
             datasets: [{
                 label: 'Count',
                 data: buckets,
-                backgroundColor: 'rgba(99, 102, 241, 0.6)',
-                borderColor: 'rgba(99, 102, 241, 1)',
-                borderWidth: 1
+                backgroundColor: [
+                    'rgba(239, 68, 68, 0.7)',    // 0-1: red
+                    'rgba(245, 126, 32, 0.7)',   // 1-2: orange-red
+                    'rgba(249, 115, 22, 0.7)',   // 2-3: orange
+                    'rgba(251, 146, 60, 0.7)',   // 3-4: orange-light
+                    'rgba(248, 113, 113, 0.7)',  // 4-5: red-light
+                    'rgba(234, 179, 8, 0.7)',    // 5-6: yellow
+                    'rgba(132, 204, 22, 0.7)',   // 6-7: lime
+                    'rgba(74, 222, 128, 0.7)',   // 7-8: green-light
+                    'rgba(34, 197, 94, 0.7)',    // 8-9: green
+                    'rgba(20, 184, 166, 0.7)'    // 9-10: teal
+                ],
+                borderColor: [
+                    'rgba(239, 68, 68, 1)',
+                    'rgba(245, 126, 32, 1)',
+                    'rgba(249, 115, 22, 1)',
+                    'rgba(251, 146, 60, 1)',
+                    'rgba(248, 113, 113, 1)',
+                    'rgba(234, 179, 8, 1)',
+                    'rgba(132, 204, 22, 1)',
+                    'rgba(74, 222, 128, 1)',
+                    'rgba(34, 197, 94, 1)',
+                    'rgba(20, 184, 166, 1)'
+                ],
+                borderWidth: 2,
+                borderRadius: 4
             }]
         },
         options: {
@@ -869,14 +895,27 @@ function updateQualityDistChart() {
                 legend: { display: false }
             },
             scales: {
-                y: { beginAtZero: true, ticks: { color: 'rgba(255, 255, 255, 0.7)' } },
-                x: { ticks: { color: 'rgba(255, 255, 255, 0.7)' } }
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        color: 'rgba(255, 255, 255, 0.8)',
+                        font: { size: 11, weight: '600' }
+                    },
+                    grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                },
+                x: {
+                    ticks: {
+                        color: 'rgba(255, 255, 255, 0.8)',
+                        font: { size: 11, weight: '600' }
+                    },
+                    grid: { display: false }
+                }
             }
         }
     });
 }
 
-// Update latency scatter chart
+// Update latency scatter chart - ENHANCED
 function updateLatencyScatterChart() {
     const ctx = document.getElementById('latencyScatterChart');
     if (!ctx) return;
@@ -893,97 +932,425 @@ function updateLatencyScatterChart() {
         charts.latencyScatter.destroy();
     }
 
+    // Group data by quality tier
+    const topTier = data.filter(d => d.quality >= 8);
+    const midTier = data.filter(d => d.quality >= 6 && d.quality < 8);
+    const lowTier = data.filter(d => d.quality < 6);
+
     charts.latencyScatter = new Chart(ctx, {
         type: 'scatter',
         data: {
-            datasets: [{
-                label: 'Results',
-                data: data,
-                backgroundColor: data.map(d => {
-                    if (d.quality >= 8) return 'rgba(34, 197, 94, 0.6)';  // Top tier (80%+)
-                    if (d.quality >= 6) return 'rgba(234, 179, 8, 0.6)';  // Mid tier (60%+)
-                    return 'rgba(239, 68, 68, 0.6)';  // Low tier
-                }),
-                borderColor: 'rgba(99, 102, 241, 1)',
-                borderWidth: 1
-            }]
+            datasets: [
+                {
+                    label: `Excellent (8+) - ${topTier.length}`,
+                    data: topTier,
+                    backgroundColor: 'rgba(34, 197, 94, 0.7)',
+                    borderColor: 'rgba(22, 163, 74, 1)',
+                    borderWidth: 2,
+                    pointRadius: 6,
+                    pointHoverRadius: 8
+                },
+                {
+                    label: `Good (6-8) - ${midTier.length}`,
+                    data: midTier,
+                    backgroundColor: 'rgba(234, 179, 8, 0.7)',
+                    borderColor: 'rgba(202, 138, 4, 1)',
+                    borderWidth: 2,
+                    pointRadius: 6,
+                    pointHoverRadius: 8
+                },
+                {
+                    label: `Needs Work (<6) - ${lowTier.length}`,
+                    data: lowTier,
+                    backgroundColor: 'rgba(239, 68, 68, 0.7)',
+                    borderColor: 'rgba(220, 38, 38, 1)',
+                    borderWidth: 2,
+                    pointRadius: 6,
+                    pointHoverRadius: 8
+                }
+            ]
         },
         options: {
             responsive: true,
             maintainAspectRatio: true,
             animation: false,
+            layout: {
+                padding: {
+                    bottom: 35
+                }
+            },
+            interaction: {
+                intersect: false,
+                mode: 'nearest'
+            },
             plugins: {
-                legend: { display: false }
+                legend: {
+                    display: true,
+                    labels: {
+                        color: '#fff',
+                        font: { size: 12, weight: 'bold' },
+                        padding: 12,
+                        usePointStyle: true,
+                        pointStyle: 'circle'
+                    }
+                },
+                tooltip: {
+                    enabled: true,
+                    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+                    borderColor: 'rgba(99, 102, 241, 1)',
+                    borderWidth: 2,
+                    titleColor: '#fff',
+                    bodyColor: '#fff',
+                    padding: 10,
+                    displayColors: false,
+                    callbacks: {
+                        label: (ctx) => [
+                            `Level: ${ctx.raw.x}`,
+                            `Latency: ${ctx.raw.y.toFixed(0)}ms`,
+                            `Quality: ${ctx.raw.quality.toFixed(1)}/10`
+                        ]
+                    }
+                }
             },
             scales: {
                 y: {
                     beginAtZero: true,
-                    title: { display: true, text: 'Latency (ms)', color: 'rgba(255, 255, 255, 0.7)' },
-                    ticks: { color: 'rgba(255, 255, 255, 0.7)' }
+                    title: { display: true, text: 'Latency (ms)', color: 'rgba(255, 255, 255, 0.8)' },
+                    ticks: { color: 'rgba(255, 255, 255, 0.8)', font: { size: 11, weight: '600' } },
+                    grid: { color: 'rgba(255, 255, 255, 0.1)' }
                 },
                 x: {
-                    title: { display: true, text: 'Level', color: 'rgba(255, 255, 255, 0.7)' },
-                    ticks: { color: 'rgba(255, 255, 255, 0.7)' }
+                    title: { display: true, text: 'Complexity Level', color: 'rgba(255, 255, 255, 0.8)' },
+                    ticks: { color: 'rgba(255, 255, 255, 0.8)', font: { size: 11, weight: '600' } },
+                    grid: { color: 'rgba(255, 255, 255, 0.1)' }
                 }
             }
         }
     });
 }
 
-// Update category radar chart
+// Update category radar chart - SIMPLE & EFFECTIVE - Numbers visible in legend
 function updateCategoryRadarChart() {
     const ctx = document.getElementById('categoryRadarChart');
     if (!ctx) return;
 
-    // Calculate average quality per category
+    // Calculate statistics per category
     const categoryData = {};
     filteredResults.forEach(r => {
         if (r.quality_score !== null && r.prompt_category) {
             if (!categoryData[r.prompt_category]) {
-                categoryData[r.prompt_category] = { total: 0, count: 0 };
+                categoryData[r.prompt_category] = { total: 0, count: 0, min: 10, max: 0 };
             }
             categoryData[r.prompt_category].total += r.quality_score;
             categoryData[r.prompt_category].count++;
+            categoryData[r.prompt_category].min = Math.min(categoryData[r.prompt_category].min, r.quality_score);
+            categoryData[r.prompt_category].max = Math.max(categoryData[r.prompt_category].max, r.quality_score);
         }
     });
 
     const labels = Object.keys(categoryData).sort();
-    const data = labels.map(cat => categoryData[cat].total / categoryData[cat].count);
+    const avgData = labels.map(cat => (categoryData[cat].total / categoryData[cat].count).toFixed(2));
+    const countData = labels.map(cat => categoryData[cat].count);
+    const minData = labels.map(cat => categoryData[cat].min);
+    const maxData = labels.map(cat => categoryData[cat].max);
 
     if (charts.categoryRadar) {
         charts.categoryRadar.destroy();
     }
 
+    // Create enhanced labels that show the actual scores
+    const enhancedLabels = labels.map((label, i) => `${label} (${avgData[i]})`);
+
     charts.categoryRadar = new Chart(ctx, {
         type: 'radar',
         data: {
-            labels: labels,
-            datasets: [{
-                label: 'Avg Quality',
-                data: data,
-                backgroundColor: 'rgba(99, 102, 241, 0.2)',
-                borderColor: 'rgba(99, 102, 241, 1)',
-                borderWidth: 2
-            }]
+            labels: enhancedLabels,
+            datasets: [
+                {
+                    label: 'Average Quality Score',
+                    data: avgData,
+                    backgroundColor: 'rgba(99, 102, 241, 0.35)',
+                    borderColor: 'rgba(99, 102, 241, 1)',
+                    borderWidth: 3,
+                    pointRadius: 8,
+                    pointBorderWidth: 3,
+                    pointBorderColor: '#fff',
+                    pointBackgroundColor: 'rgba(99, 102, 241, 1)',
+                    pointHoverRadius: 10,
+                    fill: true,
+                    tension: 0.3
+                }
+            ]
         },
         options: {
             responsive: true,
             maintainAspectRatio: true,
             animation: false,
+            interaction: {
+                intersect: false,
+                mode: 'nearest'
+            },
             plugins: {
-                legend: { display: false }
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    enabled: true,
+                    backgroundColor: 'rgba(0, 0, 0, 0.95)',
+                    borderColor: 'rgba(99, 102, 241, 1)',
+                    borderWidth: 2,
+                    titleColor: '#fff',
+                    bodyColor: '#fff',
+                    padding: 12,
+                    titleFont: { size: 13, weight: 'bold' },
+                    bodyFont: { size: 12, weight: '600' },
+                    displayColors: false,
+                    usePointStyle: false,
+                    callbacks: {
+                        title: (ctx) => {
+                            // Extract category name from label (remove the score part)
+                            const labelText = ctx[0].label;
+                            const categoryName = labelText.substring(0, labelText.lastIndexOf(' ('));
+                            return categoryName;
+                        },
+                        label: (ctx) => {
+                            const idx = ctx.dataIndex;
+                            return `Quality: ${avgData[idx]}/10`;
+                        },
+                        afterLabel: (ctx) => {
+                            const idx = ctx.dataIndex;
+                            return [
+                                `Samples: ${countData[idx]}`,
+                                `Range: ${minData[idx].toFixed(1)} - ${maxData[idx].toFixed(1)}`
+                            ];
+                        }
+                    }
+                }
             },
             scales: {
                 r: {
                     beginAtZero: true,
-                    max: 10,  // Adjusted to 0-10 scale
-                    ticks: { color: 'rgba(255, 255, 255, 0.7)' },
-                    pointLabels: { color: 'rgba(255, 255, 255, 0.7)', font: { size: 10 } },
-                    grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                    max: 10,
+                    ticks: {
+                        color: 'rgba(255, 255, 255, 0.95)',
+                        font: { size: 12, weight: 'bold' },
+                        stepSize: 2,
+                        backdropColor: 'transparent'
+                    },
+                    pointLabels: {
+                        color: 'rgba(255, 255, 255, 0.95)',
+                        font: { size: 10, weight: 'bold' },
+                        padding: 5
+                    },
+                    grid: {
+                        color: 'rgba(255, 255, 255, 0.2)',
+                        circular: true,
+                        drawBorder: true
+                    }
                 }
             }
         }
     });
+}
+
+// Update model comparison bar chart
+function updateModelBarChart() {
+    const ctx = document.getElementById('modelBarChart');
+    if (!ctx) return;
+
+    // Calculate stats per model
+    const modelData = {};
+    filteredResults.forEach(r => {
+        if (r.quality_score !== null && r.model) {
+            if (!modelData[r.model]) {
+                modelData[r.model] = { total: 0, count: 0, latency: 0 };
+            }
+            modelData[r.model].total += r.quality_score;
+            modelData[r.model].count++;
+            if (r.latency) modelData[r.model].latency += r.latency;
+        }
+    });
+
+    // If no model data, show empty state
+    if (Object.keys(modelData).length === 0) {
+        const canvas = document.getElementById('modelBarChart');
+        const parent = canvas.parentElement;
+        parent.innerHTML = '<div style="padding: 2rem; text-align: center; color: rgba(255,255,255,0.5);">No model data available</div>';
+        if (charts.modelBar) charts.modelBar.destroy();
+        return;
+    }
+
+    const models = Object.keys(modelData)
+        .sort((a, b) => (modelData[b].total / modelData[b].count) - (modelData[a].total / modelData[a].count))
+        .slice(0, 12); // Top 12 models
+
+    const avgScores = models.map(m => parseFloat((modelData[m].total / modelData[m].count).toFixed(2)));
+    const counts = models.map(m => modelData[m].count);
+
+    if (charts.modelBar) {
+        charts.modelBar.destroy();
+    }
+
+    try {
+        charts.modelBar = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: models,
+                datasets: [{
+                    label: 'Average Quality Score',
+                    data: avgScores,
+                    backgroundColor: avgScores.map(score => {
+                        if (score >= 8) return 'rgba(34, 197, 94, 0.7)';
+                        if (score >= 6) return 'rgba(234, 179, 8, 0.7)';
+                        return 'rgba(239, 68, 68, 0.7)';
+                    }),
+                    borderColor: avgScores.map(score => {
+                        if (score >= 8) return 'rgba(22, 163, 74, 1)';
+                        if (score >= 6) return 'rgba(202, 138, 4, 1)';
+                        return 'rgba(220, 38, 38, 1)';
+                    }),
+                    borderWidth: 2,
+                    borderRadius: 6
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: true,
+                animation: false,
+                plugins: {
+                    legend: {
+                        display: true,
+                        labels: {
+                            color: '#fff',
+                            font: { size: 11, weight: 'bold' },
+                            padding: 10
+                        }
+                    },
+                    tooltip: {
+                        enabled: true,
+                        backgroundColor: 'rgba(0, 0, 0, 0.9)',
+                        borderColor: 'rgba(99, 102, 241, 1)',
+                        borderWidth: 2,
+                        titleColor: '#fff',
+                        bodyColor: '#fff',
+                        padding: 10,
+                        displayColors: false,
+                        callbacks: {
+                            label: (ctx) => {
+                                const idx = ctx.dataIndex;
+                                return [
+                                    `Quality: ${avgScores[idx].toFixed(1)}/10`,
+                                    `Samples: ${counts[idx]}`
+                                ];
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        beginAtZero: true,
+                        max: 10,
+                        ticks: { color: 'rgba(255, 255, 255, 0.8)', font: { size: 10, weight: '600' } },
+                        grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                    },
+                    y: {
+                        ticks: { color: 'rgba(255, 255, 255, 0.8)', font: { size: 10, weight: '600' } },
+                        grid: { display: false }
+                    }
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Error rendering model bar chart:', error);
+    }
+}
+
+// Render category statistics table
+function renderCategoryStats() {
+    const container = document.getElementById('categoryStatsContainer');
+    if (!container) return;
+
+    // Calculate comprehensive stats per category
+    const categoryData = {};
+    filteredResults.forEach(r => {
+        if (r.quality_score !== null && r.prompt_category) {
+            if (!categoryData[r.prompt_category]) {
+                categoryData[r.prompt_category] = {
+                    total: 0,
+                    count: 0,
+                    min: 10,
+                    max: 0,
+                    latencyTotal: 0,
+                    latencyCount: 0,
+                    successCount: 0
+                };
+            }
+            const stats = categoryData[r.prompt_category];
+            stats.total += r.quality_score;
+            stats.count++;
+            stats.min = Math.min(stats.min, r.quality_score);
+            stats.max = Math.max(stats.max, r.quality_score);
+            if (r.latency) {
+                stats.latencyTotal += r.latency;
+                stats.latencyCount++;
+            }
+            if (r.success) stats.successCount++;
+        }
+    });
+
+    // Sort by average quality descending
+    const sorted = Object.entries(categoryData)
+        .sort((a, b) => (b[1].total / b[1].count) - (a[1].total / a[1].count));
+
+    // Build HTML table
+    let html = `
+        <table class="stats-table">
+            <thead>
+                <tr>
+                    <th>Category</th>
+                    <th>Samples</th>
+                    <th>Avg Quality</th>
+                    <th>Range</th>
+                    <th>Avg Latency</th>
+                    <th>Success Rate</th>
+                    <th>Trend</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
+    sorted.forEach(([category, stats]) => {
+        const avg = (stats.total / stats.count).toFixed(2);
+        const avgLatency = stats.latencyCount > 0 ? (stats.latencyTotal / stats.latencyCount).toFixed(0) : 'N/A';
+        const successRate = ((stats.successCount / stats.count) * 100).toFixed(1);
+        const range = `${stats.min.toFixed(1)} - ${stats.max.toFixed(1)}`;
+        
+        // Determine quality color
+        const qualityClass = avg >= 8 ? 'excellent' : (avg >= 6 ? 'good' : 'needs-work');
+        
+        // Simple trend indicator
+        const trend = avg >= 7 ? '↑' : (avg >= 5 ? '→' : '↓');
+
+        html += `
+            <tr>
+                <td><strong>${escapeHtml(category)}</strong></td>
+                <td class="stat-center">${stats.count}</td>
+                <td class="stat-quality stat-${qualityClass}">${avg}</td>
+                <td class="stat-center">${range}</td>
+                <td class="stat-center">${avgLatency}ms</td>
+                <td class="stat-center"><span class="badge badge-success">${successRate}%</span></td>
+                <td class="stat-center trend-${qualityClass}">${trend}</td>
+            </tr>
+        `;
+    });
+
+    html += `
+            </tbody>
+        </table>
+    `;
+
+    container.innerHTML = html;
 }
 
 // URL state management
@@ -1312,6 +1679,15 @@ function renderExecutionTab(r) {
                     </div>
                 </div>
 
+                <!-- Prompt Hint (if applied) -->
+                ${r.execution_settings?.hint_text ? `
+                <div class="hint-banner" style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; margin-bottom: 12px; background: linear-gradient(90deg, rgba(34, 197, 94, 0.15), rgba(34, 197, 94, 0.05)); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 6px; font-size: 0.85rem;">
+                    <i class="fas fa-magic" style="color: #22c55e;"></i>
+                    <span style="color: var(--muted);">Hint appended:</span>
+                    <code style="background: rgba(0,0,0,0.2); padding: 2px 8px; border-radius: 4px; color: #22c55e; font-size: 0.8rem;">${escapeHtml(r.execution_settings.hint_text)}</code>
+                </div>
+                ` : ''}
+
                 <!-- Prompt and Response -->
                 <div class="prompt-response-pair">
                     <div class="prompt-block">
@@ -1348,8 +1724,12 @@ function renderExecutionTab(r) {
                         <div class="metric-value">${r.latency ? r.latency.toFixed(0) + ' ms' : 'N/A'}</div>
                     </div>
                     <div class="metric-card">
-                        <div class="metric-label">Tokens</div>
+                        <div class="metric-label">Tokens Generated</div>
                         <div class="metric-value">${r.tokens || 'N/A'}</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Token Limit</div>
+                        <div class="metric-value ${r.truncation?.response_truncated ? 'negative' : ''}">${r.truncation?.response_limit || 'N/A'}</div>
                     </div>
                     <div class="metric-card">
                         <div class="metric-label">Tokens/sec</div>
@@ -1367,6 +1747,7 @@ function renderExecutionTab(r) {
                     <span>Response was truncated at ${r.truncation.response_tokens} tokens (limit: ${r.truncation.response_limit})</span>
                 </div>
                 ` : ''}
+
             </div>
         </div>
     `;
@@ -1377,6 +1758,7 @@ function renderJudgingTab(r) {
     const hasJudging = r.scoring_method && r.scoring_method !== 'disabled' && r.scoring_method !== 'pending';
 
     if (!hasJudging) {
+        const canRejudge = r.scoring_method === 'pending' && r.success && r.response;
         return `
             <div class="phase-card">
                 <div class="phase-header">
@@ -1390,11 +1772,21 @@ function renderJudgingTab(r) {
                     <div class="no-data">
                         <i class="fas fa-gavel"></i>
                         <p>Quality scoring was ${r.scoring_method === 'disabled' ? 'not enabled' : 'not completed'} for this test.</p>
+                        ${canRejudge ? `
+                        <button class="rejudge-btn" onclick="rejudgeResult('${r._id}')" style="margin-top: 1rem; padding: 0.75rem 1.5rem; background: var(--primary, #6366f1); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500;">
+                            <i class="fas fa-redo"></i> Run Judging Now
+                        </button>
+                        <p style="font-size: 0.75rem; color: var(--muted); margin-top: 0.5rem;">This will evaluate the response with the judge model.</p>
+                        ` : ''}
                     </div>
                 </div>
             </div>
         `;
     }
+
+    const testDuration = r.latency || 0;
+    const judgeDuration = r.scoring_time_ms || 0;
+    const totalDuration = testDuration + judgeDuration;
 
     return `
         <div class="phase-card">
@@ -1406,29 +1798,121 @@ function renderJudgingTab(r) {
                 </span>
             </div>
             <div class="phase-body">
-                <!-- Scoring Summary -->
+                <!-- Session Timing Comparison -->
+                <h4 style="margin: 0 0 1rem 0; color: var(--primary, #6366f1);">
+                    <i class="fas fa-clock"></i> Session Timing
+                </h4>
+                <div class="timing-comparison" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem; padding: 1rem; background: rgba(0,0,0,0.2); border-radius: 8px;">
+                    <div style="text-align: center; padding: 1rem; background: rgba(99, 102, 241, 0.1); border-radius: 6px; border: 1px solid rgba(99, 102, 241, 0.2);">
+                        <div style="font-size: 0.75rem; color: var(--muted); margin-bottom: 0.5rem;"><i class="fas fa-robot"></i> TEST EXECUTION</div>
+                        <div style="font-size: 1.5rem; font-weight: 600; color: var(--text);">${testDuration ? (testDuration / 1000).toFixed(2) + 's' : 'N/A'}</div>
+                        <div style="font-size: 0.7rem; color: var(--muted); margin-top: 0.25rem;">${r.tokens || 0} tokens @ ${r.tokens_per_sec ? parseFloat(r.tokens_per_sec).toFixed(1) : '?'} tok/s</div>
+                    </div>
+                    <div style="text-align: center; padding: 1rem; background: rgba(168, 85, 247, 0.1); border-radius: 6px; border: 1px solid rgba(168, 85, 247, 0.2);">
+                        <div style="font-size: 0.75rem; color: var(--muted); margin-bottom: 0.5rem;"><i class="fas fa-gavel"></i> JUDGE EVALUATION</div>
+                        <div style="font-size: 1.5rem; font-weight: 600; color: var(--text);">${judgeDuration ? (judgeDuration / 1000).toFixed(2) + 's' : 'N/A'}</div>
+                        <div style="font-size: 0.7rem; color: var(--muted); margin-top: 0.25rem;">Total: ${(totalDuration / 1000).toFixed(2)}s</div>
+                    </div>
+                </div>
+
+                <!-- Session Parameters -->
+                <h4 style="margin: 1rem 0; color: var(--primary, #6366f1);">
+                    <i class="fas fa-cog"></i> Session Parameters
+                </h4>
                 <div class="metrics-grid" style="margin-bottom: 1.5rem;">
                     <div class="metric-card">
-                        <div class="metric-label">Quality Score</div>
-                        <div class="metric-value ${getScoreClass(r.quality_score)}">${r.quality_score !== null ? r.quality_score.toFixed(1) : 'N/A'}</div>
+                        <div class="metric-label">Test Model</div>
+                        <div class="metric-value" style="font-size: 0.8rem;">${escapeHtml(r.model || 'N/A')}</div>
                     </div>
                     <div class="metric-card">
-                        <div class="metric-label">Composite Score</div>
-                        <div class="metric-value">${r.composite_score !== null ? r.composite_score.toFixed(1) : 'N/A'}</div>
+                        <div class="metric-label">Test Host</div>
+                        <div class="metric-value" style="font-size: 0.8rem;">${escapeHtml(r.host || 'N/A')}</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Token Limit (num_predict)</div>
+                        <div class="metric-value">${r.execution_settings?.num_predict || r.truncation?.response_limit || 'N/A'}</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Tokens Generated</div>
+                        <div class="metric-value">${r.tokens || 'N/A'}</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Judge Model</div>
+                        <div class="metric-value" style="font-size: 0.8rem;">${escapeHtml(r.judge_model || 'N/A')}</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Judge Host</div>
+                        <div class="metric-value" style="font-size: 0.8rem;">${escapeHtml(r.judge_host || 'Same as test')}</div>
                     </div>
                     <div class="metric-card">
                         <div class="metric-label">Scoring Method</div>
                         <div class="metric-value" style="font-size: 0.875rem;">${r.scoring_method || 'N/A'}</div>
                     </div>
                     <div class="metric-card">
-                        <div class="metric-label">Judge Model</div>
-                        <div class="metric-value" style="font-size: 0.875rem;">${escapeHtml(r.judge_model || 'N/A')}</div>
-                    </div>
-                    <div class="metric-card">
-                        <div class="metric-label">Scoring Time</div>
-                        <div class="metric-value">${r.scoring_time_ms ? r.scoring_time_ms.toFixed(0) + ' ms' : 'N/A'}</div>
+                        <div class="metric-label">Scoring Type</div>
+                        <div class="metric-value" style="font-size: 0.875rem;">${r.scoring_type || 'N/A'}</div>
                     </div>
                 </div>
+
+                <!-- Scoring Results -->
+                <h4 style="margin: 1.5rem 0 1rem 0; color: var(--primary, #6366f1);">
+                    <i class="fas fa-star"></i> Scoring Results
+                </h4>
+                <div class="metrics-grid" style="margin-bottom: 1rem;">
+                    <div class="metric-card">
+                        <div class="metric-label">
+                            Quality Score
+                            <i class="fas fa-info-circle" style="margin-left: 4px; cursor: help; opacity: 0.6;" title="0-10 scale. Evaluated by the judge LLM based on category-specific dimensions (e.g., accuracy, clarity, completeness). Higher is better."></i>
+                        </div>
+                        <div class="metric-value ${getScoreClass(r.quality_score)}">${r.quality_score !== null ? r.quality_score.toFixed(1) : 'N/A'}<span style="font-size: 0.6rem; color: var(--muted);"> / 10</span></div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">
+                            Composite Score
+                            <i class="fas fa-info-circle" style="margin-left: 4px; cursor: help; opacity: 0.6;" title="0-100 scale. Weighted combination of Quality (×10), Latency (faster=higher), and Speed (tok/s). Weights vary by prompt category."></i>
+                        </div>
+                        <div class="metric-value">${r.composite_score !== null ? r.composite_score.toFixed(1) : 'N/A'}<span style="font-size: 0.6rem; color: var(--muted);"> / 100</span></div>
+                    </div>
+                </div>
+
+                <!-- Score Explanation -->
+                <div style="padding: 0.75rem 1rem; background: rgba(99, 102, 241, 0.1); border-radius: 6px; border-left: 3px solid var(--primary, #6366f1); margin-bottom: 1.5rem; font-size: 0.75rem; color: var(--muted);">
+                    <strong style="color: var(--text);">How scores are calculated:</strong><br>
+                    <strong>Quality Score (0-10):</strong> LLM judge evaluates response against category-specific criteria (accuracy, logic, clarity, etc.).<br>
+                    <strong>Composite Score (0-100):</strong> = Quality×${r.composite_profile_used?.includes('reasoning') || r.prompt_category === 'reasoning' ? '80%' : r.composite_profile_used?.includes('coding') || r.prompt_category === 'coding' ? '60%' : '40-80%'} + Latency×${r.composite_profile_used?.includes('reasoning') ? '10%' : '10-40%'} + Speed×${r.composite_profile_used?.includes('reasoning') ? '10%' : '10-20%'} (weights depend on <em>${r.prompt_category || 'category'}</em>)
+                </div>
+
+                ${r.judge_warmup ? `
+                <!-- Judge Warmup Info -->
+                <h4 style="margin: 1.5rem 0 1rem 0; color: var(--primary, #6366f1);">
+                    <i class="fas fa-fire"></i> Judge Warmup
+                </h4>
+                <div class="metrics-grid" style="margin-bottom: 1rem;">
+                    <div class="metric-card">
+                        <div class="metric-label">Warmup Latency</div>
+                        <div class="metric-value">${r.judge_warmup.latency_ms ? (r.judge_warmup.latency_ms / 1000).toFixed(2) + 's' : 'N/A'}</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Already Loaded</div>
+                        <div class="metric-value" style="color: ${r.judge_warmup.already_loaded ? '#22c55e' : '#f59e0b'};">
+                            ${r.judge_warmup.already_loaded === null ? 'Unknown' : (r.judge_warmup.already_loaded ? 'Yes' : 'No')}
+                        </div>
+                    </div>
+                </div>
+                ${r.judge_warmup.prompt ? `
+                <details style="margin-bottom: 1rem;">
+                    <summary style="cursor: pointer; color: var(--muted); font-size: 0.875rem;"><i class="fas fa-code"></i> Judge Warmup Prompt/Response</summary>
+                    <div class="prompt-block" style="margin-top: 0.5rem;">
+                        <div class="block-content" style="max-height: 150px;">${escapeHtml(r.judge_warmup.prompt)}</div>
+                    </div>
+                    ${r.judge_warmup.response ? `
+                    <div class="response-block" style="margin-top: 0.5rem;">
+                        <div class="block-content" style="max-height: 150px;">${escapeHtml(r.judge_warmup.response)}</div>
+                    </div>
+                    ` : ''}
+                </details>
+                ` : ''}
+                ` : ''}
 
                 ${r.quality_breakdown ? `
                 <!-- Score Breakdown by Dimension -->
@@ -1487,13 +1971,10 @@ function renderJudgingTab(r) {
                 </div>
                 ` : ''}
 
-                ${r.truncation?.input_to_judge_truncated || r.truncation?.judge_truncated ? `
+                ${r.truncation?.judge_truncated ? `
                 <div class="truncation-warning">
                     <i class="fas fa-exclamation-triangle"></i>
-                    <span>
-                        ${r.truncation.input_to_judge_truncated ? `Input to judge was truncated (${r.truncation.input_sent_chars}/${r.truncation.input_original_chars} chars). ` : ''}
-                        ${r.truncation.judge_truncated ? `Judge output was truncated (${r.truncation.judge_tokens} tokens).` : ''}
-                    </span>
+                    <span>Judge output was truncated (${r.truncation.judge_tokens} tokens).</span>
                 </div>
                 ` : ''}
             </div>
@@ -1504,24 +1985,44 @@ function renderJudgingTab(r) {
 // Render Hardware tab
 function renderHardwareTab(r) {
     const hw = r.hardware_snapshot || {};
+    const judgeHw = r.judge_hardware_snapshot || {};
     const trunc = r.truncation || {};
+    const meta = hw.detection_metadata || {};
+    const judgeMeta = judgeHw.detection_metadata || {};
+
+    // Determine backend display with helpful context for test host
+    let backendDisplay = hw.backend || 'Not detected';
+    let backendNote = '';
+    if (hw.backend === 'Unknown' || !hw.backend) {
+        backendNote = meta.source ? `(Detection via ${meta.source})` : '(Hardware detection unavailable)';
+    }
+
+    // Determine backend display for judge host
+    let judgeBackendDisplay = judgeHw.backend || 'Not detected';
+    let judgeBackendNote = '';
+    if (judgeHw.backend === 'Unknown' || !judgeHw.backend) {
+        judgeBackendNote = judgeMeta.source ? `(Detection via ${judgeMeta.source})` : '(Hardware detection unavailable)';
+    }
+
+    // Check if judge runs on same host
+    const sameHost = !r.judge_host || r.judge_host === r.host;
 
     return `
         <div class="hardware-grid">
-            <!-- Execution Environment -->
+            <!-- Test Execution Host -->
             <div class="hardware-card">
-                <h4><i class="fas fa-server"></i> Execution Environment</h4>
+                <h4><i class="fas fa-microchip"></i> Test Host (Model Under Test)</h4>
                 <div class="hardware-item">
                     <span class="hardware-label">Host</span>
                     <span class="hardware-value">${escapeHtml(r.host || 'N/A')}</span>
                 </div>
                 <div class="hardware-item">
-                    <span class="hardware-label">Judge Host</span>
-                    <span class="hardware-value">${escapeHtml(r.judge_host || 'Same as execution')}</span>
+                    <span class="hardware-label">Model</span>
+                    <span class="hardware-value">${escapeHtml(r.model || 'N/A')}</span>
                 </div>
                 <div class="hardware-item">
                     <span class="hardware-label">Backend</span>
-                    <span class="hardware-value">${hw.backend || 'N/A'}</span>
+                    <span class="hardware-value">${backendDisplay} <span style="font-size: 0.7rem; color: var(--muted);">${backendNote}</span></span>
                 </div>
                 <div class="hardware-item">
                     <span class="hardware-label">VRAM Usage</span>
@@ -1531,6 +2032,43 @@ function renderHardwareTab(r) {
                     <span class="hardware-label">Quantization</span>
                     <span class="hardware-value">${hw.quantization || 'N/A'}</span>
                 </div>
+                ${meta.timestamp ? `
+                <div class="hardware-item">
+                    <span class="hardware-label">Detected At</span>
+                    <span class="hardware-value" style="font-size: 0.75rem;">${new Date(meta.timestamp).toLocaleString()}</span>
+                </div>
+                ` : ''}
+            </div>
+
+            <!-- Judge Host -->
+            <div class="hardware-card">
+                <h4><i class="fas fa-gavel"></i> Judge Host${sameHost ? ' <span style="font-size: 0.7rem; color: var(--muted);">(Same as test)</span>' : ''}</h4>
+                <div class="hardware-item">
+                    <span class="hardware-label">Host</span>
+                    <span class="hardware-value">${escapeHtml(r.judge_host || r.host || 'N/A')}</span>
+                </div>
+                <div class="hardware-item">
+                    <span class="hardware-label">Judge Model</span>
+                    <span class="hardware-value">${escapeHtml(r.judge_model || 'N/A')}</span>
+                </div>
+                <div class="hardware-item">
+                    <span class="hardware-label">Backend</span>
+                    <span class="hardware-value">${judgeBackendDisplay} <span style="font-size: 0.7rem; color: var(--muted);">${judgeBackendNote}</span></span>
+                </div>
+                <div class="hardware-item">
+                    <span class="hardware-label">VRAM Usage</span>
+                    <span class="hardware-value">${judgeHw.vram_usage_mb ? judgeHw.vram_usage_mb + ' MB' : 'N/A'}</span>
+                </div>
+                <div class="hardware-item">
+                    <span class="hardware-label">Quantization</span>
+                    <span class="hardware-value">${judgeHw.quantization || 'N/A'}</span>
+                </div>
+                ${judgeMeta.timestamp ? `
+                <div class="hardware-item">
+                    <span class="hardware-label">Detected At</span>
+                    <span class="hardware-value" style="font-size: 0.75rem;">${new Date(judgeMeta.timestamp).toLocaleString()}</span>
+                </div>
+                ` : ''}
             </div>
 
             <!-- Batch Information -->
@@ -1566,18 +2104,6 @@ function renderHardwareTab(r) {
                 </div>
                 ` : ''}
                 <div class="hardware-item">
-                    <span class="hardware-label">Input to Judge Truncated</span>
-                    <span class="hardware-value" style="color: ${trunc.input_to_judge_truncated ? '#ef4444' : '#22c55e'};">
-                        ${trunc.input_to_judge_truncated ? 'Yes' : 'No'}
-                    </span>
-                </div>
-                ${trunc.input_to_judge_truncated ? `
-                <div class="hardware-item">
-                    <span class="hardware-label">Input Chars</span>
-                    <span class="hardware-value">${trunc.input_sent_chars || 'N/A'} / ${trunc.input_original_chars || 'N/A'}</span>
-                </div>
-                ` : ''}
-                <div class="hardware-item">
                     <span class="hardware-label">Judge Output Truncated</span>
                     <span class="hardware-value" style="color: ${trunc.judge_truncated ? '#ef4444' : '#22c55e'};">
                         ${trunc.judge_truncated ? 'Yes' : 'No'}
@@ -1594,16 +2120,19 @@ function renderHardwareTab(r) {
                     <span class="hardware-value">${r.composite_profile_used || 'N/A'}</span>
                 </div>
                 <div class="hardware-item">
-                    <span class="hardware-label">Quality Component</span>
-                    <span class="hardware-value">${r.normalized_scores.quality?.toFixed(1) || 'N/A'}</span>
+                    <span class="hardware-label">Quality Component <span style="font-size: 0.65rem; color: var(--muted);">(quality×10)</span></span>
+                    <span class="hardware-value">${r.normalized_scores.quality?.toFixed(1) || 'N/A'}<span style="font-size: 0.65rem; color: var(--muted);"> / 100</span></span>
                 </div>
                 <div class="hardware-item">
-                    <span class="hardware-label">Latency Component</span>
-                    <span class="hardware-value">${r.normalized_scores.latency?.toFixed(1) || 'N/A'}</span>
+                    <span class="hardware-label">Latency Component <span style="font-size: 0.65rem; color: var(--muted);">(faster=higher)</span></span>
+                    <span class="hardware-value">${r.normalized_scores.latency?.toFixed(1) || 'N/A'}<span style="font-size: 0.65rem; color: var(--muted);"> / 100</span></span>
                 </div>
                 <div class="hardware-item">
-                    <span class="hardware-label">Speed Component</span>
-                    <span class="hardware-value">${r.normalized_scores.speed?.toFixed(1) || 'N/A'}</span>
+                    <span class="hardware-label">Speed Component <span style="font-size: 0.65rem; color: var(--muted);">(tok/s, cap 100)</span></span>
+                    <span class="hardware-value">${r.normalized_scores.speed?.toFixed(1) || 'N/A'}<span style="font-size: 0.65rem; color: var(--muted);"> / 100</span></span>
+                </div>
+                <div style="margin-top: 0.75rem; padding: 0.5rem; background: rgba(99, 102, 241, 0.1); border-radius: 4px; font-size: 0.7rem; color: var(--muted);">
+                    Final score = weighted sum of components (weights vary by prompt category)
                 </div>
             </div>
             ` : ''}
@@ -1625,6 +2154,47 @@ function getScoreColor(score) {
     if (score >= 6) return '#eab308';
     return '#ef4444';
 }
+
+// Rejudge a pending result
+async function rejudgeResult(resultId) {
+    const btn = document.querySelector('.rejudge-btn');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Judging...';
+    }
+
+    try {
+        const response = await fetch(`/api/benchmark/results/${resultId}/rejudge`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.error || 'Rejudge failed');
+        }
+
+        const data = await response.json();
+
+        // Refresh the inspector with updated data
+        await openTestInspector(resultId);
+
+        // Show success message
+        alert(`Judging complete! Quality Score: ${data.data.quality_score?.toFixed(1) || 'N/A'}`);
+
+    } catch (error) {
+        console.error('Rejudge failed:', error);
+        alert(`Rejudge failed: ${error.message}`);
+
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-redo"></i> Run Judging Now';
+        }
+    }
+}
+
+// Expose rejudge function globally
+window.rejudgeResult = rejudgeResult;
 
 // Close Test Inspector modal
 function closeTestInspector() {

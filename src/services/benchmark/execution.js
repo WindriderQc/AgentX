@@ -566,16 +566,15 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                         // If model wasn't warmed up properly, this may still timeout
                         const url = `${hostUrl}/api/generate`;
 
-                        // Limit response length based on expected_tokens and execution config
-                        const expectedTokens = prompt.expected_tokens || 200;
-                        const numPredict = Math.min(
-                            executionConfig.response_max_tokens,
-                            Math.max(
-                                executionConfig.response_min_tokens,
-                                Math.round(expectedTokens * executionConfig.response_tokens_multiplier)
-                            )
-                        );
+                        // Simple: just use a high token limit and let models finish naturally
+                        // No complicated multipliers or level-based calculations
+                        const numPredict = executionConfig.response_max_tokens || 32000;
+                        const expectedTokens = prompt.expected_tokens || null;  // For logging only
                         const promptText = applyLengthHint(prompt.prompt, expectedTokens, numPredict, executionConfig);
+                        // Detect if any hints were applied
+                        const hintApplied = promptText !== prompt.prompt;
+                        // Extract the hint text that was appended (if any)
+                        const hintText = hintApplied ? promptText.slice(prompt.prompt.length).trim() : null;
 
                         // Use AbortController for proper timeout (fetch ignores timeout option)
                         const testController = new AbortController();
@@ -625,7 +624,7 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                             model,
                             host: hostUrl,
                             judge_host: enableQualityScoring ? judgeHostUrl : null,
-                            prompt: prompt.prompt,
+                            prompt: promptText,  // Store actual prompt sent (includes length hint if applied)
                             prompt_level: prompt.level,
                             prompt_category: prompt.category,
                             prompt_name: prompt.name,
@@ -645,6 +644,11 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                                 response_truncated: responseTruncated,
                                 response_tokens: tokens,
                                 response_limit: numPredict
+                            },
+                            execution_settings: {
+                                num_predict: numPredict,
+                                hint_applied: hintApplied,
+                                hint_text: hintText
                             },
                             // Warmup data for test validation
                             warmup: modelWarmupData ? {
@@ -768,11 +772,8 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                                         scoring_method: scores.scoring_method
                                     });
 
-                                    // Build truncation update if present
+                                    // Build truncation update if present (only judge output truncation tracked)
                                     const truncationUpdate = scores.truncation ? {
-                                        'truncation.input_to_judge_truncated': scores.truncation.input_truncated,
-                                        'truncation.input_original_chars': scores.truncation.input_original_chars,
-                                        'truncation.input_sent_chars': scores.truncation.input_sent_chars,
                                         'truncation.judge_truncated': scores.truncation.judge_truncated,
                                         'truncation.judge_tokens': scores.truncation.judge_tokens
                                     } : {};
@@ -787,6 +788,7 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                                                 judge_prompt: scores.judge_prompt,
                                                 judge_model: scores.judge_model,
                                                 judge_raw_response: scores.judge_raw_response,
+                                                judge_hardware_snapshot: scores.judge_hardware_snapshot || null,
                                                 scoring_method: scores.scoring_method,
                                                 scoring_type: scores.scoring_type || prompt.scoring_type || 'reasoning',
                                                 scoring_time_ms: scores.scoring_time_ms,

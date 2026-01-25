@@ -1,5 +1,5 @@
         .benchmark-container {
-            max-width: 1400px;
+            max-width: 1800px;
             margin: 0 auto;
             padding: 20px;
         }
@@ -10,6 +10,19 @@
             flex-direction: column;
             gap: 16px;
             padding: 4px 0;
+        }
+
+        .timeline-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .timeline-note {
+            margin-top: 10px;
+            font-size: 0.8em;
+            color: var(--muted);
         }
         
         .timeline-model-row {
@@ -820,22 +833,14 @@
             box-shadow: 0 0 10px rgba(124, 240, 255, 0.6);
         }
 
-        /* Compare + Batch row */
+        /* Compare + Batch row - Stack vertically for better width usage */
         .benchmark-compare-batch-row {
             display: flex;
             flex-direction: column;
             gap: 20px;
         }
 
-        /* Ultra-wide screens: Compare Insights + Batch side-by-side */
-        @media (min-width: 1600px) {
-            .benchmark-compare-batch-row {
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                gap: 20px;
-                align-items: start;
-            }
-        }
+        /* Note: Removed side-by-side grid at 1600px+ to allow full width usage */
 
         /* New Top Section Styles */
         .top-section-grid {
@@ -1542,9 +1547,12 @@
         }
 
         .model-selection-section thead {
-            background: rgba(0,0,0,0.2);
+            background: rgba(10, 22, 40, 0.98);
+            backdrop-filter: blur(8px);
             position: sticky;
             top: 0;
+            z-index: 10;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
         }
 
         .model-selection-section th,
@@ -1614,7 +1622,7 @@
             padding: 0 28px 28px 28px;
         }
 
-        /* Split batch config vs history/tests on large screens */
+        /* Batch content layout - Single column for better width usage */
         .batch-layout {
             display: grid;
             grid-template-columns: 1fr;
@@ -1622,11 +1630,7 @@
             align-items: start;
         }
 
-        @media (min-width: 1600px) {
-            .batch-layout {
-                grid-template-columns: minmax(560px, 1fr) minmax(360px, 460px);
-            }
-        }
+        /* Note: Removed dual-column layout at 1600px+ to maximize content width */
 
         .batch-side .batch-history-section {
             margin-top: 0 !important;
@@ -1974,18 +1978,18 @@
             .trends-chart-container { height: 350px; }
         }
 
-        /* Laptop/Desktop (1024px - 1919px) */
+        /* Laptop/Desktop (1024px - 1919px) - Increased to 1600px for better width usage */
         @media (min-width: 1024px) and (max-width: 1919px) {
-            .benchmark-container { max-width: 1400px; padding: 20px; }
+            .benchmark-container { max-width: 1600px; padding: 20px; }
             .presets-grid { grid-template-columns: repeat(3, 1fr); }
             .active-batches-grid { grid-template-columns: repeat(3, 1fr); }
             .comparison-stats { grid-template-columns: repeat(4, 1fr); }
             .trends-chart-container { height: 400px; }
         }
 
-        /* Ultra-Wide (1920px+) - PRIORITY */
+        /* Ultra-Wide (1920px+) - Increased to 2000px for maximum width usage */
         @media (min-width: 1920px) {
-            .benchmark-container { max-width: 1800px; padding: 40px; }
+            .benchmark-container { max-width: 2000px; padding: 40px; }
             .section-header h3 { font-size: 1.5em; }
             .preset-header h4 { font-size: 1.25em; }
             .presets-grid { grid-template-columns: repeat(4, 1fr); gap: 24px; }
@@ -2064,179 +2068,206 @@
            10-LEVEL DIFFICULTY UI STYLES
            ======================================== */
 
-        /* Level Preset Buttons */
-        .level-presets-row {
+        /* Simplified Level Selection Container */
+        .level-selection-container {
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--panel-border);
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        /* Quick Preset Chips - Horizontal Pills */
+        .level-presets {
             display: flex;
             flex-wrap: wrap;
-            gap: 10px;
+            gap: 8px;
             margin-bottom: 20px;
-            padding: 16px;
-            background: rgba(0, 255, 159, 0.04);
-            border: 1px solid rgba(0, 255, 159, 0.1);
-            border-radius: 8px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
         }
 
-        .level-preset-btn {
-            flex: 1 1 auto;
-            min-width: 160px;
-            padding: 10px 16px;
-            border: 1px solid var(--panel-border);
+        .preset-chip {
+            padding: 8px 14px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
             background: rgba(255, 255, 255, 0.05);
-            color: var(--text);
-            border-radius: 6px;
+            color: var(--muted);
+            border-radius: 20px;
             cursor: pointer;
-            font-size: 0.85em;
+            font-size: 0.8em;
             font-weight: 500;
             transition: all 0.2s ease;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 6px;
+            white-space: nowrap;
         }
 
-        .level-preset-btn:hover {
+        .preset-chip:hover {
             background: rgba(0, 255, 159, 0.1);
             border-color: var(--accent);
+            color: var(--accent);
             transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(0, 255, 159, 0.15);
         }
 
-        .level-preset-btn.recommended {
-            background: rgba(0, 255, 159, 0.08);
+        .preset-chip.preset-recommended {
+            background: rgba(0, 255, 159, 0.1);
             border-color: var(--accent);
             color: var(--accent);
         }
 
-        .level-preset-btn.recommended:hover {
+        .preset-chip.preset-recommended:hover {
             background: rgba(0, 255, 159, 0.15);
-            box-shadow: 0 4px 16px rgba(0, 255, 159, 0.25);
         }
 
-        .level-preset-btn i {
-            font-size: 0.9em;
+        .preset-chip i {
+            font-size: 0.85em;
+            margin-right: 4px;
         }
 
-        /* Grouped Level Selection */
-        .level-selection-grouped {
+        /* Flat Grid Layout for Levels - Optimized for width usage */
+        .level-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 16px;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 12px;
             margin-bottom: 16px;
         }
 
-        .level-group {
-            padding: 14px;
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid var(--panel-border);
-            border-radius: 8px;
-            transition: all 0.2s ease;
+        /* Increase columns on wider screens */
+        @media (min-width: 1400px) {
+            .level-grid {
+                grid-template-columns: repeat(6, 1fr);
+            }
         }
 
-        .level-group:hover {
-            background: rgba(255, 255, 255, 0.05);
-            border-color: rgba(124, 240, 255, 0.3);
+        @media (min-width: 1920px) {
+            .level-grid {
+                grid-template-columns: repeat(8, 1fr);
+            }
         }
 
-        .level-group.recommended-group {
-            background: rgba(0, 255, 159, 0.05);
-            border-color: rgba(0, 255, 159, 0.2);
-        }
-
-        .level-group.recommended-group:hover {
-            background: rgba(0, 255, 159, 0.08);
-            border-color: var(--accent);
-        }
-
-        .level-group-header {
-            font-weight: 600;
-            font-size: 0.9em;
-            color: var(--text);
-            margin-bottom: 10px;
-            padding-bottom: 8px;
-            border-bottom: 1px solid var(--panel-border);
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-
-        .level-group.recommended-group .level-group-header {
-            color: var(--accent);
-        }
-
-        .level-group-header i {
-            font-size: 0.8em;
-        }
-
-        .level-group-checkboxes {
+        /* Level Section */
+        .level-section {
             display: flex;
             flex-direction: column;
             gap: 8px;
         }
 
-        /* Enhanced level checkbox for 10-level system */
-        .level-checkbox {
+        .level-section-recommended {
+            position: relative;
+        }
+
+        .level-section-recommended::before {
+            content: '';
+            position: absolute;
+            top: -8px;
+            left: -8px;
+            right: -8px;
+            bottom: -8px;
+            background: rgba(0, 255, 159, 0.05);
+            border: 1px solid rgba(0, 255, 159, 0.2);
+            border-radius: 8px;
+            z-index: -1;
+        }
+
+        .section-label {
+            font-size: 0.8em;
+            font-weight: 600;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
             display: flex;
             align-items: center;
-            gap: 8px;
-            padding: 6px 10px;
-            border: 1px solid transparent;
-            border-radius: 4px;
+            gap: 6px;
+        }
+
+        .level-section-recommended .section-label {
+            color: var(--accent);
+        }
+
+        .section-label i {
+            font-size: 0.85em;
+        }
+
+        /* Level Item - Flat Checkbox Design */
+        .level-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            cursor: pointer;
             transition: all 0.2s ease;
-            background: rgba(255, 255, 255, 0.02);
         }
 
-        .level-checkbox:hover {
+        .level-item:hover {
             background: rgba(124, 240, 255, 0.08);
-            border-color: rgba(124, 240, 255, 0.2);
+            border-color: rgba(124, 240, 255, 0.3);
+            transform: translateX(2px);
         }
 
-        .level-checkbox input {
+        .level-item input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
             margin: 0;
-            width: 16px;
-            height: 16px;
             cursor: pointer;
             accent-color: var(--accent);
+            flex-shrink: 0;
         }
 
-        .level-checkbox input:checked + label {
+        .level-item input[type="checkbox"]:checked ~ .level-number {
+            background: var(--accent);
+            color: #0a1628;
+            font-weight: 700;
+        }
+
+        .level-item input[type="checkbox"]:checked ~ .level-desc {
             color: var(--accent);
             font-weight: 600;
         }
 
-        .level-checkbox label {
-            cursor: pointer;
-            font-weight: 500;
-            color: var(--text);
-            font-size: 0.85em;
-            margin: 0;
-            display: flex;
+        .level-number {
+            display: inline-flex;
             align-items: center;
-            gap: 4px;
-            white-space: nowrap;
-            flex: 1;
-        }
-
-        .level-checkbox label small {
-            color: var(--muted);
-            font-weight: 400;
-            font-size: 0.9em;
-        }
-
-        /* Level Selection Summary */
-        .level-selection-summary {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 12px 16px;
-            background: rgba(0, 0, 0, 0.2);
-            border: 1px solid var(--panel-border);
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            background: rgba(255, 255, 255, 0.1);
             border-radius: 6px;
-            font-size: 0.9em;
+            font-weight: 600;
+            font-size: 0.85em;
+            color: var(--text);
+            transition: all 0.2s ease;
+            flex-shrink: 0;
         }
 
-        .level-selection-summary span {
-            color: var(--accent);
-            font-weight: 600;
+        .level-desc {
+            flex: 1;
+            font-size: 0.85em;
+            color: var(--text);
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+
+        /* Level Summary - Clean Info Bar */
+        .level-summary {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 16px;
+            background: rgba(0, 255, 159, 0.05);
+            border: 1px solid rgba(0, 255, 159, 0.2);
+            border-radius: 6px;
+            font-size: 0.85em;
+        }
+
+        .level-summary span {
+            color: var(--text);
+            font-weight: 500;
+        }
+
+        .level-summary i {
+            font-size: 1.1em;
         }
 
         .btn-link {
@@ -2351,19 +2382,52 @@
         }
 
         /* Responsive adjustments for 10-level UI */
-	        @media (max-width: 768px) {
-	            .level-presets-row {
-	                flex-direction: column;
-	            }
+        @media (max-width: 1024px) {
+            .level-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
 
-            .level-preset-btn {
-                min-width: 100%;
+        @media (max-width: 640px) {
+            .level-selection-container {
+                padding: 16px;
             }
 
-	            .level-selection-grouped {
-	                grid-template-columns: 1fr;
-	            }
-	        }
+            .level-presets {
+                gap: 6px;
+            }
+
+            .preset-chip {
+                font-size: 0.75em;
+                padding: 6px 12px;
+            }
+
+            .level-grid {
+                grid-template-columns: 1fr;
+                gap: 12px;
+            }
+
+            .level-section-recommended::before {
+                top: -6px;
+                left: -6px;
+                right: -6px;
+                bottom: -6px;
+            }
+
+            .level-item {
+                padding: 8px 10px;
+            }
+
+            .level-number {
+                width: 24px;
+                height: 24px;
+                font-size: 0.8em;
+            }
+
+            .level-desc {
+                font-size: 0.8em;
+            }
+        }
 
 /* Performance heatmap legend + tooltip */
 .heatmap-legend {

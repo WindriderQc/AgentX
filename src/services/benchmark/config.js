@@ -4,11 +4,15 @@
  */
 
 const DEFAULT_EXECUTION_CONFIG = {
-    response_tokens_multiplier: 2.5,
+    // Simple config: just set a high limit and let models finish naturally
+    response_max_tokens: 32000,  // High enough for any response including <think> reasoning
     response_min_tokens: 100,
-    response_max_tokens: 4000,
-    include_length_hint: true,
-    length_hint_template: 'Answer in ~{target} tokens (max {max} tokens).'
+    response_tokens_multiplier: 1,  // No multiplier games - just use the max
+    // Length hints can constrain models - disabled by default
+    include_length_hint: false,
+    length_hint_template: 'Keep your response under {max} tokens.',
+    // Custom hint - free-form text appended to every prompt
+    custom_hint: ''
 };
 
 /**
@@ -52,29 +56,51 @@ function normalizeExecutionConfig(config = {}) {
     if (typeof merged.length_hint_template !== 'string' || !merged.length_hint_template.trim()) {
         merged.length_hint_template = DEFAULT_EXECUTION_CONFIG.length_hint_template;
     }
+    // Custom hint is optional free-form text
+    if (typeof merged.custom_hint !== 'string') {
+        merged.custom_hint = '';
+    }
+    merged.custom_hint = merged.custom_hint.trim();
     return merged;
 }
 
 /**
- * Apply length hint to prompt text based on execution config
+ * Apply hints to prompt text based on execution config
+ * Supports both length hints (with template variables) and custom hints
  * @param {string} promptText - Original prompt
  * @param {number} expectedTokens - Expected response tokens
  * @param {number} numPredict - Max tokens to predict
  * @param {Object} config - Execution config
- * @returns {string} - Prompt with length hint appended
+ * @returns {string} - Prompt with hints appended
  */
 function applyLengthHint(promptText, expectedTokens, numPredict, config) {
-    if (!config || !config.include_length_hint) return promptText;
-    const template = (config.length_hint_template || DEFAULT_EXECUTION_CONFIG.length_hint_template).trim();
-    if (!template) return promptText;
-    const tokensTarget = Math.round(Number(expectedTokens) || 0);
-    const maxTokens = Math.round(Number(numPredict) || 0);
-    const hint = template
-        .replace(/\{target\}/g, String(tokensTarget))
-        .replace(/\{max\}/g, String(maxTokens))
-        .replace(/\{min\}/g, String(config.response_min_tokens))
-        .replace(/\{multiplier\}/g, String(config.response_tokens_multiplier));
-    return `${promptText}\n\n${hint}`;
+    if (!config) return promptText;
+
+    const hints = [];
+
+    // Apply length hint if enabled
+    if (config.include_length_hint) {
+        const template = (config.length_hint_template || DEFAULT_EXECUTION_CONFIG.length_hint_template).trim();
+        if (template) {
+            const tokensTarget = Math.round(Number(expectedTokens) || 0);
+            const maxTokens = Math.round(Number(numPredict) || 0);
+            const lengthHint = template
+                .replace(/\{target\}/g, String(tokensTarget))
+                .replace(/\{max\}/g, String(maxTokens))
+                .replace(/\{min\}/g, String(config.response_min_tokens))
+                .replace(/\{multiplier\}/g, String(config.response_tokens_multiplier));
+            hints.push(lengthHint);
+        }
+    }
+
+    // Apply custom hint if provided
+    if (config.custom_hint && config.custom_hint.trim()) {
+        hints.push(config.custom_hint.trim());
+    }
+
+    if (hints.length === 0) return promptText;
+
+    return `${promptText}\n\n${hints.join('\n')}`;
 }
 
 module.exports = {

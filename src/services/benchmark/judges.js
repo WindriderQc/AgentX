@@ -235,7 +235,6 @@ async function getTruncationStats({ batch_id = null, limit = 1000 } = {}) {
     const stats = {
         total_analyzed: results.length,
         response_truncated: 0,
-        input_to_judge_truncated: 0,
         judge_truncated: 0,
         by_model: {},
         by_level: {},
@@ -257,9 +256,6 @@ async function getTruncationStats({ batch_id = null, limit = 1000 } = {}) {
                 });
             }
         }
-        if (t.input_to_judge_truncated) {
-            stats.input_to_judge_truncated++;
-        }
         if (t.judge_truncated) {
             stats.judge_truncated++;
             if (stats.examples.length < 10) {
@@ -274,30 +270,25 @@ async function getTruncationStats({ batch_id = null, limit = 1000 } = {}) {
 
         // Aggregate by model
         if (!stats.by_model[r.model]) {
-            stats.by_model[r.model] = { response: 0, input: 0, judge: 0, total: 0 };
+            stats.by_model[r.model] = { response: 0, judge: 0, total: 0 };
         }
         stats.by_model[r.model].total++;
         if (t.response_truncated) stats.by_model[r.model].response++;
-        if (t.input_to_judge_truncated) stats.by_model[r.model].input++;
         if (t.judge_truncated) stats.by_model[r.model].judge++;
 
         // Aggregate by level
         const level = r.prompt_level || 'unknown';
         if (!stats.by_level[level]) {
-            stats.by_level[level] = { response: 0, input: 0, judge: 0, total: 0 };
+            stats.by_level[level] = { response: 0, judge: 0, total: 0 };
         }
         stats.by_level[level].total++;
         if (t.response_truncated) stats.by_level[level].response++;
-        if (t.input_to_judge_truncated) stats.by_level[level].input++;
         if (t.judge_truncated) stats.by_level[level].judge++;
     });
 
     // Calculate percentages
     stats.response_truncated_pct = stats.total_analyzed > 0
         ? ((stats.response_truncated / stats.total_analyzed) * 100).toFixed(1) + '%'
-        : '0%';
-    stats.input_truncated_pct = stats.total_analyzed > 0
-        ? ((stats.input_to_judge_truncated / stats.total_analyzed) * 100).toFixed(1) + '%'
         : '0%';
     stats.judge_truncated_pct = stats.total_analyzed > 0
         ? ((stats.judge_truncated / stats.total_analyzed) * 100).toFixed(1) + '%'

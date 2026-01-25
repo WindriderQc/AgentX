@@ -298,11 +298,21 @@ export async function loadBatchModels(hostUrl) {
         });
 
         updateModelSelectionBadges();
+
+        const selectAllToggle = document.getElementById('selectAllModelsTable');
+        if (selectAllToggle) {
+            selectAllToggle.checked = true;
+        }
+        selectAllVisibleModels(true);
     } else {
         tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px; color: var(--muted);">No models available</td></tr>';
+        const selectAllToggle = document.getElementById('selectAllModelsTable');
+        if (selectAllToggle) {
+            selectAllToggle.checked = false;
+        }
+        updateBatchInfo();
     }
 
-    updateBatchInfo();
     filterModelList();
 }
 

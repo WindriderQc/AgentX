@@ -83,6 +83,7 @@
             <section class="board-section" id="performanceBoard">
                 <div class="board-header">
                     <h2><i class="fas fa-tachometer-alt"></i> Performance Board</h2>
+                    <p class="board-description">Composite scoring: Quality + Speed + Reliability (profile-weighted)</p>
                     <div class="header-profile-select">
                         <select id="perfProfile" onchange="updateProfileWeights(); renderPerformanceBoard()">
                             <option value="balanced">Balanced</option>
@@ -91,6 +92,9 @@
                             <option value="coding">Coding (Balanced++)</option>
                         </select>
                     </div>
+                </div>
+                <div class="score-note" style="padding: 0.5rem 1rem; background: rgba(99, 102, 241, 0.1); border-left: 3px solid #6366f1; margin-bottom: 1rem; font-size: 0.75rem; color: #a0a0a0;">
+                    <strong>Quality column:</strong> Simple average of judge scores (0-10). <strong>Composite:</strong> Weighted combination based on profile.
                 </div>
 
                 <!-- Profile Weights Documentation -->
@@ -121,11 +125,11 @@
                             <tr>
                                 <th class="rank-col">#</th>
                                 <th class="sortable" data-sort="model" onclick="sortPerformanceBy('model')">Model <i class="fas fa-sort"></i></th>
-                                <th class="sortable" data-sort="quality" onclick="sortPerformanceBy('quality')">Quality <i class="fas fa-sort"></i></th>
-                                <th class="sortable" data-sort="latency" onclick="sortPerformanceBy('latency')">Latency <i class="fas fa-sort"></i></th>
-                                <th class="sortable" data-sort="tokens" onclick="sortPerformanceBy('tokens')">Tok/s <i class="fas fa-sort"></i></th>
-                                <th class="sortable" data-sort="reliability" onclick="sortPerformanceBy('reliability')">Reliability <i class="fas fa-sort"></i></th>
-                                <th class="sortable active" data-sort="composite" onclick="sortPerformanceBy('composite')">Composite <i class="fas fa-sort-down"></i></th>
+                                <th class="sortable" data-sort="quality" onclick="sortPerformanceBy('quality')" title="Simple average of all quality scores (0-10). Not category-weighted.">Quality <i class="fas fa-info-circle" style="opacity:0.5;font-size:0.7rem;margin-left:2px;"></i> <i class="fas fa-sort"></i></th>
+                                <th class="sortable" data-sort="latency" onclick="sortPerformanceBy('latency')" title="Average time to first response (ms). Lower is better.">Latency <i class="fas fa-sort"></i></th>
+                                <th class="sortable" data-sort="tokens" onclick="sortPerformanceBy('tokens')" title="Average tokens generated per second. Higher is better.">Tok/s <i class="fas fa-sort"></i></th>
+                                <th class="sortable" data-sort="reliability" onclick="sortPerformanceBy('reliability')" title="Percentage of successful test completions.">Reliability <i class="fas fa-sort"></i></th>
+                                <th class="sortable active" data-sort="composite" onclick="sortPerformanceBy('composite')" title="Weighted score combining Quality, Speed, and Reliability based on selected profile.">Composite <i class="fas fa-info-circle" style="opacity:0.5;font-size:0.7rem;margin-left:2px;"></i> <i class="fas fa-sort-down"></i></th>
                                 <th>Tests</th>
                             </tr>
                         </thead>
@@ -197,6 +201,9 @@
                         </button>
                     </div>
                 </div>
+                <div class="score-note" style="padding: 0.5rem 1rem; background: rgba(168, 85, 247, 0.1); border-left: 3px solid #a855f7; margin-bottom: 1rem; font-size: 0.75rem; color: #a0a0a0;">
+                    <strong>Different from Performance Board:</strong> Generalist score is category-weighted (0-100), penalizes missing categories, and rewards consistency. Click "Methodology" for formula.
+                </div>
 
                 <div class="board-table-container">
                     <table class="board-table" id="qualTable">
@@ -204,10 +211,10 @@
                             <tr>
                                 <th class="rank-col">#</th>
                                 <th class="sortable" data-sort="model" onclick="sortQualityBy('model')">Model <i class="fas fa-sort"></i></th>
-                                <th class="sortable active" data-sort="generalist" onclick="sortQualityBy('generalist')">Generalist <i class="fas fa-sort-down"></i></th>
-                                <th class="sortable" data-sort="coverage" onclick="sortQualityBy('coverage')">Coverage <i class="fas fa-sort"></i></th>
-                                <th class="sortable" data-sort="consistency" onclick="sortQualityBy('consistency')">Consistency <i class="fas fa-sort"></i></th>
-                                <th>Top Category</th>
+                                <th class="sortable active" data-sort="generalist" onclick="sortQualityBy('generalist')" title="Category-weighted quality score (0-100). Includes coverage penalty and consistency bonus. Click 'Methodology' for details.">Generalist <i class="fas fa-info-circle" style="opacity:0.5;font-size:0.7rem;margin-left:2px;"></i> <i class="fas fa-sort-down"></i></th>
+                                <th class="sortable" data-sort="coverage" onclick="sortQualityBy('coverage')" title="% of the 12 task categories tested. Low coverage incurs a penalty.">Coverage <i class="fas fa-sort"></i></th>
+                                <th class="sortable" data-sort="consistency" onclick="sortQualityBy('consistency')" title="Score consistency across categories. Low variance (std dev < 10) earns a +5 bonus.">Consistency <i class="fas fa-sort"></i></th>
+                                <th title="The category where this model scored highest.">Top Category</th>
                                 <th>Tests</th>
                                 <th>Actions</th>
                             </tr>

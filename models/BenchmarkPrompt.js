@@ -38,6 +38,14 @@ const BenchmarkPromptSchema = new mongoose.Schema({
         type: String,
         default: null
     },
+    // Expected response length in tokens - used to calculate num_predict limit
+    // Simple factual: 50-100, reasoning: 200-500, complex/creative: 500-1000
+    expected_tokens: {
+        type: Number,
+        default: null,  // If null, uses level-based defaults
+        min: 10,
+        max: 10000
+    },
     scoring_type: {
         type: String,
         enum: [
