@@ -57,18 +57,52 @@ export function setLastRecentTests(tests) { lastRecentTests = tests; }
 export function setShowSuccessRateDetails(show) { showSuccessRateDetails = show; }
 export function setModelRegistryCache(cache) { modelRegistryCache = cache; }
 
-export function setCurrentBatchId(id) { currentBatchId = id; }
+export function setCurrentBatchId(id) {
+    currentBatchId = id;
+    if (typeof window !== 'undefined') {
+        window.currentBatchId = id;
+    }
+}
 export function setBatchPollInterval(interval) { batchPollInterval = interval; }
-export function setCurrentBatchResults(results) { currentBatchResults = results; }
-export function setCurrentJudgeDetailId(id) { currentJudgeDetailId = id; }
+export function setCurrentBatchResults(results) {
+    currentBatchResults = results;
+    if (typeof window !== 'undefined') {
+        window.currentBatchResults = results;
+    }
+}
+export function setCurrentJudgeDetailId(id) {
+    currentJudgeDetailId = id;
+    if (typeof window !== 'undefined') {
+        window.currentJudgeDetailId = id;
+    }
+}
 
 export function setLastTimelineResultIds(ids) { lastTimelineResultIds = ids; }
 export function setLastTimelineHash(hash) { lastTimelineHash = hash; }
 export function setTimelineScrollRaf(raf) { timelineScrollRaf = raf; }
 export function setBenchmarkTooltipEl(el) { benchmarkTooltipEl = el; }
 
+/**
+ * Reset batch-related state for a new batch
+ */
+export function resetBatchState() {
+    currentBatchId = null;
+    currentBatchResults = [];
+    currentJudgeDetailId = null;
+    lastTimelineResultIds = new Set();
+    lastTimelineHash = null;
+
+    if (typeof window !== 'undefined') {
+        window.currentBatchId = null;
+        window.currentBatchResults = [];
+        window.currentJudgeDetailId = null;
+        window.lastTimelineHash = null;
+    }
+}
+
 // Expose to window for legacy code
 if (typeof window !== 'undefined') {
+    window.currentBatchId = currentBatchId;
     window.currentBatchResults = currentBatchResults;
     window.currentJudgeDetailId = currentJudgeDetailId;
     window.latestBenchmarkData = null;

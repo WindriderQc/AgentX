@@ -61,159 +61,118 @@ export function showJudgeDetails(idOrIndex) {
 
 /**
  * Populate judge details modal
+ * Uses the actual element IDs from benchmark.html
  */
 function populateJudgeModal(result, resultIndex) {
     const isFailed = result.success === false;
 
-    // Title
-    const titleEl = document.getElementById('judgeDetailsTitle');
-    if (titleEl) {
-        if (isFailed) {
-            titleEl.innerHTML = `<i class="fas fa-exclamation-triangle" style="color: #e74c3c;"></i> Test Failed - ${escapeHtml(result.model)}`;
-        } else {
-            titleEl.textContent = `Judge Details - ${escapeHtml(result.model)}`;
-        }
-    }
-
-    // Model info
-    const modelEl = document.getElementById('judgeDetailModel');
-    if (modelEl) {
-        modelEl.textContent = result.model || 'Unknown';
-    }
-
-    // Host info
-    const hostEl = document.getElementById('judgeDetailHost');
-    if (hostEl) {
-        hostEl.textContent = formatHostLabel(result.host);
-    }
-
-    // Judge host info
-    const judgeHostEl = document.getElementById('judgeDetailJudgeHost');
-    if (judgeHostEl) {
-        judgeHostEl.textContent = formatHostLabel(result.judge_host) || 'N/A';
-    }
-
-    // Status
-    const statusEl = document.getElementById('judgeDetailStatus');
-    if (statusEl) {
-        if (isFailed) {
-            statusEl.innerHTML = '<span style="color: #e74c3c; font-weight: 600;"><i class="fas fa-times-circle"></i> FAILED</span>';
-        } else {
-            statusEl.innerHTML = '<span style="color: #2ecc71; font-weight: 600;"><i class="fas fa-check-circle"></i> SUCCESS</span>';
-        }
-    }
-
-    // Prompt
-    const promptEl = document.getElementById('judgeDetailPrompt');
-    if (promptEl) {
-        promptEl.textContent = result.prompt || result.prompt_text || 'N/A';
-    }
-
-    // Prompt name/level
-    const promptNameEl = document.getElementById('judgeDetailPromptName');
+    // Prompt name/level - element ID: detailPromptName
+    const promptNameEl = document.getElementById('detailPromptName');
     if (promptNameEl) {
         const name = result.prompt_name || result.prompt_id || 'Unknown';
         const level = result.prompt_level || result.level || '';
-        promptNameEl.textContent = level ? `${name} (L${level})` : name;
+        const model = result.model || 'Unknown';
+        promptNameEl.innerHTML = `${escapeHtml(name)}${level ? ` (L${level})` : ''} <span style="color: var(--muted); font-weight: normal;">- ${escapeHtml(model)}</span>`;
     }
 
-    // Response
-    const responseEl = document.getElementById('judgeDetailResponse');
+    // Scoring method - element ID: detailScoringMethod
+    const scoringMethodEl = document.getElementById('detailScoringMethod');
+    if (scoringMethodEl) {
+        const judgeModel = result.judge_model || state.currentJudgeConfig.model || 'Default Judge';
+        const q = toFiniteNumber(result.quality_score);
+        let scoreHtml = '';
+        if (isFailed) {
+            scoreHtml = '<span style="color: #e74c3c; font-weight: 600;"><i class="fas fa-times-circle"></i> FAILED</span>';
+        } else if (q !== null) {
+            let color = '#2ecc71';
+            if (q < 4) color = '#e74c3c';
+            else if (q < 7) color = '#f39c12';
+            scoreHtml = `<span style="color: ${color}; font-weight: 600;">${q.toFixed(1)}/10</span>`;
+        } else {
+            scoreHtml = '<span style="color: var(--muted);">Pending...</span>';
+        }
+        scoringMethodEl.innerHTML = `${escapeHtml(judgeModel)} &nbsp;|&nbsp; Score: ${scoreHtml}`;
+    }
+
+    // Judging steps / metadata - element ID: detailJudgeSteps, detailJudgeMeta
+    const judgeStepsEl = document.getElementById('detailJudgeSteps');
+    const judgeMetaEl = document.getElementById('detailJudgeMeta');
+    if (judgeStepsEl) {
+        if (isFailed) {
+            judgeStepsEl.innerHTML = `<div style="color: #e74c3c;"><i class="fas fa-exclamation-triangle"></i> Test failed - no judging performed</div>`;
+        } else {
+            const steps = [];
+            steps.push(`<div><i class="fas fa-robot" style="color: var(--accent); width: 20px;"></i> Model executed prompt</div>`);
+            if (result.latency) {
+                const lat = toFiniteNumber(result.latency);
+                steps.push(`<div><i class="fas fa-clock" style="color: var(--muted); width: 20px;"></i> Latency: ${lat < 1000 ? lat + 'ms' : (lat/1000).toFixed(2) + 's'}</div>`);
+            }
+            if (result.tokens_per_sec) {
+                const tps = toFiniteNumber(result.tokens_per_sec);
+                if (tps !== null) {
+                    steps.push(`<div><i class="fas fa-tachometer-alt" style="color: var(--muted); width: 20px;"></i> Throughput: ${tps.toFixed(2)} tok/s</div>`);
+                }
+            }
+            steps.push(`<div><i class="fas fa-gavel" style="color: #9b59b6; width: 20px;"></i> Judge evaluated response</div>`);
+            if (result.scoring_time_ms) {
+                const jt = toFiniteNumber(result.scoring_time_ms);
+                steps.push(`<div><i class="fas fa-hourglass-half" style="color: var(--muted); width: 20px;"></i> Judge time: ${jt < 1000 ? jt + 'ms' : (jt/1000).toFixed(2) + 's'}</div>`);
+            }
+            judgeStepsEl.innerHTML = steps.join('');
+        }
+    }
+    if (judgeMetaEl) {
+        const meta = [];
+        if (result.host) meta.push(`Host: ${formatHostLabel(result.host)}`);
+        if (result.judge_host) meta.push(`Judge Host: ${formatHostLabel(result.judge_host)}`);
+        if (result.timestamp) meta.push(`Time: ${new Date(result.timestamp).toLocaleString()}`);
+        judgeMetaEl.textContent = meta.join(' | ');
+    }
+
+    // Model response - element ID: detailResponse
+    const responseEl = document.getElementById('detailResponse');
     if (responseEl) {
         if (isFailed) {
-            responseEl.innerHTML = `<div style="color: #e74c3c; padding: 12px; background: rgba(231, 76, 60, 0.1); border-radius: 8px;">
-                <strong>Error:</strong> ${escapeHtml(result.error || 'Unknown error')}
-            </div>`;
+            responseEl.innerHTML = `<span style="color: #e74c3c;"><strong>Error:</strong> ${escapeHtml(result.error || 'Unknown error')}</span>`;
         } else {
-            responseEl.textContent = result.response || 'N/A';
+            responseEl.textContent = result.response || 'No response captured';
         }
     }
 
-    // Latency
-    const latencyEl = document.getElementById('judgeDetailLatency');
-    if (latencyEl) {
-        const lat = toFiniteNumber(result.latency);
-        if (lat !== null) {
-            latencyEl.textContent = lat < 1000 ? `${lat}ms` : `${(lat / 1000).toFixed(2)}s`;
+    // Judge prompt (input to judge) - element ID: detailJudgePrompt
+    const judgePromptEl = document.getElementById('detailJudgePrompt');
+    if (judgePromptEl) {
+        if (result.judge_prompt || result.judge_input) {
+            judgePromptEl.textContent = result.judge_prompt || result.judge_input;
         } else {
-            latencyEl.textContent = '-';
-        }
-    }
-
-    // Tokens per second
-    const tpsEl = document.getElementById('judgeDetailTps');
-    if (tpsEl) {
-        const tps = toFiniteNumber(result.tokens_per_sec);
-        tpsEl.textContent = tps !== null ? `${tps.toFixed(2)} tok/s` : '-';
-    }
-
-    // Token counts
-    const tokensEl = document.getElementById('judgeDetailTokens');
-    if (tokensEl) {
-        const inputTokens = result.input_tokens || result.prompt_eval_count || '-';
-        const outputTokens = result.output_tokens || result.eval_count || '-';
-        tokensEl.textContent = `In: ${inputTokens} / Out: ${outputTokens}`;
-    }
-
-    // Quality score
-    const qualityEl = document.getElementById('judgeDetailQuality');
-    if (qualityEl) {
-        if (isFailed) {
-            qualityEl.innerHTML = '<span style="color: #e74c3c;">N/A</span>';
-        } else {
-            const q = toFiniteNumber(result.quality_score);
-            if (q !== null) {
-                let color = '#2ecc71';
-                if (q < 4) color = '#e74c3c';
-                else if (q < 7) color = '#f39c12';
-                qualityEl.innerHTML = `<span style="color: ${color}; font-weight: 600;">${q.toFixed(1)}/10</span>`;
+            // Reconstruct from prompt + response
+            const prompt = result.prompt || result.prompt_text || '';
+            const response = result.response || '';
+            if (prompt || response) {
+                judgePromptEl.innerHTML = `<strong>Prompt:</strong>\n${escapeHtml(prompt)}\n\n<strong>Response:</strong>\n${escapeHtml(response)}`;
             } else {
-                qualityEl.textContent = 'Pending...';
+                judgePromptEl.textContent = 'Not available';
             }
         }
     }
 
-    // Judge reasoning
-    const reasoningEl = document.getElementById('judgeDetailReasoning');
-    if (reasoningEl) {
+    // Judge explanation - element ID: detailExplanation
+    const explanationEl = document.getElementById('detailExplanation');
+    if (explanationEl) {
         if (isFailed) {
-            reasoningEl.innerHTML = '<div style="color: var(--muted);">Not available for failed tests</div>';
-        } else if (result.judge_reasoning || result.quality_reasoning) {
-            reasoningEl.textContent = result.judge_reasoning || result.quality_reasoning;
+            explanationEl.innerHTML = '<span style="color: var(--muted);">Not available for failed tests</span>';
+            explanationEl.style.borderLeftColor = '#e74c3c';
+            explanationEl.style.background = 'rgba(231, 76, 60, 0.1)';
+        } else if (result.judge_reasoning || result.quality_reasoning || result.judge_explanation) {
+            explanationEl.textContent = result.judge_reasoning || result.quality_reasoning || result.judge_explanation;
+            explanationEl.style.borderLeftColor = '#2ecc71';
+            explanationEl.style.background = 'rgba(46, 204, 113, 0.1)';
         } else {
-            reasoningEl.textContent = 'No reasoning available';
+            explanationEl.textContent = 'No explanation available from judge';
+            explanationEl.style.borderLeftColor = 'var(--muted)';
+            explanationEl.style.background = 'rgba(0,0,0,0.1)';
         }
     }
-
-    // Judge time
-    const judgeTimeEl = document.getElementById('judgeDetailJudgeTime');
-    if (judgeTimeEl) {
-        const jt = toFiniteNumber(result.scoring_time_ms);
-        if (jt !== null) {
-            judgeTimeEl.textContent = jt < 1000 ? `${jt}ms` : `${(jt / 1000).toFixed(2)}s`;
-        } else {
-            judgeTimeEl.textContent = '-';
-        }
-    }
-
-    // Judge model
-    const judgeModelEl = document.getElementById('judgeDetailJudgeModel');
-    if (judgeModelEl) {
-        judgeModelEl.textContent = result.judge_model || state.currentJudgeConfig.model || 'Default';
-    }
-
-    // Timestamp
-    const timestampEl = document.getElementById('judgeDetailTimestamp');
-    if (timestampEl) {
-        if (result.timestamp) {
-            timestampEl.textContent = new Date(result.timestamp).toLocaleString();
-        } else {
-            timestampEl.textContent = '-';
-        }
-    }
-
-    // Navigation buttons
-    updateNavigationButtons(resultIndex);
 }
 
 /**

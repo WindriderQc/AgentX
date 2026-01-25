@@ -105,14 +105,20 @@ export async function runBatch() {
     const perModelContainer = document.getElementById('perModelProgressContainer');
     if (perModelContainer) perModelContainer.style.display = 'none';
 
-    // Clear previous results
+    // Clear previous results and reset timeline state
     document.getElementById('batchResultsContainer').style.display = 'none';
     document.getElementById('batchResultsBody').innerHTML = '';
     state.setCurrentBatchResults([]);
-    window.currentBatchResults = [];
     state.setCurrentJudgeDetailId(null);
-    window.currentJudgeDetailId = null;
+    state.setLastTimelineHash(null);
+    state.setLastTimelineResultIds(new Set());
+    window.lastTimelineHash = null;
     if (batchInfo) batchInfo.innerHTML = '';
+
+    // Reset truncation inspector state for new batch
+    if (window.BenchmarkAnalytics && typeof window.BenchmarkAnalytics.resetTruncationState === 'function') {
+        window.BenchmarkAnalytics.resetTruncationState();
+    }
 
     // Get tags and description
     const tagsInput = document.getElementById('batchTags');
@@ -414,7 +420,7 @@ function updateJudgeHealthStats(batch, results) {
 }
 
 /**
- * Update per-model progress (simplified - full version in original file)
+ * Update per-model progress with full stats
  */
 function updatePerModelProgress(batch, results, showHyper) {
     const perModelContainer = document.getElementById('perModelProgressContainer');
@@ -424,13 +430,278 @@ function updatePerModelProgress(batch, results, showHyper) {
         ? batch.models
         : Array.from(new Set(results.map(r => r && r.model).filter(Boolean)));
 
-    if (models.length === 0) {
+    // Get planned tests per model from batch plan
+    const perModelPlannedFromPlan = batch.plan && batch.plan.tests_per_model
+        ? batch.plan.tests_per_model
+        : (batch.total_tests && models.length > 0 ? Math.ceil(batch.total_tests / models.length) : 0);
+
+    const isQualityEnabled = batch.quality_scoring !== false;
+    const thresholds = getAnomalyThresholds();
+    const minSamples = Math.max(1, Number(thresholds.min_samples) || 3);
+    const showHyperDetails = showHyper;
+
+    if (models.length === 0 || perModelPlannedFromPlan <= 0) {
         perModelContainer.style.display = 'none';
         return;
     }
 
+    const isExecFailed = (r) => r && r.success === false;
+    const isJudgeDone = (r) => r && r.quality_score !== undefined && r.quality_score !== null;
+    const isJudgeFailed = (r) => {
+        if (!r) return false;
+        const m = r.scoring_method;
+        return m === 'exec_failed' || r.success === false;
+    };
+
+    // Median baselines for relative indicators
+    const perModelAggForMedian = models.map(model => {
+        const modelResults = results.filter(r => r && r.model === model);
+        const tpsValues = modelResults
+            .map(r => toFiniteNumber(r && r.tokens_per_sec))
+            .filter(v => v !== null && v > 0);
+        const judgeMsValues = modelResults
+            .map(r => toFiniteNumber(r && r.scoring_time_ms))
+            .filter(v => v !== null && v > 0);
+        const avgTps = tpsValues.length > 0 ? (tpsValues.reduce((sum, v) => sum + v, 0) / tpsValues.length) : null;
+        const avgJudgeMs = judgeMsValues.length > 0 ? (judgeMsValues.reduce((sum, v) => sum + v, 0) / judgeMsValues.length) : null;
+        return { model, avgTps, tpsN: tpsValues.length, avgJudgeMs, judgeMsN: judgeMsValues.length };
+    });
+
+    const medianBaseline = (values) => {
+        const xs = (Array.isArray(values) ? values : []).filter(v => Number.isFinite(v)).slice().sort((a, b) => a - b);
+        if (xs.length === 0) return null;
+        const mid = Math.floor(xs.length / 2);
+        return (xs.length % 2 === 1) ? xs[mid] : (xs[mid - 1] + xs[mid]) / 2;
+    };
+
+    const tpsMedianModelAvg = medianBaseline(perModelAggForMedian.map(x => x.avgTps).filter(v => Number.isFinite(v) && v > 0));
+    const judgeMsMedianModelAvg = medianBaseline(perModelAggForMedian.map(x => x.avgJudgeMs).filter(v => Number.isFinite(v) && v > 0));
+
+    const rows = models.map(model => {
+        const modelResults = results.filter(r => r && r.model === model);
+        const execDone = modelResults.length;
+        const execFailed = modelResults.filter(isExecFailed).length;
+        const execPct = Math.min(100, Math.round((execDone / perModelPlannedFromPlan) * 100));
+
+        const judgeDone = isQualityEnabled ? modelResults.filter(isJudgeDone).length : 0;
+        const judgeFailed = isQualityEnabled ? modelResults.filter(isJudgeFailed).length : 0;
+        const judgePct = isQualityEnabled
+            ? Math.min(100, Math.round((judgeDone / perModelPlannedFromPlan) * 100))
+            : 0;
+
+        const judgeEffPct = (isQualityEnabled && execDone > 0)
+            ? Math.min(100, Math.round((judgeDone / execDone) * 100))
+            : 0;
+
+        const execBar = `
+            <div style="height: 10px; background: rgba(255,255,255,0.06); border: 1px solid var(--panel-border); border-radius: 999px; overflow: hidden;">
+                <div style="height: 100%; width: ${execPct}%; background: var(--accent);"></div>
+            </div>
+            <div style="margin-top: 4px; color: var(--muted); font-size: 0.85em;">${execDone}/${perModelPlannedFromPlan} (fail ${execFailed})</div>
+        `;
+
+        const judgeBar = isQualityEnabled ? `
+            <div style="height: 10px; background: rgba(255,255,255,0.06); border: 1px solid var(--panel-border); border-radius: 999px; overflow: hidden;">
+                <div style="height: 100%; width: ${judgePct}%; background: var(--accent-2);"></div>
+            </div>
+            <div style="margin-top: 4px; color: var(--muted); font-size: 0.85em;">${judgeDone}/${perModelPlannedFromPlan} (eff ${judgeEffPct}% • fail ${judgeFailed})</div>
+        ` : `<div style="color: var(--muted);">Disabled</div>`;
+
+        const latencyAgg = summarizeNumbers(modelResults.map(r => r && r.latency));
+        const tpsAgg = summarizeNumbers(modelResults.map(r => r && r.tokens_per_sec).filter(v => Number(v) > 0));
+        const judgeAgg = summarizeNumbers(modelResults.map(r => r && r.scoring_time_ms).filter(v => Number(v) > 0));
+        const qualityAgg = summarizeNumbers(modelResults.map(r => r && r.quality_score));
+
+        const execHostCounts = countBy(modelResults, (r) => r && r.host ? formatHostLabel(r.host) : null);
+        const judgeHostCounts = countBy(modelResults, (r) => r && r.judge_host ? formatHostLabel(r.judge_host) : null);
+        const methodCounts = countBy(modelResults, (r) => (r && r.scoring_method) ? String(r.scoring_method).toLowerCase() : null);
+        const promptLevelCounts = countBy(modelResults, (r) => (r && r.prompt_level !== undefined && r.prompt_level !== null) ? String(r.prompt_level) : null);
+        const promptCategoryCounts = countBy(modelResults, (r) => (r && r.prompt_category) ? String(r.prompt_category) : null);
+
+        const ratioOrNull = (a, b) => {
+            if (!Number.isFinite(a) || !Number.isFinite(b) || b <= 0) return null;
+            return a / b;
+        };
+        const tpsVsMedian = ratioOrNull(tpsAgg.mean, tpsMedianModelAvg);
+        const judgeMsVsMedian = ratioOrNull(judgeAgg.mean, judgeMsMedianModelAvg);
+        const formatRatio = (x) => (x === null ? '-' : `${x.toFixed(2)}x`);
+        const ratioColor = (x, invert = false) => {
+            if (x === null) return 'var(--muted)';
+            const good = invert ? (x <= 0.85) : (x >= 1.15);
+            const bad = invert ? (x >= 1.25) : (x <= 0.75);
+            if (good) return '#2ecc71';
+            if (bad) return '#e74c3c';
+            return 'var(--text)';
+        };
+
+        // Anomaly detection
+        const tpsBelowPct = Math.max(0, Math.min(100, Number(thresholds.model_tps_below_median_pct) || 30));
+        const judgeMsAbovePct = Math.max(0, Math.min(300, Number(thresholds.model_judge_ms_above_median_pct) || 50));
+        const tpsCutoff = (tpsMedianModelAvg !== null && Number.isFinite(tpsMedianModelAvg))
+            ? (tpsMedianModelAvg * (1 - (tpsBelowPct / 100)))
+            : null;
+        const judgeMsCutoff = (judgeMsMedianModelAvg !== null && Number.isFinite(judgeMsMedianModelAvg))
+            ? (judgeMsMedianModelAvg * (1 + (judgeMsAbovePct / 100)))
+            : null;
+
+        const reasons = [];
+        const execRate = execDone > 0 ? (execFailed / execDone) : 0;
+        const judgeRate = judgeDone > 0 ? (judgeFailed / judgeDone) : 0;
+        const execOutPct = Math.max(0, Math.min(100, Number(thresholds.model_exec_out_pct) || 20)) / 100;
+        const judgeOutPct = Math.max(0, Math.min(100, Number(thresholds.model_judge_out_pct) || 10)) / 100;
+
+        if (execDone >= minSamples && execRate >= execOutPct) reasons.push('<span class="badge bg-danger">FAIL</span>');
+        if (isQualityEnabled && judgeDone >= minSamples && judgeRate >= judgeOutPct) reasons.push('<span class="badge bg-warning text-dark">JFAIL</span>');
+        if (tpsCutoff !== null && tpsAgg.n >= minSamples && Number.isFinite(tpsAgg.mean) && tpsAgg.mean <= tpsCutoff) reasons.push('<span class="badge bg-info text-dark">LOW TPS</span>');
+        if (judgeMsCutoff !== null && judgeAgg.n >= minSamples && Number.isFinite(judgeAgg.mean) && judgeAgg.mean >= judgeMsCutoff) reasons.push('<span class="badge bg-info text-dark">SLOW JUDGE</span>');
+
+        const aggCell = (primary, secondary, title) => `
+            <div title="${title}" style="white-space: nowrap;">
+                <div style="font-weight: 600; color: var(--text);">${primary}</div>
+                <div style="color: var(--muted); font-size: 0.82em;">${secondary}</div>
+            </div>
+        `;
+
+        const latencyCell = aggCell(
+            latencyAgg.n > 0 ? `${Math.round(latencyAgg.p50)}ms` : '-',
+            latencyAgg.n > 0 ? `p95 ${Math.round(latencyAgg.p95)}ms` : `n=0`,
+            latencyAgg.n > 0 ? `n=${latencyAgg.n} avg=${Math.round(latencyAgg.mean)}ms min=${Math.round(latencyAgg.min)}ms max=${Math.round(latencyAgg.max)}ms` : 'No latency data'
+        );
+        const tpsCell = aggCell(
+            tpsAgg.n > 0 ? `${tpsAgg.p50.toFixed(2)} t/s` : '-',
+            tpsAgg.n > 0 ? `p10 ${tpsAgg.p10.toFixed(2)} • vs med ${formatRatio(tpsVsMedian)}` : `n=0`,
+            tpsAgg.n > 0 ? `n=${tpsAgg.n} avg=${tpsAgg.mean.toFixed(2)} p95=${tpsAgg.p95.toFixed(2)} min=${tpsAgg.min.toFixed(2)}` : 'No throughput data'
+        );
+        const judgeMsCell = aggCell(
+            judgeAgg.n > 0 ? `${Math.round(judgeAgg.p50)}ms` : '-',
+            judgeAgg.n > 0 ? `p95 ${Math.round(judgeAgg.p95)}ms • vs med ${formatRatio(judgeMsVsMedian)}` : `n=0`,
+            judgeAgg.n > 0 ? `n=${judgeAgg.n} avg=${Math.round(judgeAgg.mean)}ms max=${Math.round(judgeAgg.max)}ms` : 'No judge-time data'
+        );
+        const qualityCell = aggCell(
+            qualityAgg.n > 0 ? `${qualityAgg.p50.toFixed(2)}` : '-',
+            qualityAgg.n > 0 ? `p10 ${qualityAgg.p10.toFixed(2)}` : `n=0`,
+            qualityAgg.n > 0 ? `n=${qualityAgg.n} avg=${qualityAgg.mean.toFixed(2)} p95=${qualityAgg.p95.toFixed(2)} min=${qualityAgg.min.toFixed(2)}` : 'No quality data'
+        );
+
+        // Build hyper snapshot for expandable row
+        const recentErrors = modelResults
+            .filter(r => isExecFailed(r) || isJudgeFailed(r))
+            .slice(-5)
+            .map(r => ({
+                prompt_id: r.prompt_id,
+                scoring_method: r.scoring_method,
+                error: r.error || null,
+                host: r.host || null,
+                judge_host: r.judge_host || null
+            }));
+
+        const modelSnapshot = {
+            model,
+            planned: perModelPlannedFromPlan,
+            exec: { done: execDone, failed: execFailed, percent: execPct },
+            judge: isQualityEnabled ? { done: judgeDone, failed: judgeFailed, percent_planned: judgePct, percent_effective: judgeEffPct } : { disabled: true },
+            aggregates: {
+                latency_ms: latencyAgg,
+                tokens_per_sec: tpsAgg,
+                judge_time_ms: judgeAgg,
+                quality_score: qualityAgg,
+                vs_median: { model_avg_tokens_per_sec_ratio: tpsVsMedian, model_avg_judge_time_ms_ratio: judgeMsVsMedian }
+            },
+            breakdowns: { exec_host: execHostCounts, judge_host: judgeHostCounts, scoring_method: methodCounts, prompt_level: promptLevelCounts, prompt_category: promptCategoryCounts },
+            recent_errors: recentErrors
+        };
+
+        const hyperToggle = showHyperDetails
+            ? `<button type="button" class="btn-secondary" data-action="toggle-model-hyper" data-model="${String(model).replace(/"/g, '&quot;')}" style="padding: 6px 10px;">Hyper</button>`
+            : '';
+
+        return `
+            <tr data-model-main-row="${String(model).replace(/"/g, '&quot;')}">
+                <td style="padding: 10px 10px; font-weight: 600; color: var(--text); white-space: nowrap;">
+                    <div style="display:flex; align-items:center; justify-content: space-between; gap: 10px;">
+                        <div style="display:flex; flex-direction: column; gap: 4px;">
+                            <span>${escapeHtml(model)}</span>
+                            ${reasons.length > 0 ? `<div style="display:flex; gap: 6px; flex-wrap: wrap;">${reasons.join('')}</div>` : ''}
+                        </div>
+                        ${hyperToggle}
+                    </div>
+                </td>
+                <td style="padding: 10px 10px; min-width: 220px;">${execBar}</td>
+                <td style="padding: 10px 10px; min-width: 220px;">${judgeBar}</td>
+                <td style="padding: 10px 10px; min-width: 140px;">${latencyCell}</td>
+                <td style="padding: 10px 10px; min-width: 140px;"><div style="color: ${ratioColor(tpsVsMedian, false)};">${tpsCell}</div></td>
+                <td style="padding: 10px 10px; min-width: 140px;"><div style="color: ${ratioColor(judgeMsVsMedian, true)};">${judgeMsCell}</div></td>
+                <td style="padding: 10px 10px; min-width: 140px;">${qualityCell}</td>
+            </tr>
+            <tr data-model-hyper-row="${String(model).replace(/"/g, '&quot;')}" style="display:none;">
+                <td colspan="7" style="padding: 0 10px 10px;">
+                    <div class="advanced-details" style="margin-top: 0;">
+                        <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom: 6px;">
+                            <div style="display:flex; align-items:center; gap: 10px; flex-wrap: wrap;">
+                                <div style="font-weight: 700; color: var(--text);">${escapeHtml(model)} — hyper snapshot</div>
+                                <button type="button" class="btn-secondary" data-action="inspect-model" data-mode="failure" data-model="${String(model).replace(/"/g, '&quot;')}" style="padding: 6px 10px;">Inspect failure</button>
+                                <button type="button" class="btn-secondary" data-action="inspect-model" data-mode="worst_latency" data-model="${String(model).replace(/"/g, '&quot;')}" style="padding: 6px 10px;">Inspect worst latency</button>
+                                <button type="button" class="btn-secondary" data-action="inspect-model" data-mode="lowest_quality" data-model="${String(model).replace(/"/g, '&quot;')}" style="padding: 6px 10px;">Inspect lowest quality</button>
+                            </div>
+                        </div>
+                        <pre style="margin:0;">${JSON.stringify(modelSnapshot, null, 2)}</pre>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+
     perModelContainer.style.display = 'block';
-    // Full implementation would render per-model rows here
+    perModelContainer.innerHTML = `
+        <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom: 10px;">
+            <div style="font-weight: 700; color: var(--text);">Per-model Progress</div>
+            <div style="color: var(--muted); font-size: 0.85em;">Planned per model: ${perModelPlannedFromPlan}</div>
+        </div>
+        <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse;">
+                <thead>
+                    <tr style="text-align:left; color: var(--muted); font-size: 0.85em; text-transform: uppercase; letter-spacing: 0.05em;">
+                        <th style="padding: 8px 10px;">Model</th>
+                        <th style="padding: 8px 10px;">Exec</th>
+                        <th style="padding: 8px 10px;">Judge</th>
+                        <th style="padding: 8px 10px;">Latency</th>
+                        <th style="padding: 8px 10px;">t/s</th>
+                        <th style="padding: 8px 10px;">Judge ms</th>
+                        <th style="padding: 8px 10px;">Quality</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${rows}
+                </tbody>
+            </table>
+        </div>
+    `;
+
+    // Bind click handlers for hyper toggle and inspect buttons
+    if (!perModelContainer.dataset.hyperBound) {
+        perModelContainer.addEventListener('click', (e) => {
+            const inspectBtn = e.target && e.target.closest && e.target.closest('[data-action="inspect-model"]');
+            if (inspectBtn) {
+                const model = inspectBtn.getAttribute('data-model');
+                const mode = inspectBtn.getAttribute('data-mode') || 'failure';
+                const idOrIndex = pickRepresentativeResultIdForModel(model, mode);
+                if (idOrIndex !== null && typeof window.showJudgeDetails === 'function') {
+                    window.showJudgeDetails(idOrIndex);
+                }
+                return;
+            }
+
+            const btn = e.target && e.target.closest && e.target.closest('[data-action="toggle-model-hyper"]');
+            if (!btn) return;
+            const model = btn.getAttribute('data-model');
+            const row = findRowByAttr(perModelContainer, 'data-model-hyper-row', model);
+            if (!row) return;
+            const isOpen = row.style.display !== 'none';
+            row.style.display = isOpen ? 'none' : '';
+            btn.textContent = isOpen ? 'Hyper' : 'Hide';
+        });
+        perModelContainer.dataset.hyperBound = 'true';
+    }
 }
 
 /**
@@ -523,7 +794,9 @@ function handleBatchComplete(batch) {
         state.setBatchPollInterval(null);
     }
     localStorage.removeItem('currentBatchId');
-    state.setCurrentBatchId(null);
+
+    // Don't clear currentBatchId yet - keep it so truncation stats show batch results
+    // state.setCurrentBatchId(null);
 
     const status = document.getElementById('batchStatus');
     const btn = document.getElementById('runBatchBtn');
@@ -545,6 +818,11 @@ function handleBatchComplete(batch) {
     }
 
     status.style.display = 'block';
+
+    // Refresh truncation stats to show final batch truncation data
+    if (window.BenchmarkAnalytics && typeof window.BenchmarkAnalytics.loadTruncationStats === 'function') {
+        window.BenchmarkAnalytics.loadTruncationStats();
+    }
 }
 
 /**

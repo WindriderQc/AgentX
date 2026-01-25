@@ -9,7 +9,7 @@
  */
 
 // Import from config
-import { currentFilters, resetFilters } from './config.js';
+import { currentFilters, resetFilters, resetTruncationState } from './config.js';
 
 // Import from modules
 import { startActiveMonitoring, stopActiveMonitoring, loadActiveStats } from './monitoring.js';
@@ -299,6 +299,7 @@ const BenchmarkAnalytics = {
     setupTruncationWidget,
     applyTruncationFilter,
     openTruncationInspector,
+    resetTruncationState,
     compareBatches,
     stopActiveMonitoring,
     filterByModelCategory,

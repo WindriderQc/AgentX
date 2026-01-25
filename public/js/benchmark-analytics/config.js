@@ -92,3 +92,12 @@ export function getInspectorData() {
 export function setInspectorData(data) {
     _inspectorData = data;
 }
+
+/**
+ * Reset truncation/inspector state for new batch
+ */
+export function resetTruncationState() {
+    _activeTruncationFilter = null;
+    _inspectorActiveFilter = 'all';
+    _inspectorData = [];
+}

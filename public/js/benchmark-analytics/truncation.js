@@ -24,8 +24,9 @@ export async function loadTruncationStats() {
     if (!widget || !grid) return;
 
     try {
-        // If we have an active batch, only show stats for that batch
-        const batchIdParam = window.currentBatchId ? `?batch_id=${window.currentBatchId}` : '?limit=500';
+        // If we have an active batch, show stats for entire batch (no limit)
+        // Otherwise fall back to recent tests with a limit
+        const batchIdParam = window.currentBatchId ? `?batch_id=${window.currentBatchId}` : '?limit=100';
         const res = await fetch(`${BENCHMARK_API}/truncation-stats${batchIdParam}`);
         const json = await res.json();
         if (json.status !== 'success') throw new Error(json.error);
@@ -76,7 +77,7 @@ export async function loadTruncationStats() {
             `;
         };
 
-        const scopeLabel = window.currentBatchId ? 'This Batch' : 'Last 500 Tests';
+        const scopeLabel = window.currentBatchId ? 'Current Batch' : 'Recent Tests';
 
         grid.innerHTML = `
             ${makeCard('response_truncated', stats.response_truncated, 'Response Truncated', stats.response_truncated_pct, stats.response_truncated > 0 ? '#ff6b6b' : 'var(--text)', true)}
@@ -317,7 +318,8 @@ function renderInspectorTests() {
 
         const qualityScore = r.quality_score !== undefined && r.quality_score !== null ? r.quality_score : 'N/A';
         const latency = r.latency ? `${Math.round(r.latency)}ms` : 'N/A';
-        const tps = r.tokens_per_sec ? r.tokens_per_sec.toFixed(2) : 'N/A';
+        const tpsValue = parseFloat(r.tokens_per_sec);
+        const tps = !isNaN(tpsValue) ? tpsValue.toFixed(2) : 'N/A';
 
         return `
             <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255, 107, 107, 0.3); border-radius: 6px; padding: 12px;">
