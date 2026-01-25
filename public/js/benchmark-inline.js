@@ -243,10 +243,10 @@
                         }
                     };
                     currentExecutionConfig = {
-                        response_tokens_multiplier: parseFloat(document.getElementById('execTokenMultiplier')?.value) || 2,
+                        response_tokens_multiplier: parseFloat(document.getElementById('execTokenMultiplier')?.value) || 2.5,
                         response_min_tokens: parseInt(document.getElementById('execTokenMin')?.value) || 100,
-                        response_max_tokens: parseInt(document.getElementById('execTokenMax')?.value) || 2000,
-                        include_length_hint: !!document.getElementById('execIncludeLengthHint')?.checked,
+                        response_max_tokens: parseInt(document.getElementById('execTokenMax')?.value) || 4000,
+                        include_length_hint: document.getElementById('execIncludeLengthHint')?.checked ?? true,
                         length_hint_template: document.getElementById('execLengthTemplate')?.value || 'Answer in ~{target} tokens (max {max} tokens).'
                     };
                     settingsModal.style.display = 'none';
@@ -626,16 +626,16 @@
                         currentJudgeConfig = { ...config };
                         currentExecutionConfig = { ...execConfig };
                         if (document.getElementById('execTokenMultiplier')) {
-                            document.getElementById('execTokenMultiplier').value = execConfig.response_tokens_multiplier ?? 2;
+                            document.getElementById('execTokenMultiplier').value = execConfig.response_tokens_multiplier ?? 2.5;
                         }
                         if (document.getElementById('execTokenMin')) {
                             document.getElementById('execTokenMin').value = execConfig.response_min_tokens ?? 100;
                         }
                         if (document.getElementById('execTokenMax')) {
-                            document.getElementById('execTokenMax').value = execConfig.response_max_tokens ?? 2000;
+                            document.getElementById('execTokenMax').value = execConfig.response_max_tokens ?? 4000;
                         }
                         if (document.getElementById('execIncludeLengthHint')) {
-                            document.getElementById('execIncludeLengthHint').checked = !!execConfig.include_length_hint;
+                            document.getElementById('execIncludeLengthHint').checked = execConfig.include_length_hint ?? true;
                         }
                         if (document.getElementById('execLengthTemplate')) {
                             document.getElementById('execLengthTemplate').value = execConfig.length_hint_template || 'Answer in ~{target} tokens (max {max} tokens).';
@@ -644,16 +644,16 @@
                     if (Object.keys(currentExecutionConfig).length === 0) {
                         currentExecutionConfig = { ...execConfig };
                         if (document.getElementById('execTokenMultiplier')) {
-                            document.getElementById('execTokenMultiplier').value = execConfig.response_tokens_multiplier ?? 2;
+                            document.getElementById('execTokenMultiplier').value = execConfig.response_tokens_multiplier ?? 2.5;
                         }
                         if (document.getElementById('execTokenMin')) {
                             document.getElementById('execTokenMin').value = execConfig.response_min_tokens ?? 100;
                         }
                         if (document.getElementById('execTokenMax')) {
-                            document.getElementById('execTokenMax').value = execConfig.response_max_tokens ?? 2000;
+                            document.getElementById('execTokenMax').value = execConfig.response_max_tokens ?? 4000;
                         }
                         if (document.getElementById('execIncludeLengthHint')) {
-                            document.getElementById('execIncludeLengthHint').checked = !!execConfig.include_length_hint;
+                            document.getElementById('execIncludeLengthHint').checked = execConfig.include_length_hint ?? true;
                         }
                         if (document.getElementById('execLengthTemplate')) {
                             document.getElementById('execLengthTemplate').value = execConfig.length_hint_template || 'Answer in ~{target} tokens (max {max} tokens).';
@@ -2441,12 +2441,17 @@
                     const getLevelBadgeStyle = (level) => {
                         const lvl = Number(level);
                         switch (lvl) {
-                            case 1: return 'background: rgba(220, 38, 38, 0.2); color: #f87171;'; // Red
-                            case 2: return 'background: rgba(16, 185, 129, 0.2); color: #34d399;'; // Green
-                            case 3: return 'background: rgba(245, 158, 11, 0.2); color: #fbbf24;'; // Yellow
-                            case 4: return 'background: rgba(6, 182, 212, 0.2); color: #22d3ee;'; // Blue/Cyan
-                            case 5: return 'background: rgba(255, 215, 0, 0.2); color: #ffed4e;'; // Gold
-                            default: return 'background: rgba(46, 204, 113, 0.2); color: #2ecc71;'; // Fallback
+                            case 1: return 'background: rgba(34, 197, 94, 0.2); color: #22c55e;';   // Green - easy
+                            case 2: return 'background: rgba(74, 222, 128, 0.2); color: #4ade80;';  // Light green
+                            case 3: return 'background: rgba(132, 204, 22, 0.2); color: #84cc16;';  // Lime
+                            case 4: return 'background: rgba(163, 230, 53, 0.2); color: #a3e635;';  // Yellow-green
+                            case 5: return 'background: rgba(234, 179, 8, 0.2); color: #eab308;';   // Yellow - medium
+                            case 6: return 'background: rgba(245, 158, 11, 0.2); color: #f59e0b;';  // Amber
+                            case 7: return 'background: rgba(249, 115, 22, 0.2); color: #f97316;';  // Orange
+                            case 8: return 'background: rgba(239, 68, 68, 0.2); color: #ef4444;';   // Red - hard
+                            case 9: return 'background: rgba(220, 38, 38, 0.2); color: #dc2626;';   // Dark red
+                            case 10: return 'background: rgba(147, 51, 234, 0.2); color: #9333ea;'; // Purple - extreme
+                            default: return 'background: rgba(100, 116, 139, 0.2); color: #64748b;'; // Gray fallback
                         }
                     };
                     const levelBadge = currentTest.prompt_level ? ` <span style="${getLevelBadgeStyle(currentTest.prompt_level)} padding: 2px 8px; border-radius: 12px; font-size: 0.8em; font-weight: 600;">L${currentTest.prompt_level}</span>` : '';
@@ -3082,6 +3087,21 @@
                         const judgeInfo = r.judge_host ? `<div style="font-size: 0.75em; color: var(--muted);">Judge: ${formatHostLabel(r.judge_host)}</div>` : '';
                         const judgeStatus = r.scoring_method ? `<div style="font-size: 0.75em; color: var(--muted);">Status: ${r.scoring_method}</div>` : '';
 
+                        // Truncation badges
+                        const truncationBadges = [];
+                        if (r.response_truncated === true) {
+                            truncationBadges.push('<span style="display: inline-block; font-size: 0.65em; padding: 2px 6px; background: rgba(255, 107, 107, 0.2); border: 1px solid #ff6b6b; border-radius: 3px; color: #ff6b6b; margin-right: 4px; margin-top: 4px;" title="Response was truncated"><i class="fas fa-cut"></i> RESPONSE CUT</span>');
+                        }
+                        if (r.input_to_judge_truncated === true) {
+                            truncationBadges.push('<span style="display: inline-block; font-size: 0.65em; padding: 2px 6px; background: rgba(241, 196, 15, 0.2); border: 1px solid #f1c40f; border-radius: 3px; color: #f1c40f; margin-right: 4px; margin-top: 4px;" title="Input to judge was truncated"><i class="fas fa-scissors"></i> INPUT CUT</span>');
+                        }
+                        if (r.judge_response_truncated === true) {
+                            truncationBadges.push('<span style="display: inline-block; font-size: 0.65em; padding: 2px 6px; background: rgba(255, 107, 107, 0.2); border: 1px solid #ff6b6b; border-radius: 3px; color: #ff6b6b; margin-right: 4px; margin-top: 4px;" title="Judge response was truncated"><i class="fas fa-cut"></i> JUDGE CUT</span>');
+                        }
+                        const truncationLine = truncationBadges.length > 0 
+                            ? `<div style="margin-top: 4px;">${truncationBadges.join('')}</div>` 
+                            : '';
+
                         // Failed test indicators
                         const failureIcon = isFailed ? '<i class="fas fa-exclamation-triangle" style="color: #e74c3c; margin-right: 6px;"></i>' : '';
                         const errorPreview = isFailed && r.error
@@ -3098,7 +3118,7 @@
                                     ${hostInfo}
                                 </td>
                                 <td style="padding: 8px 12px;">
-                                    ${escapeHtml(r.prompt_name)}${perfLine}${errorPreview}
+                                    ${escapeHtml(r.prompt_name)}${perfLine}${truncationLine}${errorPreview}
                                 </td>
                                 <td style="padding: 8px 12px; text-align: center;" class="${qualityClass}">
                                     ${isFailed ? '<span style="color: #e74c3c; font-weight: 600;">FAILED</span>' : qualityScore}
@@ -3114,6 +3134,11 @@
                             </tr>
                         `;
                     }).join('');
+                    
+                    // Apply truncation filter if active
+                    if (typeof window.BenchmarkAnalytics !== 'undefined' && window.BenchmarkAnalytics.applyTruncationFilter) {
+                        window.BenchmarkAnalytics.applyTruncationFilter();
+                    }
                 }
 
                 // Hyper details: structured snapshot (avoid full results array)
@@ -4469,7 +4494,7 @@
 
                 return `
                     <div style="border-bottom: 1px solid rgba(124, 240, 255, 0.2); padding-bottom: 8px; margin-bottom: 8px;">
-                        <h4 style="margin: 0 0 4px;">${escapeHtml(visual.label)}</h4>
+                        <h4 style="margin: 0 0 4px;"><i class="fas ${visual.icon}" style="margin-right: 8px; color: var(--accent);"></i>${escapeHtml(visual.label)}</h4>
                         <div style="font-size: 0.8em; color: rgba(255,255,255,0.6);">T+${formatTimelineMs(sinceStart)}</div>
                     </div>
                     <div style="display: grid; grid-template-columns: auto 1fr; gap: 6px 12px;">
@@ -4551,7 +4576,7 @@
 
                     if (event.event === 'test_complete' && event.success !== false) {
                         const level = getEventLevel(event);
-                        if (Number.isFinite(level) && level >= 1 && level <= 5) {
+                        if (Number.isFinite(level) && level >= 1 && level <= 10) {
                             visual = { ...visual, class: `segment-level-${level}` };
                         }
                     }
@@ -4579,12 +4604,7 @@
 		                return `
 		                    <div class="${rowClass}">
 		                        <div class="timeline-model-label">
-		                            <i class="fas ${rowIcon}" style="color:var(--accent)"></i>
-		                            <span class="timeline-model-name" title="${escapeHtml(laneLabel)}">${escapeHtml(laneLabel)}</span>
-		                            ${rowBadge}
-		                        </div>
-		                        <div class="timeline-track timeline-track-absolute" style="height:${laneHeight}px;">
-		                            <div style="position: relative; width: ${trackWidth}px; height: ${laneHeight}px;">
+
 		                                ${segmentsHtml}
 		                            </div>
 	                        </div>
@@ -4820,7 +4840,7 @@
                     if (result.success === false) return stageVisuals['test-error'];
                     if (result.success) {
                         const level = getResultLevel(result);
-                        if (Number.isFinite(level) && level >= 1 && level <= 5) {
+                        if (Number.isFinite(level) && level >= 1 && level <= 10) {
                             return { icon: 'fa-check-circle', class: `segment-level-${level}` };
                         }
                     }
@@ -4898,7 +4918,7 @@
                         const widthPx = calcSegmentWidth(durationMs || 500);
                         const tooltipHtml = `
                             <div style="border-bottom: 1px solid rgba(124, 240, 255, 0.2); padding-bottom: 6px; margin-bottom: 6px;">
-                                <strong>${escapeHtml(visual.label)}</strong>
+                                <strong><i class="fas ${visual.icon}" style="margin-right: 8px; color: var(--accent);"></i>${escapeHtml(visual.label)}</strong>
                             </div>
                             <div style="display: grid; grid-template-columns: auto 1fr; gap: 6px 12px;">
                                 ${event.model ? `
@@ -4919,7 +4939,6 @@
                         return `
                             <div class="timeline-segment-group" style="width: ${widthPx}px;" onmouseenter="showTimelineTooltip(event, '${tooltipEncoded}')">
                                 <div class="timeline-segment ${visual.class}" style="width: 100%;">
-                                    <i class="fas ${visual.icon}"></i>
                                 </div>
                             </div>
                         `;
@@ -4928,7 +4947,6 @@
                     rowsHtml += `
                         <div class="timeline-model-row prep-lane">
                             <div class="timeline-model-label">
-                                <i class="fas fa-flask" style="color:var(--accent)"></i>
                                 Prep <span class="prep-lane-badge">Prep</span>
                             </div>
                             <div class="timeline-track">
@@ -4959,7 +4977,7 @@
                         const warmupWidthPx = calcSegmentWidth(durationMs);
                         const tooltipHtml = `
                             <div style="border-bottom: 1px solid rgba(124, 240, 255, 0.2); padding-bottom: 6px; margin-bottom: 6px;">
-                                <strong>Model Warmup Ready</strong>
+                                <strong><i class="fas fa-bolt" style="margin-right: 8px; color: var(--accent);"></i>Model Warmup Ready</strong>
                             </div>
                             <div style="display: grid; grid-template-columns: auto 1fr; gap: 6px 12px;">
                                 <span style="color: rgba(255,255,255,0.6);">Model:</span>
@@ -4978,7 +4996,6 @@
                         segmentsHtml += `
                             <div class="timeline-segment-group" style="width: ${warmupWidthPx}px;" onmouseenter="showTimelineTooltip(event, '${tooltipEncoded}')">
                                 <div class="timeline-segment segment-warmup" style="width: 100%;">
-                                    <i class="fas fa-bolt"></i>
                                 </div>
                             </div>
                         `;
@@ -5036,7 +5053,7 @@
 
                         const tooltipHtml = `
                             <div style="border-bottom: 2px solid rgba(124, 240, 255, 0.3); padding-bottom: 8px; margin-bottom: 10px;">
-                                <h4 style="margin: 0 0 4px; color: #7cf0ff; font-size: 1.15em; font-weight: 600;">${modelName}</h4>
+                                <h4 style="margin: 0 0 4px; color: #7cf0ff; font-size: 1.15em; font-weight: 600;"><i class="fas ${visual.icon}" style="margin-right: 8px;"></i>${modelName}</h4>
                                 <div style="font-size: 0.8em; color: rgba(255,255,255,0.6);">${new Date(result.timestamp).toLocaleString()}</div>
                             </div>
                             <div style="display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; margin-bottom: 10px;">
@@ -5104,7 +5121,6 @@
                         return `
                             <div class="timeline-segment-group" style="width: ${widthPx}px;" onmouseenter="showTimelineTooltip(event, '${tooltipEncoded}')">
                                 <div class="timeline-segment ${visual.class}" style="width: 100%;">
-                                    <i class="fas ${visual.icon}"></i>
                                 </div>
                             </div>`;
                     }).join('');
@@ -5138,7 +5154,6 @@
                         segmentsHtml += `
                         <div class="timeline-segment-group" style="width: 140px; opacity: 1; margin-left:8px; display:flex; flex-direction:column; justify-content:center; align-items:flex-start; overflow:visible;">
                             <div class="timeline-segment ${visualClass}" style="width: 100%; height: 20px; margin-bottom: 2px;">
-                                <i class="fas ${activeIcon}"></i>
                                 <span>${activeText}</span>
                             </div>
                             <div style="font-size:0.7em; color:var(--accent); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:140px; padding-left:4px;">
@@ -5152,7 +5167,6 @@
                     rowsHtml += `
                     <div class="timeline-model-row">
                         <div class="timeline-model-label">
-                            <i class="fas fa-cube" style="color:var(--accent)"></i>
                             ${safeModelLabel}
                         </div>
                         <div class="timeline-track">

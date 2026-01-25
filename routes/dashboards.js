@@ -109,7 +109,7 @@ router.get('/:id', validateObjectIdParam('id'), async (req, res) => {
     try {
         // SECURITY: Cast to ObjectId to prevent NoSQL injection
         const dashboard = await CustomDashboard.findOne({
-            _id: mongoose.Types.ObjectId(req.params.id),
+            _id: new mongoose.Types.ObjectId(req.params.id),
             workspaceId: req.workspace._id
         });
 
@@ -137,7 +137,7 @@ router.patch('/:id', async (req, res) => {
         const { name, description, layout, isPublic } = req.body;
 
         const dashboard = await CustomDashboard.findOne({
-            _id: mongoose.Types.ObjectId(req.params.id),
+            _id: new mongoose.Types.ObjectId(req.params.id),
             workspaceId: req.workspace._id
         });
 
@@ -179,7 +179,7 @@ router.patch('/:id', async (req, res) => {
 router.post('/:id/panels', async (req, res) => {
     try {
         const dashboard = await CustomDashboard.findOne({
-            _id: mongoose.Types.ObjectId(req.params.id),
+            _id: new mongoose.Types.ObjectId(req.params.id),
             workspaceId: req.workspace._id
         });
 
@@ -223,7 +223,7 @@ router.post('/:id/panels', async (req, res) => {
 router.patch('/:id/panels/:panelId', async (req, res) => {
     try {
         const dashboard = await CustomDashboard.findOne({
-            _id: mongoose.Types.ObjectId(req.params.id),
+            _id: new mongoose.Types.ObjectId(req.params.id),
             workspaceId: req.workspace._id
         });
 
@@ -276,7 +276,7 @@ router.patch('/:id/panels/:panelId', async (req, res) => {
 router.delete('/:id/panels/:panelId', async (req, res) => {
     try {
         const dashboard = await CustomDashboard.findOne({
-            _id: mongoose.Types.ObjectId(req.params.id),
+            _id: new mongoose.Types.ObjectId(req.params.id),
             workspaceId: req.workspace._id
         });
 
@@ -310,7 +310,7 @@ router.delete('/:id/panels/:panelId', async (req, res) => {
 router.delete('/:id', async (req, res) => {
     try {
         const dashboard = await CustomDashboard.findOne({
-            _id: mongoose.Types.ObjectId(req.params.id),
+            _id: new mongoose.Types.ObjectId(req.params.id),
             workspaceId: req.workspace._id
         });
 
@@ -336,7 +336,7 @@ router.delete('/:id', async (req, res) => {
 router.post('/:id/refresh', async (req, res) => {
     try {
         const dashboard = await CustomDashboard.findOne({
-            _id: mongoose.Types.ObjectId(req.params.id),
+            _id: new mongoose.Types.ObjectId(req.params.id),
             workspaceId: req.workspace._id
         });
 

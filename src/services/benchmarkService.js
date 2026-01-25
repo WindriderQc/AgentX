@@ -23,10 +23,10 @@ const { HOSTS, MODEL_ROUTING } = require('./modelRouter');
 const hardwareProfileService = require('./hardwareProfileService');
 
 const DEFAULT_EXECUTION_CONFIG = {
-    response_tokens_multiplier: 2,
+    response_tokens_multiplier: 2.5,
     response_min_tokens: 100,
-    response_max_tokens: 2000,
-    include_length_hint: false,
+    response_max_tokens: 4000,
+    include_length_hint: true,
     length_hint_template: 'Answer in ~{target} tokens (max {max} tokens).'
 };
 
@@ -2010,7 +2010,11 @@ class BenchmarkService {
                 response_preview: r.response
                     ? `${r.response.substring(0, 100)}...`
                     : '',
-                timestamp: r.timestamp
+                timestamp: r.timestamp,
+                // Flatten truncation fields for easy access
+                response_truncated: r.truncation?.response_truncated || false,
+                input_to_judge_truncated: r.truncation?.input_to_judge_truncated || false,
+                judge_response_truncated: r.truncation?.judge_truncated || false
             };
         });
 

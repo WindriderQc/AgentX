@@ -587,9 +587,14 @@
                 <h4 style="margin: 0; font-size: 1em; color: var(--text); display: flex; align-items: center; gap: 8px;">
                     <i class="fas fa-cut" style="color: #ff6b6b;"></i> Truncation Detected
                 </h4>
-                <button id="truncationRefreshBtn" class="btn-secondary btn-sm" style="padding: 4px 10px; font-size: 0.8em;">
-                    <i class="fas fa-sync-alt"></i>
-                </button>
+                <div style="display: flex; gap: 8px;">
+                    <button id="truncationInspectBtn" class="btn-primary btn-sm" style="padding: 4px 12px; font-size: 0.8em;">
+                        <i class="fas fa-search-plus"></i> Inspect
+                    </button>
+                    <button id="truncationRefreshBtn" class="btn-secondary btn-sm" style="padding: 4px 10px; font-size: 0.8em;">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                </div>
             </div>
             <div id="truncationStatsGrid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px;">
                 <!-- Stats populated by JS -->
@@ -675,7 +680,7 @@
                     </label>
                     <div class="form-group">
                         <label for="execTokenMultiplier">Response Tokens Multiplier</label>
-                        <input type="number" id="execTokenMultiplier" value="2" step="0.1" min="0.25">
+                        <input type="number" id="execTokenMultiplier" value="2.5" step="0.1" min="0.25">
                         <small class="form-text text-muted">num_predict = expected_tokens * multiplier (clamped).</small>
                     </div>
                     <div class="form-group">
@@ -684,11 +689,11 @@
                     </div>
                     <div class="form-group">
                         <label for="execTokenMax">Response Max Tokens</label>
-                        <input type="number" id="execTokenMax" value="2000" step="50" min="1">
+                        <input type="number" id="execTokenMax" value="4000" step="50" min="1">
                     </div>
                     <div class="form-group">
                         <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-                            <input type="checkbox" id="execIncludeLengthHint" style="width: 16px; height: 16px;" />
+                            <input type="checkbox" id="execIncludeLengthHint" style="width: 16px; height: 16px;" checked />
                             Inject length requirement into prompt
                         </label>
                         <small class="form-text text-muted">Appends length line to each prompt using template below.</small>
@@ -947,6 +952,77 @@
                     <label>Judge's Explanation</label>
                     <div id="detailExplanation"
                         style="background: rgba(46, 204, 113, 0.1); padding: 12px; border-radius: 6px; border-left: 4px solid #2ecc71; white-space: pre-wrap;">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-primary close-btn">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Truncation Inspector Modal -->
+    <div id="truncationInspectorModal" class="modal">
+        <div class="modal-content" style="max-width: 1200px;">
+            <div class="modal-header">
+                <h2><i class="fas fa-cut" style="color: #ff6b6b;"></i> Truncation Inspector</h2>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <!-- Summary Stats -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 24px;">
+                    <div style="background: rgba(255, 107, 107, 0.1); border: 1px solid rgba(255, 107, 107, 0.3); border-radius: 8px; padding: 12px;">
+                        <div style="font-size: 0.85em; color: var(--muted); margin-bottom: 4px;">Response Truncated</div>
+                        <div style="font-size: 1.8em; font-weight: 700; color: #ff6b6b;" id="inspectorResponseCount">0</div>
+                    </div>
+                    <div style="background: rgba(241, 196, 15, 0.1); border: 1px solid rgba(241, 196, 15, 0.3); border-radius: 8px; padding: 12px;">
+                        <div style="font-size: 0.85em; color: var(--muted); margin-bottom: 4px;">Input to Judge Cut</div>
+                        <div style="font-size: 1.8em; font-weight: 700; color: #f1c40f;" id="inspectorInputCount">0</div>
+                    </div>
+                    <div style="background: rgba(255, 107, 107, 0.1); border: 1px solid rgba(255, 107, 107, 0.3); border-radius: 8px; padding: 12px;">
+                        <div style="font-size: 0.85em; color: var(--muted); margin-bottom: 4px;">Judge Truncated</div>
+                        <div style="font-size: 1.8em; font-weight: 700; color: #ff6b6b;" id="inspectorJudgeCount">0</div>
+                    </div>
+                    <div style="background: rgba(124, 240, 255, 0.1); border: 1px solid rgba(124, 240, 255, 0.3); border-radius: 8px; padding: 12px;">
+                        <div style="font-size: 0.85em; color: var(--muted); margin-bottom: 4px;">Total Affected</div>
+                        <div style="font-size: 1.8em; font-weight: 700; color: var(--accent);" id="inspectorTotalCount">0</div>
+                    </div>
+                </div>
+
+                <!-- Filter Tabs -->
+                <div style="display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;">
+                    <button class="truncation-filter-tab active" data-type="all" style="padding: 8px 16px; border: 1px solid var(--panel-border); background: rgba(124, 240, 255, 0.15); border-radius: 6px; cursor: pointer; color: var(--text); font-weight: 600;">
+                        <i class="fas fa-list"></i> All Truncated (0)
+                    </button>
+                    <button class="truncation-filter-tab" data-type="response_truncated" style="padding: 8px 16px; border: 1px solid rgba(255, 107, 107, 0.3); background: rgba(255, 107, 107, 0.1); border-radius: 6px; cursor: pointer; color: var(--text);">
+                        <i class="fas fa-cut"></i> Response (0)
+                    </button>
+                    <button class="truncation-filter-tab" data-type="input_truncated" style="padding: 8px 16px; border: 1px solid rgba(241, 196, 15, 0.3); background: rgba(241, 196, 15, 0.1); border-radius: 6px; cursor: pointer; color: var(--text);">
+                        <i class="fas fa-scissors"></i> Input (0)
+                    </button>
+                    <button class="truncation-filter-tab" data-type="judge_truncated" style="padding: 8px 16px; border: 1px solid rgba(255, 107, 107, 0.3); background: rgba(255, 107, 107, 0.1); border-radius: 6px; cursor: pointer; color: var(--text);">
+                        <i class="fas fa-gavel"></i> Judge (0)
+                    </button>
+                </div>
+
+                <!-- Affected Tests List -->
+                <div style="background: rgba(0,0,0,0.2); border: 1px solid var(--panel-border); border-radius: 8px; padding: 16px; max-height: 500px; overflow-y: auto;">
+                    <div id="truncationTestsList" style="display: flex; flex-direction: column; gap: 12px;">
+                        <!-- Populated by JS -->
+                        <div style="text-align: center; color: var(--muted); padding: 40px;">Loading truncated tests...</div>
+                    </div>
+                </div>
+
+                <!-- Navigation -->
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--panel-border);">
+                    <div style="color: var(--muted); font-size: 0.9em;" id="inspectorNavInfo">Showing 0 tests</div>
+                    <div style="display: flex; gap: 8px;">
+                        <button id="inspectorExportBtn" class="btn-secondary btn-sm" style="padding: 6px 12px;">
+                            <i class="fas fa-download"></i> Export CSV
+                        </button>
+                        <button id="inspectorRefreshBtn" class="btn-secondary btn-sm" style="padding: 6px 12px;">
+                            <i class="fas fa-sync-alt"></i> Refresh
+                        </button>
                     </div>
                 </div>
                 <div class="form-group">

@@ -38,7 +38,7 @@ router.get('/debug/conversation/:id', async (req, res) => {
         }
 
         // SECURITY: Cast to ObjectId to prevent NoSQL injection
-        const conv = await Conversation.findOne({ _id: mongoose.Types.ObjectId(req.params.id) });
+        const conv = await Conversation.findOne({ _id: new mongoose.Types.ObjectId(req.params.id) });
         if (!conv) return res.status(404).json({ error: 'Not found' });
 
         const userId = getUserId(res);
