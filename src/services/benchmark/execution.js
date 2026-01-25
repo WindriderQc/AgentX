@@ -323,8 +323,19 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
 
     // Model warmup - send minimal request and wait for response
     // When response comes back, model is loaded in VRAM and ready for fast tests
+    // Returns warmup data for validation/debugging
     const warmupModel = async (hostUrl, model, timelinePrefix = null) => {
         const warmupStart = Date.now();
+        const warmupPrompt = 'Hi';
+        const warmupData = {
+            prompt: warmupPrompt,
+            response: null,
+            latency_ms: null,
+            already_loaded: null,
+            success: false,
+            error: null
+        };
+
         if (timelinePrefix) {
             await recordBatchTimelineEvent(`${timelinePrefix}_start`, { model, success: null });
         }
@@ -363,6 +374,8 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                 logger.debug('Could not check /api/ps', { host: hostUrl, error: psErr.message });
             }
 
+            warmupData.already_loaded = modelAlreadyLoaded;
+
             // Use shorter timeout if model already loaded (should respond instantly)
             // Use longer timeout if model needs to load from disk to VRAM
             const timeoutMs = modelAlreadyLoaded ? 30000 : 180000; // 30s vs 3min
@@ -377,7 +390,7 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     model,
-                    prompt: 'Hi',
+                    prompt: warmupPrompt,
                     stream: false,
                     options: { num_predict: 1 }
                 }),
@@ -386,9 +399,12 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
 
             clearTimeout(timeoutId);
             const durationMs = Date.now() - warmupStart;
+            warmupData.latency_ms = durationMs;
 
             if (response.ok) {
-                await response.json(); // Consume response
+                const data = await response.json();
+                warmupData.response = data.response || '';
+                warmupData.success = true;
                 logger.info('Model ready', { host: hostUrl, model, durationMs, wasLoaded: modelAlreadyLoaded });
                 if (timelinePrefix) {
                     await recordBatchTimelineEvent(`${timelinePrefix}_complete`, {
@@ -397,10 +413,13 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                 }
             } else {
                 const errorText = await response.text().catch(() => '');
-                throw new Error(`Warmup failed: HTTP ${response.status} - ${errorText.substring(0, 100)}`);
+                warmupData.error = `Warmup failed: HTTP ${response.status} - ${errorText.substring(0, 100)}`;
+                throw new Error(warmupData.error);
             }
         } catch (err) {
             const durationMs = Date.now() - warmupStart;
+            warmupData.latency_ms = durationMs;
+            warmupData.error = err.message;
             logger.warn('Model warmup failed', { host: hostUrl, model, error: err.message, durationMs });
 
             if (timelinePrefix) {
@@ -410,6 +429,8 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
             }
             // Don't throw - let tests try anyway
         }
+
+        return warmupData;
     };
 
     // Per-batch judge queue - set concurrency based on execution mode
@@ -470,10 +491,11 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
 
             // Warmup judge BEFORE starting tests (if separate host)
             // This ensures judge model is loaded and ready before any test results need scoring
+            let judgeWarmupData = null;
             if (enableQualityScoring && !judgeSameHost) {
                 const jModel = judgeConfig.model || JUDGE_CONFIG.model;
                 try {
-                    await warmupModel(judgeHostUrl, jModel, 'judge_warmup');
+                    judgeWarmupData = await warmupModel(judgeHostUrl, jModel, 'judge_warmup');
                     logger.info('Judge model ready', { host: judgeHostUrl, model: jModel });
                 } catch (err) {
                     logger.warn('Judge warmup failed, judge calls may be slow', { error: err.message });
@@ -482,7 +504,7 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
 
             for (const model of hostModels) {
                 // Warmup tested model (await ensures accurate latency for first prompt)
-                await warmupModel(hostUrl, model, 'model_warmup');
+                const modelWarmupData = await warmupModel(hostUrl, model, 'model_warmup');
 
                 // Phase 3 Week 10: Detect hardware info after model is loaded
                 const hardwareSnapshot = await hardwareProfileService.detectHardware(hostUrl, model);
@@ -598,7 +620,7 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                             });
                         }
 
-                        // Create result
+                        // Create result with warmup data for validation
                         const result = new BenchmarkResult({
                             model,
                             host: hostUrl,
@@ -623,7 +645,20 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                                 response_truncated: responseTruncated,
                                 response_tokens: tokens,
                                 response_limit: numPredict
-                            }
+                            },
+                            // Warmup data for test validation
+                            warmup: modelWarmupData ? {
+                                prompt: modelWarmupData.prompt,
+                                response: modelWarmupData.response,
+                                latency_ms: modelWarmupData.latency_ms,
+                                already_loaded: modelWarmupData.already_loaded
+                            } : null,
+                            judge_warmup: judgeWarmupData ? {
+                                prompt: judgeWarmupData.prompt,
+                                response: judgeWarmupData.response,
+                                latency_ms: judgeWarmupData.latency_ms,
+                                already_loaded: judgeWarmupData.already_loaded
+                            } : null
                         });
 
                         await result.save();
@@ -751,6 +786,7 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                                                 quality_explanation: scores.explanation,
                                                 judge_prompt: scores.judge_prompt,
                                                 judge_model: scores.judge_model,
+                                                judge_raw_response: scores.judge_raw_response,
                                                 scoring_method: scores.scoring_method,
                                                 scoring_type: scores.scoring_type || prompt.scoring_type || 'reasoning',
                                                 scoring_time_ms: scores.scoring_time_ms,

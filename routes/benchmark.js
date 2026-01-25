@@ -244,6 +244,37 @@ router.get('/results/advanced', async (req, res) => {
 });
 
 /**
+ * GET /api/benchmark/results/:id
+ * Get full details for a single test result (for Test Inspector)
+ * Returns all fields including warmup data and raw judge response
+ */
+router.get('/results/:id', async (req, res) => {
+    try {
+        const BenchmarkResult = require('../models/BenchmarkResult');
+
+        // Validate ObjectId
+        if (!validateObjectId(req.params.id, res, 'Result ID')) return;
+
+        const result = await BenchmarkResult.findById(req.params.id).lean();
+
+        if (!result) {
+            return res.status(404).json({
+                status: 'error',
+                error: 'Result not found'
+            });
+        }
+
+        res.json({
+            status: 'success',
+            data: result
+        });
+    } catch (err) {
+        logger.error('Failed to fetch result details', { error: err.message, id: req.params.id });
+        res.status(500).json({ status: 'error', error: err.message });
+    }
+});
+
+/**
  * GET /api/benchmark/summary
  * Get summary statistics and leaderboard
  */

@@ -637,6 +637,7 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
         judge_model: judgeConfig.model || JUDGE_CONFIG.model,
         scoring_time_ms: Date.now() - startTime,
         judge_prompt: evalPrompt,
+        judge_raw_response: judgeResult.raw || null,
         truncation
     };
 }

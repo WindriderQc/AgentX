@@ -113,7 +113,7 @@ const BenchmarkResultSchema = new mongoose.Schema({
     },
     scoring_method: {
         type: String,
-        enum: ['reasoning', 'quick', 'pattern', 'llm_failed', 'exec_failed', 'disabled', 'pending'],
+        enum: ['reasoning', 'quick', 'pattern', 'llm_judge', 'llm_failed', 'exec_failed', 'disabled', 'pending', 'skipped'],
         default: 'disabled'
     },
     scoring_type: {
@@ -161,6 +161,25 @@ const BenchmarkResultSchema = new mongoose.Schema({
         input_sent_chars: { type: Number, default: null },
         judge_truncated: { type: Boolean, default: false },
         judge_tokens: { type: Number, default: null }
+    },
+    // Model warmup capture for validation
+    warmup: {
+        prompt: { type: String, default: null },
+        response: { type: String, default: null },
+        latency_ms: { type: Number, default: null },
+        already_loaded: { type: Boolean, default: null }
+    },
+    // Judge warmup capture (when judge is on separate host)
+    judge_warmup: {
+        prompt: { type: String, default: null },
+        response: { type: String, default: null },
+        latency_ms: { type: Number, default: null },
+        already_loaded: { type: Boolean, default: null }
+    },
+    // Raw judge response before parsing (for debugging/validation)
+    judge_raw_response: {
+        type: String,
+        default: null
     },
     timestamp: {
         type: Date,

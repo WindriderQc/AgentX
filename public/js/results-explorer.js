@@ -5,7 +5,7 @@ let allResults = [];
 let filteredResults = [];
 let selectedResults = new Set();
 let visibleColumns = new Set([
-    'select', 'expand', 'model', 'category', 'level', 'quality_score',
+    'select', 'expand', 'inspect', 'model', 'category', 'level', 'quality_score',
     'latency', 'tokens_per_sec', 'success', 'timestamp'
 ]);
 
@@ -15,6 +15,7 @@ let currentSort = { field: 'timestamp', direction: 'desc' };
 const AVAILABLE_COLUMNS = {
     select: { label: 'Select', sortable: false, width: '40px' },
     expand: { label: 'Expand', sortable: false, width: '40px' },
+    inspect: { label: 'Inspect', sortable: false, width: '70px' },
     model: { label: 'Model', sortable: true, width: 'auto' },
     host: { label: 'Host', sortable: true, width: 'auto' },
     category: { label: 'Category', sortable: true, width: '120px' },
@@ -390,6 +391,15 @@ function renderTableRow(result) {
         </td>`;
     }
 
+    // Inspect button
+    if (visibleColumns.has('inspect')) {
+        html += `<td>
+            <button class="inspect-btn" onclick="openTestInspector('${result._id}')">
+                <i class="fas fa-microscope"></i> View
+            </button>
+        </td>`;
+    }
+
     // Data columns
     if (visibleColumns.has('model')) {
         html += `<td>${escapeHtml(result.model)}</td>`;
@@ -695,7 +705,7 @@ function openColumnsModal() {
     const grid = document.getElementById('columnsGrid');
 
     grid.innerHTML = Object.entries(AVAILABLE_COLUMNS)
-        .filter(([key]) => key !== 'select' && key !== 'expand')
+        .filter(([key]) => key !== 'select' && key !== 'expand' && key !== 'inspect')
         .map(([key, config]) => `
             <div class="column-toggle">
                 <input type="checkbox" id="col-${key}" value="${key}"
@@ -1055,3 +1065,569 @@ window.addEventListener('click', (e) => {
         e.target.style.display = 'none';
     }
 });
+
+// ==========================================
+// Test Inspector Functionality
+// ==========================================
+
+let currentInspectorResult = null;
+let currentInspectorTab = 'warmup';
+
+// Open Test Inspector modal
+async function openTestInspector(resultId) {
+    const modal = document.getElementById('testInspectorModal');
+    const content = document.getElementById('inspectorContent');
+
+    // Show loading state
+    content.innerHTML = `
+        <div class="inspector-loading">
+            <i class="fas fa-spinner fa-spin"></i>
+            <p>Loading test details...</p>
+        </div>
+    `;
+    modal.style.display = 'block';
+
+    try {
+        // Fetch full result details
+        const response = await fetch(`/api/benchmark/results/${resultId}`);
+        if (!response.ok) throw new Error('Failed to fetch result details');
+
+        const data = await response.json();
+        currentInspectorResult = data.data;
+
+        // Set default tab
+        currentInspectorTab = 'warmup';
+
+        // Render content
+        renderInspectorContent();
+        setupInspectorTabs();
+
+    } catch (error) {
+        console.error('Error loading result details:', error);
+        content.innerHTML = `
+            <div class="error-state">
+                <i class="fas fa-exclamation-triangle"></i>
+                <p>Failed to load test details: ${escapeHtml(error.message)}</p>
+            </div>
+        `;
+    }
+}
+
+// Setup tab click handlers
+function setupInspectorTabs() {
+    document.querySelectorAll('.inspector-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            const tabName = tab.dataset.tab;
+            currentInspectorTab = tabName;
+
+            // Update active tab
+            document.querySelectorAll('.inspector-tab').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+
+            // Re-render content
+            renderInspectorContent();
+        });
+    });
+}
+
+// Render inspector content based on current tab
+function renderInspectorContent() {
+    const content = document.getElementById('inspectorContent');
+    const r = currentInspectorResult;
+
+    if (!r) {
+        content.innerHTML = '<div class="no-data"><i class="fas fa-database"></i><p>No data available</p></div>';
+        return;
+    }
+
+    let html = '';
+
+    switch (currentInspectorTab) {
+        case 'warmup':
+            html = renderWarmupTab(r);
+            break;
+        case 'execution':
+            html = renderExecutionTab(r);
+            break;
+        case 'judging':
+            html = renderJudgingTab(r);
+            break;
+        case 'hardware':
+            html = renderHardwareTab(r);
+            break;
+    }
+
+    content.innerHTML = html;
+
+    // Setup copy buttons
+    content.querySelectorAll('.copy-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const targetId = btn.dataset.target;
+            const textEl = document.getElementById(targetId);
+            if (textEl) {
+                navigator.clipboard.writeText(textEl.textContent);
+                btn.innerHTML = '<i class="fas fa-check"></i> Copied';
+                setTimeout(() => btn.innerHTML = '<i class="fas fa-copy"></i> Copy', 2000);
+            }
+        });
+    });
+}
+
+// Render Warmup tab
+function renderWarmupTab(r) {
+    const warmup = r.warmup;
+    const judgeWarmup = r.judge_warmup;
+
+    return `
+        <!-- Model Warmup Phase -->
+        <div class="phase-card">
+            <div class="phase-header">
+                <h3><i class="fas fa-fire"></i> Model Warmup</h3>
+                <span class="phase-status ${warmup?.response ? 'success' : 'pending'}">
+                    <i class="fas fa-${warmup?.response ? 'check-circle' : 'clock'}"></i>
+                    ${warmup?.response ? 'Completed' : 'No data captured'}
+                </span>
+            </div>
+            <div class="phase-body">
+                ${warmup ? `
+                    <div class="prompt-response-pair">
+                        <div class="prompt-block">
+                            <div class="block-header">
+                                <h4><i class="fas fa-arrow-right"></i> Warmup Prompt</h4>
+                                <button class="copy-btn" data-target="warmup-prompt"><i class="fas fa-copy"></i> Copy</button>
+                            </div>
+                            <div class="block-content" id="warmup-prompt">${escapeHtml(warmup.prompt || 'N/A')}</div>
+                        </div>
+                        <div class="response-block">
+                            <div class="block-header">
+                                <h4><i class="fas fa-arrow-left"></i> Warmup Response</h4>
+                                <button class="copy-btn" data-target="warmup-response"><i class="fas fa-copy"></i> Copy</button>
+                            </div>
+                            <div class="block-content" id="warmup-response">${escapeHtml(warmup.response || 'N/A')}</div>
+                        </div>
+                    </div>
+                    <div class="metrics-grid">
+                        <div class="metric-card">
+                            <div class="metric-label">Warmup Latency</div>
+                            <div class="metric-value">${warmup.latency_ms ? warmup.latency_ms.toFixed(0) + ' ms' : 'N/A'}</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-label">Already Loaded</div>
+                            <div class="metric-value ${warmup.already_loaded ? 'positive' : 'warning'}">
+                                ${warmup.already_loaded === null ? 'Unknown' : (warmup.already_loaded ? 'Yes' : 'No')}
+                            </div>
+                        </div>
+                    </div>
+                ` : `
+                    <div class="no-data">
+                        <i class="fas fa-info-circle"></i>
+                        <p>Model warmup data was not captured for this test.</p>
+                        <p style="font-size: 0.875rem; opacity: 0.7; margin-top: 0.5rem;">
+                            This may be from a batch run before warmup capture was enabled.
+                        </p>
+                    </div>
+                `}
+            </div>
+        </div>
+
+        <!-- Judge Warmup Phase -->
+        ${r.judge_model ? `
+        <div class="phase-card">
+            <div class="phase-header">
+                <h3><i class="fas fa-gavel"></i> Judge Warmup</h3>
+                <span class="phase-status ${judgeWarmup?.response ? 'success' : 'pending'}">
+                    <i class="fas fa-${judgeWarmup?.response ? 'check-circle' : 'clock'}"></i>
+                    ${judgeWarmup?.response ? 'Completed' : 'No data captured'}
+                </span>
+            </div>
+            <div class="phase-body">
+                ${judgeWarmup ? `
+                    <div class="prompt-response-pair">
+                        <div class="prompt-block">
+                            <div class="block-header">
+                                <h4><i class="fas fa-arrow-right"></i> Warmup Prompt</h4>
+                            </div>
+                            <div class="block-content">${escapeHtml(judgeWarmup.prompt || 'N/A')}</div>
+                        </div>
+                        <div class="response-block">
+                            <div class="block-header">
+                                <h4><i class="fas fa-arrow-left"></i> Warmup Response</h4>
+                            </div>
+                            <div class="block-content">${escapeHtml(judgeWarmup.response || 'N/A')}</div>
+                        </div>
+                    </div>
+                    <div class="metrics-grid">
+                        <div class="metric-card">
+                            <div class="metric-label">Warmup Latency</div>
+                            <div class="metric-value">${judgeWarmup.latency_ms ? judgeWarmup.latency_ms.toFixed(0) + ' ms' : 'N/A'}</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-label">Already Loaded</div>
+                            <div class="metric-value ${judgeWarmup.already_loaded ? 'positive' : 'warning'}">
+                                ${judgeWarmup.already_loaded === null ? 'Unknown' : (judgeWarmup.already_loaded ? 'Yes' : 'No')}
+                            </div>
+                        </div>
+                    </div>
+                ` : `
+                    <div class="no-data">
+                        <i class="fas fa-info-circle"></i>
+                        <p>Judge warmup data was not captured for this test.</p>
+                    </div>
+                `}
+            </div>
+        </div>
+        ` : ''}
+    `;
+}
+
+// Render Execution tab
+function renderExecutionTab(r) {
+    return `
+        <div class="phase-card">
+            <div class="phase-header">
+                <h3><i class="fas fa-play"></i> Test Execution</h3>
+                <span class="phase-status ${r.success ? 'success' : 'failed'}">
+                    <i class="fas fa-${r.success ? 'check-circle' : 'times-circle'}"></i>
+                    ${r.success ? 'Success' : 'Failed'}
+                </span>
+            </div>
+            <div class="phase-body">
+                <!-- Test Metadata -->
+                <div class="metrics-grid" style="margin-bottom: 1.5rem;">
+                    <div class="metric-card">
+                        <div class="metric-label">Model</div>
+                        <div class="metric-value" style="font-size: 1rem;">${escapeHtml(r.model)}</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Category</div>
+                        <div class="metric-value" style="font-size: 1rem;">${r.prompt_category || 'N/A'}</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Level</div>
+                        <div class="metric-value">${r.prompt_level || 'N/A'}</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Prompt Name</div>
+                        <div class="metric-value" style="font-size: 0.875rem;">${escapeHtml(r.prompt_name || 'N/A')}</div>
+                    </div>
+                </div>
+
+                <!-- Prompt and Response -->
+                <div class="prompt-response-pair">
+                    <div class="prompt-block">
+                        <div class="block-header">
+                            <h4><i class="fas fa-comment"></i> Test Prompt</h4>
+                            <button class="copy-btn" data-target="test-prompt"><i class="fas fa-copy"></i> Copy</button>
+                        </div>
+                        <div class="block-content" id="test-prompt">${escapeHtml(r.prompt || 'N/A')}</div>
+                    </div>
+                    <div class="response-block">
+                        <div class="block-header">
+                            <h4><i class="fas fa-reply"></i> Model Response</h4>
+                            <button class="copy-btn" data-target="test-response"><i class="fas fa-copy"></i> Copy</button>
+                        </div>
+                        <div class="block-content" id="test-response">${escapeHtml(r.response || r.error || 'No response')}</div>
+                    </div>
+                </div>
+
+                ${r.expected_answer ? `
+                <div style="margin-top: 1rem;">
+                    <div class="prompt-block" style="width: 100%;">
+                        <div class="block-header">
+                            <h4><i class="fas fa-bullseye"></i> Expected Answer</h4>
+                        </div>
+                        <div class="block-content">${escapeHtml(r.expected_answer)}</div>
+                    </div>
+                </div>
+                ` : ''}
+
+                <!-- Performance Metrics -->
+                <div class="metrics-grid" style="margin-top: 1.5rem;">
+                    <div class="metric-card">
+                        <div class="metric-label">Latency</div>
+                        <div class="metric-value">${r.latency ? r.latency.toFixed(0) + ' ms' : 'N/A'}</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Tokens</div>
+                        <div class="metric-value">${r.tokens || 'N/A'}</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Tokens/sec</div>
+                        <div class="metric-value">${r.tokens_per_sec ? parseFloat(r.tokens_per_sec).toFixed(1) : 'N/A'}</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Host</div>
+                        <div class="metric-value" style="font-size: 0.875rem;">${escapeHtml(r.host || 'N/A')}</div>
+                    </div>
+                </div>
+
+                ${r.truncation?.response_truncated ? `
+                <div class="truncation-warning">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <span>Response was truncated at ${r.truncation.response_tokens} tokens (limit: ${r.truncation.response_limit})</span>
+                </div>
+                ` : ''}
+            </div>
+        </div>
+    `;
+}
+
+// Render Judging tab
+function renderJudgingTab(r) {
+    const hasJudging = r.scoring_method && r.scoring_method !== 'disabled' && r.scoring_method !== 'pending';
+
+    if (!hasJudging) {
+        return `
+            <div class="phase-card">
+                <div class="phase-header">
+                    <h3><i class="fas fa-gavel"></i> Quality Judging</h3>
+                    <span class="phase-status pending">
+                        <i class="fas fa-minus-circle"></i>
+                        ${r.scoring_method === 'disabled' ? 'Disabled' : 'Pending'}
+                    </span>
+                </div>
+                <div class="phase-body">
+                    <div class="no-data">
+                        <i class="fas fa-gavel"></i>
+                        <p>Quality scoring was ${r.scoring_method === 'disabled' ? 'not enabled' : 'not completed'} for this test.</p>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    return `
+        <div class="phase-card">
+            <div class="phase-header">
+                <h3><i class="fas fa-gavel"></i> Quality Judging</h3>
+                <span class="phase-status ${r.scoring_method === 'llm_failed' ? 'failed' : 'success'}">
+                    <i class="fas fa-${r.scoring_method === 'llm_failed' ? 'times-circle' : 'check-circle'}"></i>
+                    ${r.scoring_method === 'llm_failed' ? 'Failed' : 'Completed'}
+                </span>
+            </div>
+            <div class="phase-body">
+                <!-- Scoring Summary -->
+                <div class="metrics-grid" style="margin-bottom: 1.5rem;">
+                    <div class="metric-card">
+                        <div class="metric-label">Quality Score</div>
+                        <div class="metric-value ${getScoreClass(r.quality_score)}">${r.quality_score !== null ? r.quality_score.toFixed(1) : 'N/A'}</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Composite Score</div>
+                        <div class="metric-value">${r.composite_score !== null ? r.composite_score.toFixed(1) : 'N/A'}</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Scoring Method</div>
+                        <div class="metric-value" style="font-size: 0.875rem;">${r.scoring_method || 'N/A'}</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Judge Model</div>
+                        <div class="metric-value" style="font-size: 0.875rem;">${escapeHtml(r.judge_model || 'N/A')}</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Scoring Time</div>
+                        <div class="metric-value">${r.scoring_time_ms ? r.scoring_time_ms.toFixed(0) + ' ms' : 'N/A'}</div>
+                    </div>
+                </div>
+
+                ${r.quality_breakdown ? `
+                <!-- Score Breakdown by Dimension -->
+                <h4 style="margin: 1.5rem 0 1rem 0; color: var(--primary, #6366f1);">
+                    <i class="fas fa-chart-bar"></i> Score Breakdown
+                </h4>
+                <div class="score-breakdown">
+                    ${Object.entries(r.quality_breakdown)
+                        .filter(([key]) => key !== 'explanation' && key !== 'overall')
+                        .map(([dimension, score]) => `
+                            <div class="dimension-score">
+                                <div class="dimension-header">
+                                    <span class="dimension-name">${dimension.replace(/_/g, ' ')}</span>
+                                    <span class="dimension-value ${getScoreClass(score)}">${typeof score === 'number' ? score.toFixed(1) : score}</span>
+                                </div>
+                                <div class="dimension-bar">
+                                    <div class="dimension-fill" style="width: ${(score / 10) * 100}%; background: ${getScoreColor(score)};"></div>
+                                </div>
+                            </div>
+                        `).join('')}
+                </div>
+                ` : ''}
+
+                ${r.quality_explanation ? `
+                <h4 style="margin: 1.5rem 0 1rem 0; color: var(--primary, #6366f1);">
+                    <i class="fas fa-lightbulb"></i> Judge Explanation
+                </h4>
+                <div class="prompt-block" style="width: 100%;">
+                    <div class="block-content">${escapeHtml(r.quality_explanation)}</div>
+                </div>
+                ` : ''}
+
+                ${r.judge_prompt ? `
+                <h4 style="margin: 1.5rem 0 1rem 0; color: var(--primary, #6366f1);">
+                    <i class="fas fa-paper-plane"></i> Judge Prompt (sent to evaluator)
+                </h4>
+                <div class="prompt-block" style="width: 100%;">
+                    <div class="block-header">
+                        <h4><i class="fas fa-code"></i> Full Prompt</h4>
+                        <button class="copy-btn" data-target="judge-prompt"><i class="fas fa-copy"></i> Copy</button>
+                    </div>
+                    <div class="block-content" id="judge-prompt" style="max-height: 400px;">${escapeHtml(r.judge_prompt)}</div>
+                </div>
+                ` : ''}
+
+                ${r.judge_raw_response ? `
+                <h4 style="margin: 1.5rem 0 1rem 0; color: var(--primary, #6366f1);">
+                    <i class="fas fa-file-alt"></i> Raw Judge Response
+                </h4>
+                <div class="response-block" style="width: 100%;">
+                    <div class="block-header">
+                        <h4><i class="fas fa-robot"></i> Raw Output</h4>
+                        <button class="copy-btn" data-target="judge-raw"><i class="fas fa-copy"></i> Copy</button>
+                    </div>
+                    <div class="block-content" id="judge-raw" style="max-height: 300px;">${escapeHtml(r.judge_raw_response)}</div>
+                </div>
+                ` : ''}
+
+                ${r.truncation?.input_to_judge_truncated || r.truncation?.judge_truncated ? `
+                <div class="truncation-warning">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <span>
+                        ${r.truncation.input_to_judge_truncated ? `Input to judge was truncated (${r.truncation.input_sent_chars}/${r.truncation.input_original_chars} chars). ` : ''}
+                        ${r.truncation.judge_truncated ? `Judge output was truncated (${r.truncation.judge_tokens} tokens).` : ''}
+                    </span>
+                </div>
+                ` : ''}
+            </div>
+        </div>
+    `;
+}
+
+// Render Hardware tab
+function renderHardwareTab(r) {
+    const hw = r.hardware_snapshot || {};
+    const trunc = r.truncation || {};
+
+    return `
+        <div class="hardware-grid">
+            <!-- Execution Environment -->
+            <div class="hardware-card">
+                <h4><i class="fas fa-server"></i> Execution Environment</h4>
+                <div class="hardware-item">
+                    <span class="hardware-label">Host</span>
+                    <span class="hardware-value">${escapeHtml(r.host || 'N/A')}</span>
+                </div>
+                <div class="hardware-item">
+                    <span class="hardware-label">Judge Host</span>
+                    <span class="hardware-value">${escapeHtml(r.judge_host || 'Same as execution')}</span>
+                </div>
+                <div class="hardware-item">
+                    <span class="hardware-label">Backend</span>
+                    <span class="hardware-value">${hw.backend || 'N/A'}</span>
+                </div>
+                <div class="hardware-item">
+                    <span class="hardware-label">VRAM Usage</span>
+                    <span class="hardware-value">${hw.vram_usage_mb ? hw.vram_usage_mb + ' MB' : 'N/A'}</span>
+                </div>
+                <div class="hardware-item">
+                    <span class="hardware-label">Quantization</span>
+                    <span class="hardware-value">${hw.quantization || 'N/A'}</span>
+                </div>
+            </div>
+
+            <!-- Batch Information -->
+            <div class="hardware-card">
+                <h4><i class="fas fa-layer-group"></i> Batch Information</h4>
+                <div class="hardware-item">
+                    <span class="hardware-label">Batch ID</span>
+                    <span class="hardware-value" style="font-family: monospace; font-size: 0.75rem;">${r.batch_id || 'Standalone'}</span>
+                </div>
+                <div class="hardware-item">
+                    <span class="hardware-label">Timestamp</span>
+                    <span class="hardware-value">${r.timestamp ? new Date(r.timestamp).toLocaleString() : 'N/A'}</span>
+                </div>
+                <div class="hardware-item">
+                    <span class="hardware-label">Result ID</span>
+                    <span class="hardware-value" style="font-family: monospace; font-size: 0.75rem;">${r._id || 'N/A'}</span>
+                </div>
+            </div>
+
+            <!-- Truncation Analysis -->
+            <div class="hardware-card">
+                <h4><i class="fas fa-cut"></i> Truncation Analysis</h4>
+                <div class="hardware-item">
+                    <span class="hardware-label">Response Truncated</span>
+                    <span class="hardware-value" style="color: ${trunc.response_truncated ? '#ef4444' : '#22c55e'};">
+                        ${trunc.response_truncated ? 'Yes' : 'No'}
+                    </span>
+                </div>
+                ${trunc.response_truncated ? `
+                <div class="hardware-item">
+                    <span class="hardware-label">Response Tokens</span>
+                    <span class="hardware-value">${trunc.response_tokens || 'N/A'} / ${trunc.response_limit || 'N/A'}</span>
+                </div>
+                ` : ''}
+                <div class="hardware-item">
+                    <span class="hardware-label">Input to Judge Truncated</span>
+                    <span class="hardware-value" style="color: ${trunc.input_to_judge_truncated ? '#ef4444' : '#22c55e'};">
+                        ${trunc.input_to_judge_truncated ? 'Yes' : 'No'}
+                    </span>
+                </div>
+                ${trunc.input_to_judge_truncated ? `
+                <div class="hardware-item">
+                    <span class="hardware-label">Input Chars</span>
+                    <span class="hardware-value">${trunc.input_sent_chars || 'N/A'} / ${trunc.input_original_chars || 'N/A'}</span>
+                </div>
+                ` : ''}
+                <div class="hardware-item">
+                    <span class="hardware-label">Judge Output Truncated</span>
+                    <span class="hardware-value" style="color: ${trunc.judge_truncated ? '#ef4444' : '#22c55e'};">
+                        ${trunc.judge_truncated ? 'Yes' : 'No'}
+                    </span>
+                </div>
+            </div>
+
+            <!-- Composite Scoring Details -->
+            ${r.normalized_scores ? `
+            <div class="hardware-card">
+                <h4><i class="fas fa-calculator"></i> Composite Score Breakdown</h4>
+                <div class="hardware-item">
+                    <span class="hardware-label">Profile Used</span>
+                    <span class="hardware-value">${r.composite_profile_used || 'N/A'}</span>
+                </div>
+                <div class="hardware-item">
+                    <span class="hardware-label">Quality Component</span>
+                    <span class="hardware-value">${r.normalized_scores.quality?.toFixed(1) || 'N/A'}</span>
+                </div>
+                <div class="hardware-item">
+                    <span class="hardware-label">Latency Component</span>
+                    <span class="hardware-value">${r.normalized_scores.latency?.toFixed(1) || 'N/A'}</span>
+                </div>
+                <div class="hardware-item">
+                    <span class="hardware-label">Speed Component</span>
+                    <span class="hardware-value">${r.normalized_scores.speed?.toFixed(1) || 'N/A'}</span>
+                </div>
+            </div>
+            ` : ''}
+        </div>
+    `;
+}
+
+// Helper function for score class
+function getScoreClass(score) {
+    if (score === null || score === undefined) return '';
+    if (score >= 8) return 'positive';
+    if (score >= 6) return 'warning';
+    return 'negative';
+}
+
+// Helper function for score color
+function getScoreColor(score) {
+    if (score >= 8) return '#22c55e';
+    if (score >= 6) return '#eab308';
+    return '#ef4444';
+}
+
+// Close Test Inspector modal
+function closeTestInspector() {
+    document.getElementById('testInspectorModal').style.display = 'none';
+    currentInspectorResult = null;
+}
