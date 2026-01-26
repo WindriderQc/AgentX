@@ -27,6 +27,40 @@ if (process.env.OLLAMA_HOST) {
 }
 
 /**
+ * Validate weight configuration at module load
+ * Ensures all composite profiles have weights that sum to 1.0
+ */
+function validateWeights() {
+    const errors = [];
+    const warnings = [];
+    
+    // Check ENHANCED_SCORING_CONFIGS dimensions
+    for (const [category, config] of Object.entries(ENHANCED_SCORING_CONFIGS)) {
+        const sum = config.dimensions.reduce((acc, dim) => acc + dim.weight, 0);
+        const diff = Math.abs(sum - 1.0);
+        
+        if (diff > 0.001) { // Allow tiny floating point errors
+            errors.push(`${category}: dimension weights sum to ${sum.toFixed(3)}, expected 1.0`);
+        }
+    }
+    
+    // Check CATEGORY_COMPOSITE_PROFILES (defined later in file)
+    // We'll check this in a separate function after CATEGORY_COMPOSITE_PROFILES is defined
+    
+    if (errors.length > 0) {
+        logger.error('Weight validation failed', { errors });
+        throw new Error(`Invalid weight configuration: ${errors.join('; ')}`);
+    }
+    
+    if (warnings.length > 0) {
+        logger.warn('Weight configuration warnings', { warnings });
+    }
+}
+
+// Validate ENHANCED_SCORING_CONFIGS immediately
+validateWeights();
+
+/**
  * Enhanced scoring configurations with 8-12 dimensions per category
  * Used when prompt.scoring_dimensions is not defined
  * Follows the spec from docs/operations/ENHANCED_JUDGING_SYSTEM_PLAN.md
@@ -377,14 +411,15 @@ function quickScore(response, prompt) {
     const resp = response.toLowerCase().trim();
     
     // Direct answer patterns for common factual questions
+    // Use word boundaries to avoid false positives (e.g., "32" in "320")
     const quickPatterns = {
-        'capital of france': { answer: 'paris', score: resp.includes('paris') ? 10 : 0 },
-        '15 + 27': { answer: '42', score: resp.includes('42') ? 10 : 0 },
-        '15+27': { answer: '42', score: resp.includes('42') ? 10 : 0 },
-        'world war ii end': { answer: '1945', score: resp.includes('1945') ? 10 : 0 },
-        'wwii end': { answer: '1945', score: resp.includes('1945') ? 10 : 0 },
-        '2, 4, 8, 16': { answer: '32', score: resp.includes('32') ? 10 : 0 },
-        '2x + 5 = 17': { answer: '6', score: resp.includes('6') || resp.includes('x = 6') ? 10 : 0 }
+        'capital of france': { answer: 'paris', score: /\bparis\b/.test(resp) ? 10 : 0 },
+        '15 + 27': { answer: '42', score: /\b42\b/.test(resp) ? 10 : 0 },
+        '15+27': { answer: '42', score: /\b42\b/.test(resp) ? 10 : 0 },
+        'world war ii end': { answer: '1945', score: /\b1945\b/.test(resp) ? 10 : 0 },
+        'wwii end': { answer: '1945', score: /\b1945\b/.test(resp) ? 10 : 0 },
+        '2, 4, 8, 16': { answer: '32', score: /\b32\b/.test(resp) ? 10 : 0 },
+        '2x + 5 = 17': { answer: '6', score: /\bx\s*=\s*6\b|\b6\b/.test(resp) ? 10 : 0 }
     };
     
     const promptLower = prompt.prompt ? prompt.prompt.toLowerCase() : prompt.toLowerCase();
@@ -749,15 +784,25 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
     }
 
     // Detect judge hardware (non-blocking, won't fail scoring if detection fails)
+    // Use cached detection from batch if available (prevents redundant detection)
     let judgeHardwareSnapshot = null;
-    try {
-        const judgeHost = judgeConfig.host || JUDGE_CONFIG.host;
-        const judgeModel = judgeConfig.model || JUDGE_CONFIG.model;
-        if (judgeHost && judgeModel) {
-            judgeHardwareSnapshot = await hardwareProfileService.detectHardware(judgeHost, judgeModel);
+    if (req._batchHardwareSnapshot) {
+        judgeHardwareSnapshot = req._batchHardwareSnapshot;
+    } else {
+        try {
+            const judgeHost = judgeConfig.host || JUDGE_CONFIG.host;
+            const judgeModel = judgeConfig.model || JUDGE_CONFIG.model;
+            if (judgeHost && judgeModel) {
+                // Add timeout to prevent blocking
+                const hwPromise = hardwareProfileService.detectHardware(judgeHost, judgeModel);
+                const timeoutPromise = new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Hardware detection timeout')), 5000)
+                );
+                judgeHardwareSnapshot = await Promise.race([hwPromise, timeoutPromise]);
+            }
+        } catch (hwErr) {
+            logger.debug('Judge hardware detection failed (non-critical)', { error: hwErr.message });
         }
-    } catch (hwErr) {
-        logger.debug('Judge hardware detection failed (non-critical)', { error: hwErr.message });
     }
 
     return {
@@ -848,6 +893,33 @@ const CATEGORY_COMPOSITE_PROFILES = {
 };
 
 /**
+ * Validate composite profile weights
+ * Ensures all profiles have weights that sum to 1.0
+ */
+function validateCompositeWeights() {
+    const errors = [];
+    
+    // Check CATEGORY_COMPOSITE_PROFILES
+    for (const [category, config] of Object.entries(CATEGORY_COMPOSITE_PROFILES)) {
+        const { quality, latency, speed } = config.weights;
+        const sum = quality + latency + speed;
+        const diff = Math.abs(sum - 1.0);
+        
+        if (diff > 0.001) { // Allow tiny floating point errors
+            errors.push(`${category}: composite weights sum to ${sum.toFixed(3)}, expected 1.0`);
+        }
+    }
+    
+    if (errors.length > 0) {
+        logger.error('Composite weight validation failed', { errors });
+        throw new Error(`Invalid composite weight configuration: ${errors.join('; ')}`);
+    }
+}
+
+// Validate composite weights immediately after definition
+validateCompositeWeights();
+
+/**
  * Calculate composite score combining speed and quality
  * @param {Object} metrics - Performance and quality metrics
  * @param {String} profileOrCategory - Scoring profile ('interactive' | 'reasoning' | 'coding') or category name
@@ -908,15 +980,32 @@ function calculateCompositeScore(metrics, profileOrCategory = 'interactive') {
     const weights = config.weights;
 
     // Normalize latency (lower is better)
-    // Score: 100 at 0ms, 0 at cap
-    const latencyScore = Math.max(0, 100 - ((latency / config.latencyCap) * 100));
+    // Score: 100 at 0ms, 0 at cap, explicit handling for exceeds cap
+    let latencyScore;
+    if (latency <= 0) {
+        latencyScore = 100; // Instant response
+    } else if (latency >= config.latencyCap) {
+        latencyScore = 0; // Exceeds acceptable latency
+        logger.debug('Latency exceeds cap', { latency, cap: config.latencyCap });
+    } else {
+        latencyScore = 100 - ((latency / config.latencyCap) * 100);
+    }
+    latencyScore = Math.max(0, latencyScore); // Safety clamp
     
-    // Normalize tokens/sec (higher is better, cap at 100 t/s)
-    // Score: 0 at 0 t/s, 100 at 100 t/s
-    const speedScore = Math.min(100, (parseFloat(tokens_per_sec) || 0));
+    // Normalize tokens/sec (higher is better)
+    // Cap at 100 t/s as reference point (very fast = 100 score)
+    // Linear scaling: 0 t/s = 0, 100 t/s = 100
+    let speedScore;
+    if (tokens_per_sec <= 0) {
+        speedScore = 0;
+    } else if (tokens_per_sec >= 100) {
+        speedScore = 100; // Capped at reference max
+    } else {
+        speedScore = tokens_per_sec; // 1:1 scaling (25 t/s = 25 score)
+    }
     
     // Quality score is 0-10, scale to 0-100
-    const qualityScore = (quality_score || 0) * 10;
+    const qualityScore = Math.max(0, Math.min(100, (quality_score || 0) * 10));
     
     const composite = (
         qualityScore * weights.quality +
@@ -939,23 +1028,49 @@ function calculateCompositeScore(metrics, profileOrCategory = 'interactive') {
 
 /**
  * Batch score multiple responses
+ * NOTE: This is for POST-TEST judging only. Model testing remains sequential 
+ * to ensure fair latency comparison. Judge concurrency is safe because:
+ * - Judge latency doesn't affect model scores
+ * - Judge time is informative only, not part of benchmark
+ * - Multiple judge calls don't interfere with each other
+ * 
  * @param {Array} results - Array of benchmark results with responses
- * @param {Object} options - Scoring options { profile: 'interactive'|'reasoning' }
+ * @param {Object} options - Scoring options { profile: 'interactive'|'reasoning', concurrency: 5 }
  * @returns {Promise<Array>} Results with quality scores added
  */
 async function batchScore(results, options = {}) {
-    const scoredResults = [];
     const profile = options.profile || 'interactive';
+    const concurrency = options.concurrency || 5; // Default 5 concurrent judge calls
     
-    for (const result of results) {
+    // Detect judge hardware ONCE for entire batch (not per-result)
+    let judgeHardwareSnapshot = null;
+    try {
+        const judgeHost = JUDGE_CONFIG.host;
+        const judgeModel = JUDGE_CONFIG.model;
+        if (judgeHost && judgeModel) {
+            const hwPromise = hardwareProfileService.detectHardware(judgeHost, judgeModel);
+            const timeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Hardware detection timeout')), 5000)
+            );
+            judgeHardwareSnapshot = await Promise.race([hwPromise, timeoutPromise]);
+            logger.debug('Batch hardware detection complete', { 
+                gpu: judgeHardwareSnapshot?.gpu_layers,
+                vram: judgeHardwareSnapshot?.total_vram_gb 
+            });
+        }
+    } catch (hwErr) {
+        logger.debug('Batch hardware detection failed (non-critical)', { error: hwErr.message });
+    }
+    
+    // Helper to process a single result
+    const processResult = async (result) => {
         if (!result.response || !result.success) {
-            scoredResults.push({
+            return {
                 ...result,
                 quality_score: null,
                 scoring_method: 'skipped',
                 reason: result.success ? 'no_response' : 'test_failed'
-            });
-            continue;
+            };
         }
         
         // Get prompt details for scoring
@@ -968,7 +1083,8 @@ async function batchScore(results, options = {}) {
         
         const scores = await scoreResponse({
             response: result.response,
-            prompt: promptInfo
+            prompt: promptInfo,
+            _batchHardwareSnapshot: judgeHardwareSnapshot // Pass cached hardware detection
         });
         
         const composite = calculateCompositeScore({
@@ -977,11 +1093,21 @@ async function batchScore(results, options = {}) {
             quality_score: scores.quality_score
         }, profile);
         
-        scoredResults.push({
+        return {
             ...result,
             ...scores,
             ...composite
-        });
+        };
+    };
+    
+    // Process results with controlled concurrency
+    // NOTE: This parallelization is safe because it only affects judge calls,
+    // not the model tests themselves (which were already completed sequentially)
+    const scoredResults = [];
+    for (let i = 0; i < results.length; i += concurrency) {
+        const batch = results.slice(i, i + concurrency);
+        const batchResults = await Promise.all(batch.map(processResult));
+        scoredResults.push(...batchResults);
     }
     
     return scoredResults;
