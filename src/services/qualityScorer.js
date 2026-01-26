@@ -16,8 +16,9 @@ const JUDGE_CONFIG = {
     fallback_model: 'llama3.2:1b',       // Fallback if primary unavailable
     host: null,                           // Will be set dynamically from env
     timeout: 30000,                       // 30s timeout for judge calls
-    temperature: 0.1,                     // Low temp for consistent scoring
-    num_predict: 200                      // Max tokens to generate for judge output
+    temperature: 0.3,                     // Low but not too low - allows some variation for nuanced scoring
+    num_predict: 500,                     // Increased for multi-dimension responses with explanations
+    max_retries: 2                        // Retry on transient failures
 };
 
 // Initialize host from env
@@ -46,12 +47,12 @@ const ENHANCED_SCORING_CONFIGS = {
     reasoning: {
         dimensions: [
             { name: 'accuracy', weight: 0.25, desc: 'Is conclusion correct?' },
-            { name: 'logic_soundness', weight: 0.20, desc: 'Is reasoning valid?' },
+            { name: 'logic_soundness', weight: 0.22, desc: 'Is reasoning valid?' },
             { name: 'depth', weight: 0.15, desc: 'Sufficient analysis depth?' },
             { name: 'clarity', weight: 0.12, desc: 'Clear explanation?' },
             { name: 'completeness', weight: 0.10, desc: 'Addresses all aspects?' },
             { name: 'coherence', weight: 0.08, desc: 'Internally consistent?' },
-            { name: 'method_quality', weight: 0.10, desc: 'Appropriate approach?' }
+            { name: 'method_quality', weight: 0.08, desc: 'Appropriate approach?' }
         ]
     },
     factual: {
@@ -170,6 +171,8 @@ EXPECTED: {{expected}}
 RESPONSE TO EVALUATE:
 {{response}}
 
+IMPORTANT: Score each criterion on a 0-10 scale. The 'overall' score should be a weighted average on the SAME 0-10 scale, NOT a sum.
+
 Respond ONLY with JSON in this exact format:
 {"correctness": X, "clarity": X, "efficiency": X, "overall": X, "explanation": "brief reason"}`
     },
@@ -189,6 +192,8 @@ TASK: {{task}}
 EXPECTED: {{expected}}
 RESPONSE TO EVALUATE:
 {{response}}
+
+IMPORTANT: Score each criterion on a 0-10 scale. The 'overall' score should be a weighted average on the SAME 0-10 scale, NOT a sum.
 
 Respond ONLY with JSON in this exact format:
 {"accuracy": X, "logic": X, "clarity": X, "overall": X, "explanation": "brief reason"}`
@@ -210,6 +215,8 @@ EXPECTED: {{expected}}
 RESPONSE TO EVALUATE:
 {{response}}
 
+IMPORTANT: Score each criterion on a 0-10 scale. The 'overall' score should be a weighted average on the SAME 0-10 scale, NOT a sum.
+
 Respond ONLY with JSON in this exact format:
 {"accuracy": X, "completeness": X, "clarity": X, "overall": X, "explanation": "brief reason"}`
     },
@@ -230,6 +237,8 @@ EXPECTED: {{expected}}
 RESPONSE TO EVALUATE:
 {{response}}
 
+IMPORTANT: Score each criterion on a 0-10 scale. The 'overall' score should be a weighted average on the SAME 0-10 scale, NOT a sum.
+
 Respond ONLY with JSON in this exact format:
 {"answer": X, "method": X, "presentation": X, "overall": X, "explanation": "brief reason"}`
     },
@@ -249,6 +258,8 @@ TASK: {{task}}
 EXPECTED: {{expected}}
 RESPONSE TO EVALUATE:
 {{response}}
+
+IMPORTANT: Score each criterion on a 0-10 scale. The 'overall' score should be a weighted average on the SAME 0-10 scale, NOT a sum.
 
 Respond ONLY with JSON in this exact format:
 {"creativity": X, "coherence": X, "relevance": X, "overall": X, "explanation": "brief reason"}`
@@ -286,6 +297,8 @@ TASK: ${task}
 EXPECTED: ${expected}
 RESPONSE TO EVALUATE:
 ${response}
+
+CRITICAL: Score each criterion on a 0-10 scale. The 'overall' score must ALSO be 0-10 (weighted average, NOT a sum of dimensions).
 
 Respond ONLY with JSON in this exact format:
 ${JSON.stringify(jsonFormat, null, 2)}`;
@@ -396,9 +409,10 @@ function quickScore(response, prompt) {
  * Call the judge model to evaluate a response
  * @param {string} evalPrompt - The evaluation prompt
  * @param {Object} config - Optional configuration override
+ * @param {number} retryCount - Current retry attempt (for internal use)
  * @returns {Promise<Object>} Parsed scores
  */
-async function callJudge(evalPrompt, config = {}) {
+async function callJudge(evalPrompt, config = {}, retryCount = 0) {
     const judgeConfig = { ...JUDGE_CONFIG, ...config };
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), judgeConfig.timeout);
@@ -469,6 +483,21 @@ async function callJudge(evalPrompt, config = {}) {
             sanitized = sanitized.replace(/\\([^"\\/bfnrtu])/g, "\\\\$1");
 
             const scores = JSON.parse(sanitized);
+            
+            // Validate that scores object contains expected fields
+            if (typeof scores !== 'object' || scores === null) {
+                throw new Error('Judge returned non-object response');
+            }
+            
+            // Check for at least some numeric scores (but don't require specific fields - dimensions vary)
+            const numericFields = Object.keys(scores).filter(key => 
+                typeof scores[key] === 'number' && key !== 'overall'
+            );
+            
+            if (numericFields.length === 0 && typeof scores.overall !== 'number') {
+                throw new Error(`Judge response missing numeric scores. Got: ${JSON.stringify(Object.keys(scores))}`);
+            }
+            
             return {
                 success: true,
                 scores,
@@ -482,7 +511,27 @@ async function callJudge(evalPrompt, config = {}) {
         
     } catch (err) {
         clearTimeout(timeoutId);
-        logger.error('Judge call failed', { error: err.message });
+        
+        // Retry logic for transient failures
+        const maxRetries = judgeConfig.max_retries || 2;
+        const isRetryable = err.message.includes('timeout') || 
+                           err.message.includes('ECONNRESET') ||
+                           err.message.includes('ETIMEDOUT') ||
+                           err.message.includes('503') ||
+                           err.message.includes('502');
+        
+        if (isRetryable && retryCount < maxRetries) {
+            const backoffMs = Math.min(1000 * Math.pow(2, retryCount), 5000); // Max 5s
+            logger.warn(`Judge call failed, retrying in ${backoffMs}ms`, { 
+                error: err.message, 
+                attempt: retryCount + 1, 
+                maxRetries 
+            });
+            await new Promise(resolve => setTimeout(resolve, backoffMs));
+            return callJudge(evalPrompt, config, retryCount + 1);
+        }
+        
+        logger.error('Judge call failed', { error: err.message, retries: retryCount });
         return {
             success: false,
             error: err.message,
@@ -620,14 +669,59 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
     
     const scores = judgeResult.scores;
     
+    // Validate and normalize judge scores to 0-10 range
+    const normalizedScores = {};
+    for (const [key, value] of Object.entries(scores)) {
+        if (typeof value === 'number' && key !== 'overall') {
+            // Clamp to 0-10 range in case judge goes out of bounds
+            normalizedScores[key] = Math.max(0, Math.min(10, value));
+            if (value < 0 || value > 10) {
+                logger.warn('Judge returned out-of-range score', {
+                    dimension: key,
+                    value,
+                    clamped_to: normalizedScores[key],
+                    prompt: prompt.name || prompt.prompt_name || 'unknown'
+                });
+            }
+        } else {
+            normalizedScores[key] = value;
+        }
+    }
+    
     // Calculate weighted overall score if not provided
-    let overallScore = scores.overall;
+    let overallScore = normalizedScores.overall;
     if (overallScore === undefined) {
         overallScore = 0;
+        let totalWeight = 0;
         for (const [key, weight] of Object.entries(config.weight)) {
-            if (scores[key] !== undefined) {
-                overallScore += scores[key] * weight;
+            if (normalizedScores[key] !== undefined) {
+                overallScore += normalizedScores[key] * weight;
+                totalWeight += weight;
             }
+        }
+        
+        // Normalize by total weight to ensure score stays in 0-10 range
+        if (totalWeight > 0 && totalWeight !== 1.0) {
+            logger.warn('Weights do not sum to 1.0, normalizing', {
+                total_weight: totalWeight,
+                scoring_type: scoringType,
+                prompt: prompt.name || prompt.prompt_name || 'unknown'
+            });
+            overallScore = overallScore / totalWeight;
+        }
+        
+        // Final clamp and round
+        overallScore = Math.max(0, Math.min(10, overallScore));
+        overallScore = Math.round(overallScore * 10) / 10;
+    } else {
+        // Judge provided overall score - validate it
+        overallScore = Math.max(0, Math.min(10, overallScore));
+        if (normalizedScores.overall < 0 || normalizedScores.overall > 10) {
+            logger.warn('Judge returned out-of-range overall score', {
+                value: normalizedScores.overall,
+                clamped_to: overallScore,
+                prompt: prompt.name || prompt.prompt_name || 'unknown'
+            });
         }
         overallScore = Math.round(overallScore * 10) / 10;
     }
@@ -670,8 +764,8 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
         quality_score: overallScore,
         scoring_method: 'llm_judge',
         scoring_type: scoringType,
-        breakdown: scores,
-        explanation: scores.explanation || '',
+        breakdown: normalizedScores,
+        explanation: normalizedScores.explanation || scores.explanation || 'No explanation provided',
         judge_model: judgeConfig.model || JUDGE_CONFIG.model,
         judge_host: judgeConfig.host || JUDGE_CONFIG.host,
         judge_hardware_snapshot: judgeHardwareSnapshot,
