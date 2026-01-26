@@ -158,6 +158,8 @@ const SCORING_CONFIGS = {
         weight: { correctness: 0.5, clarity: 0.3, efficiency: 0.2 },
         prompt: `You are a code quality evaluator. Analyze the given code response and score it.
 
+IMPORTANT: If the RESPONSE TO EVALUATE section is empty or blank, assign 0 to all scores - the model failed to produce output.
+
 CRITERIA TO EVALUATE:
 1. Correctness (0-10): Does the code work and produce correct output?
 2. Clarity (0-10): Is the code readable and well-structured?
@@ -175,6 +177,8 @@ Respond ONLY with JSON in this exact format:
     reasoning: {
         weight: { accuracy: 0.4, logic: 0.4, clarity: 0.2 },
         prompt: `You are a reasoning quality evaluator. Analyze the logical reasoning in this response.
+
+IMPORTANT: If the RESPONSE TO EVALUATE section is empty or blank, assign 0 to all scores - the model failed to produce output.
 
 CRITERIA TO EVALUATE:
 1. Accuracy (0-10): Is the conclusion/answer correct?
@@ -194,6 +198,8 @@ Respond ONLY with JSON in this exact format:
         weight: { accuracy: 0.7, completeness: 0.2, clarity: 0.1 },
         prompt: `You are a factual accuracy evaluator. Check if this response is factually correct.
 
+IMPORTANT: If the RESPONSE TO EVALUATE section is empty or blank, assign 0 to all scores - the model failed to produce output.
+
 CRITERIA TO EVALUATE:
 1. Accuracy (0-10): Is the information factually correct?
 2. Completeness (0-10): Does it answer the question fully?
@@ -212,6 +218,8 @@ Respond ONLY with JSON in this exact format:
         weight: { answer: 0.6, method: 0.3, presentation: 0.1 },
         prompt: `You are a math evaluator. Check if the mathematical answer and work is correct.
 
+IMPORTANT: If the RESPONSE TO EVALUATE section is empty or blank, assign 0 to all scores - the model failed to produce output.
+
 CRITERIA TO EVALUATE:
 1. Answer (0-10): Is the final answer correct?
 2. Method (0-10): Is the solution method/work correct?
@@ -229,6 +237,8 @@ Respond ONLY with JSON in this exact format:
     creative: {
         weight: { creativity: 0.4, coherence: 0.3, relevance: 0.3 },
         prompt: `You are a creative writing evaluator. Assess the creativity and quality of this response.
+
+IMPORTANT: If the RESPONSE TO EVALUATE section is empty or blank, assign 0 to all scores - the model failed to produce output.
 
 CRITERIA TO EVALUATE:
 1. Creativity (0-10): Is it original and imaginative?
@@ -266,6 +276,8 @@ function buildDynamicJudgePrompt(dimensions, task, expected, response) {
     jsonFormat.explanation = 'brief reason';
 
     return `You are a quality evaluator. Analyze the given response and score it across multiple dimensions.
+
+IMPORTANT: If the RESPONSE TO EVALUATE section is empty or blank, assign 0 to all dimensions - the model failed to produce output.
 
 CRITERIA TO EVALUATE:
 ${criteriaList}
@@ -527,6 +539,32 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
             scoring_method: 'skipped',
             reason: 'LLM scoring disabled',
             scoring_time_ms: Date.now() - startTime
+        };
+    }
+    
+    // Validate that response is not empty before scoring
+    if (!response || response.trim().length === 0) {
+        logger.warn('Attempting to score empty response', {
+            prompt: prompt.name || prompt.prompt_name || 'unknown',
+            response_length: response ? response.length : 0,
+            task: prompt.prompt ? prompt.prompt.substring(0, 100) : 'unknown'
+        });
+        return {
+            quality_score: 0,
+            scoring_method: 'llm_judge',
+            scoring_type: prompt.scoring_type || 'reasoning',
+            explanation: 'CRITICAL: Model produced NO response. Unable to evaluate empty output. Automatic score: 0/10',
+            breakdown: { 
+                accuracy: 0, 
+                correctness: 0, 
+                completeness: 0,
+                clarity: 0,
+                overall: 0 
+            },
+            scoring_time_ms: Date.now() - startTime,
+            judge_prompt: 'EMPTY_RESPONSE_DETECTION',
+            judge_model: 'empty_response_validator',
+            judge_raw_response: 'Model failed to generate any response text'
         };
     }
     

@@ -163,6 +163,7 @@ const BenchmarkResultSchema = new mongoose.Schema({
         response_truncated: { type: Boolean, default: false },
         response_tokens: { type: Number, default: null },
         response_limit: { type: Number, default: null },
+        done_reason: { type: String, default: null }, // Ollama's reason for stopping: 'stop', 'length', 'load', etc.
         input_to_judge_truncated: { type: Boolean, default: false },
         input_original_chars: { type: Number, default: null },
         input_sent_chars: { type: Number, default: null },

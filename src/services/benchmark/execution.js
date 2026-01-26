@@ -619,6 +619,25 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                             });
                         }
 
+                        // Detect and log empty responses with diagnostic info
+                        const hasEmptyResponse = !data.response || data.response.trim().length === 0;
+                        if (hasEmptyResponse) {
+                            logger.warn('Model produced empty response', {
+                                model,
+                                prompt_name: prompt.name,
+                                prompt_level: prompt.level,
+                                prompt_category: prompt.category,
+                                done_reason: data.done_reason,
+                                eval_count: data.eval_count,
+                                prompt_eval_count: data.prompt_eval_count,
+                                load_duration: data.load_duration,
+                                total_duration: data.total_duration,
+                                latency_ms: latency,
+                                host: hostUrl,
+                                num_predict: numPredict
+                            });
+                        }
+
                         // Create result with warmup data for validation
                         const result = new BenchmarkResult({
                             model,
@@ -643,7 +662,8 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                             truncation: {
                                 response_truncated: responseTruncated,
                                 response_tokens: tokens,
-                                response_limit: numPredict
+                                response_limit: numPredict,
+                                done_reason: data.done_reason || null
                             },
                             execution_settings: {
                                 num_predict: numPredict,
@@ -721,7 +741,8 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
 
                         // Queue quality scoring if enabled
                         if (enableQualityScoring) {
-                            // Capture response string immediately, then allow data object to be GC'd
+                            // CRITICAL: Capture ONLY the response text, not metadata like done_reason
+                            // Judge must evaluate the actual response, not diagnostic info
                             const responseText = data.response || '';
 
                             judgeQueue.add(async () => {
