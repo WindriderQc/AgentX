@@ -28,9 +28,10 @@ const BenchmarkPromptSchema = new mongoose.Schema({
         enum: [
             // Original 6 categories
             'coding', 'reasoning', 'factual', 'math', 'creative', 'general',
-            // Enhanced judging system: 6 new categories for better model differentiation
+            // Enhanced judging system: additional categories for better model differentiation
             'instruction-following', 'summarization', 'translation',
-            'multi-turn-reasoning', 'context-retention', 'edge-cases'
+            'multi-turn-reasoning', 'context-retention', 'edge-cases',
+            'refactoring', 'debugging', 'explanation', 'dialogue'
         ],
         index: true
     },
@@ -49,10 +50,11 @@ const BenchmarkPromptSchema = new mongoose.Schema({
     scoring_type: {
         type: String,
         enum: [
-            'reasoning', 'quick', 'pattern', 'code', 'factual', 'math', 'creative',
+            'reasoning', 'quick', 'pattern', 'code', 'factual', 'math', 'creative', 'coding', 'general',
             // Enhanced judging system: additional scoring types for new categories
             'instruction-following', 'summarization', 'translation',
-            'multi-turn-reasoning', 'context-retention', 'edge-cases'
+            'multi-turn-reasoning', 'context-retention', 'edge-cases',
+            'refactoring', 'debugging', 'explanation', 'dialogue'
         ],
         default: 'reasoning'
     },

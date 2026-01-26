@@ -53,9 +53,10 @@ const BenchmarkResultSchema = new mongoose.Schema({
         enum: [
             // Original 6 categories
             'coding', 'reasoning', 'factual', 'math', 'creative', 'general',
-            // Enhanced judging system: 6 new categories for better model differentiation
+            // Enhanced judging system: additional categories for better model differentiation
             'instruction-following', 'summarization', 'translation',
-            'multi-turn-reasoning', 'context-retention', 'edge-cases'
+            'multi-turn-reasoning', 'context-retention', 'edge-cases',
+            'refactoring', 'debugging', 'explanation', 'dialogue'
         ],
         index: true
     },

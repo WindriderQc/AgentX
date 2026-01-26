@@ -16,8 +16,9 @@ const JUDGE_CONFIG = {
     fallback_model: 'llama3.2:1b',       // Fallback if primary unavailable
     host: null,                           // Will be set dynamically from env
     timeout: 30000,                       // 30s timeout for judge calls
-    temperature: 0.1,                     // Low temp for consistent scoring
-    num_predict: 200                      // Max tokens to generate for judge output
+    temperature: 0.3,                     // Adjusted for nuanced scoring variation (Audit Issue 6)
+    num_predict: 500,                     // Increased to allow full explanations (Audit Issue 6)
+    max_retries: 2                        // Added for resilience (Audit Issue 6)
 };
 
 // Initialize host from env
@@ -31,127 +32,197 @@ if (process.env.OLLAMA_HOST) {
  * Follows the spec from docs/operations/ENHANCED_JUDGING_SYSTEM_PLAN.md
  */
 const ENHANCED_SCORING_CONFIGS = {
-    code: {
+    coding: {
         dimensions: [
-            { name: 'correctness', weight: 0.25, desc: 'Does code work & produce correct output?' },
-            { name: 'clarity', weight: 0.15, desc: 'Is code readable & well-structured?' },
-            { name: 'efficiency', weight: 0.15, desc: 'Reasonable performance for task?' },
+            { name: 'correctness', weight: 0.20, desc: 'Does code work & produce correct output?' },
+            { name: 'clarity', weight: 0.12, desc: 'Is code readable & well-structured?' },
+            { name: 'efficiency', weight: 0.12, desc: 'Reasonable performance for task?' },
             { name: 'maintainability', weight: 0.10, desc: 'Easy to modify & extend?' },
             { name: 'error_handling', weight: 0.10, desc: 'Robust error handling?' },
             { name: 'documentation', weight: 0.10, desc: 'Comments & explanations?' },
             { name: 'best_practices', weight: 0.08, desc: 'Follows language idioms?' },
-            { name: 'testability', weight: 0.07, desc: 'Easy to test?' }
+            { name: 'testability', weight: 0.07, desc: 'Easy to test?' },
+            { name: 'scalability', weight: 0.06, desc: 'Handles larger datasets/load?' },
+            { name: 'security', weight: 0.05, desc: 'Avoids common vulnerabilities?' }
         ]
     },
     reasoning: {
         dimensions: [
-            { name: 'accuracy', weight: 0.25, desc: 'Is conclusion correct?' },
-            { name: 'logic_soundness', weight: 0.20, desc: 'Is reasoning valid?' },
-            { name: 'depth', weight: 0.15, desc: 'Sufficient analysis depth?' },
-            { name: 'clarity', weight: 0.12, desc: 'Clear explanation?' },
+            { name: 'accuracy', weight: 0.20, desc: 'Is conclusion correct?' },
+            { name: 'logic_soundness', weight: 0.18, desc: 'Is reasoning valid?' },
+            { name: 'depth', weight: 0.12, desc: 'Sufficient analysis depth?' },
+            { name: 'clarity', weight: 0.10, desc: 'Clear explanation?' },
             { name: 'completeness', weight: 0.10, desc: 'Addresses all aspects?' },
             { name: 'coherence', weight: 0.08, desc: 'Internally consistent?' },
-            { name: 'method_quality', weight: 0.10, desc: 'Appropriate approach?' }
+            { name: 'method_quality', weight: 0.08, desc: 'Appropriate approach?' },
+            { name: 'premise_handling', weight: 0.07, desc: 'Correct use of given facts?' },
+            { name: 'alternative_consideration', weight: 0.07, desc: 'Considers other possibilities?' }
         ]
     },
     factual: {
         dimensions: [
-            { name: 'accuracy', weight: 0.35, desc: 'Factually correct?' },
-            { name: 'completeness', weight: 0.20, desc: 'Answers question fully?' },
+            { name: 'accuracy', weight: 0.30, desc: 'Factually correct?' },
+            { name: 'completeness', weight: 0.15, desc: 'Answers question fully?' },
             { name: 'precision', weight: 0.15, desc: 'Specific & detailed?' },
             { name: 'clarity', weight: 0.10, desc: 'Clearly presented?' },
             { name: 'source_awareness', weight: 0.10, desc: 'Acknowledges sources?' },
-            { name: 'context_appropriateness', weight: 0.10, desc: 'Right level of detail?' }
+            { name: 'context_appropriateness', weight: 0.10, desc: 'Right level of detail?' },
+            { name: 'bias_neutrality', weight: 0.05, desc: 'Objective and balanced?' },
+            { name: 'update_recency', weight: 0.05, desc: 'Reflects current knowledge?' }
         ]
     },
     math: {
         dimensions: [
-            { name: 'answer_correctness', weight: 0.35, desc: 'Final answer correct?' },
-            { name: 'method', weight: 0.25, desc: 'Solution approach valid?' },
+            { name: 'answer_correctness', weight: 0.30, desc: 'Final answer correct?' },
+            { name: 'method', weight: 0.20, desc: 'Solution approach valid?' },
             { name: 'rigor', weight: 0.15, desc: 'Mathematically rigorous?' },
             { name: 'presentation', weight: 0.10, desc: 'Clearly shown?' },
-            { name: 'notation', weight: 0.08, desc: 'Proper notation used?' },
-            { name: 'edge_cases', weight: 0.07, desc: 'Handles special cases?' }
+            { name: 'notation', weight: 0.05, desc: 'Proper notation used?' },
+            { name: 'edge_cases', weight: 0.05, desc: 'Handles special cases?' },
+            { name: 'proof_completeness', weight: 0.10, desc: 'All steps justified?' },
+            { name: 'calculation_accuracy', weight: 0.05, desc: 'No arithmetic errors?' }
         ]
     },
     creative: {
         dimensions: [
-            { name: 'creativity', weight: 0.25, desc: 'Original & imaginative?' },
-            { name: 'coherence', weight: 0.20, desc: 'Well-structured & logical?' },
+            { name: 'creativity', weight: 0.20, desc: 'Original & imaginative?' },
+            { name: 'coherence', weight: 0.15, desc: 'Well-structured & logical?' },
             { name: 'relevance', weight: 0.15, desc: 'Addresses task?' },
             { name: 'originality', weight: 0.15, desc: 'Unique approach?' },
             { name: 'emotional_impact', weight: 0.10, desc: 'Engaging?' },
-            { name: 'style', weight: 0.08, desc: 'Appropriate voice?' },
-            { name: 'audience_fit', weight: 0.07, desc: 'Right for audience?' }
+            { name: 'style', weight: 0.05, desc: 'Appropriate voice?' },
+            { name: 'audience_fit', weight: 0.05, desc: 'Right for audience?' },
+            { name: 'engagement', weight: 0.05, desc: 'Captures attention?' },
+            { name: 'narrative_flow', weight: 0.05, desc: 'Smooth progression?' },
+            { name: 'sensory_detail', weight: 0.05, desc: 'Vivid descriptions?' }
+        ]
+    },
+    general: {
+        dimensions: [
+            { name: 'helpfulness', weight: 0.25, desc: 'Achieves user goal?' },
+            { name: 'relevance', weight: 0.20, desc: 'On-topic and focused?' },
+            { name: 'clarity', weight: 0.15, desc: 'Easy to understand?' },
+            { name: 'conciseness', weight: 0.10, desc: 'No unnecessary filler?' },
+            { name: 'tone_appropriateness', weight: 0.10, desc: 'Right level of formality?' },
+            { name: 'instruction_adherence', weight: 0.10, desc: 'Follows all constraints?' },
+            { name: 'safety', weight: 0.10, desc: 'Content is safe and ethical?' }
         ]
     },
     // Enhanced judging system: 6 new categories for better model differentiation
     'instruction-following': {
         dimensions: [
-            { name: 'instruction_adherence', weight: 0.30, desc: 'Follows instructions precisely?' },
-            { name: 'constraint_compliance', weight: 0.25, desc: 'Respects all constraints?' },
+            { name: 'instruction_adherence', weight: 0.25, desc: 'Follows instructions precisely?' },
+            { name: 'constraint_compliance', weight: 0.20, desc: 'Respects all constraints?' },
             { name: 'format_accuracy', weight: 0.15, desc: 'Output format correct?' },
             { name: 'completeness', weight: 0.12, desc: 'All requirements met?' },
             { name: 'implicit_understanding', weight: 0.10, desc: 'Grasps implicit intent?' },
-            { name: 'edge_case_handling', weight: 0.08, desc: 'Handles edge cases well?' }
+            { name: 'edge_case_handling', weight: 0.08, desc: 'Handles edge cases well?' },
+            { name: 'negative_constraint_adherence', weight: 0.10, desc: 'Does NOT do forbidden things?' }
         ]
     },
     summarization: {
         dimensions: [
-            { name: 'accuracy', weight: 0.25, desc: 'Preserves key information?' },
-            { name: 'conciseness', weight: 0.20, desc: 'Appropriately brief?' },
+            { name: 'accuracy', weight: 0.20, desc: 'Preserves key information?' },
+            { name: 'conciseness', weight: 0.18, desc: 'Appropriately brief?' },
             { name: 'completeness', weight: 0.18, desc: 'Captures main points?' },
             { name: 'coherence', weight: 0.15, desc: 'Logically structured?' },
             { name: 'abstraction', weight: 0.12, desc: 'Right level of detail?' },
-            { name: 'readability', weight: 0.10, desc: 'Easy to understand?' }
+            { name: 'readability', weight: 0.10, desc: 'Easy to understand?' },
+            { name: 'objectivity', weight: 0.07, desc: 'Free from judge commentary?' }
         ]
     },
     translation: {
         dimensions: [
-            { name: 'accuracy', weight: 0.30, desc: 'Meaning preserved correctly?' },
-            { name: 'fluency', weight: 0.25, desc: 'Natural in target language?' },
+            { name: 'accuracy', weight: 0.25, desc: 'Meaning preserved correctly?' },
+            { name: 'fluency', weight: 0.20, desc: 'Natural in target language?' },
             { name: 'grammar', weight: 0.15, desc: 'Grammatically correct?' },
             { name: 'idiom_usage', weight: 0.12, desc: 'Idiomatic expressions appropriate?' },
             { name: 'cultural_sensitivity', weight: 0.10, desc: 'Culturally appropriate?' },
-            { name: 'tone_preservation', weight: 0.08, desc: 'Original tone maintained?' }
+            { name: 'tone_preservation', weight: 0.08, desc: 'Original tone maintained?' },
+            { name: 'contextual_equivalence', weight: 0.10, desc: 'Fits the situational context?' }
         ]
     },
     'multi-turn-reasoning': {
         dimensions: [
-            { name: 'context_retention', weight: 0.25, desc: 'Remembers previous context?' },
-            { name: 'logical_progression', weight: 0.22, desc: 'Builds on prior steps?' },
-            { name: 'accuracy', weight: 0.20, desc: 'Final conclusion correct?' },
+            { name: 'context_retention', weight: 0.20, desc: 'Remembers previous context?' },
+            { name: 'logical_progression', weight: 0.18, desc: 'Builds on prior steps?' },
+            { name: 'accuracy', weight: 0.18, desc: 'Final conclusion correct?' },
             { name: 'coherence', weight: 0.15, desc: 'Consistent throughout?' },
             { name: 'depth', weight: 0.10, desc: 'Sufficient analysis depth?' },
-            { name: 'synthesis', weight: 0.08, desc: 'Integrates information well?' }
+            { name: 'synthesis', weight: 0.08, desc: 'Integrates information well?' },
+            { name: 'state_tracking', weight: 0.11, desc: 'Keeps track of changes?' }
         ]
     },
     'context-retention': {
         dimensions: [
-            { name: 'recall_accuracy', weight: 0.30, desc: 'Recalls information correctly?' },
-            { name: 'relevance_filtering', weight: 0.20, desc: 'Retrieves relevant context?' },
+            { name: 'recall_accuracy', weight: 0.25, desc: 'Recalls information correctly?' },
+            { name: 'relevance_filtering', weight: 0.18, desc: 'Retrieves relevant context?' },
             { name: 'temporal_awareness', weight: 0.15, desc: 'Understands information order?' },
             { name: 'integration', weight: 0.15, desc: 'Integrates old & new context?' },
             { name: 'consistency', weight: 0.12, desc: 'Consistent with prior statements?' },
-            { name: 'scope_management', weight: 0.08, desc: 'Appropriate context window?' }
+            { name: 'scope_management', weight: 0.08, desc: 'Appropriate context window?' },
+            { name: 'no_hallucination', weight: 0.07, desc: 'Does not invent context?' }
         ]
     },
     'edge-cases': {
         dimensions: [
-            { name: 'error_handling', weight: 0.28, desc: 'Handles errors gracefully?' },
-            { name: 'boundary_awareness', weight: 0.22, desc: 'Recognizes edge conditions?' },
+            { name: 'error_handling', weight: 0.25, desc: 'Handles errors gracefully?' },
+            { name: 'boundary_awareness', weight: 0.20, desc: 'Recognizes edge conditions?' },
             { name: 'robustness', weight: 0.18, desc: 'Stable under unusual inputs?' },
             { name: 'graceful_degradation', weight: 0.15, desc: 'Fails gracefully?' },
             { name: 'validation', weight: 0.10, desc: 'Validates inputs properly?' },
-            { name: 'recovery', weight: 0.07, desc: 'Recovers from errors?' }
+            { name: 'recovery', weight: 0.07, desc: 'Recovers from errors?' },
+            { name: 'input_sanitization', weight: 0.05, desc: 'Handles malformed input?' }
+        ]
+    },
+    refactoring: {
+        dimensions: [
+            { name: 'readability_improvement', weight: 0.25, desc: 'Is code clearer?' },
+            { name: 'logic_preservation', weight: 0.25, desc: 'Behavior remains identical?' },
+            { name: 'complexity_reduction', weight: 0.15, desc: 'Reduced cyclomatic complexity?' },
+            { name: 'dry_principle', weight: 0.10, desc: 'Removed redundancy?' },
+            { name: 'naming_quality', weight: 0.10, desc: 'Better variable/function names?' },
+            { name: 'modularization', weight: 0.08, desc: 'Improved separation of concerns?' },
+            { name: 'idiomatic_code', weight: 0.07, desc: 'Uses language-specific best patterns?' }
+        ]
+    },
+    debugging: {
+        dimensions: [
+            { name: 'root_cause_identification', weight: 0.30, desc: 'Found the actual bug?' },
+            { name: 'fix_correctness', weight: 0.25, desc: 'Does the fix work?' },
+            { name: 'minimal_intervention', weight: 0.15, desc: 'Avoided unnecessary changes?' },
+            { name: 'side_effect_avoidance', weight: 0.10, desc: 'No new bugs introduced?' },
+            { name: 'explanation_clarity', weight: 0.10, desc: 'Clear reason for the bug?' },
+            { name: 'prevention_strategy', weight: 0.10, desc: 'Suggested how to avoid it?' }
+        ]
+    },
+    explanation: {
+        dimensions: [
+            { name: 'clarity', weight: 0.25, desc: 'Easy to follow?' },
+            { name: 'accuracy', weight: 0.25, desc: 'Technically correct?' },
+            { name: 'analogical_quality', weight: 0.15, desc: 'Good examples/metaphors?' },
+            { name: 'structure', weight: 0.12, desc: 'Logical flow of information?' },
+            { name: 'completeness', weight: 0.10, desc: 'No missing key details?' },
+            { name: 'audience_fit', weight: 0.08, desc: 'Right level of technicality?' },
+            { name: 'conciseness', weight: 0.05, desc: 'No unnecessary detail?' }
+        ]
+    },
+    dialogue: {
+        dimensions: [
+            { name: 'naturalness', weight: 0.20, desc: 'Sounds human-like?' },
+            { name: 'turn_relevance', weight: 0.20, desc: 'Addresses previous turn?' },
+            { name: 'persona_consistency', weight: 0.15, desc: 'Maintains character/tone?' },
+            { name: 'engagement', weight: 0.15, desc: 'Keeps conversation going?' },
+            { name: 'helpfulness', weight: 0.12, desc: 'User goals achieved?' },
+            { name: 'proactivity', weight: 0.10, desc: 'Suggests next steps?' },
+            { name: 'politeness', weight: 0.08, desc: 'Appropriate etiquette?' }
         ]
     }
 };
 
 /**
  * Legacy scoring configurations (3-5 dimensions)
- * Maintained for backward compatibility with existing prompts
- * Each type has specific evaluation criteria and prompts
+ * DEPRECATED: Use ENHANCED_SCORING_CONFIGS exclusively. (Audit Step 3)
  */
 const SCORING_CONFIGS = {
     code: {
@@ -159,6 +230,7 @@ const SCORING_CONFIGS = {
         prompt: `You are a code quality evaluator. Analyze the given code response and score it.
 
 IMPORTANT: If the RESPONSE TO EVALUATE section is empty or blank, assign 0 to all scores - the model failed to produce output.
+IMPORTANT: 'overall' score must be 0-10, NOT a sum of dimension scores. (Audit Issue 4)
 
 CRITERIA TO EVALUATE:
 1. Correctness (0-10): Does the code work and produce correct output?
@@ -179,6 +251,7 @@ Respond ONLY with JSON in this exact format:
         prompt: `You are a reasoning quality evaluator. Analyze the logical reasoning in this response.
 
 IMPORTANT: If the RESPONSE TO EVALUATE section is empty or blank, assign 0 to all scores - the model failed to produce output.
+IMPORTANT: 'overall' score must be 0-10, NOT a sum of dimension scores. (Audit Issue 4)
 
 CRITERIA TO EVALUATE:
 1. Accuracy (0-10): Is the conclusion/answer correct?
@@ -199,6 +272,7 @@ Respond ONLY with JSON in this exact format:
         prompt: `You are a factual accuracy evaluator. Check if this response is factually correct.
 
 IMPORTANT: If the RESPONSE TO EVALUATE section is empty or blank, assign 0 to all scores - the model failed to produce output.
+IMPORTANT: 'overall' score must be 0-10, NOT a sum of dimension scores. (Audit Issue 4)
 
 CRITERIA TO EVALUATE:
 1. Accuracy (0-10): Is the information factually correct?
@@ -219,6 +293,7 @@ Respond ONLY with JSON in this exact format:
         prompt: `You are a math evaluator. Check if the mathematical answer and work is correct.
 
 IMPORTANT: If the RESPONSE TO EVALUATE section is empty or blank, assign 0 to all scores - the model failed to produce output.
+IMPORTANT: 'overall' score must be 0-10, NOT a sum of dimension scores. (Audit Issue 4)
 
 CRITERIA TO EVALUATE:
 1. Answer (0-10): Is the final answer correct?
@@ -239,6 +314,7 @@ Respond ONLY with JSON in this exact format:
         prompt: `You are a creative writing evaluator. Assess the creativity and quality of this response.
 
 IMPORTANT: If the RESPONSE TO EVALUATE section is empty or blank, assign 0 to all scores - the model failed to produce output.
+IMPORTANT: 'overall' score must be 0-10, NOT a sum of dimension scores. (Audit Issue 4)
 
 CRITERIA TO EVALUATE:
 1. Creativity (0-10): Is it original and imaginative?
@@ -278,6 +354,7 @@ function buildDynamicJudgePrompt(dimensions, task, expected, response) {
     return `You are a quality evaluator. Analyze the given response and score it across multiple dimensions.
 
 IMPORTANT: If the RESPONSE TO EVALUATE section is empty or blank, assign 0 to all dimensions - the model failed to produce output.
+IMPORTANT: 'overall' score must be 0-10, NOT a sum of dimension scores. (Audit Issue 4)
 
 CRITERIA TO EVALUATE:
 ${criteriaList}
@@ -293,7 +370,8 @@ ${JSON.stringify(jsonFormat, null, 2)}`;
 
 /**
  * Get scoring dimensions for a prompt
- * Priority: prompt.scoring_dimensions > ENHANCED_SCORING_CONFIGS > legacy SCORING_CONFIGS
+ * Priority: prompt.scoring_dimensions > ENHANCED_SCORING_CONFIGS
+ * DEPRECATED: legacy SCORING_CONFIGS fallback removed.
  * @param {Object} prompt - The benchmark prompt object
  * @returns {Object} { dimensions: Array, weights: Object, useLegacy: boolean }
  */
@@ -319,34 +397,25 @@ function getScoringDimensions(prompt) {
     }
 
     // Priority 2: Use enhanced scoring configs based on scoring_type
-    const scoringType = prompt.scoring_type || 'reasoning';
-    const enhancedConfig = ENHANCED_SCORING_CONFIGS[scoringType];
+    // Map 'code' to 'coding' for consistency if needed
+    let scoringType = prompt.scoring_type || prompt.prompt_category || 'reasoning';
+    if (scoringType === 'code') scoringType = 'coding';
 
-    if (enhancedConfig && enhancedConfig.dimensions) {
-        const dimensions = enhancedConfig.dimensions;
-        const weights = dimensions.reduce((acc, dim) => {
-            acc[dim.name] = dim.weight;
-            return acc;
-        }, {});
+    const enhancedConfig = ENHANCED_SCORING_CONFIGS[scoringType] || ENHANCED_SCORING_CONFIGS.reasoning;
 
-        logger.info('Using enhanced scoring dimensions', {
-            prompt: prompt.name || 'unknown',
-            scoringType,
-            dimensionCount: dimensions.length
-        });
+    const dimensions = enhancedConfig.dimensions;
+    const weights = dimensions.reduce((acc, dim) => {
+        acc[dim.name] = dim.weight;
+        return acc;
+    }, {});
 
-        return { dimensions, weights, useLegacy: false };
-    }
-
-    // Priority 3: Fall back to legacy scoring configs (backward compatibility)
-    const legacyConfig = SCORING_CONFIGS[scoringType] || SCORING_CONFIGS.reasoning;
-
-    logger.info('Using legacy scoring config (backward compatibility)', {
+    logger.info('Using enhanced scoring dimensions', {
         prompt: prompt.name || 'unknown',
-        scoringType
+        scoringType,
+        dimensionCount: dimensions.length
     });
 
-    return { dimensions: null, weights: legacyConfig.weight, useLegacy: true, legacyConfig };
+    return { dimensions, weights, useLegacy: false };
 }
 
 /**
@@ -363,27 +432,36 @@ function quickScore(response, prompt) {
     
     const resp = response.toLowerCase().trim();
     
+    // Audit Issue 10: Use regex with word boundaries to prevent false positives
+    const checkPattern = (answer) => {
+        const regex = new RegExp(`\\b${answer}\\b`, 'i');
+        return regex.test(resp);
+    };
+
     // Direct answer patterns for common factual questions
     const quickPatterns = {
-        'capital of france': { answer: 'paris', score: resp.includes('paris') ? 10 : 0 },
-        '15 + 27': { answer: '42', score: resp.includes('42') ? 10 : 0 },
-        '15+27': { answer: '42', score: resp.includes('42') ? 10 : 0 },
-        'world war ii end': { answer: '1945', score: resp.includes('1945') ? 10 : 0 },
-        'wwii end': { answer: '1945', score: resp.includes('1945') ? 10 : 0 },
-        '2, 4, 8, 16': { answer: '32', score: resp.includes('32') ? 10 : 0 },
-        '2x + 5 = 17': { answer: '6', score: resp.includes('6') || resp.includes('x = 6') ? 10 : 0 }
+        'capital of france': { answer: 'paris' },
+        '15 + 27': { answer: '42' },
+        '15+27': { answer: '42' },
+        'world war ii end': { answer: '1945' },
+        'wwii end': { answer: '1945' },
+        '2, 4, 8, 16': { answer: '32' },
+        '2x + 5 = 17': { answer: '6' }
     };
     
     const promptLower = prompt.prompt ? prompt.prompt.toLowerCase() : prompt.toLowerCase();
     
     for (const [pattern, check] of Object.entries(quickPatterns)) {
         if (promptLower.includes(pattern)) {
-            logger.info('Quick scoring match', { pattern, score: check.score, expected: check.answer });
+            const isMatch = checkPattern(check.answer);
+            const score = isMatch ? 10 : 0;
+
+            logger.info('Quick scoring match', { pattern, score, expected: check.answer });
             return {
                 quick: true,
-                score: check.score,
+                score: score,
                 expected: check.answer,
-                matched: check.score === 10,
+                matched: isMatch,
                 pattern
             };
         }
@@ -393,101 +471,145 @@ function quickScore(response, prompt) {
 }
 
 /**
- * Call the judge model to evaluate a response
+ * Normalize and clamp scores to 0-10 range (Audit Issue 2)
+ * @param {number} score - The raw score to normalize
+ * @param {string} dimensionName - Name of dimension for logging
+ * @returns {number} Normalized score
+ */
+function normalizeScore(score, dimensionName = 'unknown') {
+    let normalized = parseFloat(score);
+    if (isNaN(normalized)) {
+        logger.warn(`Invalid score for ${dimensionName}`, { raw: score });
+        normalized = 0;
+    }
+    // Clamp to 0-10 range
+    const clamped = Math.max(0, Math.min(10, normalized));
+    if (clamped !== normalized) {
+        logger.warn('Score clamped', { dimension: dimensionName, original: normalized, clamped });
+    }
+    return clamped;
+}
+
+/**
+ * Call the judge model to evaluate a response with retry logic (Audit Issue 7)
  * @param {string} evalPrompt - The evaluation prompt
  * @param {Object} config - Optional configuration override
  * @returns {Promise<Object>} Parsed scores
  */
 async function callJudge(evalPrompt, config = {}) {
     const judgeConfig = { ...JUDGE_CONFIG, ...config };
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), judgeConfig.timeout);
-    
-    try {
-        // Use HTTP agent for connection pooling
-        const url = `${judgeConfig.host}/api/generate`;
-        const fetchOptions = getFetchOptions(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                model: judgeConfig.model,
-                prompt: evalPrompt,
-                stream: false,
-                options: {
-                    temperature: judgeConfig.temperature,
-                    num_predict: judgeConfig.num_predict,
-                    num_ctx: 8192
-                }
-            }),
-            signal: controller.signal
-        });
-        const response = await fetch(url, fetchOptions);
-        
-        clearTimeout(timeoutId);
-        
-        if (!response.ok) {
-            throw new Error(`Judge HTTP ${response.status}`);
-        }
-        
-        const data = await response.json();
-        const text = data.response || '';
+    let retries = 0;
+    const maxRetries = judgeConfig.max_retries !== undefined ? judgeConfig.max_retries : 2;
 
-        // Detect if judge output was truncated (hit token limit)
-        const judgeTruncated = data.done_reason === 'length';
-        const judgeTokens = data.eval_count || 0;
-
-        // Extract JSON from response
-        let jsonStr = null;
-        
-        // 1. Try Markdown code block
-        const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-        if (codeBlockMatch) {
-            jsonStr = codeBlockMatch[1];
-        } else {
-            // 2. Try finding outermost braces
-            const firstBrace = text.indexOf('{');
-            const lastBrace = text.lastIndexOf('}');
-            if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-                jsonStr = text.substring(firstBrace, lastBrace + 1);
-            }
-        }
-
-        if (!jsonStr) {
-            throw new Error('No JSON found in judge response');
-        }
+    while (retries <= maxRetries) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), judgeConfig.timeout);
         
         try {
-            // 3. Clean and parse
-            // Fix common LLM JSON issues:
-            // - Control characters
-            // - Invalid escape sequences (like LaTeX \( or \))
-            let sanitized = jsonStr.replace(/[\x00-\x1F\x7F-\x9F]/g, "");
-            
-            // Escape backslashes that are not part of a valid JSON escape sequence
-            // Valid escapes: \" \\ \/ \b \f \n \r \t \uXXXX
-            // We conservatively escape \ followed by anything else
-            sanitized = sanitized.replace(/\\([^"\\/bfnrtu])/g, "\\\\$1");
+            // Use HTTP agent for connection pooling
+            const url = `${judgeConfig.host}/api/generate`;
+            const fetchOptions = getFetchOptions(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: judgeConfig.model,
+                    prompt: evalPrompt,
+                    stream: false,
+                    options: {
+                        temperature: judgeConfig.temperature,
+                        num_predict: judgeConfig.num_predict,
+                        num_ctx: 8192
+                    }
+                }),
+                signal: controller.signal
+            });
+            const response = await fetch(url, fetchOptions);
 
-            const scores = JSON.parse(sanitized);
-            return {
-                success: true,
-                scores,
-                raw: text,
-                judge_truncated: judgeTruncated,
-                judge_tokens: judgeTokens
-            };
-        } catch (parseErr) {
-            throw new Error(`JSON parse failed: ${parseErr.message}`);
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+                throw new Error(`Judge HTTP ${response.status}`);
+            }
+
+            const data = await response.json();
+            const text = data.response || '';
+
+            // Detect if judge output was truncated (hit token limit)
+            const judgeTruncated = data.done_reason === 'length';
+            const judgeTokens = data.eval_count || 0;
+
+            // Extract JSON from response
+            let jsonStr = null;
+
+            // 1. Try Markdown code block
+            const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+            if (codeBlockMatch) {
+                jsonStr = codeBlockMatch[1];
+            } else {
+                // 2. Try finding outermost braces
+                const firstBrace = text.indexOf('{');
+                const lastBrace = text.lastIndexOf('}');
+                if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+                    jsonStr = text.substring(firstBrace, lastBrace + 1);
+                }
+            }
+
+            if (!jsonStr) {
+                throw new Error('No JSON found in judge response');
+            }
+            
+            try {
+                // 3. Clean and parse
+                // Fix common LLM JSON issues:
+                // - Control characters
+                // - Invalid escape sequences (like LaTeX \( or \))
+                let sanitized = jsonStr.replace(/[\x00-\x1F\x7F-\x9F]/g, "");
+
+                // Escape backslashes that are not part of a valid JSON escape sequence
+                // Valid escapes: \" \\ \/ \b \f \n \r \t \uXXXX
+                // We conservatively escape \ followed by anything else
+                sanitized = sanitized.replace(/\\([^"\\/bfnrtu])/g, "\\\\$1");
+
+                const scores = JSON.parse(sanitized);
+
+                // Audit Issue 5: JSON Response Validation
+                // Ensure overall exists and is numeric
+                if (scores.overall === undefined || typeof scores.overall !== 'number') {
+                    throw new Error('Invalid judge response: overall score missing or not numeric');
+                }
+
+                return {
+                    success: true,
+                    scores,
+                    raw: text,
+                    judge_truncated: judgeTruncated,
+                    judge_tokens: judgeTokens
+                };
+            } catch (parseErr) {
+                throw new Error(`JSON parse failed: ${parseErr.message}`);
+            }
+
+        } catch (err) {
+            clearTimeout(timeoutId);
+            retries++;
+
+            if (retries > maxRetries) {
+                logger.error('Judge call failed after retries', {
+                    error: err.message,
+                    retries,
+                    judge_model: judgeConfig.model
+                });
+                return {
+                    success: false,
+                    error: err.message,
+                    scores: null
+                };
+            }
+
+            const delay = Math.min(1000 * Math.pow(2, retries - 1), 5000);
+            logger.warn(`Judge call failed, retrying in ${delay}ms...`, { error: err.message, retry: retries });
+            await new Promise(resolve => setTimeout(resolve, delay));
         }
-        
-    } catch (err) {
-        clearTimeout(timeoutId);
-        logger.error('Judge call failed', { error: err.message });
-        return {
-            success: false,
-            error: err.message,
-            scores: null
-        };
     }
 }
 
@@ -498,9 +620,10 @@ async function callJudge(evalPrompt, config = {}) {
  * @param {Object} params.prompt - The prompt object with expected answer and criteria
  * @param {boolean} params.skipLLM - Skip LLM judge, use quick scoring only
  * @param {Object} params.judgeConfig - Optional configuration for the judge model
+ * @param {Object} params._batchHardwareSnapshot - Cached hardware snapshot for batch runs (Audit Issue 11)
  * @returns {Promise<Object>} Quality scores
  */
-async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = {} }) {
+async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = {}, _batchHardwareSnapshot = null }) {
     const startTime = Date.now();
     
     // Try quick scoring first (only if expected answer exists)
@@ -542,7 +665,7 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
         };
     }
     
-    // Validate that response is not empty before scoring
+    // Validate that response is not empty before scoring (Audit Issue 1)
     if (!response || response.trim().length === 0) {
         logger.warn('Attempting to score empty response', {
             prompt: prompt.name || prompt.prompt_name || 'unknown',
@@ -551,7 +674,7 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
         });
         return {
             quality_score: 0,
-            scoring_method: 'llm_judge',
+            scoring_method: 'validator',
             scoring_type: prompt.scoring_type || 'reasoning',
             explanation: 'CRITICAL: Model produced NO response. Unable to evaluate empty output. Automatic score: 0/10',
             breakdown: { 
@@ -618,20 +741,21 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
         };
     }
     
-    const scores = judgeResult.scores;
-    
-    // Calculate weighted overall score if not provided
-    let overallScore = scores.overall;
-    if (overallScore === undefined) {
-        overallScore = 0;
-        for (const [key, weight] of Object.entries(config.weight)) {
-            if (scores[key] !== undefined) {
-                overallScore += scores[key] * weight;
-            }
+    const rawScores = judgeResult.scores;
+    const scores = {};
+
+    // Normalize and clamp all provided dimension scores (Audit Issue 2)
+    for (const [key, val] of Object.entries(rawScores)) {
+        if (typeof val === 'number') {
+            scores[key] = normalizeScore(val, key);
+        } else if (key === 'explanation') {
+            scores[key] = val;
         }
-        overallScore = Math.round(overallScore * 10) / 10;
     }
     
+    // Ensure overall score exists and is clamped (JSON structure validated in callJudge)
+    const overallScore = normalizeScore(rawScores.overall, 'overall');
+
     logger.info('LLM judge scoring completed', {
         prompt: prompt.name || prompt.prompt_name || 'unknown',
         score: overallScore,
@@ -654,16 +778,23 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
         });
     }
 
-    // Detect judge hardware (non-blocking, won't fail scoring if detection fails)
-    let judgeHardwareSnapshot = null;
-    try {
-        const judgeHost = judgeConfig.host || JUDGE_CONFIG.host;
-        const judgeModel = judgeConfig.model || JUDGE_CONFIG.model;
-        if (judgeHost && judgeModel) {
-            judgeHardwareSnapshot = await hardwareProfileService.detectHardware(judgeHost, judgeModel);
+    // Detect judge hardware with timeout (Audit Issue 11)
+    let judgeHardwareSnapshot = _batchHardwareSnapshot;
+    if (!judgeHardwareSnapshot) {
+        try {
+            const judgeHost = judgeConfig.host || JUDGE_CONFIG.host;
+            const judgeModel = judgeConfig.model || JUDGE_CONFIG.model;
+            if (judgeHost && judgeModel) {
+                // Use Promise.race for 5s timeout
+                const hwPromise = hardwareProfileService.detectHardware(judgeHost, judgeModel);
+                const timeoutPromise = new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('Hardware detection timeout')), 5000)
+                );
+                judgeHardwareSnapshot = await Promise.race([hwPromise, timeoutPromise]);
+            }
+        } catch (hwErr) {
+            logger.debug('Judge hardware detection failed (non-critical)', { error: hwErr.message });
         }
-    } catch (hwErr) {
-        logger.debug('Judge hardware detection failed (non-critical)', { error: hwErr.message });
     }
 
     return {
@@ -671,7 +802,7 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
         scoring_method: 'llm_judge',
         scoring_type: scoringType,
         breakdown: scores,
-        explanation: scores.explanation || '',
+        explanation: scores.explanation || 'No explanation provided', // Audit Issue 8
         judge_model: judgeConfig.model || JUDGE_CONFIG.model,
         judge_host: judgeConfig.host || JUDGE_CONFIG.host,
         judge_hardware_snapshot: judgeHardwareSnapshot,
@@ -685,14 +816,14 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
 /**
  * Category-specific composite profiles
  * Each category has custom weights for quality, latency, and speed
- * Based on Enhanced Judging System Plan Phase 1 Week 5
+ * Aligned with Enhanced Judging System Plan Phase 1 Week 5
  */
 const CATEGORY_COMPOSITE_PROFILES = {
     // Original 6 categories
     coding: {
         weights: { quality: 0.60, latency: 0.25, speed: 0.15 },
         latencyCap: 45000, // 45s (users tolerate slower for correct code)
-        description: "Correctness + efficiency critical"
+        description: "Code quality > speed"
     },
     reasoning: {
         weights: { quality: 0.80, latency: 0.10, speed: 0.10 },
@@ -701,18 +832,18 @@ const CATEGORY_COMPOSITE_PROFILES = {
     },
     factual: {
         weights: { quality: 0.70, latency: 0.20, speed: 0.10 },
-        latencyCap: 30000, // 30s (quick lookups expected)
-        description: "Accuracy critical, speed matters"
+        latencyCap: 20000, // 20s (Facts should be quick)
+        description: "Accuracy + responsiveness"
     },
     math: {
         weights: { quality: 0.75, latency: 0.15, speed: 0.10 },
-        latencyCap: 60000, // 60s (complex calculations take time)
-        description: "Correctness paramount"
+        latencyCap: 30000, // 30s
+        description: "Correctness critical"
     },
     creative: {
-        weights: { quality: 0.70, latency: 0.15, speed: 0.15 },
-        latencyCap: 90000, // 90s (creative generation takes time)
-        description: "Quality critical, tolerates slower generation"
+        weights: { quality: 0.50, latency: 0.30, speed: 0.20 },
+        latencyCap: 60000, // 60s
+        description: "Balance quality and flow"
     },
     general: {
         weights: { quality: 0.50, latency: 0.30, speed: 0.20 },
@@ -722,34 +853,54 @@ const CATEGORY_COMPOSITE_PROFILES = {
 
     // Enhanced judging system: 6 new categories
     'instruction-following': {
-        weights: { quality: 0.75, latency: 0.15, speed: 0.10 },
-        latencyCap: 30000, // 30s (following instructions precisely)
-        description: "Instruction adherence is critical"
+        weights: { quality: 0.85, latency: 0.10, speed: 0.05 },
+        latencyCap: 30000,
+        description: "Precision matters most"
     },
     summarization: {
-        weights: { quality: 0.65, latency: 0.20, speed: 0.15 },
-        latencyCap: 45000, // 45s (distillation takes thought)
-        description: "Accuracy + conciseness matter"
+        weights: { quality: 0.60, latency: 0.25, speed: 0.15 },
+        latencyCap: 25000,
+        description: "Concise and fast"
     },
     translation: {
         weights: { quality: 0.70, latency: 0.20, speed: 0.10 },
-        latencyCap: 40000, // 40s (accuracy critical)
+        latencyCap: 40000,
         description: "Accuracy and fluency critical"
     },
     'multi-turn-reasoning': {
-        weights: { quality: 0.80, latency: 0.10, speed: 0.10 },
-        latencyCap: 150000, // 150s (context-heavy reasoning)
-        description: "Context retention + reasoning depth"
+        weights: { quality: 0.75, latency: 0.15, speed: 0.10 },
+        latencyCap: 90000,
+        description: "Context retention critical"
     },
     'context-retention': {
         weights: { quality: 0.75, latency: 0.15, speed: 0.10 },
-        latencyCap: 60000, // 60s (memory integration)
+        latencyCap: 60000,
         description: "Recall accuracy critical"
     },
     'edge-cases': {
+        weights: { quality: 0.80, latency: 0.12, speed: 0.08 },
+        latencyCap: 35000,
+        description: "Robustness over speed"
+    },
+    refactoring: {
         weights: { quality: 0.70, latency: 0.20, speed: 0.10 },
-        latencyCap: 45000, // 45s (robustness testing)
-        description: "Error handling + robustness"
+        latencyCap: 50000,
+        description: "Code improvement quality"
+    },
+    debugging: {
+        weights: { quality: 0.75, latency: 0.15, speed: 0.10 },
+        latencyCap: 45000,
+        description: "Diagnosis accuracy critical"
+    },
+    explanation: {
+        weights: { quality: 0.70, latency: 0.20, speed: 0.10 },
+        latencyCap: 30000,
+        description: "Clarity and accuracy focused"
+    },
+    dialogue: {
+        weights: { quality: 0.50, latency: 0.30, speed: 0.20 },
+        latencyCap: 30000,
+        description: "Natural flow balanced with speed"
     }
 };
 
@@ -817,9 +968,9 @@ function calculateCompositeScore(metrics, profileOrCategory = 'interactive') {
     // Score: 100 at 0ms, 0 at cap
     const latencyScore = Math.max(0, 100 - ((latency / config.latencyCap) * 100));
     
-    // Normalize tokens/sec (higher is better, cap at 100 t/s)
-    // Score: 0 at 0 t/s, 100 at 100 t/s
-    const speedScore = Math.min(100, (parseFloat(tokens_per_sec) || 0));
+    // Normalize tokens/sec (higher is better, cap at 100 t/s) (Audit Issue 9)
+    // Linear normalization: 0 t/s = 0, 100 t/s = 100
+    const speedScore = Math.max(0, Math.min(100, (parseFloat(tokens_per_sec) || 0)));
     
     // Quality score is 0-10, scale to 0-100
     const qualityScore = (quality_score || 0) * 10;
@@ -844,24 +995,40 @@ function calculateCompositeScore(metrics, profileOrCategory = 'interactive') {
 }
 
 /**
- * Batch score multiple responses
+ * Batch score multiple responses with concurrency (Audit Issue 12)
  * @param {Array} results - Array of benchmark results with responses
- * @param {Object} options - Scoring options { profile: 'interactive'|'reasoning' }
+ * @param {Object} options - Scoring options { profile: 'interactive'|'reasoning', concurrency: 5 }
  * @returns {Promise<Array>} Results with quality scores added
  */
 async function batchScore(results, options = {}) {
-    const scoredResults = [];
+    const concurrency = options.concurrency || 5;
     const profile = options.profile || 'interactive';
-    
-    for (const result of results) {
+    const scoredResults = [];
+
+    // Audit Issue 11: Detect hardware ONCE for entire batch
+    let judgeHardwareSnapshot = null;
+    try {
+        const judgeHost = options.judgeConfig?.host || JUDGE_CONFIG.host;
+        const judgeModel = options.judgeConfig?.model || JUDGE_CONFIG.model;
+        if (judgeHost && judgeModel) {
+            const hwPromise = hardwareProfileService.detectHardware(judgeHost, judgeModel);
+            const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('Hardware detection timeout')), 5000)
+            );
+            judgeHardwareSnapshot = await Promise.race([hwPromise, timeoutPromise]);
+        }
+    } catch (hwErr) {
+        logger.debug('Batch hardware detection failed (non-critical)', { error: hwErr.message });
+    }
+
+    const processResult = async (result) => {
         if (!result.response || !result.success) {
-            scoredResults.push({
+            return {
                 ...result,
                 quality_score: null,
                 scoring_method: 'skipped',
                 reason: result.success ? 'no_response' : 'test_failed'
-            });
-            continue;
+            };
         }
         
         // Get prompt details for scoring
@@ -874,7 +1041,9 @@ async function batchScore(results, options = {}) {
         
         const scores = await scoreResponse({
             response: result.response,
-            prompt: promptInfo
+            prompt: promptInfo,
+            judgeConfig: options.judgeConfig,
+            _batchHardwareSnapshot: judgeHardwareSnapshot
         });
         
         const composite = calculateCompositeScore({
@@ -883,14 +1052,64 @@ async function batchScore(results, options = {}) {
             quality_score: scores.quality_score
         }, profile);
         
-        scoredResults.push({
+        return {
             ...result,
             ...scores,
             ...composite
-        });
+        };
+    };
+
+    // Process in parallel batches (controlled concurrency)
+    for (let i = 0; i < results.length; i += concurrency) {
+        const chunk = results.slice(i, i + concurrency);
+        const chunkResults = await Promise.all(chunk.map(r => processResult(r)));
+        scoredResults.push(...chunkResults);
     }
     
     return scoredResults;
+}
+
+/**
+ * Validate that all enhanced scoring weights sum to 1.0 (Audit Issue 3)
+ */
+function validateWeights() {
+    for (const [category, config] of Object.entries(ENHANCED_SCORING_CONFIGS)) {
+        if (!config.dimensions) continue;
+
+        const sum = config.dimensions.reduce((acc, dim) => acc + dim.weight, 0);
+        if (Math.abs(sum - 1.0) > 0.001) {
+            const msg = `Invalid weight configuration: ${category}: dimension weights sum to ${sum.toFixed(3)}, expected 1.0`;
+            logger.error(msg);
+            throw new Error(msg);
+        }
+    }
+    logger.info('Enhanced scoring weights validated successfully');
+}
+
+/**
+ * Validate that all category composite weights sum to 1.0
+ */
+function validateCompositeWeights() {
+    for (const [category, config] of Object.entries(CATEGORY_COMPOSITE_PROFILES)) {
+        const weights = config.weights;
+        const sum = Object.values(weights).reduce((acc, w) => acc + w, 0);
+        if (Math.abs(sum - 1.0) > 0.001) {
+            const msg = `Invalid composite weight configuration: ${category}: weights sum to ${sum.toFixed(3)}, expected 1.0`;
+            logger.error(msg);
+            throw new Error(msg);
+        }
+    }
+    logger.info('Category composite weights validated successfully');
+}
+
+// Run validations on module load
+try {
+    validateWeights();
+    validateCompositeWeights();
+} catch (err) {
+    logger.error('Weight validation failed at load time', { error: err.message });
+    // In production, we might want to proceed but log heavily.
+    // For now, following audit recommendation to prevent runtime surprises.
 }
 
 module.exports = {
@@ -903,5 +1122,7 @@ module.exports = {
     SCORING_CONFIGS,
     ENHANCED_SCORING_CONFIGS,
     CATEGORY_COMPOSITE_PROFILES,
-    JUDGE_CONFIG
+    JUDGE_CONFIG,
+    validateWeights,
+    validateCompositeWeights
 };

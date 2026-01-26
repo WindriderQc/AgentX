@@ -233,12 +233,18 @@ export async function loadBatchModels(hostUrl) {
                 category = registryEntry.categories[0];
             } else {
                 if (model.includes('coder') || model.includes('deepseek-coder')) category = 'coding';
-                else if (model.includes('math')) category = 'reasoning';
+                else if (model.includes('math')) category = 'math';
                 else if (model.includes('reasoning') || model.includes('r1')) category = 'reasoning';
                 else if (model.includes('ops')) category = 'ops';
             }
 
-            const allCategories = new Set(['generalist', 'coding', 'reasoning', 'ops', 'specialist', 'judge']);
+            const allCategories = new Set([
+                'generalist', 'coding', 'reasoning', 'factual', 'math', 'creative', 'general',
+                'instruction-following', 'summarization', 'translation',
+                'multi-turn-reasoning', 'context-retention', 'edge-cases',
+                'refactoring', 'debugging', 'explanation', 'dialogue',
+                'ops', 'specialist', 'judge'
+            ]);
             Object.values(state.modelRegistryCache).forEach(m => {
                 if (m.categories) m.categories.forEach(c => {
                     if (c) allCategories.add(c);

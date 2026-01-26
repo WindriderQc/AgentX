@@ -22,8 +22,8 @@ jest.mock('../../config/logger', () => ({
 
 describe('Enhanced Scoring Dimensions', () => {
     describe('buildDynamicJudgePrompt', () => {
-        it('should build a prompt with 8 dimensions for code category', () => {
-            const dimensions = ENHANCED_SCORING_CONFIGS.code.dimensions;
+        it('should build a prompt with 10 dimensions for coding category', () => {
+            const dimensions = ENHANCED_SCORING_CONFIGS.coding.dimensions;
             const task = 'Write a function to sort an array';
             const expected = 'Efficient sorting algorithm';
             const response = 'function sort(arr) { return arr.sort(); }';
@@ -40,12 +40,14 @@ describe('Enhanced Scoring Dimensions', () => {
             expect(prompt).toContain('documentation');
             expect(prompt).toContain('best_practices');
             expect(prompt).toContain('testability');
+            expect(prompt).toContain('scalability');
+            expect(prompt).toContain('security');
             expect(prompt).toContain(task);
             expect(prompt).toContain(expected);
             expect(prompt).toContain(response);
         });
 
-        it('should build a prompt with 7 dimensions for reasoning category', () => {
+        it('should build a prompt with 9 dimensions for reasoning category', () => {
             const dimensions = ENHANCED_SCORING_CONFIGS.reasoning.dimensions;
             const task = 'Explain why the sky is blue';
             const expected = 'Scientific explanation';
@@ -60,6 +62,8 @@ describe('Enhanced Scoring Dimensions', () => {
             expect(prompt).toContain('completeness');
             expect(prompt).toContain('coherence');
             expect(prompt).toContain('method_quality');
+            expect(prompt).toContain('premise_handling');
+            expect(prompt).toContain('alternative_consideration');
         });
 
         it('should format dimension names in criteria list (replace underscores with spaces)', () => {
@@ -98,7 +102,7 @@ describe('Enhanced Scoring Dimensions', () => {
         it('should use custom scoring_dimensions from prompt if defined', () => {
             const prompt = {
                 name: 'Custom Prompt',
-                scoring_type: 'code',
+                scoring_type: 'coding',
                 scoring_dimensions: [
                     { name: 'custom_dim1', weight: 0.6, description: 'Custom dimension 1' },
                     { name: 'custom_dim2', weight: 0.4, description: 'Custom dimension 2' }
@@ -118,35 +122,28 @@ describe('Enhanced Scoring Dimensions', () => {
         it('should use enhanced configs if no custom dimensions defined', () => {
             const prompt = {
                 name: 'Test Prompt',
+                scoring_type: 'coding'
+            };
+
+            const result = getScoringDimensions(prompt);
+
+            expect(result.useLegacy).toBe(false);
+            expect(result.dimensions).toHaveLength(10); // coding has 10 dimensions
+            expect(result.dimensions[0].name).toBe('correctness');
+            expect(result.weights.correctness).toBe(0.2);
+        });
+
+        it('should map "code" to "coding" for backward compatibility', () => {
+            const prompt = {
+                name: 'Test Prompt',
                 scoring_type: 'code'
             };
 
             const result = getScoringDimensions(prompt);
 
             expect(result.useLegacy).toBe(false);
-            expect(result.dimensions).toHaveLength(8); // code has 8 dimensions
-            expect(result.dimensions[0].name).toBe('correctness');
-            expect(result.weights.correctness).toBe(0.25);
-        });
-
-        it('should fall back to legacy config if enhanced not available', () => {
-            const prompt = {
-                name: 'Test Prompt',
-                scoring_type: 'code'
-            };
-
-            // Temporarily remove enhanced config
-            const originalConfig = ENHANCED_SCORING_CONFIGS.code;
-            delete ENHANCED_SCORING_CONFIGS.code;
-
-            const result = getScoringDimensions(prompt);
-
-            // Restore config
-            ENHANCED_SCORING_CONFIGS.code = originalConfig;
-
-            expect(result.useLegacy).toBe(true);
-            expect(result.legacyConfig).toBeDefined();
-            expect(result.legacyConfig.weight).toBeDefined();
+            expect(result.dimensions).toHaveLength(10);
+            expect(result.weights).toHaveProperty('correctness');
         });
 
         it('should use enhanced reasoning config by default', () => {
@@ -158,11 +155,11 @@ describe('Enhanced Scoring Dimensions', () => {
             const result = getScoringDimensions(prompt);
 
             expect(result.useLegacy).toBe(false);
-            expect(result.dimensions).toHaveLength(7); // reasoning has 7 dimensions
+            expect(result.dimensions).toHaveLength(9); // reasoning has 9 dimensions
         });
 
         it('should handle all enhanced category types', () => {
-            const categories = ['code', 'reasoning', 'factual', 'math', 'creative'];
+            const categories = ['coding', 'reasoning', 'factual', 'math', 'creative', 'general'];
 
             categories.forEach(category => {
                 const prompt = { name: 'Test', scoring_type: category };
@@ -177,11 +174,12 @@ describe('Enhanced Scoring Dimensions', () => {
 
     describe('ENHANCED_SCORING_CONFIGS Validation', () => {
         it('should have all required categories', () => {
-            expect(ENHANCED_SCORING_CONFIGS).toHaveProperty('code');
+            expect(ENHANCED_SCORING_CONFIGS).toHaveProperty('coding');
             expect(ENHANCED_SCORING_CONFIGS).toHaveProperty('reasoning');
             expect(ENHANCED_SCORING_CONFIGS).toHaveProperty('factual');
             expect(ENHANCED_SCORING_CONFIGS).toHaveProperty('math');
             expect(ENHANCED_SCORING_CONFIGS).toHaveProperty('creative');
+            expect(ENHANCED_SCORING_CONFIGS).toHaveProperty('general');
         });
 
         it('should have 6-12 dimensions per category', () => {
@@ -212,22 +210,22 @@ describe('Enhanced Scoring Dimensions', () => {
             });
         });
 
-        describe('Code category dimensions', () => {
-            it('should have 8 dimensions', () => {
-                expect(ENHANCED_SCORING_CONFIGS.code.dimensions).toHaveLength(8);
+        describe('Coding category dimensions', () => {
+            it('should have 10 dimensions', () => {
+                expect(ENHANCED_SCORING_CONFIGS.coding.dimensions).toHaveLength(10);
             });
 
             it('should include correctness as highest weight', () => {
-                const dims = ENHANCED_SCORING_CONFIGS.code.dimensions;
+                const dims = ENHANCED_SCORING_CONFIGS.coding.dimensions;
                 const correctness = dims.find(d => d.name === 'correctness');
                 expect(correctness).toBeDefined();
-                expect(correctness.weight).toBe(0.25);
+                expect(correctness.weight).toBe(0.2);
             });
         });
 
         describe('Reasoning category dimensions', () => {
-            it('should have 7 dimensions', () => {
-                expect(ENHANCED_SCORING_CONFIGS.reasoning.dimensions).toHaveLength(7);
+            it('should have 9 dimensions', () => {
+                expect(ENHANCED_SCORING_CONFIGS.reasoning.dimensions).toHaveLength(9);
             });
 
             it('should include accuracy and logic_soundness', () => {
@@ -240,32 +238,32 @@ describe('Enhanced Scoring Dimensions', () => {
         });
 
         describe('Factual category dimensions', () => {
-            it('should have 6 dimensions', () => {
-                expect(ENHANCED_SCORING_CONFIGS.factual.dimensions).toHaveLength(6);
+            it('should have 8 dimensions', () => {
+                expect(ENHANCED_SCORING_CONFIGS.factual.dimensions).toHaveLength(8);
             });
 
             it('should prioritize accuracy with highest weight', () => {
                 const dims = ENHANCED_SCORING_CONFIGS.factual.dimensions;
                 const accuracy = dims.find(d => d.name === 'accuracy');
-                expect(accuracy.weight).toBe(0.35);
+                expect(accuracy.weight).toBe(0.3);
             });
         });
 
         describe('Math category dimensions', () => {
-            it('should have 6 dimensions', () => {
-                expect(ENHANCED_SCORING_CONFIGS.math.dimensions).toHaveLength(6);
+            it('should have 8 dimensions', () => {
+                expect(ENHANCED_SCORING_CONFIGS.math.dimensions).toHaveLength(8);
             });
 
             it('should prioritize answer_correctness', () => {
                 const dims = ENHANCED_SCORING_CONFIGS.math.dimensions;
                 const answer = dims.find(d => d.name === 'answer_correctness');
-                expect(answer.weight).toBe(0.35);
+                expect(answer.weight).toBe(0.3);
             });
         });
 
         describe('Creative category dimensions', () => {
-            it('should have 7 dimensions', () => {
-                expect(ENHANCED_SCORING_CONFIGS.creative.dimensions).toHaveLength(7);
+            it('should have 10 dimensions', () => {
+                expect(ENHANCED_SCORING_CONFIGS.creative.dimensions).toHaveLength(10);
             });
 
             it('should include creativity and originality', () => {
@@ -278,8 +276,8 @@ describe('Enhanced Scoring Dimensions', () => {
         });
     });
 
-    describe('Backward Compatibility', () => {
-        it('should maintain legacy SCORING_CONFIGS structure', () => {
+    describe('Deprecation of Legacy configs', () => {
+        it('should maintain legacy SCORING_CONFIGS structure (for now, but marked deprecated)', () => {
             expect(SCORING_CONFIGS).toHaveProperty('code');
             expect(SCORING_CONFIGS).toHaveProperty('reasoning');
             expect(SCORING_CONFIGS).toHaveProperty('factual');
@@ -296,23 +294,18 @@ describe('Enhanced Scoring Dimensions', () => {
             });
         });
 
-        it('should use legacy config for prompts without scoring_dimensions', () => {
+        it('should NOT use legacy config even if enhanced config missing (should default to reasoning enhanced)', () => {
             const prompt = {
-                name: 'Legacy Prompt',
-                scoring_type: 'code'
+                name: 'Missing Prompt',
+                scoring_type: 'non-existent-category'
             };
-
-            // Temporarily clear enhanced config to force legacy
-            const originalEnhanced = ENHANCED_SCORING_CONFIGS.code;
-            delete ENHANCED_SCORING_CONFIGS.code;
 
             const result = getScoringDimensions(prompt);
 
-            // Restore
-            ENHANCED_SCORING_CONFIGS.code = originalEnhanced;
-
-            expect(result.useLegacy).toBe(true);
-            expect(result.legacyConfig.weight).toBeDefined();
+            expect(result.useLegacy).toBe(false);
+            expect(result.dimensions).toBeDefined();
+            // Should default to reasoning enhanced (9 dims)
+            expect(result.dimensions).toHaveLength(9);
         });
     });
 
@@ -354,20 +347,22 @@ describe('Enhanced Scoring Dimensions', () => {
                 expect(typeof CATEGORY_COMPOSITE_PROFILES).toBe('object');
             });
 
-            it('should have all 12 categories defined', () => {
+            it('should have all 16 categories defined', () => {
                 const expectedCategories = [
                     // Original 6
                     'coding', 'reasoning', 'factual', 'math', 'creative', 'general',
                     // Enhanced 6
                     'instruction-following', 'summarization', 'translation',
-                    'multi-turn-reasoning', 'context-retention', 'edge-cases'
+                    'multi-turn-reasoning', 'context-retention', 'edge-cases',
+                    // Additional 4
+                    'refactoring', 'debugging', 'explanation', 'dialogue'
                 ];
 
                 expectedCategories.forEach(category => {
                     expect(CATEGORY_COMPOSITE_PROFILES).toHaveProperty(category);
                 });
 
-                expect(Object.keys(CATEGORY_COMPOSITE_PROFILES).length).toBe(12);
+                expect(Object.keys(CATEGORY_COMPOSITE_PROFILES).length).toBe(16);
             });
 
             it('should have required fields for each category', () => {
@@ -533,8 +528,7 @@ describe('Enhanced Scoring Dimensions', () => {
                 };
                 const result = calculateCompositeScore(invalidMetrics, 'coding');
 
-                // Invalid inputs are normalized to 0, but latency=0 gives perfect latency score
-                // So composite score > 0 (from latency component)
+                // Invalid inputs are normalized to 0. Latency=0 gives perfect score (100).
                 expect(result.composite_score).toBeGreaterThan(0);
                 expect(result.normalized.quality).toBe(0);
                 expect(result.normalized.speed).toBe(0);
