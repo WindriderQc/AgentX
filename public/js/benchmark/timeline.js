@@ -957,6 +957,111 @@ export async function loadRecentTestsTimeline() {
             statsSummary.style.display = 'block';
         }
 
+        // Populate Collapsible Execution Timeline (event list)
+        const timelineContainerEl = document.getElementById('timelineContainer');
+        const timelineSummaryEl = document.getElementById('timelineSummary');
+        const timelineEventsEl = document.getElementById('timelineEvents');
+
+        if (timelineContainerEl && timelineSummaryEl && timelineEventsEl && batchTimeline.length > 0) {
+            // Show the container and auto-expand content
+            timelineContainerEl.style.display = 'block';
+            const timelineContentEl = document.getElementById('timelineContent');
+            const timelineChevronEl = document.getElementById('timelineChevron');
+            if (timelineContentEl) {
+                timelineContentEl.style.display = 'block';
+            }
+            if (timelineChevronEl) {
+                timelineChevronEl.className = 'fas fa-chevron-up';
+            }
+
+            // Calculate timeline stats for summary
+            const eventCounts = {};
+            let totalDuration = 0;
+            let firstEventTime = Infinity;
+            let lastEventTime = 0;
+
+            batchTimeline.forEach(event => {
+                const eventType = event.event || 'unknown';
+                eventCounts[eventType] = (eventCounts[eventType] || 0) + 1;
+                if (event.duration_ms) totalDuration += event.duration_ms;
+                const eventTime = event.time_since_start_ms || 0;
+                if (eventTime < firstEventTime) firstEventTime = eventTime;
+                if (eventTime > lastEventTime) lastEventTime = eventTime;
+            });
+
+            const elapsedTime = lastEventTime - (firstEventTime === Infinity ? 0 : firstEventTime);
+            const testCompletes = eventCounts['test_complete'] || 0;
+            const judgeCompletes = eventCounts['judge_complete'] || 0;
+            const errors = eventCounts['error'] || 0;
+
+            // Populate summary
+            timelineSummaryEl.innerHTML = `
+                <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: center;">
+                    <div><strong style="color: var(--accent);">${batchTimeline.length}</strong> <span style="color: var(--muted);">events</span></div>
+                    <div><strong style="color: #2ecc71;">${testCompletes}</strong> <span style="color: var(--muted);">tests</span></div>
+                    <div><strong style="color: #9b59b6;">${judgeCompletes}</strong> <span style="color: var(--muted);">judged</span></div>
+                    ${errors > 0 ? `<div><strong style="color: #e74c3c;">${errors}</strong> <span style="color: var(--muted);">errors</span></div>` : ''}
+                    <div style="margin-left: auto;"><i class="fas fa-clock" style="color: var(--muted); margin-right: 4px;"></i><span style="color: var(--muted);">Elapsed:</span> <strong>${formatTime(elapsedTime)}</strong></div>
+                </div>
+            `;
+
+            // Event type icons and colors
+            const eventStyles = {
+                'prep_start': { icon: 'fa-plug', color: '#3498db', label: 'Prep Started' },
+                'judge_warmup_start': { icon: 'fa-gavel', color: '#9b59b6', label: 'Judge Warmup' },
+                'judge_warmup_complete': { icon: 'fa-check-circle', color: '#9b59b6', label: 'Judge Ready' },
+                'tests_start': { icon: 'fa-rocket', color: '#2ecc71', label: 'Tests Started' },
+                'model_warmup_complete': { icon: 'fa-bolt', color: '#f39c12', label: 'Model Warmed' },
+                'test_complete': { icon: 'fa-robot', color: '#2ecc71', label: 'Test Complete' },
+                'judge_complete': { icon: 'fa-gavel', color: '#9b59b6', label: 'Judged' },
+                'error': { icon: 'fa-exclamation-triangle', color: '#e74c3c', label: 'Error' },
+                'batch_complete': { icon: 'fa-flag-checkered', color: '#2ecc71', label: 'Batch Complete' }
+            };
+
+            // Sort events by time (newest first for scrolling list)
+            const sortedEvents = [...batchTimeline].sort((a, b) =>
+                (b.time_since_start_ms || 0) - (a.time_since_start_ms || 0)
+            );
+
+            // Build event list HTML
+            const eventsHtml = sortedEvents.map(event => {
+                const style = eventStyles[event.event] || { icon: 'fa-circle', color: 'var(--muted)', label: event.event };
+                const timeStr = formatTime(event.time_since_start_ms || 0);
+                const durationStr = event.duration_ms ? ` (${formatTime(event.duration_ms)})` : '';
+                const modelStr = event.model ? `<span style="color: var(--accent); font-weight: 500;">${escapeHtml(event.model)}</span> • ` : '';
+                const promptStr = event.prompt ? `<span style="color: var(--muted); font-size: 0.85em;">${escapeHtml(event.prompt.substring(0, 50))}${event.prompt.length > 50 ? '...' : ''}</span>` : '';
+                const qualityStr = event.quality_score !== undefined ? `<span style="color: #f39c12; margin-left: 8px;">Q${Number(event.quality_score).toFixed(1)}</span>` : '';
+                const errorStr = event.error ? `<span style="color: #e74c3c; font-size: 0.85em; display: block; margin-top: 2px;">${escapeHtml(event.error)}</span>` : '';
+
+                return `
+                    <div style="display: flex; gap: 12px; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.05); align-items: flex-start;">
+                        <div style="width: 60px; text-align: right; color: var(--muted); font-size: 0.8em; flex-shrink: 0; padding-top: 2px;">
+                            ${timeStr}
+                        </div>
+                        <div style="width: 24px; text-align: center; flex-shrink: 0;">
+                            <i class="fas ${style.icon}" style="color: ${style.color};"></i>
+                        </div>
+                        <div style="flex: 1; min-width: 0;">
+                            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                <span style="font-weight: 600; color: ${style.color};">${style.label}</span>
+                                <span style="color: var(--muted); font-size: 0.85em;">${durationStr}</span>
+                                ${qualityStr}
+                            </div>
+                            <div style="margin-top: 2px;">
+                                ${modelStr}${promptStr}
+                            </div>
+                            ${errorStr}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            timelineEventsEl.innerHTML = eventsHtml || '<div style="padding: 20px; text-align: center; color: var(--muted);">No events to display</div>';
+        } else if (timelineContainerEl) {
+            // Hide if no events
+            timelineContainerEl.style.display = 'none';
+        }
+
         // Generate Performance Heatmap
         const heatmapSection = document.getElementById('performanceHeatmapSection');
         const heatmapContainer = document.getElementById('performanceHeatmap');
