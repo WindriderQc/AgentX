@@ -15,6 +15,7 @@ const hardwareProfileService = require('../hardwareProfileService');
 const ConcurrencyQueue = require('./ConcurrencyQueue');
 const { normalizeExecutionConfig, applyLengthHint, DEFAULT_EXECUTION_CONFIG } = require('./config');
 const { seedPrompts } = require('./init');
+const { classifyBenchmarkError } = require('./errorClassifier');
 
 // Track active batch for graceful shutdown
 let activeBatchId = null;
@@ -121,11 +122,15 @@ async function runTest({ model, host, prompt }) {
         return result;
 
     } catch (err) {
+        const classified = classifyBenchmarkError(err);
         const result = new BenchmarkResult({
             model,
             host,
             prompt,
             error: err.message,
+            infra_error: classified.infra,
+            error_type: classified.type,
+            error_http_status: classified.httpStatus,
             success: false,
             timestamp: new Date()
         });
@@ -889,6 +894,8 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                     } catch (err) {
                         const errorDuration = Date.now() - start;
 
+                        const classified = classifyBenchmarkError(err);
+
                         try {
                             const result = new BenchmarkResult({
                                 model,
@@ -898,6 +905,9 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                                 prompt_category: prompt.category,
                                 prompt_name: prompt.name,
                                 error: err.message,
+                                infra_error: classified.infra,
+                                error_type: classified.type,
+                                error_http_status: classified.httpStatus,
                                 success: false,
                                 batch_id: batchId,
                                 timestamp: new Date(),

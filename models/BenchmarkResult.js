@@ -88,6 +88,23 @@ const BenchmarkResultSchema = new mongoose.Schema({
         type: String,
         default: null
     },
+
+    // Error classification (infra vs model) to avoid skewing reliability stats
+    infra_error: {
+        type: Boolean,
+        default: null,
+        index: true
+    },
+    error_type: {
+        type: String,
+        enum: ['infra', 'model', 'unknown'],
+        default: null,
+        index: true
+    },
+    error_http_status: {
+        type: Number,
+        default: null
+    },
     // Quality scoring fields
     quality_score: {
         type: Number,

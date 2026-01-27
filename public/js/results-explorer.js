@@ -474,7 +474,7 @@ function renderExpandedContent(result) {
                 </div>
                 <div class="expanded-field">
                     <label>Response</label>
-                    <div class="response-box">${escapeHtml(result.response || 'No response')}</div>
+                    <div class="response-box">${escapeHtml(result.response || result.error || 'No response')}</div>
                 </div>
             </div>
             <div class="expanded-section">

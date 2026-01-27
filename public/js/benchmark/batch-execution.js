@@ -750,6 +750,23 @@ function updateResultsTable(results) {
     const tbody = document.getElementById('batchResultsBody');
     container.style.display = 'block';
 
+    const getFailureBadgeHtml = (r) => {
+        const isFailed = r.success === false;
+        if (!isFailed) return '';
+
+        const isInfra = r.infra_error === true || String(r.error_type || '').toLowerCase() === 'infra';
+        const type = isInfra ? 'infra' : (String(r.error_type || '').toLowerCase() === 'model' ? 'model' : 'unknown');
+        const label = type === 'infra' ? 'INFRA' : type === 'model' ? 'MODEL' : 'UNKNOWN';
+        const icon = type === 'infra' ? 'fa-network-wired' : type === 'model' ? 'fa-bug' : 'fa-question-circle';
+        const http = Number.isFinite(r.error_http_status) ? ` HTTP ${r.error_http_status}` : '';
+
+        const msgRaw = (r.error || r.error_message || '').toString();
+        const msg = msgRaw.replace(/\s+/g, ' ').trim().slice(0, 220);
+        const title = `${label}${http}${msg ? `: ${msg}` : ''}`;
+
+        return `<span class="fail-badge ${type}" title="${escapeHtml(title)}"><i class="fas ${icon}"></i>${label}</span>`;
+    };
+
     tbody.innerHTML = results.map((r, idx) => {
         const isFailed = r.success === false;
         const qualityScore = r.quality_score !== undefined && r.quality_score !== null ? r.quality_score : '-';
@@ -768,6 +785,8 @@ function updateResultsTable(results) {
             ? 'border-bottom: 1px solid rgba(231, 76, 60, 0.3); background: rgba(231, 76, 60, 0.05);'
             : 'border-bottom: 1px solid rgba(255,255,255,0.05);';
 
+        const failureBadge = getFailureBadgeHtml(r);
+
         return `
             <tr style="${rowStyle}">
                 <td style="padding: 8px 12px;">
@@ -778,7 +797,7 @@ function updateResultsTable(results) {
                     ${escapeHtml(r.prompt_name)}${perfLine}
                 </td>
                 <td style="padding: 8px 12px; text-align: center;" class="${qualityClass}">
-                    ${isFailed ? '<span style="color: #e74c3c; font-weight: 600;">FAILED</span>' : qualityScore}
+                    ${isFailed ? `<span style="color: #e74c3c; font-weight: 600;">FAILED</span>${failureBadge}` : qualityScore}
                     ${judgeInfo}
                 </td>
                 <td style="padding: 8px 12px; text-align: center;">

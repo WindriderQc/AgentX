@@ -1072,7 +1072,9 @@ export async function loadRecentTestsTimeline() {
                 if (modelResults.length === 0) continue;
 
                 const successCount = modelResults.filter(r => r.success).length;
+                const infraFailCount = modelResults.filter(r => r.success === false && (r.infra_error === true || String(r.error_type || '').toLowerCase() === 'infra')).length;
                 const failCount = modelResults.length - successCount;
+                const modelFailCount = Math.max(0, failCount - infraFailCount);
                 const successRate = (successCount / modelResults.length) * 100;
                 const latencies = modelResults.filter(r => r.latency).map(r => r.latency);
                 const qualities = modelResults.filter(r => r.quality_score).map(r => r.quality_score);
@@ -1097,6 +1099,8 @@ export async function loadRecentTestsTimeline() {
                     testCount: modelResults.length,
                     successCount,
                     failCount,
+                    infraFailCount,
+                    modelFailCount,
                     latencyStats,
                     qualityStats,
                     tpsStats
@@ -1161,7 +1165,7 @@ export async function loadRecentTestsTimeline() {
                                         <td style="padding: 10px 12px; color: var(--text); font-weight: 600; background: rgba(0,0,0,0.2); border-radius: 4px; cursor: help;" class="heatmap-cell" data-model="${safeModel}" data-metric="model" data-score="" title="${safeModel}">
                                             ${safeModel}
                                         </td>
-                                        <td style="padding: 10px 12px; text-align: center; color: var(--text); background: rgba(0,0,0,0.2); border-radius: 4px; cursor: help;" class="heatmap-cell" data-model="${safeModel}" data-metric="tests" data-score="" title="Tests: ${stat.testCount} (pass ${stat.successCount}, fail ${stat.failCount})">
+                                        <td style="padding: 10px 12px; text-align: center; color: var(--text); background: rgba(0,0,0,0.2); border-radius: 4px; cursor: help;" class="heatmap-cell" data-model="${safeModel}" data-metric="tests" data-score="" title="Tests: ${stat.testCount} (pass ${stat.successCount}, fail ${stat.failCount}${Number.isFinite(stat.infraFailCount) ? `; infra ${stat.infraFailCount}, model ${stat.modelFailCount}` : ''})">
                                             ${stat.testCount}
                                         </td>
                                         <td style="padding: 10px 12px; text-align: center; font-weight: 600; background: ${getHeatColor(stat.successRate)}; color: white; border-radius: 4px; cursor: help; transition: all 0.2s ease;" class="heatmap-cell" data-model="${safeModel}" data-metric="success" data-score="${stat.successRate}" title="Success: ${stat.successRate.toFixed(1)}% (${stat.successCount}/${stat.testCount})">

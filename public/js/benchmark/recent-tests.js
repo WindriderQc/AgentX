@@ -51,6 +51,23 @@ export function renderRecentTests(tests) {
         const qualityScore = test.quality_score;
         const hasQuality = qualityScore !== undefined && qualityScore !== null;
 
+        const failureType = isFailed
+            ? ((test.infra_error === true || String(test.error_type || '').toLowerCase() === 'infra')
+                ? 'infra'
+                : (String(test.error_type || '').toLowerCase() === 'model' ? 'model' : 'unknown'))
+            : null;
+        const failureBadge = isFailed
+            ? (() => {
+                const label = failureType === 'infra' ? 'INFRA' : failureType === 'model' ? 'MODEL' : 'UNKNOWN';
+                const icon = failureType === 'infra' ? 'fa-network-wired' : failureType === 'model' ? 'fa-bug' : 'fa-question-circle';
+                const http = Number.isFinite(test.error_http_status) ? ` HTTP ${test.error_http_status}` : '';
+                const msgRaw = (test.error || test.error_message || '').toString();
+                const msg = msgRaw.replace(/\s+/g, ' ').trim().slice(0, 160);
+                const title = `${label}${http}${msg ? `: ${msg}` : ''}`;
+                return `<span class="fail-badge ${failureType}" title="${escapeHtml(title)}" style="margin-left: 8px;"><i class="fas ${icon}"></i>${label}</span>`;
+            })()
+            : '';
+
         let qualityBadge = '';
         if (hasQuality) {
             let color = '#2ecc71';
@@ -76,7 +93,7 @@ export function renderRecentTests(tests) {
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                     <div style="font-weight: 600; color: var(--text);">
                         ${isFailed ? '<i class="fas fa-exclamation-triangle" style="color: #e74c3c; margin-right: 6px;"></i>' : ''}
-                        ${escapeHtml(test.model)}
+                        ${escapeHtml(test.model)}${failureBadge}
                     </div>
                     <div style="font-size: 0.8em; color: var(--muted);">${timestamp}</div>
                 </div>

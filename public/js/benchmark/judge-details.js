@@ -64,7 +64,25 @@ export function showJudgeDetails(idOrIndex) {
  * Uses the actual element IDs from benchmark.html
  */
 function populateJudgeModal(result, resultIndex) {
-    const isFailed = result.success === false;
+    const isFailed = (result.success === false)
+        || (String(result.scoring_method || '').toLowerCase() === 'exec_failed')
+        || (String(result.scoring_method || '').toLowerCase() === 'llm_failed');
+
+    const isInfraFail = isFailed && (result.infra_error === true || String(result.error_type || '').toLowerCase() === 'infra');
+    const failType = isFailed
+        ? (isInfraFail ? 'infra' : (String(result.error_type || '').toLowerCase() === 'model' ? 'model' : 'unknown'))
+        : null;
+    const failBadgeHtml = isFailed
+        ? (() => {
+            const label = failType === 'infra' ? 'INFRA' : failType === 'model' ? 'MODEL' : 'UNKNOWN';
+            const icon = failType === 'infra' ? 'fa-network-wired' : failType === 'model' ? 'fa-bug' : 'fa-question-circle';
+            const http = Number.isFinite(result.error_http_status) ? ` HTTP ${result.error_http_status}` : '';
+            const msgRaw = (result.error || result.error_message || '').toString();
+            const msg = msgRaw.replace(/\s+/g, ' ').trim().slice(0, 220);
+            const title = `${label}${http}${msg ? `: ${msg}` : ''}`;
+            return ` <span class="fail-badge ${failType}" title="${escapeHtml(title)}"><i class="fas ${icon}"></i>${label}</span>`;
+        })()
+        : '';
 
     // Prompt name/level - element ID: detailPromptName
     const promptNameEl = document.getElementById('detailPromptName');
@@ -82,7 +100,7 @@ function populateJudgeModal(result, resultIndex) {
         const q = toFiniteNumber(result.quality_score);
         let scoreHtml = '';
         if (isFailed) {
-            scoreHtml = '<span style="color: #e74c3c; font-weight: 600;"><i class="fas fa-times-circle"></i> FAILED</span>';
+            scoreHtml = `<span style="color: #e74c3c; font-weight: 600;"><i class="fas fa-times-circle"></i> FAILED</span>${failBadgeHtml}`;
         } else if (q !== null) {
             let color = '#2ecc71';
             if (q < 4) color = '#e74c3c';

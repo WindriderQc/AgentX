@@ -201,9 +201,27 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
                 }
             },
             {
+                $addFields: {
+                    __infra_error: {
+                        $cond: [
+                            { $eq: ['$infra_error', true] },
+                            true,
+                            {
+                                $regexMatch: {
+                                    input: { $ifNull: ['$error', ''] },
+                                    regex: /(ECONNREFUSED|ECONNRESET|EPIPE|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|ESOCKETTIMEDOUT|socket hang up|fetch failed|timed\s*out|timeout|aborted|HTTP\s+(5\d\d|429|408)\s*:)/i
+                                }
+                            }
+                        ]
+                    }
+                }
+            },
+            {
                 $group: {
                     _id: { model: '$model', host: '$host' },
-                    failed: { $sum: 1 }
+                    failed: { $sum: 1 },
+                    infra_failed: { $sum: { $cond: ['$__infra_error', 1, 0] } },
+                    model_failed: { $sum: { $cond: ['$__infra_error', 0, 1] } }
                 }
             }
         ]),
@@ -222,7 +240,11 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
     ]);
 
     const failureByKey = new Map(
-        (failureStats || []).map(s => [`${s._id.model}@@${s._id.host}`, s.failed || 0])
+        (failureStats || []).map(s => [`${s._id.model}@@${s._id.host}`, {
+            failed: s.failed || 0,
+            infra_failed: s.infra_failed || 0,
+            model_failed: s.model_failed || 0
+        }])
     );
 
     // Format and sort model stats
@@ -265,7 +287,10 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
             quality_score: adjustedQuality
         }, 'coding');
 
-        const failedTests = failureByKey.get(key) || 0;
+        const fail = failureByKey.get(key) || { failed: 0, infra_failed: 0, model_failed: 0 };
+        const failedTests = fail.failed || 0;
+        const infraFailedTests = fail.infra_failed || 0;
+        const modelFailedTests = fail.model_failed || 0;
         const successTests = m.count || 0;
 
         successByKey.set(key, true);
@@ -288,6 +313,7 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
                 coverage: generalistData.coverage,
                 coveragePenalty: generalistData.coveragePenalty,
                 consistencyBonus: generalistData.consistencyBonus,
+                avgWithinCategoryStdDev: generalistData.avgWithinCategoryStdDev,
                 testedCategories: generalistData.testedCategories
             } : null,
 
@@ -314,6 +340,8 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
             },
             tests: successTests,
             failed_tests: failedTests,
+            infra_failed_tests: infraFailedTests,
+            model_failed_tests: modelFailedTests,
             total_tests: successTests + failedTests,
             failure_only: false
         };
@@ -323,6 +351,7 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
     for (const [key, failedTests] of failureByKey.entries()) {
         if (successByKey.has(key)) continue;
         const [model, host] = key.split('@@');
+        const fail = failureByKey.get(key) || { failed: 0, infra_failed: 0, model_failed: 0 };
         sortedStats.push({
             model,
             host,
@@ -335,8 +364,10 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
             coding_score: 0,
             quality_tests: 0,
             tests: 0,
-            failed_tests: failedTests,
-            total_tests: failedTests,
+            failed_tests: fail.failed || 0,
+            infra_failed_tests: fail.infra_failed || 0,
+            model_failed_tests: fail.model_failed || 0,
+            total_tests: fail.failed || 0,
             failure_only: true
         });
     }
@@ -367,14 +398,21 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
         case 'reliability':
             sortedStats.sort((a, b) => {
                 if (a.failure_only !== b.failure_only) return a.failure_only ? 1 : -1;
-                const aTotal = Number(a.total_tests) || 0;
-                const bTotal = Number(b.total_tests) || 0;
-                const aFailed = Number(a.failed_tests) || 0;
-                const bFailed = Number(b.failed_tests) || 0;
-                const aRate = aTotal > 0 ? (aFailed / aTotal) : 0;
-                const bRate = bTotal > 0 ? (bFailed / bTotal) : 0;
+
+                // Reliability should not be penalized by infra failures.
+                // Compute failure rate using model_failed only, with denominator = successes + model_failed.
+                const aSuccess = Number(a.tests) || 0;
+                const bSuccess = Number(b.tests) || 0;
+                const aModelFailed = Number(a.model_failed_tests ?? a.failed_tests) || 0;
+                const bModelFailed = Number(b.model_failed_tests ?? b.failed_tests) || 0;
+                const aDen = aSuccess + aModelFailed;
+                const bDen = bSuccess + bModelFailed;
+                const aRate = aDen > 0 ? (aModelFailed / aDen) : 0;
+                const bRate = bDen > 0 ? (bModelFailed / bDen) : 0;
                 if (aRate !== bRate) return aRate - bRate;
                 // Tie-breakers: more samples first, then latency
+                const aTotal = Number(a.total_tests) || 0;
+                const bTotal = Number(b.total_tests) || 0;
                 if (aTotal !== bTotal) return bTotal - aTotal;
                 return a.avg_latency - b.avg_latency;
             });

@@ -17,6 +17,7 @@ const { runTest, startBatch, executeBatch, stopBatch, getActiveBatchId, getActiv
 const { getResults, getSummary, getDashboard, compareModels, getQualityBreakdown, getModelTrends, compareBatches } = require('./results');
 const { getBatches, getBatch, getBatchStatsByTag, clearResults, clearFailedResults, getActiveStats } = require('./batches');
 const { getJudgeLeaderboard, getJudgeBreakdown, getJudgeActivity, getTruncationStats } = require('./judges');
+const { calculateAllGeneralistScores, GENERALIST_CATEGORY_WEIGHTS } = require('./generalistScore');
 
 // Graceful shutdown handler - mark batch as interrupted when PM2 restarts
 process.on('SIGTERM', async () => {
@@ -119,6 +120,37 @@ class BenchmarkService {
     getJudgeBreakdown = getJudgeBreakdown;
     getJudgeActivity = getJudgeActivity;
     getTruncationStats = getTruncationStats;
+
+    // Generalist Leaderboard
+    async getGeneralistLeaderboard() {
+        const generalistScores = await calculateAllGeneralistScores({ success: true });
+
+        // Convert Map to sorted array
+        const leaderboard = [];
+        for (const [key, data] of generalistScores) {
+            const [model, host] = key.split('@@');
+            leaderboard.push({
+                model,
+                host: host || null,
+                generalistScore: data.generalistScore,
+                weightedSum: data.weightedSum,
+                coveragePenalty: data.coveragePenalty,
+                consistencyBonus: data.consistencyBonus,
+                avgWithinCategoryStdDev: data.avgWithinCategoryStdDev,
+                coverage: data.coverage,
+                testedCategories: data.testedCategories,
+                categoryAverages: data.categoryAverages
+            });
+        }
+
+        // Sort by generalist score descending
+        leaderboard.sort((a, b) => b.generalistScore - a.generalistScore);
+
+        return {
+            leaderboard,
+            categoryWeights: GENERALIST_CATEGORY_WEIGHTS
+        };
+    }
 }
 
 // Export singleton instance (preserves original API)

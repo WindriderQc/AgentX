@@ -1,4 +1,5 @@
 // Generalist Leaderboard - ALL-CATEGORY Champion Rankings
+// Uses backend API as single source of truth
 
 // SECURITY: Escape HTML to prevent XSS
 function escapeHtml(unsafe) {
@@ -11,197 +12,69 @@ function escapeHtml(unsafe) {
         .replace(/'/g, "&#039;");
 }
 
-// Category weights for "Generalist Champion" scoring (from plan lines 88-107)
-const GENERALIST_CATEGORY_WEIGHTS = {
-    // Core capabilities (60% total weight)
-    'coding': 0.15,                    // 15% - Essential for developers
-    'reasoning': 0.15,                 // 15% - Core cognitive ability
-    'factual': 0.10,                   // 10% - Knowledge accuracy
-    'creative': 0.10,                  // 10% - Content generation
-    'instruction-following': 0.10,     // 10% - User intent adherence
-
-    // Specialized capabilities (30% total weight)
-    'math': 0.08,                      // 8% - Quantitative reasoning
-    'summarization': 0.07,             // 7% - Information distillation
-    'multi-turn-reasoning': 0.07,      // 7% - Context retention
-    'context-retention': 0.05,         // 5% - Long-form understanding
-    'translation': 0.03,               // 3% - Multilingual (bonus)
-
-    // Quality assurance (10% total weight)
-    'edge-cases': 0.05,                // 5% - Robustness
-    'general': 0.05                    // 5% - General capability
-};
-
 let allModelData = [];
-
-function normalizeQualityTo100(rawQuality) {
-    const value = Number(rawQuality);
-    if (!Number.isFinite(value)) return 0;
-    // `quality_score` is generally 0–10; the Generalist leaderboard uses a 0–100 scale.
-    // If it already looks like 0–100, keep it as-is.
-    return value <= 10 ? value * 10 : value;
-}
+let categoryWeights = {};
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', async () => {
-    await loadAndCalculateRankings();
+    await loadLeaderboard();
     setupEventListeners();
-    displayCategoryWeights();
 });
 
-// Load benchmark data and calculate generalist rankings
-async function loadAndCalculateRankings() {
+// Load leaderboard data from backend API (single source of truth)
+async function loadLeaderboard() {
     try {
-        // Fetch ALL results (up to 10000) - default limit is only 20!
-        const response = await fetch('/api/benchmark/results?limit=10000');
-        if (!response.ok) throw new Error('Failed to fetch benchmark results');
+        const response = await fetch('/api/benchmark/generalist-leaderboard');
+        if (!response.ok) throw new Error('Failed to fetch generalist leaderboard');
 
-        const data = await response.json();
-        const results = data.data.results;
+        const result = await response.json();
+        if (result.status !== 'success') throw new Error(result.error || 'API error');
 
-        // Aggregate results by model
-        const modelMap = {};
+        const { leaderboard, categoryWeights: weights } = result.data;
+        categoryWeights = weights;
 
-        results.forEach(result => {
-            const modelName = result.model;
-            if (!modelMap[modelName]) {
-                modelMap[modelName] = {
-                    name: modelName,
-                    categoryScores: {},
-                    totalTests: 0
-                };
-            }
+        // Transform API data for UI
+        allModelData = leaderboard.map(model => {
+            const scores = Object.values(model.categoryAverages).filter(s => s > 0);
+            const avgScore = scores.length > 0
+                ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10
+                : 0;
 
-            modelMap[modelName].totalTests++;
-
-            // Aggregate category scores
-            const category = result.prompt_category;
-            if (!modelMap[modelName].categoryScores[category]) {
-                modelMap[modelName].categoryScores[category] = {
-                    total: 0,
-                    count: 0,
-                    scores: []
-                };
-            }
-
-            const qualityScore = result.quality_score || 0;
-            modelMap[modelName].categoryScores[category].total += qualityScore;
-            modelMap[modelName].categoryScores[category].count++;
-            modelMap[modelName].categoryScores[category].scores.push(qualityScore);
+            return {
+                name: model.model,
+                host: model.host,
+                generalistScore: model.generalistScore,
+                weightedSum: model.weightedSum,
+                coveragePenalty: model.coveragePenalty,
+                consistencyBonus: model.consistencyBonus,
+                avgWithinCategoryStdDev: model.avgWithinCategoryStdDev,
+                coverage: model.coverage,
+                testedCategories: model.testedCategories,
+                categoryAverages: model.categoryAverages,
+                topCategory: getTopCategory(model.categoryAverages),
+                avgScore
+            };
         });
 
-        // Calculate generalist scores for each model
-        allModelData = Object.values(modelMap).map(model => {
-            return calculateGeneralistScore(model);
-        });
-
-        // Sort by generalist score (default)
-        allModelData.sort((a, b) => b.generalistScore - a.generalistScore);
-
+        displayCategoryWeights();
         renderLeaderboard();
 
     } catch (error) {
-        console.error('Error loading rankings:', error);
+        console.error('Error loading leaderboard:', error);
         document.getElementById('leaderboardTable').innerHTML = `
             <div class="error-state">
                 <i class="fas fa-exclamation-triangle"></i>
                 <p>Error loading rankings: ${escapeHtml(error.message)}</p>
-                <button onclick="loadAndCalculateRankings()" class="btn-primary">Retry</button>
+                <button onclick="loadLeaderboard()" class="btn-primary">Retry</button>
             </div>
         `;
     }
 }
 
-// Calculate Generalist Score (from plan lines 110-139)
-function calculateGeneralistScore(model) {
-    let weightedSum = 0;
-    let coveragePenalty = 0;
-    let consistencyBonus = 0;
-
-    // Calculate average scores per category
-    const categoryAverages = {};
-    const scores = [];
-    let testedCategories = 0;
-
-    // Max penalty if a model has 0 coverage weight. Keeps penalty comparable to 0–100 scores.
-    const COVERAGE_PENALTY_MAX = 20;
-
-    for (const [category, weight] of Object.entries(GENERALIST_CATEGORY_WEIGHTS)) {
-        const categoryData = model.categoryScores[category];
-
-        if (categoryData && categoryData.count > 0) {
-            testedCategories++;
-            const avgScore = normalizeQualityTo100(categoryData.total / categoryData.count);
-            categoryAverages[category] = avgScore;
-            scores.push(avgScore);
-            weightedSum += avgScore * weight;
-        } else {
-            categoryAverages[category] = 0;
-            // Penalize missing coverage proportionally (scaled by category weights)
-            coveragePenalty += weight * COVERAGE_PENALTY_MAX;
-        }
-    }
-
-    // Calculate coverage percentage
-    const totalCategories = Object.keys(GENERALIST_CATEGORY_WEIGHTS).length;
-    const coveragePercent = (testedCategories / totalCategories) * 100;
-
-    // Consistency bonus: Models with low variance across categories
-    if (scores.length > 3) {
-        const stdDev = calculateStdDev(scores);
-        if (stdDev < 10) {
-            consistencyBonus = 5; // +5 for consistent performance
-        }
-        const consistencyScore = Math.max(0, 100 - stdDev);
-
-        // Return comprehensive model data
-        return {
-            name: model.name,
-            generalistScore: Math.round(Math.max(0, weightedSum - coveragePenalty + consistencyBonus) * 10) / 10,
-            weightedSum: Math.round(weightedSum * 10) / 10,
-            coveragePenalty: Math.round(coveragePenalty * 10) / 10,
-            consistencyBonus,
-            coverage: Math.round(coveragePercent),
-            consistencyScore: Math.round(consistencyScore),
-            categoryAverages,
-            topCategory: getTopCategory(categoryAverages),
-            avgScore: scores.length > 0 ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10 : 0,
-            totalTests: model.totalTests,
-            stdDev: Math.round(stdDev * 10) / 10
-        };
-    } else {
-        // Not enough data for consistency calculation
-        return {
-            name: model.name,
-            generalistScore: Math.round(Math.max(0, weightedSum - coveragePenalty) * 10) / 10,
-            weightedSum: Math.round(weightedSum * 10) / 10,
-            coveragePenalty: Math.round(coveragePenalty * 10) / 10,
-            consistencyBonus: 0,
-            coverage: Math.round(coveragePercent),
-            consistencyScore: 0,
-            categoryAverages,
-            topCategory: getTopCategory(categoryAverages),
-            avgScore: scores.length > 0 ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10 : 0,
-            totalTests: model.totalTests,
-            stdDev: 0
-        };
-    }
-}
-
-// Calculate standard deviation
-function calculateStdDev(arr) {
-    if (arr.length === 0) return 0;
-    const mean = arr.reduce((a, b) => a + b, 0) / arr.length;
-    const squaredDiffs = arr.map(x => Math.pow(x - mean, 2));
-    const variance = squaredDiffs.reduce((a, b) => a + b, 0) / arr.length;
-    return Math.sqrt(variance);
-}
-
-// Get top category
+// Get top category from averages
 function getTopCategory(categoryAverages) {
     const entries = Object.entries(categoryAverages).filter(([_, score]) => score > 0);
     if (entries.length === 0) return '-';
-
     entries.sort((a, b) => b[1] - a[1]);
     return entries[0][0];
 }
@@ -221,7 +94,6 @@ function renderLeaderboard() {
         return;
     }
 
-    // Apply filters
     const filteredData = applyFilters();
 
     if (filteredData.length === 0) {
@@ -235,7 +107,6 @@ function renderLeaderboard() {
         return;
     }
 
-    // Build table
     table.innerHTML = `
         <table class="leaderboard-table">
             <thead>
@@ -258,7 +129,7 @@ function renderLeaderboard() {
                         </td>
                         <td class="model-cell">
                             <strong>${escapeHtml(model.name)}</strong>
-                            ${model.consistencyBonus > 0 ? '<span class="badge-consistent">⭐ Consistent</span>' : ''}
+                            ${model.consistencyBonus > 0 ? '<span class="badge-consistent">⭐ Reliable</span>' : ''}
                         </td>
                         <td class="score-cell">
                             <div class="score-value">${model.generalistScore}</div>
@@ -275,10 +146,10 @@ function renderLeaderboard() {
                             <span class="coverage-text">${model.coverage}%</span>
                         </td>
                         <td class="consistency-cell">
-                            <div class="consistency-indicator ${model.consistencyScore >= 90 ? 'high' : model.consistencyScore >= 70 ? 'medium' : 'low'}">
-                                ${model.consistencyScore}%
+                            <div class="consistency-indicator ${model.avgWithinCategoryStdDev <= 15 ? 'high' : model.avgWithinCategoryStdDev <= 25 ? 'medium' : 'low'}">
+                                ${model.consistencyBonus > 0 ? 'High' : 'Normal'}
                             </div>
-                            <span class="stddev-text">σ=${model.stdDev}</span>
+                            <span class="stddev-text">σ=${model.avgWithinCategoryStdDev}</span>
                         </td>
                         <td class="category-cell">${formatCategoryName(model.topCategory)}</td>
                         <td class="avg-cell">${model.avgScore}</td>
@@ -302,10 +173,10 @@ function getRankMedal(rank) {
 
 // Get coverage color
 function getCoverageColor(coverage) {
-    if (coverage >= 90) return '#22c55e'; // Green
-    if (coverage >= 75) return '#3b82f6'; // Blue
-    if (coverage >= 50) return '#eab308'; // Yellow
-    return '#ef4444'; // Red
+    if (coverage >= 90) return '#22c55e';
+    if (coverage >= 75) return '#3b82f6';
+    if (coverage >= 50) return '#eab308';
+    return '#ef4444';
 }
 
 // Apply filters
@@ -316,13 +187,9 @@ function applyFilters() {
 
     let filtered = [...allModelData];
 
-    // Filter by coverage
     filtered = filtered.filter(m => m.coverage >= minCoverage);
-
-    // Filter by min score
     filtered = filtered.filter(m => m.generalistScore >= minScore);
 
-    // Sort
     switch (sortBy) {
         case 'generalist':
             filtered.sort((a, b) => b.generalistScore - a.generalistScore);
@@ -331,7 +198,8 @@ function applyFilters() {
             filtered.sort((a, b) => b.coverage - a.coverage);
             break;
         case 'consistency':
-            filtered.sort((a, b) => b.consistencyScore - a.consistencyScore);
+            // Lower stddev = more consistent = better
+            filtered.sort((a, b) => a.avgWithinCategoryStdDev - b.avgWithinCategoryStdDev);
             break;
         case 'overall':
             filtered.sort((a, b) => b.avgScore - a.avgScore);
@@ -369,12 +237,12 @@ function viewModelDetails(modelName) {
                 <div class="detail-value">${model.coverage}%</div>
             </div>
             <div class="detail-stat">
-                <div class="detail-label">Consistency</div>
-                <div class="detail-value">${model.consistencyScore}%</div>
+                <div class="detail-label">Avg Within-Category σ</div>
+                <div class="detail-value">${model.avgWithinCategoryStdDev}</div>
             </div>
             <div class="detail-stat">
-                <div class="detail-label">Total Tests</div>
-                <div class="detail-value">${model.totalTests}</div>
+                <div class="detail-label">Categories Tested</div>
+                <div class="detail-value">${model.testedCategories}</div>
             </div>
         </div>
 
@@ -384,8 +252,8 @@ function viewModelDetails(modelName) {
                 ${Object.entries(model.categoryAverages)
                     .sort((a, b) => b[1] - a[1])
                     .map(([category, score]) => {
-                        const weight = GENERALIST_CATEGORY_WEIGHTS[category] || 0;
-                        const contribution = score * weight;
+                        const weight = categoryWeights[category] || 0;
+                        const contribution = (score / 100) * weight * 100; // score is 0-100, weight is 0-1
                         return `
                             <div class="category-breakdown-item">
                                 <div class="category-name">${formatCategoryName(category)}</div>
@@ -406,7 +274,7 @@ function viewModelDetails(modelName) {
             <h3>Score Calculation</h3>
             <div class="formula-breakdown">
                 <div class="formula-line">
-                    <span>Weighted Sum:</span>
+                    <span>Weighted Quality:</span>
                     <span class="formula-value">+${model.weightedSum}</span>
                 </div>
                 ${model.coveragePenalty > 0 ? `
@@ -417,7 +285,7 @@ function viewModelDetails(modelName) {
                 ` : ''}
                 ${model.consistencyBonus > 0 ? `
                     <div class="formula-line bonus">
-                        <span>Consistency Bonus:</span>
+                        <span>Reliability Bonus (low σ):</span>
                         <span class="formula-value">+${model.consistencyBonus}</span>
                     </div>
                 ` : ''}
@@ -453,8 +321,9 @@ function getCategoryColor(score) {
 // Display category weights
 function displayCategoryWeights() {
     const grid = document.getElementById('weightsGrid');
+    if (!grid) return;
 
-    const sortedWeights = Object.entries(GENERALIST_CATEGORY_WEIGHTS)
+    const sortedWeights = Object.entries(categoryWeights)
         .sort((a, b) => b[1] - a[1]);
 
     grid.innerHTML = sortedWeights.map(([category, weight]) => `
@@ -484,9 +353,9 @@ function setupEventListeners() {
 // Export to CSV
 function exportToCSV() {
     const headers = [
-        'Rank', 'Model', 'Generalist Score', 'Coverage %', 'Consistency %',
-        'Top Category', 'Avg Score', 'Std Dev', 'Total Tests',
-        ...Object.keys(GENERALIST_CATEGORY_WEIGHTS)
+        'Rank', 'Model', 'Generalist Score', 'Coverage %', 'Avg StdDev',
+        'Top Category', 'Avg Score', 'Consistency Bonus',
+        ...Object.keys(categoryWeights)
     ];
 
     const filteredData = applyFilters();
@@ -496,12 +365,11 @@ function exportToCSV() {
         model.name,
         model.generalistScore,
         model.coverage,
-        model.consistencyScore,
+        model.avgWithinCategoryStdDev,
         model.topCategory,
         model.avgScore,
-        model.stdDev,
-        model.totalTests,
-        ...Object.keys(GENERALIST_CATEGORY_WEIGHTS).map(cat => model.categoryAverages[cat] || 0)
+        model.consistencyBonus,
+        ...Object.keys(categoryWeights).map(cat => model.categoryAverages[cat] || 0)
     ]);
 
     const csv = [headers, ...rows]
@@ -519,6 +387,7 @@ function exportToCSV() {
 
 // Utility functions
 function formatCategoryName(cat) {
+    if (!cat || cat === '-') return '-';
     return cat.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
 

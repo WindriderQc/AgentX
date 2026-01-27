@@ -902,6 +902,25 @@ router.get('/judge-leaderboard', async (req, res) => {
 });
 
 /**
+ * GET /api/benchmark/generalist-leaderboard
+ * Get generalist quality scores for all models
+ * Single source of truth - replaces client-side calculation
+ */
+router.get('/generalist-leaderboard', async (req, res) => {
+    try {
+        const data = await benchmarkService.getGeneralistLeaderboard();
+
+        res.json({
+            status: 'success',
+            data
+        });
+    } catch (err) {
+        logger.error('Failed to fetch generalist leaderboard', { error: err.message });
+        res.status(500).json({ status: 'error', error: err.message });
+    }
+});
+
+/**
  * GET /api/benchmark/judge-breakdown
  * Break down judge performance by prompt level or model-under-test.
  *

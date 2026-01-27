@@ -224,7 +224,18 @@ export async function loadBatchModels(hostUrl) {
             if (window.latestBenchmarkData && window.latestBenchmarkData.model_stats) {
                 const stats = window.latestBenchmarkData.model_stats.find(m => m.model === model && m.host === hostUrl);
                 if (stats) {
-                    testCount = Number(stats.tests || 0) + Number(stats.failed_tests || 0);
+                    const total = Number(stats.tests || 0) + Number(stats.failed_tests || 0);
+                    const infraFailed = Number.isFinite(stats.infra_failed_tests) ? Number(stats.infra_failed_tests) : null;
+                    const modelFailed = Number.isFinite(stats.model_failed_tests) ? Number(stats.model_failed_tests) : null;
+
+                    if (infraFailed !== null || modelFailed !== null) {
+                        const parts = [];
+                        if (infraFailed !== null) parts.push(`infra ${infraFailed}`);
+                        if (modelFailed !== null) parts.push(`model ${modelFailed}`);
+                        testCount = `${total}<div style="font-size: 0.72em; color: var(--muted); margin-top: 2px;">${parts.join(' • ')}</div>`;
+                    } else {
+                        testCount = total;
+                    }
                 }
             }
 

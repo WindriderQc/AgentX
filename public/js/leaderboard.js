@@ -19,8 +19,7 @@ const CATEGORY_WEIGHTS = {
     'multi-turn-reasoning': 0.07,
     'context-retention': 0.05,
     'translation': 0.03,
-    'edge-cases': 0.05,
-    'general': 0.05
+    'edge-cases': 0.05
 };
 
 const COVERAGE_PENALTY_MAX = 20;
@@ -377,6 +376,7 @@ function calculateGeneralistScores(results) {
     return Object.values(modelMap).map(model => {
         let weightedSum = 0;
         let coveragePenalty = 0;
+        let weightsCovered = 0;
         const categoryAverages = {};
         const scores = [];
         let testedCategories = 0;
@@ -390,6 +390,7 @@ function calculateGeneralistScores(results) {
                 categoryAverages[category] = avgScore;
                 scores.push(avgScore);
                 weightedSum += avgScore * weight;
+                weightsCovered += weight;
             } else {
                 categoryAverages[category] = 0;
                 coveragePenalty += weight * COVERAGE_PENALTY_MAX;
@@ -411,13 +412,14 @@ function calculateGeneralistScores(results) {
             }
         }
 
-        const generalistScore = Math.max(0, weightedSum - coveragePenalty + consistencyBonus);
+        const normalizedQuality = weightsCovered > 0 ? (weightedSum / weightsCovered) : 0;
+        const generalistScore = Math.max(0, normalizedQuality - coveragePenalty + consistencyBonus);
 
         return {
             name: model.name,
             host: model.host,
             generalistScore: round(generalistScore),
-            weightedSum: round(weightedSum),
+            weightedSum: round(normalizedQuality),
             coveragePenalty: round(coveragePenalty),
             consistencyBonus,
             coverage: Math.round(coveragePercent),
@@ -904,20 +906,25 @@ function showModelDetail(modelName, board) {
         if (!model) return;
 
         const categoryRows = Object.entries(model.categoryAverages)
-            .filter(([_, score]) => score > 0)
             .sort((a, b) => b[1] - a[1])
             .map(([cat, score]) => {
                 const weight = CATEGORY_WEIGHTS[cat] || 0;
-                const contribution = score * weight;
+                const isUntested = !(Number.isFinite(score) && score > 0);
+                const contribution = isUntested ? 0 : (score * weight);
+                const barBg = isUntested ? 'rgba(255,255,255,0.18)' : getScoreColor(score / 10);
+                const rowStyle = isUntested ? 'opacity: 0.65;' : '';
+                const scoreText = isUntested ? '—' : score.toFixed(1);
+                const contribText = isUntested ? '—' : contribution.toFixed(1);
+
                 return `
-                    <div class="category-row">
-                        <span class="cat-name">${formatCategory(cat)}</span>
+                    <div class="category-row" style="${rowStyle}">
+                        <span class="cat-name">${formatCategory(cat)}${isUntested ? ' <span style="color: var(--muted); font-size: 0.85em;">(not covered)</span>' : ''}</span>
                         <div class="cat-bar-container">
-                            <div class="cat-bar" style="width: ${score}%; background: ${getScoreColor(score / 10)};"></div>
+                            <div class="cat-bar" style="width: ${isUntested ? 2 : score}%; background: ${barBg};"></div>
                         </div>
-                        <span class="cat-score">${score.toFixed(1)}</span>
+                        <span class="cat-score">${scoreText}</span>
                         <span class="cat-weight">${(weight * 100).toFixed(0)}%</span>
-                        <span class="cat-contrib">${contribution.toFixed(1)}</span>
+                        <span class="cat-contrib">${contribText}</span>
                     </div>
                 `;
             }).join('');
@@ -944,7 +951,7 @@ function showModelDetail(modelName, board) {
                     <span class="detail-label">Generalist Score <i class="fas fa-info-circle tip-icon"></i></span>
                     <span class="detail-value highlight">${model.generalistScore.toFixed(1)}</span>
                 </div>
-                <div class="detail-item" title="Percentage of the 12 task categories this model has been tested on. Higher coverage = more reliable ranking.">
+                <div class="detail-item" title="Percentage of the 11 task categories this model has been tested on. Higher coverage = more reliable ranking.">
                     <span class="detail-label">Coverage <i class="fas fa-info-circle tip-icon"></i></span>
                     <span class="detail-value">${model.coverage}%</span>
                 </div>
