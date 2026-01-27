@@ -7,23 +7,8 @@
 // CONFIGURATION
 // ============================================================================
 
-// Generalist category weights (Quality Board)
-const CATEGORY_WEIGHTS = {
-    'coding': 0.15,
-    'reasoning': 0.15,
-    'factual': 0.10,
-    'creative': 0.10,
-    'instruction-following': 0.10,
-    'math': 0.08,
-    'summarization': 0.07,
-    'multi-turn-reasoning': 0.07,
-    'context-retention': 0.05,
-    'translation': 0.03,
-    'edge-cases': 0.05
-};
-
-const COVERAGE_PENALTY_MAX = 20;
-const CONSISTENCY_BONUS = 5;
+// Category weights loaded from backend API (single source of truth)
+let CATEGORY_WEIGHTS = {};
 
 // Profile weight configurations for Performance Board
 const PROFILE_WEIGHTS = {
@@ -68,8 +53,7 @@ if (typeof Chart !== 'undefined') {
 // ============================================================================
 
 let performanceData = [];  // From /api/benchmark/dashboard
-let qualityData = [];      // Calculated from /api/benchmark/results
-let rawResults = [];       // Raw results for quality calculations
+let qualityData = [];      // From /api/benchmark/generalist-leaderboard (backend calculated)
 let charts = {};
 
 // Sorting and filtering state
@@ -321,143 +305,57 @@ async function loadPerformanceData() {
 }
 
 async function loadQualityData() {
-    // Fetch ALL results for accurate category coverage
-    const response = await fetch('/api/benchmark/results?limit=10000');
-    if (!response.ok) throw new Error('Failed to load results data');
-    const data = await response.json();
-    rawResults = data.data?.results || [];
+    // Fetch generalist scores from backend API (single source of truth)
+    const response = await fetch('/api/benchmark/generalist-leaderboard');
+    if (!response.ok) throw new Error('Failed to load generalist leaderboard');
+    const result = await response.json();
+    if (result.status !== 'success') throw new Error(result.error || 'API error');
 
-    // Calculate generalist scores
-    qualityData = calculateGeneralistScores(rawResults);
-}
+    const { leaderboard, categoryWeights } = result.data;
+    CATEGORY_WEIGHTS = categoryWeights;
 
-// ============================================================================
-// GENERALIST SCORE CALCULATION (Quality Board)
-// ============================================================================
+    // Transform API response to expected format
+    qualityData = leaderboard.map(model => {
+        const scores = Object.values(model.categoryAverages).filter(s => s > 0);
+        const avgScore = scores.length > 0
+            ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10
+            : 0;
 
-function calculateGeneralistScores(results) {
-    // Group by model+host combination
-    const modelMap = {};
+        // Calculate consistency score from stddev (100 - stddev, capped at 0-100)
+        const stdDev = model.avgWithinCategoryStdDev || 0;
+        const consistencyScore = Math.max(0, Math.round(100 - stdDev));
 
-    results.forEach(result => {
-        const model = result.model;
-        const host = result.host || '';
-        const key = `${model}||${host}`;  // Composite key
-
-        if (!modelMap[key]) {
-            modelMap[key] = {
-                name: model,
-                host: host,
-                categoryScores: {},
-                totalTests: 0,
-                testsByLevel: {}
-            };
-        }
-
-        modelMap[key].totalTests++;
-
-        // Track tests by level
-        const level = result.prompt_level || result.level || 1;
-        modelMap[key].testsByLevel[level] = (modelMap[key].testsByLevel[level] || 0) + 1;
-
-        const category = result.prompt_category;
-        if (category) {
-            if (!modelMap[key].categoryScores[category]) {
-                modelMap[key].categoryScores[category] = { total: 0, count: 0, scores: [] };
-            }
-            const score = result.quality_score || 0;
-            modelMap[key].categoryScores[category].total += score;
-            modelMap[key].categoryScores[category].count++;
-            modelMap[key].categoryScores[category].scores.push(score);
-        }
-    });
-
-    // Calculate generalist score for each model
-    return Object.values(modelMap).map(model => {
-        let weightedSum = 0;
-        let coveragePenalty = 0;
-        let weightsCovered = 0;
-        const categoryAverages = {};
-        const scores = [];
-        let testedCategories = 0;
-
-        for (const [category, weight] of Object.entries(CATEGORY_WEIGHTS)) {
-            const catData = model.categoryScores[category];
-
-            if (catData && catData.count > 0) {
-                testedCategories++;
-                const avgScore = normalizeScore(catData.total / catData.count);
-                categoryAverages[category] = avgScore;
-                scores.push(avgScore);
-                weightedSum += avgScore * weight;
-                weightsCovered += weight;
-            } else {
-                categoryAverages[category] = 0;
-                coveragePenalty += weight * COVERAGE_PENALTY_MAX;
-            }
-        }
-
-        const totalCategories = Object.keys(CATEGORY_WEIGHTS).length;
-        const coveragePercent = (testedCategories / totalCategories) * 100;
-
-        let consistencyBonus = 0;
-        let stdDev = 0;
-        let consistencyScore = 0;
-
-        if (scores.length > 3) {
-            stdDev = calculateStdDev(scores);
-            consistencyScore = Math.max(0, 100 - stdDev);
-            if (stdDev < 10) {
-                consistencyBonus = CONSISTENCY_BONUS;
-            }
-        }
-
-        const normalizedQuality = weightsCovered > 0 ? (weightedSum / weightsCovered) : 0;
-        const generalistScore = Math.max(0, normalizedQuality - coveragePenalty + consistencyBonus);
+        // Find matching performance data for testsByLevel and totalTests
+        const perfModel = performanceData.find(p => p.model === model.model && p.host === model.host);
 
         return {
-            name: model.name,
+            name: model.model,
             host: model.host,
-            generalistScore: round(generalistScore),
-            weightedSum: round(normalizedQuality),
-            coveragePenalty: round(coveragePenalty),
-            consistencyBonus,
-            coverage: Math.round(coveragePercent),
-            consistencyScore: Math.round(consistencyScore),
-            categoryAverages,
-            topCategory: getTopCategory(categoryAverages),
-            avgScore: scores.length > 0 ? round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0,
-            totalTests: model.totalTests,
-            testsByLevel: model.testsByLevel,
-            stdDev: round(stdDev)
+            generalistScore: model.generalistScore,
+            weightedSum: model.weightedSum,
+            coveragePenalty: model.coveragePenalty,
+            consistencyBonus: model.consistencyBonus,
+            coverage: model.coverage,
+            consistencyScore,
+            categoryAverages: model.categoryAverages,
+            topCategory: getTopCategory(model.categoryAverages),
+            avgScore,
+            totalTests: perfModel?.tests || model.testedCategories || 0,
+            testsByLevel: perfModel?.level_stats || {},
+            stdDev: Math.round(stdDev * 10) / 10
         };
     });
 }
 
-function normalizeScore(rawScore) {
-    const value = Number(rawScore);
-    if (!Number.isFinite(value)) return 0;
-    // quality_score is 0-10, normalize to 0-100 for display
-    return value <= 10 ? value * 10 : value;
-}
-
-function calculateStdDev(arr) {
-    if (arr.length === 0) return 0;
-    const mean = arr.reduce((a, b) => a + b, 0) / arr.length;
-    const squaredDiffs = arr.map(x => Math.pow(x - mean, 2));
-    const variance = squaredDiffs.reduce((a, b) => a + b, 0) / arr.length;
-    return Math.sqrt(variance);
-}
+// ============================================================================
+// UTILITY FUNCTIONS (Quality Board)
+// ============================================================================
 
 function getTopCategory(categoryAverages) {
     const entries = Object.entries(categoryAverages).filter(([_, score]) => score > 0);
     if (entries.length === 0) return '-';
     entries.sort((a, b) => b[1] - a[1]);
     return entries[0][0];
-}
-
-function round(num) {
-    return Math.round(num * 10) / 10;
 }
 
 // ============================================================================
@@ -1052,10 +950,14 @@ window.onclick = function(event) {
 
 function updateStats() {
     document.getElementById('statModels').textContent = performanceData.length;
-    document.getElementById('statTests').textContent = rawResults.length.toLocaleString();
 
-    const categories = new Set(rawResults.map(r => r.prompt_category).filter(Boolean));
-    document.getElementById('statCategories').textContent = categories.size;
+    // Sum total tests from performance data
+    const totalTests = performanceData.reduce((sum, m) => sum + (m.tests || 0) + (m.failed_tests || 0), 0);
+    document.getElementById('statTests').textContent = totalTests.toLocaleString();
+
+    // Count categories from category weights (backend source of truth)
+    const categoryCount = Object.keys(CATEGORY_WEIGHTS).length || 11;
+    document.getElementById('statCategories').textContent = categoryCount;
 
     document.getElementById('statUpdated').textContent = new Date().toLocaleTimeString();
 }
