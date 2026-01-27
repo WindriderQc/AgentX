@@ -37,16 +37,19 @@ function validateWeights() {
     const errors = [];
     const warnings = [];
     
-    // Check ENHANCED_SCORING_CONFIGS dimensions
+    // Check ENHANCED_SCORING_CONFIGS core_dimensions (judge evaluates these)
     for (const [category, config] of Object.entries(ENHANCED_SCORING_CONFIGS)) {
-        const sum = config.dimensions.reduce((acc, dim) => acc + dim.weight, 0);
-        const diff = Math.abs(sum - 1.0);
-        
-        if (diff > 0.001) { // Allow tiny floating point errors
-            errors.push(`${category}: dimension weights sum to ${sum.toFixed(3)}, expected 1.0`);
+        if (config.core_dimensions) {
+            const sum = config.core_dimensions.reduce((acc, dim) => acc + dim.weight, 0);
+            const diff = Math.abs(sum - 1.0);
+            
+            if (diff > 0.001) { // Allow tiny floating point errors
+                errors.push(`${category}: core_dimension weights sum to ${sum.toFixed(3)}, expected 1.0`);
+            }
         }
     }
     
+    // Note: derived_dimensions may not sum to 1.0 since they're calculated post-judge
     // Check CATEGORY_COMPOSITE_PROFILES (defined later in file)
     // We'll check this in a separate function after CATEGORY_COMPOSITE_PROFILES is defined
     
@@ -65,196 +68,152 @@ function validateWeights() {
  * Used when prompt.scoring_dimensions is not defined
  * Follows the spec from docs/operations/ENHANCED_JUDGING_SYSTEM_PLAN.md
  */
+// TEMPORARY: New hierarchical dimension config for permanent judge reliability
+// This replaces lines 68-260 of qualityScorer.js
+
 const ENHANCED_SCORING_CONFIGS = {
     code: {
-        dimensions: [
-            { name: 'correctness', weight: 0.20, desc: 'Does code work & produce correct output?' },
-            { name: 'clarity', weight: 0.12, desc: 'Is code readable & well-structured?' },
-            { name: 'efficiency', weight: 0.12, desc: 'Reasonable performance for task?' },
-            { name: 'maintainability', weight: 0.10, desc: 'Easy to modify & extend?' },
-            { name: 'error_handling', weight: 0.10, desc: 'Robust error handling?' },
-            { name: 'documentation', weight: 0.10, desc: 'Comments & explanations?' },
-            { name: 'best_practices', weight: 0.08, desc: 'Follows language idioms?' },
-            { name: 'testability', weight: 0.07, desc: 'Easy to test?' },
-            { name: 'scalability', weight: 0.06, desc: 'Handles larger datasets/load?' },
-            { name: 'security', weight: 0.05, desc: 'Avoids common vulnerabilities?' }
+        description: 'Code generation and correctness',
+        core_dimensions: [
+            { name: 'correctness', weight: 0.35, desc: 'Does code work & produce correct output?' },
+            { name: 'clarity', weight: 0.25, desc: 'Is code readable & well-structured?' },
+            { name: 'efficiency', weight: 0.20, desc: 'Reasonable performance?' },
+            { name: 'robustness', weight: 0.20, desc: 'Handles errors gracefully?' }
         ]
     },
     reasoning: {
-        dimensions: [
-            { name: 'accuracy', weight: 0.20, desc: 'Is conclusion correct?' },
-            { name: 'logic_soundness', weight: 0.18, desc: 'Is reasoning valid?' },
-            { name: 'depth', weight: 0.12, desc: 'Sufficient analysis depth?' },
-            { name: 'clarity', weight: 0.10, desc: 'Clear explanation?' },
-            { name: 'completeness', weight: 0.10, desc: 'Addresses all aspects?' },
-            { name: 'coherence', weight: 0.08, desc: 'Internally consistent?' },
-            { name: 'method_quality', weight: 0.08, desc: 'Appropriate approach?' },
-            { name: 'premise_handling', weight: 0.07, desc: 'Correct use of given facts?' },
-            { name: 'alternative_consideration', weight: 0.07, desc: 'Considers other possibilities?' }
+        description: 'Logical reasoning and analysis',
+        core_dimensions: [
+            { name: 'accuracy', weight: 0.30, desc: 'Is conclusion correct?' },
+            { name: 'logic_soundness', weight: 0.30, desc: 'Is reasoning valid?' },
+            { name: 'clarity', weight: 0.20, desc: 'Clear explanation?' },
+            { name: 'completeness', weight: 0.20, desc: 'Addresses all aspects?' }
         ]
     },
     factual: {
-        dimensions: [
-            { name: 'accuracy', weight: 0.30, desc: 'Factually correct?' },
-            { name: 'completeness', weight: 0.15, desc: 'Answers question fully?' },
-            { name: 'precision', weight: 0.15, desc: 'Specific & detailed?' },
-            { name: 'clarity', weight: 0.10, desc: 'Clearly presented?' },
-            { name: 'source_awareness', weight: 0.10, desc: 'Acknowledges sources?' },
-            { name: 'context_appropriateness', weight: 0.10, desc: 'Right level of detail?' },
-            { name: 'bias_neutrality', weight: 0.05, desc: 'Objective and balanced?' },
-            { name: 'update_recency', weight: 0.05, desc: 'Reflects current knowledge?' }
+        description: 'Factual accuracy and completeness',
+        core_dimensions: [
+            { name: 'accuracy', weight: 0.40, desc: 'Factually correct?' },
+            { name: 'completeness', weight: 0.30, desc: 'Answers question fully?' },
+            { name: 'clarity', weight: 0.20, desc: 'Clearly presented?' },
+            { name: 'objectivity', weight: 0.10, desc: 'Objective and balanced?' }
         ]
     },
     math: {
-        dimensions: [
-            { name: 'answer_correctness', weight: 0.30, desc: 'Final answer correct?' },
-            { name: 'method', weight: 0.20, desc: 'Solution approach valid?' },
+        description: 'Mathematical correctness and rigor',
+        core_dimensions: [
+            { name: 'answer_correctness', weight: 0.40, desc: 'Final answer correct?' },
+            { name: 'method', weight: 0.35, desc: 'Solution approach valid?' },
             { name: 'rigor', weight: 0.15, desc: 'Mathematically rigorous?' },
-            { name: 'presentation', weight: 0.10, desc: 'Clearly shown?' },
-            { name: 'notation', weight: 0.05, desc: 'Proper notation used?' },
-            { name: 'edge_cases', weight: 0.05, desc: 'Handles special cases?' },
-            { name: 'proof_completeness', weight: 0.10, desc: 'All steps justified?' },
-            { name: 'calculation_accuracy', weight: 0.05, desc: 'No arithmetic errors?' }
+            { name: 'clarity', weight: 0.10, desc: 'Steps clearly shown?' }
         ]
     },
     creative: {
-        dimensions: [
-            { name: 'creativity', weight: 0.20, desc: 'Original & imaginative?' },
-            { name: 'coherence', weight: 0.15, desc: 'Well-structured & logical?' },
-            { name: 'relevance', weight: 0.15, desc: 'Addresses task?' },
-            { name: 'originality', weight: 0.15, desc: 'Unique approach?' },
-            { name: 'emotional_impact', weight: 0.10, desc: 'Engaging?' },
-            { name: 'style', weight: 0.05, desc: 'Appropriate voice?' },
-            { name: 'audience_fit', weight: 0.05, desc: 'Right for audience?' },
-            { name: 'engagement', weight: 0.05, desc: 'Captures attention?' },
-            { name: 'narrative_flow', weight: 0.05, desc: 'Smooth progression?' },
-            { name: 'sensory_detail', weight: 0.05, desc: 'Vivid descriptions?' }
+        description: 'Creative content generation',
+        core_dimensions: [
+            { name: 'originality', weight: 0.35, desc: 'Original & imaginative?' },
+            { name: 'coherence', weight: 0.30, desc: 'Well-structured & logical?' },
+            { name: 'engagement', weight: 0.20, desc: 'Captures attention?' },
+            { name: 'relevance', weight: 0.15, desc: 'Addresses task?' }
         ]
     },
-    // Enhanced judging system: 6 new categories for better model differentiation
+    general: {
+        description: 'General-purpose multi-task evaluation',
+        core_dimensions: [
+            { name: 'helpfulness', weight: 0.35, desc: 'Achieves user goal?' },
+            { name: 'relevance', weight: 0.25, desc: 'On-topic and focused?' },
+            { name: 'clarity', weight: 0.25, desc: 'Easy to understand?' },
+            { name: 'accuracy', weight: 0.15, desc: 'Factually correct?' }
+        ]
+    },
     'instruction-following': {
-        dimensions: [
-            { name: 'instruction_adherence', weight: 0.25, desc: 'Follows instructions precisely?' },
-            { name: 'constraint_compliance', weight: 0.20, desc: 'Respects all constraints?' },
-            { name: 'format_accuracy', weight: 0.15, desc: 'Output format correct?' },
-            { name: 'completeness', weight: 0.12, desc: 'All requirements met?' },
-            { name: 'implicit_understanding', weight: 0.10, desc: 'Grasps implicit intent?' },
-            { name: 'edge_case_handling', weight: 0.08, desc: 'Handles edge cases well?' },
-            { name: 'negative_constraint_adherence', weight: 0.10, desc: 'Does NOT do forbidden things?' }
+        description: 'Constraint compliance and instruction adherence',
+        core_dimensions: [
+            { name: 'instruction_adherence', weight: 0.35, desc: 'Follows instructions precisely?' },
+            { name: 'constraint_compliance', weight: 0.35, desc: 'Respects all constraints?' },
+            { name: 'format_accuracy', weight: 0.20, desc: 'Output format correct?' },
+            { name: 'completeness', weight: 0.10, desc: 'All requirements met?' }
         ]
     },
     summarization: {
-        dimensions: [
-            { name: 'accuracy', weight: 0.20, desc: 'Preserves key information?' },
-            { name: 'conciseness', weight: 0.18, desc: 'Appropriately brief?' },
-            { name: 'completeness', weight: 0.18, desc: 'Captures main points?' },
-            { name: 'coherence', weight: 0.15, desc: 'Logically structured?' },
-            { name: 'abstraction', weight: 0.12, desc: 'Right level of detail?' },
-            { name: 'readability', weight: 0.10, desc: 'Easy to understand?' },
-            { name: 'objectivity', weight: 0.07, desc: 'Free from judge commentary?' }
+        description: 'Content distillation and synthesis',
+        core_dimensions: [
+            { name: 'accuracy', weight: 0.35, desc: 'Preserves key information?' },
+            { name: 'conciseness', weight: 0.30, desc: 'Appropriately brief?' },
+            { name: 'completeness', weight: 0.20, desc: 'Captures main points?' },
+            { name: 'coherence', weight: 0.15, desc: 'Logically structured?' }
         ]
     },
     translation: {
-        dimensions: [
-            { name: 'accuracy', weight: 0.25, desc: 'Meaning preserved correctly?' },
-            { name: 'fluency', weight: 0.20, desc: 'Natural in target language?' },
-            { name: 'grammar', weight: 0.15, desc: 'Grammatically correct?' },
-            { name: 'idiom_usage', weight: 0.12, desc: 'Idiomatic expressions appropriate?' },
-            { name: 'cultural_sensitivity', weight: 0.10, desc: 'Culturally appropriate?' },
-            { name: 'tone_preservation', weight: 0.08, desc: 'Original tone maintained?' },
-            { name: 'contextual_equivalence', weight: 0.10, desc: 'Fits the situational context?' }
+        description: 'Cross-language translation quality',
+        core_dimensions: [
+            { name: 'accuracy', weight: 0.35, desc: 'Meaning preserved correctly?' },
+            { name: 'fluency', weight: 0.30, desc: 'Natural in target language?' },
+            { name: 'grammar', weight: 0.20, desc: 'Grammatically correct?' },
+            { name: 'cultural_fit', weight: 0.15, desc: 'Culturally appropriate?' }
         ]
     },
     'multi-turn-reasoning': {
-        dimensions: [
-            { name: 'context_retention', weight: 0.20, desc: 'Remembers previous context?' },
-            { name: 'logical_progression', weight: 0.18, desc: 'Builds on prior steps?' },
-            { name: 'accuracy', weight: 0.18, desc: 'Final conclusion correct?' },
-            { name: 'coherence', weight: 0.15, desc: 'Consistent throughout?' },
-            { name: 'depth', weight: 0.10, desc: 'Sufficient analysis depth?' },
-            { name: 'synthesis', weight: 0.08, desc: 'Integrates information well?' },
-            { name: 'state_tracking', weight: 0.11, desc: 'Keeps track of changes?' }
+        description: 'Multi-step reasoning across turns',
+        core_dimensions: [
+            { name: 'context_retention', weight: 0.35, desc: 'Remembers previous context?' },
+            { name: 'logical_progression', weight: 0.30, desc: 'Builds on prior steps?' },
+            { name: 'accuracy', weight: 0.25, desc: 'Final conclusion correct?' },
+            { name: 'coherence', weight: 0.10, desc: 'Consistent throughout?' }
         ]
     },
     'context-retention': {
-        dimensions: [
-            { name: 'recall_accuracy', weight: 0.25, desc: 'Recalls information correctly?' },
-            { name: 'relevance_filtering', weight: 0.18, desc: 'Retrieves relevant context?' },
-            { name: 'temporal_awareness', weight: 0.15, desc: 'Understands information order?' },
-            { name: 'integration', weight: 0.15, desc: 'Integrates old & new context?' },
-            { name: 'consistency', weight: 0.12, desc: 'Consistent with prior statements?' },
-            { name: 'scope_management', weight: 0.08, desc: 'Appropriate context window?' },
-            { name: 'no_hallucination', weight: 0.07, desc: 'Does not invent context?' }
+        description: 'Memory and context management',
+        core_dimensions: [
+            { name: 'recall_accuracy', weight: 0.40, desc: 'Recalls information correctly?' },
+            { name: 'relevance_filtering', weight: 0.30, desc: 'Retrieves relevant context?' },
+            { name: 'consistency', weight: 0.20, desc: 'Consistent with prior statements?' },
+            { name: 'no_hallucination', weight: 0.10, desc: 'Does not invent context?' }
         ]
     },
     'edge-cases': {
-        dimensions: [
-            { name: 'error_handling', weight: 0.25, desc: 'Handles errors gracefully?' },
-            { name: 'boundary_awareness', weight: 0.20, desc: 'Recognizes edge conditions?' },
-            { name: 'robustness', weight: 0.18, desc: 'Stable under unusual inputs?' },
-            { name: 'graceful_degradation', weight: 0.15, desc: 'Fails gracefully?' },
-            { name: 'validation', weight: 0.10, desc: 'Validates inputs properly?' },
-            { name: 'recovery', weight: 0.07, desc: 'Recovers from errors?' },
-            { name: 'input_sanitization', weight: 0.05, desc: 'Handles malformed input?' }
+        description: 'Robustness under unusual inputs',
+        core_dimensions: [
+            { name: 'error_handling', weight: 0.35, desc: 'Handles errors gracefully?' },
+            { name: 'robustness', weight: 0.30, desc: 'Stable under unusual inputs?' },
+            { name: 'validation', weight: 0.20, desc: 'Validates inputs properly?' },
+            { name: 'recovery', weight: 0.15, desc: 'Recovers from errors?' }
         ]
     },
-    // General category for multi-purpose tasks
-    general: {
-        dimensions: [
-            { name: 'helpfulness', weight: 0.25, desc: 'Achieves user goal?' },
-            { name: 'relevance', weight: 0.20, desc: 'On-topic and focused?' },
-            { name: 'clarity', weight: 0.15, desc: 'Easy to understand?' },
-            { name: 'conciseness', weight: 0.10, desc: 'No unnecessary filler?' },
-            { name: 'tone_appropriateness', weight: 0.10, desc: 'Right level of formality?' },
-            { name: 'instruction_adherence', weight: 0.10, desc: 'Follows all constraints?' },
-            { name: 'safety', weight: 0.10, desc: 'Content is safe and ethical?' }
-        ]
-    },
-    // Code refactoring evaluation
     refactoring: {
-        dimensions: [
-            { name: 'readability_improvement', weight: 0.25, desc: 'Is code clearer?' },
-            { name: 'logic_preservation', weight: 0.25, desc: 'Behavior remains identical?' },
-            { name: 'complexity_reduction', weight: 0.15, desc: 'Reduced cyclomatic complexity?' },
-            { name: 'dry_principle', weight: 0.10, desc: 'Removed redundancy?' },
-            { name: 'naming_quality', weight: 0.10, desc: 'Better variable/function names?' },
-            { name: 'modularization', weight: 0.08, desc: 'Improved separation of concerns?' },
-            { name: 'idiomatic_code', weight: 0.07, desc: 'Uses language-specific best patterns?' }
+        description: 'Code restructuring and improvement',
+        core_dimensions: [
+            { name: 'readability_improvement', weight: 0.35, desc: 'Is code clearer?' },
+            { name: 'logic_preservation', weight: 0.35, desc: 'Behavior remains identical?' },
+            { name: 'simplicity', weight: 0.20, desc: 'Reduced complexity?' },
+            { name: 'correctness', weight: 0.10, desc: 'No new bugs introduced?' }
         ]
     },
-    // Debugging evaluation
     debugging: {
-        dimensions: [
-            { name: 'root_cause_identification', weight: 0.30, desc: 'Found the actual bug?' },
-            { name: 'fix_correctness', weight: 0.25, desc: 'Does the fix work?' },
+        description: 'Problem identification and resolution',
+        core_dimensions: [
+            { name: 'root_cause', weight: 0.40, desc: 'Found the actual bug?' },
+            { name: 'fix_correctness', weight: 0.35, desc: 'Does the fix work?' },
             { name: 'minimal_intervention', weight: 0.15, desc: 'Avoided unnecessary changes?' },
-            { name: 'side_effect_avoidance', weight: 0.10, desc: 'No new bugs introduced?' },
-            { name: 'explanation_clarity', weight: 0.10, desc: 'Clear reason for the bug?' },
-            { name: 'prevention_strategy', weight: 0.10, desc: 'Suggested how to avoid it?' }
+            { name: 'explanation', weight: 0.10, desc: 'Clear reason for the bug?' }
         ]
     },
-    // Technical explanation evaluation
     explanation: {
-        dimensions: [
-            { name: 'clarity', weight: 0.25, desc: 'Easy to follow?' },
-            { name: 'accuracy', weight: 0.25, desc: 'Technically correct?' },
-            { name: 'analogical_quality', weight: 0.15, desc: 'Good examples/metaphors?' },
-            { name: 'structure', weight: 0.12, desc: 'Logical flow of information?' },
-            { name: 'completeness', weight: 0.10, desc: 'No missing key details?' },
-            { name: 'audience_fit', weight: 0.08, desc: 'Right level of technicality?' },
-            { name: 'conciseness', weight: 0.05, desc: 'No unnecessary detail?' }
+        description: 'Technical explanation clarity',
+        core_dimensions: [
+            { name: 'clarity', weight: 0.35, desc: 'Easy to follow?' },
+            { name: 'accuracy', weight: 0.35, desc: 'Technically correct?' },
+            { name: 'structure', weight: 0.20, desc: 'Logical flow of information?' },
+            { name: 'completeness', weight: 0.10, desc: 'No missing key details?' }
         ]
     },
-    // Conversational dialogue evaluation
     dialogue: {
-        dimensions: [
-            { name: 'naturalness', weight: 0.20, desc: 'Sounds human-like?' },
-            { name: 'turn_relevance', weight: 0.20, desc: 'Addresses previous turn?' },
-            { name: 'persona_consistency', weight: 0.15, desc: 'Maintains character/tone?' },
-            { name: 'engagement', weight: 0.15, desc: 'Keeps conversation going?' },
-            { name: 'helpfulness', weight: 0.12, desc: 'User goals achieved?' },
-            { name: 'proactivity', weight: 0.10, desc: 'Suggests next steps?' },
-            { name: 'politeness', weight: 0.08, desc: 'Appropriate etiquette?' }
+        description: 'Conversational interaction quality',
+        core_dimensions: [
+            { name: 'relevance', weight: 0.30, desc: 'Addresses previous turn?' },
+            { name: 'naturalness', weight: 0.25, desc: 'Sounds human-like?' },
+            { name: 'helpfulness', weight: 0.25, desc: 'User goals achieved?' },
+            { name: 'engagement', weight: 0.20, desc: 'Keeps conversation going?' }
         ]
     }
 };
@@ -262,122 +221,8 @@ const ENHANCED_SCORING_CONFIGS = {
 // Validate ENHANCED_SCORING_CONFIGS weight sums at module load
 validateWeights();
 
-/**
- * Legacy scoring configurations (3-5 dimensions)
- * Maintained for backward compatibility with existing prompts
- * Each type has specific evaluation criteria and prompts
- */
-const SCORING_CONFIGS = {
-    code: {
-        weight: { correctness: 0.5, clarity: 0.3, efficiency: 0.2 },
-        prompt: `You are a code quality evaluator. Analyze the given code response and score it.
-
-IMPORTANT: If the RESPONSE TO EVALUATE section is empty or blank, assign 0 to all scores - the model failed to produce output.
-
-CRITERIA TO EVALUATE:
-1. Correctness (0-10): Does the code work and produce correct output?
-2. Clarity (0-10): Is the code readable and well-structured?
-3. Efficiency (0-10): Is it reasonably efficient for the task?
-
-TASK: {{task}}
-EXPECTED: {{expected}}
-RESPONSE TO EVALUATE:
-{{response}}
-
-IMPORTANT: Score each criterion on a 0-10 scale. The 'overall' score should be a weighted average on the SAME 0-10 scale, NOT a sum.
-
-Respond ONLY with JSON in this exact format:
-{"correctness": X, "clarity": X, "efficiency": X, "overall": X, "explanation": "brief reason"}`
-    },
-    
-    reasoning: {
-        weight: { accuracy: 0.4, logic: 0.4, clarity: 0.2 },
-        prompt: `You are a reasoning quality evaluator. Analyze the logical reasoning in this response.
-
-IMPORTANT: If the RESPONSE TO EVALUATE section is empty or blank, assign 0 to all scores - the model failed to produce output.
-
-CRITERIA TO EVALUATE:
-1. Accuracy (0-10): Is the conclusion/answer correct?
-2. Logic (0-10): Is the reasoning process sound and valid?
-3. Clarity (0-10): Is the explanation clear and understandable?
-
-TASK: {{task}}
-EXPECTED: {{expected}}
-RESPONSE TO EVALUATE:
-{{response}}
-
-IMPORTANT: Score each criterion on a 0-10 scale. The 'overall' score should be a weighted average on the SAME 0-10 scale, NOT a sum.
-
-Respond ONLY with JSON in this exact format:
-{"accuracy": X, "logic": X, "clarity": X, "overall": X, "explanation": "brief reason"}`
-    },
-    
-    factual: {
-        weight: { accuracy: 0.7, completeness: 0.2, clarity: 0.1 },
-        prompt: `You are a factual accuracy evaluator. Check if this response is factually correct.
-
-IMPORTANT: If the RESPONSE TO EVALUATE section is empty or blank, assign 0 to all scores - the model failed to produce output.
-
-CRITERIA TO EVALUATE:
-1. Accuracy (0-10): Is the information factually correct?
-2. Completeness (0-10): Does it answer the question fully?
-3. Clarity (0-10): Is it presented clearly?
-
-TASK: {{task}}
-EXPECTED: {{expected}}
-RESPONSE TO EVALUATE:
-{{response}}
-
-IMPORTANT: Score each criterion on a 0-10 scale. The 'overall' score should be a weighted average on the SAME 0-10 scale, NOT a sum.
-
-Respond ONLY with JSON in this exact format:
-{"accuracy": X, "completeness": X, "clarity": X, "overall": X, "explanation": "brief reason"}`
-    },
-    
-    math: {
-        weight: { answer: 0.6, method: 0.3, presentation: 0.1 },
-        prompt: `You are a math evaluator. Check if the mathematical answer and work is correct.
-
-IMPORTANT: If the RESPONSE TO EVALUATE section is empty or blank, assign 0 to all scores - the model failed to produce output.
-
-CRITERIA TO EVALUATE:
-1. Answer (0-10): Is the final answer correct?
-2. Method (0-10): Is the solution method/work correct?
-3. Presentation (0-10): Is it clearly presented?
-
-TASK: {{task}}
-EXPECTED: {{expected}}
-RESPONSE TO EVALUATE:
-{{response}}
-
-IMPORTANT: Score each criterion on a 0-10 scale. The 'overall' score should be a weighted average on the SAME 0-10 scale, NOT a sum.
-
-Respond ONLY with JSON in this exact format:
-{"answer": X, "method": X, "presentation": X, "overall": X, "explanation": "brief reason"}`
-    },
-    
-    creative: {
-        weight: { creativity: 0.4, coherence: 0.3, relevance: 0.3 },
-        prompt: `You are a creative writing evaluator. Assess the creativity and quality of this response.
-
-IMPORTANT: If the RESPONSE TO EVALUATE section is empty or blank, assign 0 to all scores - the model failed to produce output.
-
-CRITERIA TO EVALUATE:
-1. Creativity (0-10): Is it original and imaginative?
-2. Coherence (0-10): Is it well-structured and logical?
-3. Relevance (0-10): Does it address the task appropriately?
-
-TASK: {{task}}
-EXPECTED: {{expected}}
-RESPONSE TO EVALUATE:
-{{response}}
-
-IMPORTANT: Score each criterion on a 0-10 scale. The 'overall' score should be a weighted average on the SAME 0-10 scale, NOT a sum.
-
-Respond ONLY with JSON in this exact format:
-{"creativity": X, "coherence": X, "relevance": X, "overall": X, "explanation": "brief reason"}`
-    }
-};
+// Legacy SCORING_CONFIGS removed - all scoring now uses ENHANCED_SCORING_CONFIGS
+// The enhanced system provides 16 categories with 4 core dimensions each
 
 /**
  * Build a dynamic judge prompt from scoring dimensions
@@ -425,9 +270,9 @@ Do NOT respond with just keys, do NOT respond with an array, do NOT add explanat
 
 /**
  * Get scoring dimensions for a prompt
- * Priority: prompt.scoring_dimensions > ENHANCED_SCORING_CONFIGS > legacy SCORING_CONFIGS
+ * Priority: prompt.scoring_dimensions > ENHANCED_SCORING_CONFIGS (with 'general' fallback)
  * @param {Object} prompt - The benchmark prompt object
- * @returns {Object} { dimensions: Array, weights: Object, useLegacy: boolean }
+ * @returns {Object} { dimensions: Array, weights: Object, category: string }
  */
 function getScoringDimensions(prompt) {
     // Priority 1: Use prompt's custom scoring_dimensions if defined
@@ -447,38 +292,37 @@ function getScoringDimensions(prompt) {
             dimensionCount: dimensions.length
         });
 
-        return { dimensions, weights, useLegacy: false };
+        return { dimensions, weights, category: 'custom' };
     }
 
     // Priority 2: Use enhanced scoring configs based on scoring_type
-    const scoringType = prompt.scoring_type || 'reasoning';
-    const enhancedConfig = ENHANCED_SCORING_CONFIGS[scoringType];
+    const scoringType = prompt.scoring_type || 'general';
+    let enhancedConfig = ENHANCED_SCORING_CONFIGS[scoringType];
 
-    if (enhancedConfig && enhancedConfig.dimensions) {
-        const dimensions = enhancedConfig.dimensions;
-        const weights = dimensions.reduce((acc, dim) => {
-            acc[dim.name] = dim.weight;
-            return acc;
-        }, {});
-
-        logger.info('Using enhanced scoring dimensions', {
+    // Fallback to 'general' if category not found
+    if (!enhancedConfig || !enhancedConfig.core_dimensions) {
+        logger.warn('Unknown scoring_type, falling back to general', {
             prompt: prompt.name || 'unknown',
-            scoringType,
-            dimensionCount: dimensions.length
+            requestedType: scoringType
         });
-
-        return { dimensions, weights, useLegacy: false };
+        enhancedConfig = ENHANCED_SCORING_CONFIGS.general;
     }
 
-    // Priority 3: Fall back to legacy scoring configs (backward compatibility)
-    const legacyConfig = SCORING_CONFIGS[scoringType] || SCORING_CONFIGS.reasoning;
+    // Use CORE dimensions only for judge evaluation (exactly 4 fields = reliable JSON)
+    // See DIMENSION_ARCHITECTURE.md for rationale
+    const dimensions = enhancedConfig.core_dimensions;
+    const weights = dimensions.reduce((acc, dim) => {
+        acc[dim.name] = dim.weight;
+        return acc;
+    }, {});
 
-    logger.info('Using legacy scoring config (backward compatibility)', {
+    logger.debug('Using enhanced core dimensions for judge evaluation', {
         prompt: prompt.name || 'unknown',
-        scoringType
+        scoringType,
+        coreDimensionCount: dimensions.length
     });
 
-    return { dimensions: null, weights: legacyConfig.weight, useLegacy: true, legacyConfig };
+    return { dimensions, weights, category: scoringType };
 }
 
 /**
@@ -608,7 +452,7 @@ async function callJudge(evalPrompt, config = {}, retryCount = 0) {
             // We conservatively escape \ followed by anything else
             sanitized = sanitized.replace(/\\([^"\\/bfnrtu])/g, "\\\\$1");
 
-            const scores = JSON.parse(sanitized);
+            let scores = JSON.parse(sanitized);
             
             // Validate that scores object contains expected fields
             if (typeof scores !== 'object' || scores === null) {
@@ -620,6 +464,27 @@ async function callJudge(evalPrompt, config = {}, retryCount = 0) {
                 throw new Error(`Judge returned array instead of JSON object. Array content: ${JSON.stringify(scores).substring(0, 200)}`);
             }
             
+            // CRITICAL FIX: Coerce string numbers to actual numbers
+            // Judge model sometimes returns "8.5" instead of 8.5 in JSON
+            const coercedScores = {};
+            for (const [key, value] of Object.entries(scores)) {
+                if (typeof value === 'number') {
+                    coercedScores[key] = value;
+                } else if (typeof value === 'string') {
+                    const trimmed = value.trim();
+                    // Check if string looks like a number (handles "8", "8.0", "8.5", etc.)
+                    if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
+                        coercedScores[key] = parseFloat(trimmed);
+                    } else {
+                        // Keep non-numeric strings (like explanations)
+                        coercedScores[key] = value;
+                    }
+                } else {
+                    coercedScores[key] = value;
+                }
+            }
+            scores = coercedScores;
+            
             // Check for at least some numeric scores (but don't require specific fields - dimensions vary)
             const numericFields = Object.keys(scores).filter(key => 
                 typeof scores[key] === 'number' && key !== 'overall'
@@ -629,7 +494,7 @@ async function callJudge(evalPrompt, config = {}, retryCount = 0) {
                 // More detailed error for debugging
                 const receivedKeys = Object.keys(scores);
                 const receivedTypes = receivedKeys.map(k => `${k}:${typeof scores[k]}`).join(', ');
-                throw new Error(`Judge response missing numeric scores. Received ${receivedKeys.length} keys but all non-numeric. Types: [${receivedTypes}]`);
+                throw new Error(`Judge response missing numeric scores after coercion. Received ${receivedKeys.length} keys. Types: [${receivedTypes}]`);
             }
             
             return {
@@ -741,53 +606,35 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
         });
         return {
             quality_score: 0,
-            scoring_method: 'llm_judge',
-            scoring_type: prompt.scoring_type || 'reasoning',
+            scoring_method: 'empty_response',
+            scoring_type: prompt.scoring_type || 'general',
             explanation: 'CRITICAL: Model produced NO response. Unable to evaluate empty output. Automatic score: 0/10',
-            breakdown: { 
-                accuracy: 0, 
-                correctness: 0, 
+            breakdown: {
+                accuracy: 0,
+                correctness: 0,
                 completeness: 0,
                 clarity: 0,
-                overall: 0 
+                overall: 0
             },
             scoring_time_ms: Date.now() - startTime,
-            judge_prompt: 'EMPTY_RESPONSE_DETECTION',
-            judge_model: 'empty_response_validator',
+            judge_prompt: null,
+            judge_model: null,
             judge_raw_response: 'Model failed to generate any response text'
         };
     }
     
     // Use LLM-as-judge for complex evaluation
-    const scoringType = prompt.scoring_type || 'reasoning';
+    const scoringType = prompt.scoring_type || 'general';
     const dimensionsInfo = getScoringDimensions(prompt);
 
-    let evalPrompt;
-    let config;
-
-    if (dimensionsInfo.useLegacy) {
-        // Backward compatibility: use legacy prompt template
-        config = dimensionsInfo.legacyConfig;
-
-        // Allow overriding prompt from judgeConfig
-        if (judgeConfig.prompts && judgeConfig.prompts[scoringType]) {
-            config = { ...config, prompt: judgeConfig.prompts[scoringType] };
-        }
-
-        evalPrompt = config.prompt
-            .replace('{{task}}', prompt.prompt || prompt)
-            .replace('{{expected}}', prompt.expected_answer || 'See criteria')
-            .replace('{{response}}', response);
-    } else {
-        // Enhanced scoring: use dynamic dimensions
-        evalPrompt = buildDynamicJudgePrompt(
-            dimensionsInfo.dimensions,
-            prompt.prompt || prompt,
-            prompt.expected_answer || 'See criteria',
-            response
-        );
-        config = { weight: dimensionsInfo.weights };
-    }
+    // Build dynamic judge prompt from dimensions
+    const evalPrompt = buildDynamicJudgePrompt(
+        dimensionsInfo.dimensions,
+        prompt.prompt || prompt,
+        prompt.expected_answer || 'See criteria',
+        response
+    );
+    const config = { weight: dimensionsInfo.weights };
 
     const judgeResult = await callJudge(evalPrompt, judgeConfig);
     
@@ -943,7 +790,13 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
  * Based on Enhanced Judging System Plan Phase 1 Week 5
  */
 const CATEGORY_COMPOSITE_PROFILES = {
-    // Original 6 categories
+    // Code category (matches ENHANCED_SCORING_CONFIGS)
+    code: {
+        weights: { quality: 0.60, latency: 0.25, speed: 0.15 },
+        latencyCap: 45000, // 45s (users tolerate slower for correct code)
+        description: "Correctness + efficiency critical"
+    },
+    // Alias for backward compatibility
     coding: {
         weights: { quality: 0.60, latency: 0.25, speed: 0.15 },
         latencyCap: 45000, // 45s (users tolerate slower for correct code)
@@ -1258,7 +1111,6 @@ module.exports = {
     quickScore,
     buildDynamicJudgePrompt,
     getScoringDimensions,
-    SCORING_CONFIGS,
     ENHANCED_SCORING_CONFIGS,
     CATEGORY_COMPOSITE_PROFILES,
     JUDGE_CONFIG

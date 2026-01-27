@@ -200,9 +200,12 @@ async function judgeConversation(conversationId, judgeModel = null, judgeHost = 
             judgeModel: model
         });
 
-        // Call judge model
+        // Call judge model with proper timeout via AbortController
         const start = Date.now();
         const url = `${host}/api/generate`;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minutes for long conversations
+
         const fetchOptions = getFetchOptions(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -216,10 +219,15 @@ async function judgeConversation(conversationId, judgeModel = null, judgeHost = 
                     num_ctx: 8192
                 }
             }),
-            timeout: 120000  // 2 minutes for long conversations
+            signal: controller.signal
         });
 
-        const response = await fetch(url, fetchOptions);
+        let response;
+        try {
+            response = await fetch(url, fetchOptions);
+        } finally {
+            clearTimeout(timeoutId);
+        }
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
@@ -234,10 +242,26 @@ async function judgeConversation(conversationId, judgeModel = null, judgeHost = 
         const clamp = (val, min, max) => Math.max(min, Math.min(max, val || 0));
 
         // Calculate overall score (in case judge didn't provide or provided wrong scale)
-        // Fix: Use !== undefined check to handle 0 as valid score
-        const overallScore = judgeResult.overall !== undefined && judgeResult.overall !== null
-            ? (judgeResult.overall <= 10 ? judgeResult.overall * 10 : judgeResult.overall)
-            : calculateOverallScore(judgeResult);
+        // The judge is instructed to return 0-10, but may return 0-100
+        // Use heuristics: if judge overall > 10, assume it's already 0-100 scale
+        // If judge overall <= 10, convert to 0-100 scale
+        let overallScore;
+        if (judgeResult.overall !== undefined && judgeResult.overall !== null) {
+            const rawOverall = Number(judgeResult.overall);
+            if (isNaN(rawOverall)) {
+                // Judge returned non-numeric overall, calculate from dimensions
+                overallScore = calculateOverallScore(judgeResult);
+            } else if (rawOverall > 10) {
+                // Already on 0-100 scale, clamp to valid range
+                overallScore = Math.min(100, Math.max(0, rawOverall));
+            } else {
+                // On 0-10 scale, convert to 0-100
+                overallScore = Math.min(100, Math.max(0, rawOverall * 10));
+            }
+        } else {
+            // No overall provided, calculate from dimensions
+            overallScore = calculateOverallScore(judgeResult);
+        }
 
         // Calculate conversation metrics
         const avgLatency = calculateAvgLatency(conversation.messages);

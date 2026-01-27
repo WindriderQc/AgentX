@@ -113,7 +113,7 @@ const BenchmarkResultSchema = new mongoose.Schema({
     },
     scoring_method: {
         type: String,
-        enum: ['reasoning', 'quick', 'pattern', 'llm_judge', 'llm_failed', 'exec_failed', 'disabled', 'pending', 'skipped'],
+        enum: ['reasoning', 'quick', 'pattern', 'llm_judge', 'llm_failed', 'exec_failed', 'disabled', 'pending', 'skipped', 'empty_response'],
         default: 'disabled'
     },
     scoring_type: {

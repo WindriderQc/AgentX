@@ -9,7 +9,7 @@ const router = express.Router();
 const logger = require('../config/logger');
 const { attachWorkspace, optionalWorkspaceContext } = require('../src/middleware/workspace');
 const benchmarkService = require('../src/services/benchmark');
-const { JUDGE_CONFIG, SCORING_CONFIGS } = require('../src/services/qualityScorer');
+const { JUDGE_CONFIG, ENHANCED_SCORING_CONFIGS } = require('../src/services/qualityScorer');
 const { validateObjectId } = require('../src/helpers/objectIdValidator');
 const BenchmarkBatch = require('../models/BenchmarkBatch');
 const hardwareProfileService = require('../src/services/hardwareProfileService');
@@ -41,7 +41,7 @@ router.get('/config', (req, res) => {
                 judge_same_host: false
             },
             execution_config: benchmarkService.getExecutionConfigDefaults(),
-            scoring_configs: SCORING_CONFIGS
+            scoring_configs: ENHANCED_SCORING_CONFIGS
         }
     });
 });
@@ -302,9 +302,10 @@ router.post('/results/:id/rejudge', async (req, res) => {
         }
 
         // Get judge config from request or use defaults
+        // IMPORTANT: Do NOT fall back to result.host (execution host) - use JUDGE_CONFIG.host instead
         const judgeConfig = {
             model: req.body.judge_model || result.judge_model || JUDGE_CONFIG.model,
-            host: req.body.judge_host || result.judge_host || result.host
+            host: req.body.judge_host || result.judge_host || JUDGE_CONFIG.host
         };
 
         // Build prompt object for scoring
