@@ -17,7 +17,7 @@ echo -e "${YELLOW}[1/4] Running Jest Tests (Unit/Integration)...${NC}"
 if [ "${SKIP_JEST:-}" = "1" ] || [ "${E2E_ONLY:-}" = "1" ]; then
     echo -e "${YELLOW}Skipping Jest in E2E-only mode.${NC}"
 else
-    npm test
+    pnpm test
 fi
 
 # 2. Check if Server is running for E2E tests

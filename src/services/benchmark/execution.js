@@ -492,13 +492,24 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
             // Warmup judge BEFORE starting tests (if separate host)
             // This ensures judge model is loaded and ready before any test results need scoring
             let judgeWarmupData = null;
-            if (enableQualityScoring && !judgeSameHost) {
+            let judgeHardwareSnapshot = null;
+            if (enableQualityScoring) {
                 const jModel = judgeConfig.model || JUDGE_CONFIG.model;
+                if (!judgeSameHost) {
+                    try {
+                        judgeWarmupData = await warmupModel(judgeHostUrl, jModel, 'judge_warmup');
+                        logger.info('Judge model ready', { host: judgeHostUrl, model: jModel });
+                    } catch (err) {
+                        logger.warn('Judge warmup failed, judge calls may be slow', { error: err.message });
+                    }
+                }
+
+                // Phase 3 Week 10: Detect judge hardware once per host and reuse in all judge calls
+                // This eliminates redundant /api/ps calls for every single test
                 try {
-                    judgeWarmupData = await warmupModel(judgeHostUrl, jModel, 'judge_warmup');
-                    logger.info('Judge model ready', { host: judgeHostUrl, model: jModel });
+                    judgeHardwareSnapshot = await hardwareProfileService.detectHardware(judgeHostUrl, jModel);
                 } catch (err) {
-                    logger.warn('Judge warmup failed, judge calls may be slow', { error: err.message });
+                    logger.debug('Failed to detect judge hardware (non-critical)', { error: err.message });
                 }
             }
 
@@ -523,6 +534,23 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                 }
 
                 for (const prompt of prompts) {
+                    // Phase 3 Week 10: Backpressure - If judge queue is overloaded, wait before starting next test
+                    // This prevents the app server from being overwhelmed by too many background tasks
+                    const MAX_JUDGE_QUEUE = 10;
+                    while (enableQualityScoring && judgeQueue.getStatus().queued > MAX_JUDGE_QUEUE) {
+                        logger.debug('Judge queue backpressure active - waiting...', {
+                            queued: judgeQueue.getStatus().queued,
+                            batchId
+                        });
+                        await new Promise(resolve => setTimeout(resolve, 200));
+
+                        // Also check if batch was stopped while waiting to prevent infinite wait
+                        try {
+                            const waitStopCheck = await BenchmarkBatch.findById(batchId).select('status').lean();
+                            if (waitStopCheck && waitStopCheck.status === 'stopped') break;
+                        } catch (err) { /* ignore check errors while waiting */ }
+                    }
+
                     // Check if batch was stopped (lightweight query for status only)
                     try {
                         const stopCheck = await BenchmarkBatch.findById(batchId).select('status').lean();
@@ -688,19 +716,8 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                         await result.save();
                         const resultId = result._id;
 
-                        // Record test completion with timeline tracking
-                        await currentBatch.recordTestComplete(
-                            model,
-                            prompt._id ? prompt._id.toString() : null,
-                            latency,
-                            true,
-                            null,
-                            prompt.level,
-                            hostUrl,
-                            tokens_per_sec
-                        );
-
-                        // Update batch progress with capped results array to prevent memory growth
+                        // Consolidated update: Record test completion, progress, and results in one atomic call
+                        // This reduces DB round-trips and improves performance during high-throughput batches
                         await BenchmarkBatch.updateOne(
                             { _id: batchId },
                             {
@@ -717,8 +734,23 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                                             response_preview: (data.response || '').substring(0, 100) + '...'
                                         }],
                                         $slice: -1000  // Keep only last 1000 result summaries
+                                    },
+                                    timeline: {
+                                        $each: [{
+                                            timestamp: new Date(),
+                                            event: 'test_complete',
+                                            model,
+                                            host: hostUrl,
+                                            prompt_id: prompt._id ? prompt._id.toString() : null,
+                                            prompt_level: prompt.level,
+                                            duration_ms: latency,
+                                            tokens_per_sec,
+                                            success: true
+                                        }],
+                                        $slice: -2500  // Keep only last 2500 timeline events
                                     }
-                                }
+                                },
+                                $set: { last_activity_at: new Date() }
                             }
                         );
 
@@ -775,7 +807,8 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                                         judgeConfig: {
                                             ...judgeConfig,
                                             host: judgeHostUrl
-                                        }
+                                        },
+                                        _batchHardwareSnapshot: judgeHardwareSnapshot
                                     });
                                     const judgeDuration = Date.now() - judgeStart;
 
@@ -909,29 +942,11 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
 
                             await result.save();
 
-                            // Record test failure with timeline tracking
-                            await currentBatch.recordTestComplete(
-                                model,
-                                prompt._id ? prompt._id.toString() : null,
-                                errorDuration,
-                                false,
-                                err,
-                                prompt.level,
-                                hostUrl,
-                                null
-                            );
-
-                            // Note: Do NOT increment judge_completed/judge_failed here
-                            // This is an EXECUTION failure, not a judge failure
-                            // judge_total will be set to actual successful executions later
+                            // Consolidated update: Record failure, progress, and timeline in one atomic call
                             await BenchmarkBatch.updateOne(
                                 { _id: batchId },
                                 {
-                                    $inc: {
-                                        completed: 1,
-                                        failed: 1
-                                        // Removed: judge counters - exec failures are not judge failures
-                                    },
+                                    $inc: { completed: 1, failed: 1 },
                                     $push: {
                                         results: {
                                             $each: [{
@@ -941,8 +956,23 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                                                 error: err.message
                                             }],
                                             $slice: -1000  // Cap results array
+                                        },
+                                        timeline: {
+                                            $each: [{
+                                                timestamp: new Date(),
+                                                event: 'error',
+                                                model,
+                                                host: hostUrl,
+                                                prompt_id: prompt._id ? prompt._id.toString() : null,
+                                                prompt_level: prompt.level,
+                                                duration_ms: errorDuration,
+                                                success: false,
+                                                error: err.message || err.toString()
+                                            }],
+                                            $slice: -2500
                                         }
-                                    }
+                                    },
+                                    $set: { last_activity_at: new Date() }
                                 }
                             );
 
