@@ -4,41 +4,6 @@
             padding: 20px;
         }
 
-        /* Failure classification badges */
-        .fail-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 0.68em;
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            padding: 2px 8px;
-            border-radius: 999px;
-            margin-left: 10px;
-            line-height: 1.6;
-            white-space: nowrap;
-            vertical-align: middle;
-        }
-        .fail-badge i {
-            font-size: 0.95em;
-            opacity: 0.9;
-        }
-        .fail-badge.infra {
-            background: rgba(52, 152, 219, 0.16);
-            border: 1px solid rgba(52, 152, 219, 0.45);
-            color: #93c5fd;
-        }
-        .fail-badge.model {
-            background: rgba(231, 76, 60, 0.14);
-            border: 1px solid rgba(231, 76, 60, 0.40);
-            color: #fca5a5;
-        }
-        .fail-badge.unknown {
-            background: rgba(243, 156, 18, 0.16);
-            border: 1px solid rgba(243, 156, 18, 0.45);
-            color: #fde68a;
-        }
-
         /* Timeline Stack Layout Styles */
         .timeline-wrapper {
             display: flex;
