@@ -240,6 +240,38 @@
             </div>
         </div>
 
+        <!-- Judge Health Status -->
+        <div class="section-card" id="judgeHealthContainer">
+            <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h3 style="margin: 0;"><i class="fas fa-heartbeat"></i> Judge Health Status</h3>
+                <button id="runHealthCheckBtn" class="btn-secondary btn-sm">
+                    <i class="fas fa-stethoscope"></i> Run Health Check
+                </button>
+            </div>
+            <div class="stats-grid" id="healthStatsGrid">
+                <div class="stat-card">
+                    <div class="stat-value" id="healthScore">-</div>
+                    <div class="stat-label">Health Score</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="healthConsistency">-</div>
+                    <div class="stat-label">Consistency (Avg StdDev)</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="healthCalibration">-</div>
+                    <div class="stat-label">Calibration Grade</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="healthFailureRate">-</div>
+                    <div class="stat-label">Failure Rate</div>
+                </div>
+            </div>
+            <div id="healthIssues" style="margin-top: 16px; display: none;">
+                <div style="color: var(--muted); font-size: 0.9em; margin-bottom: 8px;">Issues Detected:</div>
+                <ul id="healthIssuesList" style="margin: 0; padding-left: 20px; color: #e74c3c;"></ul>
+            </div>
+        </div>
+
         <!-- Judge Stats Summary -->
         <div class="section-card" id="judgeStatsContainer">
             <h3><i class="fas fa-gavel"></i> Judge Performance Overview</h3>
@@ -385,6 +417,217 @@
                         <tr><td colspan="6" style="text-align: center; padding: 20px; color: var(--muted);">Loading breakdown...</td></tr>
                     </tbody>
                 </table>
+            </div>
+        </div>
+
+        <!-- Validation Analysis Section -->
+        <div class="section-card" id="validationContainer">
+            <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h3 style="margin: 0;"><i class="fas fa-microscope"></i> Validation Analysis</h3>
+                <div style="display: flex; gap: 8px;">
+                    <button id="runConsistencyBtn" class="btn-secondary btn-sm">
+                        <i class="fas fa-random"></i> Test Consistency
+                    </button>
+                    <button id="runBiasBtn" class="btn-secondary btn-sm">
+                        <i class="fas fa-balance-scale-left"></i> Detect Bias
+                    </button>
+                    <button id="runCalibrationBtn" class="btn-secondary btn-sm">
+                        <i class="fas fa-sliders-h"></i> Check Calibration
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tabs for different analyses -->
+            <div class="validation-tabs" style="display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--panel-border); padding-bottom: 8px;">
+                <button class="validation-tab active" data-tab="consistency" style="padding: 8px 16px; border: none; background: rgba(124, 240, 255, 0.1); color: var(--accent); border-radius: 6px 6px 0 0; cursor: pointer;">Consistency</button>
+                <button class="validation-tab" data-tab="calibration" style="padding: 8px 16px; border: none; background: transparent; color: var(--muted); border-radius: 6px 6px 0 0; cursor: pointer;">Calibration</button>
+                <button class="validation-tab" data-tab="bias" style="padding: 8px 16px; border: none; background: transparent; color: var(--muted); border-radius: 6px 6px 0 0; cursor: pointer;">Bias Detection</button>
+                <button class="validation-tab" data-tab="failures" style="padding: 8px 16px; border: none; background: transparent; color: var(--muted); border-radius: 6px 6px 0 0; cursor: pointer;">Failure Modes</button>
+            </div>
+
+            <!-- Consistency Tab Content -->
+            <div id="consistencyTab" class="validation-tab-content">
+                <div style="color: var(--muted); font-size: 0.9em; margin-bottom: 14px;">
+                    Tests whether the judge produces consistent scores when evaluating the same response multiple times.
+                </div>
+                <div id="consistencyResults" style="display: none;">
+                    <div class="stats-grid" style="margin-bottom: 16px;">
+                        <div class="stat-card">
+                            <div class="stat-value" id="consistencyAvgStdDev">-</div>
+                            <div class="stat-label">Avg Std Deviation</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="consistencyMaxStdDev">-</div>
+                            <div class="stat-label">Max Std Deviation</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="consistencyScore">-</div>
+                            <div class="stat-label">Consistency Score</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="consistencyPass">-</div>
+                            <div class="stat-label">Status</div>
+                        </div>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Prompt</th>
+                                    <th>Category</th>
+                                    <th>Original</th>
+                                    <th>Scores</th>
+                                    <th>Mean</th>
+                                    <th>Std Dev</th>
+                                </tr>
+                            </thead>
+                            <tbody id="consistencyTableBody">
+                                <tr><td colspan="6" style="text-align: center; padding: 20px; color: var(--muted);">Click "Test Consistency" to run analysis</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div id="consistencyPlaceholder" style="text-align: center; padding: 40px; color: var(--muted);">
+                    <i class="fas fa-random" style="font-size: 2em; margin-bottom: 12px; opacity: 0.5;"></i>
+                    <p>Click "Test Consistency" to run the analysis</p>
+                </div>
+            </div>
+
+            <!-- Calibration Tab Content -->
+            <div id="calibrationTab" class="validation-tab-content" style="display: none;">
+                <div style="color: var(--muted); font-size: 0.9em; margin-bottom: 14px;">
+                    Analyzes score distribution to ensure judges produce meaningful, well-spread scores.
+                </div>
+                <div id="calibrationResults" style="display: none;">
+                    <div class="stats-grid" style="margin-bottom: 16px;">
+                        <div class="stat-card">
+                            <div class="stat-value" id="calibrationMean">-</div>
+                            <div class="stat-label">Mean Score</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="calibrationStdDev">-</div>
+                            <div class="stat-label">Std Deviation</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="calibrationSkewness">-</div>
+                            <div class="stat-label">Skewness</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="calibrationGrade">-</div>
+                            <div class="stat-label">Calibration Grade</div>
+                        </div>
+                    </div>
+                    <div class="capability-compare-grid">
+                        <div class="chart-card" style="margin: 0; padding: 18px;">
+                            <h4 style="margin: 0 0 12px; font-size: 1em;">Score Distribution</h4>
+                            <div style="height: 250px;">
+                                <canvas id="calibrationHistogram"></canvas>
+                            </div>
+                        </div>
+                        <div class="chart-card" style="margin: 0; padding: 18px;">
+                            <h4 style="margin: 0 0 12px; font-size: 1em;">Level Discrimination</h4>
+                            <div id="levelDiscrimination" style="height: 250px; overflow-y: auto;"></div>
+                        </div>
+                    </div>
+                </div>
+                <div id="calibrationPlaceholder" style="text-align: center; padding: 40px; color: var(--muted);">
+                    <i class="fas fa-sliders-h" style="font-size: 2em; margin-bottom: 12px; opacity: 0.5;"></i>
+                    <p>Click "Check Calibration" to run the analysis</p>
+                </div>
+            </div>
+
+            <!-- Bias Tab Content -->
+            <div id="biasTab" class="validation-tab-content" style="display: none;">
+                <div style="color: var(--muted); font-size: 0.9em; margin-bottom: 14px;">
+                    Detects potential biases in judge scoring based on response length, format, or model.
+                </div>
+                <div id="biasResults" style="display: none;">
+                    <div class="stats-grid" style="margin-bottom: 16px;">
+                        <div class="stat-card">
+                            <div class="stat-value" id="biasSamplesAnalyzed">-</div>
+                            <div class="stat-label">Samples Analyzed</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="biasLengthDetected">-</div>
+                            <div class="stat-label">Length Bias</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="biasModelsAnalyzed">-</div>
+                            <div class="stat-label">Models Analyzed</div>
+                        </div>
+                    </div>
+                    <div class="capability-compare-grid">
+                        <div class="chart-card" style="margin: 0; padding: 18px;">
+                            <h4 style="margin: 0 0 12px; font-size: 1em;">Length Bias</h4>
+                            <div style="height: 200px;">
+                                <canvas id="lengthBiasChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="chart-card" style="margin: 0; padding: 18px;">
+                            <h4 style="margin: 0 0 12px; font-size: 1em;">Format Bias</h4>
+                            <div style="height: 200px;">
+                                <canvas id="formatBiasChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="biasRecommendations" style="margin-top: 16px; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 8px;">
+                        <strong>Recommendations:</strong>
+                        <ul id="biasRecommendationsList" style="margin: 8px 0 0; padding-left: 20px;"></ul>
+                    </div>
+                </div>
+                <div id="biasPlaceholder" style="text-align: center; padding: 40px; color: var(--muted);">
+                    <i class="fas fa-balance-scale-left" style="font-size: 2em; margin-bottom: 12px; opacity: 0.5;"></i>
+                    <p>Click "Detect Bias" to run the analysis</p>
+                </div>
+            </div>
+
+            <!-- Failures Tab Content -->
+            <div id="failuresTab" class="validation-tab-content" style="display: none;">
+                <div style="color: var(--muted); font-size: 0.9em; margin-bottom: 14px;">
+                    Analyzes judge failure patterns to identify issues and improvement opportunities.
+                </div>
+                <div id="failuresResults" style="display: none;">
+                    <div class="stats-grid" style="margin-bottom: 16px;">
+                        <div class="stat-card">
+                            <div class="stat-value" id="failuresTotal">-</div>
+                            <div class="stat-label">Total Attempts</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="failuresRate">-</div>
+                            <div class="stat-label">Failure Rate</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="failuresEmpty">-</div>
+                            <div class="stat-label">Empty Responses</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="failuresHealth">-</div>
+                            <div class="stat-label">Health Status</div>
+                        </div>
+                    </div>
+                    <div class="capability-compare-grid">
+                        <div class="chart-card" style="margin: 0; padding: 18px;">
+                            <h4 style="margin: 0 0 12px; font-size: 1em;">Failure Reasons</h4>
+                            <div style="height: 200px;">
+                                <canvas id="failureReasonsChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="chart-card" style="margin: 0; padding: 18px;">
+                            <h4 style="margin: 0 0 12px; font-size: 1em;">Failures by Category</h4>
+                            <div style="height: 200px;">
+                                <canvas id="failuresByCategoryChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="failuresRecommendations" style="margin-top: 16px; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 8px;">
+                        <strong>Recommendations:</strong>
+                        <ul id="failuresRecommendationsList" style="margin: 8px 0 0; padding-left: 20px;"></ul>
+                    </div>
+                </div>
+                <div id="failuresPlaceholder" style="text-align: center; padding: 40px; color: var(--muted);">
+                    <i class="fas fa-exclamation-triangle" style="font-size: 2em; margin-bottom: 12px; opacity: 0.5;"></i>
+                    <p>Failure analysis loads automatically with health check</p>
+                </div>
             </div>
         </div>
 

@@ -10,21 +10,22 @@ The benchmark page uses a **level-based color theme system** where each test lev
 
 ## Test Level Color Themes
 
-### Level 1: Red/Orange Gradient
-**Purpose**: Basic difficulty tests
-**Primary Use**: Star 1, Level 1 progress bars
+### Level 1: Green Gradient
+**Purpose**: Basic difficulty tests (easy)
+**Primary Use**: Star 1, Level 1 progress bars, Timeline segments
 
 ```css
-/* Red/Orange - Entry Level */
---theme-level-1-from: #dc2626
---theme-level-1-to: #f87171
---theme-level-1-glow: rgba(220, 38, 38, 0.4)
+/* Green - Entry Level (Color from leaderboard.js getLevelColor) */
+#22c55e → #4ade80
 ```
 
 **Applied To**:
 - Star position 1 (leftmost star in ranking)
 - Progress bar when executing Level 1 tests
 - Level 1 badges: `L1`
+- Level 1 timeline segments
+
+**Note**: Levels 1-3 are all shades of green, representing easy to moderate tests.
 
 ---
 
@@ -160,7 +161,7 @@ Progress bars **dynamically change color** based on the current test's level dur
 ```javascript
 const getLevelGradient = (level) => {
     switch (Number(level)) {
-        case 1: return 'linear-gradient(90deg, #dc2626 0%, #f87171 100%)'; // Red
+        case 1: return 'linear-gradient(90deg, #fb923c 0%, #fdba74 100%)'; // Orange/Coral
         case 2: return 'linear-gradient(90deg, #10b981 0%, #34d399 100%)'; // Green
         case 3: return 'linear-gradient(90deg, #f59e0b 0%, #fbbf24 100%)'; // Yellow
         case 4: return 'linear-gradient(90deg, #06b6d4 0%, #22d3ee 100%)'; // Blue/Cyan
@@ -175,7 +176,7 @@ execFill.style.background = getLevelGradient(batch.current_test.prompt_level);
 
 **Behavior**:
 - Progress bar color updates in real-time as tests execute
-- Level 1 test → Red progress bar
+- Level 1 test → Orange/Coral progress bar
 - Level 5 test → Gold progress bar
 - Creates visual feedback showing what difficulty level is currently being tested
 
@@ -192,7 +193,7 @@ Level badges (e.g., `L1`, `L2`, `L3`) display inline with test indicators.
 ```javascript
 const getLevelBadgeStyle = (level) => {
     switch (Number(level)) {
-        case 1: return 'background: rgba(220, 38, 38, 0.2); color: #f87171;'; // Red
+        case 1: return 'background: rgba(251, 146, 60, 0.2); color: #fdba74;'; // Orange/Coral
         case 2: return 'background: rgba(16, 185, 129, 0.2); color: #34d399;'; // Green
         case 3: return 'background: rgba(245, 158, 11, 0.2); color: #fbbf24;'; // Yellow
         case 4: return 'background: rgba(6, 182, 212, 0.2); color: #22d3ee;'; // Blue/Cyan
@@ -244,7 +245,7 @@ Timeline visualization uses themed gradients for test execution status.
 
 ### Segment Classes
 
-**File**: `public/benchmark.html` (lines 172-224)
+**File**: `public/css/benchmark-inline.css`
 
 ```css
 /* Success segments: Green→Cyan blend */
@@ -259,16 +260,21 @@ Timeline visualization uses themed gradients for test execution status.
     animation: pulse-gradient 2s ease-in-out infinite;
 }
 
-/* Error segments: Red gradient */
+/* Error segments: Bright magenta/pink for high contrast */
 .segment-error {
-    background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
-}
-
-/* Judging segments: Purple (distinct from test levels) */
-.segment-judging {
-    background: linear-gradient(135deg, #a855f7 0%, #c084fc 100%);
+    background: linear-gradient(135deg, #ff00ff 0%, #ff1493 100%);
+    border: 4px solid #00ffff;  /* Cyan border for visibility */
+    color: white;
+    box-shadow: 0 0 0 2px #ff00ff, 0 0 20px rgba(255, 0, 255, 0.8), 0 0 40px rgba(255, 20, 147, 0.6);
 }
 ```
+
+**Error Segment Features**:
+- **Magenta/Pink Gradient**: Distinct from all level colors (1-10)
+- **4px Cyan Border**: High contrast for immediate visibility
+- **Glowing Shadow**: Magenta and deep pink glows
+- **No Animation**: Clean, readable hover state
+- **White Text**: Maximum readability against magenta background
 
 ---
 

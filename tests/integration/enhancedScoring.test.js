@@ -92,7 +92,7 @@ describe('Enhanced Scoring System - Integration', () => {
     });
 
     describe('Enhanced Scoring Dimension Selection', () => {
-        it('should use enhanced config for code category (8 dimensions)', async () => {
+        it('should use enhanced config for code category (4 core dimensions)', async () => {
             const prompt = await BenchmarkPrompt.create({
                 name: 'Code Test',
                 prompt: 'Implement binary search',
@@ -103,21 +103,18 @@ describe('Enhanced Scoring System - Integration', () => {
 
             const dimensions = getScoringDimensions(prompt);
 
-            expect(dimensions.useLegacy).toBe(false);
-            expect(dimensions.dimensions).toHaveLength(8);
+            // Now uses 4 core dimensions for judge reliability
+            expect(dimensions.category).toBe('code');
+            expect(dimensions.dimensions).toHaveLength(4);
             expect(dimensions.dimensions.map(d => d.name)).toEqual([
                 'correctness',
                 'clarity',
                 'efficiency',
-                'maintainability',
-                'error_handling',
-                'documentation',
-                'best_practices',
-                'testability'
+                'robustness'
             ]);
         });
 
-        it('should use enhanced config for reasoning category (7 dimensions)', async () => {
+        it('should use enhanced config for reasoning category (4 core dimensions)', async () => {
             const prompt = await BenchmarkPrompt.create({
                 name: 'Reasoning Test',
                 prompt: 'Explain why correlation does not imply causation',
@@ -128,20 +125,17 @@ describe('Enhanced Scoring System - Integration', () => {
 
             const dimensions = getScoringDimensions(prompt);
 
-            expect(dimensions.useLegacy).toBe(false);
-            expect(dimensions.dimensions).toHaveLength(7);
+            expect(dimensions.category).toBe('reasoning');
+            expect(dimensions.dimensions).toHaveLength(4);
             expect(dimensions.dimensions.map(d => d.name)).toEqual([
                 'accuracy',
                 'logic_soundness',
-                'depth',
                 'clarity',
-                'completeness',
-                'coherence',
-                'method_quality'
+                'completeness'
             ]);
         });
 
-        it('should use enhanced config for math category (6 dimensions)', async () => {
+        it('should use enhanced config for math category (4 core dimensions)', async () => {
             const prompt = await BenchmarkPrompt.create({
                 name: 'Math Test',
                 prompt: 'Solve the integral of x^2',
@@ -152,15 +146,13 @@ describe('Enhanced Scoring System - Integration', () => {
 
             const dimensions = getScoringDimensions(prompt);
 
-            expect(dimensions.useLegacy).toBe(false);
-            expect(dimensions.dimensions).toHaveLength(6);
+            expect(dimensions.category).toBe('math');
+            expect(dimensions.dimensions).toHaveLength(4);
             expect(dimensions.dimensions.map(d => d.name)).toEqual([
                 'answer_correctness',
                 'method',
                 'rigor',
-                'presentation',
-                'notation',
-                'edge_cases'
+                'clarity'
             ]);
         });
 
@@ -187,7 +179,7 @@ describe('Enhanced Scoring System - Integration', () => {
 
             const dimensions = getScoringDimensions(prompt);
 
-            expect(dimensions.useLegacy).toBe(false);
+            expect(dimensions.category).toBe('custom');
             expect(dimensions.dimensions).toHaveLength(2);
             expect(dimensions.dimensions[0].name).toBe('beauty');
             expect(dimensions.dimensions[1].name).toBe('meaning');
@@ -195,7 +187,7 @@ describe('Enhanced Scoring System - Integration', () => {
     });
 
     describe('Dynamic Judge Prompt Generation', () => {
-        it('should generate detailed prompts for 8-dimension code scoring', async () => {
+        it('should generate detailed prompts for 4-dimension code scoring', async () => {
             const prompt = await BenchmarkPrompt.create({
                 name: 'Fibonacci',
                 prompt: 'Write a function to calculate fibonacci numbers',
@@ -213,25 +205,17 @@ describe('Enhanced Scoring System - Integration', () => {
                 'function fib(n) { return n <= 1 ? n : fib(n-1) + fib(n-2); }'
             );
 
-            // Verify all 8 dimensions are in the prompt
+            // Verify all 4 core dimensions are in the prompt
             expect(judgePrompt).toContain('correctness');
             expect(judgePrompt).toContain('clarity');
             expect(judgePrompt).toContain('efficiency');
-            expect(judgePrompt).toContain('maintainability');
-            expect(judgePrompt).toContain('error handling');
-            expect(judgePrompt).toContain('documentation');
-            expect(judgePrompt).toContain('best practices');
-            expect(judgePrompt).toContain('testability');
+            expect(judgePrompt).toContain('robustness');
 
             // Verify JSON template has all dimensions
             expect(judgePrompt).toContain('"correctness": "X"');
             expect(judgePrompt).toContain('"clarity": "X"');
             expect(judgePrompt).toContain('"efficiency": "X"');
-            expect(judgePrompt).toContain('"maintainability": "X"');
-            expect(judgePrompt).toContain('"error_handling": "X"');
-            expect(judgePrompt).toContain('"documentation": "X"');
-            expect(judgePrompt).toContain('"best_practices": "X"');
-            expect(judgePrompt).toContain('"testability": "X"');
+            expect(judgePrompt).toContain('"robustness": "X"');
             expect(judgePrompt).toContain('"overall": "X"');
         });
 
@@ -285,11 +269,11 @@ describe('Enhanced Scoring System - Integration', () => {
                 expected_answer: '42'
             });
 
-            // Should use enhanced config (6 dimensions) since ENHANCED_SCORING_CONFIGS exists
+            // Should use enhanced config (4 core dimensions) since ENHANCED_SCORING_CONFIGS exists
             const dimensions = getScoringDimensions(legacyPrompt);
 
-            expect(dimensions.useLegacy).toBe(false);
-            expect(dimensions.dimensions).toHaveLength(6);
+            expect(dimensions.category).toBe('math');
+            expect(dimensions.dimensions).toHaveLength(4);
         });
 
         it('should handle prompts with undefined scoring_type', async () => {
@@ -298,21 +282,21 @@ describe('Enhanced Scoring System - Integration', () => {
                 prompt: 'Explain photosynthesis',
                 level: 2,
                 category: 'general'
-                // scoring_type defaults to 'reasoning'
+                // scoring_type defaults to 'general'
             });
 
             const dimensions = getScoringDimensions(prompt);
 
-            // Should default to reasoning (7 dimensions)
-            expect(dimensions.useLegacy).toBe(false);
-            expect(dimensions.dimensions).toHaveLength(7);
+            // BenchmarkPrompt model defaults scoring_type to 'reasoning'
+            expect(dimensions.category).toBe('reasoning');
+            expect(dimensions.dimensions).toHaveLength(4);
         });
     });
 
     describe('Weight Validation', () => {
         it('should ensure weights sum to approximately 1.0 for enhanced configs', () => {
             Object.entries(ENHANCED_SCORING_CONFIGS).forEach(([category, config]) => {
-                const sum = config.dimensions.reduce((acc, dim) => acc + dim.weight, 0);
+                const sum = config.core_dimensions.reduce((acc, dim) => acc + dim.weight, 0);
                 expect(sum).toBeCloseTo(1.0, 2);
             });
         });

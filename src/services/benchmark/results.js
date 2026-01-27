@@ -7,6 +7,7 @@ const logger = require('../../../config/logger');
 const BenchmarkResult = require('../../../models/BenchmarkResult');
 const BenchmarkBatch = require('../../../models/BenchmarkBatch');
 const { calculateCompositeScore } = require('../qualityScorer');
+const { calculateAllGeneralistScores } = require('./generalistScore');
 
 /**
  * Get paginated test results
@@ -119,7 +120,7 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
         }
     }
 
-    const [totalTests, successCount, recentTests, modelStats, failureStats, judgeStats] = await Promise.all([
+    const [totalTests, successCount, recentTests, modelStats, failureStats, judgeStats, generalistScores] = await Promise.all([
         BenchmarkResult.countDocuments({}),
         BenchmarkResult.countDocuments(matchQuery),
         BenchmarkResult.find(matchQuery).sort({ timestamp: -1 }).limit(10),
@@ -215,7 +216,9 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
                     count: { $sum: 1 }
                 }
             }
-        ])
+        ]),
+        // Calculate generalist scores (with coverage penalty) for all models
+        calculateAllGeneralistScores(matchQuery)
     ]);
 
     const failureByKey = new Map(
@@ -227,32 +230,41 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
     let sortedStats = modelStats.map(m => {
         const hasQuality = m.avg_quality != null && !isNaN(m.avg_quality);
 
-        // Normalize quality to 0-10 for calculation (data should already be standardized)
+        // Raw quality (0-10 scale) for display
         const rawQuality = m.avg_quality || 0;
 
         const avgLatency = Number(m.avg_latency) || 0;
         const avgTokens = parseFloat(m.avg_tokens_per_sec) || 0;
 
-        // Calculate profiles dynamically
+        const key = `${m._id.model}@@${m._id.host}`;
+
+        // Get generalist score (with coverage penalty and consistency bonus)
+        // This is the single source of truth for quality scoring
+        const generalistData = generalistScores.get(key);
+        // Generalist score is 0-100 scale, convert to 0-10 for composite calculation
+        const adjustedQuality = generalistData
+            ? generalistData.generalistScore / 10
+            : rawQuality;
+
+        // Calculate profiles using ADJUSTED quality (generalist score)
         const interactive = calculateCompositeScore({
             latency: avgLatency,
             tokens_per_sec: avgTokens,
-            quality_score: rawQuality
+            quality_score: adjustedQuality
         }, 'interactive');
 
         const reasoning = calculateCompositeScore({
             latency: avgLatency,
             tokens_per_sec: avgTokens,
-            quality_score: rawQuality
+            quality_score: adjustedQuality
         }, 'reasoning');
 
         const coding = calculateCompositeScore({
             latency: avgLatency,
             tokens_per_sec: avgTokens,
-            quality_score: rawQuality
+            quality_score: adjustedQuality
         }, 'coding');
 
-        const key = `${m._id.model}@@${m._id.host}`;
         const failedTests = failureByKey.get(key) || 0;
         const successTests = m.count || 0;
 
@@ -266,7 +278,18 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
             host: m._id.host,
             avg_latency: Math.round(avgLatency),
             avg_tokens_per_sec: avgTokens.toFixed(2),
-            avg_quality: hasQuality ? rawQuality.toFixed(1) : null, // Display as 0-10
+            // Display adjusted quality (generalist score on 0-10 scale)
+            avg_quality: hasQuality ? adjustedQuality.toFixed(1) : null,
+            // Also include raw quality for reference
+            raw_quality: hasQuality ? rawQuality.toFixed(1) : null,
+
+            // Generalist breakdown (for transparency)
+            generalist_breakdown: generalistData ? {
+                coverage: generalistData.coverage,
+                coveragePenalty: generalistData.coveragePenalty,
+                consistencyBonus: generalistData.consistencyBonus,
+                testedCategories: generalistData.testedCategories
+            } : null,
 
             // Dynamic scores (converted to 0-10 scale)
             interactive_score: fmtScore(interactive.composite_score),
