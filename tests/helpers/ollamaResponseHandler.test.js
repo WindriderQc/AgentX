@@ -115,6 +115,18 @@ describe('Ollama Response Handler', () => {
       const expected = 'Start  End';
       expect(cleanContent(content)).toBe(expected.trim());
     });
+
+    it('should remove <think> blocks and their content', () => {
+      const content = '<think>I should say hello.</think>Hello there!';
+      const expected = 'Hello there!';
+      expect(cleanContent(content)).toBe(expected);
+    });
+
+    it('should remove unclosed <think> blocks', () => {
+      const content = '<think>I am still thinking...';
+      const expected = '';
+      expect(cleanContent(content)).toBe(expected);
+    });
   });
 
   describe('isThinkingModel', () => {
@@ -191,6 +203,55 @@ describe('Ollama Response Handler', () => {
       const result = extractResponse(data, 'qwen2.5:7b');
       expect(result.content).toBe('Final answer');
       expect(result.thinking).toBe('Internal reasoning process');
+    });
+
+    it('should extract embedded <think> blocks from content', () => {
+      const data = {
+        message: {
+          content: '<think>Reasoning process</think>Final answer'
+        },
+        done: true
+      };
+      const result = extractResponse(data, 'deepseek-r1:8b');
+      expect(result.content).toBe('Final answer');
+      expect(result.thinking).toBe('Reasoning process');
+    });
+
+    it('should handle multiple <think> blocks', () => {
+      const data = {
+        message: {
+          content: '<think>Part 1</think>Interlude<think>Part 2</think>Final'
+        },
+        done: true
+      };
+      const result = extractResponse(data, 'deepseek-r1:8b');
+      expect(result.content).toBe('InterludeFinal');
+      expect(result.thinking).toBe('Part 1\n\nPart 2');
+    });
+
+    it('should handle unclosed <think> blocks', () => {
+      const data = {
+        message: {
+          content: '<think>I am still thinking...'
+        },
+        done: true
+      };
+      const result = extractResponse(data, 'deepseek-r1:8b');
+      expect(result.content).toBe('');
+      expect(result.thinking).toBe('I am still thinking...');
+    });
+
+    it('should combine message.thinking and embedded <think> blocks', () => {
+      const data = {
+        message: {
+          content: '<think>Embedded</think>Answer',
+          thinking: 'FromField'
+        },
+        done: true
+      };
+      const result = extractResponse(data, 'deepseek-r1:8b');
+      expect(result.content).toBe('Answer');
+      expect(result.thinking).toBe('Embedded\n\nFromField');
     });
 
     it('should not extract thinking for non-thinking models', () => {

@@ -17,6 +17,10 @@ const LLAMA3_SPECIAL_TOKENS_REGEX = /<\|(eot_id|begin_of_text|end_of_text|fin)\|
 // Other special tokens (eot_id, etc)
 const OTHER_TOKENS_REGEX = /<\|(?:eot_id|begin_of_text|end_of_text|fin)\|>/g;
 
+// Thinking/Reasoning tags (e.g. DeepSeek-R1)
+// Handles both closed <think>...</think> and unclosed <think>...
+const THINKING_TAG_REGEX = /<think>([\s\S]*?)(?:<\/think>|$)/gi;
+
 
 /**
  * Detect if model has thinking/reasoning capabilities
@@ -42,6 +46,7 @@ function cleanContent(content) {
   if (!content) return content;
 
   return content
+    .replace(THINKING_TAG_REGEX, '')
     .replace(LLAMA3_HEADER_REGEX, '')
     .replace(LLAMA3_SPECIAL_TOKENS_REGEX, '')
     .replace(OTHER_TOKENS_REGEX, '')
@@ -128,6 +133,28 @@ function extractResponse(data, model) {
     rawContent = data.message.thinking;
     result.warning = 'Used thinking output as response (no content field)';
     logger.warn('Using thinking as response', { model, reason: 'No content field' });
+  }
+
+  // Extract thinking from content if embedded in <think> tags
+  if (rawContent && rawContent.toLowerCase().includes('<think>')) {
+    const matches = [...rawContent.matchAll(THINKING_TAG_REGEX)];
+    const extractedThinking = matches.map(m => m[1].trim()).join('\n\n');
+
+    if (extractedThinking) {
+      // If we already have thinking from the message field, prepend it
+      if (result.thinking) {
+        result.thinking = extractedThinking + '\n\n' + result.thinking;
+      } else {
+        result.thinking = extractedThinking;
+      }
+      logger.debug('Extracted embedded thinking from content', {
+        model,
+        thinkingLength: extractedThinking.length
+      });
+    }
+
+    // Remove <think> blocks from raw content so they don't go to the judge/user
+    rawContent = rawContent.replace(THINKING_TAG_REGEX, '').trim();
   }
 
   // Clean the content

@@ -67,6 +67,10 @@ const BenchmarkResultSchema = new mongoose.Schema({
         type: String,
         default: ''
     },
+    thinking: {
+        type: String,
+        default: null
+    },
     latency: {
         type: Number,
         default: 0
@@ -350,6 +354,12 @@ BenchmarkResultSchema.methods.updateQualityScore = function(scoreData) {
     this.scoring_type = scoreData.scoring_type;
     this.scoring_time_ms = scoreData.scoring_time_ms;
     this.quick_pattern = scoreData.quick_pattern;
+
+    // Support updating thinking if provided by judge result (though usually from model response)
+    if (scoreData.thinking) {
+        this.thinking = scoreData.thinking;
+    }
+
     return this.save();
 };
 

@@ -16,6 +16,7 @@ const ConcurrencyQueue = require('./ConcurrencyQueue');
 const { normalizeExecutionConfig, applyLengthHint, DEFAULT_EXECUTION_CONFIG } = require('./config');
 const { seedPrompts } = require('./init');
 const { classifyBenchmarkError } = require('./errorClassifier');
+const { extractResponse } = require('../../helpers/ollamaResponseHandler');
 
 // Track active batch for graceful shutdown
 let activeBatchId = null;
@@ -606,10 +607,13 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
 
                         const data = await response.json();
                         const latency = Date.now() - start;
+
+                        // Use centralized response extraction to handle thinking/reasoning tags
+                        const extracted = extractResponse(data, model);
+
                         // Use actual token count from Ollama if available (eval_count = response tokens)
                         // Fall back to character-based estimate only if Ollama doesn't provide it
                         const tokens = data.eval_count || Math.ceil((data.response || '').length / 4);
-                        const tokenSource = data.eval_count ? 'ollama' : 'estimated';
                         const tokens_per_sec = tokens > 0 ? (tokens / (latency / 1000)).toFixed(2) : 0;
 
                         // Detect if model response was truncated (hit token limit)
@@ -625,7 +629,7 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                         }
 
                         // Detect and log empty responses with diagnostic info
-                        const hasEmptyResponse = !data.response || data.response.trim().length === 0;
+                        const hasEmptyResponse = !extracted.content || extracted.content.trim().length === 0;
                         if (hasEmptyResponse) {
                             logger.warn('Model produced empty response', {
                                 model,
@@ -656,7 +660,8 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                             latency,
                             tokens,
                             tokens_per_sec,
-                            response: data.response || '',
+                            response: extracted.content,
+                            thinking: extracted.thinking,
                             success: true,
                             batch_id: batchId,
                             timestamp: new Date(),
@@ -746,9 +751,9 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
 
                         // Queue quality scoring if enabled
                         if (enableQualityScoring) {
-                            // CRITICAL: Capture ONLY the response text, not metadata like done_reason
-                            // Judge must evaluate the actual response, not diagnostic info
-                            const responseText = data.response || '';
+                            // CRITICAL: Capture ONLY the cleaned response text
+                            // Thinking process is stripped by extractResponse to simplify judge's job
+                            const responseText = extracted.content || '';
 
                             judgeQueue.add(async () => {
                                 try {
