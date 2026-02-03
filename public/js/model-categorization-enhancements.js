@@ -414,7 +414,4 @@ function setupResponsiveHelpers() {
         }
     }
 
-    console.log('🎸 Model Categorization enhancements loaded!');
-    console.log(`📱 Screen: ${window.innerWidth}x${window.innerHeight}`);
-    }, 200);
-});
+}

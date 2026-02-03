@@ -4,6 +4,7 @@
  */
 
 const mongoose = require('mongoose');
+const path = require("path");
 const { MongoMemoryServer } = require('mongodb-memory-server');
 const SelfHealingEngine = require('../../src/services/selfHealingEngine');
 const ModelRouter = require('../../src/services/modelRouter');

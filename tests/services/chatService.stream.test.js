@@ -32,23 +32,26 @@ jest.mock('../../models/Conversation', () => {
     return mockModel;
 });
 
-jest.mock('../../models/PromptConfig', () => ({
-    getActive: jest.fn(),
-    findOne: jest.fn()
+jest.mock("../../models/PromptConfig", () => {
+  const MockModel = jest.fn().mockImplementation((data) => ({
+    ...data,
+    save: jest.fn().mockResolvedValue(true),
+  }));
+
+  MockModel.getActive = jest.fn();
+  MockModel.findOne = jest.fn();
+  MockModel.find = jest.fn();
+  MockModel.findById = jest.fn();
+
+  return MockModel;
+});
+
+jest.mock("../../models/N8nLLMSource", () => ({
+  findOne: jest.fn(),
 }));
 
-jest.mock('../../models/N8nLLMSource', () => ({
-    findOne: jest.fn()
-}));
-jest.mock('../../src/services/n8nLLMProvider', () => ({
-    chat: jest.fn()
-}));
-
-jest.mock('../../models/N8nLLMSource', () => ({
-    findOne: jest.fn()
-}));
-jest.mock('../../src/services/n8nLLMProvider', () => ({
-    chat: jest.fn()
+jest.mock("../../src/services/n8nLLMProvider", () => ({
+  chat: jest.fn(),
 }));
 
 jest.mock('../../src/helpers/userHelpers');
@@ -90,25 +93,20 @@ describe('chatService - handleChatRequestStream', () => {
     // Helper to create mock streaming response
     const createMockStreamResponse = (chunks) => {
         const encoder = new TextEncoder();
-        let index = 0;
+
+        // Mocking an async iterable (Node-style response.body)
+        const asyncIterable = {
+            [Symbol.asyncIterator]: async function* () {
+                for (const chunk of chunks) {
+                    yield encoder.encode(chunk);
+                }
+            }
+        };
 
         return {
             ok: true,
             statusText: 'OK',
-            body: {
-                getReader: () => ({
-                    read: async () => {
-                        if (index >= chunks.length) {
-                            return { done: true };
-                        }
-                        const chunk = chunks[index++];
-                        return {
-                            done: false,
-                            value: encoder.encode(chunk)
-                        };
-                    }
-                })
-            }
+            body: asyncIterable
         };
     };
 

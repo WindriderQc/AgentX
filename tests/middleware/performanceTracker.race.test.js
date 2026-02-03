@@ -76,7 +76,7 @@ describe('PerformanceTracker - Race Condition Fix', () => {
             $setOnInsert: {
               hour,
               by_endpoint: [],
-              latency: { min: 0, max: 0, avg: 0, p95: 0, p99: 0 }
+              'latency.avg': 0, 'latency.p95': 0, 'latency.p99': 0
             }
           },
           { upsert: true }
@@ -121,7 +121,7 @@ describe('PerformanceTracker - Race Condition Fix', () => {
             $setOnInsert: {
               hour,
               by_endpoint: [],
-              latency: { min: 0, max: 0, avg: 0, p95: 0, p99: 0 },
+              'latency.avg': 0, 'latency.p95': 0, 'latency.p99': 0,
               requests_successful: 0,
               requests_failed: 0
             }
@@ -163,7 +163,7 @@ describe('PerformanceTracker - Race Condition Fix', () => {
             $setOnInsert: {
               hour,
               by_endpoint: [],
-              latency: { min: 0, max: 0, avg: 0, p95: 0, p99: 0 },
+              'latency.avg': 0, 'latency.p95': 0, 'latency.p99': 0,
               requests_successful: 0,
               requests_failed: 0
             }
@@ -198,7 +198,7 @@ describe('PerformanceTracker - Race Condition Fix', () => {
             $setOnInsert: {
               hour,
               by_endpoint: [],
-              latency: { min: 0, max: 0, avg: 0, p95: 0, p99: 0 },
+              'latency.avg': 0, 'latency.p95': 0, 'latency.p99': 0,
               requests_failed: 0
             }
           },
@@ -232,7 +232,7 @@ describe('PerformanceTracker - Race Condition Fix', () => {
             $setOnInsert: {
               hour: hour1,
               by_endpoint: [],
-              latency: { min: 0, max: 0, avg: 0, p95: 0, p99: 0 },
+              'latency.avg': 0, 'latency.p95': 0, 'latency.p99': 0,
               requests_successful: 0,
               requests_failed: 0
             }
@@ -246,7 +246,7 @@ describe('PerformanceTracker - Race Condition Fix', () => {
             $setOnInsert: {
               hour: hour2,
               by_endpoint: [],
-              latency: { min: 0, max: 0, avg: 0, p95: 0, p99: 0 },
+              'latency.avg': 0, 'latency.p95': 0, 'latency.p99': 0,
               requests_successful: 0,
               requests_failed: 0
             }

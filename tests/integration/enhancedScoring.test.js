@@ -71,7 +71,7 @@ describe('Enhanced Scoring System - Integration', () => {
                         }
                     ]
                 });
-                fail('Should have thrown validation error');
+        throw new Error("Should have thrown validation error");
             } catch (err) {
                 expect(err.name).toBe('ValidationError');
             }

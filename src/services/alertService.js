@@ -165,10 +165,13 @@ class AlertService extends EventEmitter {
   }
 
   async _createOrUpdateAlert(rule, event) {
-    const data = event.data && typeof event.data === 'object' ? { ...event.data } : { ...event };
+    const data =
+      event.data && typeof event.data === "object"
+        ? { ...event.data }
+        : { ...event };
     // Provide common fields for templating
-    data.component = data.component || event.component || event.source || '';
-    data.metric = data.metric || event.metric || '';
+    data.component = data.component || event.component || event.source || "";
+    data.metric = data.metric || event.metric || "";
     data.value = data.value ?? event.value;
     data.threshold = data.threshold ?? rule.threshold;
 
@@ -176,50 +179,51 @@ class AlertService extends EventEmitter {
     const since = new Date(Date.now() - this.config.cooldownMs);
     const now = new Date();
 
-    // ATOMIC OPERATION: Try to update existing alert within cooldown window
-    // This prevents race conditions where multiple threads create duplicate alerts
-    const updated = await Alert.findOneAndUpdate(
+    // ATOMIC OPERATION: Use findOneAndUpdate with upsert to prevent race conditions
+    // This handles both updating existing alerts in cooldown AND creating new ones
+    const alertDoc = await Alert.findOneAndUpdate(
       {
         fingerprint,
-        lastOccurrence: { $gte: since }
+        lastOccurrence: { $gte: since },
       },
       {
         $set: { lastOccurrence: now },
-        $inc: { occurrenceCount: 1 }
+        $inc: { occurrenceCount: 1 },
+        $setOnInsert: {
+          ruleId: rule?.id || "rule",
+          ruleName: rule?.name || "Alert Rule",
+          severity: this._severityFromRule(rule),
+          title: this._titleFromRule(rule, data),
+          message: this._messageFromRule(rule, data),
+          context: {
+            component: data.component,
+            metric: data.metric,
+            currentValue: data.value,
+            threshold: data.threshold,
+            additionalData: data,
+          },
+          fingerprint,
+          channels:
+            rule?.channels || rule?.event?.params?.channels || ["dataapi_log"],
+          channelConfig:
+            rule?.channelConfig || rule?.event?.params?.channelConfig,
+          source: event.source || data.source || "agentx",
+          status: "active",
+        },
       },
-      { new: true }
+      { new: true, upsert: true },
     );
 
-    if (updated) {
-      // Alert was deduplicated - no need to send notifications again
-      return updated;
-    }
-
-    // No existing alert in cooldown window - create new one atomically
-    // Using create() is safe here because we already checked for existing alerts
-    const alertDoc = await Alert.create({
-      ruleId: rule?.id || 'rule',
-      ruleName: rule?.name || 'Alert Rule',
-      severity: this._severityFromRule(rule),
-      title: this._titleFromRule(rule, data),
-      message: this._messageFromRule(rule, data),
-      context: {
-        component: data.component,
-        metric: data.metric,
-        currentValue: data.value,
-        threshold: data.threshold,
-        additionalData: data
-      },
-      fingerprint,
-      channels: rule?.channels || rule?.event?.params?.channels || ['dataapi_log'],
-      channelConfig: rule?.channelConfig || rule?.event?.params?.channelConfig,
-      source: event.source || data.source || 'agentx'
-    });
-
-    try {
-      await this._sendNotifications(alertDoc, alertDoc.channels);
-    } catch {
-      // Notifications are best-effort; tests focus on DB behavior
+    // Only send notifications for newly created alerts (occurrenceCount === 1)
+    if (alertDoc.occurrenceCount === 1) {
+      try {
+        await this._sendNotifications(alertDoc, alertDoc.channels);
+      } catch (err) {
+        logger.error("[AlertService] Notification failed", {
+          alertId: alertDoc._id,
+          error: err.message,
+        });
+      }
     }
 
     return alertDoc;
