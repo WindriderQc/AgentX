@@ -16,6 +16,6 @@ module.exports = {
   setupFilesAfterEnv: ['./tests/setup-env.js'],
   globalSetup: './tests/jest.globalSetup.js',
   globalTeardown: './tests/jest.globalTeardown.js',
-  forceExit: false,
+  forceExit: true,
   detectOpenHandles: false
 };

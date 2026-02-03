@@ -111,11 +111,12 @@ class RagStore {
 
   /**
    * List all ingested documents
+   * @param {Object} filters - Optional filters
    * @returns {Promise<Array<{documentId: string, title: string, source: string, chunkCount: number}>>}
    */
-  async listDocuments() {
+  async listDocuments(filters = {}) {
     if (this.vectorStore.listDocuments) {
-      return this.vectorStore.listDocuments();
+      return await this.vectorStore.listDocuments(filters);
     }
     return [];
   }
@@ -519,14 +520,6 @@ Score:`;
     return await this.vectorStore.getDocument(documentId);
   }
 
-  /**
-   * List all documents
-   * @param {Object} filters - Optional filters (source, tags)
-   * @returns {Promise<Array>} Array of document metadata
-   */
-  async listDocuments(filters = {}) {
-    return await this.vectorStore.listDocuments(filters);
-  }
 
   /**
    * Delete a document and its chunks

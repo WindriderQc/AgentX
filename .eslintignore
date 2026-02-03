@@ -1,0 +1,16 @@
+node_modules
+dist
+coverage
+public
+tests/e2e
+logs
+reports
+.backups
+.claude
+.tmp
+.vscode
+AgentC
+n8n_workflows
+package-lock.json
+pnpm-lock.yaml
+tests/integration/enhancedScoring.test.js

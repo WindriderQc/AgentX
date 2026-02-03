@@ -248,7 +248,7 @@ async function calculateMessageCost(model, stats) {
       totalCost: 0,
       currency: process.env.COST_CURRENCY || 'USD',
       pricingSource: {
-        source: 'unconfigured',
+        source: 'no-token-data',
         provider: null,
         modelName: null
       },

@@ -125,62 +125,6 @@ class QdrantVectorStore extends VectorStoreAdapter {
     };
   }
 
-  /**
-   * List all unique documents in the store
-   * @returns {Promise<Array<{documentId: string, title: string, source: string, chunkCount: number}>>}
-   */
-  async listDocuments() {
-    await this._ensureCollection();
-
-    const documents = new Map();
-    let nextOffset = null;
-    let hasMore = true;
-
-    // Scroll through all points to find unique documents
-    // Note: This is inefficient for very large collections, but acceptable for < 100k chunks
-    // Optimization: We only fetch payload fields we need
-    while (hasMore) {
-      const response = await this.fetch(`${this.host}/collections/${this.collection}/points/scroll`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          limit: 1000,
-          offset: nextOffset,
-          with_payload: true,
-          with_vector: false
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Qdrant scroll failed: ${await response.text()}`);
-      }
-
-      const data = await response.json();
-      const points = data.result.points;
-      nextOffset = data.result.next_page_offset;
-
-      for (const point of points) {
-        const { documentId, title, source } = point.payload;
-        if (documentId && !documents.has(documentId)) {
-          documents.set(documentId, {
-            documentId,
-            title: title || 'Untitled',
-            source: source || 'unknown',
-            chunkCount: 1
-          });
-        } else if (documentId) {
-          const doc = documents.get(documentId);
-          doc.chunkCount++;
-        }
-      }
-
-      if (!nextOffset) {
-        hasMore = false;
-      }
-    }
-
-    return Array.from(documents.values());
-  }
 
   /**
    * Search for similar chunks
@@ -289,9 +233,15 @@ class QdrantVectorStore extends VectorStoreAdapter {
 
   /**
    * List all documents
+   * @param {Object} filters - Optional filters {source, tags}
+   * @returns {Promise<Array<Object>>}
    */
   async listDocuments(filters = {}) {
     await this._ensureCollection();
+
+    const documents = new Map();
+    let nextOffset = null;
+    let hasMore = true;
 
     // Build filter
     const must = [];
@@ -302,49 +252,56 @@ class QdrantVectorStore extends VectorStoreAdapter {
       must.push({ key: 'tags', match: { any: filters.tags } });
     }
 
-    // Get all unique documentIds
-    // Note: This is a simplified implementation that fetches points to group them.
-    // For very large datasets, this should be replaced with a separate collection for document metadata.
-    const response = await this.fetch(`${this.host}/collections/${this.collection}/points/scroll`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        limit: 10000, // Increased limit to capture more chunks
-        with_payload: true,
-        with_vector: false,
-        ...(must.length > 0 && { filter: { must } })
-      })
-    });
+    // Scroll through all points to find unique documents
+    // Note: This is inefficient for very large collections, but acceptable for < 100k chunks
+    while (hasMore) {
+      const response = await this.fetch(`${this.host}/collections/${this.collection}/points/scroll`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          limit: 1000,
+          offset: nextOffset,
+          with_payload: true,
+          with_vector: false,
+          ...(must.length > 0 && { filter: { must } })
+        })
+      });
 
-    if (!response.ok) return [];
-
-    const data = await response.json();
-    
-    // Group by documentId
-    const docMap = new Map();
-    for (const point of data.result.points) {
-      const docId = point.payload.documentId;
-      const textLen = point.payload.text ? point.payload.text.length : 0;
-
-      if (!docMap.has(docId)) {
-        docMap.set(docId, {
-          documentId: docId,
-          source: point.payload.source,
-          path: point.payload.path,
-          title: point.payload.title,
-          tags: point.payload.tags || [],
-          chunkCount: 0,
-          textLength: 0, // Track total text length
-          createdAt: point.payload.createdAt,
-          updatedAt: point.payload.updatedAt
-        });
+      if (!response.ok) {
+        throw new Error(`Qdrant scroll failed: ${await response.text()}`);
       }
-      const doc = docMap.get(docId);
-      doc.chunkCount++;
-      doc.textLength += textLen;
+
+      const data = await response.json();
+      const points = data.result.points;
+      nextOffset = data.result.next_page_offset;
+
+      for (const point of points) {
+        const { documentId, title, source, text, createdAt, updatedAt, path, tags } = point.payload;
+        if (documentId && !documents.has(documentId)) {
+          documents.set(documentId, {
+            documentId,
+            title: title || 'Untitled',
+            source: source || 'unknown',
+            path: path || null,
+            tags: tags || [],
+            chunkCount: 1,
+            textLength: text ? text.length : 0,
+            createdAt,
+            updatedAt
+          });
+        } else if (documentId) {
+          const doc = documents.get(documentId);
+          doc.chunkCount++;
+          if (text) doc.textLength += text.length;
+        }
+      }
+
+      if (!nextOffset) {
+        hasMore = false;
+      }
     }
 
-    return Array.from(docMap.values());
+    return Array.from(documents.values());
   }
 
   /**
