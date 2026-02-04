@@ -17,6 +17,10 @@ const LLAMA3_SPECIAL_TOKENS_REGEX = /<\|(eot_id|begin_of_text|end_of_text|fin)\|
 // Other special tokens (eot_id, etc)
 const OTHER_TOKENS_REGEX = /<\|(?:eot_id|begin_of_text|end_of_text|fin)\|>/g;
 
+// Regex for extracting <think> blocks from reasoning models (e.g., DeepSeek-R1)
+// Handles both properly closed tags and unclosed tags (captures until end of string)
+const THINKING_TAG_REGEX = /<think>([\s\S]*?)(?:<\/think>|$)/gi;
+
 
 /**
  * Detect if model has thinking/reasoning capabilities
@@ -46,6 +50,57 @@ function cleanContent(content) {
     .replace(LLAMA3_SPECIAL_TOKENS_REGEX, '')
     .replace(OTHER_TOKENS_REGEX, '')
     .trim();
+}
+
+/**
+ * Extract and strip <think> blocks from model responses
+ * Used for reasoning models like DeepSeek-R1 that emit internal reasoning in <think> tags
+ *
+ * @param {string} content - The raw response content
+ * @param {string|null} existingThinking - Any existing thinking content (e.g., from message.thinking)
+ * @returns {Object} { content: string, thinking: string|null }
+ */
+function extractThinkingBlocks(content, existingThinking = null) {
+  if (!content) {
+    return { content: content || '', thinking: existingThinking || null };
+  }
+
+  const thinkingParts = [];
+  let cleanedContent = content;
+
+  // Extract all <think> blocks
+  let match;
+  // Reset regex lastIndex for global regex
+  THINKING_TAG_REGEX.lastIndex = 0;
+
+  while ((match = THINKING_TAG_REGEX.exec(content)) !== null) {
+    const thinkingContent = match[1].trim();
+    if (thinkingContent) {
+      thinkingParts.push(thinkingContent);
+    }
+  }
+
+  // Remove all <think>...</think> blocks from content
+  cleanedContent = content.replace(THINKING_TAG_REGEX, '').trim();
+
+  // Combine extracted thinking with any existing thinking
+  let combinedThinking = null;
+  if (thinkingParts.length > 0) {
+    const extractedThinking = thinkingParts.join('\n\n');
+    if (existingThinking) {
+      // Prepend newly extracted thinking to existing
+      combinedThinking = extractedThinking + '\n\n' + existingThinking;
+    } else {
+      combinedThinking = extractedThinking;
+    }
+  } else if (existingThinking) {
+    combinedThinking = existingThinking;
+  }
+
+  return {
+    content: cleanedContent,
+    thinking: combinedThinking
+  };
 }
 
 /**
@@ -210,5 +265,6 @@ module.exports = {
   isThinkingModel,
   extractResponse,
   buildOllamaPayload,
-  cleanContent // Export for testing
+  cleanContent, // Export for testing
+  extractThinkingBlocks // Export for benchmark thinking extraction
 };

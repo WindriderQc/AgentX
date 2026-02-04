@@ -16,6 +16,7 @@ const ConcurrencyQueue = require('./ConcurrencyQueue');
 const { normalizeExecutionConfig, applyLengthHint, DEFAULT_EXECUTION_CONFIG } = require('./config');
 const { seedPrompts } = require('./init');
 const { classifyBenchmarkError } = require('./errorClassifier');
+const { extractThinkingBlocks } = require('../../helpers/ollamaResponseHandler');
 
 // Track active batch for graceful shutdown
 let activeBatchId = null;
@@ -643,6 +644,22 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                             });
                         }
 
+                        // Extract <think> blocks from response (for reasoning models like DeepSeek-R1)
+                        // This separates internal reasoning from the final answer
+                        const rawResponse = data.response || '';
+                        const thinkingExtraction = extractThinkingBlocks(rawResponse);
+                        const cleanedResponse = thinkingExtraction.content;
+                        const extractedThinking = thinkingExtraction.thinking;
+
+                        if (extractedThinking) {
+                            logger.debug('Extracted thinking from response', {
+                                model,
+                                prompt_name: prompt.name,
+                                thinking_length: extractedThinking.length,
+                                cleaned_response_length: cleanedResponse.length
+                            });
+                        }
+
                         // Create result with warmup data for validation
                         const result = new BenchmarkResult({
                             model,
@@ -656,7 +673,8 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                             latency,
                             tokens,
                             tokens_per_sec,
-                            response: data.response || '',
+                            response: cleanedResponse,  // Store cleaned response (without <think> blocks)
+                            thinking: extractedThinking,  // Store extracted thinking separately
                             success: true,
                             batch_id: batchId,
                             timestamp: new Date(),
@@ -746,9 +764,12 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
 
                         // Queue quality scoring if enabled
                         if (enableQualityScoring) {
-                            // CRITICAL: Capture ONLY the response text, not metadata like done_reason
-                            // Judge must evaluate the actual response, not diagnostic info
-                            const responseText = data.response || '';
+                            // CRITICAL: Use cleaned response (without <think> blocks) for judge evaluation
+                            // This ensures the judge evaluates the actual answer, not internal reasoning
+                            const responseText = cleanedResponse;
+
+                            // Backpressure: wait if judge queue is too large to prevent memory buildup
+                            await judgeQueue.waitForCapacity(10);
 
                             judgeQueue.add(async () => {
                                 try {

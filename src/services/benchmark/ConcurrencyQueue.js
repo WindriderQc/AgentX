@@ -70,6 +70,37 @@ class ConcurrencyQueue {
     }
 
     /**
+     * Wait until queue has capacity (backpressure mechanism)
+     * Pauses test execution when judge queue gets too large to prevent memory buildup
+     * @param {number} maxPending - Maximum pending tasks before blocking (default: 10)
+     * @param {number} checkIntervalMs - How often to check queue size (default: 100ms)
+     * @returns {Promise<void>}
+     */
+    async waitForCapacity(maxPending = 10, checkIntervalMs = 100) {
+        const pending = this.queue.length + this.running;
+        if (pending < maxPending) {
+            return; // Capacity available
+        }
+
+        logger.debug('Judge queue backpressure - waiting for capacity', {
+            pending,
+            maxPending,
+            queued: this.queue.length,
+            running: this.running
+        });
+
+        // Wait until queue drains below threshold
+        while (this.queue.length + this.running >= maxPending) {
+            await new Promise(resolve => setTimeout(resolve, checkIntervalMs));
+        }
+
+        logger.debug('Judge queue backpressure released', {
+            queued: this.queue.length,
+            running: this.running
+        });
+    }
+
+    /**
      * Drain the queue with timeout protection
      * @param {Object} options - Drain options
      * @param {number} options.timeoutMs - Maximum time to wait (default: 30 minutes)

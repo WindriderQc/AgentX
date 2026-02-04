@@ -7,7 +7,8 @@ const {
   cleanContent,
   isThinkingModel,
   extractResponse,
-  buildOllamaPayload
+  buildOllamaPayload,
+  extractThinkingBlocks
 } = require('../../src/helpers/ollamaResponseHandler');
 
 describe('Ollama Response Handler', () => {
@@ -292,6 +293,112 @@ describe('Ollama Response Handler', () => {
       const payload = buildOllamaPayload(params);
       expect(payload.options.temperature).toBe(0.7);
       expect(payload.options.top_p).toBe(0.9);
+    });
+  });
+
+  describe('extractThinkingBlocks', () => {
+    it('should return content unchanged if no <think> tags present', () => {
+      const content = 'This is a normal response without thinking tags.';
+      const result = extractThinkingBlocks(content);
+      expect(result.content).toBe(content);
+      expect(result.thinking).toBe(null);
+    });
+
+    it('should extract a single <think> block', () => {
+      const content = '<think>Internal reasoning here</think>The final answer is 42.';
+      const result = extractThinkingBlocks(content);
+      expect(result.content).toBe('The final answer is 42.');
+      expect(result.thinking).toBe('Internal reasoning here');
+    });
+
+    it('should extract multiple <think> blocks', () => {
+      const content = '<think>First thought</think>Some text<think>Second thought</think>Final answer.';
+      const result = extractThinkingBlocks(content);
+      expect(result.content).toBe('Some textFinal answer.');
+      expect(result.thinking).toBe('First thought\n\nSecond thought');
+    });
+
+    it('should handle unclosed <think> tag (captures until end)', () => {
+      const content = 'Answer: <think>Still thinking about this...';
+      const result = extractThinkingBlocks(content);
+      expect(result.content).toBe('Answer:');
+      expect(result.thinking).toBe('Still thinking about this...');
+    });
+
+    it('should handle <think> block at the start', () => {
+      const content = '<think>Let me analyze this problem</think>The solution is X.';
+      const result = extractThinkingBlocks(content);
+      expect(result.content).toBe('The solution is X.');
+      expect(result.thinking).toBe('Let me analyze this problem');
+    });
+
+    it('should handle <think> block at the end', () => {
+      const content = 'The answer is 5.<think>I verified this calculation</think>';
+      const result = extractThinkingBlocks(content);
+      expect(result.content).toBe('The answer is 5.');
+      expect(result.thinking).toBe('I verified this calculation');
+    });
+
+    it('should handle multiline content inside <think> tags', () => {
+      const content = '<think>Line 1\nLine 2\nLine 3</think>Final result.';
+      const result = extractThinkingBlocks(content);
+      expect(result.content).toBe('Final result.');
+      expect(result.thinking).toBe('Line 1\nLine 2\nLine 3');
+    });
+
+    it('should combine with existing thinking (message.thinking)', () => {
+      const content = '<think>Embedded thinking</think>Response text.';
+      const existingThinking = 'Existing thinking from message.thinking';
+      const result = extractThinkingBlocks(content, existingThinking);
+      expect(result.content).toBe('Response text.');
+      expect(result.thinking).toBe('Embedded thinking\n\nExisting thinking from message.thinking');
+    });
+
+    it('should preserve existing thinking when no embedded blocks', () => {
+      const content = 'Just a normal response.';
+      const existingThinking = 'Existing thinking content';
+      const result = extractThinkingBlocks(content, existingThinking);
+      expect(result.content).toBe('Just a normal response.');
+      expect(result.thinking).toBe('Existing thinking content');
+    });
+
+    it('should handle empty content', () => {
+      const result = extractThinkingBlocks('');
+      expect(result.content).toBe('');
+      expect(result.thinking).toBe(null);
+    });
+
+    it('should handle null content', () => {
+      const result = extractThinkingBlocks(null);
+      expect(result.content).toBe('');
+      expect(result.thinking).toBe(null);
+    });
+
+    it('should handle undefined content', () => {
+      const result = extractThinkingBlocks(undefined);
+      expect(result.content).toBe('');
+      expect(result.thinking).toBe(null);
+    });
+
+    it('should handle empty <think> tags', () => {
+      const content = '<think></think>Actual content here.';
+      const result = extractThinkingBlocks(content);
+      expect(result.content).toBe('Actual content here.');
+      expect(result.thinking).toBe(null); // Empty thinking is ignored
+    });
+
+    it('should be case insensitive for <think> tags', () => {
+      const content = '<THINK>Uppercase thinking</THINK>Result.';
+      const result = extractThinkingBlocks(content);
+      expect(result.content).toBe('Result.');
+      expect(result.thinking).toBe('Uppercase thinking');
+    });
+
+    it('should handle nested-looking content (not actual nesting)', () => {
+      const content = '<think>I thought about <think> but decided against it</think>Answer.';
+      const result = extractThinkingBlocks(content);
+      expect(result.content).toBe('Answer.');
+      expect(result.thinking).toContain('I thought about');
     });
   });
 });

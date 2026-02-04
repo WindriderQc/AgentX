@@ -1,0 +1,15 @@
+node_modules
+dist
+coverage
+public
+tests/e2e
+.claude
+.vscode
+.tmp
+.backups
+package-lock.json
+pnpm-lock.yaml
+AgentC
+n8n_workflows
+logs
+reports

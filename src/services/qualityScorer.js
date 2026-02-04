@@ -12,7 +12,7 @@ const hardwareProfileService = require('./hardwareProfileService');
 
 // Judge model configuration - use a capable model for evaluation
 const JUDGE_CONFIG = {
-    model: 'qwen2.5:7b-instruct-q4_0',  // Fast but capable judge
+    model: 'qwen2.5:7b-instruct-q5_K_M',  // Fast but capable judge
     fallback_model: 'llama3.2:1b',       // Fallback if primary unavailable
     host: null,                           // Will be set dynamically from env
     timeout: 30000,                       // 30s timeout for judge calls
@@ -431,6 +431,14 @@ async function callJudge(evalPrompt, config = {}, retryCount = 0) {
         }
 
         if (!jsonStr) {
+            // Log the full response for debugging when JSON is not found
+            logger.error('Judge response format - no JSON found', { 
+                fullResponse: text,
+                responseLength: text.length,
+                containsBraces: text.includes('{') && text.includes('}'),
+                containsCodeBlock: text.includes('```'),
+                judge_model: judgeConfig.model || JUDGE_CONFIG.model
+            });
             throw new Error('No JSON found in judge response');
         }
         

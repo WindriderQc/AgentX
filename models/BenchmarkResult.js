@@ -67,6 +67,11 @@ const BenchmarkResultSchema = new mongoose.Schema({
         type: String,
         default: ''
     },
+    // Extracted thinking/reasoning content from <think> blocks (e.g., DeepSeek-R1)
+    thinking: {
+        type: String,
+        default: null
+    },
     latency: {
         type: Number,
         default: 0
@@ -350,6 +355,10 @@ BenchmarkResultSchema.methods.updateQualityScore = function(scoreData) {
     this.scoring_type = scoreData.scoring_type;
     this.scoring_time_ms = scoreData.scoring_time_ms;
     this.quick_pattern = scoreData.quick_pattern;
+    // Support thinking field update
+    if (scoreData.thinking !== undefined) {
+        this.thinking = scoreData.thinking;
+    }
     return this.save();
 };
 
