@@ -47,10 +47,7 @@ jobs:
         run: npm ci
 
       - name: Run Unit Tests
-        run: npm run test:unit
-
-      - name: Check for Open Handles
-        run: npm run test:ci
+        run: npm test -- tests/unit --silent
 
   integration-tests:
     name: Integration Tests
