@@ -110,17 +110,6 @@ class RagStore {
   }
 
   /**
-   * List all ingested documents
-   * @returns {Promise<Array<{documentId: string, title: string, source: string, chunkCount: number}>>}
-   */
-  async listDocuments() {
-    if (this.vectorStore.listDocuments) {
-      return this.vectorStore.listDocuments();
-    }
-    return [];
-  }
-
-  /**
    * Expand query using LLM to generate related search terms
    * @param {string} query - Original query
    * @param {string} ollamaHost - Ollama host URL
