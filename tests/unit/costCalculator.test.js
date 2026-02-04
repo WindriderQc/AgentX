@@ -105,7 +105,7 @@ describe('Cost Calculator Service', () => {
       const result = await calculateMessageCost(model, stats);
 
       expect(result.totalCost).toBe(0);
-      expect(result.pricingSource.source).toBe('no-token-data');
+      expect(result.pricingSource.source).toBe('unconfigured');
     });
 
     it('should handle missing stats gracefully', async () => {
@@ -115,7 +115,7 @@ describe('Cost Calculator Service', () => {
       const result = await calculateMessageCost(model, stats);
 
       expect(result.totalCost).toBe(0);
-      expect(result.pricingSource.source).toBe('no-token-data');
+      expect(result.pricingSource.source).toBe('unconfigured');
     });
 
     it('should respect COST_TRACKING_ENABLED=false', async () => {
