@@ -246,6 +246,125 @@ router.get('/results/advanced', async (req, res) => {
 });
 
 /**
+ * GET /api/benchmark/results/needs-review
+ * Get results flagged for manual review due to low judge confidence
+ * Query params: limit, batch_id, model, min_confidence, max_confidence
+ */
+router.get('/results/needs-review', async (req, res) => {
+    try {
+        const BenchmarkResult = require('../models/BenchmarkResult');
+        const { limit = 50, batch_id, model, min_confidence, max_confidence } = req.query;
+
+        const filter = { needs_review: true };
+
+        if (batch_id) filter.batch_id = batch_id;
+        if (model) filter.model = model;
+        if (min_confidence !== undefined) {
+            filter.judge_confidence = { ...filter.judge_confidence, $gte: parseFloat(min_confidence) };
+        }
+        if (max_confidence !== undefined) {
+            filter.judge_confidence = { ...filter.judge_confidence, $lte: parseFloat(max_confidence) };
+        }
+
+        const results = await BenchmarkResult.find(filter)
+            .sort({ judge_confidence: 1, timestamp: -1 })
+            .limit(parseInt(limit))
+            .select({
+                model: 1,
+                prompt_name: 1,
+                prompt_level: 1,
+                prompt_category: 1,
+                quality_score: 1,
+                judge_confidence: 1,
+                review_reason: 1,
+                human_score: 1,
+                human_reviewed_at: 1,
+                batch_id: 1,
+                timestamp: 1
+            })
+            .lean();
+
+        // Get aggregate stats
+        const stats = await BenchmarkResult.aggregate([
+            { $match: { needs_review: true } },
+            {
+                $group: {
+                    _id: null,
+                    total: { $sum: 1 },
+                    reviewed: { $sum: { $cond: [{ $ne: ['$human_score', null] }, 1, 0] } },
+                    avg_confidence: { $avg: '$judge_confidence' }
+                }
+            }
+        ]);
+
+        res.json({
+            status: 'success',
+            data: {
+                results,
+                stats: stats[0] || { total: 0, reviewed: 0, avg_confidence: null },
+                limit: parseInt(limit)
+            }
+        });
+    } catch (err) {
+        logger.error('Failed to fetch results needing review', { error: err.message });
+        res.status(500).json({ status: 'error', error: err.message });
+    }
+});
+
+/**
+ * POST /api/benchmark/results/:id/human-review
+ * Submit a human review score for a result
+ */
+router.post('/results/:id/human-review', async (req, res) => {
+    try {
+        const BenchmarkResult = require('../models/BenchmarkResult');
+        const { human_score, reviewer } = req.body;
+
+        if (!validateObjectId(req.params.id, res, 'Result ID')) return;
+
+        if (human_score === undefined || human_score < 0 || human_score > 10) {
+            return res.status(400).json({
+                status: 'error',
+                error: 'human_score must be between 0 and 10'
+            });
+        }
+
+        const result = await BenchmarkResult.findByIdAndUpdate(
+            req.params.id,
+            {
+                $set: {
+                    human_score: parseFloat(human_score),
+                    human_reviewed_at: new Date(),
+                    human_reviewer: reviewer || 'anonymous'
+                }
+            },
+            { new: true }
+        );
+
+        if (!result) {
+            return res.status(404).json({
+                status: 'error',
+                error: 'Result not found'
+            });
+        }
+
+        res.json({
+            status: 'success',
+            data: {
+                id: result._id,
+                human_score: result.human_score,
+                human_reviewed_at: result.human_reviewed_at,
+                quality_score: result.quality_score,
+                judge_confidence: result.judge_confidence
+            }
+        });
+    } catch (err) {
+        logger.error('Failed to submit human review', { error: err.message, id: req.params.id });
+        res.status(500).json({ status: 'error', error: err.message });
+    }
+});
+
+/**
  * GET /api/benchmark/results/:id
  * Get full details for a single test result (for Test Inspector)
  * Returns all fields including warmup data and raw judge response
@@ -334,7 +453,7 @@ router.post('/results/:id/rejudge', async (req, res) => {
             quality_score: scores.quality_score
         }, result.prompt_category || 'interactive');
 
-        // Update result
+        // Update result (including new confidence fields)
         await BenchmarkResult.updateOne(
             { _id: req.params.id },
             {
@@ -351,7 +470,11 @@ router.post('/results/:id/rejudge', async (req, res) => {
                     quick_pattern: scores.quick_pattern,
                     composite_score: composite.composite_score,
                     composite_profile_used: composite.composite_profile_used,
-                    normalized_scores: composite.normalized
+                    normalized_scores: composite.normalized,
+                    // Confidence assessment fields
+                    judge_confidence: scores.judge_confidence,
+                    needs_review: scores.needs_review || false,
+                    review_reason: scores.review_reason || null
                 }
             }
         );
@@ -361,7 +484,9 @@ router.post('/results/:id/rejudge', async (req, res) => {
             data: {
                 quality_score: scores.quality_score,
                 scoring_method: scores.scoring_method,
-                composite_score: composite.composite_score
+                composite_score: composite.composite_score,
+                judge_confidence: scores.judge_confidence,
+                needs_review: scores.needs_review
             }
         });
     } catch (err) {

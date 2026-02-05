@@ -843,6 +843,10 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                                                 composite_score: composite.composite_score,
                                                 composite_profile_used: composite.composite_profile_used,
                                                 normalized_scores: composite.normalized,
+                                                // Confidence assessment fields
+                                                judge_confidence: scores.judge_confidence,
+                                                needs_review: scores.needs_review || false,
+                                                review_reason: scores.review_reason || null,
                                                 ...truncationUpdate
                                             }
                                         }

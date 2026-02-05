@@ -217,6 +217,42 @@ const BenchmarkResultSchema = new mongoose.Schema({
         type: String,
         default: null
     },
+    // Judge confidence and review fields
+    judge_confidence: {
+        type: Number,
+        min: 0,
+        max: 1,
+        default: null,
+        description: 'Confidence in judge reliability (0-1)'
+    },
+    needs_review: {
+        type: Boolean,
+        default: false,
+        index: true,
+        description: 'Flag for manual review when judge confidence is low'
+    },
+    review_reason: {
+        type: String,
+        default: null,
+        description: 'Reason why review is needed'
+    },
+    human_score: {
+        type: Number,
+        min: 0,
+        max: 10,
+        default: null,
+        description: 'Manual human override score'
+    },
+    human_reviewed_at: {
+        type: Date,
+        default: null,
+        description: 'When human review was completed'
+    },
+    human_reviewer: {
+        type: String,
+        default: null,
+        description: 'Who performed the human review'
+    },
     timestamp: {
         type: Date,
         default: Date.now,

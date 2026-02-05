@@ -421,7 +421,9 @@ async function loadScans() {
         // Actually, looking at the user's request, they want buttons.
         // Let's assume we can hit the DataAPI.
         
-        const response = await fetch('http://192.168.2.33:3003/api/v1/storage/scans?limit=5');
+        // Use DataAPI host from environment or default to relative URL (assumes proxy)
+        const dataApiHost = window.DATA_API_HOST || '/api/proxy/data-api';
+        const response = await fetch(`${dataApiHost}/v1/storage/scans?limit=5`);
         const result = await response.json();
         
         if (result.status !== 'success' || !result.data.scans || result.data.scans.length === 0) {

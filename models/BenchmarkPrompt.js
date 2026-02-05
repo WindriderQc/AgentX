@@ -87,6 +87,34 @@ const BenchmarkPromptSchema = new mongoose.Schema({
         }],
         default: undefined
     },
+    // Deterministic scoring configuration (bypasses LLM judge)
+    deterministic_scoring: {
+        type: {
+            type: String,
+            enum: ['exact', 'numeric', 'json', 'regex'],
+            required: false
+        },
+        // For regex type: patterns that must be present
+        must_contain: [{
+            pattern: { type: String },
+            weight: { type: Number, default: 1 }
+        }],
+        // For regex type: patterns that must NOT be present
+        must_not_contain: [String],
+        // For numeric type: tolerance for matching (default 0.001)
+        numeric_tolerance: { type: Number, default: 0.001 },
+        // For numeric type: use relative tolerance (as percentage of expected)
+        relative_match: { type: Boolean, default: false },
+        // For exact type: case-sensitive comparison
+        case_sensitive: { type: Boolean, default: false },
+        // For exact type: only trim whitespace, don't normalize
+        trim_only: { type: Boolean, default: false }
+    },
+    // Expert reference answer for reference-based scoring (levels 6+)
+    reference_answer: {
+        type: String,
+        default: null
+    },
     custom: {
         type: Boolean,
         default: false,

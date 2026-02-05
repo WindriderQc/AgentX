@@ -6,9 +6,12 @@
 
 const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
 const logger = require('../../config/logger');
-const { HOSTS } = require('./modelRouter');
 const { getFetchOptions } = require('../helpers/httpAgent');
 const hardwareProfileService = require('./hardwareProfileService');
+const deterministicScorer = require('./deterministicScorer');
+const decomposedJudge = require('./decomposedJudge');
+const referenceScorer = require('./referenceScorer');
+const judgeConfidence = require('./judgeConfidence');
 
 // Judge model configuration - use a capable model for evaluation
 const JUDGE_CONFIG = {
@@ -133,7 +136,13 @@ const ENHANCED_SCORING_CONFIGS = {
             { name: 'constraint_compliance', weight: 0.35, desc: 'Respects all constraints?' },
             { name: 'format_accuracy', weight: 0.20, desc: 'Output format correct?' },
             { name: 'completeness', weight: 0.10, desc: 'All requirements met?' }
-        ]
+        ],
+        // Special instructions for JSON/structured output comparison
+        judge_hints: `IMPORTANT FOR STRUCTURED OUTPUT:
+- If expected output is JSON, parse and compare semantically (order of object keys doesn't matter, but array order does)
+- For sorting tasks: verify the sorting criteria (e.g., "by length" means compare string lengths)
+- Check EXACT values, not approximate matches
+- Empty arrays [] or objects {} are valid outputs if that's what's expected`
     },
     summarization: {
         description: 'Content distillation and synthesis',
@@ -225,14 +234,43 @@ validateWeights();
 // The enhanced system provides 16 categories with 4 core dimensions each
 
 /**
+ * Strip markdown code fences from a response
+ * Handles ```json, ```javascript, ``` etc.
+ * @param {string} text - The text to clean
+ * @returns {string} Text with code fences removed
+ */
+function stripMarkdownCodeFences(text) {
+    if (!text || typeof text !== 'string') return text;
+
+    // Match code blocks: ```lang\n...\n``` or ```\n...\n```
+    const codeBlockRegex = /^```(?:\w+)?\s*\n?([\s\S]*?)\n?```$/;
+    const trimmed = text.trim();
+    const match = trimmed.match(codeBlockRegex);
+
+    if (match) {
+        return match[1].trim();
+    }
+
+    // Also handle inline code blocks that might wrap the entire response
+    // e.g., ``` ... ``` without language specifier on same line
+    const inlineMatch = trimmed.match(/^```(?:\w+)?\s*([\s\S]*?)```$/);
+    if (inlineMatch) {
+        return inlineMatch[1].trim();
+    }
+
+    return text;
+}
+
+/**
  * Build a dynamic judge prompt from scoring dimensions
  * @param {Array} dimensions - Array of dimension objects {name, weight, desc}
  * @param {string} task - The task/prompt to evaluate
  * @param {string} expected - Expected answer or criteria
  * @param {string} response - The response to evaluate
+ * @param {Object} options - Optional settings { judgeHints: string }
  * @returns {string} Formatted judge prompt
  */
-function buildDynamicJudgePrompt(dimensions, task, expected, response) {
+function buildDynamicJudgePrompt(dimensions, task, expected, response, options = {}) {
     const criteriaList = dimensions.map((dim, idx) => {
         return `${idx + 1}. ${dim.name.replace(/_/g, ' ')} (0-10): ${dim.desc}`;
     }).join('\n');
@@ -244,10 +282,15 @@ function buildDynamicJudgePrompt(dimensions, task, expected, response) {
     jsonFormat.overall = 'X';
     jsonFormat.explanation = 'brief reason';
 
+    // Include category-specific judge hints if provided
+    const hintsSection = options.judgeHints
+        ? `\n${options.judgeHints}\n`
+        : '';
+
     return `You are a quality evaluator. Analyze the given response and score it across multiple dimensions.
 
 IMPORTANT: If the RESPONSE TO EVALUATE section is empty or blank, assign 0 to all dimensions - the model failed to produce output.
-
+${hintsSection}
 CRITERIA TO EVALUATE:
 ${criteriaList}
 
@@ -272,7 +315,7 @@ Do NOT respond with just keys, do NOT respond with an array, do NOT add explanat
  * Get scoring dimensions for a prompt
  * Priority: prompt.scoring_dimensions > ENHANCED_SCORING_CONFIGS (with 'general' fallback)
  * @param {Object} prompt - The benchmark prompt object
- * @returns {Object} { dimensions: Array, weights: Object, category: string }
+ * @returns {Object} { dimensions: Array, weights: Object, category: string, judgeHints: string|null }
  */
 function getScoringDimensions(prompt) {
     // Priority 1: Use prompt's custom scoring_dimensions if defined
@@ -292,7 +335,7 @@ function getScoringDimensions(prompt) {
             dimensionCount: dimensions.length
         });
 
-        return { dimensions, weights, category: 'custom' };
+        return { dimensions, weights, category: 'custom', judgeHints: null };
     }
 
     // Priority 2: Use enhanced scoring configs based on scoring_type
@@ -319,15 +362,82 @@ function getScoringDimensions(prompt) {
     logger.debug('Using enhanced core dimensions for judge evaluation', {
         prompt: prompt.name || 'unknown',
         scoringType,
-        coreDimensionCount: dimensions.length
+        coreDimensionCount: dimensions.length,
+        hasJudgeHints: !!enhancedConfig.judge_hints
     });
 
-    return { dimensions, weights, category: scoringType };
+    return {
+        dimensions,
+        weights,
+        category: scoringType,
+        judgeHints: enhancedConfig.judge_hints || null
+    };
+}
+
+/**
+ * Compare two JSON values for equality
+ * Arrays are compared with order sensitivity
+ * Objects are compared with key-order insensitivity
+ * @param {any} a - First value
+ * @param {any} b - Second value
+ * @returns {boolean} True if equal
+ */
+function jsonDeepEqual(a, b) {
+    if (a === b) return true;
+    if (typeof a !== typeof b) return false;
+    if (a === null || b === null) return a === b;
+
+    if (Array.isArray(a) && Array.isArray(b)) {
+        if (a.length !== b.length) return false;
+        return a.every((val, idx) => jsonDeepEqual(val, b[idx]));
+    }
+
+    if (typeof a === 'object' && typeof b === 'object') {
+        const keysA = Object.keys(a).sort();
+        const keysB = Object.keys(b).sort();
+        if (keysA.length !== keysB.length) return false;
+        if (!keysA.every((k, i) => k === keysB[i])) return false;
+        return keysA.every(k => jsonDeepEqual(a[k], b[k]));
+    }
+
+    return false;
+}
+
+/**
+ * Try to parse JSON from a response string
+ * Handles various formats: raw JSON, markdown code blocks, etc.
+ * @param {string} text - Response text
+ * @returns {Object} { success: boolean, value: any, error: string|null }
+ */
+function tryParseJson(text) {
+    if (!text || typeof text !== 'string') {
+        return { success: false, value: null, error: 'Empty or non-string input' };
+    }
+
+    // Strip markdown code fences first
+    let cleaned = stripMarkdownCodeFences(text).trim();
+
+    try {
+        const value = JSON.parse(cleaned);
+        return { success: true, value, error: null };
+    } catch (e) {
+        // Try to extract JSON from surrounding text
+        const jsonMatch = cleaned.match(/(\[[\s\S]*\]|\{[\s\S]*\})/);
+        if (jsonMatch) {
+            try {
+                const value = JSON.parse(jsonMatch[1]);
+                return { success: true, value, error: null };
+            } catch (e2) {
+                return { success: false, value: null, error: e2.message };
+            }
+        }
+        return { success: false, value: null, error: e.message };
+    }
 }
 
 /**
  * Quick scoring for simple factual answers
- * Uses pattern matching before calling LLM judge
+ * Uses pattern matching and JSON comparison before calling LLM judge
  * Only triggers when prompt has expected_answer defined
  */
 function quickScore(response, prompt) {
@@ -336,9 +446,33 @@ function quickScore(response, prompt) {
     if (!expectedAnswer) {
         return null; // Fall back to LLM judge
     }
-    
+
+    // Try JSON comparison first (for instruction-following, math, etc.)
+    const expectedJson = tryParseJson(expectedAnswer);
+    const responseJson = tryParseJson(response);
+
+    if (expectedJson.success && responseJson.success) {
+        const isEqual = jsonDeepEqual(expectedJson.value, responseJson.value);
+        logger.info('Quick JSON scoring', {
+            matched: isEqual,
+            expectedType: Array.isArray(expectedJson.value) ? 'array' : typeof expectedJson.value,
+            responseType: Array.isArray(responseJson.value) ? 'array' : typeof responseJson.value
+        });
+        return {
+            quick: true,
+            score: isEqual ? 10 : 0,
+            expected: expectedAnswer,
+            matched: isEqual,
+            pattern: 'json_exact_match',
+            comparison: {
+                expected: expectedJson.value,
+                received: responseJson.value
+            }
+        };
+    }
+
     const resp = response.toLowerCase().trim();
-    
+
     // Direct answer patterns for common factual questions
     // Use word boundaries to avoid false positives (e.g., "32" in "320")
     const quickPatterns = {
@@ -350,9 +484,9 @@ function quickScore(response, prompt) {
         '2, 4, 8, 16': { answer: '32', score: /\b32\b/.test(resp) ? 10 : 0 },
         '2x + 5 = 17': { answer: '6', score: /\bx\s*=\s*6\b|\b6\b/.test(resp) ? 10 : 0 }
     };
-    
+
     const promptLower = prompt.prompt ? prompt.prompt.toLowerCase() : prompt.toLowerCase();
-    
+
     for (const [pattern, check] of Object.entries(quickPatterns)) {
         if (promptLower.includes(pattern)) {
             logger.info('Quick scoring match', { pattern, score: check.score, expected: check.answer });
@@ -365,7 +499,7 @@ function quickScore(response, prompt) {
             };
         }
     }
-    
+
     return null; // Needs LLM evaluation
 }
 
@@ -565,17 +699,42 @@ async function callJudge(evalPrompt, config = {}, retryCount = 0) {
  */
 async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = {}, _batchHardwareSnapshot = null }) {
     const startTime = Date.now();
-    
-    // Try quick scoring first (only if expected answer exists)
+    const mergedJudgeConfig = { ...JUDGE_CONFIG, ...judgeConfig };
+
+    // Phase 1: Try deterministic scoring first (highest priority)
+    if (prompt.deterministic_scoring) {
+        const detResult = deterministicScorer.score(response, prompt);
+        if (detResult) {
+            logger.info('Deterministic scoring used', {
+                prompt: prompt.name || prompt.prompt_name || 'unknown',
+                type: detResult.deterministic_type,
+                score: detResult.score,
+                matched: detResult.matched
+            });
+            return {
+                quality_score: detResult.score,
+                scoring_method: 'deterministic',
+                deterministic_type: detResult.deterministic_type,
+                matched_expected: detResult.matched,
+                explanation: detResult.details,
+                breakdown: { overall: detResult.score },
+                scoring_time_ms: Date.now() - startTime,
+                judge_confidence: 1.0, // Deterministic = 100% confident
+                needs_review: false
+            };
+        }
+    }
+
+    // Phase 2: Try quick scoring (legacy pattern matching)
     const quickResult = quickScore(response, prompt);
     if (quickResult && quickResult.quick) {
         const explanation = quickResult.matched
             ? `Quick scoring matched expected answer "${quickResult.expected}" (pattern: ${quickResult.pattern}).`
             : `Quick scoring did not match expected answer "${quickResult.expected}" (pattern: ${quickResult.pattern}).`;
 
-        logger.info('Quick scoring used', { 
-            pattern: quickResult.pattern, 
-            matched: quickResult.matched, 
+        logger.info('Quick scoring used', {
+            pattern: quickResult.pattern,
+            matched: quickResult.matched,
             score: quickResult.score,
             prompt: prompt.name || prompt.prompt_name || 'unknown'
         });
@@ -592,10 +751,12 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
             breakdown: {
                 accuracy: quickResult.score,
                 overall: quickResult.score
-            }
+            },
+            judge_confidence: 1.0, // Pattern match = 100% confident
+            needs_review: false
         };
     }
-    
+
     if (skipLLM) {
         return {
             quality_score: null,
@@ -604,7 +765,7 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
             scoring_time_ms: Date.now() - startTime
         };
     }
-    
+
     // Validate that response is not empty before scoring
     if (!response || response.trim().length === 0) {
         logger.warn('Attempting to score empty response', {
@@ -627,31 +788,60 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
             scoring_time_ms: Date.now() - startTime,
             judge_prompt: null,
             judge_model: null,
-            judge_raw_response: 'Model failed to generate any response text'
+            judge_raw_response: 'Model failed to generate any response text',
+            judge_confidence: 1.0,
+            needs_review: false
         };
     }
-    
-    // Use LLM-as-judge for complex evaluation
+
+    // Phase 3: Try routed scoring (reference, decomposed, etc.)
+    const routedResult = await routeScoring(response, prompt, mergedJudgeConfig);
+    if (routedResult) {
+        // Add confidence assessment
+        const confidence = judgeConfidence.assess(routedResult, prompt);
+
+        return {
+            ...routedResult,
+            scoring_time_ms: Date.now() - startTime,
+            judge_confidence: confidence.judge_confidence,
+            needs_review: confidence.needs_review,
+            review_reason: confidence.review_reason
+        };
+    }
+
+    // Phase 4: Fall back to standard LLM-as-judge for complex evaluation
     const scoringType = prompt.scoring_type || 'general';
     const dimensionsInfo = getScoringDimensions(prompt);
 
-    // Build dynamic judge prompt from dimensions
+    // Strip markdown code fences from response before judging
+    // This prevents judge confusion from ```json ... ``` wrappers
+    const cleanedResponse = stripMarkdownCodeFences(response);
+    if (cleanedResponse !== response) {
+        logger.debug('Stripped markdown code fences from response', {
+            prompt: prompt.name || prompt.prompt_name || 'unknown',
+            originalLength: response.length,
+            cleanedLength: cleanedResponse.length
+        });
+    }
+
+    // Build dynamic judge prompt from dimensions (with category-specific hints if available)
     const evalPrompt = buildDynamicJudgePrompt(
         dimensionsInfo.dimensions,
         prompt.prompt || prompt,
         prompt.expected_answer || 'See criteria',
-        response
+        cleanedResponse,
+        { judgeHints: dimensionsInfo.judgeHints }
     );
     const config = { weight: dimensionsInfo.weights };
 
-    const judgeResult = await callJudge(evalPrompt, judgeConfig);
+    const judgeResult = await callJudge(evalPrompt, mergedJudgeConfig);
     
     if (!judgeResult.success) {
         judgeFailureCount += 1;
         logger.warn('LLM judge failed', { 
             error: judgeResult.error, 
             prompt: prompt.name || prompt.prompt_name || 'unknown',
-            judge_model: judgeConfig.model || JUDGE_CONFIG.model,
+            judge_model: mergedJudgeConfig.model || JUDGE_CONFIG.model,
             judge_failure_count: judgeFailureCount,
             scoring_type: scoringType
         });
@@ -661,7 +851,7 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
             error: judgeResult.error,
             explanation: `Judge model failed: ${judgeResult.error}`,
             judge_prompt: evalPrompt,
-            judge_model: judgeConfig.model || JUDGE_CONFIG.model,
+            judge_model: mergedJudgeConfig.model || JUDGE_CONFIG.model,
             scoring_time_ms: Date.now() - startTime,
             breakdown: {
                 accuracy: 0,
@@ -735,7 +925,7 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
     logger.info('LLM judge scoring completed', {
         prompt: prompt.name || prompt.prompt_name || 'unknown',
         score: overallScore,
-        judge_model: judgeConfig.model || JUDGE_CONFIG.model,
+        judge_model: mergedJudgeConfig.model || JUDGE_CONFIG.model,
         scoring_type: scoringType,
         time_ms: Date.now() - startTime
     });
@@ -761,8 +951,8 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
         judgeHardwareSnapshot = _batchHardwareSnapshot;
     } else {
         try {
-            const judgeHost = judgeConfig.host || JUDGE_CONFIG.host;
-            const judgeModel = judgeConfig.model || JUDGE_CONFIG.model;
+            const judgeHost = mergedJudgeConfig.host || JUDGE_CONFIG.host;
+            const judgeModel = mergedJudgeConfig.model || JUDGE_CONFIG.model;
             if (judgeHost && judgeModel) {
                 // Add timeout to prevent blocking
                 const hwPromise = hardwareProfileService.detectHardware(judgeHost, judgeModel);
@@ -776,19 +966,30 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
         }
     }
 
-    return {
+    // Build base result
+    const baseResult = {
         quality_score: overallScore,
         scoring_method: 'llm_judge',
         scoring_type: scoringType,
         breakdown: normalizedScores,
         explanation: normalizedScores.explanation || scores.explanation || 'No explanation provided',
-        judge_model: judgeConfig.model || JUDGE_CONFIG.model,
-        judge_host: judgeConfig.host || JUDGE_CONFIG.host,
+        judge_model: mergedJudgeConfig.model || JUDGE_CONFIG.model,
+        judge_host: mergedJudgeConfig.host || JUDGE_CONFIG.host,
         judge_hardware_snapshot: judgeHardwareSnapshot,
         scoring_time_ms: Date.now() - startTime,
         judge_prompt: evalPrompt,
         judge_raw_response: judgeResult.raw || null,
         truncation
+    };
+
+    // Add confidence assessment for LLM judge results
+    const confidence = judgeConfidence.assess(baseResult, prompt);
+
+    return {
+        ...baseResult,
+        judge_confidence: confidence.judge_confidence,
+        needs_review: confidence.needs_review,
+        review_reason: confidence.review_reason
     };
 }
 
@@ -917,6 +1118,201 @@ function validateCompositeWeights() {
 
 // Validate composite weights immediately after definition
 validateCompositeWeights();
+
+/**
+ * Category-specific scoring strategies
+ * Routes scoring through the most appropriate method per category
+ */
+const CATEGORY_STRATEGIES = {
+    // Math: deterministic first (numeric), no LLM fallback needed if correct
+    math: {
+        primary: 'deterministic',
+        deterministic_type: 'numeric',
+        llm_fallback: false,
+        confidence_threshold: 0.9
+    },
+    // Instruction-following: deterministic (json/regex), then decomposed
+    'instruction-following': {
+        primary: 'deterministic',
+        deterministic_type: 'json',
+        llm_fallback: true,
+        llm_strategy: 'decomposed',
+        confidence_threshold: 0.8
+    },
+    // Code: hybrid (deterministic for syntax, decomposed for quality)
+    code: {
+        primary: 'hybrid',
+        deterministic_weight: 0.4,
+        llm_strategy: 'decomposed',
+        confidence_threshold: 0.7
+    },
+    coding: {
+        primary: 'hybrid',
+        deterministic_weight: 0.4,
+        llm_strategy: 'decomposed',
+        confidence_threshold: 0.7
+    },
+    // Reasoning: decomposed first, reference fallback for high levels
+    reasoning: {
+        primary: 'decomposed',
+        reference_fallback: true,
+        confidence_threshold: 0.7
+    },
+    // Factual: deterministic (regex) for known facts, LLM for open questions
+    factual: {
+        primary: 'deterministic',
+        deterministic_type: 'regex',
+        llm_fallback: true,
+        llm_strategy: 'standard',
+        confidence_threshold: 0.8
+    },
+    // Creative: standard LLM only (can't be deterministic)
+    creative: {
+        primary: 'llm',
+        llm_strategy: 'standard',
+        confidence_threshold: 0.6,
+        always_flag_review: true // Creative is subjective
+    },
+    // General: balanced approach
+    general: {
+        primary: 'auto', // Auto-detect based on prompt
+        llm_fallback: true,
+        llm_strategy: 'standard',
+        confidence_threshold: 0.7
+    },
+    // Summarization: decomposed
+    summarization: {
+        primary: 'decomposed',
+        reference_fallback: true,
+        confidence_threshold: 0.75
+    },
+    // Translation: reference-based when available
+    translation: {
+        primary: 'reference',
+        llm_fallback: true,
+        llm_strategy: 'decomposed',
+        confidence_threshold: 0.75
+    },
+    // Multi-turn reasoning: decomposed
+    'multi-turn-reasoning': {
+        primary: 'decomposed',
+        confidence_threshold: 0.7
+    },
+    // Context retention: decomposed
+    'context-retention': {
+        primary: 'decomposed',
+        confidence_threshold: 0.7
+    },
+    // Edge cases: decomposed
+    'edge-cases': {
+        primary: 'decomposed',
+        confidence_threshold: 0.7
+    },
+    // Refactoring: hybrid
+    refactoring: {
+        primary: 'hybrid',
+        deterministic_weight: 0.3,
+        llm_strategy: 'decomposed',
+        confidence_threshold: 0.7
+    },
+    // Debugging: decomposed
+    debugging: {
+        primary: 'decomposed',
+        confidence_threshold: 0.7
+    },
+    // Explanation: decomposed
+    explanation: {
+        primary: 'decomposed',
+        confidence_threshold: 0.75
+    },
+    // Dialogue: standard LLM
+    dialogue: {
+        primary: 'llm',
+        llm_strategy: 'standard',
+        confidence_threshold: 0.7
+    }
+};
+
+/**
+ * Route scoring to the appropriate strategy based on category and prompt
+ * @param {string} response - Model response
+ * @param {Object} prompt - Prompt object
+ * @param {Object} judgeConfig - Judge configuration
+ * @returns {Promise<Object>} Scoring result with method used
+ */
+async function routeScoring(response, prompt, judgeConfig) {
+    const category = prompt.scoring_type || prompt.category || 'general';
+    const strategy = CATEGORY_STRATEGIES[category] || CATEGORY_STRATEGIES.general;
+    const level = prompt.level || 5;
+
+    logger.debug('Routing scoring', {
+        prompt: prompt.name || 'unknown',
+        category,
+        strategy: strategy.primary,
+        level
+    });
+
+    let result = null;
+
+    // Phase 1: Try deterministic scoring if configured
+    if (strategy.primary === 'deterministic' || strategy.primary === 'hybrid' || strategy.primary === 'auto') {
+        // Check if prompt has deterministic config
+        if (prompt.deterministic_scoring) {
+            result = deterministicScorer.score(response, prompt);
+            if (result && result.matched) {
+                logger.info('Deterministic scoring succeeded', {
+                    prompt: prompt.name || 'unknown',
+                    type: result.deterministic_type,
+                    score: result.score
+                });
+                return result;
+            }
+        }
+
+        // For math, try numeric eval even without explicit config
+        if (category === 'math' && prompt.expected_answer) {
+            const numResult = deterministicScorer.numericEval(response, prompt.expected_answer);
+            if (numResult.matched) {
+                logger.info('Math deterministic scoring succeeded', {
+                    prompt: prompt.name || 'unknown',
+                    score: numResult.score
+                });
+                return {
+                    ...numResult,
+                    deterministic: true,
+                    scoring_method: 'deterministic'
+                };
+            }
+        }
+    }
+
+    // Phase 2: Try reference-based scoring for high-level prompts
+    if ((strategy.primary === 'reference' || strategy.reference_fallback) && prompt.reference_answer) {
+        result = await referenceScorer.score(response, prompt, judgeConfig);
+        if (result) {
+            logger.info('Reference scoring used', {
+                prompt: prompt.name || 'unknown',
+                score: result.quality_score
+            });
+            return result;
+        }
+    }
+
+    // Phase 3: Use decomposed judging for complex evaluations
+    if (strategy.primary === 'decomposed' || strategy.llm_strategy === 'decomposed') {
+        result = await decomposedJudge.score(response, prompt, judgeConfig);
+        if (result) {
+            logger.info('Decomposed judging used', {
+                prompt: prompt.name || 'unknown',
+                score: result.quality_score
+            });
+            return result;
+        }
+    }
+
+    // Phase 4: Fall back to standard LLM judge
+    return null; // Signal to use standard LLM judge
+}
 
 /**
  * Calculate composite score combining speed and quality
@@ -1119,7 +1515,17 @@ module.exports = {
     quickScore,
     buildDynamicJudgePrompt,
     getScoringDimensions,
+    stripMarkdownCodeFences,
+    jsonDeepEqual,
+    tryParseJson,
+    routeScoring,
     ENHANCED_SCORING_CONFIGS,
     CATEGORY_COMPOSITE_PROFILES,
-    JUDGE_CONFIG
+    CATEGORY_STRATEGIES,
+    JUDGE_CONFIG,
+    // Re-export sub-scorers for direct access
+    deterministicScorer,
+    decomposedJudge,
+    referenceScorer,
+    judgeConfidence
 };
