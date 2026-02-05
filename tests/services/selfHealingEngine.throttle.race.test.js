@@ -76,6 +76,8 @@ describe('SelfHealingEngine - Throttle Race Condition Fix', () => {
     });
 
     test('should clear previous timeout when new throttle is activated', async () => {
+      // Note: In test mode (NODE_ENV=test), timeouts are skipped to prevent
+      // long-lived timers. Instead, verify tokens change between throttles.
       const rule = {
         name: 'clear_timeout_rule',
         remediation: {
@@ -86,16 +88,17 @@ describe('SelfHealingEngine - Throttle Race Condition Fix', () => {
       };
 
       // First throttle
-      await engine._executeThrottle(rule, {});
-      const firstTimeout = global._selfHealingThrottleTimeout;
+      const first = await engine._executeThrottle(rule, {});
+      const firstToken = global._selfHealingThrottle?.token;
 
-      // Second throttle (should clear first timeout)
-      await engine._executeThrottle(rule, {});
-      const secondTimeout = global._selfHealingThrottleTimeout;
+      // Second throttle (should generate new token)
+      const second = await engine._executeThrottle(rule, {});
+      const secondToken = global._selfHealingThrottle?.token;
 
-      expect(firstTimeout).toBeDefined();
-      expect(secondTimeout).toBeDefined();
-      expect(firstTimeout).not.toBe(secondTimeout);
+      // Verify different tokens were generated (proves re-activation happened)
+      expect(firstToken).toBeDefined();
+      expect(secondToken).toBeDefined();
+      expect(firstToken).not.toBe(secondToken);
     });
   });
 

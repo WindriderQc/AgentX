@@ -37,7 +37,7 @@ jest.mock('../../config/logger');
 jest.mock('../../src/middleware/auth', () => ({
     optionalAuth: (req, res, next) => {
         res.locals.user = { userId: 'testuser123', name: 'Test User' };
-        req.session = { 
+        req.session = {
             userId: 'testuser123',
             touch: jest.fn(),
             save: jest.fn((cb) => cb && cb()),
@@ -48,7 +48,7 @@ jest.mock('../../src/middleware/auth', () => ({
     },
     requireAuth: (req, res, next) => {
         res.locals.user = { userId: 'testuser123', name: 'Test User' };
-        req.session = { 
+        req.session = {
             userId: 'testuser123',
             touch: jest.fn(),
             save: jest.fn((cb) => cb && cb()),
@@ -63,6 +63,21 @@ jest.mock('../../src/middleware/auth', () => ({
         next();
     },
     requireAdmin: (req, res, next) => next()
+}));
+
+// Mock workspace middleware
+jest.mock('../../src/middleware/workspace', () => ({
+    attachWorkspace: (req, res, next) => {
+        req.workspace = { _id: 'workspace123', slug: 'test-workspace' };
+        req.workspaceSlug = 'test-workspace';
+        next();
+    },
+    requireWorkspaceAccess: () => (req, res, next) => next(),
+    requirePermission: () => (req, res, next) => next(),
+    requireAdmin: (req, res, next) => next(),
+    requireOwner: (req, res, next) => next(),
+    optionalWorkspace: (req, res, next) => next(),
+    optionalWorkspaceContext: (req, res, next) => next()
 }));
 
 const PromptConfig = require('../../models/PromptConfig');

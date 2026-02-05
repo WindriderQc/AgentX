@@ -219,6 +219,17 @@ AlertSchema.index({ ruleId: 1, status: 1, createdAt: -1 });
 AlertSchema.index({ fingerprint: 1, status: 1, lastOccurrence: -1 });
 AlertSchema.index({ 'context.component': 1, status: 1, createdAt: -1 });
 
+// Unique partial index to prevent duplicate active alerts with same fingerprint
+// This enables atomic upsert deduplication under concurrent load
+AlertSchema.index(
+  { fingerprint: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { status: 'active' },
+    name: 'fingerprint_active_unique'
+  }
+);
+
 // Virtual for time since last occurrence
 AlertSchema.virtual('timeSinceLastOccurrence').get(function() {
   return Date.now() - this.lastOccurrence.getTime();

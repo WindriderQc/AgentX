@@ -14,6 +14,9 @@ describe('AlertService', () => {
       });
     }
 
+    // Ensure unique partial index is created for race condition prevention
+    await Alert.syncIndexes();
+
     // Enable test mode
     process.env.ALERT_TEST_MODE = 'true';
   });

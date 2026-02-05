@@ -12,9 +12,9 @@ jest.mock('../../src/services/chatService');
 jest.mock('../../src/middleware/auth', () => ({
     optionalAuth: (req, res, next) => {
         res.locals.user = { userId: 'testuser123', name: 'Test User' };
-        req.session = { 
-            userId: 'testuser123', 
-            touch: jest.fn(), 
+        req.session = {
+            userId: 'testuser123',
+            touch: jest.fn(),
             save: jest.fn((cb) => cb && cb()),
             cookie: { secure: false, maxAge: 3600000 }
         };
@@ -23,22 +23,21 @@ jest.mock('../../src/middleware/auth', () => ({
     },
     requireAuth: (req, res, next) => {
         res.locals.user = { userId: 'testuser123', name: 'Test User' };
-        req.session = { 
-            userId: 'testuser123', 
-            touch: jest.fn(), 
+        req.session = {
+            userId: 'testuser123',
+            touch: jest.fn(),
             save: jest.fn((cb) => cb && cb()),
             cookie: { secure: false, maxAge: 3600000 }
         };
         req.user = { _id: 'testuser123', username: 'testuser' };
         next();
     },
-    attachWorkspace: (req, res, next) => next(),
     optionalWorkspaceContext: (req, res, next) => next(),
     attachUser: (req, res, next) => {
         res.locals.user = { userId: 'testuser123', name: 'Test User' };
-        req.session = { 
-            userId: 'testuser123', 
-            touch: jest.fn(), 
+        req.session = {
+            userId: 'testuser123',
+            touch: jest.fn(),
             save: jest.fn((cb) => cb && cb()),
             cookie: { secure: false, maxAge: 3600000 }
         };
@@ -49,11 +48,72 @@ jest.mock('../../src/middleware/auth', () => ({
     apiKeyAuth: (req, res, next) => next()
 }));
 
+// Mock workspace middleware (attachWorkspace is here, not in auth)
+jest.mock('../../src/middleware/workspace', () => ({
+    attachWorkspace: (req, res, next) => {
+        req.workspace = { _id: 'workspace123', slug: 'test-workspace' };
+        req.workspaceSlug = 'test-workspace';
+        next();
+    },
+    requireWorkspaceAccess: () => (req, res, next) => next(),
+    requirePermission: () => (req, res, next) => next(),
+    requireAdmin: (req, res, next) => next(),
+    requireOwner: (req, res, next) => next(),
+    optionalWorkspace: (req, res, next) => next(),
+    optionalWorkspaceContext: (req, res, next) => next()
+}));
+
 const chatService = require('../../src/services/chatService');
 const Conversation = require('../../models/Conversation');
 
 // Load app after mocks
 const { app } = require('../../src/app');
+
+/**
+ * Helper to parse SSE events from a stream
+ * Handles chunked data and processes remaining buffer on end
+ */
+function createSSEParser(eventHandlers = {}) {
+    let text = '';
+
+    const processEvents = (data) => {
+        text += data;
+        const parts = text.split('\n\n');
+        text = parts.pop() || ''; // Keep incomplete part
+
+        parts.forEach(part => {
+            if (!part.trim()) return;
+
+            // Extract event type and data
+            const eventMatch = part.match(/event: (\w+)/);
+            const dataMatch = part.match(/data: ({.*})/);
+
+            if (eventMatch && dataMatch) {
+                const eventType = eventMatch[1];
+                try {
+                    const eventData = JSON.parse(dataMatch[1]);
+                    if (eventHandlers[eventType]) {
+                        eventHandlers[eventType](eventData);
+                    }
+                    if (eventHandlers.onAny) {
+                        eventHandlers.onAny(eventType, eventData);
+                    }
+                } catch (e) {
+                    // Ignore parse errors
+                }
+            }
+        });
+    };
+
+    const flush = () => {
+        // Process any remaining complete events in the buffer
+        if (text.trim()) {
+            processEvents('\n\n'); // Force processing of remaining text
+        }
+    };
+
+    return { processEvents, flush };
+}
 
 describe('POST /api/chat/stream - Streaming SSE Endpoint', () => {
 
@@ -519,29 +579,25 @@ describe('POST /api/chat/stream - Streaming SSE Endpoint', () => {
             });
 
             let doneEvent = null;
+            const parser = createSSEParser({
+                done: (data) => { doneEvent = data; }
+            });
 
             request(app)
                 .post('/api/chat/stream')
                 .send({ model: 'llama2', message: 'Performance test' })
                 .parse((res, callback) => {
-                    let text = '';
                     res.on('data', (chunk) => {
-                        text += chunk.toString();
-                        const parts = text.split('\n\n');
-                        text = parts.pop();
-                        parts.forEach(part => {
-                            if (part.includes('event: done')) {
-                                const match = part.match(/data: ({.*})/);
-                                if (match) doneEvent = JSON.parse(match[1]);
-                            }
-                        });
+                        parser.processEvents(chunk.toString());
                     });
                     res.on('end', () => {
+                        parser.flush();
                         callback(null, { doneEvent });
                     });
                 })
                 .end((err, res) => {
                     if (err) return done(err);
+                    expect(doneEvent).not.toBeNull();
                     expect(doneEvent.stats).toMatchObject({
                         eval_count: 50,
                         prompt_eval_count: 100
@@ -564,6 +620,9 @@ describe('POST /api/chat/stream - Streaming SSE Endpoint', () => {
             });
 
             let doneEvent = null;
+            const parser = createSSEParser({
+                done: (data) => { doneEvent = data; }
+            });
 
             request(app)
                 .post('/api/chat/stream')
@@ -572,24 +631,17 @@ describe('POST /api/chat/stream - Streaming SSE Endpoint', () => {
                     autoRoute: true
                 })
                 .parse((res, callback) => {
-                    let text = '';
                     res.on('data', (chunk) => {
-                        text += chunk.toString();
-                        const parts = text.split('\n\n');
-                        text = parts.pop();
-                        parts.forEach(part => {
-                            if (part.includes('event: done')) {
-                                const match = part.match(/data: ({.*})/);
-                                if (match) doneEvent = JSON.parse(match[1]);
-                            }
-                        });
+                        parser.processEvents(chunk.toString());
                     });
                     res.on('end', () => {
+                        parser.flush();
                         callback(null, { doneEvent });
                     });
                 })
                 .end((err, res) => {
                     if (err) return done(err);
+                    expect(doneEvent).not.toBeNull();
                     expect(doneEvent.routing).toMatchObject({
                         taskType: 'coding',
                         routed: true

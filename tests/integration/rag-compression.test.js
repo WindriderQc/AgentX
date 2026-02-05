@@ -71,6 +71,34 @@ jest.mock('../../models/N8nLLMSource', () => ({
 const mockFetch = jest.fn();
 jest.mock('node-fetch', () => mockFetch);
 
+// 5. Mock auth middleware
+jest.mock('../../src/middleware/auth', () => ({
+    optionalAuth: (req, res, next) => {
+        res.locals.user = { userId: 'testuser123', name: 'Test User' };
+        req.user = { _id: 'testuser123', username: 'testuser' };
+        next();
+    },
+    requireAuth: (req, res, next) => next(),
+    attachUser: (req, res, next) => next(),
+    requireAdmin: (req, res, next) => next(),
+    apiKeyAuth: (req, res, next) => next()
+}));
+
+// 6. Mock workspace middleware
+jest.mock('../../src/middleware/workspace', () => ({
+    attachWorkspace: (req, res, next) => {
+        req.workspace = { _id: 'workspace123', slug: 'test-workspace' };
+        req.workspaceSlug = 'test-workspace';
+        next();
+    },
+    requireWorkspaceAccess: () => (req, res, next) => next(),
+    requirePermission: () => (req, res, next) => next(),
+    requireAdmin: (req, res, next) => next(),
+    requireOwner: (req, res, next) => next(),
+    optionalWorkspace: (req, res, next) => next(),
+    optionalWorkspaceContext: (req, res, next) => next()
+}));
+
 // Now import app
 const { app } = require('../../src/app');
 

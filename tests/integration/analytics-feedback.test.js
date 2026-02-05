@@ -5,9 +5,49 @@
 
 const request = require('supertest');
 const mongoose = require('mongoose');
+
+// Mock auth middleware before importing app
+jest.mock('../../src/middleware/auth', () => ({
+    optionalAuth: (req, res, next) => {
+        res.locals.user = { userId: 'api-client', name: 'Test User' };
+        req.user = { _id: 'api-client', username: 'testuser' };
+        next();
+    },
+    requireAuth: (req, res, next) => {
+        res.locals.user = { userId: 'api-client', name: 'Test User' };
+        req.user = { _id: 'api-client', username: 'testuser' };
+        next();
+    },
+    attachUser: (req, res, next) => next(),
+    requireAdmin: (req, res, next) => next(),
+    apiKeyAuth: (req, res, next) => next()
+}));
+
+// Mock workspace middleware - uses testWorkspaceId defined after imports
+jest.mock('../../src/middleware/workspace', () => {
+    const mongoose = require('mongoose');
+    const testWsId = new mongoose.Types.ObjectId();
+    // Export for use in tests
+    global.__testWorkspaceId = testWsId;
+    return {
+        attachWorkspace: (req, res, next) => {
+            req.workspace = { _id: testWsId, slug: 'test-workspace' };
+            req.workspaceSlug = 'test-workspace';
+            next();
+        },
+        requireWorkspaceAccess: () => (req, res, next) => next(),
+        requirePermission: () => (req, res, next) => next(),
+        requireAdmin: (req, res, next) => next(),
+        requireOwner: (req, res, next) => next(),
+        optionalWorkspace: (req, res, next) => next(),
+        optionalWorkspaceContext: (req, res, next) => next()
+    };
+});
+
 const { app } = require('../../src/app');
 const Feedback = require('../../models/Feedback');
 const PromptConfig = require('../../models/PromptConfig');
+const Conversation = require('../../models/Conversation');
 
 describe('Analytics Feedback API', () => {
     beforeAll(async () => {
@@ -239,12 +279,46 @@ describe('Analytics Feedback API', () => {
 });
 
 describe('Feedback Recording', () => {
+    let testConv1Id, testConv2Id, testConv3Id;
+
+    beforeAll(async () => {
+        // Create test conversations for feedback recording tests
+        const wsId = global.__testWorkspaceId;
+        const conv1 = await Conversation.create({
+            userId: 'api-client',
+            workspaceId: wsId,
+            model: 'qwen2.5:7b-instruct-q4_0',
+            messages: [{ role: 'user', content: 'test' }]
+        });
+        const conv2 = await Conversation.create({
+            userId: 'api-client',
+            workspaceId: wsId,
+            model: 'qwen2.5:7b-instruct-q4_0',
+            messages: [{ role: 'user', content: 'test' }]
+        });
+        const conv3 = await Conversation.create({
+            userId: 'api-client',
+            workspaceId: wsId,
+            model: 'qwen2.5:7b-instruct-q4_0',
+            messages: [{ role: 'user', content: 'test' }]
+        });
+        testConv1Id = conv1._id.toString();
+        testConv2Id = conv2._id.toString();
+        testConv3Id = conv3._id.toString();
+    });
+
+    afterAll(async () => {
+        // Clean up test conversations
+        const wsId = global.__testWorkspaceId;
+        await Conversation.deleteMany({ userId: 'api-client', workspaceId: wsId });
+    });
+
     describe('POST /api/analytics/feedback', () => {
         it('should record positive feedback', async () => {
             const res = await request(app)
                 .post('/api/analytics/feedback')
                 .send({
-                    conversationId: 'test_record_1',
+                    conversationId: testConv1Id,
                     messageId: 'msg_1',
                     rating: 'positive',
                     model: 'qwen2.5:7b-instruct-q4_0',
@@ -259,7 +333,7 @@ describe('Feedback Recording', () => {
             const res = await request(app)
                 .post('/api/analytics/feedback')
                 .send({
-                    conversationId: 'test_record_2',
+                    conversationId: testConv2Id,
                     messageId: 'msg_2',
                     rating: 'negative',
                     model: 'qwen2.5:7b-instruct-q4_0',

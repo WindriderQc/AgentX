@@ -176,11 +176,11 @@ class AlertService extends EventEmitter {
     const since = new Date(Date.now() - this.config.cooldownMs);
     const now = new Date();
 
-    // ATOMIC OPERATION: Try to update existing alert within cooldown window
-    // This prevents race conditions where multiple threads create duplicate alerts
+    // First, try to update existing alert within cooldown window
     const updated = await Alert.findOneAndUpdate(
       {
         fingerprint,
+        status: 'active',
         lastOccurrence: { $gte: since }
       },
       {
@@ -195,26 +195,57 @@ class AlertService extends EventEmitter {
       return updated;
     }
 
-    // No existing alert in cooldown window - create new one atomically
-    // Using create() is safe here because we already checked for existing alerts
-    const alertDoc = await Alert.create({
-      ruleId: rule?.id || 'rule',
-      ruleName: rule?.name || 'Alert Rule',
-      severity: this._severityFromRule(rule),
-      title: this._titleFromRule(rule, data),
-      message: this._messageFromRule(rule, data),
-      context: {
-        component: data.component,
-        metric: data.metric,
-        currentValue: data.value,
-        threshold: data.threshold,
-        additionalData: data
+    // Check if there's an old alert outside cooldown - archive it first
+    // This allows creating a new alert with the same fingerprint
+    await Alert.updateMany(
+      {
+        fingerprint,
+        status: 'active',
+        lastOccurrence: { $lt: since }
       },
-      fingerprint,
-      channels: rule?.channels || rule?.event?.params?.channels || ['dataapi_log'],
-      channelConfig: rule?.channelConfig || rule?.event?.params?.channelConfig,
-      source: event.source || data.source || 'agentx'
-    });
+      {
+        $set: { status: 'resolved', 'resolution.resolved': true, 'resolution.resolvedAt': now }
+      }
+    );
+
+    // Create new alert - use unique index to handle race conditions
+    let alertDoc;
+    try {
+      alertDoc = await Alert.create({
+        ruleId: rule?.id || 'rule',
+        ruleName: rule?.name || 'Alert Rule',
+        severity: this._severityFromRule(rule),
+        title: this._titleFromRule(rule, data),
+        message: this._messageFromRule(rule, data),
+        context: {
+          component: data.component,
+          metric: data.metric,
+          currentValue: data.value,
+          threshold: data.threshold,
+          additionalData: data
+        },
+        fingerprint,
+        channels: rule?.channels || rule?.event?.params?.channels || ['dataapi_log'],
+        channelConfig: rule?.channelConfig || rule?.event?.params?.channelConfig,
+        source: event.source || data.source || 'agentx',
+        lastOccurrence: now
+      });
+    } catch (err) {
+      // Handle duplicate key error from concurrent creates - another thread won the race
+      // Retry as update to increment the winner's occurrence count
+      if (err.code === 11000) {
+        alertDoc = await Alert.findOneAndUpdate(
+          { fingerprint, status: 'active' },
+          {
+            $set: { lastOccurrence: now },
+            $inc: { occurrenceCount: 1 }
+          },
+          { new: true }
+        );
+        return alertDoc;
+      }
+      throw err;
+    }
 
     try {
       await this._sendNotifications(alertDoc, alertDoc.channels);

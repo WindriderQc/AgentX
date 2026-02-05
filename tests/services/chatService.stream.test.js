@@ -87,28 +87,23 @@ describe('chatService - handleChatRequestStream', () => {
         pricingSource: { source: 'mock' }
     };
 
-    // Helper to create mock streaming response
+    // Helper to create mock streaming response with async iterable body
     const createMockStreamResponse = (chunks) => {
         const encoder = new TextEncoder();
-        let index = 0;
+
+        // Create async iterable body (Node streams style)
+        const asyncIterableBody = {
+            async *[Symbol.asyncIterator]() {
+                for (const chunk of chunks) {
+                    yield encoder.encode(chunk);
+                }
+            }
+        };
 
         return {
             ok: true,
             statusText: 'OK',
-            body: {
-                getReader: () => ({
-                    read: async () => {
-                        if (index >= chunks.length) {
-                            return { done: true };
-                        }
-                        const chunk = chunks[index++];
-                        return {
-                            done: false,
-                            value: encoder.encode(chunk)
-                        };
-                    }
-                })
-            }
+            body: asyncIterableBody
         };
     };
 
