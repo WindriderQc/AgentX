@@ -143,7 +143,15 @@ export function inferOppositeHostUrl(execHostUrl, hosts) {
 /**
  * Tooltip encoding helpers
  */
-export const encodeTooltip = (value = '') => encodeURIComponent(String(value)).replace(/'/g, '%27');
+export const encodeTooltip = (value = '') => {
+    try {
+        return encodeURIComponent(String(value)).replace(/'/g, '%27');
+    } catch (err) {
+        // Handle lone surrogates or other malformed Unicode
+        const sanitized = String(value).replace(/[\uD800-\uDFFF]/g, '\uFFFD');
+        return encodeURIComponent(sanitized).replace(/'/g, '%27');
+    }
+};
 export const decodeTooltip = (value = '') => {
     try {
         return decodeURIComponent(value);
