@@ -2755,3 +2755,157 @@
                 .stage-icon-pulse {
                     animation: pulse-dot 1.5s ease-in-out infinite;
                 }
+
+                /* ─── Depth Matrix ─────────────────────────────── */
+
+                .depth-matrix-container {
+                    margin-bottom: 16px;
+                }
+
+                .depth-matrix {
+                    width: 100%;
+                    border-collapse: collapse;
+                    font-size: 0.9em;
+                }
+
+                .depth-matrix thead th {
+                    padding: 6px 8px;
+                    text-align: center;
+                    font-weight: 600;
+                    font-size: 0.8em;
+                    text-transform: uppercase;
+                    letter-spacing: 0.05em;
+                    color: #999;
+                    border-bottom: 1px solid rgba(255,255,255,0.1);
+                }
+
+                .depth-matrix thead th.level-col {
+                    text-align: left;
+                    width: 120px;
+                }
+
+                .depth-matrix thead th.count-col {
+                    text-align: right;
+                    width: 50px;
+                }
+
+                .depth-matrix tbody tr {
+                    border-bottom: 1px solid rgba(255,255,255,0.05);
+                    transition: background 0.15s;
+                }
+
+                .depth-matrix tbody tr:hover {
+                    background: rgba(255,255,255,0.03);
+                }
+
+                .depth-matrix td {
+                    padding: 4px 6px;
+                }
+
+                .depth-matrix td.level-col {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    padding: 8px 6px;
+                }
+
+                .depth-level-num {
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    width: 24px;
+                    height: 24px;
+                    border-radius: 6px;
+                    background: rgba(255,255,255,0.08);
+                    font-weight: 700;
+                    font-size: 0.85em;
+                    color: var(--text);
+                    flex-shrink: 0;
+                }
+
+                .depth-level-label {
+                    color: #999;
+                    font-size: 0.85em;
+                }
+
+                .depth-radio-cell {
+                    text-align: center;
+                    padding: 4px 2px;
+                }
+
+                .depth-radio {
+                    display: none;
+                }
+
+                .depth-radio-label {
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    width: 32px;
+                    height: 28px;
+                    border-radius: 6px;
+                    cursor: pointer;
+                    font-size: 0.8em;
+                    font-weight: 600;
+                    border: 1px solid transparent;
+                    transition: all 0.15s;
+                    color: #777;
+                    background: rgba(255,255,255,0.03);
+                }
+
+                .depth-radio-label:hover {
+                    background: rgba(255,255,255,0.08);
+                    color: #bbb;
+                }
+
+                .depth-radio:checked + .depth-radio-label {
+                    border-color: rgba(255,255,255,0.2);
+                    color: #fff;
+                }
+
+                .depth-radio:checked + .depth-opt-off {
+                    background: rgba(149, 165, 166, 0.3);
+                    border-color: rgba(149, 165, 166, 0.5);
+                }
+
+                .depth-radio:checked + .depth-opt-single {
+                    background: rgba(52, 152, 219, 0.3);
+                    border-color: rgba(52, 152, 219, 0.5);
+                }
+
+                .depth-radio:checked + .depth-opt-light {
+                    background: rgba(46, 204, 113, 0.3);
+                    border-color: rgba(46, 204, 113, 0.5);
+                }
+
+                .depth-radio:checked + .depth-opt-half {
+                    background: rgba(241, 196, 15, 0.3);
+                    border-color: rgba(241, 196, 15, 0.5);
+                }
+
+                .depth-radio:checked + .depth-opt-full {
+                    background: rgba(231, 76, 60, 0.3);
+                    border-color: rgba(231, 76, 60, 0.5);
+                }
+
+                .depth-est-count {
+                    font-weight: 600;
+                    font-size: 0.85em;
+                    color: #bbb;
+                }
+
+                .count-col {
+                    text-align: right;
+                    padding-right: 8px !important;
+                }
+
+                .depth-summary {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    padding: 10px 8px;
+                    margin-top: 4px;
+                    font-size: 0.9em;
+                    color: #bbb;
+                    border-top: 1px solid rgba(255,255,255,0.1);
+                }

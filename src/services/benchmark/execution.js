@@ -23,6 +23,76 @@ let activeBatchId = null;
 let activeHeartbeatInterval = null;
 
 /**
+ * Group an array by a key function
+ */
+function groupBy(arr, keyFn) {
+    const groups = {};
+    for (const item of arr) {
+        const key = typeof keyFn === 'function' ? keyFn(item) : item[keyFn];
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(item);
+    }
+    return groups;
+}
+
+/**
+ * Pick N random items from an array (Fisher-Yates partial shuffle)
+ */
+function randomPick(arr, n) {
+    if (n >= arr.length) return [...arr];
+    const copy = [...arr];
+    for (let i = copy.length - 1; i > copy.length - 1 - n; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [copy[i], copy[j]] = [copy[j], copy[i]];
+    }
+    return copy.slice(copy.length - n);
+}
+
+/**
+ * Sample prompts according to depth configuration
+ * Groups prompts by level, then samples per-category for balanced coverage
+ *
+ * @param {Array} prompts - All prompts fetched for selected levels
+ * @param {Object} depthConfig - Map of level number to depth string (off|single|light|half|full)
+ * @returns {Array} Sampled prompts
+ */
+function samplePromptsByDepth(prompts, depthConfig) {
+    const byLevel = groupBy(prompts, 'level');
+    const sampled = [];
+
+    for (const [level, levelPrompts] of Object.entries(byLevel)) {
+        const depth = depthConfig[level] || depthConfig[String(level)] || 'off';
+        if (depth === 'off') continue;
+        if (depth === 'full') {
+            sampled.push(...levelPrompts);
+            continue;
+        }
+
+        if (depth === 'single') {
+            sampled.push(randomPick(levelPrompts, 1)[0]);
+            continue;
+        }
+
+        const byCategory = groupBy(levelPrompts, 'category');
+
+        if (depth === 'light') {
+            // 1 per category
+            for (const catPrompts of Object.values(byCategory)) {
+                sampled.push(randomPick(catPrompts, 1)[0]);
+            }
+        } else if (depth === 'half') {
+            // ~50% per category, min 1
+            for (const catPrompts of Object.values(byCategory)) {
+                const n = Math.max(1, Math.ceil(catPrompts.length / 2));
+                sampled.push(...randomPick(catPrompts, n));
+            }
+        }
+    }
+
+    return sampled;
+}
+
+/**
  * Get the current active batch ID (for shutdown handler)
  */
 function getActiveBatchId() {
@@ -146,7 +216,7 @@ async function runTest({ model, host, prompt }) {
 /**
  * Start a batch benchmark test
  */
-async function startBatch({ host, models, levels, run_name, quality_scoring = true, judge_config = {}, execution_config = {}, tags = [], description = '', execution_mode = 'latency' }) {
+async function startBatch({ host, models, levels, run_name, quality_scoring = true, judge_config = {}, execution_config = {}, tags = [], description = '', execution_mode = 'latency', depth_config = null }) {
     if (!host || !models || !Array.isArray(models) || !levels || !Array.isArray(levels)) {
         throw new Error('host, models (array), and levels (array) are required');
     }
@@ -154,7 +224,12 @@ async function startBatch({ host, models, levels, run_name, quality_scoring = tr
     await seedPrompts();
 
     // Get prompts for selected levels
-    const selectedPrompts = await BenchmarkPrompt.getByLevels(levels);
+    let selectedPrompts = await BenchmarkPrompt.getByLevels(levels);
+
+    // Apply depth-based sampling if depth_config is provided
+    if (depth_config && typeof depth_config === 'object') {
+        selectedPrompts = samplePromptsByDepth(selectedPrompts, depth_config);
+    }
 
     if (selectedPrompts.length === 0) {
         throw new Error('No prompts found for selected levels');
@@ -221,6 +296,7 @@ async function startBatch({ host, models, levels, run_name, quality_scoring = tr
         quality_scoring,
         judge_config,
         execution_config: normalizedExecutionConfig,
+        depth_config: (depth_config && typeof depth_config === 'object') ? depth_config : null,
         run_name: run_name || `Batch ${new Date().toLocaleString()}`,
         total_tests: models.length * selectedPrompts.length,
         plan,
@@ -825,6 +901,19 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                                         'truncation.judge_tokens': scores.truncation.judge_tokens
                                     } : {};
 
+                                    const isJudgeFailed = scores.scoring_method === 'llm_failed';
+                                    let judgeFailureUpdate = {};
+                                    if (isJudgeFailed) {
+                                        const judgeErrorMessage = scores.error || scores.explanation || 'Judge failed';
+                                        const classified = classifyBenchmarkError(judgeErrorMessage);
+                                        judgeFailureUpdate = {
+                                            error: judgeErrorMessage,
+                                            infra_error: classified.infra,
+                                            error_type: classified.type,
+                                            error_http_status: classified.httpStatus
+                                        };
+                                    }
+
                                     const updateResult = await BenchmarkResult.updateOne(
                                         { _id: resultId },
                                         {
@@ -845,9 +934,11 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                                                 normalized_scores: composite.normalized,
                                                 // Confidence assessment fields
                                                 judge_confidence: scores.judge_confidence,
+                                                prompt_complexity: scores.prompt_complexity,
                                                 needs_review: scores.needs_review || false,
                                                 review_reason: scores.review_reason || null,
-                                                ...truncationUpdate
+                                                ...truncationUpdate,
+                                                ...judgeFailureUpdate
                                             }
                                         }
                                     );
@@ -1226,5 +1317,6 @@ module.exports = {
     stopBatch,
     getActiveBatchId,
     getActiveHeartbeatInterval,
-    clearActiveBatch
+    clearActiveBatch,
+    samplePromptsByDepth
 };

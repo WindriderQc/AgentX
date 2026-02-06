@@ -38,7 +38,19 @@ export function renderResultsTable(results, tbody) {
             : '';
 
         const hostInfo = r.host ? `<div style="font-size: 0.75em; color: var(--muted); margin-top: 2px;">Exec: ${formatHostLabel(r.host)}</div>` : '';
-        const judgeInfo = r.judge_host ? `<div style="font-size: 0.75em; color: var(--muted);">Judge: ${formatHostLabel(r.judge_host)}</div>` : '';
+        
+        let judgeInfo = r.judge_host ? `<div style="font-size: 0.75em; color: var(--muted);">Judge: ${formatHostLabel(r.judge_host)}</div>` : '';
+        
+        // Add confidence/complexity warning if needed
+        if (r.judge_confidence !== undefined && r.judge_confidence !== null) {
+            if (r.needs_review) {
+                 judgeInfo += `<div style="font-size: 0.75em; color: #e74c3c; margin-top: 1px;"><i class="fas fa-exclamation-triangle"></i> Review Needed</div>`;
+            } else if (r.judge_confidence < 0.8) {
+                 judgeInfo += `<div style="font-size: 0.75em; color: #f39c12; margin-top: 1px;"><i class="fas fa-exclamation-circle"></i> Low Conf</div>`;
+            } else if (r.prompt_complexity && r.prompt_complexity > 8) {
+                 judgeInfo += `<div style="font-size: 0.75em; color: #3498db; margin-top: 1px;"><i class="fas fa-brain"></i> Complex</div>`;
+            }
+        }
 
         const rowStyle = isFailed
             ? 'border-bottom: 1px solid rgba(231, 76, 60, 0.3); background: rgba(231, 76, 60, 0.05);'

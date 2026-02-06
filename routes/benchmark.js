@@ -10,6 +10,7 @@ const logger = require('../config/logger');
 const { attachWorkspace, optionalWorkspaceContext } = require('../src/middleware/workspace');
 const benchmarkService = require('../src/services/benchmark');
 const { JUDGE_CONFIG, ENHANCED_SCORING_CONFIGS } = require('../src/services/qualityScorer');
+const { classifyBenchmarkError } = require('../src/services/benchmark/errorClassifier');
 const { validateObjectId } = require('../src/helpers/objectIdValidator');
 const BenchmarkBatch = require('../models/BenchmarkBatch');
 const hardwareProfileService = require('../src/services/hardwareProfileService');
@@ -453,6 +454,19 @@ router.post('/results/:id/rejudge', async (req, res) => {
             quality_score: scores.quality_score
         }, result.prompt_category || 'interactive');
 
+        const isJudgeFailed = scores.scoring_method === 'llm_failed';
+        let judgeFailureUpdate = {};
+        if (isJudgeFailed) {
+            const judgeErrorMessage = scores.error || scores.explanation || 'Judge failed';
+            const classified = classifyBenchmarkError(judgeErrorMessage);
+            judgeFailureUpdate = {
+                error: judgeErrorMessage,
+                infra_error: classified.infra,
+                error_type: classified.type,
+                error_http_status: classified.httpStatus
+            };
+        }
+
         // Update result (including new confidence fields)
         await BenchmarkResult.updateOne(
             { _id: req.params.id },
@@ -474,7 +488,8 @@ router.post('/results/:id/rejudge', async (req, res) => {
                     // Confidence assessment fields
                     judge_confidence: scores.judge_confidence,
                     needs_review: scores.needs_review || false,
-                    review_reason: scores.review_reason || null
+                    review_reason: scores.review_reason || null,
+                    ...judgeFailureUpdate
                 }
             }
         );
@@ -678,7 +693,7 @@ router.get('/prompts', async (req, res) => {
  * Start a batch benchmark test with optional quality scoring - workspace-aware
  */
 router.post('/batch', optionalWorkspaceContext, async (req, res) => {
-    const { host, models, levels, run_name, quality_scoring, judge_config, execution_config, execution_mode } = req.body;
+    const { host, models, levels, run_name, quality_scoring, judge_config, execution_config, execution_mode, depth_config } = req.body;
 
     // Validation
     if (!host || !models || !Array.isArray(models) || !levels || !Array.isArray(levels)) {
@@ -726,6 +741,7 @@ router.post('/batch', optionalWorkspaceContext, async (req, res) => {
             judge_config,
             execution_config,
             execution_mode: execution_mode || 'latency', // Default to latency mode
+            depth_config: depth_config || null,
             workspaceId: req.workspace ? req.workspace._id : null
         });
 

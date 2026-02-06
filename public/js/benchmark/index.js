@@ -5,12 +5,14 @@ import { escapeHtml, debugLog } from './utils.js';
 import { getWorkspaceHeaders, fetchBenchmarkConfig } from './api.js';
 import { initChartDefaults } from './charts.js';
 import { loadOllamaHosts, loadModelsForHost, loadBatchModels, filterModelList, selectAllVisibleModels, loadModelRegistry, renderCategoryTabs } from './models.js';
-import { BENCHMARK_PRESETS, updateBatchInfo, updateLevelsSummary, applyLevelPreset, applyPresetLevels, setAdvancedMode, setHyperMode, hydrateThresholdInputs, bindThresholdInputs } from './batch-config.js';
+import { updateBatchInfo, renderDepthMatrix, bindDepthMatrix, updateDepthSummary, setAllDepths, getDepthConfig, getSelectedLevels, setAdvancedMode, setHyperMode, hydrateThresholdInputs, bindThresholdInputs } from './batch-config.js';
 import { runBatch, stopBatch, pollBatchProgress, resetBatchUI, recoverBatch, loadBatchDetails, loadBatchHistory } from './batch-execution.js';
 import { showJudgeDetails, closeJudgeDetails } from './judge-details.js';
 import { pickRepresentativeResultId } from './results-analysis.js';
 import { loadRecentTestsTimeline, getTimelineMode, scheduleTimelineScrollSync, showTimelineTooltip } from './timeline.js';
 import { rerenderRecentTests, toggleSuccessRateDetails } from './recent-tests.js';
+
+const JUDGE_CONFIG_STORAGE_KEY = 'benchmarkJudgeConfig';
 
 /**
  * Setup modals (close on click outside, escape key)
@@ -20,6 +22,7 @@ function setupModals() {
     window.addEventListener('click', (e) => {
         const judgeModal = document.getElementById('judgeDetailsModal');
         const presetModal = document.getElementById('presetManagementModal');
+        const settingsModal = document.getElementById('settingsModal');
 
         if (e.target === judgeModal) {
             judgeModal.style.display = 'none';
@@ -27,10 +30,13 @@ function setupModals() {
         if (e.target === presetModal) {
             presetModal.style.display = 'none';
         }
+        if (e.target === settingsModal) {
+            settingsModal.style.display = 'none';
+        }
     });
 
     // Close buttons
-    document.querySelectorAll('.modal-close, [data-modal-close]').forEach(btn => {
+    document.querySelectorAll('.modal-close, [data-modal-close], .modal .close').forEach(btn => {
         btn.addEventListener('click', (e) => {
             const modal = e.target.closest('.modal');
             if (modal) modal.style.display = 'none';
@@ -46,6 +52,171 @@ function setupModals() {
                 }
             });
         }
+    });
+}
+
+function readStoredJudgeConfig() {
+    try {
+        const raw = localStorage.getItem(JUDGE_CONFIG_STORAGE_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        return (parsed && typeof parsed === 'object') ? parsed : null;
+    } catch (err) {
+        console.warn('Failed to parse stored judge config:', err);
+        return null;
+    }
+}
+
+function writeStoredJudgeConfig(config) {
+    try {
+        localStorage.setItem(JUDGE_CONFIG_STORAGE_KEY, JSON.stringify(config));
+    } catch (err) {
+        console.warn('Failed to persist judge config:', err);
+    }
+}
+
+function coerceNumber(value, fallback = null) {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : fallback;
+}
+
+function getJudgeModelCandidates() {
+    const registryModels = Object.values(state.modelRegistryCache || {});
+    let candidates = registryModels
+        .filter(m => Array.isArray(m.categories) && m.categories.includes('judge'))
+        .map(m => m.modelName)
+        .filter(Boolean);
+
+    if (candidates.length === 0) {
+        candidates = registryModels.map(m => m.modelName).filter(Boolean);
+    }
+
+    if (candidates.length === 0 && Array.isArray(state.ollamaHosts)) {
+        const hostModels = [];
+        state.ollamaHosts.forEach(host => {
+            (host.models || []).forEach(model => hostModels.push(model));
+        });
+        candidates = hostModels;
+    }
+
+    return Array.from(new Set(candidates)).sort();
+}
+
+function populateJudgeModelSelect() {
+    const select = document.getElementById('judgeModel');
+    if (!select) return;
+    const candidates = getJudgeModelCandidates();
+    if (candidates.length === 0) {
+        select.innerHTML = '<option value="" disabled>No models available</option>';
+        return;
+    }
+
+    const current = state.currentJudgeConfig.model || select.value || '';
+    select.innerHTML = candidates
+        .map(model => `<option value="${escapeHtml(model)}">${escapeHtml(model)}</option>`)
+        .join('');
+    if (current && candidates.includes(current)) {
+        select.value = current;
+    } else {
+        select.value = candidates[0];
+        const next = { ...state.currentJudgeConfig, model: select.value };
+        state.setCurrentJudgeConfig(next);
+        writeStoredJudgeConfig(next);
+    }
+}
+
+function applyJudgeConfigToForm(config) {
+    if (!config) return;
+    const judgeModel = document.getElementById('judgeModel');
+    const judgeTemp = document.getElementById('judgeTemp');
+    const judgeTempVal = document.getElementById('judgeTempVal');
+    const judgeTimeout = document.getElementById('judgeTimeout');
+    const judgeMaxTokens = document.getElementById('judgeMaxTokens');
+    const judgeConcurrency = document.getElementById('judgeConcurrency');
+    const judgeConcurrencyVal = document.getElementById('judgeConcurrencyVal');
+    const judgeSameHost = document.getElementById('judgeSameHost');
+
+    if (judgeModel && config.model) judgeModel.value = config.model;
+    if (judgeTemp && config.temperature !== undefined && config.temperature !== null) {
+        judgeTemp.value = String(config.temperature);
+        if (judgeTempVal) judgeTempVal.textContent = String(config.temperature);
+    }
+    if (judgeTimeout && config.timeout !== undefined && config.timeout !== null) {
+        judgeTimeout.value = String(config.timeout);
+    }
+    if (judgeMaxTokens && config.num_predict !== undefined && config.num_predict !== null) {
+        judgeMaxTokens.value = String(config.num_predict);
+    }
+    if (judgeConcurrency && config.concurrency !== undefined && config.concurrency !== null) {
+        judgeConcurrency.value = String(config.concurrency);
+        if (judgeConcurrencyVal) judgeConcurrencyVal.textContent = String(config.concurrency);
+    }
+    if (judgeSameHost && typeof config.judge_same_host === 'boolean') {
+        judgeSameHost.checked = config.judge_same_host;
+    }
+}
+
+function getJudgeConfigOverridesFromForm() {
+    const overrides = {};
+    const judgeModel = document.getElementById('judgeModel');
+    const judgeTemp = document.getElementById('judgeTemp');
+    const judgeTimeout = document.getElementById('judgeTimeout');
+    const judgeMaxTokens = document.getElementById('judgeMaxTokens');
+    const judgeConcurrency = document.getElementById('judgeConcurrency');
+    const judgeSameHost = document.getElementById('judgeSameHost');
+
+    if (judgeModel && judgeModel.value) overrides.model = judgeModel.value;
+    if (judgeTemp && judgeTemp.value !== '') overrides.temperature = coerceNumber(judgeTemp.value, 0.1);
+    if (judgeTimeout && judgeTimeout.value !== '') overrides.timeout = coerceNumber(judgeTimeout.value, 120000);
+    if (judgeMaxTokens && judgeMaxTokens.value !== '') overrides.num_predict = coerceNumber(judgeMaxTokens.value, 200);
+    if (judgeConcurrency && judgeConcurrency.value !== '') overrides.concurrency = coerceNumber(judgeConcurrency.value, 2);
+    if (judgeSameHost) overrides.judge_same_host = !!judgeSameHost.checked;
+
+    return overrides;
+}
+
+function updateJudgeConfigFromForm() {
+    const overrides = getJudgeConfigOverridesFromForm();
+    const next = { ...state.currentJudgeConfig, ...overrides };
+    state.setCurrentJudgeConfig(next);
+    writeStoredJudgeConfig(next);
+}
+
+function bindJudgeSettingsUI() {
+    const settingsBtn = document.getElementById('settingsBtn');
+    const settingsModal = document.getElementById('settingsModal');
+    if (settingsBtn && settingsModal) {
+        settingsBtn.addEventListener('click', () => {
+            populateJudgeModelSelect();
+            applyJudgeConfigToForm(state.currentJudgeConfig);
+            settingsModal.style.display = 'block';
+        });
+    }
+
+    const judgeTemp = document.getElementById('judgeTemp');
+    const judgeTempVal = document.getElementById('judgeTempVal');
+    if (judgeTemp) {
+        judgeTemp.addEventListener('input', () => {
+            if (judgeTempVal) judgeTempVal.textContent = judgeTemp.value;
+            updateJudgeConfigFromForm();
+        });
+    }
+
+    const judgeConcurrency = document.getElementById('judgeConcurrency');
+    const judgeConcurrencyVal = document.getElementById('judgeConcurrencyVal');
+    if (judgeConcurrency) {
+        judgeConcurrency.addEventListener('input', () => {
+            if (judgeConcurrencyVal) judgeConcurrencyVal.textContent = judgeConcurrency.value;
+            updateJudgeConfigFromForm();
+        });
+    }
+
+    ['judgeModel', 'judgeTimeout', 'judgeMaxTokens', 'judgeSameHost'].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('change', () => {
+            updateJudgeConfigFromForm();
+        });
     });
 }
 
@@ -129,12 +300,15 @@ function showCategoryInsights(category) {
 async function loadJudgeConfig() {
     try {
         const json = await fetchBenchmarkConfig();
-        if (json.data && json.data.judgeConfig) {
-            state.setCurrentJudgeConfig(json.data.judgeConfig);
-        }
-        if (json.data && json.data.executionConfig) {
-            state.setCurrentExecutionConfig(json.data.executionConfig);
-        }
+        const data = json.data || {};
+        const judgeConfig = data.judge_config || data.judgeConfig || {};
+        const executionConfig = data.execution_config || data.executionConfig || {};
+        const storedJudgeConfig = readStoredJudgeConfig();
+        const mergedJudgeConfig = storedJudgeConfig ? { ...judgeConfig, ...storedJudgeConfig } : judgeConfig;
+        state.setCurrentJudgeConfig(mergedJudgeConfig);
+        state.setCurrentExecutionConfig(executionConfig);
+        populateJudgeModelSelect();
+        applyJudgeConfigToForm(mergedJudgeConfig);
     } catch (err) {
         console.error('Failed to load judge config:', err);
     }
@@ -151,6 +325,7 @@ async function initBenchmarkUI() {
 
     // Setup modals
     setupModals();
+    bindJudgeSettingsUI();
 
     // Host change handler
     const hostSelect = document.getElementById('host');
@@ -457,74 +632,18 @@ async function initBenchmarkUI() {
         });
     }
 
-    // Level preset buttons (updated to use new .preset-chip class)
-    const levelPresetButtons = document.querySelectorAll('.preset-chip');
-    levelPresetButtons.forEach(btn => {
-        btn.addEventListener('click', function() {
-            applyLevelPreset(this.getAttribute('data-preset'));
-        });
-    });
+    // Depth matrix initialization
+    renderDepthMatrix();
+    bindDepthMatrix();
 
-    // Clear levels button
-    const clearLevelsBtn = document.getElementById('clearLevelsBtn');
-    if (clearLevelsBtn) {
-        clearLevelsBtn.addEventListener('click', () => {
-            for (let i = 1; i <= 10; i++) {
-                const checkbox = document.getElementById(`level${i}`);
-                if (checkbox) checkbox.checked = false;
-            }
-            updateLevelsSummary();
-            updateBatchInfo();
-        });
+    // Depth quick-action buttons
+    const depthAllLightBtn = document.getElementById('depthAllLightBtn');
+    if (depthAllLightBtn) {
+        depthAllLightBtn.addEventListener('click', () => setAllDepths('light'));
     }
-
-    // Level checkbox listeners
-    for (let i = 1; i <= 10; i++) {
-        const checkbox = document.getElementById(`level${i}`);
-        if (checkbox) {
-            checkbox.addEventListener('change', () => {
-                updateLevelsSummary();
-                updateBatchInfo();
-            });
-        }
-    }
-
-    // Benchmark preset selector
-    const presetSelect = document.getElementById('benchmarkPresetSelect');
-    const presetSummary = document.getElementById('presetSummary');
-    const presetSummaryTitle = document.getElementById('presetSummaryTitle');
-    const presetSummaryDetails = document.getElementById('presetSummaryDetails');
-
-    if (presetSelect) {
-        presetSelect.addEventListener('change', function() {
-            const selectedPreset = this.value;
-            if (selectedPreset === 'custom') {
-                if (presetSummary) presetSummary.style.display = 'none';
-            } else {
-                const preset = BENCHMARK_PRESETS[selectedPreset];
-                if (preset) {
-                    if (presetSummaryTitle) presetSummaryTitle.textContent = preset.name;
-                    if (presetSummaryDetails) {
-                        presetSummaryDetails.innerHTML = preset.details.map(d => `<li>${d}</li>`).join('');
-                    }
-                    if (presetSummary) presetSummary.style.display = 'block';
-                    applyPresetLevels(preset.levels);
-                }
-            }
-        });
-
-        if (presetSelect.value === 'standard') {
-            presetSelect.dispatchEvent(new Event('change'));
-        }
-    }
-
-    // Manage presets button
-    const managePresetsBtn = document.getElementById('managePresetsBtn');
-    const presetManagementModal = document.getElementById('presetManagementModal');
-    if (managePresetsBtn && presetManagementModal) {
-        managePresetsBtn.addEventListener('click', () => {
-            presetManagementModal.style.display = 'block';
-        });
+    const depthAllOffBtn = document.getElementById('depthAllOffBtn');
+    if (depthAllOffBtn) {
+        depthAllOffBtn.addEventListener('click', () => setAllDepths('off'));
     }
 
     // Timeline controls
@@ -574,8 +693,7 @@ async function initBenchmarkUI() {
     }, 2000);
 
     // Initialize UI
-    updateLevelsSummary();
-    updateBatchInfo();
+    updateDepthSummary();
 
     debugLog('Benchmark UI initialized');
 }

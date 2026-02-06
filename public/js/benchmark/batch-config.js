@@ -1,86 +1,224 @@
-// batch-config.js - Batch configuration, presets, level/model matrix
+// batch-config.js - Batch configuration, depth matrix, level/model matrix
 
 import * as state from './state.js';
 import { escapeHtml, formatHostLabel, inferOppositeHostUrl } from './utils.js';
 
-// Preset configurations
-export const BENCHMARK_PRESETS = {
-    quick: {
-        name: 'Quick Test',
-        levels: [1, 2, 3, 4],
-        description: '20 prompts, levels 1-4',
-        estimatedTime: '~5 minutes',
-        details: [
-            '20 prompts, levels 1-4',
-            'Core categories only (coding, reasoning, factual)',
-            'Estimated time: ~5 minutes'
-        ]
-    },
-    standard: {
-        name: 'Standard Benchmark',
-        levels: [3, 4, 5, 6, 7],
-        description: '60 prompts, levels 3-7',
-        estimatedTime: '~15 minutes',
-        details: [
-            '60 prompts, levels 3-7',
-            'All 12 categories (5 prompts each)',
-            'Recommended for most models',
-            'Estimated time: ~15 minutes'
-        ]
-    },
-    comprehensive: {
-        name: 'Comprehensive Benchmark',
-        levels: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-        description: '120 prompts, levels 1-10',
-        estimatedTime: '~45 minutes',
-        details: [
-            '120 prompts, levels 1-10',
-            'All 12 categories (10 prompts each)',
-            'For detailed model profiling',
-            'Estimated time: ~45 minutes'
-        ]
-    },
-    overkill: {
-        name: 'Overkill Benchmark',
-        levels: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-        description: '240 prompts, levels 1-10 (with variations)',
-        estimatedTime: '~2 hours',
-        details: [
-            '240 prompts, levels 1-10 (with variations)',
-            'All 12 categories, multiple samples per level',
-            'For exhaustive testing and leaderboards',
-            'Estimated time: ~2 hours'
-        ]
-    }
+// ─── Depth Configuration ───────────────────────────────────────────
+
+const DEPTH_STORAGE_KEY = 'benchmarkDepthConfig';
+const DEPTH_OPTIONS = ['off', 'single', 'light', 'half', 'full'];
+
+const DEFAULT_DEPTH_CONFIG = {
+    1: 'light', 2: 'light', 3: 'light', 4: 'light', 5: 'light',
+    6: 'light', 7: 'light', 8: 'light', 9: 'light', 10: 'light'
+};
+
+// Approximate prompt counts per level (used for UI estimation only)
+// Actual counts come from the database at runtime
+const LEVEL_PROMPT_META = {
+    1:  { prompts: 16, categories: 10 },
+    2:  { prompts: 16, categories: 10 },
+    3:  { prompts: 16, categories: 10 },
+    4:  { prompts: 22, categories: 10 },
+    5:  { prompts: 22, categories: 10 },
+    6:  { prompts: 12, categories: 6 },
+    7:  { prompts: 12, categories: 6 },
+    8:  { prompts: 12, categories: 6 },
+    9:  { prompts: 6,  categories: 6 },
+    10: { prompts: 6,  categories: 6 }
+};
+
+const LEVEL_LABELS = {
+    1: 'Trivial', 2: 'Simple', 3: 'Easy', 4: 'Moderate', 5: 'Medium',
+    6: 'Challenging', 7: 'Hard', 8: 'Very Hard', 9: 'Extreme', 10: 'Master'
 };
 
 /**
- * Update batch info display
+ * Read depth config from localStorage (or return defaults)
  */
-export function updateBatchInfo() {
-    const selectedLevels = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].filter(l => {
-        const el = document.getElementById(`level${l}`);
-        return !!(el && el.checked);
-    });
+export function getDepthConfig() {
+    try {
+        const raw = localStorage.getItem(DEPTH_STORAGE_KEY);
+        if (!raw) return { ...DEFAULT_DEPTH_CONFIG };
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+            // Merge with defaults so new levels are covered
+            return { ...DEFAULT_DEPTH_CONFIG, ...parsed };
+        }
+    } catch (e) {
+        console.warn('Failed to parse depth config:', e);
+    }
+    return { ...DEFAULT_DEPTH_CONFIG };
+}
+
+/**
+ * Save depth config to localStorage
+ */
+export function setDepthConfig(config) {
+    try {
+        localStorage.setItem(DEPTH_STORAGE_KEY, JSON.stringify(config));
+    } catch (e) {
+        console.warn('Failed to save depth config:', e);
+    }
+}
+
+/**
+ * Estimate prompt count for a given level and depth
+ */
+export function calculatePromptCount(level, depth) {
+    const meta = LEVEL_PROMPT_META[level] || { prompts: 10, categories: 6 };
+    switch (depth) {
+        case 'off':    return 0;
+        case 'single': return 1;
+        case 'light':  return meta.categories; // 1 per category
+        case 'half':   return Math.max(meta.categories, Math.ceil(meta.prompts / 2)); // ~50%, min 1/cat
+        case 'full':   return meta.prompts;
+        default:       return 0;
+    }
+}
+
+/**
+ * Get total estimated prompts from current depth config
+ */
+export function getTotalEstimatedPrompts(config) {
+    let total = 0;
+    for (let level = 1; level <= 10; level++) {
+        const depth = (config && config[level]) || 'off';
+        total += calculatePromptCount(level, depth);
+    }
+    return total;
+}
+
+/**
+ * Get selected levels (non-off) from depth config
+ */
+export function getSelectedLevels(config) {
+    const levels = [];
+    for (let level = 1; level <= 10; level++) {
+        const depth = (config && config[level]) || 'off';
+        if (depth !== 'off') levels.push(level);
+    }
+    return levels;
+}
+
+/**
+ * Render the depth matrix table body
+ */
+export function renderDepthMatrix() {
+    const tbody = document.getElementById('depthMatrixBody');
+    if (!tbody) return;
+
+    const config = getDepthConfig();
+    let html = '';
+
+    for (let level = 1; level <= 10; level++) {
+        const currentDepth = config[level] || 'light';
+        const est = calculatePromptCount(level, currentDepth);
+        const label = LEVEL_LABELS[level] || '';
+
+        html += `<tr data-level="${level}">`;
+        html += `<td class="level-col"><span class="depth-level-num">${level}</span><span class="depth-level-label">${label}</span></td>`;
+
+        for (const opt of DEPTH_OPTIONS) {
+            const checked = currentDepth === opt ? 'checked' : '';
+            const id = `depth_${level}_${opt}`;
+            html += `<td class="depth-radio-cell">`;
+            html += `<input type="radio" name="depth_${level}" id="${id}" value="${opt}" ${checked} class="depth-radio" data-level="${level}" data-depth="${opt}">`;
+            html += `<label for="${id}" class="depth-radio-label depth-opt-${opt}">${opt === 'off' ? '—' : opt[0].toUpperCase()}</label>`;
+            html += `</td>`;
+        }
+
+        html += `<td class="count-col"><span class="depth-est-count">${est}</span></td>`;
+        html += `</tr>`;
+    }
+
+    tbody.innerHTML = html;
+}
+
+/**
+ * Update total prompts summary in the depth matrix footer
+ */
+export function updateDepthSummary() {
+    const config = getDepthConfig();
+    const totalPrompts = getTotalEstimatedPrompts(config);
+    const selectedLevels = getSelectedLevels(config);
     const selectedModels = Array.from(document.querySelectorAll('.batch-model-checkbox:checked'));
+    const modelCount = selectedModels.length;
+
+    const summaryEl = document.getElementById('depthSummary');
+    if (summaryEl) {
+        if (selectedLevels.length === 0) {
+            summaryEl.textContent = 'All levels off — select at least one';
+        } else {
+            const levelsStr = selectedLevels.join(', ');
+            summaryEl.textContent = `~${totalPrompts} prompts across ${selectedLevels.length} levels (${levelsStr})`;
+        }
+    }
 
     const batchModelCountEl = document.getElementById('batchModelCount');
     if (batchModelCountEl) {
-        batchModelCountEl.textContent = selectedModels.length;
+        batchModelCountEl.textContent = modelCount;
     }
-
-    // Each level has 4 prompts (from our seed data)
-    const promptsPerLevel = 4;
-    const totalTests = selectedLevels.length * promptsPerLevel * selectedModels.length;
 
     const info = document.getElementById('batchInfo');
     if (info) {
-        if (totalTests > 0) {
-            info.textContent = `${selectedModels.length} models x ${selectedLevels.length} levels (${selectedLevels.length * promptsPerLevel} prompts) = ${totalTests} tests`;
+        if (totalPrompts > 0 && modelCount > 0) {
+            const totalTests = totalPrompts * modelCount;
+            info.textContent = `${modelCount} models x ~${totalPrompts} prompts = ~${totalTests} tests`;
         } else {
             info.textContent = 'Select levels and models to start';
         }
     }
+}
+
+/**
+ * Bind depth matrix radio change events
+ */
+export function bindDepthMatrix() {
+    const tbody = document.getElementById('depthMatrixBody');
+    if (!tbody) return;
+
+    tbody.addEventListener('change', (e) => {
+        if (!e.target.classList.contains('depth-radio')) return;
+
+        const level = parseInt(e.target.dataset.level, 10);
+        const depth = e.target.dataset.depth;
+
+        const config = getDepthConfig();
+        config[level] = depth;
+        setDepthConfig(config);
+
+        // Update the estimate count in this row
+        const row = e.target.closest('tr');
+        if (row) {
+            const countEl = row.querySelector('.depth-est-count');
+            if (countEl) countEl.textContent = calculatePromptCount(level, depth);
+        }
+
+        updateDepthSummary();
+    });
+}
+
+/**
+ * Set all levels to a specific depth
+ */
+export function setAllDepths(depth) {
+    const config = {};
+    for (let level = 1; level <= 10; level++) {
+        config[level] = depth;
+    }
+    setDepthConfig(config);
+    renderDepthMatrix();
+    updateDepthSummary();
+}
+
+// ─── Batch Info (updated to use depth config) ──────────────────────
+
+/**
+ * Update batch info display (delegates to depth summary)
+ */
+export function updateBatchInfo() {
+    updateDepthSummary();
 }
 
 /**
@@ -128,7 +266,6 @@ export function renderBatchPlan(plan, fallbackHostUrl, qualityScoringEnabled, ex
 
     let html = '';
 
-    // 1. Judge Info Header with Execution Mode
     html += `<div class="d-flex align-items-center mb-3 p-2 bg-light rounded border flex-wrap gap-1">`;
     html += `<i class="fas fa-gavel me-2 text-primary"></i>`;
     html += `<strong class="me-2">Judge Model:</strong>`;
@@ -152,17 +289,14 @@ export function renderBatchPlan(plan, fallbackHostUrl, qualityScoringEnabled, ex
     }
     html += `</div>`;
 
-    // 2. Execution Nodes
     if (Array.isArray(plan.exec_hosts) && plan.exec_hosts.length > 0) {
         html += `<div class="card mb-3 shadow-0 border">`;
         html += `<div class="card-header py-2 bg-light"><strong>Execution Nodes</strong></div>`;
         html += `<ul class="list-group list-group-flush">`;
-
         for (const h of plan.exec_hosts) {
             const execLabel = formatHostLabel(h.exec_host);
             const judgeLabel = qualityScoringEnabled ? formatHostLabel(h.judge_host) : 'Disabled';
             const modelCount = Array.isArray(h.models) ? h.models.length : 0;
-
             html += `<li class="list-group-item p-2">`;
             html += `<div class="row align-items-center g-2">`;
             html += `<div class="col-md-5"><small class="text-muted d-block">Execution Host</small><span class="text-break font-monospace" style="font-size: 0.9em;">${execLabel}</span></div>`;
@@ -170,14 +304,11 @@ export function renderBatchPlan(plan, fallbackHostUrl, qualityScoringEnabled, ex
             html += `<div class="col-md-2 text-end">`;
             html += `<span class="badge bg-secondary mb-1 d-inline-block" title="Models">${modelCount} models</span><br>`;
             html += `<span class="badge bg-info text-dark" title="Tests">${h.tests} tests</span>`;
-            html += `</div>`;
-            html += `</div>`;
-            html += `</li>`;
+            html += `</div></div></li>`;
         }
         html += `</ul></div>`;
     }
 
-    // 3. Workload Breakdown
     if (Array.isArray(plan.categories) && plan.categories.length > 0) {
         html += `<div class="card shadow-0 border">`;
         html += `<div class="card-header py-2 bg-light"><strong>Workload Breakdown</strong></div>`;
@@ -185,98 +316,16 @@ export function renderBatchPlan(plan, fallbackHostUrl, qualityScoringEnabled, ex
         html += `<table class="table table-sm table-striped mb-0 align-middle" style="font-size: 0.9em;">`;
         html += `<thead class="table-light"><tr><th>Category</th><th class="text-center">Prompts</th><th class="text-center">Models</th><th class="text-end">Total Tests</th></tr></thead>`;
         html += `<tbody>`;
-
         for (const c of plan.categories) {
-            html += `<tr>`;
-            html += `<td class="fw-bold text-capitalize">${c.category}</td>`;
-            html += `<td class="text-center">${c.prompt_count}</td>`;
-            html += `<td class="text-center">${plan.total_models}</td>`;
-            html += `<td class="text-end fw-bold">${c.tests}</td>`;
-            html += `</tr>`;
+            html += `<tr><td class="fw-bold text-capitalize">${c.category}</td><td class="text-center">${c.prompt_count}</td><td class="text-center">${plan.total_models}</td><td class="text-end fw-bold">${c.tests}</td></tr>`;
         }
-
         html += `</tbody></table></div></div>`;
     }
 
     return html;
 }
 
-/**
- * Apply level preset
- */
-export function applyLevelPreset(preset) {
-    let levelsToSelect = [];
-
-    switch (preset) {
-        case 'all':
-            levelsToSelect = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-            break;
-        case 'basic':
-            levelsToSelect = [1, 2, 3, 4];
-            break;
-        case 'intermediate':
-            levelsToSelect = [3, 4, 5, 6, 7];
-            break;
-        case 'advanced':
-            levelsToSelect = [6, 7, 8, 9, 10];
-            break;
-    }
-
-    // Uncheck all first
-    for (let i = 1; i <= 10; i++) {
-        const checkbox = document.getElementById(`level${i}`);
-        if (checkbox) checkbox.checked = false;
-    }
-
-    // Check selected levels
-    levelsToSelect.forEach(level => {
-        const checkbox = document.getElementById(`level${level}`);
-        if (checkbox) checkbox.checked = true;
-    });
-
-    updateLevelsSummary();
-    updateBatchInfo();
-}
-
-/**
- * Apply preset levels from BENCHMARK_PRESETS
- */
-export function applyPresetLevels(levels) {
-    for (let i = 1; i <= 10; i++) {
-        const checkbox = document.getElementById(`level${i}`);
-        if (checkbox) checkbox.checked = false;
-    }
-
-    levels.forEach(level => {
-        const checkbox = document.getElementById(`level${level}`);
-        if (checkbox) checkbox.checked = true;
-    });
-
-    updateLevelsSummary();
-    updateBatchInfo();
-}
-
-/**
- * Update levels summary display
- */
-export function updateLevelsSummary() {
-    const selectedLevels = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].filter(l => {
-        const el = document.getElementById(`level${l}`);
-        return !!(el && el.checked);
-    });
-
-    const summaryEl = document.getElementById('levelsSummary');
-    if (summaryEl) {
-        if (selectedLevels.length === 0) {
-            summaryEl.textContent = 'No levels selected';
-        } else if (selectedLevels.length === 10) {
-            summaryEl.textContent = 'All 10 levels selected (1-10)';
-        } else {
-            const levelStr = selectedLevels.join(', ');
-            summaryEl.textContent = `${selectedLevels.length} level${selectedLevels.length > 1 ? 's' : ''} selected (${levelStr})`;
-        }
-    }
-}
+// ─── Anomaly Thresholds ────────────────────────────────────────────
 
 /**
  * Get anomaly thresholds from localStorage
@@ -303,16 +352,10 @@ export function getAnomalyThresholds() {
     }
 }
 
-/**
- * Set anomaly thresholds in localStorage
- */
 export function setAnomalyThresholds(next) {
     localStorage.setItem('benchmarkAnomalyThresholds', JSON.stringify(next));
 }
 
-/**
- * Hydrate threshold inputs from localStorage
- */
 export function hydrateThresholdInputs() {
     const t = getAnomalyThresholds();
     const map = [
@@ -332,9 +375,6 @@ export function hydrateThresholdInputs() {
     }
 }
 
-/**
- * Bind threshold input handlers
- */
 export function bindThresholdInputs() {
     const container = document.getElementById('hyperThresholds');
     if (!container || container.dataset.bound) return;
@@ -368,9 +408,8 @@ export function bindThresholdInputs() {
     container.dataset.bound = 'true';
 }
 
-/**
- * Set advanced mode
- */
+// ─── Advanced / Hyper mode ─────────────────────────────────────────
+
 export function setAdvancedMode(showAdvanced) {
     localStorage.setItem('benchmarkShowAdvanced', showAdvanced ? 'true' : 'false');
     if (!showAdvanced) {
@@ -397,9 +436,6 @@ export function setAdvancedMode(showAdvanced) {
     if (hyperDetails) hyperDetails.style.display = (showAdvanced && showHyper) ? 'block' : 'none';
 }
 
-/**
- * Set hyper mode
- */
 export function setHyperMode(showHyper) {
     localStorage.setItem('benchmarkShowHyper', showHyper ? 'true' : 'false');
     const toggleHyperBtn = document.getElementById('toggleHyperBtn');

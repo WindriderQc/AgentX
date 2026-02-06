@@ -3,7 +3,7 @@
 import * as state from './state.js';
 import { getWorkspaceHeaders } from './api.js';
 import { startBatchTest, stopBatchTest, fetchBatchProgress, fetchActiveBatches, recoverBatchApi, fetchBatchHistory } from './api.js';
-import { renderBatchPlan, setAdvancedMode, setHyperMode, getAnomalyThresholds, hydrateThresholdInputs, bindThresholdInputs } from './batch-config.js';
+import { renderBatchPlan, setAdvancedMode, setHyperMode, getAnomalyThresholds, hydrateThresholdInputs, bindThresholdInputs, getDepthConfig, getSelectedLevels } from './batch-config.js';
 import { escapeHtml, formatDuration, toFiniteNumber, summarizeNumbers, countBy, topCounts, formatHostLabel, findRowByAttr } from './utils.js';
 import { updateTimeline } from './timeline.js';
 import { pickRepresentativeResultId, pickRepresentativeResultIdForModel } from './results-analysis.js';
@@ -105,16 +105,15 @@ export function resetBatchUI() {
  * Run batch test
  */
 export async function runBatch() {
-    const selectedLevels = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].filter(l =>
-        document.getElementById(`level${l}`)?.checked
-    );
+    const depthConfig = getDepthConfig();
+    const selectedLevels = getSelectedLevels(depthConfig);
     const selectedModels = Array.from(document.querySelectorAll('.batch-model-checkbox:checked'))
         .map(cb => cb.value);
     const host = document.getElementById('host')?.value;
     const qualityScoring = document.getElementById('qualityScoring')?.checked;
 
     if (selectedLevels.length === 0) {
-        alert('Please select at least one prompt level');
+        alert('Please select at least one prompt level (set depth to something other than Off)');
         return;
     }
 
@@ -177,6 +176,7 @@ export async function runBatch() {
             host,
             models: selectedModels,
             levels: selectedLevels,
+            depth_config: depthConfig,
             quality_scoring: qualityScoring,
             judge_config: state.currentJudgeConfig,
             execution_config: executionConfig,

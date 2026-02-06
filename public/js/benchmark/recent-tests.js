@@ -73,7 +73,18 @@ export function renderRecentTests(tests) {
             let color = '#2ecc71';
             if (qualityScore < 4) color = '#e74c3c';
             else if (qualityScore < 7) color = '#f39c12';
-            qualityBadge = `<span style="color: ${color}; font-weight: 600;">Q${qualityScore.toFixed(1)}</span>`;
+            
+            // Add warning icon for review/complexity
+            let warningIcon = '';
+            if (test.needs_review) {
+                warningIcon = '<i class="fas fa-exclamation-triangle" style="color: #e74c3c; margin-right: 4px; font-size: 0.9em;" title="Review Needed - Judge Uncertain"></i>';
+            } else if (test.judge_confidence !== undefined && test.judge_confidence < 0.8) {
+                warningIcon = '<i class="fas fa-exclamation-circle" style="color: #f39c12; margin-right: 4px; font-size: 0.9em;" title="Low Confidence"></i>';
+            } else if (test.prompt_complexity && test.prompt_complexity > 8) {
+                warningIcon = '<i class="fas fa-brain" style="color: #3498db; margin-right: 4px; font-size: 0.9em;" title="High Complexity Prompt"></i>';
+            }
+            
+            qualityBadge = `${warningIcon}<span style="color: ${color}; font-weight: 600;">Q${qualityScore.toFixed(1)}</span>`;
         }
 
         const lat = toFiniteNumber(test.latency);

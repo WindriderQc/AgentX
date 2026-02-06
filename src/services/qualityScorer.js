@@ -18,7 +18,7 @@ const JUDGE_CONFIG = {
     model: 'qwen2.5:7b-instruct-q5_K_M',  // Fast but capable judge
     fallback_model: 'llama3.2:1b',       // Fallback if primary unavailable
     host: null,                           // Will be set dynamically from env
-    timeout: 30000,                       // 30s timeout for judge calls
+    timeout: 120000,                      // 120s timeout for judge calls (large/slow judge models)
     temperature: 0.3,                     // Low but not too low - allows some variation for nuanced scoring
     num_predict: 500,                     // Increased for multi-dimension responses with explanations
     max_retries: 2                        // Retry on transient failures
@@ -804,6 +804,7 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
             ...routedResult,
             scoring_time_ms: Date.now() - startTime,
             judge_confidence: confidence.judge_confidence,
+            prompt_complexity: confidence.prompt_complexity,
             needs_review: confidence.needs_review,
             review_reason: confidence.review_reason
         };
@@ -988,6 +989,7 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
     return {
         ...baseResult,
         judge_confidence: confidence.judge_confidence,
+        prompt_complexity: confidence.prompt_complexity,
         needs_review: confidence.needs_review,
         review_reason: confidence.review_reason
     };
@@ -1491,6 +1493,10 @@ async function batchScore(results, options = {}) {
         return {
             ...result,
             ...scores,
+            judge_confidence: scores.judge_confidence,
+            prompt_complexity: scores.prompt_complexity,
+            needs_review: scores.needs_review,
+            review_reason: scores.review_reason,
             ...composite
         };
     };

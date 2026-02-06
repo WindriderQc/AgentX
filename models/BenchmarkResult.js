@@ -230,6 +230,13 @@ const BenchmarkResultSchema = new mongoose.Schema({
         default: null,
         description: 'Confidence in judge reliability (0-1)'
     },
+    prompt_complexity: {
+        type: Number,
+        min: 1,
+        max: 10,
+        default: null,
+        description: 'Estimated complexity of the prompt (1-10)'
+    },
     needs_review: {
         type: Boolean,
         default: false,

@@ -64,9 +64,10 @@ export function showJudgeDetails(idOrIndex) {
  * Uses the actual element IDs from benchmark.html
  */
 function populateJudgeModal(result, resultIndex) {
-    const isFailed = (result.success === false)
-        || (String(result.scoring_method || '').toLowerCase() === 'exec_failed')
-        || (String(result.scoring_method || '').toLowerCase() === 'llm_failed');
+    const scoringMethod = String(result.scoring_method || '').toLowerCase();
+    const isExecFailed = (result.success === false) || (scoringMethod === 'exec_failed');
+    const isJudgeFailed = scoringMethod === 'llm_failed';
+    const isFailed = isExecFailed || isJudgeFailed;
 
     const isInfraFail = isFailed && (result.infra_error === true || String(result.error_type || '').toLowerCase() === 'infra');
     const failType = isFailed
@@ -116,8 +117,25 @@ function populateJudgeModal(result, resultIndex) {
     const judgeStepsEl = document.getElementById('detailJudgeSteps');
     const judgeMetaEl = document.getElementById('detailJudgeMeta');
     if (judgeStepsEl) {
-        if (isFailed) {
+        if (isExecFailed) {
             judgeStepsEl.innerHTML = `<div style="color: #e74c3c;"><i class="fas fa-exclamation-triangle"></i> Test failed - no judging performed</div>`;
+        } else if (isJudgeFailed) {
+            const steps = [];
+            steps.push(`<div><i class="fas fa-robot" style="color: var(--accent); width: 20px;"></i> Model executed prompt</div>`);
+            if (result.latency) {
+                const lat = toFiniteNumber(result.latency);
+                steps.push(`<div><i class="fas fa-clock" style="color: var(--muted); width: 20px;"></i> Latency: ${lat < 1000 ? lat + 'ms' : (lat/1000).toFixed(2) + 's'}</div>`);
+            }
+            if (result.tokens_per_sec) {
+                const tps = toFiniteNumber(result.tokens_per_sec);
+                if (tps !== null) {
+                    steps.push(`<div><i class="fas fa-tachometer-alt" style="color: var(--muted); width: 20px;"></i> Throughput: ${tps.toFixed(2)} tok/s</div>`);
+                }
+            }
+            const errMsgRaw = (result.error || result.error_message || result.quality_explanation || '').toString();
+            const errMsg = errMsgRaw.replace(/\s+/g, ' ').trim();
+            steps.push(`<div><i class="fas fa-gavel" style="color: #e74c3c; width: 20px;"></i> Judge failed${errMsg ? `: ${escapeHtml(errMsg).slice(0, 180)}` : ''}</div>`);
+            judgeStepsEl.innerHTML = steps.join('');
         } else {
             const steps = [];
             steps.push(`<div><i class="fas fa-robot" style="color: var(--accent); width: 20px;"></i> Model executed prompt</div>`);
@@ -150,7 +168,7 @@ function populateJudgeModal(result, resultIndex) {
     // Model response - element ID: detailResponse
     const responseEl = document.getElementById('detailResponse');
     if (responseEl) {
-        if (isFailed) {
+        if (isExecFailed) {
             responseEl.innerHTML = `<span style="color: #e74c3c;"><strong>Error:</strong> ${escapeHtml(result.error || 'Unknown error')}</span>`;
         } else {
             responseEl.textContent = result.response || 'No response captured';
@@ -177,8 +195,13 @@ function populateJudgeModal(result, resultIndex) {
     // Judge explanation - element ID: detailExplanation
     const explanationEl = document.getElementById('detailExplanation');
     if (explanationEl) {
-        if (isFailed) {
+        if (isExecFailed) {
             explanationEl.innerHTML = '<span style="color: var(--muted);">Not available for failed tests</span>';
+            explanationEl.style.borderLeftColor = '#e74c3c';
+            explanationEl.style.background = 'rgba(231, 76, 60, 0.1)';
+        } else if (isJudgeFailed) {
+            const failureText = result.quality_explanation || result.error || 'Judge failed without additional details.';
+            explanationEl.textContent = failureText;
             explanationEl.style.borderLeftColor = '#e74c3c';
             explanationEl.style.background = 'rgba(231, 76, 60, 0.1)';
         } else if (result.judge_reasoning || result.quality_reasoning || result.judge_explanation) {
@@ -189,6 +212,90 @@ function populateJudgeModal(result, resultIndex) {
             explanationEl.textContent = 'No explanation available from judge';
             explanationEl.style.borderLeftColor = 'var(--muted)';
             explanationEl.style.background = 'rgba(0,0,0,0.1)';
+        }
+    }
+
+    // Complexity Analysis - element ID: detailComplexity
+    // This section shows the complexity vs judge capability analysis
+    let complexityEl = document.getElementById('detailComplexity');
+    
+    // Create section if it doesn't exist
+    if (!complexityEl) {
+        const parent = explanationEl ? explanationEl.parentElement : document.querySelector('.modal-body');
+        if (parent) {
+            const container = document.createElement('div');
+            container.className = 'detail-section';
+            container.style.marginTop = '20px';
+            container.innerHTML = `
+                <h4>Complexity Analysis</h4>
+                <div id="detailComplexity" class="explanation-box" style="border-left-color: var(--primary);"></div>
+            `;
+            // Insert after explanation if possible, otherwise append
+            if (explanationEl && explanationEl.parentElement) {
+                explanationEl.parentElement.after(container);
+            } else {
+                parent.appendChild(container);
+            }
+            complexityEl = document.getElementById('detailComplexity');
+        }
+    }
+
+    if (complexityEl) {
+        if (result.prompt_complexity) {
+            const complexity = result.prompt_complexity;
+            const confidence = result.judge_confidence !== undefined ? result.judge_confidence : 1.0;
+            const needsReview = result.needs_review || false;
+            
+            // Determine status color
+            let color = '#2ecc71'; // Green (Good)
+            let status = 'Reliable Evaluation';
+            
+            if (needsReview) {
+                color = '#e74c3c'; // Red (Review Needed)
+                status = 'Review Needed';
+            } else if (confidence < 0.8) {
+                color = '#f39c12'; // Orange (Caution)
+                status = 'Low Confidence';
+            } else if (complexity > 7) {
+                color = '#3498db'; // Blue (High Complexity)
+                status = 'High Complexity';
+            }
+
+            const barWidth = Math.min(100, Math.max(0, complexity * 10));
+            
+            complexityEl.innerHTML = `
+                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                    <div>
+                        <strong>Complexity Score:</strong> ${complexity.toFixed(1)}/10
+                        <div style="font-size: 0.8em; color: var(--muted); margin-top: 2px;">
+                            Based on prompt length, instructions, and constraints
+                        </div>
+                    </div>
+                    <div style="text-align: right;">
+                        <span class="badge" style="background: ${color}; color: white;">${status}</span>
+                        <div style="font-size: 0.8em; color: var(--muted); margin-top: 4px;">
+                            Judge Confidence: ${(confidence * 100).toFixed(0)}%
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="progress-bar" style="height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; margin-bottom: 12px;">
+                    <div style="width: ${barWidth}%; height: 100%; background: linear-gradient(90deg, #2ecc71 0%, ${complexity > 5 ? '#f39c12' : '#2ecc71'} 50%, ${complexity > 8 ? '#e74c3c' : '#f39c12'} 100%);"></div>
+                </div>
+
+                ${result.review_reason ? `
+                <div style="background: rgba(231, 76, 60, 0.1); border: 1px solid rgba(231, 76, 60, 0.3); border-radius: 4px; padding: 8px; margin-top: 10px;">
+                    <i class="fas fa-exclamation-triangle" style="color: #e74c3c; margin-right: 6px;"></i>
+                    <strong>Warning:</strong> ${escapeHtml(result.review_reason)}
+                </div>
+                ` : ''}
+            `;
+            complexityEl.style.borderLeftColor = color;
+            complexityEl.style.background = result.needs_review ? 'rgba(231, 76, 60, 0.05)' : 'rgba(0,0,0,0.1)';
+        } else {
+            complexityEl.innerHTML = '<span style="color: var(--muted);">Complexity analysis not available for this test result.</span>';
+            complexityEl.style.borderLeftColor = 'var(--muted)';
+            complexityEl.style.background = 'rgba(0,0,0,0.05)';
         }
     }
 }

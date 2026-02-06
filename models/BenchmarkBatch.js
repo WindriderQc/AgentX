@@ -56,6 +56,10 @@ const BenchmarkBatchSchema = new mongoose.Schema({
         enum: ['latency', 'throughput'],
         default: 'latency'
     },
+    depth_config: {
+        type: Object,
+        default: null
+    },
 
     // Execution Plan
     plan: {
