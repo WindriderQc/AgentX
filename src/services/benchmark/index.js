@@ -18,6 +18,7 @@ const { getResults, getSummary, getDashboard, compareModels, getQualityBreakdown
 const { getBatches, getBatch, getBatchStatsByTag, clearResults, clearFailedResults, getActiveStats } = require('./batches');
 const { getJudgeLeaderboard, getJudgeBreakdown, getJudgeActivity, getTruncationStats } = require('./judges');
 const { calculateAllGeneralistScores, GENERALIST_CATEGORY_WEIGHTS } = require('./generalistScore');
+const { judgeResult, judgeBatch, stopJudging, getJudgingStatus, stopAllJudging } = require('./judging');
 
 // Graceful shutdown handler - mark batch as interrupted when PM2 restarts
 process.on('SIGTERM', async () => {
@@ -28,6 +29,9 @@ process.on('SIGTERM', async () => {
     const activeHeartbeatInterval = getActiveHeartbeatInterval();
 
     const shutdown = async () => {
+        // Stop all active judging jobs
+        stopAllJudging();
+
         if (activeBatchId) {
             logger.warn('SIGTERM received - marking active batch as interrupted', { batchId: activeBatchId });
             try {
@@ -35,7 +39,7 @@ process.on('SIGTERM', async () => {
                     clearInterval(activeHeartbeatInterval);
                 }
                 await BenchmarkBatch.updateOne(
-                    { _id: activeBatchId, status: { $in: ['running', 'judging'] } },
+                    { _id: activeBatchId, status: 'running' },
                     {
                         $set: {
                             status: 'interrupted',
@@ -120,6 +124,12 @@ class BenchmarkService {
     getJudgeBreakdown = getJudgeBreakdown;
     getJudgeActivity = getJudgeActivity;
     getTruncationStats = getTruncationStats;
+
+    // Judging (decoupled from execution)
+    judgeResult = judgeResult;
+    judgeBatch = judgeBatch;
+    stopJudging = stopJudging;
+    getJudgingStatus = getJudgingStatus;
 
     // Generalist Leaderboard
     async getGeneralistLeaderboard() {

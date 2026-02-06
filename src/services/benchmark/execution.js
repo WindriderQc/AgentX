@@ -9,10 +9,9 @@ const { getFetchOptions } = require('../../helpers/httpAgent');
 const BenchmarkPrompt = require('../../../models/BenchmarkPrompt');
 const BenchmarkResult = require('../../../models/BenchmarkResult');
 const BenchmarkBatch = require('../../../models/BenchmarkBatch');
-const { scoreResponse, calculateCompositeScore, JUDGE_CONFIG } = require('../qualityScorer');
+const { JUDGE_CONFIG } = require('../qualityScorer');
 const { HOSTS } = require('../modelRouter');
 const hardwareProfileService = require('../hardwareProfileService');
-const ConcurrencyQueue = require('./ConcurrencyQueue');
 const { normalizeExecutionConfig, applyLengthHint, DEFAULT_EXECUTION_CONFIG } = require('./config');
 const { seedPrompts } = require('./init');
 const { classifyBenchmarkError } = require('./errorClassifier');
@@ -515,15 +514,11 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
         return warmupData;
     };
 
-    // Per-batch judge queue - set concurrency based on execution mode
-    const judgeConcurrency = executionMode === 'latency' ? 1 : (judgeConfig.concurrency || 2);
-    const judgeQueue = new ConcurrencyQueue(judgeConcurrency);
-
     // Set up periodic heartbeat to update last_activity_at (every 10 seconds)
     const heartbeatInterval = setInterval(async () => {
         try {
             const currentBatch = await BenchmarkBatch.findById(batchId);
-            if (currentBatch && ['running', 'judging'].includes(currentBatch.status)) {
+            if (currentBatch && currentBatch.status === 'running') {
                 await currentBatch.heartbeat();
             } else {
                 clearInterval(heartbeatInterval);
@@ -568,19 +563,6 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                     judgeHostUrl = HOSTS.secondary;
                 } else if (hostUrl === HOSTS.secondary) {
                     judgeHostUrl = HOSTS.primary;
-                }
-            }
-
-            // Warmup judge BEFORE starting tests (if separate host)
-            // This ensures judge model is loaded and ready before any test results need scoring
-            let judgeWarmupData = null;
-            if (enableQualityScoring && !judgeSameHost) {
-                const jModel = judgeConfig.model || JUDGE_CONFIG.model;
-                try {
-                    judgeWarmupData = await warmupModel(judgeHostUrl, jModel, 'judge_warmup');
-                    logger.info('Judge model ready', { host: judgeHostUrl, model: jModel });
-                } catch (err) {
-                    logger.warn('Judge warmup failed, judge calls may be slow', { error: err.message });
                 }
             }
 
@@ -775,12 +757,6 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                                 response: modelWarmupData.response,
                                 latency_ms: modelWarmupData.latency_ms,
                                 already_loaded: modelWarmupData.already_loaded
-                            } : null,
-                            judge_warmup: judgeWarmupData ? {
-                                prompt: judgeWarmupData.prompt,
-                                response: judgeWarmupData.response,
-                                latency_ms: judgeWarmupData.latency_ms,
-                                already_loaded: judgeWarmupData.already_loaded
                             } : null
                         });
 
@@ -836,173 +812,6 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                                 error: refreshErr.message
                             });
                             // Continue anyway - not critical for batch execution
-                        }
-
-                        // Queue quality scoring if enabled
-                        if (enableQualityScoring) {
-                            // CRITICAL: Use cleaned response (without <think> blocks) for judge evaluation
-                            // This ensures the judge evaluates the actual answer, not internal reasoning
-                            const responseText = cleanedResponse;
-
-                            // Backpressure: wait if judge queue is too large to prevent memory buildup
-                            await judgeQueue.waitForCapacity(10);
-
-                            judgeQueue.add(async () => {
-                                try {
-                                    // Update current test to judging stage using direct updateOne
-                                    // This avoids loading the entire batch document into memory
-                                    await BenchmarkBatch.updateOne(
-                                        { _id: batchId },
-                                        {
-                                            $set: {
-                                                current_test: {
-                                                    model,
-                                                    prompt_id: prompt._id ? prompt._id.toString() : null,
-                                                    prompt_name: prompt.name,
-                                                    prompt_level: prompt.level,
-                                                    stage: 'judging',
-                                                    started_at: new Date(),
-                                                    test_number: testNumber
-                                                },
-                                                last_activity_at: new Date()
-                                            }
-                                        }
-                                    );
-
-                                    // Judge model was warmed up before tests started (see warmup section above)
-                                    const judgeStart = Date.now();
-                                    const scores = await scoreResponse({
-                                        response: responseText,
-                                        prompt: prompt,
-                                        judgeConfig: {
-                                            ...judgeConfig,
-                                            host: judgeHostUrl
-                                        }
-                                    });
-                                    const judgeDuration = Date.now() - judgeStart;
-
-                                    // Use category-specific composite scoring if category is available
-                                    const categoryOrProfile = prompt.category || 'interactive';
-                                    const composite = calculateCompositeScore({
-                                        latency,
-                                        tokens_per_sec,
-                                        quality_score: scores.quality_score
-                                    }, categoryOrProfile);
-
-                                    logger.debug('Updating result with score', {
-                                        resultId: resultId?.toString(),
-                                        quality_score: scores.quality_score,
-                                        scoring_method: scores.scoring_method
-                                    });
-
-                                    // Build truncation update if present (only judge output truncation tracked)
-                                    const truncationUpdate = scores.truncation ? {
-                                        'truncation.judge_truncated': scores.truncation.judge_truncated,
-                                        'truncation.judge_tokens': scores.truncation.judge_tokens
-                                    } : {};
-
-                                    const isJudgeFailed = scores.scoring_method === 'llm_failed';
-                                    let judgeFailureUpdate = {};
-                                    if (isJudgeFailed) {
-                                        const judgeErrorMessage = scores.error || scores.explanation || 'Judge failed';
-                                        const classified = classifyBenchmarkError(judgeErrorMessage);
-                                        judgeFailureUpdate = {
-                                            error: judgeErrorMessage,
-                                            infra_error: classified.infra,
-                                            error_type: classified.type,
-                                            error_http_status: classified.httpStatus
-                                        };
-                                    }
-
-                                    const updateResult = await BenchmarkResult.updateOne(
-                                        { _id: resultId },
-                                        {
-                                            $set: {
-                                                quality_score: scores.quality_score,
-                                                quality_breakdown: scores.breakdown,
-                                                quality_explanation: scores.explanation,
-                                                judge_prompt: scores.judge_prompt,
-                                                judge_model: scores.judge_model,
-                                                judge_raw_response: scores.judge_raw_response,
-                                                judge_hardware_snapshot: scores.judge_hardware_snapshot || null,
-                                                scoring_method: scores.scoring_method,
-                                                scoring_type: scores.scoring_type || prompt.scoring_type || 'reasoning',
-                                                scoring_time_ms: scores.scoring_time_ms,
-                                                quick_pattern: scores.quick_pattern,
-                                                composite_score: composite.composite_score,
-                                                composite_profile_used: composite.composite_profile_used,
-                                                normalized_scores: composite.normalized,
-                                                // Confidence assessment fields
-                                                judge_confidence: scores.judge_confidence,
-                                                prompt_complexity: scores.prompt_complexity,
-                                                needs_review: scores.needs_review || false,
-                                                review_reason: scores.review_reason || null,
-                                                ...truncationUpdate,
-                                                ...judgeFailureUpdate
-                                            }
-                                        }
-                                    );
-
-                                    logger.debug('Result update complete', {
-                                        resultId: resultId?.toString(),
-                                        matchedCount: updateResult.matchedCount,
-                                        modifiedCount: updateResult.modifiedCount
-                                    });
-
-                                    // Record judge completion with timeline tracking using direct updateOne
-                                    // This avoids loading the entire batch document into memory
-                                    await BenchmarkBatch.updateOne(
-                                        { _id: batchId },
-                                        {
-                                            $inc: { judge_completed: 1 },
-                                            $set: { last_activity_at: new Date() },
-                                            $push: {
-                                                timeline: {
-                                                    $each: [{
-                                                        timestamp: new Date(),
-                                                        event: 'judge_complete',
-                                                        model,
-                                                        prompt_id: prompt._id ? prompt._id.toString() : null,
-                                                        prompt_level: prompt.level,
-                                                        duration_ms: judgeDuration,
-                                                        success: true
-                                                    }],
-                                                    $slice: -2500  // Cap timeline to prevent memory growth
-                                                }
-                                            }
-                                        }
-                                    );
-                                } catch (scoreErr) {
-                                    logger.warn('Quality scoring failed', {
-                                        model,
-                                        prompt: prompt.name,
-                                        error: scoreErr.message
-                                    });
-
-                                    await BenchmarkResult.updateOne(
-                                        { _id: resultId },
-                                        {
-                                            $set: {
-                                                scoring_method: 'llm_failed',
-                                                quality_explanation: scoreErr.message,
-                                                judge_model: judgeConfig.model || JUDGE_CONFIG.model
-                                            }
-                                        }
-                                    );
-
-                                    await BenchmarkBatch.updateOne(
-                                        { _id: batchId },
-                                        { $inc: { judge_completed: 1, judge_failed: 1 } }
-                                    );
-                                }
-                            }).catch((enqueueErr) => {
-                                logger.error('Failed to enqueue judge task', {
-                                    batchId,
-                                    model,
-                                    prompt: prompt.name,
-                                    error: enqueueErr.message
-                                });
-                            });
                         }
 
                         logger.info('Batch test completed', { batchId, model, prompt: prompt.name, latency });
@@ -1132,94 +941,19 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
     }
 
     if (enableQualityScoring) {
-        const postExecBatch = await BenchmarkBatch.findById(batchId);
-        const wasStopped = postExecBatch && postExecBatch.status === 'stopped';
+        await BenchmarkBatch.updateOne(
+            { _id: batchId },
+            { $set: { generated_at: new Date() } }
+        );
+    }
 
-        // judge_total = only SUCCESSFUL executions (tests that can actually be judged)
-        // Failed executions have nothing to judge, so don't count them
-        let judgeableCount = 0;
-        if (postExecBatch && typeof postExecBatch.completed === 'number') {
-            // completed includes failures, so subtract failed to get successful count
-            const failedCount = postExecBatch.failed || 0;
-            judgeableCount = Math.max(0, postExecBatch.completed - failedCount);
-        }
-
-        // Fallback: count successful results directly from database
-        if (judgeableCount === 0) {
-            // Note: BenchmarkResult is already imported at top of file
-            judgeableCount = await BenchmarkResult.countDocuments({
-                batch_id: batchId,
-                success: true  // Only count successful executions
-            });
-            logger.info('Using actual successful result count for judge_total', { batchId, judgeableCount });
-        }
-
-        if (!wasStopped) {
-            await BenchmarkBatch.updateOne(
-                { _id: batchId },
-                {
-                    $set: {
-                        status: 'judging',
-                        generated_at: new Date(),
-                        judge_total: judgeableCount
-                    }
-                }
-            );
-        } else {
-            await BenchmarkBatch.updateOne(
-                { _id: batchId },
-                { $set: { judge_total: judgeableCount, generated_at: new Date() } }
-            );
-            clearInterval(heartbeatInterval);
-            activeHeartbeatInterval = null;
-            activeBatchId = null;
-            return;
-        }
-
-        // Wait for all judge tasks to complete with timeout protection
-        logger.info('Starting judge queue drain', {
-            batchId,
-            queueStatus: judgeQueue.getStatus()
-        });
-
-        const drainResult = await judgeQueue.drain({
-            timeoutMs: 30 * 60 * 1000,  // 30 minutes max
-            stallTimeoutMs: 2 * 60 * 1000,  // 2 minutes stall detection
-            onProgress: (status) => {
-                logger.debug('Judge queue progress', { batchId, ...status });
-            }
-        });
-
-        if (drainResult.timedOut) {
-            logger.error('Judge queue drain failed', {
-                batchId,
-                reason: drainResult.reason,
-                completed: drainResult.completed,
-                failed: drainResult.failed
-            });
-            // Record timeline event for debugging
-            await recordBatchTimelineEvent('judge_drain_timeout', {
-                reason: drainResult.reason,
-                completed: drainResult.completed,
-                failed: drainResult.failed
-            });
-        }
-
-        logger.info('Judge queue drain completed', {
-            batchId,
-            completed: drainResult.completed,
-            failed: drainResult.failed,
-            timedOut: drainResult.timedOut
-        });
-
-        // Check if stopped during judging
-        const postJudgeBatch = await BenchmarkBatch.findById(batchId);
-        if (postJudgeBatch && postJudgeBatch.status === 'stopped') {
-            clearInterval(heartbeatInterval);
-            activeHeartbeatInterval = null;
-            activeBatchId = null;
-            return;
-        }
+    // Check if stopped during execution
+    const postExecBatch = await BenchmarkBatch.findById(batchId).select('status').lean();
+    if (postExecBatch && postExecBatch.status === 'stopped') {
+        clearInterval(heartbeatInterval);
+        activeHeartbeatInterval = null;
+        activeBatchId = null;
+        return;
     }
 
     // Clear heartbeat interval and active batch tracking
@@ -1243,8 +977,7 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
         try {
             const uniqueCombos = await BenchmarkResult.distinct('model', {
                 batch_id: batchId,
-                success: true,
-                quality_score: { $ne: null }
+                success: true
             });
 
             for (const model of uniqueCombos) {
@@ -1286,6 +1019,18 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                 error: err.message
             });
         }
+
+        // Trigger background judging after tests complete
+        if (enableQualityScoring) {
+            const { judgeBatch } = require('./judging');
+            const judgeConcurrency = executionMode === 'latency' ? 1 : (judgeConfig.concurrency || 2);
+            judgeBatch(batchId, {
+                judgeConfig: { ...judgeConfig },
+                concurrency: judgeConcurrency
+            }).catch(err => {
+                logger.error('Background judging failed', { batchId, error: err.message });
+            });
+        }
     }
 }
 
@@ -1299,7 +1044,7 @@ async function stopBatch(batchId) {
         throw new Error('Batch not found');
     }
 
-    const stoppableStatuses = new Set(['pending', 'running', 'judging']);
+    const stoppableStatuses = new Set(['pending', 'running']);
     if (!stoppableStatuses.has(batch.status)) {
         return { batch, alreadyStopped: true };
     }

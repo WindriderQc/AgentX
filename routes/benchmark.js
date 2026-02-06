@@ -10,7 +10,7 @@ const logger = require('../config/logger');
 const { attachWorkspace, optionalWorkspaceContext } = require('../src/middleware/workspace');
 const benchmarkService = require('../src/services/benchmark');
 const { JUDGE_CONFIG, ENHANCED_SCORING_CONFIGS } = require('../src/services/qualityScorer');
-const { classifyBenchmarkError } = require('../src/services/benchmark/errorClassifier');
+const { judgeResult, judgeBatch, stopJudging, getJudgingStatus } = require('../src/services/benchmark/judging');
 const { validateObjectId } = require('../src/helpers/objectIdValidator');
 const BenchmarkBatch = require('../models/BenchmarkBatch');
 const hardwareProfileService = require('../src/services/hardwareProfileService');
@@ -402,111 +402,26 @@ router.get('/results/:id', async (req, res) => {
  */
 router.post('/results/:id/rejudge', async (req, res) => {
     try {
-        const BenchmarkResult = require('../models/BenchmarkResult');
-        const BenchmarkPrompt = require('../models/BenchmarkPrompt');
-        const { scoreResponse, calculateCompositeScore, JUDGE_CONFIG } = require('../src/services/qualityScorer');
-
-        // Validate ObjectId
         if (!validateObjectId(req.params.id, res, 'Result ID')) return;
 
-        const result = await BenchmarkResult.findById(req.params.id);
-
-        if (!result) {
-            return res.status(404).json({ status: 'error', error: 'Result not found' });
-        }
-
-        if (!result.success) {
-            return res.status(400).json({ status: 'error', error: 'Cannot judge failed test executions' });
-        }
-
-        if (!result.response) {
-            return res.status(400).json({ status: 'error', error: 'No response to judge' });
-        }
-
-        // Get judge config from request or use defaults
-        // IMPORTANT: Do NOT fall back to result.host (execution host) - use JUDGE_CONFIG.host instead
-        const judgeConfig = {
-            model: req.body.judge_model || result.judge_model || JUDGE_CONFIG.model,
-            host: req.body.judge_host || result.judge_host || JUDGE_CONFIG.host
-        };
-
-        // Build prompt object for scoring
-        const promptData = {
-            prompt: result.prompt,
-            name: result.prompt_name,
-            level: result.prompt_level,
-            category: result.prompt_category,
-            expected_answer: result.expected_answer
-        };
+        const judgeConfig = {};
+        if (req.body.judge_model) judgeConfig.model = req.body.judge_model;
+        if (req.body.judge_host) judgeConfig.host = req.body.judge_host;
 
         logger.info('Re-judging result', { resultId: req.params.id, judgeConfig });
 
-        const scores = await scoreResponse({
-            response: result.response,
-            prompt: promptData,
-            judgeConfig
-        });
-
-        // Calculate composite score
-        const composite = calculateCompositeScore({
-            latency: result.latency,
-            tokens_per_sec: result.tokens_per_sec,
-            quality_score: scores.quality_score
-        }, result.prompt_category || 'interactive');
-
-        const isJudgeFailed = scores.scoring_method === 'llm_failed';
-        let judgeFailureUpdate = {};
-        if (isJudgeFailed) {
-            const judgeErrorMessage = scores.error || scores.explanation || 'Judge failed';
-            const classified = classifyBenchmarkError(judgeErrorMessage);
-            judgeFailureUpdate = {
-                error: judgeErrorMessage,
-                infra_error: classified.infra,
-                error_type: classified.type,
-                error_http_status: classified.httpStatus
-            };
-        }
-
-        // Update result (including new confidence fields)
-        await BenchmarkResult.updateOne(
-            { _id: req.params.id },
-            {
-                $set: {
-                    quality_score: scores.quality_score,
-                    quality_breakdown: scores.breakdown,
-                    quality_explanation: scores.explanation,
-                    judge_prompt: scores.judge_prompt,
-                    judge_model: scores.judge_model,
-                    judge_raw_response: scores.judge_raw_response,
-                    scoring_method: scores.scoring_method,
-                    scoring_type: scores.scoring_type || 'reasoning',
-                    scoring_time_ms: scores.scoring_time_ms,
-                    quick_pattern: scores.quick_pattern,
-                    composite_score: composite.composite_score,
-                    composite_profile_used: composite.composite_profile_used,
-                    normalized_scores: composite.normalized,
-                    // Confidence assessment fields
-                    judge_confidence: scores.judge_confidence,
-                    needs_review: scores.needs_review || false,
-                    review_reason: scores.review_reason || null,
-                    ...judgeFailureUpdate
-                }
-            }
-        );
+        const result = await judgeResult(req.params.id, judgeConfig);
 
         res.json({
             status: 'success',
-            data: {
-                quality_score: scores.quality_score,
-                scoring_method: scores.scoring_method,
-                composite_score: composite.composite_score,
-                judge_confidence: scores.judge_confidence,
-                needs_review: scores.needs_review
-            }
+            data: result
         });
     } catch (err) {
         logger.error('Failed to rejudge result', { error: err.message, id: req.params.id });
-        res.status(500).json({ status: 'error', error: err.message });
+        const statusCode = err.message.includes('not found') ? 404
+            : err.message.includes('Cannot judge') || err.message.includes('No response') ? 400
+            : 500;
+        res.status(statusCode).json({ status: 'error', error: err.message });
     }
 });
 
@@ -516,39 +431,24 @@ router.post('/results/:id/rejudge', async (req, res) => {
  */
 router.post('/batch/:id/rejudge-pending', async (req, res) => {
     try {
-        const BenchmarkResult = require('../models/BenchmarkResult');
-
-        // Validate ObjectId
         if (!validateObjectId(req.params.id, res, 'Batch ID')) return;
 
-        // Find all pending results in this batch
-        const pendingResults = await BenchmarkResult.find({
-            batch_id: req.params.id,
-            success: true,
-            scoring_method: 'pending'
-        }).select('_id').lean();
+        logger.info('Rejudging pending results', { batchId: req.params.id });
 
-        if (pendingResults.length === 0) {
-            return res.json({
-                status: 'success',
-                message: 'No pending results to rejudge',
-                data: { rejudged: 0 }
-            });
-        }
+        // Start judging in background, return immediately
+        judgeBatch(req.params.id, {
+            judgeConfig: req.body.judge_config || {},
+            concurrency: req.body.concurrency || 2
+        }).catch(err => {
+            logger.error('Background rejudge failed', { batchId: req.params.id, error: err.message });
+        });
 
-        logger.info('Rejudging pending results', { batchId: req.params.id, count: pendingResults.length });
-
-        // Return immediately with count, let client poll or call individual rejudge
         res.json({
             status: 'success',
-            message: `Found ${pendingResults.length} pending results. Use /results/:id/rejudge for each.`,
-            data: {
-                pending_count: pendingResults.length,
-                result_ids: pendingResults.map(r => r._id.toString())
-            }
+            message: 'Judging started in background. Use GET /batch/:id/judge/status to track progress.'
         });
     } catch (err) {
-        logger.error('Failed to find pending results', { error: err.message, batchId: req.params.id });
+        logger.error('Failed to start rejudge', { error: err.message, batchId: req.params.id });
         res.status(500).json({ status: 'error', error: err.message });
     }
 });
@@ -766,6 +666,9 @@ router.post('/batch/:id/stop', async (req, res) => {
     try {
         const { batch, alreadyStopped } = await benchmarkService.stopBatch(req.params.id);
 
+        // Also stop any active judging
+        stopJudging(req.params.id);
+
         res.json({
             status: 'success',
             message: alreadyStopped ? `Batch already ${batch.status}` : 'Batch stopped',
@@ -956,12 +859,15 @@ router.post('/batch/:id/recover', async (req, res) => {
             return res.status(404).json({ status: 'error', error: 'Batch not found' });
         }
 
-        if (!['running', 'judging'].includes(batch.status)) {
+        if (!['running', 'judging'].includes(batch.status) && batch.judge_status !== 'running') {
             return res.status(400).json({
                 status: 'error',
                 error: `Batch is ${batch.status}, cannot recover`
             });
         }
+
+        // Stop any active judging
+        stopJudging(req.params.id);
 
         await batch.markAsStopped();
 
@@ -972,6 +878,77 @@ router.post('/batch/:id/recover', async (req, res) => {
         });
     } catch (err) {
         logger.error('Failed to recover batch', { error: err.message, batchId: req.params.id });
+        res.status(500).json({ status: 'error', error: err.message });
+    }
+});
+
+/**
+ * POST /api/benchmark/batch/:id/judge
+ * Trigger judging on a completed batch
+ */
+router.post('/batch/:id/judge', async (req, res) => {
+    try {
+        if (!validateObjectId(req.params.id, res, 'Batch ID')) return;
+
+        const options = {
+            judgeConfig: req.body.judge_config || {},
+            concurrency: req.body.concurrency || 2,
+            force: req.body.force || false
+        };
+
+        // Start judging in background
+        judgeBatch(req.params.id, options).catch(err => {
+            logger.error('Background judging failed', { batchId: req.params.id, error: err.message });
+        });
+
+        res.json({
+            status: 'success',
+            message: 'Judging started in background. Use GET /batch/:id/judge/status to track progress.'
+        });
+    } catch (err) {
+        logger.error('Failed to start judging', { error: err.message, batchId: req.params.id });
+        res.status(500).json({ status: 'error', error: err.message });
+    }
+});
+
+/**
+ * GET /api/benchmark/batch/:id/judge/status
+ * Get judge progress for a batch
+ */
+router.get('/batch/:id/judge/status', async (req, res) => {
+    try {
+        if (!validateObjectId(req.params.id, res, 'Batch ID')) return;
+
+        const status = await getJudgingStatus(req.params.id);
+
+        res.json({
+            status: 'success',
+            data: status
+        });
+    } catch (err) {
+        logger.error('Failed to get judging status', { error: err.message, batchId: req.params.id });
+        const statusCode = err.message.includes('not found') ? 404 : 500;
+        res.status(statusCode).json({ status: 'error', error: err.message });
+    }
+});
+
+/**
+ * POST /api/benchmark/batch/:id/judge/stop
+ * Stop active judging for a batch
+ */
+router.post('/batch/:id/judge/stop', async (req, res) => {
+    try {
+        if (!validateObjectId(req.params.id, res, 'Batch ID')) return;
+
+        const stopped = stopJudging(req.params.id);
+
+        res.json({
+            status: 'success',
+            message: stopped ? 'Judging stop requested' : 'No active judging to stop',
+            data: { was_active: stopped }
+        });
+    } catch (err) {
+        logger.error('Failed to stop judging', { error: err.message, batchId: req.params.id });
         res.status(500).json({ status: 'error', error: err.message });
     }
 });

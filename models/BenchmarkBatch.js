@@ -91,6 +91,12 @@ const BenchmarkBatchSchema = new mongoose.Schema({
         default: 'pending',
         index: true
     },
+    judge_status: {
+        type: String,
+        enum: ['none', 'pending', 'running', 'completed', 'failed', 'stopped'],
+        default: 'none',
+        index: true
+    },
     total_tests: {
         type: Number,
         required: true,
@@ -265,8 +271,12 @@ BenchmarkBatchSchema.statics.getRecent = function(limit = 20) {
 };
 
 BenchmarkBatchSchema.statics.getActive = function() {
-    return this.find({ status: { $in: ['running', 'judging'] } })
-        .sort({ created_at: -1 });
+    return this.find({
+        $or: [
+            { status: { $in: ['running', 'judging'] } },
+            { judge_status: 'running' }
+        ]
+    }).sort({ created_at: -1 });
 };
 
 BenchmarkBatchSchema.statics.getCompleted = function(limit = 20) {
@@ -279,6 +289,18 @@ BenchmarkBatchSchema.statics.cleanupStale = async function(inactivityThresholdSe
     // Only mark batches as stale if they've been inactive for the threshold period
     // This prevents killing active batches on server restart/reload
     const threshold = new Date(Date.now() - (inactivityThresholdSeconds * 1000));
+
+    // Also clean up stuck judge_status
+    await this.updateMany(
+        {
+            judge_status: 'running',
+            $or: [
+                { last_activity_at: { $lt: threshold } },
+                { last_activity_at: null }
+            ]
+        },
+        { $set: { judge_status: 'failed' } }
+    );
 
     // Find stale batches first so we can fix them properly
     const staleBatches = await this.find({
@@ -335,10 +357,19 @@ BenchmarkBatchSchema.statics.cleanupStale = async function(inactivityThresholdSe
 BenchmarkBatchSchema.statics.findStuck = async function(inactivityThresholdSeconds = 300) {
     const threshold = new Date(Date.now() - (inactivityThresholdSeconds * 1000));
     return this.find({
-        status: { $in: ['running', 'judging'] },
-        $or: [
-            { last_activity_at: { $lt: threshold } },
-            { last_activity_at: null }
+        $and: [
+            {
+                $or: [
+                    { status: { $in: ['running', 'judging'] } },
+                    { judge_status: 'running' }
+                ]
+            },
+            {
+                $or: [
+                    { last_activity_at: { $lt: threshold } },
+                    { last_activity_at: null }
+                ]
+            }
         ]
     }).sort({ last_activity_at: 1 });
 };
@@ -381,6 +412,11 @@ BenchmarkBatchSchema.methods.markAsFailed = function(error) {
 BenchmarkBatchSchema.methods.markAsStopped = function() {
     this.status = 'stopped';
     this.completed_at = new Date();
+    return this.save();
+};
+
+BenchmarkBatchSchema.methods.markJudgingComplete = function() {
+    this.judge_status = 'completed';
     return this.save();
 };
 
