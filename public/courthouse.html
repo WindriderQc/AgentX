@@ -13,6 +13,7 @@
     <link rel="stylesheet" href="/styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="/css/benchmark-analytics.css">
+    <link rel="stylesheet" href="/css/courthouse-review.css">
     <style>
         .courthouse-container {
             max-width: 1600px;
@@ -443,6 +444,12 @@
                 <button class="validation-tab" data-tab="calibration" style="padding: 8px 16px; border: none; background: transparent; color: var(--muted); border-radius: 6px 6px 0 0; cursor: pointer;">Calibration</button>
                 <button class="validation-tab" data-tab="bias" style="padding: 8px 16px; border: none; background: transparent; color: var(--muted); border-radius: 6px 6px 0 0; cursor: pointer;">Bias Detection</button>
                 <button class="validation-tab" data-tab="failures" style="padding: 8px 16px; border: none; background: transparent; color: var(--muted); border-radius: 6px 6px 0 0; cursor: pointer;">Failure Modes</button>
+                <button class="validation-tab" data-tab="humanReview" style="padding: 8px 16px; border: none; background: transparent; color: var(--muted); border-radius: 6px 6px 0 0; cursor: pointer;">
+                    <i class="fas fa-user-check"></i> Human Review
+                </button>
+                <button class="validation-tab" data-tab="groundTruth" style="padding: 8px 16px; border: none; background: transparent; color: var(--muted); border-radius: 6px 6px 0 0; cursor: pointer;">
+                    <i class="fas fa-database"></i> Ground Truth
+                </button>
             </div>
 
             <!-- Consistency Tab Content -->
@@ -629,12 +636,174 @@
                     <p>Failure analysis loads automatically with health check</p>
                 </div>
             </div>
+
+            <!-- Human Review Tab Content -->
+            <div id="humanReviewTab" class="validation-tab-content" style="display: none;">
+                <div style="color: var(--muted); font-size: 0.9em; margin-bottom: 14px;">
+                    Review benchmark results flagged by the judge confidence system. Override or confirm judge scores with your own expert assessment.
+                </div>
+
+                <!-- Review Stats -->
+                <div class="stats-grid" id="reviewStatsGrid" style="margin-bottom: 16px;">
+                    <div class="stat-card">
+                        <div class="stat-value" id="reviewPending">-</div>
+                        <div class="stat-label">Pending Review</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="reviewCompleted">-</div>
+                        <div class="stat-label">Reviewed</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="reviewTotal">-</div>
+                        <div class="stat-label">Total Flagged</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="reviewAvgConfidence">-</div>
+                        <div class="stat-label">Avg Confidence</div>
+                    </div>
+                </div>
+
+                <!-- Review Filters -->
+                <div class="review-filters">
+                    <label>
+                        <i class="fas fa-filter"></i> Model:
+                        <select id="reviewFilterModel">
+                            <option value="">All Models</option>
+                        </select>
+                    </label>
+                    <label>
+                        Max Confidence:
+                        <input type="range" id="reviewFilterConfidence" min="0" max="1" step="0.05" value="0.7" style="width: 120px;">
+                        <span id="reviewFilterConfidenceVal" style="color: var(--accent); font-weight: 600;">0.70</span>
+                    </label>
+                    <button id="reviewRefreshBtn" class="btn-secondary btn-sm">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                </div>
+
+                <!-- Review Queue -->
+                <div id="reviewQueueContainer">
+                    <div style="text-align: center; padding: 40px; color: var(--muted);">
+                        <i class="fas fa-user-check" style="font-size: 2em; margin-bottom: 12px; opacity: 0.5;"></i>
+                        <p>Loading review queue...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Ground Truth Tab Content -->
+            <div id="groundTruthTab" class="validation-tab-content" style="display: none;">
+                <div style="color: var(--muted); font-size: 0.9em; margin-bottom: 14px;">
+                    Expert-curated reference scores used to validate judge accuracy. Add entries and run evaluations to measure judge quality.
+                </div>
+
+                <!-- Ground Truth Stats -->
+                <div class="stats-grid" style="margin-bottom: 16px;">
+                    <div class="stat-card">
+                        <div class="stat-value" id="gtTotalEntries">-</div>
+                        <div class="stat-label">Total Entries</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="gtCategoriesCovered">-</div>
+                        <div class="stat-label">Categories Covered</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="gtAvgDeviation">-</div>
+                        <div class="stat-label">Avg Judge Deviation</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="gtValidatedEntries">-</div>
+                        <div class="stat-label">Validated Entries</div>
+                    </div>
+                </div>
+
+                <!-- Ground Truth Actions -->
+                <div style="display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center;">
+                    <button id="gtAddBtn" class="review-submit-btn">
+                        <i class="fas fa-plus-circle"></i> Add Entry
+                    </button>
+                    <button id="gtRunEvalBtn" class="btn-secondary btn-sm">
+                        <i class="fas fa-flask"></i> Run Evaluation
+                    </button>
+                    <button id="gtRefreshBtn" class="btn-secondary btn-sm">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                    <select id="gtFilterCategory" style="padding: 6px 10px; border-radius: 6px; border: 1px solid var(--panel-border); background: rgba(0,0,0,0.2); color: var(--text); font-size: 0.85em;">
+                        <option value="">All Categories</option>
+                        <option value="code">Code</option>
+                        <option value="reasoning">Reasoning</option>
+                        <option value="factual">Factual</option>
+                        <option value="math">Math</option>
+                        <option value="creative">Creative</option>
+                        <option value="general">General</option>
+                        <option value="instruction-following">Instruction Following</option>
+                        <option value="edge-cases">Edge Cases</option>
+                    </select>
+                </div>
+
+                <!-- Ground Truth Eval Results (hidden until run) -->
+                <div id="gtEvalResults" style="display: none; margin-bottom: 16px;"></div>
+
+                <!-- Two-column layout: Entries + Sidebar -->
+                <div style="display: grid; grid-template-columns: 1fr 340px; gap: 16px; align-items: start;">
+                    <!-- Entries Table -->
+                    <div>
+                        <div id="gtEntriesContainer">
+                            <div style="text-align: center; padding: 40px; color: var(--muted);">
+                                <i class="fas fa-database" style="font-size: 2em; margin-bottom: 12px; opacity: 0.5;"></i>
+                                <p>Loading ground truth entries...</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Sidebar: Category Breakdown + Problematic -->
+                    <div style="display: flex; flex-direction: column; gap: 16px;">
+                        <div class="chart-card" style="margin: 0; padding: 16px;">
+                            <h4 style="margin: 0 0 12px; font-size: 0.95em; color: var(--text);">
+                                <i class="fas fa-th-large" style="color: var(--accent);"></i> Category Accuracy
+                            </h4>
+                            <div id="gtCategoryBreakdown" style="max-height: 300px; overflow-y: auto;">
+                                <div style="color: var(--muted); font-size: 0.9em;">Loading...</div>
+                            </div>
+                        </div>
+                        <div class="chart-card" style="margin: 0; padding: 16px;">
+                            <h4 style="margin: 0 0 12px; font-size: 0.95em; color: var(--text);">
+                                <i class="fas fa-exclamation-circle" style="color: #e74c3c;"></i> Problematic Entries
+                            </h4>
+                            <div id="gtProblematicContainer" style="max-height: 250px; overflow-y: auto;">
+                                <div style="color: var(--muted); font-size: 0.9em;">Loading...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
     </div>
 
     <!-- Courthouse Analytics Module -->
     <script type="module" src="/js/courthouse-analytics.js"></script>
+    <script src="/js/courthouse/human-review.js"></script>
+    <script src="/js/courthouse/ground-truth.js"></script>
+    <script>
+        // Initialize Human Review and Ground Truth when their tabs are first activated
+        let humanReviewInitialized = false;
+        let groundTruthInitialized = false;
+
+        document.addEventListener('click', (e) => {
+            const tab = e.target.closest('.validation-tab');
+            if (!tab) return;
+
+            const tabName = tab.dataset.tab;
+            if (tabName === 'humanReview' && !humanReviewInitialized) {
+                humanReviewInitialized = true;
+                if (window.HumanReview) window.HumanReview.init();
+            }
+            if (tabName === 'groundTruth' && !groundTruthInitialized) {
+                groundTruthInitialized = true;
+                if (window.GroundTruth) window.GroundTruth.init();
+            }
+        });
+    </script>
 
 </body>
 </html>
