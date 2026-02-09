@@ -79,12 +79,18 @@ function classifyRagAvailabilityError(error) {
   return null;
 }
 
-// Initialize RAG store with environment config
-const ragStore = getRagStore({
-  vectorStoreType: process.env.VECTOR_STORE_TYPE || 'memory',
-  url: process.env.QDRANT_URL,
-  collection: process.env.QDRANT_COLLECTION
-});
+// Lazy RAG store initialization - avoids crashing at module load when OLLAMA_HOST is not set
+let _ragStore = null;
+function ragStore() {
+  if (!_ragStore) {
+    _ragStore = getRagStore({
+      vectorStoreType: process.env.VECTOR_STORE_TYPE || 'memory',
+      url: process.env.QDRANT_URL,
+      collection: process.env.QDRANT_COLLECTION
+    });
+  }
+  return _ragStore;
+}
 
 function requireMongoReady(res) {
   if (mongoose.connection.readyState !== 1) {
@@ -252,7 +258,7 @@ router.post(['/ingest', '/documents'], async (req, res) => {
     const startTime = Date.now();
     
     // Upsert document (pass ollamaHost for dynamic embedding service)
-    const result = await ragStore.upsertDocumentWithChunks(docMetadata, text, ollamaHost);
+    const result = await ragStore().upsertDocumentWithChunks(docMetadata, text, ollamaHost);
     
     const processingTimeMs = Date.now() - startTime;
 
@@ -347,7 +353,7 @@ router.post('/search', async (req, res) => {
     }
 
     // Perform search
-    const results = await ragStore.searchSimilarChunks(query, {
+    const results = await ragStore().searchSimilarChunks(query, {
       topK,
       minScore,
       filters,
@@ -398,8 +404,8 @@ router.get('/documents', async (req, res) => {
     if (source) filters.source = source;
     if (tags) filters.tags = tags.split(',');
 
-    const documents = await ragStore.listDocuments(filters);
-    const stats = await ragStore.getStats();
+    const documents = await ragStore().listDocuments(filters);
+    const stats = await ragStore().getStats();
 
     res.json({
       status: 'success',
@@ -425,7 +431,7 @@ router.get('/documents', async (req, res) => {
 router.delete('/documents/:documentId', async (req, res) => {
   try {
     const { documentId } = req.params;
-    const deleted = await ragStore.deleteDocument(documentId);
+    const deleted = await ragStore().deleteDocument(documentId);
 
     if (!deleted) {
       return res.status(404).json({
@@ -461,14 +467,14 @@ router.get('/metrics', async (req, res) => {
   let documents = [];
 
   try {
-    healthy = await ragStore.healthCheck();
+    healthy = await ragStore().healthCheck();
   } catch (error) {
     warning = warning || error.message;
     logger.warn('RAG health check failed', { error: error.message });
   }
 
   try {
-    stats = await ragStore.getStats();
+    stats = await ragStore().getStats();
   } catch (error) {
     warning = warning || error.message;
     logger.warn('RAG getStats failed', { error: error.message });
@@ -476,7 +482,7 @@ router.get('/metrics', async (req, res) => {
   }
 
   try {
-    documents = await ragStore.listDocuments();
+    documents = await ragStore().listDocuments();
   } catch (error) {
     warning = warning || error.message;
     logger.warn('RAG listDocuments failed', { error: error.message });
@@ -755,7 +761,7 @@ router.get('/deletion-preview', async (req, res) => {
         .filter(Boolean)
     );
 
-    const docs = await ragStore.listDocuments({ source });
+    const docs = await ragStore().listDocuments({ source });
 
     const candidates = [];
     for (const doc of docs) {
