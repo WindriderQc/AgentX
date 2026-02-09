@@ -285,6 +285,11 @@ BenchmarkResultSchema.index({ composite_score: 1 });
 // Static helper methods
 BenchmarkResultSchema.statics.getByBatch = function(batchId, options = {}) {
     const query = this.find({ batch_id: batchId });
+
+    if (options.select) {
+        query.select(options.select);
+    }
+
     if (options.sort) {
         query.sort(options.sort);
     } else {

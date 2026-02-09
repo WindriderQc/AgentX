@@ -23,14 +23,20 @@ async function getBatches({ limit = 20 } = {}) {
 /**
  * Get batch progress and results
  */
-async function getBatch(batchId) {
+async function getBatch(batchId, { includeHeavyPayload = false } = {}) {
     const batch = await BenchmarkBatch.findById(batchId);
 
     if (!batch) {
         throw new Error('Batch not found');
     }
 
-    const results = await BenchmarkResult.getByBatch(batchId).lean();
+    const resultSelect = includeHeavyPayload
+        ? null
+        : '-judge_raw_response -hardware_snapshot -execution_settings -warmup -judge_warmup';
+
+    const results = await BenchmarkResult.getByBatch(batchId, {
+        select: resultSelect
+    }).lean();
 
     const defaultJudgeModel = (batch && batch.judge_config && batch.judge_config.model)
         ? batch.judge_config.model

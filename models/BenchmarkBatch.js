@@ -91,6 +91,12 @@ const BenchmarkBatchSchema = new mongoose.Schema({
         default: 'pending',
         index: true
     },
+    // Singleton slot used to enforce one active benchmark batch at a time.
+    // Combined with a partial unique index on active statuses to close race windows.
+    active_slot: {
+        type: String,
+        default: null
+    },
     judge_status: {
         type: String,
         enum: ['none', 'pending', 'running', 'completed', 'failed', 'stopped'],
@@ -241,6 +247,19 @@ const BenchmarkBatchSchema = new mongoose.Schema({
 BenchmarkBatchSchema.index({ status: 1, created_at: -1 });
 BenchmarkBatchSchema.index({ execution_started_at: 1 });
 BenchmarkBatchSchema.index({ 'models': 1 });
+BenchmarkBatchSchema.index(
+    { active_slot: 1 },
+    {
+        unique: true,
+        partialFilterExpression: {
+            active_slot: { $type: 'string' },
+            $or: [
+                { status: { $in: ['running', 'judging'] } },
+                { judge_status: 'running' }
+            ]
+        }
+    }
+);
 
 // Virtual for progress percentage
 BenchmarkBatchSchema.virtual('progress').get(function() {

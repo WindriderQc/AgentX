@@ -96,15 +96,19 @@ class AutomationRunnerService {
       authSource = 'session'
     } = context;
 
-    if (taskInput.idempotencyKey) {
-      const existing = await AutomationTask.findOne({ idempotencyKey: taskInput.idempotencyKey });
+    const normalizedIdempotencyKey = typeof taskInput.idempotencyKey === 'string'
+      ? taskInput.idempotencyKey.trim()
+      : '';
+
+    if (normalizedIdempotencyKey) {
+      const existing = await AutomationTask.findOne({ idempotencyKey: normalizedIdempotencyKey });
       if (existing) {
         return existing;
       }
     }
 
     const specialX = await this.resolveSpecialX(taskInput.specialXId, workspaceId);
-    const task = await AutomationTask.create({
+    const payload = {
       workspaceId,
       specialXId: specialX?._id || null,
       source: taskInput.source || 'manual',
@@ -120,13 +124,18 @@ class AutomationRunnerService {
       },
       runAt: taskInput.runAt ? new Date(taskInput.runAt) : new Date(),
       maxAttempts: taskInput.maxAttempts || 3,
-      idempotencyKey: taskInput.idempotencyKey || null,
       tags: Array.isArray(taskInput.tags) ? taskInput.tags : [],
       requestedBy: {
         userId: userId || null,
         authSource
       }
-    });
+    };
+
+    if (normalizedIdempotencyKey) {
+      payload.idempotencyKey = normalizedIdempotencyKey;
+    }
+
+    const task = await AutomationTask.create(payload);
 
     return task;
   }

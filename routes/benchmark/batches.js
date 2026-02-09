@@ -17,7 +17,10 @@ const BenchmarkBatch = require('../../models/BenchmarkBatch');
  */
 router.get('/batch/:id', async (req, res) => {
     try {
-        const data = await benchmarkService.getBatch(req.params.id);
+        const includeHeavyPayload = ['1', 'true', 'yes']
+            .includes(String(req.query.include_heavy || '').toLowerCase());
+
+        const data = await benchmarkService.getBatch(req.params.id, { includeHeavyPayload });
 
         res.json({
             status: 'success',

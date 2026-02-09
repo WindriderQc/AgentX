@@ -12,6 +12,33 @@ const { JUDGE_CONFIG, ENHANCED_SCORING_CONFIGS } = require('../../src/services/q
 const { stopJudging } = require('../../src/services/benchmark/judging');
 const BenchmarkBatch = require('../../models/BenchmarkBatch');
 
+function isDuplicateKeyError(err) {
+    return !!(err && (err.code === 11000 || String(err.message || '').includes('E11000')));
+}
+
+function buildActiveBatchConflict(active) {
+    const inactiveSeconds = active.last_activity_at
+        ? Math.floor((Date.now() - new Date(active.last_activity_at).getTime()) / 1000)
+        : 0;
+
+    return {
+        status: 'error',
+        error: 'Another batch is already running',
+        active_batch: {
+            id: active._id,
+            run_name: active.run_name,
+            status: active.status,
+            progress: active.progress,
+            inactive_seconds: inactiveSeconds,
+            is_stuck: inactiveSeconds > 300,
+            started_at: active.started_at
+        },
+        message: inactiveSeconds > 300
+            ? 'The active batch appears stuck. Use the "Recover" button to stop it before starting a new batch.'
+            : `Batch "${active.run_name}" is currently running (${active.progress}% complete). Please wait for it to finish or stop it first.`
+    };
+}
+
 /**
  * GET /api/benchmark/config
  * Get benchmark configuration including judge settings
@@ -106,27 +133,7 @@ router.post('/batch', optionalWorkspaceContext, async (req, res) => {
         const activeBatches = await BenchmarkBatch.getActive();
 
         if (activeBatches.length > 0) {
-            const active = activeBatches[0];
-            const inactiveSeconds = active.last_activity_at
-                ? Math.floor((Date.now() - new Date(active.last_activity_at).getTime()) / 1000)
-                : 0;
-
-            return res.status(409).json({
-                status: 'error',
-                error: 'Another batch is already running',
-                active_batch: {
-                    id: active._id,
-                    run_name: active.run_name,
-                    status: active.status,
-                    progress: active.progress,
-                    inactive_seconds: inactiveSeconds,
-                    is_stuck: inactiveSeconds > 300,
-                    started_at: active.started_at
-                },
-                message: inactiveSeconds > 300
-                    ? 'The active batch appears stuck. Use the "Recover" button to stop it before starting a new batch.'
-                    : `Batch "${active.run_name}" is currently running (${active.progress}% complete). Please wait for it to finish or stop it first.`
-            });
+            return res.status(409).json(buildActiveBatchConflict(activeBatches[0]));
         }
 
         const data = await benchmarkService.startBatch({
@@ -150,6 +157,18 @@ router.post('/batch', optionalWorkspaceContext, async (req, res) => {
             }
         });
     } catch (err) {
+        if (isDuplicateKeyError(err)) {
+            // Atomic backstop for start-race collisions (two clients pass pre-check simultaneously).
+            const activeBatches = await BenchmarkBatch.getActive();
+            if (activeBatches.length > 0) {
+                return res.status(409).json(buildActiveBatchConflict(activeBatches[0]));
+            }
+            return res.status(409).json({
+                status: 'error',
+                error: 'Another batch is already running'
+            });
+        }
+
         logger.error('Failed to start batch test', { error: err.message });
         res.status(500).json({ status: 'error', error: err.message });
     }

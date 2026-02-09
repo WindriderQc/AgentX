@@ -1,5 +1,6 @@
 (function () {
-  const REFRESH_MS = 8000;
+  const REFRESH_MS = 15000;
+  const MAX_BACKOFF_MS = 120000;
 
   const els = {
     runnerDot: document.getElementById('runnerDot'),
@@ -30,7 +31,11 @@
 
   const state = {
     tasks: [],
-    runs: []
+    runs: [],
+    refreshInFlight: false,
+    pollTimer: null,
+    pollMs: REFRESH_MS,
+    rateLimitedNotified: false
   };
 
   function notify(message, type = 'info') {
@@ -82,10 +87,35 @@
     }
 
     if (!response.ok || data.status === 'error') {
-      throw new Error(data.message || `Request failed: ${response.status}`);
+      const error = new Error(data.message || `Request failed: ${response.status}`);
+      error.status = response.status;
+      error.retryAfter = data.retryAfter || response.headers.get('retry-after') || null;
+      throw error;
     }
 
     return data;
+  }
+
+  function parseRetryAfterMs(value) {
+    if (value == null) return null;
+
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      if (value > 1e12) return Math.max(1000, value - Date.now()); // epoch ms
+      if (value > 1e9) return Math.max(1000, (value * 1000) - Date.now()); // epoch sec
+      return Math.max(1000, value * 1000); // seconds
+    }
+
+    const asNumber = Number(value);
+    if (!Number.isNaN(asNumber)) {
+      return parseRetryAfterMs(asNumber);
+    }
+
+    const parsedDate = Date.parse(value);
+    if (!Number.isNaN(parsedDate)) {
+      return Math.max(1000, parsedDate - Date.now());
+    }
+
+    return null;
   }
 
   function renderRunner(statusPayload) {
@@ -167,10 +197,18 @@
       summary: run.summary,
       execution: run.execution,
       metrics: run.metrics,
+      output: run.output,
+      artifacts: run.artifacts,
       error: run.error,
       startedAt: run.startedAt,
       finishedAt: run.finishedAt
     }, null, 2);
+  }
+
+  async function loadRunDetail(runId) {
+    if (!runId) return null;
+    const detailRes = await api(`/api/specialx/runs/${encodeURIComponent(runId)}`);
+    return detailRes.data || null;
   }
 
   function renderRuns(runs) {
@@ -196,28 +234,70 @@
     els.runsTableBody.innerHTML = rows;
 
     els.runsTableBody.querySelectorAll('tr[data-run-index]').forEach((row) => {
-      row.addEventListener('click', () => {
+      row.addEventListener('click', async () => {
         const index = Number(row.getAttribute('data-run-index'));
         const run = state.runs[index];
         if (!run) return;
-        els.runDetail.textContent = runDetailText(run);
+        els.runDetail.textContent = 'Loading run detail...';
+        try {
+          const fullRun = await loadRunDetail(run._id);
+          els.runDetail.textContent = runDetailText(fullRun || run);
+        } catch (_err) {
+          els.runDetail.textContent = runDetailText(run);
+        }
       });
     });
   }
 
   async function refreshDashboard() {
-    const [statusRes, tasksRes, runsRes, routingRes] = await Promise.all([
-      api('/api/specialx/status'),
-      api('/api/specialx/tasks?limit=15'),
-      api('/api/specialx/runs?limit=15'),
-      api('/api/specialx/routing')
-    ]);
+    const dashboardRes = await api('/api/specialx/dashboard?limit=15');
+    const payload = dashboardRes.data || {};
 
-    renderRunner(statusRes.data);
-    renderRouting(routingRes.data);
-    renderMetrics(statusRes.data);
-    renderTasks(tasksRes.data.tasks || []);
-    renderRuns(runsRes.data.runs || []);
+    renderRunner(payload);
+    renderRouting(payload.routing || {});
+    renderMetrics(payload);
+    renderTasks(payload.tasks?.tasks || []);
+    renderRuns(payload.runs?.runs || []);
+  }
+
+  function scheduleRefresh(delayMs = state.pollMs) {
+    if (state.pollTimer) {
+      clearTimeout(state.pollTimer);
+    }
+
+    state.pollTimer = setTimeout(() => {
+      refreshLoop().catch((err) => {
+        notify(err.message, 'error');
+      });
+    }, Math.max(500, delayMs));
+  }
+
+  async function refreshLoop() {
+    if (state.refreshInFlight) {
+      scheduleRefresh(state.pollMs);
+      return;
+    }
+
+    state.refreshInFlight = true;
+    try {
+      await refreshDashboard();
+      state.pollMs = REFRESH_MS;
+      state.rateLimitedNotified = false;
+    } catch (error) {
+      if (error.status === 429) {
+        const retryMs = parseRetryAfterMs(error.retryAfter) || Math.min(state.pollMs * 2, MAX_BACKOFF_MS);
+        state.pollMs = Math.min(retryMs, MAX_BACKOFF_MS);
+        if (!state.rateLimitedNotified) {
+          notify('Rate-limited by API. Backing off polling temporarily.', 'error');
+          state.rateLimitedNotified = true;
+        }
+      } else {
+        notify(error.message, 'error');
+      }
+    } finally {
+      state.refreshInFlight = false;
+      scheduleRefresh(state.pollMs);
+    }
   }
 
   async function enqueueTask(type, payload = {}) {
@@ -297,12 +377,7 @@
 
   async function init() {
     wireEvents();
-    await refreshDashboard();
-    setInterval(() => {
-      refreshDashboard().catch((err) => {
-        notify(err.message, 'error');
-      });
-    }, REFRESH_MS);
+    await refreshLoop();
   }
 
   init().catch((err) => {

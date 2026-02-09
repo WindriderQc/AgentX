@@ -32,7 +32,10 @@ const apiLimiter = rateLimit({
   standardHeaders: true, // Return rate limit info in `RateLimit-*` headers
   legacyHeaders: false, // Disable `X-RateLimit-*` headers
   keyGenerator: getClientKey,
-  skip: (req) => req.originalUrl.startsWith('/api/benchmark'), // Skip benchmark routes (handled separately)
+  skip: (req) => (
+    req.originalUrl.startsWith('/api/benchmark')
+    || req.originalUrl.startsWith('/api/specialx')
+  ), // Skip benchmark + specialx routes (handled by dedicated limiters)
   handler: (req, res) => {
     logger.warn('Rate limit exceeded', {
       ip: req.ip,
@@ -62,6 +65,32 @@ const benchmarkLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: getClientKey
+});
+
+/**
+ * SpecialX dashboard/automation limiter
+ * Allows frequent operational polling without tripping global API limits.
+ * 1200 requests per 15 minutes (~1.3 req/sec average)
+ */
+const specialXLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 1200,
+  message: {
+    status: 'error',
+    message: 'SpecialX rate limit exceeded'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    if (process.env.NODE_ENV === 'test') {
+      return getClientKey(req);
+    }
+    if (req.session?.userId) {
+      return `specialx:${req.session.userId}`;
+    }
+    return `specialx:${ipKeyGenerator(req.ip)}`;
+  },
+  validate: { ip: false }
 });
 
 /**
@@ -166,6 +195,7 @@ const authLimiter = rateLimit({
 module.exports = {
   apiLimiter,
   benchmarkLimiter,
+  specialXLimiter,
   chatLimiter,
   strictLimiter,
   authLimiter

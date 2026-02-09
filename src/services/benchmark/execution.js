@@ -302,6 +302,7 @@ async function startBatch({ host, models, levels, run_name, quality_scoring = tr
         execution_config: normalizedExecutionConfig,
         depth_config: (depth_config && typeof depth_config === 'object') ? depth_config : null,
         run_name: run_name || `Batch ${new Date().toLocaleString()}`,
+        active_slot: 'benchmark_singleton',
         total_tests: models.length * selectedPrompts.length,
         plan,
         judge_same_host: judgeSameHost,

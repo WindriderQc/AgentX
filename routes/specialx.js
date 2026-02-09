@@ -28,6 +28,14 @@ function parsePositiveInt(value, fallback) {
   return parsed;
 }
 
+function parseNonNegativeInt(value, fallback) {
+  const parsed = Number.parseInt(value, 10);
+  if (Number.isNaN(parsed) || parsed < 0) {
+    return fallback;
+  }
+  return parsed;
+}
+
 // Dashboard status
 router.get('/status', requireAuth, optionalWorkspaceContext, async (req, res) => {
   try {
@@ -39,6 +47,90 @@ router.get('/status', requireAuth, optionalWorkspaceContext, async (req, res) =>
     res.status(500).json({
       status: 'error',
       message: 'Failed to retrieve SpecialX status'
+    });
+  }
+});
+
+// Aggregated dashboard payload to reduce frontend polling fan-out
+router.get('/dashboard', requireAuth, optionalWorkspaceContext, async (req, res) => {
+  try {
+    const limit = parsePositiveInt(req.query.limit, 15);
+    const skip = parseNonNegativeInt(req.query.skip, 0);
+    const workspaceId = req.workspace?._id || null;
+
+    const taskQuery = {};
+    const runQuery = {};
+    if (workspaceId) {
+      taskQuery.workspaceId = workspaceId;
+      runQuery.workspaceId = workspaceId;
+    }
+
+    const service = getAutomationRunnerService();
+
+    const [
+      statusPayload,
+      tasks,
+      tasksTotal,
+      runs,
+      runsTotal,
+      routingStatus,
+      failoverStatus
+    ] = await Promise.all([
+      service.getStatus(),
+      AutomationTask.find(taskQuery)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('specialXId', 'name displayName')
+        .populate('resultRunId', 'status summary finishedAt')
+        .lean(),
+      AutomationTask.countDocuments(taskQuery),
+      AutomationRun.find(runQuery)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('taskId', 'type status priority')
+        .populate('specialXId', 'name displayName')
+        .lean(),
+      AutomationRun.countDocuments(runQuery),
+      getRoutingStatus(),
+      Promise.resolve(getFailoverStatus())
+    ]);
+
+    const hostOptions = [
+      { id: 'primary', label: 'Primary', url: HOSTS.primary || null },
+      { id: 'secondary', label: 'Secondary', url: HOSTS.secondary || null }
+    ].filter((h) => Boolean(h.url));
+
+    res.json({
+      status: 'success',
+      data: {
+        ...statusPayload.data,
+        tasks: {
+          tasks,
+          total: tasksTotal,
+          page: Math.floor(skip / Math.max(limit, 1)) + 1,
+          pages: Math.ceil(tasksTotal / Math.max(limit, 1))
+        },
+        runs: {
+          runs,
+          total: runsTotal,
+          page: Math.floor(skip / Math.max(limit, 1)) + 1,
+          pages: Math.ceil(runsTotal / Math.max(limit, 1))
+        },
+        routing: {
+          hostOptions,
+          activeHost: failoverStatus.currentHost || HOSTS.primary || null,
+          failover: failoverStatus,
+          routing: routingStatus
+        }
+      }
+    });
+  } catch (error) {
+    logger.error('Failed to get SpecialX dashboard payload', { error: error.message });
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to retrieve dashboard payload'
     });
   }
 });
@@ -271,6 +363,10 @@ router.post('/tasks', optionalAuth, optionalWorkspaceContext, requireSessionOrAp
       idempotencyKey
     } = req.body || {};
 
+    const normalizedIdempotencyKey = typeof idempotencyKey === 'string'
+      ? idempotencyKey.trim()
+      : '';
+
     if (!type) {
       return res.status(400).json({
         status: 'error',
@@ -288,7 +384,7 @@ router.post('/tasks', optionalAuth, optionalWorkspaceContext, requireSessionOrAp
       specialXId: specialXId || null,
       constraints: constraints || {},
       tags: Array.isArray(tags) ? tags : [],
-      idempotencyKey: idempotencyKey || null
+      ...(normalizedIdempotencyKey ? { idempotencyKey: normalizedIdempotencyKey } : {})
     }, {
       workspaceId,
       userId,
@@ -312,7 +408,7 @@ router.post('/tasks', optionalAuth, optionalWorkspaceContext, requireSessionOrAp
 router.get('/tasks', requireAuth, optionalWorkspaceContext, async (req, res) => {
   try {
     const limit = parsePositiveInt(req.query.limit, 20);
-    const skip = parsePositiveInt(req.query.skip, 0);
+    const skip = parseNonNegativeInt(req.query.skip, 0);
     const workspaceId = req.workspace?._id || null;
     const status = req.query.status ? String(req.query.status) : null;
 
@@ -443,7 +539,7 @@ router.post('/tasks/:id/cancel', requireAuth, optionalWorkspaceContext, async (r
 router.get('/runs', requireAuth, optionalWorkspaceContext, async (req, res) => {
   try {
     const limit = parsePositiveInt(req.query.limit, 20);
-    const skip = parsePositiveInt(req.query.skip, 0);
+    const skip = parseNonNegativeInt(req.query.skip, 0);
     const workspaceId = req.workspace?._id || null;
     const status = req.query.status ? String(req.query.status) : null;
 

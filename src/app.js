@@ -194,7 +194,7 @@ app.use(performanceTracker.trackRequest);
 // ============================================
 
 // Apply rate limiters
-const { apiLimiter, benchmarkLimiter, chatLimiter, strictLimiter, authLimiter } = require('./middleware/rateLimiter');
+const { apiLimiter, benchmarkLimiter, specialXLimiter, chatLimiter, strictLimiter, authLimiter } = require('./middleware/rateLimiter');
 
 // Apply general API rate limiter to all /api routes (except specific ones)
 app.use('/api/', apiLimiter);
@@ -361,7 +361,7 @@ app.use('/api/docJanitor', docJanitorRoutes);
 
 // SpecialX automation routes (24/7 queue runner + task profiles)
 const specialXRoutes = require('../routes/specialx');
-app.use('/api/specialx', specialXRoutes);
+app.use('/api/specialx', specialXLimiter, specialXRoutes);
 
 // Legacy/Compatibility routes
 // Map /conversations -> history

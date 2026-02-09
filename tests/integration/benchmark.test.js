@@ -514,6 +514,55 @@ describe('Benchmark System - Integration Tests', () => {
             expect(response.body.data).toHaveProperty('progress');
             expect(response.body.data).toHaveProperty('success_rate');
         });
+
+        it('should omit heavy result fields by default and include them when requested', async () => {
+            const batch = await BenchmarkBatch.create({
+                host: 'http://localhost:11434',
+                models: ['test-model'],
+                levels: [1],
+                run_name: 'Payload Batch',
+                total_tests: 1,
+                status: 'completed',
+                quality_scoring: true
+            });
+
+            await BenchmarkResult.create({
+                batch_id: batch._id.toString(),
+                model: 'test-model',
+                host: 'http://localhost:11434',
+                prompt: 'What is 2+2?',
+                prompt_name: 'Math',
+                prompt_level: 1,
+                prompt_category: 'math',
+                response: '4',
+                latency: 123,
+                tokens: 5,
+                success: true,
+                judge_raw_response: '{"score":10}',
+                hardware_snapshot: { backend: 'cuda', quantization: 'q4' },
+                execution_settings: { num_predict: 32 },
+                warmup: { prompt: 'Hi', response: 'Hello' },
+                judge_warmup: { prompt: 'Judge', response: 'Done' }
+            });
+
+            const compact = await request(app).get(`/api/benchmark/batch/${batch._id}`);
+            expect(compact.status).toBe(200);
+            expect(compact.body.data.results).toHaveLength(1);
+            expect(compact.body.data.results[0].judge_raw_response).toBeUndefined();
+            expect(compact.body.data.results[0].hardware_snapshot).toBeUndefined();
+            expect(compact.body.data.results[0].execution_settings).toBeUndefined();
+            expect(compact.body.data.results[0].warmup).toBeUndefined();
+            expect(compact.body.data.results[0].judge_warmup).toBeUndefined();
+
+            const full = await request(app).get(`/api/benchmark/batch/${batch._id}?include_heavy=1`);
+            expect(full.status).toBe(200);
+            expect(full.body.data.results).toHaveLength(1);
+            expect(full.body.data.results[0].judge_raw_response).toBe('{"score":10}');
+            expect(full.body.data.results[0].hardware_snapshot).toMatchObject({ backend: 'cuda' });
+            expect(full.body.data.results[0].execution_settings).toMatchObject({ num_predict: 32 });
+            expect(full.body.data.results[0].warmup).toBeTruthy();
+            expect(full.body.data.results[0].judge_warmup).toBeTruthy();
+        });
     });
 
     describe('GET /api/benchmark/batches', () => {
