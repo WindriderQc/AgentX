@@ -26,18 +26,45 @@ async function getResults({ limit = 20 } = {}) {
  * Generate summary statistics and leaderboard
  */
 async function getSummary() {
-    const [successful, failed] = await Promise.all([
-        BenchmarkResult.find({
-            success: true,
-            model: { $not: /diagnostic/i } // Exclude diagnostic models
-        }),
-        BenchmarkResult.countDocuments({
-            success: false,
-            model: { $not: /diagnostic/i } // Exclude diagnostic models
-        })
+    const successMatch = {
+        success: true,
+        model: { $not: /diagnostic/i } // Exclude diagnostic models
+    };
+    const failureMatch = {
+        success: false,
+        model: { $not: /diagnostic/i } // Exclude diagnostic models
+    };
+
+    const [failed, overallAgg, byModelAgg] = await Promise.all([
+        BenchmarkResult.countDocuments(failureMatch),
+        BenchmarkResult.aggregate([
+            { $match: successMatch },
+            {
+                $group: {
+                    _id: null,
+                    successful: { $sum: 1 },
+                    avg_latency: { $avg: '$latency' }
+                }
+            }
+        ]),
+        BenchmarkResult.aggregate([
+            { $match: successMatch },
+            {
+                $group: {
+                    _id: '$model',
+                    avg_latency: { $avg: '$latency' },
+                    avg_tokens_per_sec: { $avg: { $toDouble: '$tokens_per_sec' } },
+                    tests: { $sum: 1 }
+                }
+            },
+            { $sort: { avg_latency: 1 } }
+        ])
     ]);
 
-    if (successful.length === 0) {
+    const summary = overallAgg[0];
+    const successful = summary ? summary.successful : 0;
+
+    if (successful === 0) {
         return {
             total_tests: 0,
             successful: 0,
@@ -47,35 +74,20 @@ async function getSummary() {
         };
     }
 
-    const latencies = successful.map(r => r.latency);
-    const avgLatency = latencies.reduce((a, b) => a + b, 0) / latencies.length;
-
-    // Group by model
-    const byModel = {};
-    successful.forEach(r => {
-        if (!byModel[r.model]) {
-            byModel[r.model] = { latencies: [], tokens_per_sec: [] };
-        }
-        byModel[r.model].latencies.push(r.latency);
-        if (r.tokens_per_sec) {
-            byModel[r.model].tokens_per_sec.push(parseFloat(r.tokens_per_sec));
-        }
-    });
-
-    const leaderboard = Object.entries(byModel).map(([model, data]) => ({
-        model,
-        avg_latency: Math.round(data.latencies.reduce((a, b) => a + b, 0) / data.latencies.length),
-        avg_tokens_per_sec: data.tokens_per_sec.length > 0
-            ? (data.tokens_per_sec.reduce((a, b) => a + b, 0) / data.tokens_per_sec.length).toFixed(2)
+    const leaderboard = byModelAgg.map(item => ({
+        model: item._id,
+        avg_latency: Math.round(Number(item.avg_latency) || 0),
+        avg_tokens_per_sec: item.avg_tokens_per_sec != null
+            ? Number(item.avg_tokens_per_sec).toFixed(2)
             : 0,
-        tests: data.latencies.length
-    })).sort((a, b) => a.avg_latency - b.avg_latency);
+        tests: Number(item.tests) || 0
+    }));
 
     return {
-        total_tests: successful.length + failed,
-        successful: successful.length,
+        total_tests: successful + failed,
+        successful,
         failed,
-        avg_latency: Math.round(avgLatency),
+        avg_latency: Math.round(Number(summary.avg_latency) || 0),
         leaderboard
     };
 }
@@ -120,8 +132,13 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
         }
     }
 
+    const scopedMatch = { ...matchQuery };
+    delete scopedMatch.success;
+    const failureMatchQuery = { ...scopedMatch, success: false };
+    const totalMatchQuery = { ...scopedMatch };
+
     const [totalTests, successCount, recentTests, modelStats, failureStats, judgeStats, generalistScores] = await Promise.all([
-        BenchmarkResult.countDocuments({}),
+        BenchmarkResult.countDocuments(totalMatchQuery),
         BenchmarkResult.countDocuments(matchQuery),
         BenchmarkResult.find(matchQuery).sort({ timestamp: -1 }).limit(10),
         BenchmarkResult.aggregate([
@@ -192,14 +209,7 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
             { $sort: { avg_latency: 1 } }
         ]),
         BenchmarkResult.aggregate([
-            {
-                $match: {
-                    success: false,
-                    // Apply same model filter for failure stats to maintain category consistency
-                    // When modelNames is set (even empty), enforce the filter to exclude unrelated models
-                    ...(modelNames !== null ? { model: { $in: modelNames } } : {})
-                }
-            },
+            { $match: failureMatchQuery },
             {
                 $addFields: {
                     __infra_error: {
@@ -520,6 +530,18 @@ async function getQualityBreakdown(model = null, host = null) {
         };
     });
 
+    const categories = Array.from(new Set(
+        byCategory
+            .map(item => item && item._id ? item._id.category : null)
+            .filter(Boolean)
+    )).sort();
+
+    const levels = Array.from(new Set(
+        byLevel
+            .map(item => Number(item && item._id ? item._id.level : NaN))
+            .filter(Number.isFinite)
+    )).sort((a, b) => a - b);
+
     return {
         overall: byModel.map(m => ({
             model: m._id,
@@ -534,8 +556,8 @@ async function getQualityBreakdown(model = null, host = null) {
         })),
         by_category: categoryByModel,
         by_level: levelByModel,
-        categories: ['coding', 'reasoning', 'factual', 'math', 'creative'],
-        levels: [1, 2, 3, 4, 5]
+        categories,
+        levels
     };
 }
 

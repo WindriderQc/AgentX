@@ -348,6 +348,10 @@ export function calculateModelStats(results) {
         if (r.success === false) {
             m.execFailedCount++;
         } else {
+            if (String(r.scoring_method || '').toLowerCase() === 'llm_failed') {
+                m.judgeFailedCount++;
+            }
+
             const lat = toFiniteNumber(r.latency);
             if (lat !== null) m.latencies.push(lat);
 

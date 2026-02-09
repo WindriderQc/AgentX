@@ -171,6 +171,10 @@ async function runTest({ model, host, prompt }) {
             // Ignore lookup errors
         }
 
+        const tokensPerSec = (tokens > 0 && latency > 0)
+            ? Number((tokens / (latency / 1000)).toFixed(2))
+            : 0;
+
         const result = new BenchmarkResult({
             model,
             host,
@@ -178,7 +182,7 @@ async function runTest({ model, host, prompt }) {
             ...promptMeta,
             latency,
             tokens,
-            tokens_per_sec: tokens > 0 ? (tokens / (latency / 1000)).toFixed(2) : 0,
+            tokens_per_sec: tokensPerSec,
             response: data.response || '',
             success: true,
             timestamp: new Date()
@@ -522,10 +526,12 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
     // Set up periodic heartbeat to update last_activity_at (every 10 seconds)
     const heartbeatInterval = setInterval(async () => {
         try {
-            const currentBatch = await BenchmarkBatch.findById(batchId);
-            if (currentBatch && ['running', 'completed'].includes(currentBatch.status)) {
-                await currentBatch.heartbeat();
-            } else {
+            const heartbeatUpdate = await BenchmarkBatch.updateOne(
+                { _id: batchId, status: { $in: ['running', 'judging', 'completed'] } },
+                { $set: { last_activity_at: new Date() } }
+            );
+
+            if ((heartbeatUpdate && heartbeatUpdate.matchedCount) === 0) {
                 clearInterval(heartbeatInterval);
                 activeHeartbeatInterval = null;
             }
@@ -558,6 +564,10 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
     // IMPORTANT: Using functions (not promises) so we control when execution starts
     // map(async ...) would start all promises immediately, breaking latency mode
     let testsStarted = false;
+    let stopCheckCounter = 0;
+    let lastStopCheckAt = 0;
+    const STOP_CHECK_EVERY_N = 5;
+    const STOP_CHECK_MIN_INTERVAL_MS = 2000;
     const hostTasks = Object.entries(modelsByHost).map(([hostUrl, hostModels]) => async () => {
         try {
             // Determine judge host
@@ -603,23 +613,33 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                 }
 
                 for (const prompt of prompts) {
-                    // Check if batch was stopped (lightweight query for status only)
-                    try {
-                        const stopCheck = await BenchmarkBatch.findById(batchId).select('status').lean();
-                        if (stopCheck && stopCheck.status === 'stopped') {
-                            logger.info('Batch execution stopped by user', { batchId });
-                            clearInterval(heartbeatInterval);
-                            activeHeartbeatInterval = null;
-                            activeBatchId = null;
-                            return;
+                    // Check if batch was stopped (throttled to reduce DB load).
+                    stopCheckCounter += 1;
+                    const now = Date.now();
+                    const shouldCheckStop =
+                        stopCheckCounter === 1 ||
+                        (stopCheckCounter % STOP_CHECK_EVERY_N === 0) ||
+                        ((now - lastStopCheckAt) >= STOP_CHECK_MIN_INTERVAL_MS);
+
+                    if (shouldCheckStop) {
+                        lastStopCheckAt = now;
+                        try {
+                            const stopCheck = await BenchmarkBatch.findById(batchId).select('status').lean();
+                            if (stopCheck && stopCheck.status === 'stopped') {
+                                logger.info('Batch execution stopped by user', { batchId });
+                                clearInterval(heartbeatInterval);
+                                activeHeartbeatInterval = null;
+                                activeBatchId = null;
+                                return;
+                            }
+                        } catch (stopCheckErr) {
+                            logger.warn('Failed to check batch status', {
+                                batchId,
+                                model,
+                                error: stopCheckErr.message
+                            });
+                            // Continue anyway - assume not stopped
                         }
-                    } catch (stopCheckErr) {
-                        logger.warn('Failed to check batch status', {
-                            batchId,
-                            model,
-                            error: stopCheckErr.message
-                        });
-                        // Continue anyway - assume not stopped
                     }
 
                     if (!testsStarted) {
@@ -685,7 +705,9 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                         // Fall back to character-based estimate only if Ollama doesn't provide it
                         const tokens = data.eval_count || Math.ceil((data.response || '').length / 4);
                         const tokenSource = data.eval_count ? 'ollama' : 'estimated';
-                        const tokens_per_sec = tokens > 0 ? (tokens / (latency / 1000)).toFixed(2) : 0;
+                        const tokens_per_sec = (tokens > 0 && latency > 0)
+                            ? Number((tokens / (latency / 1000)).toFixed(2))
+                            : 0;
 
                         // Detect if model response was truncated (hit token limit)
                         const responseTruncated = data.done_reason === 'length';

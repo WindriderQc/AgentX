@@ -38,7 +38,7 @@ echo
 
 # Test 1: Ingest a document
 echo -e "${YELLOW}[2/8] Testing POST /api/rag/ingest...${NC}"
-INGEST_RESPONSE=$(curl -s -X POST "$BASE_URL/api/rag/ingest" \
+INGEST_RESPONSE=$(curl -s -X POST "$BASE_URL/api/rag/ingest?workspace=default" \
   -H "Content-Type: application/json" \
   -d '{
     "source": "test",
@@ -65,7 +65,7 @@ echo
 
 # Test 2: Ingest another document
 echo -e "${YELLOW}[3/8] Testing duplicate ingestion (should be 'unchanged')...${NC}"
-INGEST2_RESPONSE=$(curl -s -X POST "$BASE_URL/api/rag/ingest" \
+INGEST2_RESPONSE=$(curl -s -X POST "$BASE_URL/api/rag/ingest?workspace=default" \
   -H "Content-Type: application/json" \
   -d '{
     "source": "github",
@@ -84,7 +84,7 @@ echo
 
 # Test 3: Search for relevant chunks
 echo -e "${YELLOW}[4/8] Testing POST /api/rag/search...${NC}"
-SEARCH_RESPONSE=$(curl -s -X POST "$BASE_URL/api/rag/search" \
+SEARCH_RESPONSE=$(curl -s -X POST "$BASE_URL/api/rag/search?workspace=default" \
   -H "Content-Type: application/json" \
   -d '{
     "query": "What is RAG?",
@@ -108,7 +108,7 @@ echo
 
 # Test 4: List documents
 echo -e "${YELLOW}[5/8] Testing GET /api/rag/documents...${NC}"
-DOCS_RESPONSE=$(curl -s "$BASE_URL/api/rag/documents")
+DOCS_RESPONSE=$(curl -s "$BASE_URL/api/rag/documents?workspace=default")
 if echo "$DOCS_RESPONSE" | jq -e '.status == "success"' > /dev/null; then
   echo "$DOCS_RESPONSE" | jq '{stats, count, documents: [(.data // [])[] | {title, source, chunkCount}]}'
 else
@@ -120,7 +120,7 @@ echo
 
 # Test 5: V1/V2 Chat without RAG (backwards compatibility)
 echo -e "${YELLOW}[6/8] Testing V1/V2 chat (without RAG)...${NC}"
-CHAT_V2_RESPONSE=$(curl -s -X POST "$BASE_URL/api/chat" \
+CHAT_V2_RESPONSE=$(curl -s -X POST "$BASE_URL/api/chat?workspace=default" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "llama2:latest",
@@ -145,7 +145,7 @@ echo
 
 # Test 6: V3 Chat with RAG enabled
 echo -e "${YELLOW}[7/8] Testing V3 chat (with RAG)...${NC}"
-CHAT_V3_RESPONSE=$(curl -s -X POST "$BASE_URL/api/chat" \
+CHAT_V3_RESPONSE=$(curl -s -X POST "$BASE_URL/api/chat?workspace=default" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "llama3.2:1b",
@@ -174,7 +174,7 @@ echo
 
 # Test 7: Validation error handling
 echo -e "${YELLOW}[8/8] Testing error handling...${NC}"
-ERROR_RESPONSE=$(curl -s -X POST "$BASE_URL/api/rag/ingest" \
+ERROR_RESPONSE=$(curl -s -X POST "$BASE_URL/api/rag/ingest?workspace=default" \
   -H "Content-Type: application/json" \
   -d '{"source": "test"}')
 

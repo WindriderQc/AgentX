@@ -434,5 +434,22 @@ describe('Enhanced Scoring Dimensions', () => {
             expect(result.scoring_method).toBe('skipped');
             expect(result.quality_score).toBeNull();
         });
+
+        it('should use deterministic numeric scoring path for math prompts and return quality_score', async () => {
+            const result = await scoreResponse({
+                response: 'x = 6',
+                prompt: {
+                    prompt: 'Solve for x: 7x = 42',
+                    scoring_type: 'math',
+                    expected_answer: '6',
+                    level: 3
+                }
+            });
+
+            expect(result.scoring_method).toBe('deterministic');
+            expect(result.quality_score).toBe(10);
+            expect(result.judge_confidence).toBe(1);
+            expect(result.needs_review).toBe(false);
+        });
     });
 });

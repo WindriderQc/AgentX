@@ -17,6 +17,8 @@ const Alert = require('../../models/Alert');
 
 describe('Alerts End-to-End Smoke Tests', () => {
   beforeAll(async () => {
+    // Clean up any stale alerts from previous failed runs
+    await Alert.deleteMany({ source: 'smoke-test' });
     // Ensure test database connection
     if (mongoose.connection.readyState === 0) {
       await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/agentx_test');

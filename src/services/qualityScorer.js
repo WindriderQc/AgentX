@@ -797,6 +797,14 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
     // Phase 3: Try routed scoring (reference, decomposed, etc.)
     const routedResult = await routeScoring(response, prompt, mergedJudgeConfig);
     if (routedResult) {
+        // Some routed strategies (e.g., deterministic) provide authoritative confidence.
+        if (routedResult.judge_confidence !== undefined && routedResult.needs_review !== undefined) {
+            return {
+                ...routedResult,
+                scoring_time_ms: Date.now() - startTime
+            };
+        }
+
         // Add confidence assessment
         const confidence = judgeConfidence.assess(routedResult, prompt);
 
@@ -1255,6 +1263,22 @@ async function routeScoring(response, prompt, judgeConfig) {
     });
 
     let result = null;
+    const normalizeDeterministic = (detResult, methodLabel = 'deterministic') => {
+        if (!detResult) return null;
+        const score = Number(detResult.score);
+        const quality = Number.isFinite(score) ? Math.max(0, Math.min(10, score)) : 0;
+        return {
+            quality_score: quality,
+            scoring_method: methodLabel,
+            scoring_type: category,
+            deterministic_type: detResult.deterministic_type || detResult.method || null,
+            matched_expected: !!detResult.matched,
+            explanation: detResult.details || 'Deterministic scoring',
+            breakdown: { overall: quality },
+            judge_confidence: 1.0,
+            needs_review: false
+        };
+    };
 
     // Phase 1: Try deterministic scoring if configured
     if (strategy.primary === 'deterministic' || strategy.primary === 'hybrid' || strategy.primary === 'auto') {
@@ -1267,7 +1291,7 @@ async function routeScoring(response, prompt, judgeConfig) {
                     type: result.deterministic_type,
                     score: result.score
                 });
-                return result;
+                return normalizeDeterministic(result);
             }
         }
 
@@ -1279,11 +1303,10 @@ async function routeScoring(response, prompt, judgeConfig) {
                     prompt: prompt.name || 'unknown',
                     score: numResult.score
                 });
-                return {
+                return normalizeDeterministic({
                     ...numResult,
-                    deterministic: true,
-                    scoring_method: 'deterministic'
-                };
+                    deterministic_type: 'numeric'
+                }, 'deterministic');
             }
         }
     }

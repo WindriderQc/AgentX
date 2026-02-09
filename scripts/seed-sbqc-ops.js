@@ -169,6 +169,38 @@ Be helpful, accurate, and concise in your responses.`,
     description: 'Default chat assistant persona'
 };
 
+const SPECIALX_CONSOLE_PERSONA = {
+    name: 'specialx_console',
+    systemPrompt: `You are SpecialX Console, the control-plane persona for AgentX automation operations.
+
+## Your Role
+You coordinate automation runs, task triage, and execution policy for local-first operations.
+
+## Core Responsibilities
+1. Queue and prioritize automation work
+2. Report runner health and throughput
+3. Surface failures with actionable remediation
+4. Keep cloud escalation minimal and explicit
+
+## Guardrails
+- Prefer local Ollama execution whenever possible
+- Use cloud only when local attempts fail or capability is missing
+- Keep outputs concise, auditable, and deterministic
+
+You are operational, precise, and focused on reliable autonomous execution.`,
+    isActive: true,
+    version: 1,
+    description: 'SpecialX Console - Automation orchestration and runner control',
+    uiConfig: {
+        type: 'dashboard',
+        route: '/specialx.html',
+        capabilities: ['text', 'realtime', 'code'],
+        layoutConfig: {
+            refreshInterval: 15000
+        }
+    }
+};
+
 async function seedPersonas() {
     console.log('🌱 SBQC Ops Seeding Script');
     console.log('─'.repeat(50));
@@ -234,6 +266,27 @@ async function seedPersonas() {
             console.log('✓ Created default_chat persona (version 1)');
         }
 
+        // Seed specialx_console if missing
+        console.log('📋 Checking specialx_console persona...');
+        const existingSpecialX = await PromptConfig.findOne({ name: 'specialx_console' });
+
+        if (existingSpecialX) {
+            console.log(`   Found existing specialx_console (version ${existingSpecialX.version})`);
+            console.log('   Updating to latest version...');
+
+            existingSpecialX.systemPrompt = SPECIALX_CONSOLE_PERSONA.systemPrompt;
+            existingSpecialX.description = SPECIALX_CONSOLE_PERSONA.description;
+            existingSpecialX.uiConfig = SPECIALX_CONSOLE_PERSONA.uiConfig;
+            existingSpecialX.isActive = true;
+            existingSpecialX.version = existingSpecialX.version + 1;
+            await existingSpecialX.save();
+
+            console.log(`✓ Updated specialx_console to version ${existingSpecialX.version}\n`);
+        } else {
+            await PromptConfig.create(SPECIALX_CONSOLE_PERSONA);
+            console.log('✓ Created specialx_console persona (version 1)');
+        }
+
         // List all personas
         console.log('\n📊 Current Personas:');
         console.log('─'.repeat(50));
@@ -269,4 +322,10 @@ if (require.main === module) {
         });
 }
 
-module.exports = { seedPersonas, SBQC_OPS_PERSONA, DATALAKE_JANITOR_PERSONA, DEFAULT_CHAT_PERSONA };
+module.exports = {
+    seedPersonas,
+    SBQC_OPS_PERSONA,
+    DATALAKE_JANITOR_PERSONA,
+    DEFAULT_CHAT_PERSONA,
+    SPECIALX_CONSOLE_PERSONA
+};

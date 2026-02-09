@@ -359,6 +359,10 @@ app.use('/api/repoWatcher', repoWatcherRoutes);
 const docJanitorRoutes = require('../routes/docJanitor');
 app.use('/api/docJanitor', docJanitorRoutes);
 
+// SpecialX automation routes (24/7 queue runner + task profiles)
+const specialXRoutes = require('../routes/specialx');
+app.use('/api/specialx', specialXRoutes);
+
 // Legacy/Compatibility routes
 // Map /conversations -> history
 app.use('/api/conversations', historyRoutes);

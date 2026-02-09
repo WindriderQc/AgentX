@@ -141,11 +141,14 @@ export function filterResults(results, filters) {
     }
 
     if (filters.minQuality !== undefined) {
-        filtered = filtered.filter(r => (r.quality_score || 0) >= filters.minQuality);
+        filtered = filtered.filter(r => (r.quality_score ?? 0) >= filters.minQuality);
     }
 
     if (filters.maxLatency !== undefined) {
-        filtered = filtered.filter(r => (r.latency || Infinity) <= filters.maxLatency);
+        filtered = filtered.filter(r => {
+            const latency = toFiniteNumber(r.latency);
+            return (latency ?? Infinity) <= filters.maxLatency;
+        });
     }
 
     return filtered;
@@ -192,13 +195,15 @@ export function calculateResultStats(results) {
             stats.failed++;
         }
 
-        if (r.latency) {
-            latencySum += r.latency;
+        const latency = toFiniteNumber(r.latency);
+        if (latency !== null) {
+            latencySum += latency;
             latencyCount++;
         }
 
-        if (r.tokens_per_sec) {
-            tpsSum += parseFloat(r.tokens_per_sec);
+        const tps = toFiniteNumber(r.tokens_per_sec);
+        if (tps !== null) {
+            tpsSum += tps;
             tpsCount++;
         }
 

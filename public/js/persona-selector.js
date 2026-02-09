@@ -17,6 +17,7 @@
     'repo_watcher': 'fa-shield-alt',
     'doc_janitor': 'fa-broom',
     'visual_llm': 'fa-palette',
+    'specialx_console': 'fa-gears',
     'sbqc_workflow_architect': 'fa-project-diagram',
     'manual_override': 'fa-terminal'
   };
@@ -98,9 +99,11 @@
           // Find active version or use latest (first in sorted array)
           const activeVersion = versions.find(v => v.isActive) || versions[0];
 
-          // Skip if this persona is already used by an agent
-          if (usedPromptIds.has(activeVersion._id)) {
-            console.log(`Skipping persona "${promptName}" - used by agent`);
+          // Keep dedicated UI personas visible even if linked to an agent prompt.
+          // Only hide chat personas that are already represented in the agent grid.
+          const uiType = activeVersion.uiConfig?.type || 'chat';
+          if (uiType === 'chat' && usedPromptIds.has(activeVersion._id)) {
+            console.log(`Skipping chat persona "${promptName}" - used by agent`);
             return;
           }
 

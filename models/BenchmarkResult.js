@@ -307,29 +307,57 @@ BenchmarkResultSchema.statics.getByModel = function(model, options = {}) {
 };
 
 BenchmarkResultSchema.statics.getModelStats = async function(model) {
-    const tests = await this.find({ model, success: true });
+    const agg = await this.aggregate([
+        { $match: { model, success: true } },
+        {
+            $group: {
+                _id: null,
+                tests: { $sum: 1 },
+                avg_latency: { $avg: '$latency' },
+                min_latency: { $min: '$latency' },
+                max_latency: { $max: '$latency' },
+                avg_tokens_per_sec: { $avg: { $toDouble: '$tokens_per_sec' } },
+                avg_quality: {
+                    $avg: {
+                        $cond: [
+                            { $ne: ['$quality_score', null] },
+                            '$quality_score',
+                            null
+                        ]
+                    }
+                },
+                quality_tests: {
+                    $sum: {
+                        $cond: [
+                            { $ne: ['$quality_score', null] },
+                            1,
+                            0
+                        ]
+                    }
+                }
+            }
+        }
+    ]);
 
-    if (tests.length === 0) {
+    if (agg.length === 0) {
         return { model, error: 'No successful tests found' };
     }
 
-    const latencies = tests.map(t => t.latency);
-    const tokensPerSec = tests.map(t => parseFloat(t.tokens_per_sec)).filter(t => t > 0);
-    const qualityScores = tests.map(t => t.quality_score).filter(s => s !== null);
+    const stats = agg[0];
 
     return {
         model,
-        tests: tests.length,
-        avg_latency: Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length),
-        min_latency: Math.min(...latencies),
-        max_latency: Math.max(...latencies),
-        avg_tokens_per_sec: tokensPerSec.length > 0
-            ? (tokensPerSec.reduce((a, b) => a + b, 0) / tokensPerSec.length).toFixed(2)
+        tests: Number(stats.tests) || 0,
+        avg_latency: Math.round(Number(stats.avg_latency) || 0),
+        min_latency: Number(stats.min_latency) || 0,
+        max_latency: Number(stats.max_latency) || 0,
+        avg_tokens_per_sec: stats.avg_tokens_per_sec != null
+            ? Number(stats.avg_tokens_per_sec).toFixed(2)
             : '0',
-        avg_quality: qualityScores.length > 0
-            ? (qualityScores.reduce((a, b) => a + b, 0) / qualityScores.length).toFixed(1)
+        avg_quality: stats.avg_quality != null
+            ? Number(stats.avg_quality).toFixed(1)
             : null,
-        quality_tests: qualityScores.length
+        quality_tests: Number(stats.quality_tests) || 0
     };
 };
 

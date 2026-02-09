@@ -577,6 +577,7 @@ describe('Benchmark System - Integration Tests', () => {
 
             expect(response.status).toBe(200);
             expect(response.body.data.batches).toHaveLength(3);
+            expect(response.body.data.total).toBe(5);
         });
     });
 
@@ -650,6 +651,8 @@ describe('Benchmark System - Integration Tests', () => {
             expect(response.body.data).toHaveProperty('overall');
             expect(response.body.data).toHaveProperty('by_category');
             expect(response.body.data).toHaveProperty('by_level');
+            expect(response.body.data.categories).toEqual(expect.arrayContaining(['math', 'reasoning']));
+            expect(response.body.data.levels).toEqual(expect.arrayContaining([1, 2]));
         });
     });
 });

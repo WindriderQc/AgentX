@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SpecialX Console • AgentX</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-a: #0a0f18;
+      --bg-b: #101826;
+      --bg-c: #1a1b2f;
+      --surface: rgba(15, 24, 38, 0.86);
+      --surface-border: rgba(74, 222, 128, 0.24);
+      --text: #ebf5ff;
+      --muted: #9cb2c8;
+      --accent: #4ade80;
+      --accent-soft: #22d3ee;
+      --warn: #f59e0b;
+      --danger: #fb7185;
+      --ok: #34d399;
+      --shadow: 0 22px 56px rgba(0, 0, 0, 0.38);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Space Grotesk", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(1200px 700px at 5% 5%, rgba(34, 211, 238, 0.2), transparent 55%),
+        radial-gradient(1000px 600px at 95% 0%, rgba(74, 222, 128, 0.14), transparent 58%),
+        linear-gradient(140deg, var(--bg-a), var(--bg-b) 45%, var(--bg-c));
+    }
+
+    .shell {
+      max-width: 1480px;
+      margin: 0 auto;
+      padding: 22px;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .title-wrap h1 {
+      margin: 0;
+      font-size: 1.5rem;
+      letter-spacing: 0.02em;
+    }
+
+    .title-wrap p {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .runner-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      background: rgba(255, 255, 255, 0.04);
+      font-size: 0.82rem;
+      font-family: "JetBrains Mono", monospace;
+    }
+
+    .runner-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--warn);
+      box-shadow: 0 0 14px rgba(245, 158, 11, 0.7);
+    }
+
+    .runner-dot.online {
+      background: var(--ok);
+      box-shadow: 0 0 14px rgba(52, 211, 153, 0.7);
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    button {
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.85rem;
+      font-weight: 600;
+      padding: 9px 13px;
+      border-radius: 9px;
+      cursor: pointer;
+      transition: 180ms ease;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      border-color: rgba(74, 222, 128, 0.65);
+      background: rgba(74, 222, 128, 0.14);
+    }
+
+    .btn-accent {
+      background: linear-gradient(135deg, rgba(74, 222, 128, 0.28), rgba(34, 211, 238, 0.24));
+      border-color: rgba(74, 222, 128, 0.65);
+    }
+
+    .host-control {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 7px;
+      border-radius: 9px;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .host-control select {
+      min-width: 160px;
+      margin: 0;
+      padding: 7px 9px;
+      font-size: 0.8rem;
+      border-radius: 7px;
+    }
+
+    .host-active {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.75rem;
+      color: var(--muted);
+      padding: 0 4px;
+      max-width: 220px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(170px, 1fr));
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    .metric {
+      border: 1px solid var(--surface-border);
+      background: var(--surface);
+      border-radius: 13px;
+      padding: 12px 14px;
+      box-shadow: var(--shadow);
+    }
+
+    .metric .label {
+      color: var(--muted);
+      font-size: 0.78rem;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+
+    .metric .value {
+      margin-top: 6px;
+      font-size: 1.55rem;
+      font-weight: 700;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 1.25fr 1fr;
+      gap: 12px;
+    }
+
+    .panel {
+      border: 1px solid var(--surface-border);
+      background: var(--surface);
+      border-radius: 13px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .panel-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 14px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .panel-head h2 {
+      margin: 0;
+      font-size: 1rem;
+    }
+
+    .panel-body {
+      padding: 12px 14px;
+    }
+
+    .mono {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+
+    .quick-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .composer-grid {
+      display: grid;
+      grid-template-columns: 1fr 110px;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    select, input, textarea {
+      width: 100%;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 9px;
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      padding: 9px 10px;
+      font-family: inherit;
+      font-size: 0.86rem;
+    }
+
+    textarea {
+      min-height: 108px;
+      resize: vertical;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.8rem;
+      margin-bottom: 8px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 8px 0;
+      border-bottom: 1px dashed rgba(255, 255, 255, 0.1);
+      vertical-align: top;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 0.75rem;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+
+    .status-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.72rem;
+      padding: 4px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      background: rgba(255, 255, 255, 0.05);
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    .status-chip.completed { border-color: rgba(52, 211, 153, 0.6); color: #7cf2cb; }
+    .status-chip.running, .status-chip.leased { border-color: rgba(34, 211, 238, 0.6); color: #75e8ff; }
+    .status-chip.queued { border-color: rgba(245, 158, 11, 0.6); color: #ffd19a; }
+    .status-chip.failed, .status-chip.dead_letter { border-color: rgba(251, 113, 133, 0.6); color: #ff9cad; }
+    .status-chip.cancelled { border-color: rgba(156, 178, 200, 0.6); color: #b7cde2; }
+
+    .detail {
+      font-size: 0.79rem;
+      color: var(--muted);
+      line-height: 1.55;
+      white-space: pre-wrap;
+      max-height: 320px;
+      overflow: auto;
+      padding: 10px;
+      border-radius: 9px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(5, 9, 14, 0.55);
+      font-family: "JetBrains Mono", monospace;
+    }
+
+    .empty {
+      color: var(--muted);
+      font-size: 0.84rem;
+      padding: 16px 0;
+    }
+
+    @media (max-width: 1140px) {
+      .metrics {
+        grid-template-columns: repeat(2, minmax(160px, 1fr));
+      }
+
+      .layout {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .shell {
+        padding: 14px;
+      }
+
+      .metrics {
+        grid-template-columns: 1fr;
+      }
+
+      .composer-grid {
+        grid-template-columns: 1fr;
+      }
+
+      th:nth-child(3),
+      td:nth-child(3) {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="header">
+      <div class="title-wrap">
+        <h1>SpecialX Console</h1>
+        <p>Task-bounded autonomous execution with local-first model policy.</p>
+      </div>
+      <div class="actions">
+        <div class="runner-pill">
+          <span id="runnerDot" class="runner-dot"></span>
+          <span id="runnerStatusText">Runner unknown</span>
+        </div>
+        <div class="host-control">
+          <select id="hostSelect">
+            <option value="primary">Primary</option>
+          </select>
+          <button id="setHostBtn" title="Switch active host">Set Host</button>
+          <span id="activeHostText" class="host-active">active: -</span>
+        </div>
+        <button id="startRunnerBtn">Start</button>
+        <button id="stopRunnerBtn">Stop</button>
+        <button id="tickRunnerBtn">Tick</button>
+      </div>
+    </header>
+
+    <section class="metrics">
+      <article class="metric">
+        <div class="label">Queued</div>
+        <div class="value" id="metricQueued">0</div>
+      </article>
+      <article class="metric">
+        <div class="label">Running</div>
+        <div class="value" id="metricRunning">0</div>
+      </article>
+      <article class="metric">
+        <div class="label">24h Success</div>
+        <div class="value" id="metricSuccessRate">0%</div>
+      </article>
+      <article class="metric">
+        <div class="label">Local-First Ratio</div>
+        <div class="value" id="metricLocalRatio">0%</div>
+      </article>
+    </section>
+
+    <section class="layout">
+      <article class="panel">
+        <div class="panel-head">
+          <h2>Task Composer</h2>
+          <span class="mono" id="runnerMeta">instance: -</span>
+        </div>
+        <div class="panel-body">
+          <div class="quick-actions">
+            <button class="btn-accent quick-enqueue" data-type="repo_summary">Queue Repo Summary</button>
+            <button class="quick-enqueue" data-type="model_health_digest">Queue Model Digest</button>
+            <button class="quick-enqueue" data-type="daily_operations_digest">Queue Daily Ops Digest</button>
+          </div>
+          <div class="composer-grid">
+            <select id="taskTypeSelect">
+              <option value="ci_failure_triage">CI Failure Triage</option>
+              <option value="custom_prompt_analysis">Custom Prompt Analysis</option>
+              <option value="repo_summary">Repo Summary</option>
+              <option value="model_health_digest">Model Health Digest</option>
+              <option value="daily_operations_digest">Daily Operations Digest</option>
+            </select>
+            <input id="taskPriority" type="number" value="5" min="1" max="10" title="Priority (1 highest)">
+          </div>
+          <textarea id="taskPayload" placeholder='JSON payload, e.g. {"pipeline":"agentx-ci","branch":"main","failureLogs":"..."}'></textarea>
+          <button id="enqueueTaskBtn" class="btn-accent">Enqueue Task</button>
+        </div>
+      </article>
+
+      <article class="panel">
+        <div class="panel-head">
+          <h2>Recent Runs</h2>
+          <span class="mono" id="runsMeta">0 runs</span>
+        </div>
+        <div class="panel-body">
+          <table>
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th>Task</th>
+                <th>Summary</th>
+                <th>Duration</th>
+              </tr>
+            </thead>
+            <tbody id="runsTableBody"></tbody>
+          </table>
+          <div id="runsEmpty" class="empty" hidden>No runs yet.</div>
+        </div>
+      </article>
+
+      <article class="panel">
+        <div class="panel-head">
+          <h2>Queued Tasks</h2>
+          <span class="mono" id="tasksMeta">0 tasks</span>
+        </div>
+        <div class="panel-body">
+          <table>
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th>Type</th>
+                <th>Priority</th>
+                <th>Created</th>
+              </tr>
+            </thead>
+            <tbody id="tasksTableBody"></tbody>
+          </table>
+          <div id="tasksEmpty" class="empty" hidden>No tasks queued.</div>
+        </div>
+      </article>
+
+      <article class="panel">
+        <div class="panel-head">
+          <h2>Run Detail</h2>
+          <span class="mono">click a run row</span>
+        </div>
+        <div class="panel-body">
+          <div id="runDetail" class="detail">No run selected.</div>
+        </div>
+      </article>
+    </section>
+  </main>
+
+  <script src="/js/specialx.js"></script>
+</body>
+</html>

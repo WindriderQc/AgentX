@@ -274,7 +274,7 @@ async function resetFailedTests() {
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Resetting...';
         }
 
-        const res = await fetch('/api/benchmark/results?status=failed', { method: 'DELETE' });
+        const res = await fetch('/api/benchmark/results/failed', { method: 'DELETE' });
         if (!res.ok) {
             const json = await res.json().catch(() => null);
             const msg = json?.error || json?.message || `HTTP ${res.status}`;
@@ -737,6 +737,8 @@ function showModelDetail(modelName, board) {
     if (board === 'performance') {
         const model = performanceData.find(m => m.model === modelName);
         if (!model) return;
+        const currentProfile = document.getElementById('perfProfile')?.value || 'balanced';
+        const currentComposite = calculateCompositeScore(model, currentProfile);
 
         const tests = model.tests || 1;
         const failed = model.failed_tests || 0;
@@ -746,7 +748,7 @@ function showModelDetail(modelName, board) {
             <div class="detail-grid">
                 <div class="detail-item" title="Weighted combination of Quality, Speed, and Reliability based on selected profile">
                     <span class="detail-label">Composite Score <i class="fas fa-info-circle tip-icon"></i></span>
-                    <span class="detail-value highlight">${parseFloat(model.avg_composite || 0).toFixed(1)}</span>
+                    <span class="detail-value highlight">${parseFloat(currentComposite || 0).toFixed(1)}</span>
                 </div>
                 <div class="detail-item" title="Average quality score from judge evaluations (0-10 scale)">
                     <span class="detail-label">Quality Score <i class="fas fa-info-circle tip-icon"></i></span>
@@ -877,14 +879,14 @@ function showModelDetail(modelName, board) {
                 <span class="info-note">Simple mean across tested categories, ignoring weights</span>
             </div>
 
-            <div class="info-box consistency-info">
+                <div class="info-box consistency-info">
                 <div class="info-row">
                     <span class="info-label" title="Statistical measure of how much scores vary between categories. Lower = more consistent performance.">Standard Deviation (σ): <i class="fas fa-info-circle tip-icon"></i></span>
                     <span class="info-value">${model.stdDev}</span>
                 </div>
                 <span class="info-note">
                     Measures score variance across categories.
-                    <strong>σ &lt; 10</strong> = Consistent performer (+5 bonus).
+                    <strong>σ &lt; 15</strong> = Consistent performer (+5 bonus).
                     Lower σ = more reliable across different task types.
                 </span>
             </div>

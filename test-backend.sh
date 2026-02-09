@@ -28,7 +28,7 @@ echo ""
 
 # Test user profile creation
 echo "2. Creating user profile..."
-PROFILE=$(curl -s -X POST "$BASE_URL/api/profile" \
+PROFILE=$(curl -s -X POST "$BASE_URL/api/profile?workspace=default" \
     -H "Content-Type: application/json" \
     -d "{
         \"userId\": \"$USER_ID\",
@@ -54,7 +54,7 @@ echo "   (Note: This requires Ollama to be running with llama2 model)"
 if [ "${E2E_CI:-}" = "1" ] || [ "${CI:-}" = "true" ]; then
     echo "   Skipping chat endpoint test in CI mode"
 elif true; then
-    CHAT=$(curl -s -X POST "$BASE_URL/api/chat" \
+    CHAT=$(curl -s -X POST "$BASE_URL/api/chat?workspace=default" \
         -H "Content-Type: application/json" \
         -d "{
             \"userId\": \"$USER_ID\",
@@ -76,7 +76,7 @@ elif true; then
         # Test feedback
         echo ""
         echo "4. Testing feedback endpoint..."
-        FEEDBACK=$(curl -s -X POST "$BASE_URL/api/feedback" \
+        FEEDBACK=$(curl -s -X POST "$BASE_URL/api/feedback?workspace=default" \
             -H "Content-Type: application/json" \
             -d "{
                 \"messageId\": \"$MESSAGE_ID\",
@@ -93,7 +93,7 @@ elif true; then
         # Test conversation retrieval
         echo ""
         echo "5. Testing conversation retrieval..."
-        CONV=$(curl -s "$BASE_URL/api/history/$CONVERSATION_ID")
+        CONV=$(curl -s "$BASE_URL/api/history/$CONVERSATION_ID?workspace=default")
         if echo "$CONV" | grep -q "success"; then
             echo -e "${GREEN}✓ Conversation retrieved${NC}"
             MSG_COUNT=$(echo $CONV | jq '.data.messages | length')
@@ -105,7 +105,7 @@ elif true; then
         # Test conversations list
         echo ""
         echo "6. Testing conversations list..."
-        CONVS=$(curl -s "$BASE_URL/api/history?userId=$USER_ID")
+        CONVS=$(curl -s "$BASE_URL/api/history?userId=$USER_ID&workspace=default")
         if echo "$CONVS" | grep -q "success"; then
             echo -e "${GREEN}✓ Conversations list retrieved${NC}"
             CONV_COUNT=$(echo $CONVS | jq '.data | length')
@@ -117,7 +117,7 @@ elif true; then
         # Test logs (new DB-backed view)
         echo ""
         echo "6b. Testing logs endpoint..."
-        LOGS=$(curl -s "$BASE_URL/api/logs")
+        LOGS=$(curl -s "$BASE_URL/api/logs?workspace=default")
         if echo "$LOGS" | grep -q "success"; then
              echo -e "${GREEN}✓ Logs retrieved${NC}"
              LOG_MSG_COUNT=$(echo $LOGS | jq '.data.messages | length')
@@ -137,7 +137,7 @@ fi
 
 echo ""
 echo "7. Testing profile retrieval..."
-PROFILE_GET=$(curl -s "$BASE_URL/api/profile?userId=$USER_ID")
+PROFILE_GET=$(curl -s "$BASE_URL/api/profile?userId=$USER_ID&workspace=default")
 if echo "$PROFILE_GET" | grep -q "success"; then
     echo -e "${GREEN}✓ Profile retrieved${NC}"
     echo "   About: $(echo $PROFILE_GET | jq -r '.data.about' | cut -c1-50)..."

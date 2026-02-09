@@ -121,32 +121,32 @@ CHAT_DATA=$(cat <<EOF
 EOF
 )
 
-test_endpoint "Chat (creates conversation with prompt version)" "POST" "/api/chat" "$CHAT_DATA"
+test_endpoint "Chat (creates conversation with prompt version)" "POST" "/api/chat?workspace=default" "$CHAT_DATA"
 fi
 
 # 2. Test Analytics: Usage
 echo "=== 2. Analytics - Usage Stats ==="
-test_endpoint "Usage (default 7 days)" "GET" "/api/analytics/usage" ""
-test_endpoint "Usage by model" "GET" "/api/analytics/usage?groupBy=model" ""
-test_endpoint "Usage by promptVersion" "GET" "/api/analytics/usage?groupBy=promptVersion" ""
-test_endpoint "Usage by day" "GET" "/api/analytics/usage?groupBy=day" ""
+test_endpoint "Usage (default 7 days)" "GET" "/api/analytics/usage?workspace=default" ""
+test_endpoint "Usage by model" "GET" "/api/analytics/usage?groupBy=model&workspace=default" ""
+test_endpoint "Usage by promptVersion" "GET" "/api/analytics/usage?groupBy=promptVersion&workspace=default" ""
+test_endpoint "Usage by day" "GET" "/api/analytics/usage?groupBy=day&workspace=default" ""
 
 # 3. Test Analytics: Feedback
 echo "=== 3. Analytics - Feedback Stats ==="
-test_endpoint "Feedback (overall)" "GET" "/api/analytics/feedback" ""
-test_endpoint "Feedback by promptVersion" "GET" "/api/analytics/feedback?groupBy=promptVersion" ""
-test_endpoint "Feedback by model" "GET" "/api/analytics/feedback?groupBy=model" ""
+test_endpoint "Feedback (overall)" "GET" "/api/analytics/feedback?workspace=default" ""
+test_endpoint "Feedback by promptVersion" "GET" "/api/analytics/feedback?groupBy=promptVersion&workspace=default" ""
+test_endpoint "Feedback by model" "GET" "/api/analytics/feedback?groupBy=model&workspace=default" ""
 
 # 4. Test Analytics: RAG Stats
 echo "=== 4. Analytics - RAG Performance ==="
-test_endpoint "RAG Stats" "GET" "/api/analytics/rag-stats" ""
+test_endpoint "RAG Stats" "GET" "/api/analytics/rag-stats?workspace=default" ""
 
 # 5. Test Dataset: Conversation Export
 echo "=== 5. Dataset - Conversation Export ==="
 if [ -n "${AGENTX_API_KEY:-}" ]; then
-    test_endpoint "Export conversations (default)" "GET" "/api/dataset/conversations" ""
-    test_endpoint "Export with limit=2" "GET" "/api/dataset/conversations?limit=2" ""
-    test_endpoint "Export with positive feedback only" "GET" "/api/dataset/conversations?minFeedback=1" ""
+    test_endpoint "Export conversations (default)" "GET" "/api/dataset/conversations?workspace=default" ""
+    test_endpoint "Export with limit=2" "GET" "/api/dataset/conversations?limit=2&workspace=default" ""
+    test_endpoint "Export with positive feedback only" "GET" "/api/dataset/conversations?minFeedback=1&workspace=default" ""
 else
     echo -e "${YELLOW}Skipping dataset export tests (AGENTX_API_KEY not set)${NC}"
     echo ""
@@ -161,10 +161,10 @@ if [ -z "${AGENTX_API_KEY:-}" ]; then
 else
 
 # 6a. List all prompts
-test_endpoint "List all prompts" "GET" "/api/dataset/prompts" ""
+test_endpoint "List all prompts" "GET" "/api/dataset/prompts?workspace=default" ""
 
 # 6b. List active prompts
-test_endpoint "List active prompts" "GET" "/api/dataset/prompts?status=active" ""
+test_endpoint "List active prompts" "GET" "/api/dataset/prompts?status=active&workspace=default" ""
 
 # 6c. Create new prompt (proposed)
 # Use timestamp to create unique version number
@@ -181,7 +181,7 @@ NEW_PROMPT_DATA=$(cat <<EOF
 EOF
 )
 
-PROMPT_RESPONSE=$(curl -s -X POST "$BASE_URL/api/dataset/prompts" \
+PROMPT_RESPONSE=$(curl -s -X POST "$BASE_URL/api/dataset/prompts?workspace=default" \
     -H "x-api-key: $AGENTX_API_KEY" \
   -H "Content-Type: application/json" \
   -d "$NEW_PROMPT_DATA")
@@ -199,7 +199,7 @@ else
 fi
 
 # 6d. List proposed prompts
-test_endpoint "List proposed prompts" "GET" "/api/dataset/prompts?status=proposed" ""
+test_endpoint "List proposed prompts" "GET" "/api/dataset/prompts?status=proposed&workspace=default" ""
 
 # 6e. Activate the new prompt
 if [ "$NEW_PROMPT_ID" != "null" ] && [ -n "$NEW_PROMPT_ID" ]; then
@@ -208,7 +208,7 @@ if [ "$NEW_PROMPT_ID" != "null" ] && [ -n "$NEW_PROMPT_ID" ]; then
     echo "  Method: PATCH"
     echo "  Endpoint: /api/dataset/prompts/$NEW_PROMPT_ID/activate"
     
-    ACTIVATE_RESPONSE=$(curl -s -X PATCH "$BASE_URL/api/dataset/prompts/$NEW_PROMPT_ID/activate" \
+    ACTIVATE_RESPONSE=$(curl -s -X PATCH "$BASE_URL/api/dataset/prompts/$NEW_PROMPT_ID/activate?workspace=default" \
             -H "x-api-key: $AGENTX_API_KEY" \
       -H "Content-Type: application/json")
     
@@ -222,7 +222,7 @@ if [ "$NEW_PROMPT_ID" != "null" ] && [ -n "$NEW_PROMPT_ID" ]; then
     
     # Verify it's now active
     echo ""
-    test_endpoint "Verify prompt is active" "GET" "/api/dataset/prompts?status=active&name=default_chat" ""
+    test_endpoint "Verify prompt is active" "GET" "/api/dataset/prompts?status=active&name=default_chat&workspace=default" ""
 else
     echo -e "  ${YELLOW}⊘ Skipping activation test (no prompt ID)${NC}"
 fi
@@ -234,8 +234,8 @@ echo "=== 7. Advanced - Date Range Filtering ==="
 FROM_DATE=$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-7d +%Y-%m-%dT%H:%M:%SZ)
 TO_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-test_endpoint "Usage with date range" "GET" "/api/analytics/usage?from=$FROM_DATE&to=$TO_DATE" ""
-test_endpoint "Feedback with date range" "GET" "/api/analytics/feedback?from=$FROM_DATE&to=$TO_DATE" ""
+test_endpoint "Usage with date range" "GET" "/api/analytics/usage?from=$FROM_DATE&to=$TO_DATE&workspace=default" ""
+test_endpoint "Feedback with date range" "GET" "/api/analytics/feedback?from=$FROM_DATE&to=$TO_DATE&workspace=default" ""
 
 # 8. Summary
 echo "==================================="

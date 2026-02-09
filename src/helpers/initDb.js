@@ -1,7 +1,12 @@
 const UserProfile = require('../../models/UserProfile');
 const Workspace = require('../../models/Workspace');
 const PromptConfig = require('../../models/PromptConfig');
-const { SBQC_OPS_PERSONA, DATALAKE_JANITOR_PERSONA, DEFAULT_CHAT_PERSONA } = require('../../scripts/seed-sbqc-ops');
+const {
+    SBQC_OPS_PERSONA,
+    DATALAKE_JANITOR_PERSONA,
+    DEFAULT_CHAT_PERSONA,
+    SPECIALX_CONSOLE_PERSONA
+} = require('../../scripts/seed-sbqc-ops');
 const logger = require('../../config/logger');
 
 async function seedDefaultData() {
@@ -29,7 +34,12 @@ async function seedDefaultData() {
             logger.info('Seeded default workspace');
         }
 
-        const personas = [SBQC_OPS_PERSONA, DATALAKE_JANITOR_PERSONA, DEFAULT_CHAT_PERSONA];
+        const personas = [
+            SBQC_OPS_PERSONA,
+            DATALAKE_JANITOR_PERSONA,
+            DEFAULT_CHAT_PERSONA,
+            SPECIALX_CONSOLE_PERSONA
+        ];
         for (const p of personas) {
             if (!p) continue;
             const existing = await PromptConfig.findOne({ name: p.name });

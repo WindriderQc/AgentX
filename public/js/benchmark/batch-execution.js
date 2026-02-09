@@ -488,7 +488,7 @@ function updatePerModelProgress(batch, results, showHyper) {
     const isJudgeFailed = (r) => {
         if (!r) return false;
         const m = r.scoring_method;
-        return m === 'exec_failed' || r.success === false;
+        return m === 'exec_failed' || m === 'llm_failed' || r.success === false;
     };
 
     // Median baselines for relative indicators

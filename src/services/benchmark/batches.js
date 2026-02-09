@@ -13,8 +13,11 @@ const { HOSTS } = require('../modelRouter');
  * Get all batch runs
  */
 async function getBatches({ limit = 20 } = {}) {
-    const batches = await BenchmarkBatch.getRecent(limit);
-    return { batches, total: batches.length };
+    const [batches, total] = await Promise.all([
+        BenchmarkBatch.getRecent(limit),
+        BenchmarkBatch.countDocuments()
+    ]);
+    return { batches, total };
 }
 
 /**
@@ -27,7 +30,7 @@ async function getBatch(batchId) {
         throw new Error('Batch not found');
     }
 
-    const results = await BenchmarkResult.getByBatch(batchId);
+    const results = await BenchmarkResult.getByBatch(batchId).lean();
 
     const defaultJudgeModel = (batch && batch.judge_config && batch.judge_config.model)
         ? batch.judge_config.model

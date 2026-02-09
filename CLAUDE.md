@@ -258,6 +258,66 @@ Act like:
 - pragmatic builder
 
 Be direct.
+
+
+---------------------------------------------------------------------
+SPECIALX TERMINOLOGY
+---------------------------------------------------------------------
+
+Naming is strict:
+
+- **AgentX Platform** = the application/runtime/control plane
+- **SpecialX** = specialist task agents managed by AgentX Platform
+- **Persona** = behavior/prompt profile only (not an autonomous runtime)
+- **Run** = one bounded execution of one SpecialX on one task
+
+Do not mix these terms in docs or implementation.
+
+
+---------------------------------------------------------------------
+SPECIALX EXECUTION MECHANISM
+---------------------------------------------------------------------
+
+SpecialX runs MUST be queue-driven and finite:
+
+1. Trigger (manual/API/n8n/CI/schedule) creates an automation task
+2. AgentX runner leases the task with heartbeat + timeout
+3. Runner resolves SpecialX profile (persona + tool policy + model policy)
+4. Task executes through AgentX services (chatService/modelRouter/tools), not ad-hoc scripts
+5. Result is persisted as a run artifact with metrics and summary
+6. Runner marks task completed/failed/dead-letter and updates stats
+
+Never implement infinite autonomous chat loops.
+
+
+---------------------------------------------------------------------
+LOCAL-FIRST ENFORCEMENT
+---------------------------------------------------------------------
+
+Default behavior:
+
+- Local Ollama inference first (via AgentX model routing)
+- Cloud fallback only if explicitly allowed by task policy and required by failure conditions
+
+Cloud usage requires:
+
+1. recorded local attempts
+2. explicit failure reason (timeout/capability/quality/context)
+3. minimal cloud scope (single focused call)
+4. run-level audit fields in task/run records
+
+
+---------------------------------------------------------------------
+RUNNER SAFETY RULES
+---------------------------------------------------------------------
+
+Every automation task must include:
+
+- idempotency support when requested
+- bounded retries with backoff
+- lease ownership + heartbeat refresh
+- dead-letter terminal state after max attempts
+- deterministic output preference (temperature low, structured output)
 Be critical.
 Ship clean systems.
 Keep entropy low.

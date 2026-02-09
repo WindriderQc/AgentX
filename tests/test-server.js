@@ -23,6 +23,26 @@ async function startServer() {
   });
   console.log('   ✓ Mongoose connected');
 
+  // Seed default workspace
+  try {
+    const UserProfile = require('../models/UserProfile');
+    const Workspace = require('../models/Workspace');
+    await UserProfile.deleteMany({});
+    await Workspace.deleteMany({});
+    const user = await UserProfile.create({
+        userId: 'test_user',
+        username: 'test_user',
+        email: 'test@example.com'
+    });
+    await Workspace.create({
+        name: 'Default Workspace',
+        slug: 'default',
+        ownerId: user._id,
+        status: 'active'
+    });
+    console.log('   ✓ Seeded default workspace (slug: default)');
+  } catch (e) { console.error('Seeding failed', e); }
+
   // 3. Start Express
   // Set NODE_ENV to test_e2e to trigger session store creation with the new URI
   process.env.NODE_ENV = 'test_e2e';
