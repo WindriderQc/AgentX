@@ -1,9 +1,9 @@
 require('dotenv').config();
-const path = require('path');
 const connectDB = require('./config/db-mongodb');
 const logger = require('./config/logger');
 const { app, systemHealth, setRagWatcherInstance } = require('./src/app');
 const SelfHealingEngine = require('./src/services/selfHealingEngine');
+const { getAutomationRunnerService } = require('./src/services/automationRunnerService');
 
 console.log('SERVER.JS STARTING UP - DEBUG TEST');
 
@@ -144,6 +144,16 @@ async function startServer() {
     console.log(`   ✓ MongoDB:  Connected`);
     logger.info('MongoDB connected successfully');
 
+    // Seed default data (Workspace, User, Personas)
+    try {
+      const seedDefaultData = require('./src/helpers/initDb');
+      await seedDefaultData();
+    } catch (seedErr) {
+      const logger = require('./config/logger');
+      logger.warn('Failed to seed default data', { error: seedErr.message });
+    }
+
+
     // Cleanup orphaned benchmark batches after DB connection
     try {
       const benchmarkService = require('./src/services/benchmarkService');
@@ -248,6 +258,20 @@ async function startServer() {
     console.log(`   ⚠ RAG Watcher: ${err.message}`);
     console.log('Full error:', err);
     logger.warn('RAG file watcher not started - automatic ingestion disabled', { error: err.message });
+  }
+
+  // Start SpecialX automation runner
+  try {
+    const specialXRunner = getAutomationRunnerService();
+    await specialXRunner.start();
+    console.log(`   ✓ SpecialX Runner: Active (${specialXRunner.instanceId})`);
+    logger.info('SpecialX runner started', {
+      instanceId: specialXRunner.instanceId,
+      enabled: specialXRunner.enabled
+    });
+  } catch (err) {
+    console.log(`   ⚠ SpecialX Runner: ${err.message}`);
+    logger.warn('SpecialX runner failed to start', { error: err.message });
   }
 
   // Start Express server
