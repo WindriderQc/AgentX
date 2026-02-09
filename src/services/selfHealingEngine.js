@@ -5,6 +5,7 @@ const ModelRouter = require('./modelRouter');
 const logger = require('../../config/logger');
 const fs = require('fs').promises;
 const path = require('path');
+const crypto = require('crypto');
 
 /**
  * SelfHealingEngine - Track 4: Self-Healing & Resilience
