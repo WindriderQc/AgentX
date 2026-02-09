@@ -81,6 +81,9 @@ class RagFileWatcher {
 
       // Start periodic manifest updates
       this.manifestUpdateTimer = setInterval(this.processManifestUpdate, this.manifestUpdateInterval);
+      if (this.manifestUpdateTimer && typeof this.manifestUpdateTimer.unref === 'function') {
+        this.manifestUpdateTimer.unref();
+      }
 
       // Initial scan and manifest update
       await this.initialScan();

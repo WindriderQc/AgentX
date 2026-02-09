@@ -483,6 +483,52 @@ describe('Benchmark System - Integration Tests', () => {
             expect(response.status).toBe(200);
             expect(response.body.data.total_tests).toBe(4); // 2 models * 2 prompts
         });
+
+        it('should return 409 on duplicate-key race collision during start', async () => {
+            await BenchmarkBatch.collection.createIndex(
+                { active_slot: 1 },
+                {
+                    unique: true,
+                    partialFilterExpression: {
+                        active_slot: { $type: 'string' },
+                        $or: [
+                            { status: { $in: ['running', 'judging'] } },
+                            { judge_status: 'running' }
+                        ]
+                    }
+                }
+            );
+
+            await BenchmarkBatch.create({
+                host: 'http://localhost:11434',
+                models: ['existing-model'],
+                levels: [1],
+                run_name: 'Existing Active',
+                status: 'running',
+                total_tests: 1,
+                active_slot: 'benchmark_singleton'
+            });
+
+            const realGetActive = BenchmarkBatch.getActive.bind(BenchmarkBatch);
+            const getActiveSpy = jest.spyOn(BenchmarkBatch, 'getActive')
+                .mockImplementationOnce(() => [])
+                .mockImplementation((...args) => realGetActive(...args));
+
+            const response = await request(app)
+                .post('/api/benchmark/batch')
+                .send({
+                    host: 'http://localhost:11434',
+                    models: ['new-model'],
+                    levels: [1],
+                    quality_scoring: false
+                });
+
+            getActiveSpy.mockRestore();
+
+            expect(response.status).toBe(409);
+            expect(response.body.status).toBe('error');
+            expect(response.body.error).toContain('already running');
+        });
     });
 
     describe('GET /api/benchmark/batch/:id', () => {
@@ -513,6 +559,59 @@ describe('Benchmark System - Integration Tests', () => {
             expect(response.body.data.status).toBe('completed');
             expect(response.body.data).toHaveProperty('progress');
             expect(response.body.data).toHaveProperty('success_rate');
+        });
+
+        it('should reconcile persisted batch counters from actual results', async () => {
+            const batch = await BenchmarkBatch.create({
+                host: 'http://localhost:11434',
+                models: ['test-model'],
+                levels: [1],
+                run_name: 'Counter Drift Batch',
+                total_tests: 2,
+                status: 'completed',
+                quality_scoring: false,
+                completed: 0,
+                failed: 0
+            });
+
+            await BenchmarkResult.create([
+                {
+                    batch_id: batch._id.toString(),
+                    model: 'test-model',
+                    host: 'http://localhost:11434',
+                    prompt: 'p1',
+                    prompt_name: 'P1',
+                    prompt_level: 1,
+                    prompt_category: 'math',
+                    response: 'ok',
+                    latency: 100,
+                    tokens: 10,
+                    success: true
+                },
+                {
+                    batch_id: batch._id.toString(),
+                    model: 'test-model',
+                    host: 'http://localhost:11434',
+                    prompt: 'p2',
+                    prompt_name: 'P2',
+                    prompt_level: 1,
+                    prompt_category: 'math',
+                    error: 'boom',
+                    latency: 150,
+                    tokens: 8,
+                    success: false
+                }
+            ]);
+
+            const response = await request(app).get(`/api/benchmark/batch/${batch._id}`);
+            expect(response.status).toBe(200);
+            expect(response.body.data.completed).toBe(2);
+            expect(response.body.data.failed).toBe(1);
+            expect(response.body.data._countMismatch).toBe(true);
+
+            const refreshed = await BenchmarkBatch.findById(batch._id).lean();
+            expect(refreshed.completed).toBe(2);
+            expect(refreshed.failed).toBe(1);
         });
 
         it('should omit heavy result fields by default and include them when requested', async () => {
@@ -562,6 +661,77 @@ describe('Benchmark System - Integration Tests', () => {
             expect(full.body.data.results[0].execution_settings).toMatchObject({ num_predict: 32 });
             expect(full.body.data.results[0].warmup).toBeTruthy();
             expect(full.body.data.results[0].judge_warmup).toBeTruthy();
+        });
+
+        it('should support paginated result payloads with results_meta', async () => {
+            const batch = await BenchmarkBatch.create({
+                host: 'http://localhost:11434',
+                models: ['test-model'],
+                levels: [1],
+                run_name: 'Paginated Batch',
+                total_tests: 3,
+                status: 'completed',
+                quality_scoring: false,
+                completed: 3,
+                failed: 0
+            });
+
+            await BenchmarkResult.create([
+                {
+                    batch_id: batch._id.toString(),
+                    model: 'test-model',
+                    host: 'http://localhost:11434',
+                    prompt: 'p1',
+                    prompt_name: 'P1',
+                    prompt_level: 1,
+                    prompt_category: 'math',
+                    response: 'r1',
+                    latency: 100,
+                    tokens: 10,
+                    success: true
+                },
+                {
+                    batch_id: batch._id.toString(),
+                    model: 'test-model',
+                    host: 'http://localhost:11434',
+                    prompt: 'p2',
+                    prompt_name: 'P2',
+                    prompt_level: 1,
+                    prompt_category: 'math',
+                    response: 'r2',
+                    latency: 110,
+                    tokens: 11,
+                    success: true
+                },
+                {
+                    batch_id: batch._id.toString(),
+                    model: 'test-model',
+                    host: 'http://localhost:11434',
+                    prompt: 'p3',
+                    prompt_name: 'P3',
+                    prompt_level: 1,
+                    prompt_category: 'math',
+                    response: 'r3',
+                    latency: 120,
+                    tokens: 12,
+                    success: true
+                }
+            ]);
+
+            const response = await request(app)
+                .get(`/api/benchmark/batch/${batch._id}?result_limit=2&result_offset=1`);
+
+            expect(response.status).toBe(200);
+            expect(response.body.status).toBe('success');
+            expect(response.body.data.completed).toBe(3);
+            expect(response.body.data.results).toHaveLength(2);
+            expect(response.body.data.results_meta).toMatchObject({
+                returned: 2,
+                total: 3,
+                offset: 1,
+                limit: 2,
+                truncated: false
+            });
         });
     });
 
@@ -630,6 +800,243 @@ describe('Benchmark System - Integration Tests', () => {
         });
     });
 
+    describe('POST /api/benchmark/batch/:id/stop', () => {
+        it('should stop a running batch', async () => {
+            const batch = await BenchmarkBatch.create({
+                host: 'http://localhost:11434',
+                models: ['stop-model'],
+                levels: [1],
+                run_name: 'Stop Me',
+                status: 'running',
+                total_tests: 1
+            });
+
+            const response = await request(app).post(`/api/benchmark/batch/${batch._id}/stop`);
+
+            expect(response.status).toBe(200);
+            expect(response.body.status).toBe('success');
+            expect(response.body.data.status).toBe('stopped');
+            expect(response.body.data.already_stopped).toBe(false);
+
+            const refreshed = await BenchmarkBatch.findById(batch._id).lean();
+            expect(refreshed.status).toBe('stopped');
+        });
+    });
+
+    describe('POST /api/benchmark/batch/:id/recover', () => {
+        it('should recover a running batch by stopping it', async () => {
+            const batch = await BenchmarkBatch.create({
+                host: 'http://localhost:11434',
+                models: ['recover-model'],
+                levels: [1],
+                run_name: 'Recover Me',
+                status: 'running',
+                total_tests: 3
+            });
+
+            const response = await request(app).post(`/api/benchmark/batch/${batch._id}/recover`);
+
+            expect(response.status).toBe(200);
+            expect(response.body.status).toBe('success');
+            expect(response.body.message).toContain('stopped');
+
+            const refreshed = await BenchmarkBatch.findById(batch._id).lean();
+            expect(refreshed.status).toBe('stopped');
+        });
+    });
+
+    describe('POST /api/benchmark/batch/:id/judge', () => {
+        it('should enqueue judging request and return immediately', async () => {
+            const batch = await BenchmarkBatch.create({
+                host: 'http://localhost:11434',
+                models: ['judge-model'],
+                levels: [1],
+                run_name: 'Judge Me',
+                status: 'completed',
+                total_tests: 1,
+                quality_scoring: true
+            });
+
+            const response = await request(app)
+                .post(`/api/benchmark/batch/${batch._id}/judge`)
+                .send({ concurrency: 1, force: false });
+
+            expect(response.status).toBe(200);
+            expect(response.body.status).toBe('success');
+            expect(response.body.message).toContain('Judging started in background');
+        });
+    });
+
+    describe('GET /api/benchmark/batch/:id/judge/status', () => {
+        it('should return persisted judge status counters', async () => {
+            const batch = await BenchmarkBatch.create({
+                host: 'http://localhost:11434',
+                models: ['judge-status-model'],
+                levels: [1],
+                run_name: 'Judge Status Batch',
+                status: 'completed',
+                total_tests: 2,
+                judge_status: 'completed',
+                judge_total: 2,
+                judge_completed: 2,
+                judge_failed: 1
+            });
+
+            const response = await request(app).get(`/api/benchmark/batch/${batch._id}/judge/status`);
+
+            expect(response.status).toBe(200);
+            expect(response.body.status).toBe('success');
+            expect(response.body.data.active).toBe(false);
+            expect(response.body.data.judge_status).toBe('completed');
+            expect(response.body.data.judge_total).toBe(2);
+            expect(response.body.data.judge_completed).toBe(2);
+            expect(response.body.data.judge_failed).toBe(1);
+        });
+    });
+
+    describe('POST /api/benchmark/batch/:id/rejudge-pending', () => {
+        it('should enqueue rejudge request and return immediately', async () => {
+            const batch = await BenchmarkBatch.create({
+                host: 'http://localhost:11434',
+                models: ['rejudge-model'],
+                levels: [1],
+                run_name: 'Rejudge Me',
+                status: 'completed',
+                total_tests: 1,
+                quality_scoring: true
+            });
+
+            const response = await request(app)
+                .post(`/api/benchmark/batch/${batch._id}/rejudge-pending`)
+                .send({ concurrency: 1 });
+
+            expect(response.status).toBe(200);
+            expect(response.body.status).toBe('success');
+            expect(response.body.message).toContain('Judging started in background');
+        });
+    });
+
+    describe('GET /api/benchmark/results/advanced', () => {
+        it('should support advanced filtering and pagination', async () => {
+            const batchId = new mongoose.Types.ObjectId().toString();
+            await BenchmarkResult.create([
+                {
+                    batch_id: batchId,
+                    model: 'advanced-model-a',
+                    host: 'http://localhost:11434',
+                    prompt: 'Prompt A',
+                    prompt_name: 'Prompt A',
+                    prompt_category: 'math',
+                    prompt_level: 2,
+                    latency: 400,
+                    tokens: 40,
+                    quality_score: 8.8,
+                    scoring_method: 'reasoning',
+                    success: true
+                },
+                {
+                    batch_id: batchId,
+                    model: 'advanced-model-b',
+                    host: 'http://localhost:11434',
+                    prompt: 'Prompt B',
+                    prompt_name: 'Prompt B',
+                    prompt_category: 'reasoning',
+                    prompt_level: 5,
+                    latency: 900,
+                    tokens: 90,
+                    quality_score: 6.1,
+                    scoring_method: 'llm_failed',
+                    success: false
+                }
+            ]);
+
+            const response = await request(app)
+                .get('/api/benchmark/results/advanced')
+                .query({
+                    batchId,
+                    categories: 'math',
+                    levelMin: 1,
+                    levelMax: 3,
+                    qualityMin: 8,
+                    success: 'true',
+                    limit: 10,
+                    offset: 0
+                });
+
+            expect(response.status).toBe(200);
+            expect(response.body.status).toBe('success');
+            expect(response.body.data.total).toBe(1);
+            expect(response.body.data.results).toHaveLength(1);
+            expect(response.body.data.results[0].model).toBe('advanced-model-a');
+            expect(response.body.data.hasMore).toBe(false);
+        });
+    });
+
+    describe('POST /api/benchmark/results/:id/human-review', () => {
+        it('should persist human review score and reviewer', async () => {
+            const result = await BenchmarkResult.create({
+                model: 'human-reviewed-model',
+                host: 'http://localhost:11434',
+                prompt: 'Review this output',
+                response: 'Sample response',
+                latency: 300,
+                tokens: 30,
+                quality_score: 7.0,
+                success: true
+            });
+
+            const response = await request(app)
+                .post(`/api/benchmark/results/${result._id}/human-review`)
+                .send({ human_score: 9.5, reviewer: 'qa-reviewer' });
+
+            expect(response.status).toBe(200);
+            expect(response.body.status).toBe('success');
+            expect(response.body.data.human_score).toBe(9.5);
+            expect(response.body.data.human_reviewed_at).toBeTruthy();
+
+            const refreshed = await BenchmarkResult.findById(result._id).lean();
+            expect(refreshed.human_score).toBe(9.5);
+            expect(refreshed.human_reviewer).toBe('qa-reviewer');
+            expect(refreshed.human_reviewed_at).toBeTruthy();
+        });
+    });
+
+    describe('GET /api/benchmark/generalist-leaderboard', () => {
+        it('should return generalist leaderboard data from benchmark results', async () => {
+            await BenchmarkResult.create([
+                {
+                    model: 'generalist-model',
+                    host: 'http://localhost:11434',
+                    prompt: 'Code task',
+                    prompt_name: 'Code task',
+                    prompt_category: 'coding',
+                    prompt_level: 3,
+                    quality_score: 8.0,
+                    success: true
+                },
+                {
+                    model: 'generalist-model',
+                    host: 'http://localhost:11434',
+                    prompt: 'Reasoning task',
+                    prompt_name: 'Reasoning task',
+                    prompt_category: 'reasoning',
+                    prompt_level: 4,
+                    quality_score: 7.5,
+                    success: true
+                }
+            ]);
+
+            const response = await request(app).get('/api/benchmark/generalist-leaderboard');
+
+            expect(response.status).toBe(200);
+            expect(response.body.status).toBe('success');
+            expect(Array.isArray(response.body.data.leaderboard)).toBe(true);
+            expect(response.body.data.categoryWeights).toBeTruthy();
+            expect(response.body.data.leaderboard.length).toBeGreaterThan(0);
+            expect(response.body.data.leaderboard[0]).toHaveProperty('generalistScore');
+        });
+    });
+
     describe('DELETE /api/benchmark/results', () => {
         it('should clear all results', async () => {
             // Create test results
@@ -661,6 +1068,38 @@ describe('Benchmark System - Integration Tests', () => {
             // Verify results were deleted
             const count = await BenchmarkResult.countDocuments();
             expect(count).toBe(0);
+        });
+    });
+
+    describe('DELETE /api/benchmark/results/failed', () => {
+        it('should clear only failed results', async () => {
+            await BenchmarkResult.create([
+                {
+                    model: 'ok-model',
+                    host: 'http://localhost:11434',
+                    prompt: 'success',
+                    latency: 100,
+                    tokens: 20,
+                    success: true
+                },
+                {
+                    model: 'bad-model',
+                    host: 'http://localhost:11434',
+                    prompt: 'failure',
+                    error: 'boom',
+                    success: false
+                }
+            ]);
+
+            const response = await request(app).delete('/api/benchmark/results/failed');
+
+            expect(response.status).toBe(200);
+            expect(response.body.status).toBe('success');
+            expect(response.body.message).toContain('failed results');
+
+            const remaining = await BenchmarkResult.find().lean();
+            expect(remaining).toHaveLength(1);
+            expect(remaining[0].success).toBe(true);
         });
     });
 

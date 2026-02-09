@@ -35,11 +35,16 @@ jest.mock('../models/Conversation', () => {
     return MockModel;
 });
 
-jest.mock('../models/PromptConfig', () => ({
-    getActive: jest.fn(),
-    findOne: jest.fn(),
-    find: jest.fn()
-}));
+jest.mock('../models/PromptConfig', () => {
+    const MockPromptConfig = jest.fn().mockImplementation((data) => ({
+        ...data,
+        save: jest.fn().mockResolvedValue(true)
+    }));
+    MockPromptConfig.getActive = jest.fn();
+    MockPromptConfig.findOne = jest.fn();
+    MockPromptConfig.find = jest.fn();
+    return MockPromptConfig;
+});
 
 jest.mock('../src/helpers/userHelpers');
 jest.mock('../src/helpers/ollamaResponseHandler');

@@ -123,11 +123,10 @@ function renderTable(models) {
         
         // Checkbox column
         const checkTd = document.createElement('td');
-        checkTd.innerHTML = `<input type="checkbox" class="model-select" data-model="${modelKey}">`;
         const selectCheckbox = document.createElement('input');
         selectCheckbox.type = 'checkbox';
         selectCheckbox.className = 'model-select';
-        selectCheckbox.dataset.model = model.name;
+        selectCheckbox.dataset.model = modelKey;
         checkTd.appendChild(selectCheckbox);
         tr.appendChild(checkTd);
 
@@ -192,17 +191,11 @@ function renderTable(models) {
         CATEGORIES.forEach(cat => {
             const label = document.createElement('label');
             label.className = 'checkbox-label';
-            const checked = currentCats.includes(cat) ? 'checked' : '';
-            label.innerHTML = `
-                <input type="checkbox" value="${cat}" ${checked} 
-                    onchange="markDirty('${modelKey}')"> 
-                ${capitalize(cat)}
-            `;
             const checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
             checkbox.value = cat;
             checkbox.checked = currentCats.includes(cat);
-            checkbox.addEventListener('change', () => markDirty(model.name));
+            checkbox.addEventListener('change', () => markDirty(modelKey));
             label.appendChild(checkbox);
             label.append(` ${capitalize(cat)}`);
             catsDiv.appendChild(label);
@@ -212,35 +205,25 @@ function renderTable(models) {
 
         // Actions
         const actionsTd = document.createElement('td');
-        actionsTd.innerHTML = `
-            <div style="display: flex; gap: 8px;">
-                <button class="btn btn-sm" id="save-${modelKey}" onclick="saveModelCategories('${modelKey}')" style="display:none; padding: 4px 10px; font-size: 0.8em;">
-                    <i class="fa-solid fa-save"></i> Save
-                </button>
-                <button class="btn btn-sm" onclick="openQuickTest('${modelKey}')" style="padding: 4px 10px; font-size: 0.8em;">
-                    <i class="fa-solid fa-vial"></i> Test
-                </button>
-            </div>
-        `;
         const actionsWrap = document.createElement('div');
         actionsWrap.style.display = 'flex';
         actionsWrap.style.gap = '8px';
 
         const saveButton = document.createElement('button');
         saveButton.className = 'btn btn-sm';
-        saveButton.id = `save-${toSafeId(model.name)}`;
+        saveButton.id = `save-${toSafeId(modelKey)}`;
         saveButton.style.display = 'none';
         saveButton.style.padding = '4px 10px';
         saveButton.style.fontSize = '0.8em';
         saveButton.innerHTML = '<i class="fa-solid fa-save"></i> Save';
-        saveButton.addEventListener('click', () => saveModelCategories(model.name));
+        saveButton.addEventListener('click', () => saveModelCategories(modelKey));
 
         const testButton = document.createElement('button');
         testButton.className = 'btn btn-sm';
         testButton.style.padding = '4px 10px';
         testButton.style.fontSize = '0.8em';
         testButton.innerHTML = '<i class="fa-solid fa-vial"></i> Test';
-        testButton.addEventListener('click', () => openQuickTest(model.name));
+        testButton.addEventListener('click', () => openQuickTest(modelKey));
 
         actionsWrap.appendChild(saveButton);
         actionsWrap.appendChild(testButton);
@@ -274,6 +257,10 @@ function getCategoryIcon(category) {
         ops: 'fa-server',
         embedding: 'fa-vector-square',
         judge: 'fa-gavel',
+        factual: 'fa-book',
+        math: 'fa-calculator',
+        creative: 'fa-paint-brush',
+        general: 'fa-tag',
         pending: 'fa-clock'
     };
     return map[category?.toLowerCase()] || 'fa-question';

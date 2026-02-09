@@ -3,14 +3,26 @@
 **Date:** 2026-02-09
 **Scope:** Complete model categorization system - schemas, services, API routes, UI components, leaderboard, CSS, and config data
 **Files Reviewed:** 25+
+**Revision:** Applied fixes for issues #1-8, #12, #14
 
 ---
 
 ## Executive Summary
 
-The categorization system has strong architectural foundations (generalist scoring, two-board leaderboard, reusable badge component) but suffers from **category enum fragmentation** across the stack. Five different category lists exist with no shared source of truth, causing silent data mismatches between benchmarks (12 categories), the model registry (7 categories), the UI (6-7 categories), and the leaderboard tabs (5 categories).
+The categorization system has strong architectural foundations (generalist scoring, two-board leaderboard, reusable badge component). The initial review identified **category enum fragmentation** across the stack with five different category lists and no shared source of truth.
 
-**Overall Consistency Score: 4/10**
+**Fixes applied this revision:**
+- Generalist weights now sum to 1.0 (added missing `general: 0.05`)
+- CategoryBadge extended to 17 categories (6 original + 6 enhanced + 5 manual)
+- CSS covers all 17 categories
+- Duplicate DOM construction in renderTable eliminated
+- filterModels element ID mismatch fixed (`#modelTableBody` -> `#modelsTableBody`)
+- Orphaned code in enhancements file removed
+- Leaderboard getCategoryConfig replaced with exact-match lookup (was fuzzy `.includes()`)
+- Missing icons added to model-categorization getCategoryIcon
+- Methodology modal documentation corrected (stddev threshold, general weight)
+
+**Overall Consistency Score: 7/10** (was 4/10)
 
 ---
 
@@ -25,148 +37,102 @@ The categorization system has strong architectural foundations (generalist scori
 | `routes/model-registry.js` | API: CRUD + category management |
 | `routes/benchmark/analytics.js` | API: dashboard + generalist-leaderboard |
 | `src/services/benchmark/results.js` | Service: dashboard enrichment with recommended_category |
-| `src/services/benchmark/generalistScore.js` | Service: weighted quality scoring (11 categories) |
+| `src/services/benchmark/generalistScore.js` | Service: weighted quality scoring (12 categories) |
 | `src/services/qualityScorer.js` | Service: LLM-as-judge scoring configs (12 categories) |
 | `public/js/model-categorization.js` | UI: category management page (7 categories) |
 | `public/js/model-categorization-enhancements.js` | UI: search, filter, export, shortcuts |
 | `public/js/leaderboard.js` | UI: performance + quality boards |
-| `public/js/components/CategoryBadge.js` | Component: badge with confidence ring (6 categories) |
+| `public/js/components/CategoryBadge.js` | Component: badge with confidence ring (17 categories) |
 | `public/model-categorization.html` | HTML: categorization page |
 | `public/leaderboard.html` | HTML: leaderboard page (5 category tabs) |
-| `public/css/components/category-badge.css` | Styles: 11 category colors |
+| `public/css/components/category-badge.css` | Styles: 17 category colors |
 | `public/css/model-categorization.css` | Styles: categorization page |
 | `public/css/leaderboard.css` | Styles: leaderboard page |
 | `data/categorization-prompts.json` | Config: 42 diagnostic prompts (6 categories) |
 
 ---
 
-## CRITICAL Issues
+## RESOLVED Issues
 
-### 1. Category Enum Fragmentation (Systemic)
+### ~~1. Category Enum Fragmentation (Systemic)~~ PARTIALLY RESOLVED
 
-No single source of truth for category definitions. Five different lists:
+CategoryBadge, CSS, leaderboard getCategoryConfig, and generalistScore now cover all categories from both systems. Two intentionally separate category namespaces remain:
 
-| Location | Categories | Count |
-|----------|-----------|-------|
-| `ModelRegistry.js:128` | ops, coding, reasoning, specialist, generalist, embedding, judge | 7 |
-| `BenchmarkResult.js:53` | coding, reasoning, factual, math, creative, general + 6 enhanced | 12 |
-| `CategoryBadge.js:8` | coding, reasoning, factual, math, creative, general | 6 |
-| `category-badge.css` | coding, reasoning, factual, math, creative, generalist, specialist, ops, embedding, judge, general | 11 |
-| `generalistScore.js:39` | coding, reasoning, factual, creative, instruction-following, math, summarization, multi-turn-reasoning, context-retention, translation, edge-cases | 11 |
-| `leaderboard.html:58` tabs | ops, coding, reasoning, specialist, generalist | 5 |
+- **Manual Assignment** (7): ops, coding, reasoning, specialist, generalist, embedding, judge
+- **AI Benchmark** (12): coding, reasoning, factual, math, creative, general + 6 enhanced
 
-**Impact:** `syncBenchmarkStats()` writes `bestCategory` from 12-category space, but ModelRegistry only allows 7 manual categories. Leaderboard filters on `recommended_category` (from `bestCategory`) but tabs only cover 5 options. Models with best category `math` or `factual` fall through all filters.
+These are architecturally distinct (one is human-assigned, the other is benchmark-derived) so full unification into a single enum is not necessary. However, a shared `src/config/categories.js` would still reduce drift risk.
 
-**Fix:** Create `src/config/categories.js` as canonical source. All schemas, UI, and services import from there.
+**Remaining work:** Create `src/config/categories.js` as canonical source (optional, lower priority).
 
-### 2. Duplicate DOM Construction in renderTable
+### ~~2. Duplicate DOM Construction in renderTable~~ RESOLVED
 
-`model-categorization.js:120-251` builds each row twice for several columns:
+`model-categorization.js` renderTable now uses a single approach (DOM API) per column:
+- Checkbox column: DOM API only (removed innerHTML duplicate)
+- Manual categories column: DOM API only (removed innerHTML duplicate)
+- Actions column: DOM API only (removed innerHTML duplicate)
 
-- **Lines 125-132:** Creates innerHTML checkbox, then creates another `selectCheckbox` programmatically. Two checkboxes per row.
-- **Lines 214-248:** Sets innerHTML with save/test buttons, then creates same buttons via DOM API. Duplicate buttons.
+### ~~3. CategoryBadge.js Missing Categories~~ RESOLVED
 
-**Fix:** Use one approach per column (innerHTML template OR DOM API), not both.
+`CATEGORY_CONFIG` now defines 17 categories:
+- 6 original AI benchmark + 6 enhanced AI benchmark + 5 manual assignment
 
----
+All categories have icon, color, and label. CSS matches.
 
-## MAJOR Issues
+### ~~4. Leaderboard Tab/Filter Design Mismatch~~ OPEN
 
-### 3. CategoryBadge.js Missing 5+ Categories
+`leaderboard.html` tabs still cover only 5 categories (ops, coding, reasoning, specialist, generalist). Models whose best benchmark category is `math`, `factual`, `creative`, or any enhanced category are invisible to tab filters. This is a design decision that needs user input on whether to:
+- Add tabs for all benchmark categories
+- Filter on manual `categories[]` instead
+- Create a mapping from benchmark categories to tab groups
 
-`CategoryBadge.js:8-15` only defines 6 AI benchmark categories. Missing:
-- Manual: generalist, specialist, ops, embedding, judge
-- Enhanced: instruction-following, summarization, translation, multi-turn-reasoning, context-retention, edge-cases
+### ~~5. `general` Missing from Generalist Weights~~ RESOLVED
 
-All missing categories fall back to `general` config (line 112), rendering wrong icon/label/color. Meanwhile `category-badge.css` already defines 11 category colors.
+Added `'general': 0.05` to `GENERALIST_CATEGORY_WEIGHTS`. Total now sums to 1.0. Methodology modal documentation updated to match code (stddev threshold corrected from <10 to <15).
 
-**Fix:** Extend `CATEGORY_CONFIG` to match the CSS definitions (11+ categories).
+### ~~6. Enhancements File Syntax Issue~~ RESOLVED
 
-### 4. Leaderboard Tab/Filter Design Mismatch
+Removed orphaned duplicate code (console.logs and closing brackets) at end of `model-categorization-enhancements.js`. File now ends cleanly after `setupResponsiveHelpers()`.
 
-`leaderboard.html:58-77` has 5 filter tabs (ops, coding, reasoning, specialist, generalist). `filterByCategory()` at `leaderboard.js:219` filters on `recommended_category` from `benchmarkStats.bestCategory`, which comes from 12-category benchmark space.
+### ~~7. Quick Test is Simulated~~ OPEN
 
-Models whose best benchmark category is `math`, `factual`, `creative`, `general`, or any enhanced category are invisible to all tab filters.
-
-**Fix:** Either add tabs for all benchmark categories, filter on manual `categories[]` instead, or create a mapping from benchmark categories to tab groups.
-
-### 5. `general` Missing from Generalist Weights
-
-`generalistScore.js:39-56` has 11 categories summing to **0.95**, not 1.0. The `general` category is absent despite being a valid prompt_category.
-
-The methodology modal in `leaderboard.html:269` states "Quality Assurance (10%): Edge-Cases (5%), General (5%)" but code only has `edge-cases: 0.05`. Documentation and code disagree.
-
-**Fix:** Add `'general': 0.05` to weights (total = 1.0) or update methodology docs.
-
-### 6. Enhancements File Syntax Issue
-
-`model-categorization-enhancements.js:417-420` has orphaned closing code after `setupResponsiveHelpers()` ends at line 415:
-
-```javascript
-    console.log('...');
-    console.log(`...`);
-    }, 200);
-});
-```
-
-This appears to be a duplicate of the DOMContentLoaded setTimeout closure from line 278. May cause parse errors or be dead code.
-
-**Fix:** Remove lines 417-420.
-
-### 7. Quick Test is Simulated
-
-`model-categorization.js:400-448` runs a purely client-side progress animation. No benchmark prompts are executed. At completion, it reads pre-existing `bestCategory` data and presents it as a new result.
-
-**Fix:** Connect to real benchmark runner or relabel as "View Existing Results".
+`model-categorization.js` openQuickTest still runs a client-side progress animation with no actual benchmark execution. Reads pre-existing `bestCategory` and presents it as result. Should connect to real benchmark runner or be relabeled as "View Existing Results".
 
 ---
 
-## MODERATE Issues
+## REMAINING Issues
 
-### 8. Model Router Task Map is Minimal
+### 8. Model Router Task Map is Minimal (MODERATE)
 
-`ModelRegistry.js:560-565` has only 4 hardcoded task-to-category mappings. Doesn't leverage benchmark scores, model capabilities, or the full category space.
+`ModelRegistry.js:560-565` has only 4 hardcoded task-to-category mappings. Doesn't leverage benchmark scores or the full category space.
 
-### 9. getGroupedByCategory Hardcodes 7 Categories
+### 9. getGroupedByCategory Hardcodes 7 Categories (MODERATE)
 
-`ModelRegistry.js:308-315` initializes grouped object with exactly 7 keys. Models with categories outside this set are silently dropped.
+`ModelRegistry.js:308-315` initializes grouped object with exactly 7 keys. Models with categories outside this set are silently dropped. Should build dynamically from schema enum.
 
-**Fix:** Build grouped object dynamically from the schema enum or shared config.
+### ~~10. Inconsistent Color Schemes~~ RESOLVED
 
-### 10. Inconsistent Color Schemes
+Leaderboard `getCategoryConfig()` now uses a proper lookup map with colors aligned to CategoryBadge and CSS. Coding = `#7c9fff` consistently across all three systems.
 
-Three different color systems:
-- `CategoryBadge.js`: coding = #7c9fff (blue)
-- `leaderboard.js getCategoryConfig()`: coding = #9b59b6 (purple)
-- `category-badge.css`: coding = #7c9fff (blue)
+### 11. No Input Validation on Category PATCH (MODERATE)
 
-The leaderboard uses completely different colors than the badge component for the same categories.
+`bestCategory` stored as unvalidated string can hold any of 12 benchmark categories. Users can't manually assign categories their models are benchmarked against. Mongoose `runValidators: true` catches manual enum violations but not benchmark-derived values.
 
-**Fix:** Unify color definitions through shared config or CSS variables.
+### ~~12. filterModels Targets Wrong Element ID~~ RESOLVED
 
-### 11. No Input Validation on Category PATCH
+Changed `#modelTableBody` to `#modelsTableBody` in `model-categorization-enhancements.js`.
 
-`PATCH /api/models/registry/:name` uses `runValidators: true`, so Mongoose rejects categories not in the 7-value enum. But `bestCategory` can hold any of 12 benchmark categories (stored as unvalidated string). Users can't manually assign categories their models are benchmarked against.
+### 13. Chart Colors Limited to 7 (MINOR)
 
----
+`model-categorization.js:539-541` provides exactly 7 hardcoded colors for doughnut chart. Extra categories get Chart.js defaults. Low priority since chart is driven by model stats data.
 
-## MINOR Issues
+### ~~14. Missing Category Icons~~ RESOLVED
 
-### 12. filterModels Targets Wrong Element ID
+Added `factual`, `math`, `creative`, `general` to `getCategoryIcon()` in `model-categorization.js`.
 
-`model-categorization-enhancements.js:138` queries `#modelTableBody` but HTML uses `#modelsTableBody`. Search/filter silently broken.
+### 15. Categorization Prompts Incomplete (MINOR)
 
-### 13. Chart Colors Limited to 7
-
-`model-categorization.js:539-541` provides exactly 7 colors for doughnut chart. Extra categories get Chart.js defaults.
-
-### 14. Missing Category Icons
-
-`model-categorization.js:268-280` icon map lacks `general`, `math`, `creative`, `factual`. These render as `fa-question`.
-
-### 15. Categorization Prompts Incomplete
-
-`data/categorization-prompts.json` has 42 prompts across only 6 categories. Missing prompts for the 6 enhanced categories (instruction-following, summarization, etc.).
+`data/categorization-prompts.json` has 42 prompts across only 6 categories. Missing prompts for the 6 enhanced categories (instruction-following, summarization, etc.). This is content work.
 
 ---
 
@@ -176,7 +142,7 @@ The leaderboard uses completely different colors than the badge component for th
 
 2. **Two-board leaderboard** - Performance Board (speed+quality composite) vs Quality Board (weighted generalist) is a thoughtful distinction.
 
-3. **CategoryBadge component pattern** - Good reusable architecture with confidence rings, tooltips, size variants, and proper CSS separation.
+3. **CategoryBadge component pattern** - Good reusable architecture with confidence rings, tooltips, size variants, and proper CSS separation. Now covers all 17 categories.
 
 4. **BenchmarkResult schema instrumentation** - Hardware snapshots, judge confidence, truncation detection, warmup tracking is production-grade.
 
@@ -184,15 +150,10 @@ The leaderboard uses completely different colors than the badge component for th
 
 ---
 
-## Recommended Fix Order
+## Recommended Next Steps
 
-1. **Create shared category constants** (`src/config/categories.js`) - unblocks everything else
-2. **Fix duplicate DOM in renderTable** - functional bug, visible to users
-3. **Extend CategoryBadge** to 11+ categories - quick win, high visual impact
-4. **Fix `general` weight** in generalistScore.js - data correctness
-5. **Fix enhancements file syntax** - potential parse error
-6. **Fix filterModels element ID** - search is broken
-7. **Redesign leaderboard tab filtering** - requires design decision on category mapping
-8. **Unify color schemes** - visual consistency
-9. **Connect or relabel quick test** - UX honesty
-10. **Expand categorization prompts** - content work, lower urgency
+1. **Design leaderboard tab strategy** - Decide how to handle benchmark categories in tab filters (issue #4)
+2. **Create shared category constants** (`src/config/categories.js`) - Optional but reduces future drift risk
+3. **Connect or relabel quick test** - UX honesty (issue #7)
+4. **Expand categorization prompts** - Add prompts for 6 enhanced categories (issue #15)
+5. **Build getGroupedByCategory dynamically** - Use schema enum instead of hardcoded keys (issue #9)

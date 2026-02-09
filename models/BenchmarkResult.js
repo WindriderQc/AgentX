@@ -81,8 +81,12 @@ const BenchmarkResultSchema = new mongoose.Schema({
         default: 0
     },
     tokens_per_sec: {
-        type: mongoose.Schema.Types.Mixed, // Can be string or number
-        default: 0
+        type: Number,
+        default: 0,
+        set: (value) => {
+            const n = Number(value);
+            return Number.isFinite(n) ? n : 0;
+        }
     },
     success: {
         type: Boolean,
@@ -297,6 +301,9 @@ BenchmarkResultSchema.statics.getByBatch = function(batchId, options = {}) {
     }
     if (options.limit) {
         query.limit(options.limit);
+    }
+    if (options.offset) {
+        query.skip(options.offset);
     }
     return query;
 };

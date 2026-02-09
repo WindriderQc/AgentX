@@ -548,7 +548,13 @@ data.tags.forEach(tagStat => {
 
 **Endpoint:** `GET /api/benchmark/batch/:id`
 
-**Response includes new metrics:**
+**Query Parameters:**
+- `include_heavy` (optional, boolean-like: `1|true|yes`) - Include heavy per-result fields (`judge_raw_response`, `hardware_snapshot`, `execution_settings`, `warmup`, `judge_warmup`). Default is compact mode.
+- `result_limit` (optional, integer, default `500`, max `5000`) - Number of results to return in this response.
+- `result_offset` (optional, integer, default `0`) - Offset into result list for pagination.
+- `include_all_results` (optional, boolean-like: `1|true|yes`) - Return all results and ignore pagination limits.
+
+**Response includes:**
 ```json
 {
   "status": "success",
@@ -580,11 +586,55 @@ data.tags.forEach(tagStat => {
     "progress": 100,
     "judge_progress": 100,
     "success_rate": "98.0%",
+    "_countMismatch": false,
 
     "results": [ /* array of test results */ ]
   }
 }
 ```
+
+**Counter Reconciliation Behavior:**
+- `completed` and `failed` counters are reconciled from persisted results when drift is detected.
+- `_countMismatch: true` indicates reconciliation happened on this response.
+
+**Compact vs Heavy Payload:**
+- Default (compact): excludes heavy diagnostics to reduce payload size on large batches.
+- `?include_heavy=1`: includes heavy diagnostics for deep debugging.
+
+**Result Pagination:**
+- Default responses are paginated for large batches and include `results_meta`.
+- Use `result_limit`/`result_offset` for paging.
+- Use `include_all_results=1` only when full payload is required.
+
+---
+
+### Batch Start Conflict (Single Active Batch Guard)
+
+**Endpoint:** `POST /api/benchmark/batch`
+
+Only one active benchmark batch is allowed at a time.
+
+**Conflict Response (409):**
+```json
+{
+  "status": "error",
+  "error": "Another batch is already running",
+  "active_batch": {
+    "id": "67787a1b2c3d4e5f6g7h8i9j",
+    "run_name": "Weekly Regression",
+    "status": "running",
+    "progress": 42,
+    "inactive_seconds": 18,
+    "is_stuck": false,
+    "started_at": "2026-02-09T12:00:00.000Z"
+  },
+  "message": "Batch \"Weekly Regression\" is currently running (42% complete). Please wait for it to finish or stop it first."
+}
+```
+
+Notes:
+- This is enforced by both a pre-check and an atomic DB-level uniqueness guard to close race windows.
+- If `inactive_seconds > 300`, `is_stuck` becomes `true` and clients can call recovery endpoints.
 
 ---
 
@@ -664,6 +714,6 @@ const data = await batch.json();
 
 ---
 
-**Documentation Version:** 2.0
-**Last Updated:** January 3, 2026
+**Documentation Version:** 2.1
+**Last Updated:** February 9, 2026
 **Feedback:** Report issues at github.com/anthropics/agentx/issues

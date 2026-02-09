@@ -23,7 +23,12 @@ async function getBatches({ limit = 20 } = {}) {
 /**
  * Get batch progress and results
  */
-async function getBatch(batchId, { includeHeavyPayload = false } = {}) {
+async function getBatch(batchId, {
+    includeHeavyPayload = false,
+    resultLimit = 500,
+    resultOffset = 0,
+    includeAllResults = false
+} = {}) {
     const batch = await BenchmarkBatch.findById(batchId);
 
     if (!batch) {
@@ -34,9 +39,39 @@ async function getBatch(batchId, { includeHeavyPayload = false } = {}) {
         ? null
         : '-judge_raw_response -hardware_snapshot -execution_settings -warmup -judge_warmup';
 
-    const results = await BenchmarkResult.getByBatch(batchId, {
+    const normalizedLimit = includeAllResults
+        ? null
+        : Math.max(1, Math.min(Number(resultLimit) || 500, 5000));
+    const normalizedOffset = includeAllResults
+        ? 0
+        : Math.max(0, Number(resultOffset) || 0);
+
+    const queryOptions = {
         select: resultSelect
-    }).lean();
+    };
+    if (normalizedLimit !== null) queryOptions.limit = normalizedLimit;
+    if (normalizedOffset > 0) queryOptions.offset = normalizedOffset;
+
+    const [results, totalResultsCount, actualFailedCount, judgedAgg] = await Promise.all([
+        BenchmarkResult.getByBatch(batchId, queryOptions).lean(),
+        BenchmarkResult.countDocuments({ batch_id: batchId }),
+        BenchmarkResult.countDocuments({ batch_id: batchId, success: false }),
+        BenchmarkResult.aggregate([
+            {
+                $match: {
+                    batch_id: batchId,
+                    quality_score: { $ne: null },
+                    scoring_time_ms: { $ne: null }
+                }
+            },
+            {
+                $group: {
+                    _id: null,
+                    avg_judge_time_ms: { $avg: '$scoring_time_ms' }
+                }
+            }
+        ])
+    ]);
 
     const defaultJudgeModel = (batch && batch.judge_config && batch.judge_config.model)
         ? batch.judge_config.model
@@ -48,21 +83,20 @@ async function getBatch(batchId, { includeHeavyPayload = false } = {}) {
         (batch && batch.plan && batch.plan.judge_same_host)
     );
 
-    // Calculate judge stats
-    const judgedResults = results.filter(r => r.quality_score !== null && r.scoring_time_ms);
-    const avgJudgeTime = judgedResults.length > 0
-        ? judgedResults.reduce((acc, r) => acc + (r.scoring_time_ms || 0), 0) / judgedResults.length
+    // Calculate judge stats from the full batch result set (not only returned page).
+    const avgJudgeTime = judgedAgg.length > 0 && judgedAgg[0].avg_judge_time_ms != null
+        ? Number(judgedAgg[0].avg_judge_time_ms)
         : 0;
 
     const rawJudgeTotal = Number(batch.judge_total) || 0;
     const effectiveJudgeTotal = rawJudgeTotal > 0
-        ? Math.min(rawJudgeTotal, Number(batch.completed) || rawJudgeTotal)
+        ? Math.min(rawJudgeTotal, totalResultsCount || rawJudgeTotal)
         : 0;
 
     const judgeCompletedCount = Number(batch.judge_completed) || 0;
     const judgeFailedCount = Number(batch.judge_failed) || 0;
-    const execFailedCount = Number(batch.failed) || 0;
-    const judgeLag = Math.max(0, (Number(batch.completed) || 0) - judgeCompletedCount);
+    const execFailedCount = Number(actualFailedCount) || 0;
+    const judgeLag = Math.max(0, totalResultsCount - judgeCompletedCount);
 
     const inferredConcurrency = (batch && batch.judge_config && batch.judge_config.concurrency)
         ? Math.max(1, Number(batch.judge_config.concurrency) || 2)
@@ -169,18 +203,44 @@ async function getBatch(batchId, { includeHeavyPayload = false } = {}) {
         ? Math.min(Math.round(((batch.judge_completed || 0) / effectiveJudgeTotal) * 100), 100)
         : 0;
 
-    // Verify actual results count matches batch.completed counter
-    // Fix for Bug #4: UI out of sync due to counter/results mismatch
-    const actualResultsCount = results.length;
+    // Verify stored counters against actual persisted results and reconcile if needed.
+    // Results are the source of truth for execution progress.
+    const actualResultsCount = totalResultsCount;
     const batchCompletedCount = Number(batch.completed) || 0;
+    const batchFailedCount = Number(batch.failed) || 0;
+    const hasCounterMismatch = actualResultsCount !== batchCompletedCount || actualFailedCount !== batchFailedCount;
 
-    if (actualResultsCount !== batchCompletedCount) {
-        logger.warn('Batch counter mismatch detected', {
+    if (hasCounterMismatch) {
+        const completedDiff = batchCompletedCount - actualResultsCount;
+        const failedDiff = batchFailedCount - actualFailedCount;
+        const mismatchMagnitude = Math.max(Math.abs(completedDiff), Math.abs(failedDiff));
+        const activeStatus = ['running', 'judging'].includes(batch.status);
+
+        // Reduce noise for expected in-flight drift while still surfacing large anomalies.
+        const logMethod = mismatchMagnitude >= 5
+            ? 'warn'
+            : (activeStatus ? 'debug' : 'info');
+
+        logger[logMethod]('Batch counter mismatch detected; reconciling from results', {
             batchId,
+            status: batch.status,
             batchCompleted: batchCompletedCount,
             actualResults: actualResultsCount,
-            diff: batchCompletedCount - actualResultsCount
+            batchFailed: batchFailedCount,
+            actualFailed: actualFailedCount,
+            completedDiff,
+            failedDiff
         });
+
+        await BenchmarkBatch.updateOne(
+            { _id: batchId },
+            {
+                $set: {
+                    completed: actualResultsCount,
+                    failed: actualFailedCount
+                }
+            }
+        );
     }
 
     // Use actual results count for progress calculation to ensure accuracy
@@ -188,10 +248,15 @@ async function getBatch(batchId, { includeHeavyPayload = false } = {}) {
     const accurateProgress = totalTests > 0
         ? Math.min(100, Math.round((actualResultsCount / totalTests) * 100))
         : batch.progress;
+    const returnedResultsCount = formattedResults.length;
+    const truncated = normalizedLimit !== null
+        ? (normalizedOffset + returnedResultsCount) < actualResultsCount
+        : false;
 
     return {
         ...batch.toObject(),
         completed: actualResultsCount,  // Override with actual count
+        failed: actualFailedCount,
         judge_total: rawJudgeTotal,
         judge_total_effective: effectiveJudgeTotal,
         results: formattedResults,
@@ -200,7 +265,14 @@ async function getBatch(batchId, { includeHeavyPayload = false } = {}) {
         judge_progress_effective,
         judge_stats: judgeStats,
         success_rate: batch.success_rate,
-        _countMismatch: actualResultsCount !== batchCompletedCount  // Debug flag
+        _countMismatch: hasCounterMismatch,  // Debug flag
+        results_meta: {
+            returned: returnedResultsCount,
+            total: actualResultsCount,
+            offset: normalizedOffset,
+            limit: normalizedLimit,
+            truncated
+        }
     };
 }
 

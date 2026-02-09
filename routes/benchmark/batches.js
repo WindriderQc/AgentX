@@ -19,8 +19,21 @@ router.get('/batch/:id', async (req, res) => {
     try {
         const includeHeavyPayload = ['1', 'true', 'yes']
             .includes(String(req.query.include_heavy || '').toLowerCase());
+        const includeAllResults = ['1', 'true', 'yes']
+            .includes(String(req.query.include_all_results || '').toLowerCase());
+        const resultLimit = req.query.result_limit !== undefined
+            ? parseInt(req.query.result_limit, 10)
+            : undefined;
+        const resultOffset = req.query.result_offset !== undefined
+            ? parseInt(req.query.result_offset, 10)
+            : undefined;
 
-        const data = await benchmarkService.getBatch(req.params.id, { includeHeavyPayload });
+        const data = await benchmarkService.getBatch(req.params.id, {
+            includeHeavyPayload,
+            includeAllResults,
+            resultLimit,
+            resultOffset
+        });
 
         res.json({
             status: 'success',

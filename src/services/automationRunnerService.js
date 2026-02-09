@@ -135,9 +135,18 @@ class AutomationRunnerService {
       payload.idempotencyKey = normalizedIdempotencyKey;
     }
 
-    const task = await AutomationTask.create(payload);
-
-    return task;
+    try {
+      const task = await AutomationTask.create(payload);
+      return task;
+    } catch (error) {
+      if (error?.code === 11000 && normalizedIdempotencyKey) {
+        const existing = await AutomationTask.findOne({ idempotencyKey: normalizedIdempotencyKey });
+        if (existing) {
+          return existing;
+        }
+      }
+      throw error;
+    }
   }
 
   async executeLeasedTask(taskDoc) {

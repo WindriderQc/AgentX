@@ -6,12 +6,26 @@
 
 const CategoryBadge = (() => {
     const CATEGORY_CONFIG = {
+        // AI Benchmark Categories (6 original)
         coding: { color: '#7c9fff', icon: '💻', label: 'Coding' },
         reasoning: { color: '#a78bfa', icon: '🧠', label: 'Reasoning' },
         factual: { color: '#34d399', icon: '📚', label: 'Factual' },
         math: { color: '#fbbf24', icon: '🔢', label: 'Math' },
         creative: { color: '#f87171', icon: '✨', label: 'Creative' },
-        general: { color: '#94a3b8', icon: '📝', label: 'General' }
+        general: { color: '#64748b', icon: '📝', label: 'General' },
+        // AI Benchmark Categories (6 enhanced)
+        'instruction-following': { color: '#06b6d4', icon: '📋', label: 'Instruction Following' },
+        'summarization': { color: '#14b8a6', icon: '📄', label: 'Summarization' },
+        'translation': { color: '#f472b6', icon: '🌐', label: 'Translation' },
+        'multi-turn-reasoning': { color: '#c084fc', icon: '🔄', label: 'Multi-Turn Reasoning' },
+        'context-retention': { color: '#fb923c', icon: '🧩', label: 'Context Retention' },
+        'edge-cases': { color: '#a3e635', icon: '⚡', label: 'Edge Cases' },
+        // Manual Assignment Categories
+        generalist: { color: '#94a3b8', icon: '🌍', label: 'Generalist' },
+        specialist: { color: '#ec4899', icon: '⭐', label: 'Specialist' },
+        ops: { color: '#10b981', icon: '⚙️', label: 'Ops' },
+        embedding: { color: '#8b5cf6', icon: '🔗', label: 'Embedding' },
+        judge: { color: '#f59e0b', icon: '⚖️', label: 'Judge' }
     };
 
     /**

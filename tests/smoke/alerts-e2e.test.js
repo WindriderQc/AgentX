@@ -78,7 +78,7 @@ describe('Alerts End-to-End Smoke Tests', () => {
     test('should handle critical severity alerts from N1.1', async () => {
       const criticalAlert = {
         eventType: 'system_health_not_healthy',
-        ruleId: 'sbqc.n1_1.health.not_healthy',
+        ruleId: 'sbqc.n1_1.health.not_healthy.critical',
         ruleName: 'SBQC N1.1 System Health Not Healthy',
         severity: 'critical',
         title: 'System Health: UNHEALTHY',
@@ -160,7 +160,7 @@ describe('Alerts End-to-End Smoke Tests', () => {
     test('should handle critical severity from N5.1', async () => {
       const criticalAlert = {
         eventType: 'prompt_performance_drop',
-        ruleId: 'sbqc.n5_1.prompt.performance_drop',
+        ruleId: 'sbqc.n5_1.prompt.performance_drop.critical',
         ruleName: 'SBQC N5.1 Prompt Performance Drop',
         severity: 'critical',
         title: 'Prompt performance drop detected (45% positive)',
@@ -234,6 +234,7 @@ describe('Alerts End-to-End Smoke Tests', () => {
     test('should filter alerts by severity', async () => {
       // Create alerts with different severities
       await request(app).post('/api/alerts').send({
+        ruleId: 'smoke-test-severity-critical',
         severity: 'critical',
         title: 'Critical Test',
         message: 'Critical message',
@@ -272,6 +273,7 @@ describe('Alerts End-to-End Smoke Tests', () => {
       // Create a few test alerts first
       await Promise.all([
         request(app).post('/api/alerts').send({
+          ruleId: 'stats-info',
           severity: 'info',
           title: 'Info Alert',
           message: 'Info message',
@@ -279,6 +281,7 @@ describe('Alerts End-to-End Smoke Tests', () => {
           channels: ['dataapi_log']
         }),
         request(app).post('/api/alerts').send({
+          ruleId: 'stats-warning',
           severity: 'warning',
           title: 'Warning Alert',
           message: 'Warning message',
@@ -286,6 +289,7 @@ describe('Alerts End-to-End Smoke Tests', () => {
           channels: ['dataapi_log']
         }),
         request(app).post('/api/alerts').send({
+          ruleId: 'stats-critical',
           severity: 'critical',
           title: 'Critical Alert',
           message: 'Critical message',

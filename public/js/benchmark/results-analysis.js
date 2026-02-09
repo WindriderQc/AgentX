@@ -5,71 +5,72 @@ import { toFiniteNumber, percentile, summarizeNumbers, countBy, topCounts } from
 import { getAnomalyThresholds } from './batch-config.js';
 
 /**
- * Pick representative result ID for a category
+ * Pick representative result from a list for a category mode
  */
-export function pickRepresentativeResultId(mode) {
-    const results = state.currentBatchResults;
-    if (!Array.isArray(results) || results.length === 0) return null;
-
-    let candidate = null;
-
+function pickRepresentativeCandidate(results, mode) {
     switch (mode) {
         case 'failure':
-            candidate = results.find(r => r.success === false);
-            break;
+            return results.find(r => r.success === false) || null;
 
         case 'worst_latency':
-            candidate = results.reduce((worst, r) => {
+            return results.reduce((worst, r) => {
                 const lat = toFiniteNumber(r.latency);
                 if (lat === null) return worst;
                 const worstLat = worst ? toFiniteNumber(worst.latency) : null;
                 return (worstLat === null || lat > worstLat) ? r : worst;
             }, null);
-            break;
 
         case 'worst_throughput':
-            candidate = results.reduce((worst, r) => {
+            return results.reduce((worst, r) => {
                 const tps = toFiniteNumber(r.tokens_per_sec);
                 if (tps === null || tps <= 0) return worst;
                 const worstTps = worst ? toFiniteNumber(worst.tokens_per_sec) : null;
                 return (worstTps === null || tps < worstTps) ? r : worst;
             }, null);
-            break;
 
         case 'longest_judge':
-            candidate = results.reduce((worst, r) => {
+            return results.reduce((worst, r) => {
                 const ms = toFiniteNumber(r.scoring_time_ms);
                 if (ms === null) return worst;
                 const worstMs = worst ? toFiniteNumber(worst.scoring_time_ms) : null;
                 return (worstMs === null || ms > worstMs) ? r : worst;
             }, null);
-            break;
 
         case 'lowest_quality':
-            candidate = results
+            return results
                 .filter(r => r.success !== false && toFiniteNumber(r.quality_score) !== null)
                 .reduce((worst, r) => {
                     const q = toFiniteNumber(r.quality_score);
                     const worstQ = worst ? toFiniteNumber(worst.quality_score) : null;
                     return (worstQ === null || q < worstQ) ? r : worst;
                 }, null);
-            break;
 
         default:
             return null;
     }
+}
 
+function toResultId(candidate, allResults) {
     if (!candidate) return null;
-
-    // Return ID or index
     if (candidate.id) return String(candidate.id);
     if (candidate._id) return String(candidate._id);
-    const idx = results.indexOf(candidate);
+    const idx = allResults.indexOf(candidate);
     return idx >= 0 ? String(idx) : null;
 }
 
 /**
- * Pick representative result for a specific model
+ * Pick representative result ID for a category
+ */
+export function pickRepresentativeResultId(mode) {
+    const results = state.currentBatchResults;
+    if (!Array.isArray(results) || results.length === 0) return null;
+
+    const candidate = pickRepresentativeCandidate(results, mode);
+    return toResultId(candidate, results);
+}
+
+/**
+ * Pick representative result ID for a specific model
  */
 export function pickRepresentativeResultIdForModel(model, mode) {
     const results = state.currentBatchResults;
@@ -78,60 +79,8 @@ export function pickRepresentativeResultIdForModel(model, mode) {
     const modelResults = results.filter(r => r.model === model);
     if (modelResults.length === 0) return null;
 
-    let candidate = null;
-
-    switch (mode) {
-        case 'failure':
-            candidate = modelResults.find(r => r.success === false);
-            break;
-
-        case 'worst_latency':
-            candidate = modelResults.reduce((worst, r) => {
-                const lat = toFiniteNumber(r.latency);
-                if (lat === null) return worst;
-                const worstLat = worst ? toFiniteNumber(worst.latency) : null;
-                return (worstLat === null || lat > worstLat) ? r : worst;
-            }, null);
-            break;
-
-        case 'worst_throughput':
-            candidate = modelResults.reduce((worst, r) => {
-                const tps = toFiniteNumber(r.tokens_per_sec);
-                if (tps === null || tps <= 0) return worst;
-                const worstTps = worst ? toFiniteNumber(worst.tokens_per_sec) : null;
-                return (worstTps === null || tps < worstTps) ? r : worst;
-            }, null);
-            break;
-
-        case 'longest_judge':
-            candidate = modelResults.reduce((worst, r) => {
-                const ms = toFiniteNumber(r.scoring_time_ms);
-                if (ms === null) return worst;
-                const worstMs = worst ? toFiniteNumber(worst.scoring_time_ms) : null;
-                return (worstMs === null || ms > worstMs) ? r : worst;
-            }, null);
-            break;
-
-        case 'lowest_quality':
-            candidate = modelResults
-                .filter(r => r.success !== false && toFiniteNumber(r.quality_score) !== null)
-                .reduce((worst, r) => {
-                    const q = toFiniteNumber(r.quality_score);
-                    const worstQ = worst ? toFiniteNumber(worst.quality_score) : null;
-                    return (worstQ === null || q < worstQ) ? r : worst;
-                }, null);
-            break;
-
-        default:
-            return null;
-    }
-
-    if (!candidate) return null;
-
-    if (candidate.id) return String(candidate.id);
-    if (candidate._id) return String(candidate._id);
-    const idx = results.indexOf(candidate);
-    return idx >= 0 ? String(idx) : null;
+    const candidate = pickRepresentativeCandidate(modelResults, mode);
+    return toResultId(candidate, results);
 }
 
 /**

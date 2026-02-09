@@ -137,7 +137,7 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
     const failureMatchQuery = { ...scopedMatch, success: false };
     const totalMatchQuery = { ...scopedMatch };
 
-    const [totalTests, successCount, recentTests, modelStats, failureStats, judgeStats, generalistScores] = await Promise.all([
+    const [totalTests, successCount, recentTests, modelStats, levelDistribution, failureStats, judgeStats, generalistScores] = await Promise.all([
         BenchmarkResult.countDocuments(totalMatchQuery),
         BenchmarkResult.countDocuments(matchQuery),
         BenchmarkResult.find(matchQuery).sort({ timestamp: -1 }).limit(10),
@@ -148,19 +148,6 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
                     _id: { model: '$model', host: '$host' },
                     avg_latency: { $avg: '$latency' },
                     avg_tokens_per_sec: { $avg: { $toDouble: '$tokens_per_sec' } },
-
-                    // Level breakdown (1-10)
-                    tests_level_1: { $sum: { $cond: [{ $eq: ['$prompt_level', 1] }, 1, 0] } },
-                    tests_level_2: { $sum: { $cond: [{ $eq: ['$prompt_level', 2] }, 1, 0] } },
-                    tests_level_3: { $sum: { $cond: [{ $eq: ['$prompt_level', 3] }, 1, 0] } },
-                    tests_level_4: { $sum: { $cond: [{ $eq: ['$prompt_level', 4] }, 1, 0] } },
-                    tests_level_5: { $sum: { $cond: [{ $eq: ['$prompt_level', 5] }, 1, 0] } },
-                    tests_level_6: { $sum: { $cond: [{ $eq: ['$prompt_level', 6] }, 1, 0] } },
-                    tests_level_7: { $sum: { $cond: [{ $eq: ['$prompt_level', 7] }, 1, 0] } },
-                    tests_level_8: { $sum: { $cond: [{ $eq: ['$prompt_level', 8] }, 1, 0] } },
-                    tests_level_9: { $sum: { $cond: [{ $eq: ['$prompt_level', 9] }, 1, 0] } },
-                    tests_level_10: { $sum: { $cond: [{ $eq: ['$prompt_level', 10] }, 1, 0] } },
-
                     avg_quality: {
                         $avg: {
                             $cond: [
@@ -207,6 +194,19 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
                 }
             },
             { $sort: { avg_latency: 1 } }
+        ]),
+        BenchmarkResult.aggregate([
+            { $match: matchQuery },
+            {
+                $group: {
+                    _id: {
+                        model: '$model',
+                        host: '$host',
+                        level: '$prompt_level'
+                    },
+                    count: { $sum: 1 }
+                }
+            }
         ]),
         BenchmarkResult.aggregate([
             { $match: failureMatchQuery },
@@ -256,6 +256,16 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
             model_failed: s.model_failed || 0
         }])
     );
+    const levelStatsByKey = new Map();
+    for (const item of (levelDistribution || [])) {
+        const level = Number(item && item._id ? item._id.level : NaN);
+        if (!Number.isFinite(level)) continue;
+        const key = `${item._id.model}@@${item._id.host}`;
+        if (!levelStatsByKey.has(key)) {
+            levelStatsByKey.set(key, {});
+        }
+        levelStatsByKey.get(key)[String(level)] = Number(item.count) || 0;
+    }
 
     // Format and sort model stats
     const successByKey = new Map();
@@ -336,18 +346,7 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
             avg_composite: fmtScore(interactive.composite_score),
 
             quality_tests: m.quality_tests || 0,
-            level_stats: {
-                1: m.tests_level_1 || 0,
-                2: m.tests_level_2 || 0,
-                3: m.tests_level_3 || 0,
-                4: m.tests_level_4 || 0,
-                5: m.tests_level_5 || 0,
-                6: m.tests_level_6 || 0,
-                7: m.tests_level_7 || 0,
-                8: m.tests_level_8 || 0,
-                9: m.tests_level_9 || 0,
-                10: m.tests_level_10 || 0
-            },
+            level_stats: levelStatsByKey.get(key) || {},
             tests: successTests,
             failed_tests: failedTests,
             infra_failed_tests: infraFailedTests,
@@ -373,6 +372,7 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
             reasoning_score: 0,
             coding_score: 0,
             quality_tests: 0,
+            level_stats: {},
             tests: 0,
             failed_tests: fail.failed || 0,
             infra_failed_tests: fail.infra_failed || 0,

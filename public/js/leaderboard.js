@@ -450,7 +450,7 @@ function renderPerformanceBoard() {
             case 'latency':
                 // Latency: lower is better, so reverse default
                 comparison = (a.avg_latency || 99999) - (b.avg_latency || 99999);
-                return currentPerfSortDir === 'desc' ? comparison : -comparison;
+                break;
             case 'tokens':
                 comparison = parseFloat(b.avg_tokens_per_sec || 0) - parseFloat(a.avg_tokens_per_sec || 0);
                 break;
@@ -904,7 +904,7 @@ function showModelDetail(modelName, board) {
                     </div>
                 ` : ''}
                 ${model.consistencyBonus > 0 ? `
-                    <div class="formula-line bonus" title="Bonus awarded for consistent performance across categories. Earned when standard deviation (σ) is less than 10.">
+                    <div class="formula-line bonus" title="Bonus awarded for consistent performance across categories. Earned when standard deviation (σ) is less than 15.">
                         <span>Consistency Bonus: <i class="fas fa-info-circle tip-icon"></i></span>
                         <span class="formula-value">+${model.consistencyBonus}</span>
                     </div>
@@ -1090,55 +1090,31 @@ function buildModelBadges(model, offenders, isBestOverall) {
     return badges;
 }
 
-function getCategoryConfig(category) {
-    const lower = (category || '').toLowerCase();
+const CATEGORY_CONFIG_MAP = {
+    // Manual assignment categories
+    coding:    { icon: 'fa-code',          color: '#7c9fff', bg: 'rgba(124, 159, 255, 0.15)', cssClass: 'badge-coding',     label: 'Coding' },
+    reasoning: { icon: 'fa-brain',         color: '#a78bfa', bg: 'rgba(167, 139, 250, 0.15)', cssClass: 'badge-reasoning',  label: 'Reasoning' },
+    ops:       { icon: 'fa-bolt',          color: '#10b981', bg: 'rgba(16, 185, 129, 0.15)',  cssClass: 'badge-ops',        label: 'Ops/Glue' },
+    specialist:{ icon: 'fa-star',          color: '#ec4899', bg: 'rgba(236, 72, 153, 0.15)',  cssClass: 'badge-specialist', label: 'Specialist' },
+    generalist:{ icon: 'fa-cubes',         color: '#94a3b8', bg: 'rgba(148, 163, 184, 0.15)', cssClass: 'badge-generalist', label: 'Generalist' },
+    embedding: { icon: 'fa-vector-square', color: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.15)',  cssClass: 'badge-embedding',  label: 'Embedding' },
+    judge:     { icon: 'fa-gavel',         color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.15)',  cssClass: 'badge-judge',      label: 'Judge' },
+    // AI benchmark categories
+    factual:   { icon: 'fa-book',          color: '#34d399', bg: 'rgba(52, 211, 153, 0.15)',  cssClass: 'badge-factual',    label: 'Factual' },
+    math:      { icon: 'fa-calculator',    color: '#fbbf24', bg: 'rgba(251, 191, 36, 0.15)',  cssClass: 'badge-math',       label: 'Math' },
+    creative:  { icon: 'fa-paint-brush',   color: '#f87171', bg: 'rgba(248, 113, 113, 0.15)', cssClass: 'badge-creative',   label: 'Creative' },
+    general:   { icon: 'fa-tag',           color: '#64748b', bg: 'rgba(100, 116, 139, 0.15)', cssClass: 'badge-general',    label: 'General' },
+    'instruction-following': { icon: 'fa-list-check',   color: '#06b6d4', bg: 'rgba(6, 182, 212, 0.15)',   cssClass: 'badge-instruction-following', label: 'Instruction Following' },
+    'summarization':         { icon: 'fa-compress-alt', color: '#14b8a6', bg: 'rgba(20, 184, 166, 0.15)',  cssClass: 'badge-summarization',         label: 'Summarization' },
+    'translation':           { icon: 'fa-language',     color: '#f472b6', bg: 'rgba(244, 114, 182, 0.15)', cssClass: 'badge-translation',           label: 'Translation' },
+    'multi-turn-reasoning':  { icon: 'fa-comments',     color: '#c084fc', bg: 'rgba(192, 132, 252, 0.15)', cssClass: 'badge-multi-turn-reasoning',  label: 'Multi-Turn' },
+    'context-retention':     { icon: 'fa-memory',       color: '#fb923c', bg: 'rgba(251, 146, 60, 0.15)',  cssClass: 'badge-context-retention',     label: 'Context Retention' },
+    'edge-cases':            { icon: 'fa-exclamation-triangle', color: '#a3e635', bg: 'rgba(163, 230, 53, 0.15)', cssClass: 'badge-edge-cases', label: 'Edge Cases' }
+};
 
-    if (lower.includes('code') || lower.includes('coding') || lower.includes('dev')) {
-        return {
-            icon: 'fa-code',
-            color: '#9b59b6',
-            bg: 'rgba(155, 89, 182, 0.15)',
-            cssClass: 'badge-coding',
-            label: 'Coding'
-        };
-    }
-    if (lower.includes('reason') || lower.includes('reasoning') || lower.includes('think')) {
-        return {
-            icon: 'fa-brain',
-            color: '#e91e63',
-            bg: 'rgba(233, 30, 99, 0.15)',
-            cssClass: 'badge-reasoning',
-            label: 'Reasoning'
-        };
-    }
-    if (lower.includes('ops') || lower.includes('glue') || lower.includes('interactive') || lower.includes('chat')) {
-        return {
-            icon: 'fa-bolt',
-            color: '#3498db',
-            bg: 'rgba(52, 152, 219, 0.15)',
-            cssClass: 'badge-ops',
-            label: 'Ops/Glue'
-        };
-    }
-    if (lower.includes('special')) {
-        return {
-            icon: 'fa-star',
-            color: '#f39c12',
-            bg: 'rgba(243, 156, 18, 0.15)',
-            cssClass: 'badge-specialist',
-            label: 'Specialist'
-        };
-    }
-    if (lower.includes('general')) {
-        return {
-            icon: 'fa-cubes',
-            color: '#2ecc71',
-            bg: 'rgba(46, 204, 113, 0.15)',
-            cssClass: 'badge-generalist',
-            label: 'Generalist'
-        };
-    }
-    return {
+function getCategoryConfig(category) {
+    const key = (category || '').toLowerCase();
+    return CATEGORY_CONFIG_MAP[key] || {
         icon: 'fa-tag',
         color: '#95a5a6',
         bg: 'rgba(149, 165, 166, 0.15)',
@@ -1193,28 +1169,55 @@ function exportAllToCSV() {
 
     const qualSorted = [...qualityData].sort((a, b) => b.generalistScore - a.generalistScore);
 
-    const maxRows = Math.max(perfSorted.length, qualSorted.length);
-    const rows = [];
+    const toKey = (name, host) => `${name || ''}@@${host || ''}`;
+    const perfKey = (m) => toKey(m?.model, m?.host);
+    const qualKey = (m) => toKey(m?.name, m?.host);
 
-    for (let i = 0; i < maxRows; i++) {
-        const perf = perfSorted[i];
-        const qual = qualSorted[i];
+    const perfRankByKey = new Map(perfSorted.map((m, idx) => [perfKey(m), idx + 1]));
+    const qualRankByKey = new Map(qualSorted.map((m, idx) => [qualKey(m), idx + 1]));
+    const perfByKey = new Map(perfSorted.map(m => [perfKey(m), m]));
+    const qualByKey = new Map(qualSorted.map(m => [qualKey(m), m]));
 
-        rows.push([
-            perf ? i + 1 : '',
-            perf ? perf.model : '',
+    // Stable output order: performance board order, then quality-only entries.
+    const orderedKeys = [];
+    const seen = new Set();
+    perfSorted.forEach(m => {
+        const key = perfKey(m);
+        if (!seen.has(key)) {
+            seen.add(key);
+            orderedKeys.push(key);
+        }
+    });
+    qualSorted.forEach(m => {
+        const key = qualKey(m);
+        if (!seen.has(key)) {
+            seen.add(key);
+            orderedKeys.push(key);
+        }
+    });
+
+    const rows = orderedKeys.map((key) => {
+        const perf = perfByKey.get(key);
+        const qual = qualByKey.get(key);
+        const modelName = perf?.model || qual?.name || '';
+        const host = perf?.host || qual?.host || '';
+        const hostLabel = host ? ` (${extractHostName(host)})` : '';
+
+        return [
+            perf ? perfRankByKey.get(key) : '',
+            `${modelName}${hostLabel}`,
             perf ? parseFloat(perf.avg_composite || 0).toFixed(1) : '',
             perf ? parseFloat(perf.avg_quality || 0).toFixed(1) : '',
             perf ? perf.avg_latency || '' : '',
             perf ? parseFloat(perf.avg_tokens_per_sec || 0).toFixed(1) : '',
             perf ? perf.tests || '' : '',
-            qual ? i + 1 : '',
+            qual ? qualRankByKey.get(key) : '',
             qual ? qual.generalistScore.toFixed(1) : '',
             qual ? qual.coverage : '',
             qual ? qual.consistencyScore : '',
             qual ? qual.topCategory : ''
-        ]);
-    }
+        ];
+    });
 
     const csv = [headers, ...rows]
         .map(row => row.map(cell => `"${cell}"`).join(','))

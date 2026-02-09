@@ -61,13 +61,22 @@ beforeAll(async () => {
 
 // Close connection after all tests
 afterAll(async () => {
-  if (mongoose.connection.readyState !== 0) {
-    await mongoose.connection.close();
-    console.log('✅ Test environment: MongoDB disconnected');
+  try {
+    if (mongoose.connection.readyState !== 0) {
+      // Force close to ensure no hanging connections
+      await mongoose.connection.close(true);
+      console.log('✅ Test environment: MongoDB disconnected');
+    }
+  } catch (err) {
+    console.warn('⚠️ Warning: preventing test hang - Error closing MongoDB:', err.message);
   }
 
-  if (mongoServer) {
-    await mongoServer.stop();
-    mongoServer = null;
+  try {
+    if (mongoServer) {
+      await mongoServer.stop({ doCleanup: true, force: true });
+      mongoServer = null;
+    }
+  } catch (err) {
+    console.warn('⚠️ Warning: preventing test hang - Error stopping MongoMemoryServer:', err.message);
   }
 }, 30000); // 30 second timeout for teardown

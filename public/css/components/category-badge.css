@@ -60,6 +60,37 @@
     --badge-color-rgb: 245, 158, 11;
 }
 
+/* AI Benchmark Categories (6 enhanced) */
+.category-instruction-following {
+    --badge-color: #06b6d4;
+    --badge-color-rgb: 6, 182, 212;
+}
+
+.category-summarization {
+    --badge-color: #14b8a6;
+    --badge-color-rgb: 20, 184, 166;
+}
+
+.category-translation {
+    --badge-color: #f472b6;
+    --badge-color-rgb: 244, 114, 182;
+}
+
+.category-multi-turn-reasoning {
+    --badge-color: #c084fc;
+    --badge-color-rgb: 192, 132, 252;
+}
+
+.category-context-retention {
+    --badge-color: #fb923c;
+    --badge-color-rgb: 251, 146, 60;
+}
+
+.category-edge-cases {
+    --badge-color: #a3e635;
+    --badge-color-rgb: 163, 230, 53;
+}
+
 /* Fallback */
 .category-general {
     --badge-color: #64748b;

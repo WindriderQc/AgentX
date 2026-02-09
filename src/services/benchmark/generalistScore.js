@@ -52,7 +52,8 @@ const GENERALIST_CATEGORY_WEIGHTS = {
     'translation': 0.03,
 
     // Quality assurance (10% total weight)
-    'edge-cases': 0.05
+    'edge-cases': 0.05,
+    'general': 0.05
 };
 
 /**

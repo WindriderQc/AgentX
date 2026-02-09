@@ -135,7 +135,7 @@ function setupSearchAndFilter() {
 
 function filterModels() {
     const searchTerm = document.getElementById('modelSearchInput')?.value.toLowerCase() || '';
-    const rows = document.querySelectorAll('#modelTableBody tr');
+    const rows = document.querySelectorAll('#modelsTableBody tr');
     let visibleCount = 0;
 
     rows.forEach(row => {
@@ -413,8 +413,4 @@ function setupResponsiveHelpers() {
             tableContainer.appendChild(expandBtn);
         }
     }
-
-    console.log('🎸 Model Categorization enhancements loaded!');
-    console.log(`📱 Screen: ${window.innerWidth}x${window.innerHeight}`);
-    }, 200);
-});
+}
