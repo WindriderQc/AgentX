@@ -312,7 +312,7 @@ describe('Alerts End-to-End Smoke Tests', () => {
         .post('/api/alerts')
         .send({
           severity: 'info',
-          title: 'Channel Test',
+          ruleId: 'test-channel-dataapi', title: 'Channel Test',
           message: 'Testing notification channels',
           source: 'smoke-test',
           channels: ['dataapi_log']
@@ -328,7 +328,7 @@ describe('Alerts End-to-End Smoke Tests', () => {
         .post('/api/alerts')
         .send({
           severity: 'warning',
-          title: 'Multi-Channel Test',
+          ruleId: 'test-channel-multi', title: 'Multi-Channel Test',
           message: 'Testing multiple channels',
           source: 'smoke-test',
           channels: ['slack', 'email', 'dataapi_log']
@@ -344,7 +344,7 @@ describe('Alerts End-to-End Smoke Tests', () => {
         .post('/api/alerts')
         .send({
           severity: 'info',
-          title: 'Unknown Channel Test',
+          ruleId: 'test-channel-unknown', title: 'Unknown Channel Test',
           message: 'Testing unknown channel',
           source: 'smoke-test',
           channels: ['unknown_channel']
@@ -393,7 +393,7 @@ describe('Alerts End-to-End Smoke Tests', () => {
         const response = await request(app)
           .post('/api/alerts')
           .send({
-            severity,
+            severity, ruleId: 'test-severity-' + severity,
             title: `Test ${severity}`,
             message: 'Test message',
             source: 'smoke-test',
@@ -455,7 +455,7 @@ describe('Alerts End-to-End Smoke Tests', () => {
         .post('/api/alerts')
         .send({
           severity: 'info',
-          title: 'Metadata Test',
+          ruleId: 'test-metadata', title: 'Metadata Test',
           message: 'Testing metadata preservation',
           source: 'smoke-test',
           channels: ['dataapi_log'],
