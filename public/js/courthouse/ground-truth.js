@@ -21,6 +21,11 @@ const GroundTruth = (() => {
         loadAll();
     }
 
+    function getActiveCategory() {
+        const el = document.getElementById('gtFilterCategory');
+        return el ? el.value : '';
+    }
+
     function setupListeners() {
         const refreshBtn = document.getElementById('gtRefreshBtn');
         const addBtn = document.getElementById('gtAddBtn');
@@ -34,7 +39,7 @@ const GroundTruth = (() => {
     }
 
     async function loadAll() {
-        await Promise.all([loadEntries(), loadSummary(), loadProblematic()]);
+        await Promise.all([loadEntries(getActiveCategory()), loadSummary(), loadProblematic()]);
     }
 
     async function loadEntries(category) {
@@ -46,6 +51,7 @@ const GroundTruth = (() => {
             const params = new URLSearchParams({ limit: '100' });
             if (category) params.set('category', category);
             const res = await fetch(`${API}?${params}`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const { data } = await res.json();
             entries = data.entries || [];
             renderEntries(entries, data.total);
@@ -57,6 +63,7 @@ const GroundTruth = (() => {
     async function loadSummary() {
         try {
             const res = await fetch(`${API}/summary`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const { data } = await res.json();
             summary = data;
             renderSummary(data);
@@ -71,6 +78,7 @@ const GroundTruth = (() => {
 
         try {
             const res = await fetch(`${API}/problematic?threshold=2.0&limit=10`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const { data } = await res.json();
             renderProblematic(data.entries || []);
         } catch (err) {
@@ -94,7 +102,6 @@ const GroundTruth = (() => {
             el('gtValidatedEntries').textContent = overall.total_entries || 0;
         }
 
-        // Category accuracy breakdown (by_category is array of { _id, count, avg_deviation, ... })
         const catContainer = document.getElementById('gtCategoryBreakdown');
         if (catContainer) {
             if (cats.length === 0) {
@@ -144,18 +151,21 @@ const GroundTruth = (() => {
                         <th>Expert Score</th>
                         <th>Avg Deviation</th>
                         <th>Validations</th>
+                        <th>Status</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>${list.map(renderEntryRow).join('')}</tbody>
             </table>`;
 
-        // Attach delete listeners
         container.querySelectorAll('.gt-delete-btn').forEach(btn => {
             btn.addEventListener('click', () => deleteEntry(btn.dataset.id, btn.dataset.name));
         });
         container.querySelectorAll('.gt-detail-btn').forEach(btn => {
             btn.addEventListener('click', () => showEntryDetail(btn.dataset.id));
+        });
+        container.querySelectorAll('.gt-toggle-btn').forEach(btn => {
+            btn.addEventListener('click', () => toggleActive(btn.dataset.id, btn.dataset.active === 'true'));
         });
     }
 
@@ -164,9 +174,10 @@ const GroundTruth = (() => {
         const dev = stats.avg_deviation;
         const devColor = dev != null ? (dev < 1 ? '#2ecc71' : dev < 2 ? '#f1c40f' : '#e74c3c') : 'var(--muted)';
         const diffColor = entry.difficulty >= 8 ? '#e74c3c' : entry.difficulty >= 5 ? '#f1c40f' : '#2ecc71';
+        const isActive = entry.active !== false;
 
         return `
-            <tr>
+            <tr style="${!isActive ? 'opacity: 0.5;' : ''}">
                 <td style="padding: 10px 8px;">
                     <div style="font-weight: 600; color: var(--text);">${esc(entry.name)}</div>
                     ${entry.tags?.length ? `<div style="font-size: 0.75em; color: var(--muted); margin-top: 2px;">${entry.tags.map(t => esc(t)).join(', ')}</div>` : ''}
@@ -179,7 +190,7 @@ const GroundTruth = (() => {
                 </td>
                 <td style="padding: 10px 8px; text-align: center;">
                     <span style="color: var(--accent); font-weight: 700; font-size: 1.1em;">
-                        ${entry.expert_scores?.overall?.toFixed(1) || '-'}
+                        ${entry.expert_scores?.overall != null ? entry.expert_scores.overall.toFixed(1) : '-'}
                     </span>
                 </td>
                 <td style="padding: 10px 8px; text-align: center;">
@@ -190,10 +201,18 @@ const GroundTruth = (() => {
                 <td style="padding: 10px 8px; text-align: center;">
                     ${stats.total_runs || 0}
                 </td>
+                <td style="padding: 10px 8px; text-align: center;">
+                    <span style="color: ${isActive ? '#2ecc71' : '#e74c3c'}; font-size: 0.85em;">
+                        ${isActive ? 'Active' : 'Inactive'}
+                    </span>
+                </td>
                 <td style="padding: 10px 8px;">
                     <div style="display: flex; gap: 6px;">
                         <button class="gt-detail-btn btn-secondary btn-sm" data-id="${entry._id}" title="View details">
                             <i class="fas fa-eye"></i>
+                        </button>
+                        <button class="gt-toggle-btn btn-secondary btn-sm" data-id="${entry._id}" data-active="${isActive}" title="${isActive ? 'Deactivate' : 'Activate'}">
+                            <i class="fas fa-${isActive ? 'pause' : 'play'}"></i>
                         </button>
                         <button class="gt-delete-btn btn-secondary btn-sm" data-id="${entry._id}" data-name="${esc(entry.name)}" title="Delete" style="color: #e74c3c;">
                             <i class="fas fa-trash"></i>
@@ -216,7 +235,7 @@ const GroundTruth = (() => {
 
         container.innerHTML = `
             <div style="font-size: 0.85em; color: var(--muted); margin-bottom: 8px;">
-                Entries where judge deviates significantly from expert scores (&Delta; >= 2.0)
+                Entries where judge deviates significantly (&Delta; >= 2.0)
             </div>
             ${list.map(e => {
                 const dev = e.validation_stats?.avg_deviation;
@@ -225,7 +244,7 @@ const GroundTruth = (() => {
                     <div class="gt-problem-name">${esc(e.name)}</div>
                     <div class="gt-problem-meta">
                         <span>${esc(e.category)}</span>
-                        <span>Expert: ${e.expert_scores?.overall?.toFixed(1)}</span>
+                        <span>Expert: ${e.expert_scores?.overall != null ? e.expert_scores.overall.toFixed(1) : '?'}</span>
                         <span style="color: #e74c3c; font-weight: 600;">&Delta; ${dev?.toFixed(2) || '?'}</span>
                     </div>
                 </div>`;
@@ -352,6 +371,21 @@ const GroundTruth = (() => {
         }
     }
 
+    async function toggleActive(id, currentlyActive) {
+        try {
+            const res = await fetch(`${API}/${id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ active: !currentlyActive })
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            showToast(`Entry ${currentlyActive ? 'deactivated' : 'activated'}`, 'success');
+            loadAll();
+        } catch (err) {
+            showToast('Toggle failed: ' + err.message, 'error');
+        }
+    }
+
     function showEntryDetail(id) {
         const entry = entries.find(e => e._id === id);
         if (!entry) return;
@@ -375,8 +409,8 @@ const GroundTruth = (() => {
                     <div class="gt-detail-meta">
                         <span class="gt-category-badge">${esc(entry.category)}</span>
                         <span>Difficulty: ${entry.difficulty}</span>
-                        <span>Expert Score: <strong style="color: var(--accent);">${entry.expert_scores?.overall?.toFixed(1)}</strong></span>
-                        <span>${entry.active ? '<span style="color:#2ecc71;">Active</span>' : '<span style="color:#e74c3c;">Inactive</span>'}</span>
+                        <span>Expert Score: <strong style="color: var(--accent);">${entry.expert_scores?.overall != null ? entry.expert_scores.overall.toFixed(1) : '-'}</strong></span>
+                        <span>${entry.active !== false ? '<span style="color:#2ecc71;">Active</span>' : '<span style="color:#e74c3c;">Inactive</span>'}</span>
                     </div>
                     <div class="review-inspect-section">
                         <h4>Expert Rationale</h4>
@@ -399,8 +433,8 @@ const GroundTruth = (() => {
                                 const devColor = h.deviation < 1 ? '#2ecc71' : h.deviation < 2 ? '#f1c40f' : '#e74c3c';
                                 return `<tr>
                                     <td style="padding: 6px 8px;">${esc(h.judge_model)}</td>
-                                    <td style="padding: 6px 8px; text-align: center;">${h.judge_score?.toFixed(1)}</td>
-                                    <td style="padding: 6px 8px; text-align: center; color: ${devColor}; font-weight: 600;">${h.deviation?.toFixed(2)}</td>
+                                    <td style="padding: 6px 8px; text-align: center;">${h.judge_score?.toFixed(1) ?? '-'}</td>
+                                    <td style="padding: 6px 8px; text-align: center; color: ${devColor}; font-weight: 600;">${h.deviation?.toFixed(2) ?? '-'}</td>
                                     <td style="padding: 6px 8px; color: var(--muted);">${h.timestamp ? new Date(h.timestamp).toLocaleDateString() : '-'}</td>
                                 </tr>`;
                             }).join('')}</tbody>
@@ -419,15 +453,19 @@ const GroundTruth = (() => {
         if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Evaluating...'; }
 
         try {
+            const category = getActiveCategory();
+            const body = { limit: 50 };
+            if (category) body.category = category;
+
             const res = await fetch('/api/benchmark/judge/validate/ground-truth', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ limit: 50 })
+                body: JSON.stringify(body)
             });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const { data } = await res.json();
 
-            showToast(`Evaluation complete: MAE ${data.summary?.mae?.toFixed(2) || '?'}, Correlation ${data.summary?.correlation?.toFixed(2) || '?'}`, 'success');
+            showToast(`Evaluation complete: MAE ${data.summary?.mae?.toFixed(2) ?? '?'}, Correlation ${data.summary?.correlation?.toFixed(2) ?? '?'}`, 'success');
             showEvalResults(data);
             loadAll();
         } catch (err) {
@@ -452,19 +490,19 @@ const GroundTruth = (() => {
             </div>
             <div class="stats-grid" style="margin-bottom: 12px;">
                 <div class="stat-card">
-                    <div class="stat-value" style="color: ${gradeColor};">${grade}</div>
+                    <div class="stat-value" style="color: ${gradeColor};">${esc(grade)}</div>
                     <div class="stat-label">Accuracy Grade</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value">${s.mae?.toFixed(2) || '-'}</div>
+                    <div class="stat-value">${s.mae != null ? s.mae.toFixed(2) : '-'}</div>
                     <div class="stat-label">MAE</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value">${s.rmse?.toFixed(2) || '-'}</div>
+                    <div class="stat-value">${s.rmse != null ? s.rmse.toFixed(2) : '-'}</div>
                     <div class="stat-label">RMSE</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value">${s.correlation?.toFixed(2) || '-'}</div>
+                    <div class="stat-value">${s.correlation != null ? s.correlation.toFixed(2) : '-'}</div>
                     <div class="stat-label">Correlation</div>
                 </div>
             </div>

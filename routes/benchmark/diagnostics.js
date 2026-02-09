@@ -293,6 +293,53 @@ router.get('/judge/ground-truth/problematic', async (req, res) => {
 });
 
 /**
+ * PATCH /api/benchmark/judge/ground-truth/:id
+ * Update a ground truth entry (e.g. toggle active status)
+ */
+router.patch('/judge/ground-truth/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        if (!validateObjectId(id)) {
+            return res.status(400).json({
+                status: 'error',
+                error: 'Invalid ground truth ID'
+            });
+        }
+
+        const allowedFields = ['active', 'expert_scores', 'expert_rationale', 'difficulty', 'tags'];
+        const updates = {};
+        for (const field of allowedFields) {
+            if (req.body[field] !== undefined) updates[field] = req.body[field];
+        }
+
+        if (Object.keys(updates).length === 0) {
+            return res.status(400).json({
+                status: 'error',
+                error: 'No valid fields to update'
+            });
+        }
+
+        const entry = await JudgeGroundTruth.findByIdAndUpdate(id, { $set: updates }, { new: true });
+
+        if (!entry) {
+            return res.status(404).json({
+                status: 'error',
+                error: 'Ground truth entry not found'
+            });
+        }
+
+        res.json({
+            status: 'success',
+            data: entry
+        });
+    } catch (err) {
+        logger.error('Failed to update ground truth entry', { error: err.message });
+        res.status(500).json({ status: 'error', error: err.message });
+    }
+});
+
+/**
  * DELETE /api/benchmark/judge/ground-truth/:id
  * Delete a ground truth entry
  */

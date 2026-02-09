@@ -37,7 +37,6 @@ const HumanReview = (() => {
 
     async function loadReviewQueue() {
         const container = document.getElementById('reviewQueueContainer');
-        const statsGrid = document.getElementById('reviewStatsGrid');
         if (!container) return;
 
         container.innerHTML = renderLoadingState();
@@ -49,6 +48,7 @@ const HumanReview = (() => {
             if (filters.max_confidence) params.set('max_confidence', filters.max_confidence);
 
             const res = await fetch(`${API}/results/needs-review?${params}`);
+            if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
             const { data } = await res.json();
 
             currentResults = data.results || [];
@@ -163,6 +163,7 @@ const HumanReview = (() => {
     function renderExpandedContent(result) {
         const isReviewed = result.human_score != null;
         const reasons = result.review_reason || 'Low judge confidence';
+        const sliderDefault = isReviewed ? result.human_score : (result.quality_score != null ? result.quality_score : 5);
 
         return `
         <div class="review-card-body">
@@ -214,11 +215,11 @@ const HumanReview = (() => {
                     </label>
                     <div style="display: flex; gap: 8px; align-items: center;">
                         <input type="range" min="0" max="10" step="0.5"
-                               value="${isReviewed ? result.human_score : result.quality_score || 5}"
+                               value="${sliderDefault}"
                                class="review-slider" id="reviewSlider_${result._id}"
                                data-id="${result._id}">
                         <span class="review-slider-value" id="reviewSliderVal_${result._id}">
-                            ${isReviewed ? result.human_score.toFixed(1) : (result.quality_score || 5).toFixed(1)}
+                            ${sliderDefault.toFixed(1)}
                         </span>
                     </div>
                     <div class="review-quick-scores">
@@ -227,7 +228,7 @@ const HumanReview = (() => {
                         ).join('')}
                     </div>
                     <div style="display: flex; gap: 8px; margin-top: 12px;">
-                        <button class="review-submit-btn" data-id="${result._id}">
+                        <button class="review-submit-btn" data-id="${result._id}" data-reviewed="${isReviewed}">
                             <i class="fas fa-check"></i> ${isReviewed ? 'Update Review' : 'Submit Review'}
                         </button>
                         <button class="review-rejudge-btn btn-secondary btn-sm" data-id="${result._id}">
@@ -243,16 +244,14 @@ const HumanReview = (() => {
     }
 
     function attachCardListeners() {
-        // Toggle expand
         document.querySelectorAll('[data-action="toggle"]').forEach(el => {
-            el.addEventListener('click', (e) => {
+            el.addEventListener('click', () => {
                 const id = el.dataset.id;
                 expandedId = expandedId === id ? null : id;
                 renderQueue(currentResults);
             });
         });
 
-        // Sliders
         document.querySelectorAll('.review-slider').forEach(slider => {
             slider.addEventListener('input', () => {
                 const val = document.getElementById(`reviewSliderVal_${slider.dataset.id}`);
@@ -262,7 +261,6 @@ const HumanReview = (() => {
             });
         });
 
-        // Quick score buttons
         document.querySelectorAll('.review-quick-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 const slider = document.getElementById(`reviewSlider_${btn.dataset.id}`);
@@ -274,17 +272,12 @@ const HumanReview = (() => {
             });
         });
 
-        // Submit review
         document.querySelectorAll('.review-submit-btn').forEach(btn => {
             btn.addEventListener('click', () => submitReview(btn.dataset.id));
         });
-
-        // Re-judge
         document.querySelectorAll('.review-rejudge-btn').forEach(btn => {
             btn.addEventListener('click', () => rejudgeResult(btn.dataset.id));
         });
-
-        // Inspect full details
         document.querySelectorAll('.review-inspect-btn').forEach(btn => {
             btn.addEventListener('click', () => inspectResult(btn.dataset.id));
         });
@@ -296,6 +289,7 @@ const HumanReview = (() => {
 
         const score = parseFloat(slider.value);
         const btn = document.querySelector(`.review-submit-btn[data-id="${resultId}"]`);
+        const wasReviewed = btn?.dataset.reviewed === 'true';
         if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...'; }
 
         try {
@@ -307,19 +301,21 @@ const HumanReview = (() => {
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
             showToast(`Review saved: ${score.toFixed(1)}`, 'success');
-            // Update local data
             const idx = currentResults.findIndex(r => r._id === resultId);
             if (idx >= 0) {
                 currentResults[idx].human_score = score;
                 currentResults[idx].human_reviewed_at = new Date().toISOString();
             }
             renderQueue(currentResults);
-            // Refresh stats
             loadReviewQueue();
         } catch (err) {
             console.error('Submit review failed:', err);
             showToast('Failed to save review: ' + err.message, 'error');
-            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-check"></i> Submit Review'; }
+            if (btn) {
+                btn.disabled = false;
+                const label = wasReviewed ? 'Update Review' : 'Submit Review';
+                btn.innerHTML = `<i class="fas fa-check"></i> ${label}`;
+            }
         }
     }
 
@@ -336,7 +332,8 @@ const HumanReview = (() => {
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const { data } = await res.json();
 
-            showToast(`Re-judged: new score ${data.quality_score?.toFixed(1) || '?'}`, 'success');
+            const newScore = data?.quality_score;
+            showToast(`Re-judged: new score ${newScore != null ? newScore.toFixed(1) : '?'}`, 'success');
             loadReviewQueue();
         } catch (err) {
             console.error('Re-judge failed:', err);
@@ -356,9 +353,13 @@ const HumanReview = (() => {
         }
     }
 
-    function showInspectModal(result) {
+    function showInspectModal(r) {
         let overlay = document.getElementById('reviewInspectOverlay');
         if (overlay) overlay.remove();
+
+        const latency = r.latency != null ? `${(r.latency / 1000).toFixed(2)}s` : null;
+        const tokens = r.tokens?.total || r.tokens?.completion || null;
+        const errorInfo = r.error ? `${r.error_type || 'error'}: ${r.error}` : null;
 
         overlay = document.createElement('div');
         overlay.id = 'reviewInspectOverlay';
@@ -370,23 +371,66 @@ const HumanReview = (() => {
                     <button class="review-inspect-close">&times;</button>
                 </div>
                 <div class="review-inspect-body">
+                    <!-- Metadata bar -->
+                    <div style="display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; font-size: 0.85em; color: var(--muted);">
+                        <span><strong>Model:</strong> ${esc(r.model || '-')}</span>
+                        <span><strong>Level:</strong> ${r.prompt_level || '-'}</span>
+                        <span><strong>Category:</strong> ${esc(r.prompt_category || '-')}</span>
+                        ${latency ? `<span><strong>Latency:</strong> ${latency}</span>` : ''}
+                        ${tokens ? `<span><strong>Tokens:</strong> ${tokens}</span>` : ''}
+                        ${r.judge_confidence != null ? `<span><strong>Confidence:</strong> ${r.judge_confidence.toFixed(2)}</span>` : ''}
+                        ${r.prompt_complexity != null ? `<span><strong>Complexity:</strong> ${r.prompt_complexity}</span>` : ''}
+                    </div>
+
+                    ${errorInfo ? `
+                    <div class="review-inspect-section">
+                        <h4><i class="fas fa-exclamation-circle" style="color: #e74c3c;"></i> Execution Error</h4>
+                        <pre class="review-inspect-pre" style="border-color: rgba(231,76,60,0.3);">${esc(errorInfo)}</pre>
+                    </div>` : ''}
+
                     <div class="review-inspect-section">
                         <h4><i class="fas fa-question-circle"></i> Prompt</h4>
-                        <pre class="review-inspect-pre">${esc(result.prompt || 'N/A')}</pre>
+                        <pre class="review-inspect-pre">${esc(r.prompt || 'N/A')}</pre>
                     </div>
+
+                    ${r.expected_answer ? `
+                    <div class="review-inspect-section">
+                        <h4><i class="fas fa-bullseye"></i> Expected Answer</h4>
+                        <pre class="review-inspect-pre">${esc(r.expected_answer)}</pre>
+                    </div>` : ''}
+
                     <div class="review-inspect-section">
                         <h4><i class="fas fa-comment"></i> Model Response</h4>
-                        <pre class="review-inspect-pre">${esc(result.response || 'N/A')}</pre>
+                        <pre class="review-inspect-pre">${esc(r.response || 'N/A')}</pre>
                     </div>
-                    ${result.quality_explanation ? `
+
+                    ${r.thinking ? `
+                    <div class="review-inspect-section">
+                        <h4><i class="fas fa-brain"></i> Model Thinking</h4>
+                        <pre class="review-inspect-pre">${esc(r.thinking)}</pre>
+                    </div>` : ''}
+
+                    ${r.quality_explanation ? `
                     <div class="review-inspect-section">
                         <h4><i class="fas fa-gavel"></i> Judge Explanation</h4>
-                        <pre class="review-inspect-pre">${esc(result.quality_explanation)}</pre>
+                        <pre class="review-inspect-pre">${esc(r.quality_explanation)}</pre>
                     </div>` : ''}
+
                     <div class="review-inspect-section">
                         <h4><i class="fas fa-chart-bar"></i> Score Breakdown</h4>
-                        ${renderBreakdown(result.quality_breakdown)}
+                        ${renderBreakdown(r.quality_breakdown)}
                     </div>
+
+                    ${r.truncation ? `
+                    <div class="review-inspect-section">
+                        <h4><i class="fas fa-cut"></i> Truncation Info</h4>
+                        <div style="font-size: 0.9em; color: var(--muted); display: flex; gap: 16px;">
+                            ${r.truncation.response_truncated ? '<span style="color: #e74c3c;">Response truncated</span>' : ''}
+                            ${r.truncation.judge_input_truncated ? '<span style="color: #f1c40f;">Judge input truncated</span>' : ''}
+                            ${r.truncation.judge_output_truncated ? '<span style="color: #e74c3c;">Judge output truncated</span>' : ''}
+                            ${!r.truncation.response_truncated && !r.truncation.judge_input_truncated && !r.truncation.judge_output_truncated ? '<span style="color: #2ecc71;">No truncation</span>' : ''}
+                        </div>
+                    </div>` : ''}
                 </div>
             </div>`;
 
