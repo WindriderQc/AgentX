@@ -237,6 +237,10 @@
         .tone-muted {
             color: var(--muted) !important;
         }
+        .status-text-success { color: #22c55e !important; }
+        .status-text-warning { color: #f59e0b !important; }
+        .status-text-error { color: #ef4444 !important; }
+        .status-text-muted { color: var(--muted) !important; }
         .monitor-log-wrap {
             margin-top: 10px;
             border: 1px solid rgba(255,255,255,0.07);
@@ -535,31 +539,64 @@
                 </div>
                 <div class="section-body">
                     <div class="section-subtitle">Export all Markdown documentation files as a ZIP archive with preserved folder hierarchy. Optionally copy to RAG ingestion folder for automated processing.</div>
-                    <div style="display: flex; gap: 16px; align-items: center; margin-top: 16px;">
-                        <button class="btn" id="export-md-docs" style="display: flex; align-items: center; gap: 8px;">
-                            <i class="fas fa-download"></i>
-                            <span id="export-btn-text">Export MD Docs</span>
-                        </button>
-                        <button class="btn-secondary" id="copy-to-rag" style="display: flex; align-items: center; gap: 8px;" disabled>
-                            <i class="fas fa-copy"></i>
-                            <span>Copy to RAG Folder</span>
-                        </button>
-                        <div id="export-status" style="font-size: 14px; color: var(--muted);"></div>
-                    </div>
-                    <div id="export-result" style="margin-top: 16px; display: none;">
-                        <div style="padding: 12px; background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.2); border-radius: 4px;">
-                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                                <i class="fas fa-check-circle" style="color: #22c55e;"></i>
-                                <strong>Export Complete</strong>
+                    <div class="monitor-grid">
+                        <div class="monitor-card" id="export-workflow-card">
+                            <div class="monitor-head">
+                                <div class="monitor-title">
+                                    <i class="fas fa-file-archive"></i>
+                                    <span>Export Workflow</span>
+                                </div>
+                                <span id="export-flow-state" class="value-pill tone-muted">Idle</span>
                             </div>
-                            <div id="export-details"></div>
-                            <div style="margin-top: 8px;">
-                                <a id="download-link" href="#" class="btn-xs" style="margin-right: 8px;">
-                                    <i class="fas fa-download"></i> Download ZIP
-                                </a>
-                                <button class="btn-xs" id="copy-rag-btn" style="background: rgba(59, 130, 246, 0.1); color: #3b82f6;">
-                                    <i class="fas fa-copy"></i> Copy to RAG
+
+                            <div class="monitor-kv">
+                                <div class="monitor-kv-item">
+                                    <div class="monitor-kv-label">Last File</div>
+                                    <div class="monitor-kv-value" id="export-last-file">-</div>
+                                </div>
+                                <div class="monitor-kv-item">
+                                    <div class="monitor-kv-label">Last Size</div>
+                                    <div class="monitor-kv-value" id="export-last-size">-</div>
+                                </div>
+                                <div class="monitor-kv-item">
+                                    <div class="monitor-kv-label">Last Export</div>
+                                    <div class="monitor-kv-value" id="export-last-created">-</div>
+                                </div>
+                                <div class="monitor-kv-item">
+                                    <div class="monitor-kv-label">RAG Copy Status</div>
+                                    <div class="monitor-kv-value status-text-muted" id="export-copy-status">Not copied</div>
+                                </div>
+                            </div>
+
+                            <div class="monitor-actions">
+                                <button class="btn" id="export-md-docs" style="display: flex; align-items: center; gap: 8px;">
+                                    <i class="fas fa-download"></i>
+                                    <span id="export-btn-text">Export MD Docs</span>
                                 </button>
+                                <button class="btn-secondary" id="copy-to-rag" style="display: flex; align-items: center; gap: 8px;" disabled>
+                                    <i class="fas fa-copy"></i>
+                                    <span>Copy to RAG Folder</span>
+                                </button>
+                                <div id="export-status" class="monitor-status-note"></div>
+                            </div>
+
+                            <div id="export-result" class="monitor-log-wrap" style="display: none;">
+                                <div class="monitor-log-header">Latest Export</div>
+                                <div style="padding: 10px;">
+                                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                                        <i class="fas fa-check-circle" style="color: #22c55e;"></i>
+                                        <strong>Export Complete</strong>
+                                    </div>
+                                    <div id="export-details" class="monitor-status-note"></div>
+                                    <div style="margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap;">
+                                        <a id="download-link" href="#" class="btn-xs" style="margin-right: 0;">
+                                            <i class="fas fa-download"></i> Download ZIP
+                                        </a>
+                                        <button class="btn-xs" id="copy-rag-btn" style="background: rgba(59, 130, 246, 0.1); color: #3b82f6;">
+                                            <i class="fas fa-copy"></i> Copy to RAG
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1298,6 +1335,21 @@
         document.getElementById('copy-to-rag').addEventListener('click', copyToRag);
         document.getElementById('copy-rag-btn').addEventListener('click', copyToRag);
 
+        function setExportFlowState(label, tone = 'tone-muted') {
+            const stateEl = document.getElementById('export-flow-state');
+            if (!stateEl) return;
+            stateEl.textContent = label;
+            applyTone(stateEl, tone);
+        }
+
+        function setExportCopyStatus(label, tone = 'status-text-muted') {
+            const copyStatusEl = document.getElementById('export-copy-status');
+            if (!copyStatusEl) return;
+            copyStatusEl.textContent = label;
+            copyStatusEl.classList.remove('status-text-success', 'status-text-warning', 'status-text-error', 'status-text-muted');
+            copyStatusEl.classList.add(tone);
+        }
+
         async function exportMdDocs() {
             const btn = document.getElementById('export-md-docs');
             const btnText = document.getElementById('export-btn-text');
@@ -1309,6 +1361,8 @@
             btnText.textContent = 'Exporting...';
             status.textContent = 'Creating ZIP archive...';
             result.style.display = 'none';
+            setExportFlowState('Exporting', 'tone-warning');
+            setExportCopyStatus('Not copied', 'status-text-muted');
 
             try {
                 const response = await fetch('/api/export/md-docs', {
@@ -1321,28 +1375,36 @@
                 if (data.success) {
                     status.textContent = 'Export completed successfully!';
                     result.style.display = 'block';
+                    setExportFlowState('Ready', 'tone-success');
 
                     const details = document.getElementById('export-details');
+                    const fileName = data.downloadUrl.split('/').pop();
+                    const created = new Date().toLocaleString();
                     details.innerHTML = `
-                        <div>File: ${data.downloadUrl.split('/').pop()}</div>
+                        <div>File: <strong>${fileName}</strong></div>
                         <div>Size: ${data.fileSize}</div>
-                        <div>Created: ${new Date().toLocaleString()}</div>
+                        <div>Created: ${created}</div>
                     `;
+                    document.getElementById('export-last-file').textContent = fileName;
+                    document.getElementById('export-last-size').textContent = data.fileSize || '-';
+                    document.getElementById('export-last-created').textContent = created;
 
                     const downloadLink = document.getElementById('download-link');
                     downloadLink.href = data.downloadUrl;
-                    downloadLink.download = data.downloadUrl.split('/').pop();
+                    downloadLink.download = fileName;
 
                     // Enable copy to RAG button
                     document.getElementById('copy-to-rag').disabled = false;
 
                 } else {
                     status.textContent = `Export failed: ${data.message}`;
+                    setExportFlowState('Failed', 'tone-error');
                     console.error('Export failed:', data);
                 }
 
             } catch (error) {
                 status.textContent = 'Export failed due to network error';
+                setExportFlowState('Failed', 'tone-error');
                 console.error('Export error:', error);
             } finally {
                 // Re-enable button
@@ -1362,6 +1424,7 @@
             copyBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span>Copying...</span>';
             copyRagBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Copying...';
             status.textContent = 'Copying files to RAG folder...';
+            setExportCopyStatus('Copying...', 'status-text-warning');
 
             try {
                 const response = await fetch('/api/export/copy-to-rag', {
@@ -1373,9 +1436,11 @@
 
                 if (data.success) {
                     status.textContent = 'Files copied to RAG folder successfully! n8n N2.3 workflow will process them automatically.';
+                    setExportCopyStatus('Copied', 'status-text-success');
                     showNotification('MD docs copied to RAG folder for ingestion', 'success');
                 } else {
                     status.textContent = `Copy failed: ${data.message}`;
+                    setExportCopyStatus('Copy failed', 'status-text-error');
                     // Re-enable buttons on failure
                     copyBtn.disabled = false;
                     copyRagBtn.disabled = false;
@@ -1385,6 +1450,7 @@
 
             } catch (error) {
                 status.textContent = 'Failed to copy files to RAG folder due to network error';
+                setExportCopyStatus('Copy failed', 'status-text-error');
                 console.error('Copy error:', error);
                 copyBtn.disabled = false;
                 copyRagBtn.disabled = false;
@@ -1397,6 +1463,7 @@
         let watcherStatusInterval = null;
         let lastWatcherStatus = null;
         let codebaseSyncInterval = null;
+        let codebaseSyncApiAvailable = true;
 
         // Initialize watcher functionality
         initWatcher();
@@ -1464,13 +1531,28 @@
 
                 const indicator = document.getElementById('codebase-sync-indicator');
                 const statusText = document.getElementById('codebase-sync-status-text');
+                const actionStatus = document.getElementById('codebase-sync-action-status');
 
                 if (payload.status !== 'success' || !payload.data) {
+                    const apiNotFound = typeof payload.message === 'string' && payload.message.includes('API endpoint not found');
                     indicator.style.background = 'var(--error)';
-                    statusText.textContent = 'Failed to load codebase sync status';
-                    statusText.style.color = 'var(--error)';
+                    statusText.textContent = apiNotFound
+                        ? 'Codebase sync API unavailable on current backend'
+                        : 'Failed to load codebase sync status';
+                    statusText.style.color = apiNotFound ? 'var(--warning)' : 'var(--error)';
+                    if (apiNotFound && actionStatus) {
+                        actionStatus.textContent = 'Backend restart required to enable this panel.';
+                        actionStatus.style.color = 'var(--warning)';
+                        codebaseSyncApiAvailable = false;
+                        if (codebaseSyncInterval) {
+                            clearInterval(codebaseSyncInterval);
+                            codebaseSyncInterval = null;
+                        }
+                    }
+                    setCodebaseSyncButtonsDisabled(true);
                     return;
                 }
+                codebaseSyncApiAvailable = true;
 
                 const data = payload.data;
                 const last = data.lastRun || {};
@@ -1538,6 +1620,12 @@
             const dryRunBtn = document.getElementById('codebase-sync-dry-run');
             const runBtnOriginal = runBtn.innerHTML;
             const dryBtnOriginal = dryRunBtn.innerHTML;
+
+            if (!codebaseSyncApiAvailable) {
+                actionStatus.textContent = 'Codebase sync API unavailable. Restart backend first.';
+                actionStatus.style.color = 'var(--warning)';
+                return;
+            }
 
             runBtn.disabled = true;
             dryRunBtn.disabled = true;
