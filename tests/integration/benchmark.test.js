@@ -29,11 +29,32 @@ jest.mock('../../src/middleware/workspace', () => ({
     requirePermission: () => (req, res, next) => next()
 }));
 
+// Keep integration tests deterministic and quiet by bypassing live judge/decomposed scoring.
+jest.mock('../../src/services/qualityScorer', () => {
+    const actual = jest.requireActual('../../src/services/qualityScorer');
+    return {
+        ...actual,
+        scoreResponse: jest.fn(async ({ judgeConfig = {} } = {}) => ({
+            quality_score: 8,
+            breakdown: { overall: 8 },
+            explanation: 'Mocked integration judge score',
+            judge_prompt: 'mock judge prompt',
+            judge_model: judgeConfig.model || actual.JUDGE_CONFIG.model,
+            scoring_method: 'llm_judge',
+            scoring_type: 'reasoning',
+            scoring_time_ms: 12,
+            judge_confidence: 0.95,
+            needs_review: false
+        }))
+    };
+});
+
 const { app } = require('../../src/app');
 
 const BenchmarkPrompt = require('../../models/BenchmarkPrompt');
 const BenchmarkResult = require('../../models/BenchmarkResult');
 const BenchmarkBatch = require('../../models/BenchmarkBatch');
+const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 afterEach(async () => {
     // Clear all collections between tests
@@ -647,11 +668,21 @@ describe('Benchmark System - Integration Tests', () => {
             const compact = await request(app).get(`/api/benchmark/batch/${batch._id}`);
             expect(compact.status).toBe(200);
             expect(compact.body.data.results).toHaveLength(1);
+            expect(compact.body.data.results[0].prompt).toBeUndefined();
+            expect(compact.body.data.results[0].response).toBeUndefined();
+            expect(compact.body.data.results[0].prompt_preview).toContain('Math');
             expect(compact.body.data.results[0].judge_raw_response).toBeUndefined();
             expect(compact.body.data.results[0].hardware_snapshot).toBeUndefined();
             expect(compact.body.data.results[0].execution_settings).toBeUndefined();
             expect(compact.body.data.results[0].warmup).toBeUndefined();
             expect(compact.body.data.results[0].judge_warmup).toBeUndefined();
+
+            const fullText = await request(app).get(`/api/benchmark/batch/${batch._id}?include_full_text=1`);
+            expect(fullText.status).toBe(200);
+            expect(fullText.body.data.results).toHaveLength(1);
+            expect(fullText.body.data.results[0].prompt).toBe('What is 2+2?');
+            expect(fullText.body.data.results[0].response).toBe('4');
+            expect(fullText.body.data.results[0].judge_raw_response).toBeUndefined();
 
             const full = await request(app).get(`/api/benchmark/batch/${batch._id}?include_heavy=1`);
             expect(full.status).toBe(200);
@@ -857,6 +888,19 @@ describe('Benchmark System - Integration Tests', () => {
                 quality_scoring: true
             });
 
+            await BenchmarkResult.create({
+                batch_id: batch._id.toString(),
+                model: 'judge-model',
+                host: 'http://localhost:11434',
+                prompt: 'Judge this',
+                prompt_name: 'Judge Prompt',
+                prompt_level: 1,
+                prompt_category: 'reasoning',
+                success: true,
+                scoring_method: 'pending',
+                response: 'This is a response to evaluate.'
+            });
+
             const response = await request(app)
                 .post(`/api/benchmark/batch/${batch._id}/judge`)
                 .send({ concurrency: 1, force: false });
@@ -864,6 +908,46 @@ describe('Benchmark System - Integration Tests', () => {
             expect(response.status).toBe(200);
             expect(response.body.status).toBe('success');
             expect(response.body.message).toContain('Judging started in background');
+            expect(response.body.data.pending_count).toBe(1);
+            await wait(75);
+        });
+
+        it('should return 409 when trying to judge a running batch', async () => {
+            const batch = await BenchmarkBatch.create({
+                host: 'http://localhost:11434',
+                models: ['judge-model-running'],
+                levels: [1],
+                run_name: 'Judge Running',
+                status: 'running',
+                total_tests: 1
+            });
+
+            const response = await request(app)
+                .post(`/api/benchmark/batch/${batch._id}/judge`)
+                .send({ concurrency: 1 });
+
+            expect(response.status).toBe(409);
+            expect(response.body.status).toBe('error');
+            expect(response.body.error).toContain('still running');
+        });
+
+        it('should return 400 when no pending results exist', async () => {
+            const batch = await BenchmarkBatch.create({
+                host: 'http://localhost:11434',
+                models: ['judge-model-none'],
+                levels: [1],
+                run_name: 'Judge None',
+                status: 'completed',
+                total_tests: 1
+            });
+
+            const response = await request(app)
+                .post(`/api/benchmark/batch/${batch._id}/judge`)
+                .send({ force: false });
+
+            expect(response.status).toBe(400);
+            expect(response.body.status).toBe('error');
+            expect(response.body.error).toContain('No pending');
         });
     });
 
@@ -906,6 +990,19 @@ describe('Benchmark System - Integration Tests', () => {
                 quality_scoring: true
             });
 
+            await BenchmarkResult.create({
+                batch_id: batch._id.toString(),
+                model: 'rejudge-model',
+                host: 'http://localhost:11434',
+                prompt: 'Retry judge',
+                prompt_name: 'Retry Prompt',
+                prompt_level: 1,
+                prompt_category: 'reasoning',
+                success: true,
+                scoring_method: 'pending',
+                response: 'Rejudge this response.'
+            });
+
             const response = await request(app)
                 .post(`/api/benchmark/batch/${batch._id}/rejudge-pending`)
                 .send({ concurrency: 1 });
@@ -913,6 +1010,27 @@ describe('Benchmark System - Integration Tests', () => {
             expect(response.status).toBe(200);
             expect(response.body.status).toBe('success');
             expect(response.body.message).toContain('Judging started in background');
+            expect(response.body.data.pending_count).toBe(1);
+            await wait(75);
+        });
+
+        it('should return 400 when no pending results exist for rejudge', async () => {
+            const batch = await BenchmarkBatch.create({
+                host: 'http://localhost:11434',
+                models: ['rejudge-model-none'],
+                levels: [1],
+                run_name: 'Rejudge None',
+                status: 'completed',
+                total_tests: 1
+            });
+
+            const response = await request(app)
+                .post(`/api/benchmark/batch/${batch._id}/rejudge-pending`)
+                .send({ concurrency: 1 });
+
+            expect(response.status).toBe(400);
+            expect(response.body.status).toBe('error');
+            expect(response.body.error).toContain('No pending');
         });
     });
 
@@ -969,6 +1087,38 @@ describe('Benchmark System - Integration Tests', () => {
             expect(response.body.data.results).toHaveLength(1);
             expect(response.body.data.results[0].model).toBe('advanced-model-a');
             expect(response.body.data.hasMore).toBe(false);
+        });
+
+        it('should clamp limit and sanitize unsupported sort field', async () => {
+            await BenchmarkResult.create({
+                model: 'advanced-limit-model',
+                host: 'http://localhost:11434',
+                prompt: 'Prompt C',
+                prompt_name: 'Prompt C',
+                prompt_category: 'math',
+                prompt_level: 2,
+                latency: 200,
+                tokens: 20,
+                quality_score: 9.1,
+                scoring_method: 'reasoning',
+                success: true
+            });
+
+            const response = await request(app)
+                .get('/api/benchmark/results/advanced')
+                .query({
+                    limit: 999999,
+                    offset: -50,
+                    sort: '__proto__',
+                    sortDir: 'asc'
+                });
+
+            expect(response.status).toBe(200);
+            expect(response.body.status).toBe('success');
+            expect(response.body.data.limit).toBe(5000);
+            expect(response.body.data.offset).toBe(0);
+            expect(response.body.data.sort).toBe('timestamp');
+            expect(response.body.data.sortDir).toBe('asc');
         });
     });
 

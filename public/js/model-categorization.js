@@ -113,7 +113,7 @@ function renderTable(models) {
     tbody.innerHTML = '';
 
     if (models.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">No models found</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;">No models found</td></tr>';
         return;
     }
 
@@ -136,7 +136,7 @@ function renderTable(models) {
         const vendor = model.provider || model.vendor || 'Unknown';
         const parameterSize = model.parameterSize || model.parameters || model.size || '?';
         nameTd.innerHTML = `
-            <div style="font-weight: 600; color: #fff;">${displayName}</div>
+            <div class="model-name-col" style="font-weight: 600; color: #fff;">${displayName}</div>
             <div style="font-size: 0.8em; color: #888;">${vendor} • ${parameterSize}</div>
         `;
         tr.appendChild(nameTd);
@@ -176,7 +176,7 @@ function renderTable(models) {
             const isPending = !recCat || recCat === 'Pending';
             recTd.innerHTML = `
                 <div class="rec-badge" style="${isPending ? 'background:rgba(255,255,255,0.05); color:#888; border-color:#444;' : ''}">
-                    <i class="fa-solid ${getCategoryIcon(recCat || 'pending')}"></i> ${capitalize(recCat || 'Pending')}
+                    <i class="${getCategoryIcon(recCat || 'pending')}"></i> ${capitalize(recCat || 'Pending')}
                 </div>
             `;
         }
@@ -197,7 +197,9 @@ function renderTable(models) {
             checkbox.checked = currentCats.includes(cat);
             checkbox.addEventListener('change', () => markDirty(modelKey));
             label.appendChild(checkbox);
-            label.append(` ${capitalize(cat)}`);
+            const catSpan = document.createElement('span');
+            catSpan.textContent = ` ${capitalize(cat)}`;
+            label.appendChild(catSpan);
             catsDiv.appendChild(label);
         });
         catsTd.appendChild(catsDiv);
@@ -222,7 +224,8 @@ function renderTable(models) {
         testButton.className = 'btn btn-sm';
         testButton.style.padding = '4px 10px';
         testButton.style.fontSize = '0.8em';
-        testButton.innerHTML = '<i class="fa-solid fa-vial"></i> Test';
+        testButton.innerHTML = '<i class="fa-solid fa-chart-bar"></i> Results';
+        testButton.title = 'View benchmark results';
         testButton.addEventListener('click', () => openQuickTest(modelKey));
 
         actionsWrap.appendChild(saveButton);
@@ -250,20 +253,26 @@ function truncateHost(host) {
 
 function getCategoryIcon(category) {
     const map = {
-        coding: 'fa-code',
-        reasoning: 'fa-brain',
-        generalist: 'fa-comments',
-        specialist: 'fa-user-md',
-        ops: 'fa-server',
-        embedding: 'fa-vector-square',
-        judge: 'fa-gavel',
-        factual: 'fa-book',
-        math: 'fa-calculator',
-        creative: 'fa-paint-brush',
-        general: 'fa-tag',
-        pending: 'fa-clock'
+        coding: 'fa-solid fa-code',
+        reasoning: 'fa-solid fa-brain',
+        generalist: 'fa-solid fa-cubes',
+        specialist: 'fa-solid fa-star',
+        ops: 'fa-solid fa-bolt',
+        embedding: 'fa-solid fa-vector-square',
+        judge: 'fa-solid fa-gavel',
+        factual: 'fa-solid fa-book',
+        math: 'fa-solid fa-calculator',
+        creative: 'fa-solid fa-paint-brush',
+        general: 'fa-solid fa-tag',
+        'instruction-following': 'fa-solid fa-list-check',
+        summarization: 'fa-solid fa-compress-alt',
+        translation: 'fa-solid fa-language',
+        'multi-turn-reasoning': 'fa-solid fa-comments',
+        'context-retention': 'fa-solid fa-memory',
+        'edge-cases': 'fa-solid fa-exclamation-triangle',
+        pending: 'fa-solid fa-clock'
     };
-    return map[category?.toLowerCase()] || 'fa-question';
+    return map[category?.toLowerCase()] || 'fa-solid fa-question';
 }
 
 function capitalize(str) {
@@ -277,8 +286,11 @@ window.markDirty = function(modelName) {
     if (btn) {
         btn.style.display = 'flex';
         btn.classList.add('btn-primary');
+        // Mark parent row as dirty for Ctrl+S batch save
+        const row = btn.closest('tr');
+        if (row) row.classList.add('dirty');
     }
-    
+
     // Show real-time category suggestion preview
     showCategorySuggestionPreview(modelName);
 };
@@ -335,6 +347,7 @@ function showCategorySuggestionPreview(modelName) {
 
 window.saveModelCategories = async function(modelName) {
     const btn = document.getElementById(`save-${toSafeId(modelName)}`);
+    if (!btn) return;
     const row = btn.closest('tr');
     const checkboxes = row.querySelectorAll('.category-checkboxes input[type="checkbox"]');
     
@@ -357,7 +370,7 @@ window.saveModelCategories = async function(modelName) {
         
         if (response.ok) {
             // Success animation
-            row.classList.remove('updating');
+            row.classList.remove('updating', 'dirty');
             row.classList.add('just-saved');
             setTimeout(() => row.classList.remove('just-saved'), 600);
             
@@ -394,43 +407,31 @@ window.openQuickTest = function(modelName) {
 
     modal.classList.add('active');
     modelNameSpan.innerText = modelName;
-    progressBar.style.width = '0%';
-    statusDiv.innerText = 'Initializing test suite...';
-    resultDiv.style.display = 'none';
-    closeBtn.style.display = 'none';
 
-    // Simulate test steps
-    let progress = 0;
-    const interval = setInterval(() => {
-        progress += 5;
-        progressBar.style.width = `${progress}%`;
-        
-        if (progress === 20) statusDiv.innerText = 'Loading model capability prompts...';
-        if (progress === 50) statusDiv.innerText = 'Evaluating responses...';
-        if (progress === 80) statusDiv.innerText = 'Calculating scores...';
-        
-        if (progress >= 100) {
-            clearInterval(interval);
-            statusDiv.innerText = 'Test Complete';
-            // In a real implementation this would come from the backend or the script
-            // For now, we fetch the model data again to see if backend updated it, 
-            // or just show a "mock" result based on existing data
-            const model = allModels.find(m => (m.modelName || m.name) === modelName);
-            const rec = model?.benchmarkStats?.bestCategory || 'Generalist';
-            
-            document.getElementById('testRecommendation').innerText = capitalize(rec);
-            resultDiv.style.display = 'block';
-            closeBtn.style.display = 'inline-block';
-            
-            // Trigger background sync just in case
-            fetch(`/api/models/registry/${encodeURIComponent(modelName)}/sync`, { method: 'POST' });
-        }
-    }, 150);
-    
-    // Add close handler specifically for this run
+    // Show existing benchmark data immediately (no fake progress)
+    const model = allModels.find(m => (m.modelName || m.name) === modelName);
+    const rec = model?.benchmarkStats?.bestCategory;
+    const totalTests = model?.benchmarkStats?.totalTests || 0;
+
+    progressBar.style.width = '100%';
+
+    if (rec && rec !== 'Pending' && totalTests > 0) {
+        statusDiv.innerText = `Based on ${totalTests} benchmark test${totalTests !== 1 ? 's' : ''}`;
+        document.getElementById('testRecommendation').innerText = capitalize(rec);
+        resultDiv.style.display = 'block';
+    } else {
+        statusDiv.innerText = 'No benchmark data available. Run benchmarks first.';
+        resultDiv.style.display = 'none';
+    }
+
+    closeBtn.style.display = 'inline-block';
+
+    // Trigger background sync
+    fetch(`/api/models/registry/${encodeURIComponent(modelName)}/sync`, { method: 'POST' });
+
     closeBtn.onclick = () => {
         modal.classList.remove('active');
-        fetchModels(); // Refresh table to show any updates
+        fetchModels();
     };
 };
 
@@ -444,12 +445,12 @@ function setupEventListeners() {
     // Bulk Apply Button
     document.getElementById('applyBulkCategoryBtn').addEventListener('click', async () => {
         const category = document.getElementById('bulkCategorySelect').value;
-        if (!category) return showToast('Please select a category first', true);
+        if (!category) return showToast('Please select a category first', 'warning');
 
         const selectedModels = Array.from(document.querySelectorAll('.model-select:checked'))
             .map(cb => cb.dataset.model);
-            
-        if (selectedModels.length === 0) return showToast('No models selected', true);
+
+        if (selectedModels.length === 0) return showToast('No models selected', 'warning');
 
         let successCount = 0;
         for (const modelName of selectedModels) {
@@ -460,7 +461,8 @@ function setupEventListeners() {
             // Let's assume we append the new one if not present.
             
             const model = allModels.find(m => (m.modelName || m.name) === modelName);
-            let cats = model.categories || [];
+            const existingCats = model.categories || [];
+            let cats = [...existingCats];
             if (!cats.includes(category)) {
                 cats.push(category);
                 
@@ -484,7 +486,7 @@ function setupEventListeners() {
     document.getElementById('autoCategorizeBtn').addEventListener('click', () => {
         // Mock functionality for now as per instructions "Auto-categorize from Web"
         // In reality this might call an endpoint.
-        showToast('Auto-categorization initiated (Background Job)', false);
+        showToast('Auto-categorization initiated (Background Job)', 'success');
         // Could integrate with script here if we had an endpoint
     });
 }
@@ -517,15 +519,26 @@ function renderDistChart(distData) {
     const labels = Object.keys(distData).length ? Object.keys(distData) : ['Empty'];
     const dataPoints = Object.keys(distData).length ? Object.values(distData) : [1];
 
+    // Map category names to their config colors
+    const CATEGORY_COLORS = {
+        ops: '#10b981', coding: '#7c9fff', reasoning: '#a78bfa',
+        specialist: '#ec4899', generalist: '#94a3b8', embedding: '#8b5cf6',
+        judge: '#f59e0b', factual: '#34d399', math: '#fbbf24',
+        creative: '#f87171', general: '#64748b',
+        'instruction-following': '#06b6d4', summarization: '#14b8a6',
+        translation: '#f472b6', 'multi-turn-reasoning': '#c084fc',
+        'context-retention': '#fb923c', 'edge-cases': '#a3e635'
+    };
+    const FALLBACK_COLORS = ['#7CF0FF', '#5865F2', '#2ecc71', '#f1c40f', '#e74c3c', '#9b59b6', '#34495e', '#1abc9c', '#e67e22', '#3498db'];
+    const bgColors = labels.map((label, i) => CATEGORY_COLORS[label] || FALLBACK_COLORS[i % FALLBACK_COLORS.length]);
+
     categoryChart = new Chart(ctx, {
         type: 'doughnut',
         data: {
             labels: labels.map(capitalize),
             datasets: [{
                 data: dataPoints,
-                backgroundColor: [
-                    '#7CF0FF', '#5865F2', '#2ecc71', '#f1c40f', '#e74c3c', '#9b59b6', '#34495e'
-                ],
+                backgroundColor: bgColors,
                 borderWidth: 0
             }]
         },

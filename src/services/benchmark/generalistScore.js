@@ -26,35 +26,13 @@
  */
 
 const BenchmarkResult = require('../../../models/BenchmarkResult');
+const { GENERALIST_CATEGORY_WEIGHTS } = require('../../../config/categories');
 
-/**
- * Category weights for "Generalist Champion" scoring.
- * Weights must sum to 1.0 (100%).
- *
- * Rationale:
- *   - Core capabilities (60%): Essential for general-purpose use
- *   - Specialized (30%): Important but less universally needed
- *   - Quality assurance (10%): Robustness and edge case handling
- */
-const GENERALIST_CATEGORY_WEIGHTS = {
-    // Core capabilities (60% total weight)
-    'coding': 0.15,
-    'reasoning': 0.15,
-    'factual': 0.10,
-    'creative': 0.10,
-    'instruction-following': 0.10,
-
-    // Specialized capabilities (30% total weight)
-    'math': 0.08,
-    'summarization': 0.07,
-    'multi-turn-reasoning': 0.07,
-    'context-retention': 0.05,
-    'translation': 0.03,
-
-    // Quality assurance (10% total weight)
-    'edge-cases': 0.05,
-    'general': 0.05
-};
+// Explicit input quality scale for generalist normalization.
+// Use BENCHMARK_QUALITY_INPUT_SCALE=0-100 only if legacy data is still stored on 0-100.
+const QUALITY_INPUT_SCALE = String(process.env.BENCHMARK_QUALITY_INPUT_SCALE || '0-10') === '0-100'
+    ? '0-100'
+    : '0-10';
 
 /**
  * COVERAGE PENALTY
@@ -89,7 +67,12 @@ const CONSISTENCY_BONUS = 5;
 function normalizeQualityTo100(rawQuality) {
     const value = Number(rawQuality);
     if (!Number.isFinite(value)) return 0;
-    return value <= 10 ? value * 10 : value;
+
+    if (QUALITY_INPUT_SCALE === '0-100') {
+        return Math.max(0, Math.min(100, value));
+    }
+
+    return Math.max(0, Math.min(10, value)) * 10;
 }
 
 /**

@@ -7,9 +7,29 @@ const express = require('express');
 const router = express.Router();
 const logger = require('../../config/logger');
 const benchmarkService = require('../../src/services/benchmark');
-const { judgeBatch, stopJudging, getJudgingStatus } = require('../../src/services/benchmark/judging');
+const { judgeBatch, preflightJudgeBatch, stopJudging, getJudgingStatus } = require('../../src/services/benchmark/judging');
 const { validateObjectId } = require('../../src/helpers/objectIdValidator');
 const BenchmarkBatch = require('../../models/BenchmarkBatch');
+
+function parseBoolean(value, defaultValue = false) {
+    if (value === undefined || value === null || value === '') return defaultValue;
+    return ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase());
+}
+
+function parsePositiveInt(value, fallback, max = 32) {
+    const parsed = parseInt(value, 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+    return Math.min(parsed, max);
+}
+
+function mapJudgeStartErrorStatus(err) {
+    const msg = String(err && err.message ? err.message : '').toLowerCase();
+    if (msg.includes('not found')) return 404;
+    if (msg.includes('already running')) return 409;
+    if (msg.includes('cannot judge while batch is still running')) return 409;
+    if ((msg.includes('no pending') && msg.includes('result')) || (msg.includes('no successful') && msg.includes('result'))) return 400;
+    return 500;
+}
 
 /**
  * GET /api/benchmark/batch/:id
@@ -17,8 +37,11 @@ const BenchmarkBatch = require('../../models/BenchmarkBatch');
  */
 router.get('/batch/:id', async (req, res) => {
     try {
+        if (!validateObjectId(req.params.id, res, 'Batch ID')) return;
         const includeHeavyPayload = ['1', 'true', 'yes']
             .includes(String(req.query.include_heavy || '').toLowerCase());
+        const includeFullText = ['1', 'true', 'yes']
+            .includes(String(req.query.include_full_text || '').toLowerCase());
         const includeAllResults = ['1', 'true', 'yes']
             .includes(String(req.query.include_all_results || '').toLowerCase());
         const resultLimit = req.query.result_limit !== undefined
@@ -30,6 +53,7 @@ router.get('/batch/:id', async (req, res) => {
 
         const data = await benchmarkService.getBatch(req.params.id, {
             includeHeavyPayload,
+            includeFullText,
             includeAllResults,
             resultLimit,
             resultOffset
@@ -228,24 +252,38 @@ router.post('/batch/:id/recover', async (req, res) => {
 router.post('/batch/:id/rejudge-pending', async (req, res) => {
     try {
         if (!validateObjectId(req.params.id, res, 'Batch ID')) return;
+        const requestBody = req.body || {};
+        const concurrency = parsePositiveInt(requestBody.concurrency, 2);
+        const judgeConfig = requestBody.judge_config || {};
 
-        logger.info('Rejudging pending results', { batchId: req.params.id });
+        const preflight = await preflightJudgeBatch(req.params.id, { force: false });
+
+        logger.info('Rejudging pending results', {
+            batchId: req.params.id,
+            pendingCount: preflight.pendingCount,
+            concurrency
+        });
 
         // Start judging in background, return immediately
         judgeBatch(req.params.id, {
-            judgeConfig: req.body.judge_config || {},
-            concurrency: req.body.concurrency || 2
+            judgeConfig,
+            concurrency,
+            force: false
         }).catch(err => {
             logger.error('Background rejudge failed', { batchId: req.params.id, error: err.message });
         });
 
         res.json({
             status: 'success',
-            message: 'Judging started in background. Use GET /batch/:id/judge/status to track progress.'
+            message: 'Judging started in background. Use GET /batch/:id/judge/status to track progress.',
+            data: {
+                pending_count: preflight.pendingCount,
+                concurrency
+            }
         });
     } catch (err) {
         logger.error('Failed to start rejudge', { error: err.message, batchId: req.params.id });
-        res.status(500).json({ status: 'error', error: err.message });
+        res.status(mapJudgeStartErrorStatus(err)).json({ status: 'error', error: err.message });
     }
 });
 
@@ -256,12 +294,17 @@ router.post('/batch/:id/rejudge-pending', async (req, res) => {
 router.post('/batch/:id/judge', async (req, res) => {
     try {
         if (!validateObjectId(req.params.id, res, 'Batch ID')) return;
+        const requestBody = req.body || {};
+        const concurrency = parsePositiveInt(requestBody.concurrency, 2);
+        const force = parseBoolean(requestBody.force, false);
+        const judgeConfig = requestBody.judge_config || {};
 
         const options = {
-            judgeConfig: req.body.judge_config || {},
-            concurrency: req.body.concurrency || 2,
-            force: req.body.force || false
+            judgeConfig,
+            concurrency,
+            force
         };
+        const preflight = await preflightJudgeBatch(req.params.id, { force });
 
         // Start judging in background
         judgeBatch(req.params.id, options).catch(err => {
@@ -270,11 +313,16 @@ router.post('/batch/:id/judge', async (req, res) => {
 
         res.json({
             status: 'success',
-            message: 'Judging started in background. Use GET /batch/:id/judge/status to track progress.'
+            message: 'Judging started in background. Use GET /batch/:id/judge/status to track progress.',
+            data: {
+                pending_count: preflight.pendingCount,
+                concurrency,
+                force
+            }
         });
     } catch (err) {
         logger.error('Failed to start judging', { error: err.message, batchId: req.params.id });
-        res.status(500).json({ status: 'error', error: err.message });
+        res.status(mapJudgeStartErrorStatus(err)).json({ status: 'error', error: err.message });
     }
 });
 

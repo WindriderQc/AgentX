@@ -16,6 +16,55 @@ const ConcurrencyQueue = require('./ConcurrencyQueue');
 const activeJudgingJobs = new Map();
 
 /**
+ * Validate whether judging can be started for a batch and count eligible results.
+ * @param {string} batchId
+ * @param {Object} options
+ * @param {boolean} options.force - when true, all successful results are eligible
+ * @returns {Promise<{pendingCount:number,batchStatus:string}>}
+ */
+async function preflightJudgeBatch(batchId, options = {}) {
+    const { force = false } = options;
+
+    const batch = await BenchmarkBatch.findById(batchId)
+        .select('status judge_status')
+        .lean();
+
+    if (!batch) {
+        throw new Error(`Batch not found: ${batchId}`);
+    }
+
+    if (batch.status === 'running') {
+        throw new Error('Cannot judge while batch is still running');
+    }
+
+    if (batch.judge_status === 'running' || activeJudgingJobs.has(batchId)) {
+        throw new Error('Judging is already running for this batch');
+    }
+
+    const filter = {
+        batch_id: batchId,
+        success: true,
+        response: { $type: 'string', $nin: ['', null] }
+    };
+
+    if (!force) {
+        filter.scoring_method = { $in: ['pending', 'llm_failed'] };
+    }
+
+    const pendingCount = await BenchmarkResult.countDocuments(filter);
+    if (pendingCount === 0) {
+        throw new Error(force
+            ? 'No judgeable successful results found (non-empty response required)'
+            : 'No pending judgeable results found (non-empty response required)');
+    }
+
+    return {
+        pendingCount,
+        batchStatus: batch.status || 'unknown'
+    };
+}
+
+/**
  * Single source of truth for writing judge scores to a BenchmarkResult.
  * Eliminates duplication between execution.js and routes/benchmark.js.
  *
@@ -152,6 +201,10 @@ async function judgeResult(resultId, judgeConfig = {}) {
 async function judgeBatch(batchId, options = {}) {
     const { judgeConfig = {}, concurrency = 2, force = false } = options;
 
+    if (activeJudgingJobs.has(batchId)) {
+        throw new Error('Judging is already running for this batch');
+    }
+
     const batch = await BenchmarkBatch.findById(batchId);
     if (!batch) {
         throw new Error(`Batch not found: ${batchId}`);
@@ -163,7 +216,8 @@ async function judgeBatch(batchId, options = {}) {
     // Find unjudged results (or all if force)
     const filter = {
         batch_id: batchId,
-        success: true
+        success: true,
+        response: { $type: 'string', $nin: ['', null] }
     };
     if (!force) {
         filter.scoring_method = { $in: ['pending', 'llm_failed'] };
@@ -177,9 +231,9 @@ async function judgeBatch(batchId, options = {}) {
         return { judged: 0, failed: 0, timedOut: false };
     }
 
-    // Update batch judge status
-    await BenchmarkBatch.updateOne(
-        { _id: batchId },
+    // Acquire judge-status lock to prevent duplicate in-flight judge jobs.
+    const lockUpdate = await BenchmarkBatch.updateOne(
+        { _id: batchId, judge_status: { $ne: 'running' } },
         {
             $set: {
                 judge_status: 'running',
@@ -190,6 +244,10 @@ async function judgeBatch(batchId, options = {}) {
             }
         }
     );
+
+    if (!lockUpdate || lockUpdate.matchedCount === 0) {
+        throw new Error('Judging is already running for this batch');
+    }
 
     const queue = new ConcurrencyQueue(concurrency);
     const job = { queue, stopped: false };
@@ -353,6 +411,7 @@ module.exports = {
     applyScoresToResult,
     judgeResult,
     judgeBatch,
+    preflightJudgeBatch,
     stopJudging,
     getJudgingStatus,
     stopAllJudging

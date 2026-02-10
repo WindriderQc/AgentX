@@ -408,19 +408,21 @@ body {
     transition: color 0.2s;
 }
 
-/* Category-specific tab colors on hover */
-.category-tab[data-category="coding"]:hover:not(.active) { color: #9b59b6; }
-.category-tab[data-category="reasoning"]:hover:not(.active) { color: #e91e63; }
-.category-tab[data-category="ops"]:hover:not(.active) { color: #3498db; }
-.category-tab[data-category="specialist"]:hover:not(.active) { color: #f39c12; }
-.category-tab[data-category="generalist"]:hover:not(.active) { color: #2ecc71; }
+/* Category-specific tab colors on hover - aligned with config/categories.js */
+.category-tab[data-category="coding"]:hover:not(.active) { color: #7c9fff; }
+.category-tab[data-category="reasoning"]:hover:not(.active) { color: #a78bfa; }
+.category-tab[data-category="knowledge"]:hover:not(.active) { color: #34d399; }
+.category-tab[data-category="creative"]:hover:not(.active) { color: #f87171; }
+.category-tab[data-category="language"]:hover:not(.active) { color: #06b6d4; }
+.category-tab[data-category="math"]:hover:not(.active) { color: #fbbf24; }
 
 /* Active tab colors per category */
-.category-tab[data-category="coding"].active { background: linear-gradient(135deg, #9b59b6, #8e44ad); }
-.category-tab[data-category="reasoning"].active { background: linear-gradient(135deg, #e91e63, #c2185b); }
-.category-tab[data-category="ops"].active { background: linear-gradient(135deg, #3498db, #2980b9); }
-.category-tab[data-category="specialist"].active { background: linear-gradient(135deg, #f39c12, #e67e22); }
-.category-tab[data-category="generalist"].active { background: linear-gradient(135deg, #2ecc71, #27ae60); }
+.category-tab[data-category="coding"].active { background: linear-gradient(135deg, #7c9fff, #5b7de8); }
+.category-tab[data-category="reasoning"].active { background: linear-gradient(135deg, #a78bfa, #8b5cf6); }
+.category-tab[data-category="knowledge"].active { background: linear-gradient(135deg, #34d399, #10b981); }
+.category-tab[data-category="creative"].active { background: linear-gradient(135deg, #f87171, #ef4444); }
+.category-tab[data-category="language"].active { background: linear-gradient(135deg, #06b6d4, #0891b2); }
+.category-tab[data-category="math"].active { background: linear-gradient(135deg, #fbbf24, #f59e0b); }
 
 /* ============================================================================
    Board Section
@@ -777,31 +779,6 @@ body {
     box-shadow: 0 1px 3px color-mix(in srgb, var(--cat-color) 20%, transparent);
 }
 
-/* Specific category badge styles */
-.badge-coding {
-    --cat-color: #9b59b6;
-    --cat-bg: rgba(155, 89, 182, 0.15);
-}
-
-.badge-reasoning {
-    --cat-color: #e91e63;
-    --cat-bg: rgba(233, 30, 99, 0.15);
-}
-
-.badge-ops {
-    --cat-color: #3498db;
-    --cat-bg: rgba(52, 152, 219, 0.15);
-}
-
-.badge-specialist {
-    --cat-color: #f39c12;
-    --cat-bg: rgba(243, 156, 18, 0.15);
-}
-
-.badge-generalist {
-    --cat-color: #2ecc71;
-    --cat-bg: rgba(46, 204, 113, 0.15);
-}
 
 .badge-offender {
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
@@ -855,12 +832,8 @@ body {
     opacity: 0.4;
 }
 
-.badge {
-    display: inline-block;
-    padding: 2px 8px;
-    border-radius: 10px;
-    font-size: 10px;
-    font-weight: 600;
+/* Consistent badge variant (quality board inline usage) */
+.badge-consistent {
     margin-left: 8px;
     vertical-align: middle;
 }

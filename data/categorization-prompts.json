@@ -682,5 +682,694 @@
       "Practical advice"
     ],
     "scoring_type": "general"
+  },
+  {
+    "level": 2,
+    "category": "instruction-following",
+    "category_test": true,
+    "name": "Format Constraints",
+    "prompt": "List exactly 5 benefits of exercise. Number each one. Use no more than 10 words per benefit.",
+    "expected_tokens": 100,
+    "expected_answer": "A numbered list of exactly 5 exercise benefits, each 10 words or fewer",
+    "judge_criteria": [
+      "Exactly 5 items listed",
+      "Items are numbered",
+      "Each benefit is 10 words or fewer",
+      "Content is relevant to exercise"
+    ],
+    "scoring_type": "instruction-following"
+  },
+  {
+    "level": 2,
+    "category": "instruction-following",
+    "category_test": true,
+    "name": "Output Format",
+    "prompt": "Explain what photosynthesis is. Your answer must be exactly 3 sentences. Start each sentence with a different letter.",
+    "expected_tokens": 120,
+    "expected_answer": "Three sentences about photosynthesis, each starting with a different letter",
+    "judge_criteria": [
+      "Exactly 3 sentences",
+      "Each starts with different letter",
+      "Content accurately describes photosynthesis",
+      "Complete and coherent"
+    ],
+    "scoring_type": "instruction-following"
+  },
+  {
+    "level": 3,
+    "category": "instruction-following",
+    "category_test": true,
+    "name": "Negative Constraints",
+    "prompt": "Describe a sunset without using the words 'red', 'orange', 'beautiful', or 'sky'.",
+    "expected_tokens": 120,
+    "expected_answer": "A vivid sunset description that avoids all four forbidden words while remaining evocative",
+    "judge_criteria": [
+      "Does not contain 'red'",
+      "Does not contain 'orange'",
+      "Does not contain 'beautiful'",
+      "Does not contain 'sky'",
+      "Still effectively describes a sunset"
+    ],
+    "scoring_type": "instruction-following"
+  },
+  {
+    "level": 2,
+    "category": "instruction-following",
+    "category_test": true,
+    "name": "Ordered Steps",
+    "prompt": "Explain how to make a peanut butter and jelly sandwich. Use exactly 6 steps. Begin each step with a verb.",
+    "expected_tokens": 150,
+    "expected_answer": "6 clearly ordered steps, each starting with an action verb, describing PBJ sandwich preparation",
+    "judge_criteria": [
+      "Exactly 6 steps",
+      "Each step starts with a verb",
+      "Logical sequence",
+      "Complete instructions"
+    ],
+    "scoring_type": "instruction-following"
+  },
+  {
+    "level": 3,
+    "category": "instruction-following",
+    "category_test": true,
+    "name": "Multi-Constraint",
+    "prompt": "Write a 4-line poem about the ocean. Each line must have exactly 6 words. The poem must rhyme (lines 2 and 4).",
+    "expected_tokens": 100,
+    "expected_answer": "A 4-line ocean poem with 6 words per line and rhyming lines 2 and 4",
+    "judge_criteria": [
+      "Exactly 4 lines",
+      "Each line has 6 words",
+      "Lines 2 and 4 rhyme",
+      "Ocean theme present",
+      "Coherent poem"
+    ],
+    "scoring_type": "instruction-following"
+  },
+  {
+    "level": 2,
+    "category": "instruction-following",
+    "category_test": true,
+    "name": "Role Adherence",
+    "prompt": "You are a pirate captain. A crew member asks why the ship is heading north. Respond in character, using at least 3 pirate expressions.",
+    "expected_tokens": 120,
+    "expected_answer": "An in-character pirate response with at least 3 pirate expressions that addresses the question",
+    "judge_criteria": [
+      "Stays in pirate character",
+      "Uses at least 3 pirate expressions",
+      "Addresses the question about heading north",
+      "Entertaining and coherent"
+    ],
+    "scoring_type": "instruction-following"
+  },
+  {
+    "level": 3,
+    "category": "instruction-following",
+    "category_test": true,
+    "name": "JSON Output Format",
+    "prompt": "Provide information about 3 world capitals in valid JSON format. Each entry must have fields: city, country, population (approximate number), continent.",
+    "expected_tokens": 200,
+    "expected_answer": "Valid JSON array with 3 objects, each containing city, country, population, and continent fields",
+    "judge_criteria": [
+      "Valid JSON syntax",
+      "Exactly 3 entries",
+      "All 4 required fields present",
+      "Data is factually reasonable",
+      "Population is a number"
+    ],
+    "scoring_type": "instruction-following"
+  },
+  {
+    "level": 2,
+    "category": "summarization",
+    "category_test": true,
+    "name": "Paragraph Summary",
+    "prompt": "Summarize the following in exactly 2 sentences: The Industrial Revolution began in Britain in the late 18th century. It marked a major turning point in history, as machine-based manufacturing replaced hand production methods. Factories emerged, drawing workers from rural areas to cities. Steam power and iron production were key innovations. The changes affected agriculture, manufacturing, mining, transportation, and technology. Working conditions were often harsh, with long hours and low pay. Child labor was common. Eventually, labor laws and unions improved conditions. The Industrial Revolution spread from Britain to other parts of Europe and North America, fundamentally changing society and the economy.",
+    "expected_tokens": 80,
+    "expected_answer": "A 2-sentence summary covering the key points: origin, impact, and spread of the Industrial Revolution",
+    "judge_criteria": [
+      "Exactly 2 sentences",
+      "Captures main theme",
+      "Mentions key facts",
+      "Concise and accurate"
+    ],
+    "scoring_type": "summarization"
+  },
+  {
+    "level": 2,
+    "category": "summarization",
+    "category_test": true,
+    "name": "Key Points Extraction",
+    "prompt": "Extract the 3 most important points from this text: Electric vehicles (EVs) are becoming increasingly popular worldwide. Battery technology has improved significantly, with modern lithium-ion batteries offering ranges over 300 miles. Charging infrastructure is expanding rapidly, with many countries investing billions in public charging networks. The cost of EVs has decreased substantially, making them competitive with traditional combustion engine vehicles. Environmental benefits include zero tailpipe emissions and reduced dependence on fossil fuels. However, challenges remain including battery disposal, mining impacts, and grid capacity concerns.",
+    "expected_tokens": 100,
+    "expected_answer": "Three key points covering battery improvements, cost reduction, and environmental impact or challenges",
+    "judge_criteria": [
+      "Exactly 3 points",
+      "Points are the most important ones",
+      "Concise and clear",
+      "Accurate to source text"
+    ],
+    "scoring_type": "summarization"
+  },
+  {
+    "level": 3,
+    "category": "summarization",
+    "category_test": true,
+    "name": "Technical Summary",
+    "prompt": "Summarize this for a non-technical audience in 3 sentences: Machine learning models use neural networks composed of layers of interconnected nodes. During training, the model adjusts connection weights through backpropagation, minimizing a loss function via gradient descent. Transformers use self-attention mechanisms to process sequential data in parallel rather than sequentially, enabling them to capture long-range dependencies. Pre-training on large corpora followed by fine-tuning on task-specific data has become the dominant paradigm.",
+    "expected_tokens": 100,
+    "expected_answer": "A 3-sentence non-technical explanation of how ML models learn and process information",
+    "judge_criteria": [
+      "Exactly 3 sentences",
+      "Accessible to non-technical reader",
+      "Captures core concepts accurately",
+      "Avoids unnecessary jargon"
+    ],
+    "scoring_type": "summarization"
+  },
+  {
+    "level": 2,
+    "category": "summarization",
+    "category_test": true,
+    "name": "Meeting Notes Summary",
+    "prompt": "Summarize these meeting notes into action items: 'Team discussed Q3 targets. Sarah will prepare the marketing report by Friday. John needs to fix the login bug before the release. We agreed to postpone the redesign to Q4. Budget review scheduled for next Tuesday. Maria will coordinate with the vendor about pricing. Everyone should update their project status by end of week.'",
+    "expected_tokens": 100,
+    "expected_answer": "A clear list of action items with owners and deadlines extracted from the meeting notes",
+    "judge_criteria": [
+      "Identifies all action items",
+      "Includes responsible persons",
+      "Includes deadlines where stated",
+      "Organized and clear"
+    ],
+    "scoring_type": "summarization"
+  },
+  {
+    "level": 3,
+    "category": "summarization",
+    "category_test": true,
+    "name": "Comparative Summary",
+    "prompt": "Compare and summarize the differences between these two approaches in 3 bullet points: Approach A uses a monolithic architecture where all components run in a single process, sharing memory and a single database. Deployment is simple but scaling requires replicating the entire application. Approach B uses microservices where each component runs independently with its own database. It offers better scalability and fault isolation but introduces network complexity, eventual consistency challenges, and deployment overhead.",
+    "expected_tokens": 120,
+    "expected_answer": "Three bullet points highlighting key differences: architecture, scaling, and complexity trade-offs",
+    "judge_criteria": [
+      "Exactly 3 bullet points",
+      "Captures key differences",
+      "Balanced comparison",
+      "Accurate to source"
+    ],
+    "scoring_type": "summarization"
+  },
+  {
+    "level": 2,
+    "category": "summarization",
+    "category_test": true,
+    "name": "One-Line Summary",
+    "prompt": "Summarize the plot of Romeo and Juliet in one sentence.",
+    "expected_tokens": 50,
+    "expected_answer": "A single sentence capturing the core plot: two young lovers from feuding families whose relationship ends in tragedy",
+    "judge_criteria": [
+      "Single sentence",
+      "Captures core plot",
+      "Mentions the feuding families",
+      "Mentions tragic ending"
+    ],
+    "scoring_type": "summarization"
+  },
+  {
+    "level": 3,
+    "category": "summarization",
+    "category_test": true,
+    "name": "Abstract Writing",
+    "prompt": "Write a 3-sentence abstract for a hypothetical research paper about the effects of social media on teenage mental health, covering: the research question, methodology, and key finding.",
+    "expected_tokens": 100,
+    "expected_answer": "A 3-sentence academic abstract covering research question, methodology, and finding about social media's impact on teen mental health",
+    "judge_criteria": [
+      "Exactly 3 sentences",
+      "Covers research question",
+      "Mentions methodology",
+      "States a key finding",
+      "Academic tone"
+    ],
+    "scoring_type": "summarization"
+  },
+  {
+    "level": 2,
+    "category": "translation",
+    "category_test": true,
+    "name": "Simple Translation",
+    "prompt": "Translate the following sentence to French: 'The cat is sitting on the windowsill watching the birds.'",
+    "expected_tokens": 40,
+    "expected_answer": "Le chat est assis sur le rebord de la fenêtre et regarde les oiseaux.",
+    "judge_criteria": [
+      "Correct French grammar",
+      "All elements translated",
+      "Natural phrasing",
+      "Meaning preserved"
+    ],
+    "scoring_type": "translation"
+  },
+  {
+    "level": 2,
+    "category": "translation",
+    "category_test": true,
+    "name": "Spanish Translation",
+    "prompt": "Translate to Spanish: 'Where is the nearest hospital? My friend needs help urgently.'",
+    "expected_tokens": 40,
+    "expected_answer": "¿Dónde está el hospital más cercano? Mi amigo necesita ayuda urgentemente.",
+    "judge_criteria": [
+      "Correct Spanish grammar",
+      "Urgency conveyed",
+      "Question format preserved",
+      "Natural expression"
+    ],
+    "scoring_type": "translation"
+  },
+  {
+    "level": 3,
+    "category": "translation",
+    "category_test": true,
+    "name": "Idiomatic Translation",
+    "prompt": "Translate the following English idiom to German, preserving the meaning (not literal): 'It's raining cats and dogs outside.'",
+    "expected_tokens": 60,
+    "expected_answer": "Es gießt wie aus Kübeln / Es schüttet wie aus Eimern (German equivalent idiom for heavy rain)",
+    "judge_criteria": [
+      "Uses German equivalent idiom, not literal",
+      "Meaning of heavy rain preserved",
+      "Natural German expression",
+      "Grammatically correct"
+    ],
+    "scoring_type": "translation"
+  },
+  {
+    "level": 2,
+    "category": "translation",
+    "category_test": true,
+    "name": "Japanese Greeting",
+    "prompt": "Translate to Japanese (romanized): 'Good morning, how are you today? I hope you had a good sleep.'",
+    "expected_tokens": 60,
+    "expected_answer": "Ohayou gozaimasu, kyou wa ogenki desu ka? Yoku nemuremaashita ka.",
+    "judge_criteria": [
+      "Correct Japanese romanization",
+      "Polite form used",
+      "Both sentences translated",
+      "Natural Japanese phrasing"
+    ],
+    "scoring_type": "translation"
+  },
+  {
+    "level": 3,
+    "category": "translation",
+    "category_test": true,
+    "name": "Technical Translation",
+    "prompt": "Translate this technical sentence to Portuguese: 'The database query returned null because the foreign key constraint was violated.'",
+    "expected_tokens": 60,
+    "expected_answer": "A consulta ao banco de dados retornou nulo porque a restrição de chave estrangeira foi violada.",
+    "judge_criteria": [
+      "Technical terms correctly translated",
+      "Grammatically correct Portuguese",
+      "Meaning preserved",
+      "Natural technical phrasing"
+    ],
+    "scoring_type": "translation"
+  },
+  {
+    "level": 2,
+    "category": "translation",
+    "category_test": true,
+    "name": "Italian Food Terms",
+    "prompt": "Translate this restaurant order to Italian: 'I would like a glass of red wine and the grilled fish with vegetables, please.'",
+    "expected_tokens": 50,
+    "expected_answer": "Vorrei un bicchiere di vino rosso e il pesce alla griglia con verdure, per favore.",
+    "judge_criteria": [
+      "Correct Italian grammar",
+      "Polite form maintained",
+      "Food terms correct",
+      "Natural restaurant language"
+    ],
+    "scoring_type": "translation"
+  },
+  {
+    "level": 3,
+    "category": "translation",
+    "category_test": true,
+    "name": "Formal vs Informal",
+    "prompt": "Translate 'Can you help me with this problem?' to Korean in both formal (존댓말) and informal (반말) forms. Label each.",
+    "expected_tokens": 80,
+    "expected_answer": "Formal: 이 문제 도와주실 수 있으세요? / Informal: 이 문제 좀 도와줄 수 있어?",
+    "judge_criteria": [
+      "Both forms provided",
+      "Correctly labeled",
+      "Formal uses appropriate honorifics",
+      "Informal uses casual speech",
+      "Meaning preserved in both"
+    ],
+    "scoring_type": "translation"
+  },
+  {
+    "level": 2,
+    "category": "multi-turn-reasoning",
+    "category_test": true,
+    "name": "Building on Context",
+    "prompt": "Consider this: A store has 100 apples. On Monday, they sell 30. On Tuesday, they receive a shipment of 50 more apples and sell 25. On Wednesday, they sell 40% of remaining stock. How many apples are left after Wednesday?",
+    "expected_tokens": 150,
+    "expected_answer": "57 apples. Monday: 100-30=70. Tuesday: 70+50-25=95. Wednesday: 95 - (95*0.4) = 95-38 = 57",
+    "judge_criteria": [
+      "Tracks quantities across all three days",
+      "Monday calculation correct: 70",
+      "Tuesday calculation correct: 95",
+      "Wednesday percentage correct: 57",
+      "Shows step-by-step reasoning"
+    ],
+    "scoring_type": "reasoning"
+  },
+  {
+    "level": 3,
+    "category": "multi-turn-reasoning",
+    "category_test": true,
+    "name": "Conditional Chain",
+    "prompt": "If A implies B, and B implies C, and C implies not-D, and we know A is true, what can we conclude about D? Also, if we later learn that D is actually true, what does that tell us about our original premises?",
+    "expected_tokens": 180,
+    "expected_answer": "D is false (by chain: A->B->C->not-D). If D is true, then at least one premise is wrong, since we derived not-D from the chain.",
+    "judge_criteria": [
+      "Correctly derives D is false",
+      "Shows logical chain",
+      "Identifies contradiction if D is true",
+      "Explains which premises must be wrong",
+      "Sound logical reasoning"
+    ],
+    "scoring_type": "reasoning"
+  },
+  {
+    "level": 2,
+    "category": "multi-turn-reasoning",
+    "category_test": true,
+    "name": "Accumulative Math",
+    "prompt": "A taxi ride costs $3 base fare plus $2 per mile. You take 3 rides: 5 miles, 8 miles, and 3 miles. Your company reimburses rides over $10. How much do you pay out of pocket total?",
+    "expected_tokens": 150,
+    "expected_answer": "Ride 1: $3+$10=$13 (reimbursed). Ride 2: $3+$16=$19 (reimbursed). Ride 3: $3+$6=$9 (not reimbursed, under $10). Out of pocket: $9",
+    "judge_criteria": [
+      "Calculates each ride correctly",
+      "Identifies which rides exceed $10",
+      "Correctly determines reimbursement eligibility",
+      "Final answer is $9",
+      "Clear step-by-step work"
+    ],
+    "scoring_type": "reasoning"
+  },
+  {
+    "level": 3,
+    "category": "multi-turn-reasoning",
+    "category_test": true,
+    "name": "Schedule Conflict",
+    "prompt": "Alice works Monday-Wednesday. Bob works Tuesday-Thursday. Carol works Monday, Wednesday, Friday. A meeting needs all three. The room is only available Tuesday and Wednesday afternoons. When can they meet? If Carol gets sick Wednesday, what's the backup plan?",
+    "expected_tokens": 150,
+    "expected_answer": "Only Wednesday works (all three available + room available). Tuesday won't work because Alice doesn't work Tuesday. Backup: No alternative day works for all three with room available.",
+    "judge_criteria": [
+      "Identifies Wednesday as only option",
+      "Correctly rules out Tuesday (Alice)",
+      "Addresses backup scenario",
+      "Reasoning accounts for all constraints",
+      "Clear logical explanation"
+    ],
+    "scoring_type": "reasoning"
+  },
+  {
+    "level": 2,
+    "category": "multi-turn-reasoning",
+    "category_test": true,
+    "name": "Recipe Scaling",
+    "prompt": "A recipe for 4 servings needs: 2 cups flour, 3 eggs, 1.5 cups milk. You need 10 servings. How much of each ingredient? Then, if you only have 5 eggs, what's the maximum servings you can make?",
+    "expected_tokens": 150,
+    "expected_answer": "For 10 servings (×2.5): 5 cups flour, 7.5 eggs (8), 3.75 cups milk. With 5 eggs limit: 5 eggs ÷ (3/4 eggs per serving) = 6.67, so max 6 servings",
+    "judge_criteria": [
+      "Correct scaling factor (2.5)",
+      "Flour: 5 cups",
+      "Eggs: 7.5 (round to 8)",
+      "Milk: 3.75 cups",
+      "Correct max servings with egg constraint"
+    ],
+    "scoring_type": "reasoning"
+  },
+  {
+    "level": 3,
+    "category": "multi-turn-reasoning",
+    "category_test": true,
+    "name": "Investment Tracking",
+    "prompt": "You invest $1000. Year 1: gain 20%. Year 2: lose 15%. Year 3: gain 10%. What is your final amount? What is your overall percentage gain or loss? Is it the same as simply adding 20-15+10=15%?",
+    "expected_tokens": 180,
+    "expected_answer": "Year 1: $1200. Year 2: $1020. Year 3: $1122. Overall gain: 12.2%, not 15%. Percentages don't add linearly because each applies to a different base amount.",
+    "judge_criteria": [
+      "Year 1 correct: $1200",
+      "Year 2 correct: $1020",
+      "Year 3 correct: $1122",
+      "Identifies overall gain ~12.2%",
+      "Explains why simple addition doesn't work"
+    ],
+    "scoring_type": "reasoning"
+  },
+  {
+    "level": 3,
+    "category": "multi-turn-reasoning",
+    "category_test": true,
+    "name": "Elimination Logic",
+    "prompt": "Five suspects: Amy, Ben, Cal, Dee, Eve. Clue 1: The culprit is not a woman. Clue 2: Ben was at work (verified alibi). Clue 3: The culprit drives a blue car. Cal drives red, Ben drives blue, Amy drives blue. Who is the culprit?",
+    "expected_tokens": 150,
+    "expected_answer": "Cal must be the culprit by elimination. Men: Ben, Cal. Ben has alibi. Cal drives red, but he's the only remaining suspect. The blue car clue creates a contradiction worth noting.",
+    "judge_criteria": [
+      "Correctly eliminates women (Amy, Dee, Eve)",
+      "Correctly eliminates Ben (alibi)",
+      "Identifies Cal as remaining suspect",
+      "Notes the car color contradiction",
+      "Sound elimination reasoning"
+    ],
+    "scoring_type": "reasoning"
+  },
+  {
+    "level": 2,
+    "category": "context-retention",
+    "category_test": true,
+    "name": "Detail Recall",
+    "prompt": "Read carefully: John is 35 years old, works as an architect in Chicago, has two daughters named Sophie (age 7) and Emma (age 4), drives a blue Tesla, and his wife Maria teaches at Northwestern University. Now answer: What is John's wife's name, what does she do, and how old is his younger daughter?",
+    "expected_tokens": 60,
+    "expected_answer": "Maria, teaches at Northwestern University, Emma is 4 years old",
+    "judge_criteria": [
+      "Wife's name: Maria",
+      "Occupation: teaches at Northwestern",
+      "Younger daughter's age: 4",
+      "No confabulated details"
+    ],
+    "scoring_type": "factual"
+  },
+  {
+    "level": 3,
+    "category": "context-retention",
+    "category_test": true,
+    "name": "Cross-Reference",
+    "prompt": "Company A has 500 employees and revenue of $50M. Company B has 200 employees and revenue of $30M. Company C has 800 employees and revenue of $60M. Which company has the highest revenue per employee? Which has the lowest? Show your calculations.",
+    "expected_tokens": 150,
+    "expected_answer": "A: $100K/employee. B: $150K/employee. C: $75K/employee. Highest: B. Lowest: C.",
+    "judge_criteria": [
+      "Correct per-employee calculations",
+      "Company B identified as highest",
+      "Company C identified as lowest",
+      "Shows calculations",
+      "All three companies compared"
+    ],
+    "scoring_type": "reasoning"
+  },
+  {
+    "level": 2,
+    "category": "context-retention",
+    "category_test": true,
+    "name": "Sequence Tracking",
+    "prompt": "A train makes 5 stops: First stop: 10 people board. Second stop: 3 leave, 7 board. Third stop: 5 leave, 2 board. Fourth stop: 8 leave, 4 board. Fifth stop: everyone leaves. How many people left at the fifth stop?",
+    "expected_tokens": 120,
+    "expected_answer": "7 people. Running total: Stop 1: 10. Stop 2: 10-3+7=14. Stop 3: 14-5+2=11. Stop 4: 11-8+4=7. Stop 5: 7 leave.",
+    "judge_criteria": [
+      "Tracks all 5 stops correctly",
+      "Running totals accurate",
+      "Final answer: 7",
+      "Shows step-by-step tracking"
+    ],
+    "scoring_type": "reasoning"
+  },
+  {
+    "level": 3,
+    "category": "context-retention",
+    "category_test": true,
+    "name": "Multi-Entity Tracking",
+    "prompt": "Three friends share expenses on a trip. Day 1: Alice pays $120 for hotel, Bob pays $45 for dinner. Day 2: Carol pays $90 for activities, Alice pays $30 for lunch. Day 3: Bob pays $60 for gas. Total each person paid and what each owes/is owed if splitting equally.",
+    "expected_tokens": 200,
+    "expected_answer": "Alice paid $150, Bob paid $105, Carol paid $90. Total: $345, equal share: $115 each. Alice is owed $35, Carol owes $25, Bob owes $10.",
+    "judge_criteria": [
+      "Correct totals per person",
+      "Correct grand total: $345",
+      "Equal share: $115",
+      "Settlement amounts correct",
+      "Clear presentation"
+    ],
+    "scoring_type": "reasoning"
+  },
+  {
+    "level": 2,
+    "category": "context-retention",
+    "category_test": true,
+    "name": "Fact Consistency",
+    "prompt": "The password is: blue-tiger-42. The meeting is at 3pm in Room 204. The project code is PHOENIX. Now, without looking back: What is the password? What room is the meeting in? What is the project code?",
+    "expected_tokens": 60,
+    "expected_answer": "Password: blue-tiger-42. Room: 204. Project code: PHOENIX.",
+    "judge_criteria": [
+      "Password exactly: blue-tiger-42",
+      "Room: 204",
+      "Project code: PHOENIX",
+      "All three recalled correctly"
+    ],
+    "scoring_type": "factual"
+  },
+  {
+    "level": 3,
+    "category": "context-retention",
+    "category_test": true,
+    "name": "Nested Reference",
+    "prompt": "Country X has capital city Alpha (population 2M). Country Y has capital city Beta (population 5M). Country Z has capital city Gamma (population 1M). Alpha's main export is electronics. Beta exports textiles. Gamma exports coffee. Which capital has the smallest population and what does it export?",
+    "expected_tokens": 60,
+    "expected_answer": "Gamma (Country Z) has the smallest population at 1M and exports coffee.",
+    "judge_criteria": [
+      "Correctly identifies Gamma",
+      "Population: 1M",
+      "Export: coffee",
+      "No confusion between entities"
+    ],
+    "scoring_type": "factual"
+  },
+  {
+    "level": 2,
+    "category": "context-retention",
+    "category_test": true,
+    "name": "Instruction Memory",
+    "prompt": "Important rules: 1) Always respond in the past tense. 2) Never use the word 'the'. 3) End every sentence with an exclamation mark. Now describe what happened at a birthday party yesterday.",
+    "expected_tokens": 120,
+    "expected_answer": "A birthday party description following all three rules: past tense, no 'the', exclamation marks",
+    "judge_criteria": [
+      "Uses past tense throughout",
+      "Does not use 'the'",
+      "Sentences end with exclamation marks",
+      "Content describes a birthday party",
+      "All three rules followed simultaneously"
+    ],
+    "scoring_type": "instruction-following"
+  },
+  {
+    "level": 2,
+    "category": "edge-cases",
+    "category_test": true,
+    "name": "Empty Input",
+    "prompt": "Sort the following list of numbers in ascending order: (the list is empty)",
+    "expected_tokens": 50,
+    "expected_answer": "Acknowledges the list is empty. Returns empty result or explains that an empty list is already sorted.",
+    "judge_criteria": [
+      "Recognizes empty input",
+      "Does not fabricate numbers",
+      "Provides reasonable response",
+      "No errors or confusion"
+    ],
+    "scoring_type": "general"
+  },
+  {
+    "level": 3,
+    "category": "edge-cases",
+    "category_test": true,
+    "name": "Contradictory Premise",
+    "prompt": "A square has 5 sides. What is the sum of its interior angles?",
+    "expected_tokens": 100,
+    "expected_answer": "Should identify the contradiction: a square by definition has 4 sides. If treating as pentagon (5 sides), sum would be 540 degrees. Should clarify the premise error.",
+    "judge_criteria": [
+      "Identifies the contradiction",
+      "Notes squares have 4 sides",
+      "May provide answer for 4 sides (360) or 5 sides (540)",
+      "Does not blindly accept false premise",
+      "Clear explanation"
+    ],
+    "scoring_type": "reasoning"
+  },
+  {
+    "level": 2,
+    "category": "edge-cases",
+    "category_test": true,
+    "name": "Ambiguous Question",
+    "prompt": "How long is it?",
+    "expected_tokens": 80,
+    "expected_answer": "Should ask for clarification about what 'it' refers to, or acknowledge the ambiguity before attempting any answer",
+    "judge_criteria": [
+      "Recognizes ambiguity",
+      "Asks for clarification or acknowledges vagueness",
+      "Does not make unfounded assumptions",
+      "Helpful response despite ambiguity"
+    ],
+    "scoring_type": "general"
+  },
+  {
+    "level": 3,
+    "category": "edge-cases",
+    "category_test": true,
+    "name": "Impossible Task",
+    "prompt": "List all prime numbers.",
+    "expected_tokens": 100,
+    "expected_answer": "Should explain that prime numbers are infinite and cannot all be listed. May provide some examples and explain the concept.",
+    "judge_criteria": [
+      "Recognizes infinite set cannot be listed",
+      "Explains why task is impossible",
+      "May provide examples of primes",
+      "Does not attempt to list all",
+      "Educational response"
+    ],
+    "scoring_type": "reasoning"
+  },
+  {
+    "level": 2,
+    "category": "edge-cases",
+    "category_test": true,
+    "name": "Trick Question",
+    "prompt": "If a rooster lays an egg on top of a barn roof, which way does the egg roll?",
+    "expected_tokens": 60,
+    "expected_answer": "Roosters don't lay eggs. The premise is false. Should identify this rather than answering about rolling direction.",
+    "judge_criteria": [
+      "Identifies roosters don't lay eggs",
+      "Does not answer the rolling direction",
+      "Clear and confident correction",
+      "May add humor or explanation"
+    ],
+    "scoring_type": "reasoning"
+  },
+  {
+    "level": 3,
+    "category": "edge-cases",
+    "category_test": true,
+    "name": "Boundary Values",
+    "prompt": "A parking lot has exactly 0 cars. What is the average color of the cars in the lot?",
+    "expected_tokens": 60,
+    "expected_answer": "Should recognize division by zero / undefined scenario. Average of empty set is undefined. Should not fabricate an answer.",
+    "judge_criteria": [
+      "Recognizes empty set problem",
+      "Does not fabricate a color",
+      "May explain undefined/division by zero",
+      "Mathematically sound reasoning"
+    ],
+    "scoring_type": "reasoning"
+  },
+  {
+    "level": 2,
+    "category": "edge-cases",
+    "category_test": true,
+    "name": "Self-Referential",
+    "prompt": "Is the answer to this question 'no'?",
+    "expected_tokens": 80,
+    "expected_answer": "Should recognize this as a paradox. If you answer 'yes' it contradicts. If you answer 'no' it also contradicts. Should discuss the paradox.",
+    "judge_criteria": [
+      "Recognizes the paradox",
+      "Explains why both answers contradict",
+      "Does not give a simple yes/no",
+      "Thoughtful analysis"
+    ],
+    "scoring_type": "reasoning"
   }
 ]

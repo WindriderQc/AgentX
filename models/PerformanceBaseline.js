@@ -117,7 +117,6 @@ const PerformanceBaselineSchema = new mongoose.Schema({
 
 // Indexes
 PerformanceBaselineSchema.index({ active: 1, created_at: -1 });
-PerformanceBaselineSchema.index({ name: 1 });
 
 /**
  * Static method: Get the currently active baseline

@@ -57,6 +57,88 @@ export function showJudgeDetails(idOrIndex) {
 
     // Show modal
     modal.style.display = 'block';
+
+    const shouldHydrate = needsDetailHydration(result);
+    setHydrationStatus(shouldHydrate, shouldHydrate ? 'Loading full prompt/response…' : '');
+
+    // Compact batch payload omits full prompt/response by default.
+    // Hydrate from result details endpoint on-demand for this modal.
+    hydrateJudgeDetailResult(result, resultIndex)
+        .then((hydrated) => {
+            setHydrationStatus(false);
+            if (hydrated) {
+                populateJudgeModal(hydrated, resultIndex);
+            }
+        })
+        .catch((err) => {
+            setHydrationStatus(false);
+            console.warn('Failed to hydrate judge detail result:', err.message);
+        });
+}
+
+function setHydrationStatus(isLoading, message = '') {
+    const modal = document.getElementById('judgeDetailsModal');
+    const modalBody = modal ? modal.querySelector('.modal-body') : null;
+    if (!modalBody) return;
+
+    let statusEl = document.getElementById('judgeDetailsHydrationStatus');
+    if (!statusEl) {
+        statusEl = document.createElement('div');
+        statusEl.id = 'judgeDetailsHydrationStatus';
+        statusEl.style.cssText = 'display:none;margin-bottom:10px;padding:8px 10px;border-radius:6px;border:1px solid rgba(124,240,255,0.35);background:rgba(124,240,255,0.12);color:var(--text);font-size:0.9em;';
+        modalBody.insertBefore(statusEl, modalBody.firstChild);
+    }
+
+    if (isLoading) {
+        statusEl.textContent = message || 'Loading details…';
+        statusEl.style.display = 'block';
+    } else {
+        statusEl.style.display = 'none';
+    }
+}
+
+function getResultIdentifier(result) {
+    if (!result || typeof result !== 'object') return null;
+    if (result.id) return String(result.id);
+    if (result._id) return String(result._id);
+    return null;
+}
+
+function needsDetailHydration(result) {
+    if (!result || typeof result !== 'object') return false;
+    const hasPrompt = typeof result.prompt === 'string' && result.prompt.length > 0;
+    const hasResponse = typeof result.response === 'string' && result.response.length > 0;
+    return !(hasPrompt && hasResponse);
+}
+
+async function hydrateJudgeDetailResult(result, resultIndex) {
+    if (!needsDetailHydration(result)) return null;
+
+    const resultId = getResultIdentifier(result);
+    if (!resultId) return null;
+
+    const res = await fetch(`/api/benchmark/results/${encodeURIComponent(resultId)}`);
+    if (!res.ok) return null;
+
+    const json = await res.json().catch(() => null);
+    if (!json || json.status !== 'success' || !json.data) return null;
+
+    const merged = {
+        ...result,
+        ...json.data,
+        id: resultId
+    };
+
+    const snapshot = Array.isArray(state.currentBatchResults) ? [...state.currentBatchResults] : [];
+    if (resultIndex >= 0 && resultIndex < snapshot.length) {
+        const currentAtIndexId = getResultIdentifier(snapshot[resultIndex]);
+        if (currentAtIndexId === resultId) {
+            snapshot[resultIndex] = merged;
+            state.setCurrentBatchResults(snapshot);
+        }
+    }
+
+    return merged;
 }
 
 /**
@@ -171,7 +253,7 @@ function populateJudgeModal(result, resultIndex) {
         if (isExecFailed) {
             responseEl.innerHTML = `<span style="color: #e74c3c;"><strong>Error:</strong> ${escapeHtml(result.error || 'Unknown error')}</span>`;
         } else {
-            responseEl.textContent = result.response || 'No response captured';
+            responseEl.textContent = result.response || result.response_preview || 'No response captured';
         }
     }
 
@@ -182,8 +264,8 @@ function populateJudgeModal(result, resultIndex) {
             judgePromptEl.textContent = result.judge_prompt || result.judge_input;
         } else {
             // Reconstruct from prompt + response
-            const prompt = result.prompt || result.prompt_text || '';
-            const response = result.response || '';
+            const prompt = result.prompt || result.prompt_text || result.prompt_preview || '';
+            const response = result.response || result.response_preview || '';
             if (prompt || response) {
                 judgePromptEl.innerHTML = `<strong>Prompt:</strong>\n${escapeHtml(prompt)}\n\n<strong>Response:</strong>\n${escapeHtml(response)}`;
             } else {
@@ -228,7 +310,7 @@ function populateJudgeModal(result, resultIndex) {
             container.style.marginTop = '20px';
             container.innerHTML = `
                 <h4>Complexity Analysis</h4>
-                <div id="detailComplexity" class="explanation-box" style="border-left-color: var(--primary);"></div>
+                <div id="detailComplexity" class="explanation-box" style="border-left-color: var(--accent);"></div>
             `;
             // Insert after explanation if possible, otherwise append
             if (explanationEl && explanationEl.parentElement) {

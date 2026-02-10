@@ -25,6 +25,7 @@ async function getBatches({ limit = 20 } = {}) {
  */
 async function getBatch(batchId, {
     includeHeavyPayload = false,
+    includeFullText = false,
     resultLimit = 500,
     resultOffset = 0,
     includeAllResults = false
@@ -35,9 +36,14 @@ async function getBatch(batchId, {
         throw new Error('Batch not found');
     }
 
+    const includeTextPayload = includeHeavyPayload || includeFullText;
     const resultSelect = includeHeavyPayload
         ? null
-        : '-judge_raw_response -hardware_snapshot -execution_settings -warmup -judge_warmup';
+        : (
+            includeTextPayload
+                ? '-judge_raw_response -hardware_snapshot -execution_settings -warmup -judge_warmup'
+                : '-judge_raw_response -hardware_snapshot -execution_settings -warmup -judge_warmup -prompt -response'
+        );
 
     const normalizedLimit = includeAllResults
         ? null
@@ -139,6 +145,9 @@ async function getBatch(batchId, {
     };
 
     const formattedResults = results.map((r) => {
+        const promptText = typeof r.prompt === 'string' ? r.prompt : '';
+        const responseText = typeof r.response === 'string' ? r.response : '';
+
         const inferredJudgeHost = batch.quality_scoring !== false
             ? (r.judge_host || inferJudgeHost(r.host))
             : null;
@@ -175,11 +184,14 @@ async function getBatch(batchId, {
             quality_breakdown: r.quality_breakdown,
             success: r.success,
             error: r.error,
-            prompt: r.prompt,  // Full prompt for validation
-            response: r.response,  // Full response for validation
+            prompt: includeTextPayload ? promptText : undefined,  // Full prompt (opt-in only)
+            response: includeTextPayload ? responseText : undefined,  // Full response (opt-in only)
+            prompt_preview: promptText
+                ? `${promptText.substring(0, 140)}...`
+                : (r.prompt_name ? `[${r.prompt_name}]` : ''),
             hardware_snapshot: r.hardware_snapshot,  // Backend, VRAM, quantization info
-            response_preview: r.response
-                ? `${r.response.substring(0, 100)}...`
+            response_preview: responseText
+                ? `${responseText.substring(0, 100)}...`
                 : '',
             timestamp: r.timestamp,
             tokens: r.tokens,

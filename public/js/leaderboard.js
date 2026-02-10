@@ -10,6 +10,17 @@
 // Category weights loaded from backend API (single source of truth)
 let CATEGORY_WEIGHTS = {};
 
+// Leaderboard tab groups - benchmark categories grouped into UI-friendly tabs
+const LEADERBOARD_TAB_GROUPS = [
+    { key: '',          label: 'All Models',  faIcon: 'fa-globe',       categories: [] },
+    { key: 'coding',    label: 'Coding',      faIcon: 'fa-code',        categories: ['coding'] },
+    { key: 'reasoning', label: 'Reasoning',   faIcon: 'fa-brain',       categories: ['reasoning', 'multi-turn-reasoning'] },
+    { key: 'knowledge', label: 'Knowledge',   faIcon: 'fa-book',        categories: ['factual', 'general', 'context-retention'] },
+    { key: 'creative',  label: 'Creative',    faIcon: 'fa-paint-brush', categories: ['creative', 'edge-cases'] },
+    { key: 'language',  label: 'Language',     faIcon: 'fa-language',    categories: ['instruction-following', 'summarization', 'translation'] },
+    { key: 'math',      label: 'Math',        faIcon: 'fa-calculator',  categories: ['math'] }
+];
+
 // Profile weight configurations for Performance Board
 const PROFILE_WEIGHTS = {
     balanced: {
@@ -57,7 +68,8 @@ let qualityData = [];      // From /api/benchmark/generalist-leaderboard (backen
 let charts = {};
 
 // Sorting and filtering state
-let currentCategoryFilter = '';  // Model category filter
+let currentCategoryFilter = '';  // Tab group key
+let currentCategoryMatchList = [];  // Benchmark categories to match for active tab
 let currentPerfSort = 'composite';
 let currentPerfSortDir = 'desc';
 let currentQualSort = 'generalist';
@@ -68,10 +80,26 @@ let currentQualSortDir = 'desc';
 // ============================================================================
 
 document.addEventListener('DOMContentLoaded', async () => {
+    buildCategoryTabs();
     updateProfileWeights();
     await refreshAllData();
     renderCategoryWeights();
 });
+
+/**
+ * Build category filter tabs from LEADERBOARD_TAB_GROUPS config
+ */
+function buildCategoryTabs() {
+    const container = document.getElementById('categoryTabs');
+    if (!container) return;
+
+    container.innerHTML = LEADERBOARD_TAB_GROUPS.map(group => {
+        const isActive = group.key === currentCategoryFilter;
+        return `<button class="category-tab ${isActive ? 'active' : ''}" data-category="${group.key}" onclick="switchCategoryTab('${group.key}')">
+            <i class="fas ${group.faIcon}"></i> ${group.label}
+        </button>`;
+    }).join('');
+}
 
 async function refreshAllData() {
     showLoading();
@@ -98,17 +126,21 @@ async function refreshAllData() {
 /**
  * Switch category filter tab
  */
-function switchCategoryTab(category) {
-    currentCategoryFilter = category;
+function switchCategoryTab(tabKey) {
+    currentCategoryFilter = tabKey;
+
+    // Find the tab group to get its category match list
+    const group = LEADERBOARD_TAB_GROUPS.find(g => g.key === tabKey);
+    currentCategoryMatchList = group ? group.categories : [];
 
     // Update tab styling
     document.querySelectorAll('.category-tab').forEach(tab => {
-        const isActive = tab.dataset.category === category;
+        const isActive = tab.dataset.category === tabKey;
         tab.classList.toggle('active', isActive);
     });
 
     // Update best overall banner
-    updateBestOverallBanner(category);
+    updateBestOverallBanner(tabKey);
 
     // Re-render both boards with new filter
     renderPerformanceBoard();
@@ -138,7 +170,8 @@ function updateBestOverallBanner(category) {
     if (data.length === 0) {
         if (modelEl) modelEl.textContent = 'No models';
         if (scoreEl) scoreEl.textContent = '';
-        if (subtitleEl) subtitleEl.textContent = category ? `No models in ${category} category` : 'Run benchmarks to see rankings';
+        const group = LEADERBOARD_TAB_GROUPS.find(g => g.key === category);
+        if (subtitleEl) subtitleEl.textContent = category ? `No models in ${group?.label || category} category` : 'Run benchmarks to see rankings';
         return;
     }
 
@@ -150,8 +183,8 @@ function updateBestOverallBanner(category) {
 
     // Update subtitle based on category
     if (category) {
-        const catConfig = getCategoryConfig(category);
-        if (subtitleEl) subtitleEl.textContent = `Top ${catConfig.label} model by composite score`;
+        const group = LEADERBOARD_TAB_GROUPS.find(g => g.key === category);
+        if (subtitleEl) subtitleEl.textContent = `Top ${group?.label || category} model by composite score`;
     } else {
         if (subtitleEl) subtitleEl.textContent = 'All models ranked by composite score';
     }
@@ -200,7 +233,9 @@ function updateSortIcons(tableId, sortColumn, sortDir) {
 
     table.querySelectorAll('th.sortable').forEach(th => {
         const col = th.dataset.sort;
-        const icon = th.querySelector('i');
+        // Use last <i> element — columns with info-circle have two <i> tags
+        const icons = th.querySelectorAll('i');
+        const icon = icons.length > 0 ? icons[icons.length - 1] : null;
         if (!icon) return;
 
         if (col === sortColumn) {
@@ -214,11 +249,15 @@ function updateSortIcons(tableId, sortColumn, sortDir) {
 }
 
 /**
- * Filter data by model category
+ * Filter data by model category using grouped tab matching.
+ * When a tab is active, matches any benchmark category in the tab group's list.
  */
 function filterByCategory(data, categoryField = 'recommended_category') {
-    if (!currentCategoryFilter) return data;
-    return data.filter(m => (m[categoryField] || '').toLowerCase() === currentCategoryFilter.toLowerCase());
+    if (!currentCategoryFilter || currentCategoryMatchList.length === 0) return data;
+    return data.filter(m => {
+        const cat = (m[categoryField] || '').toLowerCase();
+        return currentCategoryMatchList.some(c => c.toLowerCase() === cat);
+    });
 }
 
 // ============================================================================
@@ -491,7 +530,7 @@ function renderPerformanceBoard() {
         const badgesHtml = buildModelBadges(model, offenders, isBestOverall);
 
         return `
-            <tr class="${idx < 3 ? 'top-rank rank-' + (idx + 1) : ''} ${isBestOverall ? 'best-overall' : ''}" onclick="showModelDetail('${escapeHtml(model.model)}', 'performance')">
+            <tr class="${idx < 3 ? 'top-rank rank-' + (idx + 1) : ''} ${isBestOverall ? 'best-overall' : ''}" onclick="showModelDetail('${escapeHtml(model.model).replace(/'/g, "\\'")}', 'performance', '${escapeHtml(model.host || '').replace(/'/g, "\\'")}')">
                 <td class="rank-col">${getRankDisplay(idx)}</td>
                 <td class="model-col">
                     <span class="model-name">${isBestOverall ? '👑 ' : ''}${escapeHtml(model.model)}</span>
@@ -521,13 +560,12 @@ function renderQualityBoard() {
 
     let data = [...qualityData];
 
-    // Apply category filter - look up category from performance data
-    if (currentCategoryFilter) {
+    // Apply category filter - look up category from performance data using grouped matching
+    if (currentCategoryFilter && currentCategoryMatchList.length > 0) {
         data = data.filter(m => {
-            // Find matching model in performance data to get its category
             const perfModel = performanceData.find(p => p.model === m.name && p.host === m.host);
-            const category = perfModel?.recommended_category || '';
-            return category.toLowerCase() === currentCategoryFilter.toLowerCase();
+            const category = (perfModel?.recommended_category || '').toLowerCase();
+            return currentCategoryMatchList.some(c => c.toLowerCase() === category);
         });
     }
 
@@ -601,7 +639,7 @@ function renderQualityBoard() {
                 <td class="category-col">${formatCategory(model.topCategory)}</td>
                 <td class="tests-col">${model.totalTests}</td>
                 <td class="actions-col">
-                    <button class="btn-details" onclick="showModelDetail('${escapedName}', 'quality')">
+                    <button class="btn-details" onclick="showModelDetail('${escapedName}', 'quality', '${escapeHtml(model.host || '').replace(/'/g, "\\'")}')">
                         <i class="fas fa-chart-bar"></i> Details
                     </button>
                 </td>
@@ -727,7 +765,7 @@ function renderCategoryWeights() {
 // MODEL DETAIL MODAL
 // ============================================================================
 
-function showModelDetail(modelName, board) {
+function showModelDetail(modelName, board, host) {
     const modal = document.getElementById('modelDetailModal');
     const modalName = document.getElementById('modalModelName');
     const modalBody = document.getElementById('modalBody');
@@ -735,7 +773,9 @@ function showModelDetail(modelName, board) {
     modalName.textContent = modelName;
 
     if (board === 'performance') {
-        const model = performanceData.find(m => m.model === modelName);
+        const model = host
+            ? performanceData.find(m => m.model === modelName && m.host === host)
+            : performanceData.find(m => m.model === modelName);
         if (!model) return;
         const currentProfile = document.getElementById('perfProfile')?.value || 'balanced';
         const currentComposite = calculateCompositeScore(model, currentProfile);
@@ -802,7 +842,9 @@ function showModelDetail(modelName, board) {
             ` : ''}
         `;
     } else {
-        const model = qualityData.find(m => m.name === modelName);
+        const model = host
+            ? qualityData.find(m => m.name === modelName && m.host === host)
+            : qualityData.find(m => m.name === modelName);
         if (!model) return;
 
         const categoryRows = Object.entries(model.categoryAverages)
@@ -811,14 +853,14 @@ function showModelDetail(modelName, board) {
                 const weight = CATEGORY_WEIGHTS[cat] || 0;
                 const isUntested = !(Number.isFinite(score) && score > 0);
                 const contribution = isUntested ? 0 : (score * weight);
-                const barBg = isUntested ? 'rgba(255,255,255,0.18)' : getScoreColor(score / 10);
+                const barBg = isUntested ? 'rgba(255,255,255,0.18)' : getScoreColor(score);
                 const rowStyle = isUntested ? 'opacity: 0.65;' : '';
                 const scoreText = isUntested ? '—' : score.toFixed(1);
                 const contribText = isUntested ? '—' : contribution.toFixed(1);
 
                 return `
                     <div class="category-row" style="${rowStyle}">
-                        <span class="cat-name">${formatCategory(cat)}${isUntested ? ' <span style="color: var(--muted); font-size: 0.85em;">(not covered)</span>' : ''}</span>
+                        <span class="cat-name">${formatCategory(cat)}${isUntested ? ' <span style="color: var(--text-muted); font-size: 0.85em;">(not covered)</span>' : ''}</span>
                         <div class="cat-bar-container">
                             <div class="cat-bar" style="width: ${isUntested ? 2 : score}%; background: ${barBg};"></div>
                         </div>
@@ -965,12 +1007,12 @@ function updateStats() {
 }
 
 function showLoading() {
-    document.getElementById('perfTableBody').innerHTML = '<tr><td colspan="7" class="loading-cell"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
-    document.getElementById('qualTableBody').innerHTML = '<tr><td colspan="7" class="loading-cell"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+    document.getElementById('perfTableBody').innerHTML = '<tr><td colspan="8" class="loading-cell"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+    document.getElementById('qualTableBody').innerHTML = '<tr><td colspan="8" class="loading-cell"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
 }
 
 function showError(message) {
-    const errorHtml = `<tr><td colspan="7" class="error-cell"><i class="fas fa-exclamation-triangle"></i> ${escapeHtml(message)}</td></tr>`;
+    const errorHtml = `<tr><td colspan="8" class="error-cell"><i class="fas fa-exclamation-triangle"></i> ${escapeHtml(message)}</td></tr>`;
     document.getElementById('perfTableBody').innerHTML = errorHtml;
     document.getElementById('qualTableBody').innerHTML = errorHtml;
 }
@@ -1163,9 +1205,10 @@ function exportAllToCSV() {
         'Rank (Qual)', 'Generalist', 'Coverage %', 'Consistency %', 'Top Category'
     ];
 
-    const perfSorted = [...performanceData].sort((a, b) =>
-        parseFloat(b.avg_composite || 0) - parseFloat(a.avg_composite || 0)
-    );
+    const profile = document.getElementById('perfProfile')?.value || 'balanced';
+    const perfSorted = [...performanceData]
+        .map(m => ({ ...m, calculated_composite: calculateCompositeScore(m, profile) }))
+        .sort((a, b) => b.calculated_composite - a.calculated_composite);
 
     const qualSorted = [...qualityData].sort((a, b) => b.generalistScore - a.generalistScore);
 
@@ -1206,7 +1249,7 @@ function exportAllToCSV() {
         return [
             perf ? perfRankByKey.get(key) : '',
             `${modelName}${hostLabel}`,
-            perf ? parseFloat(perf.avg_composite || 0).toFixed(1) : '',
+            perf ? perf.calculated_composite.toFixed(1) : '',
             perf ? parseFloat(perf.avg_quality || 0).toFixed(1) : '',
             perf ? perf.avg_latency || '' : '',
             perf ? parseFloat(perf.avg_tokens_per_sec || 0).toFixed(1) : '',

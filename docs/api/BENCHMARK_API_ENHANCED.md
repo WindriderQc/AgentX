@@ -1,6 +1,6 @@
 # Benchmark API - Enhanced Features
 
-**Version:** 2.0 (January 2026)
+**Version:** 2.1 (February 2026)
 **Base URL:** `/api/benchmark`
 
 This document describes the enhanced benchmark API with rich analytics, real-time stats, and configuration presets for an informative UI experience.
@@ -27,6 +27,19 @@ The enhanced benchmark system provides:
 - **Real-Time Statistics** - Live progress for active batches
 - **Configuration Presets** - Common test scenarios
 - **Tag-Based Organization** - Categorize and filter batches
+
+### API Hardening Notes (v2.1)
+
+- `GET /api/benchmark/batch/:id` now supports `include_full_text=1` to return full `prompt` and `response`.
+- Compact batch payloads now omit full prompt/response by default and return preview fields.
+- `POST /api/benchmark/batch/:id/judge` and `POST /api/benchmark/batch/:id/rejudge-pending` now preflight validate start conditions:
+  - `404` if batch not found
+  - `409` if batch/judging is already running
+  - `400` if there are no eligible results to judge
+- `GET /api/benchmark/results/advanced` now hardens query handling:
+  - `limit` is clamped to max `5000`
+  - `offset` is clamped to minimum `0`
+  - `sort` is allowlisted and falls back to `timestamp`
 
 ---
 

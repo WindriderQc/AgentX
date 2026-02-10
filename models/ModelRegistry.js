@@ -8,6 +8,7 @@
  */
 
 const mongoose = require('mongoose');
+const { TASK_CATEGORY_MAP } = require('../config/categories');
 
 const CapabilitiesSchema = new mongoose.Schema({
   maxContext: {
@@ -305,21 +306,14 @@ ModelRegistrySchema.statics.getBestForTask = async function(taskType, constraint
 ModelRegistrySchema.statics.getGroupedByCategory = async function() {
   const models = await this.find({ isActive: true }).lean();
 
-  const grouped = {
-    ops: [],
-    coding: [],
-    reasoning: [],
-    specialist: [],
-    generalist: [],
-    embedding: [],
-    judge: []
-  };
+  // Build dynamically from schema enum so new categories are never silently dropped
+  const categoryEnum = ModelRegistrySchema.path('categories').caster.enumValues || [];
+  const grouped = Object.fromEntries(categoryEnum.map(c => [c, []]));
 
   models.forEach(model => {
     model.categories.forEach(category => {
-      if (grouped[category]) {
-        grouped[category].push(model);
-      }
+      if (!grouped[category]) grouped[category] = [];
+      grouped[category].push(model);
     });
   });
 
@@ -348,6 +342,8 @@ ModelRegistrySchema.statics.getCategoryStats = async function() {
       if (!stats[category]) {
         stats[category] = {
           count: 0,
+          benchmarkedCount: 0,
+          latencyCount: 0,
           avgCompositeScore: 0,
           avgLatency: 0,
           models: []
@@ -359,21 +355,28 @@ ModelRegistrySchema.statics.getCategoryStats = async function() {
 
       if (model.benchmarkStats?.avgCompositeScore) {
         stats[category].avgCompositeScore += model.benchmarkStats.avgCompositeScore;
+        stats[category].benchmarkedCount += 1;
       }
       if (model.capabilities?.avgLatencyMs) {
         stats[category].avgLatency += model.capabilities.avgLatencyMs;
+        stats[category].latencyCount += 1;
       }
     });
   });
 
-  // Calculate averages
+  // Calculate averages using only models that have data
   Object.keys(stats).forEach(category => {
-    if (stats[category].count > 0) {
-      stats[category].avgCompositeScore /= stats[category].count;
-      stats[category].avgLatency /= stats[category].count;
+    if (stats[category].benchmarkedCount > 0) {
+      stats[category].avgCompositeScore /= stats[category].benchmarkedCount;
       stats[category].avgCompositeScore = Math.round(stats[category].avgCompositeScore * 10) / 10;
+    }
+    if (stats[category].latencyCount > 0) {
+      stats[category].avgLatency /= stats[category].latencyCount;
       stats[category].avgLatency = Math.round(stats[category].avgLatency);
     }
+    // Clean up internal counters
+    delete stats[category].benchmarkedCount;
+    delete stats[category].latencyCount;
   });
 
   return stats;
@@ -557,14 +560,7 @@ ModelRegistrySchema.methods.isSuitableFor = function(taskType, constraints = {})
   }
 
   // Check category alignment
-  const taskCategoryMap = {
-    'code_generation': 'coding',
-    'deep_reasoning': 'reasoning',
-    'quick_chat': 'ops',
-    'factual_qa': 'generalist'
-  };
-
-  const alignedCategory = taskCategoryMap[taskType];
+  const alignedCategory = TASK_CATEGORY_MAP[taskType];
   if (alignedCategory && this.categories.includes(alignedCategory)) {
     return true;
   }

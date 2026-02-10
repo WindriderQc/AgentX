@@ -175,8 +175,7 @@ const AlertSchema = new mongoose.Schema({
   // Deduplication tracking
   fingerprint: { 
     type: String, 
-    required: true,
-    index: true 
+    required: true
   },
   occurrenceCount: { 
     type: Number, 

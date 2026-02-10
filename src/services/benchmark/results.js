@@ -137,6 +137,8 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
     const failureMatchQuery = { ...scopedMatch, success: false };
     const totalMatchQuery = { ...scopedMatch };
 
+    const judgeMatchQuery = { ...matchQuery, scoring_time_ms: { $ne: null } };
+
     const [totalTests, successCount, recentTests, modelStats, levelDistribution, failureStats, judgeStats, generalistScores] = await Promise.all([
         BenchmarkResult.countDocuments(totalMatchQuery),
         BenchmarkResult.countDocuments(matchQuery),
@@ -236,7 +238,7 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
             }
         ]),
         BenchmarkResult.aggregate([
-            { $match: { scoring_time_ms: { $ne: null } } },
+            { $match: judgeMatchQuery },
             {
                 $group: {
                     _id: { model: '$judge_model', host: '$judge_host' },

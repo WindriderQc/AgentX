@@ -10,6 +10,20 @@ const benchmarkService = require('../../src/services/benchmark');
 const { judgeResult } = require('../../src/services/benchmark/judging');
 const { validateObjectId } = require('../../src/helpers/objectIdValidator');
 
+const ADVANCED_RESULTS_MAX_LIMIT = 5000;
+const ADVANCED_RESULTS_DEFAULT_LIMIT = 1000;
+const ADVANCED_RESULTS_SORT_FIELDS = new Set([
+    'timestamp',
+    'latency',
+    'tokens_per_sec',
+    'quality_score',
+    'composite_score',
+    'prompt_level',
+    'model',
+    'host',
+    'scoring_time_ms'
+]);
+
 /**
  * GET /api/benchmark/results
  * Get all test results (paginated)
@@ -119,9 +133,18 @@ router.get('/results/advanced', async (req, res) => {
         }
 
         // Pagination and sorting
-        const limit = parseInt(req.query.limit, 10) || 1000;
-        const offset = parseInt(req.query.offset, 10) || 0;
-        const sortField = req.query.sort || 'timestamp';
+        const parsedLimit = parseInt(req.query.limit, 10);
+        const limit = Number.isFinite(parsedLimit)
+            ? Math.max(1, Math.min(parsedLimit, ADVANCED_RESULTS_MAX_LIMIT))
+            : ADVANCED_RESULTS_DEFAULT_LIMIT;
+        const parsedOffset = parseInt(req.query.offset, 10);
+        const offset = Number.isFinite(parsedOffset)
+            ? Math.max(0, parsedOffset)
+            : 0;
+        const requestedSortField = String(req.query.sort || 'timestamp');
+        const sortField = ADVANCED_RESULTS_SORT_FIELDS.has(requestedSortField)
+            ? requestedSortField
+            : 'timestamp';
         const sortDir = req.query.sortDir === 'asc' ? 1 : -1;
 
         // Execute query
@@ -141,6 +164,8 @@ router.get('/results/advanced', async (req, res) => {
                 total,
                 limit,
                 offset,
+                sort: sortField,
+                sortDir: sortDir === 1 ? 'asc' : 'desc',
                 hasMore: (offset + results.length) < total
             }
         });
