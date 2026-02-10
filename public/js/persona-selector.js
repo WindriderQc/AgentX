@@ -16,6 +16,13 @@
   let renderScheduled = false;
   let hasRenderedPersonas = false;
 
+  const personaLog = {
+    info: (...args) => console.info('[PersonaSelector]', ...args),
+    debug: (...args) => console.debug('[PersonaSelector]', ...args),
+    warn: (...args) => console.warn('[PersonaSelector]', ...args),
+    error: (...args) => console.error('[PersonaSelector]', ...args)
+  };
+
   // Persona icons mapping
   const personaIcons = {
     'default_chat': 'fa-comments',
@@ -45,16 +52,16 @@
       });
 
       if (!response.ok) {
-        console.warn('Failed to load agents, will show all personas');
+        personaLog.warn('Failed to load agents; will show all personas.');
         return [];
       }
 
       const result = await response.json();
       agents = result.data || [];
-      console.log(`Loaded ${agents.length} agents`);
+      personaLog.info(`Loaded ${agents.length} agents.`);
       return agents;
     } catch (error) {
-      console.error('Error loading agents:', error);
+      personaLog.error('Error loading agents:', error);
       return [];
     }
   }
@@ -74,7 +81,7 @@
           .map(a => a.prompt._id)
       );
 
-      console.debug(`Found ${usedPromptIds.size} prompts used by agents`, Array.from(usedPromptIds));
+      personaLog.debug(`Found ${usedPromptIds.size} prompts used by agents.`, Array.from(usedPromptIds));
 
       const token = localStorage.getItem('token');
       const response = await fetch('/api/prompts', {
@@ -89,13 +96,15 @@
 
       const result = await response.json();
       const grouped = result.data || {};
+      const excludedByName = [];
+      const skippedLinkedChatPersonas = [];
 
       // Flatten grouped prompts - take only the active version or latest version
       personas = [];
       Object.keys(grouped).forEach(promptName => {
         // Skip excluded personas
         if (excludedPersonas.includes(promptName)) {
-          console.debug(`Skipping excluded persona: ${promptName}`);
+          excludedByName.push(promptName);
           return;
         }
 
@@ -108,7 +117,7 @@
           // Only hide chat personas that are already represented in the agent grid.
           const uiType = activeVersion.uiConfig?.type || 'chat';
           if (uiType === 'chat' && usedPromptIds.has(activeVersion._id)) {
-            console.debug(`Skipping chat persona "${promptName}" - used by agent`);
+            skippedLinkedChatPersonas.push(promptName);
             return;
           }
 
@@ -116,10 +125,16 @@
         }
       });
 
-      console.log(`Loaded ${personas.length} personas (excluded: ${excludedPersonas.join(', ')}, ${usedPromptIds.size} used by agents)`);
+      if (excludedByName.length > 0) {
+        personaLog.debug(`Hidden ${excludedByName.length} excluded personas.`, excludedByName);
+      }
+      if (skippedLinkedChatPersonas.length > 0) {
+        personaLog.debug(`Skipped ${skippedLinkedChatPersonas.length} chat personas already represented by agents.`, skippedLinkedChatPersonas);
+      }
+      personaLog.info(`Loaded ${personas.length} personas (excluded: ${excludedByName.length}, ${skippedLinkedChatPersonas.length} used by agents).`);
       return personas;
     } catch (error) {
-      console.error('Error loading personas:', error);
+      personaLog.error('Error loading personas:', error);
       personas = [];
       return [];
     }
@@ -129,26 +144,26 @@
    * Render personas as cards in existing agent launcher
    */
   function renderPersonasInLauncher(containerEl) {
-    console.debug('renderPersonasInLauncher() called with:', {
+    personaLog.debug('renderPersonasInLauncher() called with:', {
       containerEl: !!containerEl,
       personasCount: personas.length
     });
 
     if (!containerEl) {
-      console.error('Cannot render personas: container element is null');
+      personaLog.error('Cannot render personas: container element is null.');
       return;
     }
 
     // Remove existing persona cards and separator to prevent duplicates
     const existingPersonas = containerEl.querySelectorAll('.persona-card, .persona-separator');
-    console.debug(`Removing ${existingPersonas.length} existing persona elements`);
+    personaLog.debug(`Removing ${existingPersonas.length} existing persona elements.`);
     existingPersonas.forEach(el => el.remove());
 
-    console.debug(`Rendering ${personas.length} personas into launcher`);
+    personaLog.debug(`Rendering ${personas.length} personas into launcher.`);
 
     // Add visual separator if there are personas to show
     if (personas.length === 0) {
-      console.debug('No personas to render');
+      personaLog.debug('No personas to render.');
       return;
     }
 
@@ -165,7 +180,7 @@
       return uiType === 'chat';
     });
 
-    console.debug(`Split personas: ${specialUIPersonas.length} special UI (will render as agents), ${chatPersonas.length} chat (will render as personas)`);
+    personaLog.debug(`Split personas: ${specialUIPersonas.length} special UI (agent-style) and ${chatPersonas.length} chat personas.`);
 
     // Helper function to render a persona card
     const renderPersonaCard = (persona) => {
@@ -247,16 +262,14 @@
     const allCards = specialUICards + chatSeparator + chatCards;
 
     if (allCards.trim()) {
-      console.debug(`About to append ${specialUIPersonas.length} special UI + ${chatPersonas.length} chat personas`);
+      personaLog.debug(`Appending ${specialUIPersonas.length} special UI and ${chatPersonas.length} chat personas.`);
       containerEl.innerHTML += allCards;
 
       // Verify render
       const renderedCards = containerEl.querySelectorAll('.persona-card');
-      console.log(`✓ Rendered ${personas.length} persona cards into launcher, now have ${renderedCards.length} persona cards in DOM`);
-      console.debug(`  - ${specialUIPersonas.length} in agents section (no separator)`);
-      console.debug(`  - ${chatPersonas.length} in personas section (with separator)`);
+      personaLog.info(`Rendered ${personas.length} persona cards (${specialUIPersonas.length} agent-style, ${chatPersonas.length} chat-style; ${renderedCards.length} in DOM).`);
     } else {
-      console.warn('No persona cards to render - all cards empty');
+      personaLog.warn('No persona cards to render - all cards were empty.');
     }
   }
 
@@ -331,7 +344,7 @@
   function selectPersona(personaName) {
     const persona = personas.find(p => p.name === personaName);
     if (!persona) {
-      console.error('Persona not found:', personaName);
+      personaLog.error('Persona not found:', personaName);
       return;
     }
 
@@ -406,19 +419,19 @@
    * Initialize - hook into existing agent launcher
    */
   async function init() {
-    console.log('PersonaSelector init() starting...');
+    personaLog.info('Initializing...');
 
     // CRITICAL: Attach event listeners FIRST before any async operations
     // Otherwise the event might fire before the listener is attached
     window.addEventListener('agentx:agents-loaded', (e) => {
-      console.debug('Received agentx:agents-loaded event');
+      personaLog.debug('Received agentx:agents-loaded event.');
       handleAgentsEvent(e);
     });
     window.addEventListener('agentx:agents-rendered', (e) => {
-      console.debug('Received agentx:agents-rendered event');
+      personaLog.debug('Received agentx:agents-rendered event.');
       handleAgentsEvent(e);
     });
-    console.log('Event listeners attached, now loading personas...');
+    personaLog.debug('Event listeners attached; loading personas.');
 
     // Load personas (async operation)
     await loadPersonas();
@@ -430,7 +443,7 @@
       currentPersona = JSON.parse(savedPersona);
     }
 
-    console.log('Persona selector fully initialized');
+    personaLog.info('Initialized.');
 
     // Flush any queued event that arrived before personas finished loading.
     if (pendingAgentsEvent) {
@@ -445,7 +458,7 @@
     if (launcherGrid) {
       const agentCards = launcherGrid.querySelectorAll('.agentx-card:not(.persona-card)');
       if (agentCards.length > 0 && !hasRenderedPersonas) {
-        console.log(`Fallback: Found ${agentCards.length} agent cards already rendered, rendering personas now`);
+        personaLog.debug(`Fallback: found ${agentCards.length} rendered agent cards; rendering personas.`);
         handleAgentsEvent({
           type: 'agentx:fallback-render',
           detail: { agentCount: agentCards.length }
@@ -495,20 +508,20 @@
 
   function renderForAgentsEvent(event) {
     const agentCount = event?.detail?.agentCount ?? 'unknown';
-    console.log(`Agents event: ${event.type} (${agentCount} agents), rendering ${personas.length} personas...`);
+    personaLog.info(`Event ${event.type}: ${agentCount} agents, rendering ${personas.length} personas.`);
 
     const launcherGrid = document.getElementById('agentxLauncherGrid');
 
     if (!launcherGrid) {
-      console.error('Element #agentxLauncherGrid not found!');
-      console.log('Available elements:',
+      personaLog.error('Element #agentxLauncherGrid not found.');
+      personaLog.debug('Available launcher-like elements:',
         Array.from(document.querySelectorAll('[id*="launcher"]')).map(e => e.id)
       );
       return;
     }
 
     if (personas.length === 0) {
-      console.info('No personas to render.');
+      personaLog.debug('No personas to render.');
       return;
     }
 

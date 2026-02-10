@@ -8,6 +8,12 @@
  *   WorkspaceManager.switchWorkspace(slug) - Switch to different workspace
  */
 
+const workspaceLog = {
+  info: (...args) => console.info('[Workspace]', ...args),
+  warn: (...args) => console.warn('[Workspace]', ...args),
+  error: (...args) => console.error('[Workspace]', ...args)
+};
+
 const WorkspaceManager = {
   STORAGE_KEY: 'agentx_current_workspace',
   currentWorkspace: null,
@@ -17,7 +23,7 @@ const WorkspaceManager = {
    * Initialize workspace manager
    */
   async init() {
-    console.log('[Workspace] Initializing...');
+    workspaceLog.info('Initializing...');
 
     // Load workspaces from API
     await this.loadWorkspaces();
@@ -31,7 +37,7 @@ const WorkspaceManager = {
       this.currentWorkspace = this.workspaces[0].slug;
     }
 
-    console.log('[Workspace] Current workspace:', this.currentWorkspace);
+    workspaceLog.info('Current workspace:', this.currentWorkspace);
 
     // Update UI
     this.updateUI();
@@ -55,16 +61,16 @@ const WorkspaceManager = {
         return;
       }
       if (!response.ok) {
-        console.error('[Workspace] Failed to load workspaces:', response.statusText);
+        workspaceLog.error('Failed to load workspaces:', response.statusText);
         return;
       }
 
       const data = await response.json();
       this.workspaces = data.data || [];
 
-      console.log(`[Workspace] Loaded ${this.workspaces.length} workspaces`);
+      workspaceLog.info(`Loaded ${this.workspaces.length} workspaces`);
     } catch (err) {
-      console.error('[Workspace] Error loading workspaces:', err);
+      workspaceLog.error('Error loading workspaces:', err);
     }
   },
 
@@ -72,12 +78,12 @@ const WorkspaceManager = {
    * Switch to a different workspace
    */
   async switchWorkspace(slug) {
-    console.log('[Workspace] Switching to:', slug);
+    workspaceLog.info('Switching to:', slug);
 
     // Validate workspace exists
     const workspace = this.workspaces.find(w => w.slug === slug);
     if (!workspace) {
-      console.error('[Workspace] Workspace not found:', slug);
+      workspaceLog.error('Workspace not found:', slug);
       return false;
     }
 
@@ -95,7 +101,7 @@ const WorkspaceManager = {
       detail: { slug, workspace }
     }));
 
-    console.log('[Workspace] Switched to:', workspace.name);
+    workspaceLog.info('Switched to:', workspace.name);
     return true;
   },
 
@@ -214,7 +220,7 @@ const WorkspaceManager = {
 
       return result.data;
     } catch (err) {
-      console.error('[Workspace] Error creating workspace:', err);
+      workspaceLog.error('Error creating workspace:', err);
       throw err;
     }
   }

@@ -35,7 +35,9 @@ const apiLimiter = rateLimit({
   skip: (req) => (
     req.originalUrl.startsWith('/api/benchmark')
     || req.originalUrl.startsWith('/api/specialx')
-  ), // Skip benchmark + specialx routes (handled by dedicated limiters)
+    || req.originalUrl === '/api/rag/watcher/status'
+    || req.originalUrl === '/api/dashboard/rag-sync/status'
+  ), // Skip benchmark + specialx routes (handled by dedicated limiters) and dashboard polling endpoints
   handler: (req, res) => {
     logger.warn('Rate limit exceeded', {
       ip: req.ip,

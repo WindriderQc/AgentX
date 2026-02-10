@@ -2344,11 +2344,17 @@ async function refreshStats(conversationId) {
   };
 
   let agentListView = null;
+  const agentSystemLog = {
+      info: (...args) => console.info('[AgentSystem]', ...args),
+      debug: (...args) => console.debug('[AgentSystem]', ...args),
+      warn: (...args) => console.warn('[AgentSystem]', ...args),
+      error: (...args) => console.error('[AgentSystem]', ...args)
+  };
 
   async function initAgentSystem() {
-    console.log('Initializing Agent System...');
+    agentSystemLog.info('Initializing.');
     if (!agentElements.launcherContainer || !window.AgentListView) {
-        console.error('Agent Launcher or AgentListView missing', { 
+        agentSystemLog.error('Agent launcher container or AgentListView missing.', {
             container: !!agentElements.launcherContainer, 
             class: !!window.AgentListView 
         });
@@ -2368,7 +2374,7 @@ async function refreshStats(conversationId) {
     const hasConversation = urlParams.get('c');
     const agentIdParam = urlParams.get('agent');
     
-    console.log('Agent Params:', { hasConversation, agentIdParam });
+    agentSystemLog.debug('Startup params:', { hasConversation, agentIdParam });
 
     // Wire up Change Agent Button
     if (agentElements.changeBtn) {
@@ -2383,24 +2389,24 @@ async function refreshStats(conversationId) {
             ? agentListView.readyPromise
             : agentListView.load();
         await initialLoadPromise;
-        console.log(`Loaded ${agentListView.agents.length} agents for launcher.`);
+        agentSystemLog.info(`Loaded ${agentListView.agents.length} agents for launcher.`);
 
         // Fire custom event so persona-selector can inject personas after agents load
         window.dispatchEvent(new CustomEvent('agentx:agents-loaded', {
             detail: { agentCount: agentListView.agents.length }
         }));
     } catch (e) {
-        console.error('Failed to load agents in initAgentSystem:', e);
+        agentSystemLog.error('Failed to load agents during initialization:', e);
     }
 
     // Check if we need to auto-select an agent from URL
     if (agentIdParam) {
         const preSelectedAgent = agentListView.agents.find(a => a._id === agentIdParam);
-        console.log('Pre-selected agent found:', preSelectedAgent?.name);
+        agentSystemLog.debug('Pre-selected agent lookup:', preSelectedAgent?.name);
         if (preSelectedAgent) {
             handleAgentSelection(preSelectedAgent);
         } else {
-            console.warn(`Agent ID ${agentIdParam} not found in list.`);
+            agentSystemLog.warn(`Agent ID ${agentIdParam} not found in list.`);
         }
     }
 
@@ -2422,7 +2428,7 @@ async function refreshStats(conversationId) {
   function handleAgentSelection(agent) {
       // Handle Deselection / Manual Mode
       if (!agent) {
-          console.log('Clearing agent selection');
+          agentSystemLog.info('Clearing agent selection.');
           state.agent = null;
           state.agentId = null;
           
@@ -2440,7 +2446,7 @@ async function refreshStats(conversationId) {
           return;
       }
       
-      console.log('Selected agent:', agent);
+      agentSystemLog.info('Selected agent:', { id: agent._id, name: agent.displayName });
       state.agent = agent;
       state.agentId = agent._id;
       
