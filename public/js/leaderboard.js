@@ -516,11 +516,11 @@ function renderPerformanceBoard() {
 
     tbody.innerHTML = data.map((model, idx) => {
         const composite = model.calculated_composite;
-        const quality = parseFloat(model.avg_quality) || 0;
-        const latency = model.avg_latency || 0;
-        const tokensPerSec = parseFloat(model.avg_tokens_per_sec) || 0;
+        const quality = Number.isFinite(parseFloat(model.avg_quality)) ? parseFloat(model.avg_quality) : 0;
+        const latency = model.avg_latency ?? 0;
+        const tokensPerSec = Number.isFinite(parseFloat(model.avg_tokens_per_sec)) ? parseFloat(model.avg_tokens_per_sec) : 0;
         const tests = model.tests || 1;
-        const failed = model.failed_tests || 0;
+        const failed = model.failed_tests ?? 0;
         const reliabilityPct = Math.round(((tests - failed) / tests) * 100);
 
         const hostName = model.host ? extractHostName(model.host) : '';

@@ -165,6 +165,177 @@ const DECOMPOSED_QUESTIONS = {
             { q: 'Is the information factually correct?', weight: 0.60 },
             { q: 'Are claims supported or verifiable?', weight: 0.40 }
         ]
+    },
+    summarization: {
+        accuracy: [
+            { q: 'Does the summary preserve the key information from the original?', weight: 0.40 },
+            { q: 'Are any facts in the summary incorrect or distorted?', weight: 0.35, invert: true },
+            { q: 'Does it capture the main point or conclusion?', weight: 0.25 }
+        ],
+        conciseness: [
+            { q: 'Is the summary appropriately brief for the task?', weight: 0.40 },
+            { q: 'Does it meet any specified length or word count constraints?', weight: 0.35 },
+            { q: 'Is unnecessary detail avoided?', weight: 0.25 }
+        ],
+        completeness: [
+            { q: 'Are all major points from the source included?', weight: 0.50 },
+            { q: 'Is any critical information missing?', weight: 0.50, invert: true }
+        ],
+        coherence: [
+            { q: 'Does the summary read as a coherent standalone text?', weight: 0.50 },
+            { q: 'Is the summary logically structured?', weight: 0.50 }
+        ]
+    },
+    translation: {
+        accuracy: [
+            { q: 'Is the meaning of the original text preserved?', weight: 0.40 },
+            { q: 'Are there any mistranslated words or phrases?', weight: 0.35, invert: true },
+            { q: 'Are numbers, names, and technical terms correctly handled?', weight: 0.25 }
+        ],
+        fluency: [
+            { q: 'Does the translation read naturally in the target language?', weight: 0.50 },
+            { q: 'Is the sentence structure appropriate for the target language?', weight: 0.50 }
+        ],
+        grammar: [
+            { q: 'Is the grammar correct in the target language?', weight: 0.50 },
+            { q: 'Is punctuation and capitalization appropriate?', weight: 0.50 }
+        ],
+        cultural_fit: [
+            { q: 'Are idioms and expressions adapted appropriately?', weight: 0.50 },
+            { q: 'Is the tone suitable for the target audience?', weight: 0.50 }
+        ]
+    },
+    explanation: {
+        clarity: [
+            { q: 'Is the explanation easy to follow?', weight: 0.40 },
+            { q: 'Are technical terms defined or explained?', weight: 0.30 },
+            { q: 'Are examples or analogies used effectively?', weight: 0.30 }
+        ],
+        accuracy: [
+            { q: 'Is the explanation technically correct?', weight: 0.50 },
+            { q: 'Are there any misleading statements?', weight: 0.50, invert: true }
+        ],
+        structure: [
+            { q: 'Is the explanation logically ordered?', weight: 0.50 },
+            { q: 'Does it build from simple to complex concepts?', weight: 0.50 }
+        ],
+        completeness: [
+            { q: 'Are the key aspects of the topic covered?', weight: 0.60 },
+            { q: 'Is important context provided?', weight: 0.40 }
+        ]
+    },
+    debugging: {
+        root_cause: [
+            { q: 'Is the actual bug or issue correctly identified?', weight: 0.50 },
+            { q: 'Is the root cause explained, not just symptoms?', weight: 0.50 }
+        ],
+        fix_correctness: [
+            { q: 'Does the proposed fix address the root cause?', weight: 0.50 },
+            { q: 'Would the fix work without introducing new bugs?', weight: 0.50 }
+        ],
+        minimal_intervention: [
+            { q: 'Is the fix minimal and focused?', weight: 0.50 },
+            { q: 'Are unrelated changes avoided?', weight: 0.50 }
+        ],
+        explanation: [
+            { q: 'Is the reason for the bug clearly explained?', weight: 0.50 },
+            { q: 'Would a developer understand the fix from the explanation?', weight: 0.50 }
+        ]
+    },
+    refactoring: {
+        readability_improvement: [
+            { q: 'Is the refactored code more readable?', weight: 0.40 },
+            { q: 'Are naming conventions improved?', weight: 0.30 },
+            { q: 'Is the code structure cleaner?', weight: 0.30 }
+        ],
+        logic_preservation: [
+            { q: 'Does the refactored code preserve original behavior?', weight: 0.50 },
+            { q: 'Are there any functional regressions?', weight: 0.50, invert: true }
+        ],
+        simplicity: [
+            { q: 'Is complexity reduced?', weight: 0.50 },
+            { q: 'Are abstractions appropriate and not over-engineered?', weight: 0.50 }
+        ],
+        correctness: [
+            { q: 'Is the refactored code syntactically valid?', weight: 0.50 },
+            { q: 'Are edge cases still handled?', weight: 0.50 }
+        ]
+    },
+    dialogue: {
+        relevance: [
+            { q: 'Does the response address the previous turn?', weight: 0.50 },
+            { q: 'Is irrelevant tangent avoided?', weight: 0.50 }
+        ],
+        naturalness: [
+            { q: 'Does the response sound natural and conversational?', weight: 0.50 },
+            { q: 'Is the tone appropriate for the context?', weight: 0.50 }
+        ],
+        helpfulness: [
+            { q: 'Does the response move the conversation toward the user goal?', weight: 0.50 },
+            { q: 'Is useful information or action provided?', weight: 0.50 }
+        ],
+        engagement: [
+            { q: 'Does the response encourage further interaction?', weight: 0.50 },
+            { q: 'Is the response interesting or thoughtful?', weight: 0.50 }
+        ]
+    },
+    'multi-turn-reasoning': {
+        context_retention: [
+            { q: 'Does the response correctly reference information from previous turns?', weight: 0.40 },
+            { q: 'Is context from earlier steps used accurately?', weight: 0.35 },
+            { q: 'Does it avoid contradicting earlier established facts?', weight: 0.25 }
+        ],
+        logical_progression: [
+            { q: 'Does the reasoning build logically on previous steps?', weight: 0.40 },
+            { q: 'Are new conclusions consistent with prior reasoning?', weight: 0.35 },
+            { q: 'Is the chain of thought traceable?', weight: 0.25 }
+        ],
+        accuracy: [
+            { q: 'Is the final conclusion correct?', weight: 0.50 },
+            { q: 'Are intermediate results accurate?', weight: 0.50 }
+        ],
+        coherence: [
+            { q: 'Is the overall response coherent across turns?', weight: 0.50 },
+            { q: 'Does the response maintain a consistent position?', weight: 0.50 }
+        ]
+    },
+    'context-retention': {
+        recall_accuracy: [
+            { q: 'Does the response correctly recall previously stated information?', weight: 0.40 },
+            { q: 'Are specific details (names, numbers, facts) accurately recalled?', weight: 0.35 },
+            { q: 'Is the recalled information attributed correctly?', weight: 0.25 }
+        ],
+        relevance_filtering: [
+            { q: 'Does the response retrieve the most relevant context?', weight: 0.50 },
+            { q: 'Is irrelevant context filtered out?', weight: 0.50 }
+        ],
+        consistency: [
+            { q: 'Is the response consistent with earlier statements?', weight: 0.50 },
+            { q: 'Are there any contradictions with prior context?', weight: 0.50, invert: true }
+        ],
+        no_hallucination: [
+            { q: 'Does the response avoid inventing information not in the context?', weight: 0.60 },
+            { q: 'Are claims grounded in the provided information?', weight: 0.40 }
+        ]
+    },
+    'edge-cases': {
+        error_handling: [
+            { q: 'Does the response handle the unusual input gracefully?', weight: 0.40 },
+            { q: 'Is an appropriate error or clarification provided?', weight: 0.35 },
+            { q: 'Does it avoid crashing or producing garbage output?', weight: 0.25 }
+        ],
+        robustness: [
+            { q: 'Does the response remain sensible under unusual conditions?', weight: 0.50 },
+            { q: 'Does it degrade gracefully rather than fail completely?', weight: 0.50 }
+        ],
+        validation: [
+            { q: 'Does the response identify invalid or problematic input?', weight: 0.50 },
+            { q: 'Is the validation response appropriate and helpful?', weight: 0.50 }
+        ],
+        recovery: [
+            { q: 'Does the response suggest a way forward despite the edge case?', weight: 0.50 },
+            { q: 'Is helpful fallback behavior demonstrated?', weight: 0.50 }
+        ]
     }
 };
 
@@ -173,10 +344,15 @@ const DECOMPOSED_QUESTIONS = {
  * @param {string} response - The model response to evaluate
  * @param {string} question - The yes/no question to ask
  * @param {Object} judgeConfig - Judge configuration (host, model, etc.)
+ * @param {Object} taskContext - Optional { task, expected } for context
  * @returns {Promise<boolean>} True for YES, false for NO
  */
-async function askBinaryQuestion(response, question, judgeConfig) {
-    const prompt = `Given this response:
+async function askBinaryQuestion(response, question, judgeConfig, taskContext = {}) {
+    const taskSection = taskContext.task
+        ? `TASK: ${taskContext.task.substring(0, 500)}\n${taskContext.expected ? `EXPECTED: ${taskContext.expected.substring(0, 300)}\n` : ''}\n`
+        : '';
+
+    const prompt = `${taskSection}Given this response:
 ---
 ${response.substring(0, 2000)}
 ---
@@ -242,15 +418,16 @@ Answer ONLY "YES" or "NO": ${question}`;
  * @param {string} response - Model response to evaluate
  * @param {Array} questions - Array of { q: string, weight: number, invert?: boolean }
  * @param {Object} judgeConfig - Judge configuration
+ * @param {Object} taskContext - Optional { task, expected } for context
  * @returns {Promise<Object>} { score: number, breakdown: Array }
  */
-async function scoreDimension(response, questions, judgeConfig) {
+async function scoreDimension(response, questions, judgeConfig, taskContext = {}) {
     const results = [];
     let totalWeight = 0;
     let earnedWeight = 0;
 
     for (const item of questions) {
-        const answer = await askBinaryQuestion(response, item.q, judgeConfig);
+        const answer = await askBinaryQuestion(response, item.q, judgeConfig, taskContext);
         const effectiveAnswer = item.invert ? !answer : answer;
 
         results.push({
@@ -292,6 +469,10 @@ async function score(response, prompt, judgeConfig) {
     const questions = DECOMPOSED_QUESTIONS[category];
 
     if (!questions) {
+        if (category === 'general') {
+            logger.error('DECOMPOSED_QUESTIONS missing "general" category - cannot score');
+            return null;
+        }
         logger.warn('No decomposed questions for category', {
             category,
             fallback: 'general'
@@ -311,19 +492,41 @@ async function score(response, prompt, judgeConfig) {
     let overallScore = 0;
     let dimensionCount = 0;
 
+    // Build task context so judge can evaluate against the original task
+    const taskContext = {
+        task: prompt.prompt || '',
+        expected: prompt.expected_answer || prompt.expected || ''
+    };
+
+    // Look up dimension weights from prompt (passed by qualityScorer routeScoring)
+    const dimensionWeights = prompt._dimensionWeights || null;
+
     // Score each dimension
     for (const [dimension, dimensionQuestions] of Object.entries(questions)) {
-        const result = await scoreDimension(response, dimensionQuestions, judgeConfig);
+        const result = await scoreDimension(response, dimensionQuestions, judgeConfig, taskContext);
         dimensionScores[dimension] = result.score;
         dimensionBreakdowns[dimension] = result.breakdown;
-        overallScore += result.score;
         dimensionCount++;
     }
 
-    // Calculate overall as average of dimension scores
-    overallScore = dimensionCount > 0
-        ? Math.round((overallScore / dimensionCount) * 10) / 10
-        : 0;
+    // Calculate overall using ENHANCED_SCORING_CONFIGS weights if available,
+    // otherwise fall back to simple average
+    if (dimensionWeights && Object.keys(dimensionWeights).length > 0) {
+        let weightedSum = 0;
+        let totalWeight = 0;
+        for (const [dim, score] of Object.entries(dimensionScores)) {
+            const w = dimensionWeights[dim] || 0;
+            weightedSum += score * w;
+            totalWeight += w;
+        }
+        overallScore = totalWeight > 0
+            ? Math.round((weightedSum / totalWeight) * 10) / 10
+            : 0;
+    } else {
+        overallScore = dimensionCount > 0
+            ? Math.round((Object.values(dimensionScores).reduce((a, b) => a + b, 0) / dimensionCount) * 10) / 10
+            : 0;
+    }
 
     const totalQuestions = Object.values(questions)
         .reduce((sum, q) => sum + q.length, 0);

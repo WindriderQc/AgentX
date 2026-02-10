@@ -213,7 +213,10 @@ class HardwareProfileService {
 
         const avgLatency = recentResults.reduce((sum, r) => sum + (r.latency || 0), 0) / recentResults.length;
 
-        const avgQuality = recentResults.reduce((sum, r) => sum + (r.quality_score || 0), 0) / recentResults.length;
+        const qualityResults = recentResults.filter(r => r.quality_score != null);
+        const avgQuality = qualityResults.length > 0
+            ? qualityResults.reduce((sum, r) => sum + r.quality_score, 0) / qualityResults.length
+            : null;
 
         // Find peak VRAM from hardware snapshots
         const vramValues = recentResults

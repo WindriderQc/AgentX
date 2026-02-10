@@ -485,7 +485,8 @@ function quickScore(response, prompt) {
         '2x + 5 = 17': { answer: '6', score: /\bx\s*=\s*6\b|\b6\b/.test(resp) ? 10 : 0 }
     };
 
-    const promptLower = prompt.prompt ? prompt.prompt.toLowerCase() : prompt.toLowerCase();
+    const promptText = prompt.prompt || (typeof prompt === 'string' ? prompt : '');
+    const promptLower = promptText.toLowerCase();
 
     for (const [pattern, check] of Object.entries(quickPatterns)) {
         if (promptLower.includes(pattern)) {
@@ -1325,7 +1326,15 @@ async function routeScoring(response, prompt, judgeConfig) {
 
     // Phase 3: Use decomposed judging for complex evaluations
     if (strategy.primary === 'decomposed' || strategy.llm_strategy === 'decomposed') {
-        result = await decomposedJudge.score(response, prompt, judgeConfig);
+        // Pass dimension weights so decomposed judge uses weighted average
+        const enhancedConfig = ENHANCED_SCORING_CONFIGS[category] || ENHANCED_SCORING_CONFIGS.general;
+        const dimensionWeights = {};
+        if (enhancedConfig && enhancedConfig.core_dimensions) {
+            for (const dim of enhancedConfig.core_dimensions) {
+                dimensionWeights[dim.name] = dim.weight;
+            }
+        }
+        result = await decomposedJudge.score(response, { ...prompt, _dimensionWeights: dimensionWeights }, judgeConfig);
         if (result) {
             logger.info('Decomposed judging used', {
                 prompt: prompt.name || 'unknown',

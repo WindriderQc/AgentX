@@ -515,10 +515,10 @@ export async function refreshJudgeCompare() {
 
         const datasets = judgeSelections.map((sel, idx) => {
             const row = leaderboard.find(j => j.judge_model === sel.judge_model && (j.judge_host || null) === (sel.judge_host || null));
-            const avgLatency = row?.avg_latency || 0;
-            const successRate = row?.success_rate || 0;
-            const avgExplanationLen = row?.avg_explanation_len || 0;
-            const avgScoreGiven = row?.avg_score_given || 0;
+            const avgLatency = row?.avg_latency ?? 0;
+            const successRate = row?.success_rate ?? 0;
+            const avgExplanationLen = row?.avg_explanation_len ?? 0;
+            const avgScoreGiven = row?.avg_score_given ?? 0;
 
             const speedScore = Math.max(0, 100 - (avgLatency / 10000 * 100));
             const diligenceScore = Math.min(100, (avgExplanationLen / 500 * 100));

@@ -1739,11 +1739,7 @@
                 "evidenceType": 0,
                 "evidenceCount": 0,
                 "semanticMatch": 0,
-<<<<<<< ours
                 "recency": 7,
-=======
-                "recency": 10,
->>>>>>> theirs
                 "noEvidence": -30
               },
               "confidence": "very-low"
@@ -1759,11 +1755,7 @@
                 "evidenceType": 0,
                 "evidenceCount": 0,
                 "semanticMatch": 0,
-<<<<<<< ours
                 "recency": 7,
-=======
-                "recency": 10,
->>>>>>> theirs
                 "noEvidence": -30
               },
               "confidence": "very-low"
@@ -1779,11 +1771,7 @@
                 "evidenceType": 0,
                 "evidenceCount": 0,
                 "semanticMatch": 0,
-<<<<<<< ours
                 "recency": 7,
-=======
-                "recency": 10,
->>>>>>> theirs
                 "noEvidence": -30
               },
               "confidence": "very-low"
@@ -1814,11 +1802,7 @@
                 "evidenceType": 0,
                 "evidenceCount": 0,
                 "semanticMatch": 0,
-<<<<<<< ours
                 "recency": 7,
-=======
-                "recency": 10,
->>>>>>> theirs
                 "noEvidence": -30
               },
               "confidence": "very-low"
@@ -1834,11 +1818,7 @@
                 "evidenceType": 0,
                 "evidenceCount": 0,
                 "semanticMatch": 0,
-<<<<<<< ours
                 "recency": 7,
-=======
-                "recency": 10,
->>>>>>> theirs
                 "noEvidence": -30
               },
               "confidence": "very-low"
@@ -1854,11 +1834,7 @@
                 "evidenceType": 0,
                 "evidenceCount": 0,
                 "semanticMatch": 0,
-<<<<<<< ours
                 "recency": 7,
-=======
-                "recency": 10,
->>>>>>> theirs
                 "noEvidence": -30
               },
               "confidence": "very-low"
@@ -1874,11 +1850,7 @@
                 "evidenceType": 0,
                 "evidenceCount": 0,
                 "semanticMatch": 0,
-<<<<<<< ours
                 "recency": 7,
-=======
-                "recency": 10,
->>>>>>> theirs
                 "noEvidence": -30
               },
               "confidence": "very-low"
@@ -1894,11 +1866,7 @@
                 "evidenceType": 0,
                 "evidenceCount": 0,
                 "semanticMatch": 0,
-<<<<<<< ours
                 "recency": 7,
-=======
-                "recency": 10,
->>>>>>> theirs
                 "noEvidence": -30
               },
               "confidence": "very-low"
@@ -1914,11 +1882,7 @@
                 "evidenceType": 0,
                 "evidenceCount": 0,
                 "semanticMatch": 0,
-<<<<<<< ours
                 "recency": 7,
-=======
-                "recency": 10,
->>>>>>> theirs
                 "noEvidence": -30
               },
               "confidence": "very-low"
@@ -1934,11 +1898,7 @@
                 "evidenceType": 0,
                 "evidenceCount": 0,
                 "semanticMatch": 0,
-<<<<<<< ours
                 "recency": 7,
-=======
-                "recency": 10,
->>>>>>> theirs
                 "noEvidence": -30
               },
               "confidence": "very-low"
@@ -2598,12 +2558,8 @@
           "src/services/modelRouter.js",
           "src/services/qualityScorer.js",
           "src/services/ragStore.js",
-<<<<<<< ours
           "src/services/repoWatcherService.js",
           "src/services/validationScanner.js"
-=======
-          "src/services/repoWatcherService.js"
->>>>>>> theirs
         ],
         "models": [
           "models/BenchmarkBatch.js",
@@ -2972,20 +2928,12 @@
             "path": "/api/invitations/my-invitations",
             "sourceFile": "routes/invitations.js",
             "confidence": {
-<<<<<<< ours
               "score": 20,
-=======
-              "score": 25,
->>>>>>> theirs
               "breakdown": {
                 "evidenceType": 10,
                 "evidenceCount": 5,
                 "semanticMatch": 0,
-<<<<<<< ours
                 "recency": 5
-=======
-                "recency": 10
->>>>>>> theirs
               },
               "confidence": "low"
             }
@@ -2995,20 +2943,12 @@
             "path": "/api/workspaces/:slug/invitations",
             "sourceFile": "routes/workspaces.js",
             "confidence": {
-<<<<<<< ours
               "score": 22,
-=======
-              "score": 25,
->>>>>>> theirs
               "breakdown": {
                 "evidenceType": 10,
                 "evidenceCount": 5,
                 "semanticMatch": 0,
-<<<<<<< ours
                 "recency": 7
-=======
-                "recency": 10
->>>>>>> theirs
               },
               "confidence": "low"
             }
@@ -3018,20 +2958,12 @@
             "path": "/api/workspaces/:slug/invitations",
             "sourceFile": "routes/workspaces.js",
             "confidence": {
-<<<<<<< ours
               "score": 22,
-=======
-              "score": 25,
->>>>>>> theirs
               "breakdown": {
                 "evidenceType": 10,
                 "evidenceCount": 5,
                 "semanticMatch": 0,
-<<<<<<< ours
                 "recency": 7
-=======
-                "recency": 10
->>>>>>> theirs
               },
               "confidence": "low"
             }
@@ -3041,20 +2973,12 @@
             "path": "/api/workspaces/:slug/invitations/:invitationId",
             "sourceFile": "routes/workspaces.js",
             "confidence": {
-<<<<<<< ours
               "score": 22,
-=======
-              "score": 25,
->>>>>>> theirs
               "breakdown": {
                 "evidenceType": 10,
                 "evidenceCount": 5,
                 "semanticMatch": 0,
-<<<<<<< ours
                 "recency": 7
-=======
-                "recency": 10
->>>>>>> theirs
               },
               "confidence": "low"
             }
@@ -3166,20 +3090,12 @@
             "path": "/api/analytics/feedback/summary",
             "sourceFile": "routes/analytics.js",
             "confidence": {
-<<<<<<< ours
               "score": 57,
-=======
-              "score": 60,
->>>>>>> theirs
               "breakdown": {
                 "evidenceType": 30,
                 "evidenceCount": 20,
                 "semanticMatch": 0,
-<<<<<<< ours
                 "recency": 7
-=======
-                "recency": 10
->>>>>>> theirs
               },
               "confidence": "medium"
             }
@@ -3401,11 +3317,7 @@
                 "evidenceType": 0,
                 "evidenceCount": 0,
                 "semanticMatch": 0,
-<<<<<<< ours
                 "recency": 7,
-=======
-                "recency": 10,
->>>>>>> theirs
                 "noEvidence": -30
               },
               "confidence": "very-low"
@@ -3421,11 +3333,7 @@
                 "evidenceType": 0,
                 "evidenceCount": 0,
                 "semanticMatch": 0,
-<<<<<<< ours
                 "recency": 7,
-=======
-                "recency": 10,
->>>>>>> theirs
                 "noEvidence": -30
               },
               "confidence": "very-low"
@@ -3441,11 +3349,7 @@
                 "evidenceType": 0,
                 "evidenceCount": 0,
                 "semanticMatch": 0,
-<<<<<<< ours
                 "recency": 7,
-=======
-                "recency": 10,
->>>>>>> theirs
                 "noEvidence": -30
               },
               "confidence": "very-low"

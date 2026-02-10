@@ -17,8 +17,8 @@ let radarCharts = {};
 function normalizeQualityTo100(rawQuality) {
     const value = Number(rawQuality);
     if (!Number.isFinite(value)) return 0;
-    // If value is 0-10, scale to 0-100; if already 0-100, keep as-is
-    return value <= 10 ? value * 10 : value;
+    // Quality scores are always stored as 0-10 in database
+    return Math.max(0, Math.min(100, value * 10));
 }
 
 // Initialize on page load
@@ -72,10 +72,12 @@ async function loadModelData() {
                 };
             }
 
-            const qualityScore = normalizeQualityTo100(result.quality_score || 0);
-            modelMap[modelName].categoryScores[category].total += qualityScore;
-            modelMap[modelName].categoryScores[category].count++;
-            modelMap[modelName].categoryScores[category].scores.push(qualityScore);
+            if (result.quality_score != null) {
+                const qualityScore = normalizeQualityTo100(result.quality_score);
+                modelMap[modelName].categoryScores[category].total += qualityScore;
+                modelMap[modelName].categoryScores[category].count++;
+                modelMap[modelName].categoryScores[category].scores.push(qualityScore);
+            }
         });
 
         // Calculate averages and tag models

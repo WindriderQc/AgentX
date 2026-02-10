@@ -25,6 +25,7 @@ const MANUAL_CATEGORIES = {
 };
 
 const BENCHMARK_CATEGORIES = {
+  code:                   { label: 'Coding',                faIcon: 'fa-code',                 color: '#7c9fff' },
   coding:                 { label: 'Coding',                faIcon: 'fa-code',                 color: '#7c9fff' },
   reasoning:              { label: 'Reasoning',             faIcon: 'fa-brain',                color: '#a78bfa' },
   factual:                { label: 'Factual',               faIcon: 'fa-book',                 color: '#34d399' },
@@ -36,7 +37,11 @@ const BENCHMARK_CATEGORIES = {
   translation:            { label: 'Translation',           faIcon: 'fa-language',             color: '#f472b6' },
   'multi-turn-reasoning': { label: 'Multi-Turn Reasoning',  faIcon: 'fa-comments',             color: '#c084fc' },
   'context-retention':    { label: 'Context Retention',     faIcon: 'fa-memory',               color: '#fb923c' },
-  'edge-cases':           { label: 'Edge Cases',            faIcon: 'fa-exclamation-triangle', color: '#a3e635' }
+  'edge-cases':           { label: 'Edge Cases',            faIcon: 'fa-exclamation-triangle', color: '#a3e635' },
+  refactoring:            { label: 'Refactoring',           faIcon: 'fa-recycle',              color: '#38bdf8' },
+  debugging:              { label: 'Debugging',             faIcon: 'fa-bug',                  color: '#ef4444' },
+  explanation:            { label: 'Explanation',           faIcon: 'fa-chalkboard-teacher',   color: '#818cf8' },
+  dialogue:               { label: 'Dialogue',              faIcon: 'fa-comment-dots',         color: '#2dd4bf' }
 };
 
 /**
@@ -48,18 +53,23 @@ const BENCHMARK_CATEGORIES = {
  * Quality assurance (10%): Robustness and edge case handling
  */
 const GENERALIST_CATEGORY_WEIGHTS = {
-  'coding': 0.15,
-  'reasoning': 0.15,
-  'factual': 0.10,
-  'creative': 0.10,
-  'instruction-following': 0.10,
+  'coding': 0.12,
+  'reasoning': 0.13,
+  'factual': 0.08,
+  'creative': 0.08,
+  'instruction-following': 0.08,
   'math': 0.08,
   'summarization': 0.07,
   'multi-turn-reasoning': 0.07,
   'context-retention': 0.05,
   'translation': 0.03,
   'edge-cases': 0.05,
-  'general': 0.05
+  'general': 0.05,
+  // Deep evaluation categories
+  'refactoring': 0.03,
+  'debugging': 0.03,
+  'explanation': 0.03,
+  'dialogue': 0.02
 };
 
 /**

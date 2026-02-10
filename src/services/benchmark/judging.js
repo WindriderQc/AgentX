@@ -10,6 +10,7 @@ const BenchmarkResult = require('../../../models/BenchmarkResult');
 const BenchmarkBatch = require('../../../models/BenchmarkBatch');
 const { scoreResponse, calculateCompositeScore, JUDGE_CONFIG } = require('../qualityScorer');
 const { classifyBenchmarkError } = require('./errorClassifier');
+const BenchmarkPrompt = require('../../../models/BenchmarkPrompt');
 const ConcurrencyQueue = require('./ConcurrencyQueue');
 
 // Track active judging jobs (batchId -> { queue, stopped })
@@ -158,6 +159,15 @@ async function judgeResult(resultId, judgeConfig = {}) {
         throw new Error('No response to judge');
     }
 
+    // Look up original prompt for scoring_dimensions and reference_answer
+    // These fields live on BenchmarkPrompt, not BenchmarkResult
+    let originalPrompt = null;
+    if (result.prompt_name) {
+        originalPrompt = await BenchmarkPrompt.findOne({ name: result.prompt_name })
+            .select('scoring_dimensions reference_answer')
+            .lean();
+    }
+
     const promptData = {
         prompt: result.prompt,
         name: result.prompt_name,
@@ -165,7 +175,9 @@ async function judgeResult(resultId, judgeConfig = {}) {
         category: result.prompt_category,
         expected_answer: result.expected_answer,
         scoring_type: result.scoring_type,
-        deterministic_scoring: result.deterministic_scoring
+        deterministic_scoring: result.deterministic_scoring,
+        scoring_dimensions: originalPrompt?.scoring_dimensions || undefined,
+        reference_answer: originalPrompt?.reference_answer || undefined
     };
 
     const mergedConfig = {

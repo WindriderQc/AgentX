@@ -269,13 +269,16 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
         levelStatsByKey.get(key)[String(level)] = Number(item.count) || 0;
     }
 
+    // Helper to format composite score (0-100) to display scale (0-10)
+    const fmtScore = (s) => (s !== null && s !== undefined && !isNaN(s)) ? (s / 10).toFixed(1) : null;
+
     // Format and sort model stats
     const successByKey = new Map();
     let sortedStats = modelStats.map(m => {
         const hasQuality = m.avg_quality != null && !isNaN(m.avg_quality);
 
         // Raw quality (0-10 scale) for display
-        const rawQuality = m.avg_quality || 0;
+        const rawQuality = m.avg_quality ?? 0;
 
         const avgLatency = Number(m.avg_latency) || 0;
         const avgTokens = parseFloat(m.avg_tokens_per_sec) || 0;
@@ -316,9 +319,6 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
         const successTests = m.count || 0;
 
         successByKey.set(key, true);
-
-        // Helper to format score 0-10
-        const fmtScore = (s) => (s !== null && s !== undefined && !isNaN(s)) ? (s / 10).toFixed(1) : null;
 
         return {
             model: m._id.model,
@@ -370,9 +370,9 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
             avg_tokens_per_sec: '0',
             avg_quality: null,
             avg_composite: null,
-            interactive_score: 0,
-            reasoning_score: 0,
-            coding_score: 0,
+            interactive_score: fmtScore(0),
+            reasoning_score: fmtScore(0),
+            coding_score: fmtScore(0),
             quality_tests: 0,
             level_stats: {},
             tests: 0,
@@ -439,21 +439,21 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
         case 'interactive':
             sortedStats.sort((a, b) => {
                 if (a.failure_only !== b.failure_only) return a.failure_only ? 1 : -1;
-                const diff = (b.interactive_score || 0) - (a.interactive_score || 0);
+                const diff = (Number(b.interactive_score) || 0) - (Number(a.interactive_score) || 0);
                 return diff !== 0 ? diff : a.model.localeCompare(b.model); // Stable tie-breaker
             });
             break;
         case 'reasoning':
             sortedStats.sort((a, b) => {
                 if (a.failure_only !== b.failure_only) return a.failure_only ? 1 : -1;
-                const diff = (b.reasoning_score || 0) - (a.reasoning_score || 0);
+                const diff = (Number(b.reasoning_score) || 0) - (Number(a.reasoning_score) || 0);
                 return diff !== 0 ? diff : a.model.localeCompare(b.model); // Stable tie-breaker
             });
             break;
         case 'coding':
             sortedStats.sort((a, b) => {
                 if (a.failure_only !== b.failure_only) return a.failure_only ? 1 : -1;
-                const diff = (b.coding_score || 0) - (a.coding_score || 0);
+                const diff = (Number(b.coding_score) || 0) - (Number(a.coding_score) || 0);
                 return diff !== 0 ? diff : a.model.localeCompare(b.model); // Stable tie-breaker
             });
             break;

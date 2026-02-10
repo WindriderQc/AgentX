@@ -418,13 +418,13 @@ function renderTableRow(result) {
         html += `<td>${renderScore(result.quality_score)}</td>`;
     }
     if (visibleColumns.has('composite_score')) {
-        html += `<td>${renderScore(result.composite_score)}</td>`;
+        html += `<td>${renderScore(result.composite_score, '0-100')}</td>`;
     }
     if (visibleColumns.has('latency')) {
         html += `<td>${result.latency ? result.latency.toFixed(0) : 'N/A'}</td>`;
     }
     if (visibleColumns.has('tokens')) {
-        html += `<td>${result.tokens || 'N/A'}</td>`;
+        html += `<td>${result.tokens != null ? result.tokens : 'N/A'}</td>`;
     }
     if (visibleColumns.has('tokens_per_sec')) {
         html += `<td>${result.tokens_per_sec ? parseFloat(result.tokens_per_sec).toFixed(1) : 'N/A'}</td>`;
@@ -481,11 +481,11 @@ function renderExpandedContent(result) {
                 <h4>Scoring Details</h4>
                 <div class="expanded-field">
                     <label>Quality Score</label>
-                    <div class="value">${result.quality_score || 'N/A'}</div>
+                    <div class="value">${result.quality_score != null ? result.quality_score.toFixed(1) : 'N/A'}</div>
                 </div>
                 <div class="expanded-field">
                     <label>Composite Score</label>
-                    <div class="value">${result.composite_score || 'N/A'}</div>
+                    <div class="value">${result.composite_score != null ? result.composite_score.toFixed(1) : 'N/A'}</div>
                 </div>
                 <div class="expanded-field">
                     <label>Scoring Method</label>
@@ -520,13 +520,18 @@ function renderExpandedContent(result) {
 }
 
 // Render score with color coding
-function renderScore(score) {
+// scale: '0-10' (quality_score) or '0-100' (composite_score)
+function renderScore(score, scale = '0-10') {
     if (score === null || score === undefined) return 'N/A';
 
     let className = 'score-low';
-    // Adjusted thresholds based on actual 0-10 scale
-    if (score >= 8) className = 'score-high';      // Top tier (80%+)
-    else if (score >= 6) className = 'score-medium'; // Mid tier (60%+)
+    if (scale === '0-100') {
+        if (score >= 80) className = 'score-high';
+        else if (score >= 60) className = 'score-medium';
+    } else {
+        if (score >= 8) className = 'score-high';
+        else if (score >= 6) className = 'score-medium';
+    }
 
     return `<span class="score-display ${className}">${score.toFixed(1)}</span>`;
 }
@@ -600,9 +605,9 @@ function sortResults(results) {
             bVal = b.hardware_snapshot?.quantization;
         }
 
-        // Handle null values
-        if (aVal === null || aVal === undefined) return 1 * multiplier;
-        if (bVal === null || bVal === undefined) return -1 * multiplier;
+        // Handle null values - always sort to bottom regardless of direction
+        if (aVal === null || aVal === undefined) return 1;
+        if (bVal === null || bVal === undefined) return -1;
 
         // Compare
         if (typeof aVal === 'string') {
@@ -666,9 +671,9 @@ function exportCSV(data) {
         headers.join(','),
         ...data.map(row => headers.map(header => {
             let value;
-            if (header === 'backend') value = row.hardware_snapshot?.backend || '';
-            else if (header === 'quantization') value = row.hardware_snapshot?.quantization || '';
-            else value = row[header] || '';
+            if (header === 'backend') value = row.hardware_snapshot?.backend ?? '';
+            else if (header === 'quantization') value = row.hardware_snapshot?.quantization ?? '';
+            else value = row[header] ?? '';
 
             // Escape commas and quotes
             if (typeof value === 'string' && (value.includes(',') || value.includes('"'))) {
@@ -776,7 +781,7 @@ function renderComparisonCard(result) {
             </div>
             <div class="comparison-field">
                 <label>Composite Score</label>
-                <div class="value">${renderScore(result.composite_score)}</div>
+                <div class="value">${renderScore(result.composite_score, '0-100')}</div>
             </div>
             <div class="comparison-field">
                 <label>Latency</label>
@@ -2180,7 +2185,7 @@ async function rejudgeResult(resultId) {
         await openTestInspector(resultId);
 
         // Show success message
-        alert(`Judging complete! Quality Score: ${data.data.quality_score?.toFixed(1) || 'N/A'}`);
+        alert(`Judging complete! Quality Score: ${data.data.quality_score != null ? data.data.quality_score.toFixed(1) : 'N/A'}`);
 
     } catch (error) {
         console.error('Rejudge failed:', error);

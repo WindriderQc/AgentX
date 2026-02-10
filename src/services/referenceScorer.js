@@ -281,8 +281,8 @@ async function score(response, prompt, judgeConfig) {
     const similarity = await checkOverallSimilarity(response, reference, judgeConfig);
 
     // Calculate final score
-    // 60% similarity rating, 30% coverage, -20% if contradictions
-    let finalScore = similarity.score * 0.6 + (coveragePercent / 10) * 0.3;
+    // 70% similarity rating, 30% coverage, penalty if contradictions
+    let finalScore = similarity.score * 0.7 + (coveragePercent / 10) * 0.3;
     if (contradictions.hasContradictions) {
         finalScore = Math.max(0, finalScore - 2);
     }

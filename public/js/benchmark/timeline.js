@@ -464,7 +464,7 @@ export async function loadRecentTestsTimeline() {
         const hasNewResults = results.some(r => !lastTimelineResultIds.has(r._id));
 
         // Create a hash of the result data to detect updates (not just new results)
-        const resultHash = results.map(r => `${r._id}-${r.success}-${r.quality_score || 'null'}`).join('|');
+        const resultHash = results.map(r => `${r._id}-${r.success}-${r.quality_score ?? 'null'}`).join('|');
         const timelineHash = batchTimeline
             .map(e => `${e.event}-${e.model || ''}-${e.time_since_start_ms || 0}-${e.duration_ms || 0}-${e.success}`)
             .join('|');
@@ -499,8 +499,8 @@ export async function loadRecentTestsTimeline() {
             const validTps = sorted
                 .map(r => parseFloat(r.tokens_per_sec))
                 .filter(v => !isNaN(v) && v > 0);
-            const validQuality = sorted.filter(r => r.quality_score).map(r => r.quality_score);
-            const validJudge = sorted.filter(r => r.scoring_time_ms).map(r => r.scoring_time_ms);
+            const validQuality = sorted.filter(r => r.quality_score != null).map(r => r.quality_score);
+            const validJudge = sorted.filter(r => r.scoring_time_ms != null).map(r => r.scoring_time_ms);
             const successCount = sorted.filter(r => r.success).length;
 
             globalStats.avgLatency = validLatencies.length ? validLatencies.reduce((a,b) => a+b, 0) / validLatencies.length : 0;
@@ -1077,7 +1077,7 @@ export async function loadRecentTestsTimeline() {
                 const modelFailCount = Math.max(0, failCount - infraFailCount);
                 const successRate = (successCount / modelResults.length) * 100;
                 const latencies = modelResults.filter(r => r.latency).map(r => r.latency);
-                const qualities = modelResults.filter(r => r.quality_score).map(r => r.quality_score);
+                const qualities = modelResults.filter(r => r.quality_score != null).map(r => r.quality_score);
                 const tps = modelResults
                     .map(r => parseFloat(r.tokens_per_sec))
                     .filter(v => !isNaN(v) && v > 0);

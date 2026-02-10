@@ -225,7 +225,8 @@ async function getCategoryScoresByModel(matchQuery = { success: true }) {
 
     for (const stat of categoryStats) {
         const key = `${stat._id.model}@@${stat._id.host}`;
-        const category = stat._id.category;
+        // Normalize 'code' → 'coding' to match GENERALIST_CATEGORY_WEIGHTS key
+        const category = stat._id.category === 'code' ? 'coding' : stat._id.category;
 
         if (!modelCategoryMap.has(key)) {
             modelCategoryMap.set(key, {});
@@ -244,7 +245,7 @@ async function getCategoryScoresByModel(matchQuery = { success: true }) {
     // Mark infra-attempted categories as attempted to avoid coverage penalty
     for (const att of infraAttempts) {
         const key = `${att._id.model}@@${att._id.host}`;
-        const category = att._id.category;
+        const category = att._id.category === 'code' ? 'coding' : att._id.category;
         if (!category) continue;
         if (!modelCategoryMap.has(key)) {
             modelCategoryMap.set(key, {});
