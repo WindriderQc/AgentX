@@ -30,7 +30,7 @@ You are an AI agent running on host 192.168.2.33 (Linux) tasked with validating 
 ├── server.js                    # Main server
 ├── routes/                      # API endpoints
 ├── models/                      # MongoDB models
-└── docs/SBQC-Stack-Final/       # Complete documentation
+└── docs/architecture/SBQC-Stack-Final/       # Complete documentation
     ├── 00-OVERVIEW.md           # System architecture
     ├── 07-AGENTX-API-REFERENCE.md  # All 40+ endpoints
     ├── 05-DEPLOYMENT.md         # Configuration guide
@@ -44,7 +44,7 @@ You are an AI agent running on host 192.168.2.33 (Linux) tasked with validating 
 
 ### Documentation Reference
 
-All documentation is in `/home/yb/codes/AgentX/docs/SBQC-Stack-Final/`:
+All documentation is in `/home/yb/codes/AgentX/docs/architecture/SBQC-Stack-Final/`:
 
 1. **00-OVERVIEW.md** - System architecture, component overview
 2. **01-ARCHITECTURE.md** - Design principles, diagrams
@@ -218,7 +218,7 @@ fi
 
 ### Phase 3: API Endpoint Testing
 
-**Reference:** `/home/yb/codes/AgentX/docs/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md`
+**Reference:** `/home/yb/codes/AgentX/docs/architecture/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md`
 
 **Test public endpoints (no auth):**
 
@@ -794,8 +794,8 @@ cat VALIDATION-REPORT-*.md
 ---
 
 **Document Reference:**  
-- Full validation plan: `/home/yb/codes/AgentX/docs/SBQC-Stack-Final/08-VALIDATION-PLAN.md`
-- API reference: `/home/yb/codes/AgentX/docs/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md`
-- System overview: `/home/yb/codes/AgentX/docs/SBQC-Stack-Final/00-OVERVIEW.md`
+- Full validation plan: `/home/yb/codes/AgentX/docs/architecture/SBQC-Stack-Final/08-VALIDATION-PLAN.md`
+- API reference: `/home/yb/codes/AgentX/docs/architecture/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md`
+- System overview: `/home/yb/codes/AgentX/docs/architecture/SBQC-Stack-Final/00-OVERVIEW.md`
 
 **Ready to execute!** 🚀

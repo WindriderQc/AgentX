@@ -2,7 +2,7 @@
 
 **Complete documentation hub for the AgentX SBQC Stack**
 
-Last Updated: 2026-01-22
+Last Updated: 2026-02-09
 
 ---
 
@@ -69,7 +69,7 @@ Last Updated: 2026-01-22
 
 ### Planning & Status
 - **[ROADMAP.md](../ROADMAP.md)** - All 8 tracks complete, production-ready status
-- **[CONTRIBUTING.md](../CONTRIBUTING.md)** - Contribution guidelines and workflow
+- **[AGENTS.md](../AGENTS.md)** - Contribution guidelines and workflow
 
 ---
 

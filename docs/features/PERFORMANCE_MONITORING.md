@@ -1088,7 +1088,7 @@ npm run test:e2e:dashboard
 
 - [Artillery Documentation](https://www.artillery.io/docs)
 - [Chart.js Documentation](https://www.chartjs.org/docs)
-- [AgentX API Reference](/docs/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md)
+- [AgentX API Reference](/docs/architecture/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md)
 - [MongoDB Performance Best Practices](https://www.mongodb.com/docs/manual/administration/analyzing-mongodb-performance/)
 
 ---

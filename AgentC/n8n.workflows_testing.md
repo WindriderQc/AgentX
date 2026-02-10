@@ -24,7 +24,7 @@
 | **N1.1b.json** | Duplicate of N2.1 - deleted |
 | **N1.2.json** | DataAPI never pushes events to n8n |
 
-Reference architecture: `docs/SBQC-Stack-Final/`
+Reference architecture: `docs/architecture/SBQC-Stack-Final/`
 
 ---
 

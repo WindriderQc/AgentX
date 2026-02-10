@@ -21,7 +21,7 @@
 - New tests added: __ unit, __ integration
 
 ## Documentation
-- [ ] API reference updated (`docs/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md`)
+- [ ] API reference updated (`docs/architecture/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md`)
 - [ ] CLAUDE.md updated (if architectural changes)
 - [ ] Changelog entry added (`CHANGELOG.md`)
 - [ ] Code comments added for complex logic

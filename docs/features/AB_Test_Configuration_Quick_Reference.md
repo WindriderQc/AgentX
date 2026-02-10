@@ -389,7 +389,7 @@ await api.configureABTest('agent_prompt', [
 
 - **Full Implementation Report**: `/docs/Phase2.3_AB_Test_Configuration_UI.md`
 - **Component Source**: `/public/js/components/ABTestConfigPanel.js`
-- **API Documentation**: `/docs/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md`
+- **API Documentation**: `/docs/architecture/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md`
 
 ### Getting Help
 

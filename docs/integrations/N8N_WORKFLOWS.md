@@ -33,6 +33,50 @@ AgentX integrates with n8n for automated document ingestion and prompt optimizat
 - **Accepts:** JSON with `text` or `url` plus optional `title`, `tags`, `path`
 - **Flow:** Fetch/extract → Hash → POST `/api/rag/ingest` → Respond to webhook
 
+### N2.3: NAS RAG Document Ingestion
+
+- **File:** `AgentC/N2.3.json`
+- **Trigger:** Weekly (Sun 3AM) + Manual webhook (`POST /webhook/sbqc-n2-3-rag-ingest`)
+- **Scope:** `/mnt/datalake/RAG` only — NAS-hosted documents
+- **Limitation:** Only files modified in last 7 days, max 100 per pattern
+- **Flow:** Find recent files → Read content (50KB max) → POST `/api/rag/ingest` → Log to DataAPI
+
+### N2.4: Codebase Markdown RAG Update
+
+- **File:** `AgentC/N2.4-codebase-md-rag-update.json`
+- **Trigger:** Weekly (Mon 2AM) + Manual webhook (`POST /webhook/sbqc-n2-4-codebase-rag`)
+- **Scope:** Entire AgentX codebase — all `.md` files (234+ files)
+- **No limits:** No date filter, no file count cap
+- **Flow:** Archive all `.md` files → Find all `.md` → Auto-tag by path → POST `/api/rag/ingest` → Log to DataAPI
+- **Source tag:** `agentx-complete` (vs N2.3's `nas-docs`)
+
+**N2.3 vs N2.4 coverage:**
+
+| Aspect | N2.3 (NAS) | N2.4 (Codebase) |
+|--------|-----------|-----------------|
+| Target | `/mnt/datalake/RAG` | `/home/yb/codes/AgentX` |
+| File types | `.md`, `.txt`, `.pdf` | `.md` only |
+| Date filter | Last 7 days | None |
+| File limit | 100 per pattern | None |
+| Schedule | Sun 3AM | Mon 2AM |
+| Source | `nas-docs` | `agentx-complete` |
+
+### CLI Scripts (Manual/Quick)
+
+For use outside of n8n:
+
+```bash
+# Archive all markdown files (preserves folder hierarchy)
+./scripts/archive-md-files.sh                     # Human-readable output
+./scripts/archive-md-files.sh --json              # JSON output (for automation)
+
+# Ingest docs into RAG
+node scripts/ingest-docs.js                       # Default: docs/ folders only
+node scripts/ingest-docs.js --full                # Full codebase (all .md files)
+node scripts/ingest-docs.js --full --dry-run      # Preview what would be ingested
+node scripts/ingest-docs.js --full --limit=10     # Test with limited files
+```
+
 ---
 
 ## Prompt Improvement Workflows (V4)
@@ -90,6 +134,16 @@ curl -H "x-api-key: ${AGENTX_API_KEY}" http://localhost:3080/api/rag/ingest
 | `/api/analytics/feedback` | GET | Prompt performance metrics |
 | `/api/dataset/conversations` | GET | Conversation export |
 | `/api/prompt-configs` | POST | Create new prompt versions |
+| `/api/rag/manifests` | POST | Store folder scan manifest |
+| `/api/rag/manifests/latest` | GET | Get latest manifest |
+| `/api/rag/deletion-preview` | GET | Find orphaned RAG documents |
+| `/api/rag/documents` | GET | List all RAG documents |
+| `/api/rag/metrics` | GET | RAG system health metrics |
+| `/api/rag/manifests` | POST | Store folder scan manifest |
+| `/api/rag/manifests/latest` | GET | Get latest manifest |
+| `/api/rag/deletion-preview` | GET | Find orphaned RAG documents |
+| `/api/rag/documents` | GET | List all RAG documents |
+| `/api/rag/metrics` | GET | RAG system health metrics |
 
 ---
 

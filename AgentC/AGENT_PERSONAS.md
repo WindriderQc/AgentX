@@ -639,8 +639,8 @@ curl "http://localhost:3080/api/alerts/statistics?from=2026-01-01T00:00:00Z"
 
 ## References
 
-- **Workflow Specs:** [../docs/SBQC-Stack-Final/04-N8N-WORKFLOWS.md](../docs/SBQC-Stack-Final/04-N8N-WORKFLOWS.md)
-- **API Reference:** [../docs/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md](../docs/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md)
+- **Workflow Specs:** [../docs/architecture/SBQC-Stack-Final/04-N8N-WORKFLOWS.md](../docs/architecture/SBQC-Stack-Final/04-N8N-WORKFLOWS.md)
+- **API Reference:** [../docs/architecture/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md](../docs/architecture/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md)
 - **Metrics API:** [../routes/metrics.js](../routes/metrics.js)
 - **Alerts API:** [../routes/alerts.js](../routes/alerts.js)
 - **Alert Rules:** [../config/alert-rules.yaml](../config/alert-rules.yaml)

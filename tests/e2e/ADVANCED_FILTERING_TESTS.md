@@ -564,7 +564,7 @@ Tests share the same database. While cleanup is performed, there's a small risk 
 
 - [Playwright Documentation](https://playwright.dev/)
 - [AgentX Prompt Management](/public/prompts.html)
-- [Prompts API Documentation](/docs/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md)
+- [Prompts API Documentation](/docs/architecture/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md)
 - [CLAUDE.md Testing Guide](/CLAUDE.md#testing)
 
 ## Contributing

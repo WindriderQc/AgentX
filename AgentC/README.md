@@ -317,13 +317,13 @@ fi
 
 ### CI/CD Integration
 
-See `../docs/SBQC-Stack-Final/04-N8N-WORKFLOWS.md` for GitHub Actions example.
+See `../docs/architecture/SBQC-Stack-Final/04-N8N-WORKFLOWS.md` for GitHub Actions example.
 
 ---
 
 ## Design Principles
 
-From [04-N8N-WORKFLOWS.md](../docs/SBQC-Stack-Final/04-N8N-WORKFLOWS.md):
+From [04-N8N-WORKFLOWS.md](../docs/architecture/SBQC-Stack-Final/04-N8N-WORKFLOWS.md):
 
 1. **n8n = Orchestration only** (no AI reasoning)
 2. **AgentX = All AI logic** (reasoning, classification)
@@ -343,19 +343,19 @@ From [04-N8N-WORKFLOWS.md](../docs/SBQC-Stack-Final/04-N8N-WORKFLOWS.md):
 
 - **Agent Persona Pattern:** [AGENT_PERSONAS.md](AGENT_PERSONAS.md) - **START HERE for new workflows**
 - **Workflow Template:** [WORKFLOW_TEMPLATE.json](WORKFLOW_TEMPLATE.json) - Starter template
-- **Workflow Specs:** [04-N8N-WORKFLOWS.md](../docs/SBQC-Stack-Final/04-N8N-WORKFLOWS.md)
-- **API Setup:** [N8N-API-SETUP.md](../docs/SBQC-Stack-Final/N8N-API-SETUP.md)
-- **Deployment Guide:** [05-DEPLOYMENT.md](../docs/SBQC-Stack-Final/05-DEPLOYMENT.md)
-- **System Architecture:** [01-ARCHITECTURE.md](../docs/SBQC-Stack-Final/01-ARCHITECTURE.md)
+- **Workflow Specs:** [04-N8N-WORKFLOWS.md](../docs/architecture/SBQC-Stack-Final/04-N8N-WORKFLOWS.md)
+- **API Setup:** [N8N-API-SETUP.md](../docs/architecture/SBQC-Stack-Final/N8N-API-SETUP.md)
+- **Deployment Guide:** [05-DEPLOYMENT.md](../docs/architecture/SBQC-Stack-Final/05-DEPLOYMENT.md)
+- **System Architecture:** [01-ARCHITECTURE.md](../docs/architecture/SBQC-Stack-Final/01-ARCHITECTURE.md)
 
 ---
 
 ## Support
 
 **Issues?** Check:
-1. [N8N-API-SETUP.md](../docs/SBQC-Stack-Final/N8N-API-SETUP.md) - API configuration
-2. [04-N8N-WORKFLOWS.md](../docs/SBQC-Stack-Final/04-N8N-WORKFLOWS.md) - Troubleshooting section
+1. [N8N-API-SETUP.md](../docs/architecture/SBQC-Stack-Final/N8N-API-SETUP.md) - API configuration
+2. [04-N8N-WORKFLOWS.md](../docs/architecture/SBQC-Stack-Final/04-N8N-WORKFLOWS.md) - Troubleshooting section
 3. n8n logs: `ssh ubundocker && docker logs n8n`
-4. Validation report: [VALIDATION-REPORT-2025-12-31-1622.md](../docs/SBQC-Stack-Final/VALIDATION-REPORT-2025-12-31-1622.md)
+4. Validation report: [VALIDATION-REPORT-2025-12-31-1622.md](../docs/architecture/SBQC-Stack-Final/VALIDATION-REPORT-2025-12-31-1622.md)
 
 **n8n Documentation:** https://docs.n8n.io/

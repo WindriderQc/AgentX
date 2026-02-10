@@ -317,7 +317,7 @@ jq empty workflow.json
 - **This directory:** `/home/yb/codes/AgentX/AgentC/templates/`
 - **Production workflows:** `/home/yb/codes/AgentX/AgentC/N*.json`
 - **SBQC workflow guide:** `/home/yb/codes/AgentX/AgentC/WORKFLOW-GUIDE.md`
-- **Deployment guide:** `/home/yb/codes/AgentX/docs/SBQC-Stack-Final/05-DEPLOYMENT.md`
+- **Deployment guide:** `/home/yb/codes/AgentX/docs/architecture/SBQC-Stack-Final/05-DEPLOYMENT.md`
 
 ### Tools
 - **Deployment script:** `/home/yb/codes/AgentX/scripts/deploy-n8n-workflows.sh`

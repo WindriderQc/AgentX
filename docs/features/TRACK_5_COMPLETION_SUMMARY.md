@@ -71,8 +71,8 @@ Track 5 completes the Multi-Agent Enhancement Plan by delivering a comprehensive
 - `/package.json` - Added 3 npm scripts
 - `/CLAUDE.md` - Updated Track 5 status
 - `/CHANGELOG.md` - Added v1.4.0 release notes
-- `/docs/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md` - Added 8 endpoint docs
-- `/docs/SBQC-Stack-Final/00-OVERVIEW.md` - Updated document index
+- `/docs/architecture/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md` - Added 8 endpoint docs
+- `/docs/architecture/SBQC-Stack-Final/00-OVERVIEW.md` - Updated document index
 
 ---
 
@@ -840,7 +840,7 @@ pipeline {
 
 ### API Reference
 
-**Location:** `/docs/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md`
+**Location:** `/docs/architecture/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md`
 
 **Added Section:** "Performance Monitoring" (8 endpoint docs)
 
@@ -1005,7 +1005,7 @@ With Track 5 completion, **AgentX is now a complete, production-grade AI orchest
 ### Documentation Links
 
 - **Performance Monitoring Guide:** `/docs/features/PERFORMANCE_MONITORING.md`
-- **API Reference:** `/docs/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md`
+- **API Reference:** `/docs/architecture/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md`
 - **CLAUDE.md:** `/CLAUDE.md` (comprehensive project guide)
 - **CHANGELOG:** `/CHANGELOG.md` (v1.4.0 release notes)
 

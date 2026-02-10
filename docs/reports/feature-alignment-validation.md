@@ -41,7 +41,7 @@ Validated the Feature Alignment Scanner output (217 features, 10 orphan endpoint
 
 | Endpoint | Method | Purpose | Documentation |
 |----------|--------|---------|---------------|
-| `/api/models/routing` | GET | Model routing inspection | `docs/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md:414` |
+| `/api/models/routing` | GET | Model routing inspection | `docs/architecture/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md:414` |
 | `/api/models/classify` | POST | Query classification preview | Documented in API ref |
 | `/api/models/health` | GET | Model health check API | For monitoring/n8n |
 

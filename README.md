@@ -3,340 +3,161 @@
 [![AgentX CI Pipeline](https://github.com/WindriderQc/AgentX/actions/workflows/ci.yml/badge.svg)](https://github.com/WindriderQc/AgentX/actions/workflows/ci.yml)
 [![AgentX CD Pipeline](https://github.com/WindriderQc/AgentX/actions/workflows/cd.yml/badge.svg)](https://github.com/WindriderQc/AgentX/actions/workflows/cd.yml)
 
-**Production-ready local AI assistant with RAG, conversation memory, and continuous improvement capabilities.**
+**Local-first AI platform with RAG, conversation memory, multi-model benchmarking, and continuous improvement — powered by Ollama.**
+
+AgentX turns your local Ollama instance into a full AI operations platform: chat with knowledge augmentation (RAG), benchmark models head-to-head, manage custom models, monitor performance, and automate workflows via n8n.
 
 ---
 
-## ✅ Completed Development Tracks (Phase 1)
+## Key Features
 
-The following development tracks have been successfully completed, bringing the SBQC Stack to feature maturity:
-
-1.  **Alerts:** Real-time system monitoring and notification system.
-2.  **Analytics:** Comprehensive dashboard for usage, performance, and quality metrics.
-3.  **Custom Models:** Advanced model configuration and tuning UI.
-4.  **Self-Healing:** Automated recovery workflows for critical failures.
-5.  **Testing:** Robust CI/CD pipeline with unit and integration tests.
-6.  **Backup:** Automated backup and restore strategies for MongoDB and Qdrant.
-
----
-
-## 📖 Documentation Hub
-
-**Canonical index:** `docs/INDEX.md` (roadmap + progression live under `docs/planning/`).
-
-**For complete, up-to-date documentation, see the SBQC Stack documentation:**
-
-### 🎯 Start Here
-- **[00-OVERVIEW.md](docs/SBQC-Stack-Final/00-OVERVIEW.md)** - System architecture overview & getting started guide
-- **[00-AUDIT-SUMMARY.md](docs/SBQC-Stack-Final/00-AUDIT-SUMMARY.md)** - Latest documentation status & changes
-- **[07-AGENTX-API-REFERENCE.md](docs/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md)** - Complete API documentation (40+ endpoints)
-
-### 🔧 Configuration & Deployment
-- **[05-DEPLOYMENT.md](docs/SBQC-Stack-Final/05-DEPLOYMENT.md)** - Environment variables & deployment guide
-- **[01-ARCHITECTURE.md](docs/SBQC-Stack-Final/01-ARCHITECTURE.md)** - System design & architecture decisions
-
-### 🔨 Development & Testing
-- **[03-AGENTX-TASKS.md](docs/SBQC-Stack-Final/03-AGENTX-TASKS.md)** - Validation tasks & feature roadmap
-- **[04-N8N-WORKFLOWS.md](docs/SBQC-Stack-Final/04-N8N-WORKFLOWS.md)** - n8n workflow specifications
-
-### 📚 Additional Resources
-- **[Quick Start Guide](docs/onboarding/quickstart.md)** - Installation & setup (original guide)
-- **[Backend Overview](docs/architecture/backend-overview.md)** - Implementation details
-- **[API Contracts](docs/api/contracts/)** - Version-specific API contracts
+- **Chat Interface** — Model selection, parameter tuning, conversation history, user profiles
+- **RAG (Retrieval-Augmented Generation)** — Semantic search over your documents with citation tracking, contextual compression, and hybrid search
+- **Multi-Model Benchmarking** — Run batches, judge responses, compare models with quality scoring
+- **Custom Model Management** — Register, deploy, and A/B test fine-tuned models via Ollama
+- **Analytics & Cost Tracking** — Usage patterns, token costs, performance metrics, trend analysis
+- **Self-Healing** — Automated failover, prompt rollback, throttling, and health monitoring
+- **Multi-Tenancy** — Workspace isolation with RBAC (Owner/Admin/Member/Viewer)
+- **n8n Integration** — Automated document ingestion, prompt optimization, and orchestration workflows
+- **Backup & Recovery** — MongoDB dumps and Qdrant snapshots with cron scheduling
 
 ---
 
-## Documentation Map
-
-We have organized the documentation to help you get started quickly and then dive deep into the technical details.
-
-### 🚀 Getting Started (Onboarding)
-*   [**Quick Start Guide**](docs/onboarding/quickstart.md): Installation, setup, and your first test. Start here!
-*   [**V4 Quick Reference**](docs/onboarding/v4-quick-reference.md): Specifics for V4 features.
-
-### 🏗️ Architecture & Technical Details
-*   [**Backend Overview**](docs/architecture/backend-overview.md): High-level architecture and design decisions.
-*   [**Architecture Diagrams**](docs/architecture/diagrams.md): Visual representation of the system and data flows.
-*   [**Database Architecture**](docs/architecture/database.md): Schema and data model details.
-*   [**Specs**](specs/): Detailed architectural specifications (V3 RAG, V4 Analytics).
-
-### 🔌 API Reference
-*   [**API Reference**](docs/api/reference.md): Complete API documentation with examples.
-*   [**Contracts**](docs/api/contracts/): Snapshots of API contracts for specific versions.
-
-### 📜 History & Reports
-*   [**Implementation Reports**](docs/reports/): Summaries of what was implemented in each version.
-*   [**Archive**](docs/archive/): Old plans, reports, and deprecated documentation.
-
-## What’s here
-AgentX is a Node.js application that transforms your local Ollama instance into a powerful AI assistant with advanced features including knowledge augmentation (RAG), persistent conversation memory, user profiles, analytics, and automated improvement loops via n8n integration.
-
----
-
-## 🌟 Key Features
-
-### Core Capabilities
-- **�� Advanced Chat Interface**: Rich UI with model selection, parameter tuning, and conversation history
-- **🧠 Conversation Memory**: MongoDB-backed persistence with session management and feedback tracking
-- **👤 User Profiles**: Personal memory injection into system prompts for context-aware responses
-- **📚 RAG (Retrieval-Augmented Generation)**: Semantic search over your documents for knowledge-grounded answers
-- **📊 Analytics & Metrics**: Track model performance, feedback rates, usage patterns, and cost estimation
-- **🔄 Prompt Versioning**: A/B testing and continuous improvement of system prompts
-- **🔌 n8n Integration**: Automated document ingestion and prompt optimization workflows
-- **🛠️ Custom Models**: Register and tune models with advanced parameters (context size, GPU layers, threads) directly from the UI
-
-### Technical Highlights
-- **Service-Oriented Architecture (SOA):** Decoupled architecture with AgentX (Logic) and DataAPI (Data Services).
-- **Vector Database:** Qdrant for high-performance, persistent vector storage.
-- **Database:** MongoDB for conversation history, user profiles, and analytics.
-- **Integration:** RESTful APIs with comprehensive contracts for n8n and external tools.
-- **Resilience:** Self-healing capabilities and automated health monitoring.
-
----
-
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
-- **Node.js** 18+ 
-- **MongoDB** (local or remote instance)
+
+- **Node.js** 18+
+- **MongoDB** (local or remote)
 - **Ollama** with at least one chat model and `nomic-embed-text` for embeddings
 
-### Installation
+### Install
 
-1. **Clone and install dependencies:**
-   \`\`\`bash
-   git clone https://github.com/WindriderQc/AgentX.git
-   cd AgentX
-   npm install
-   \`\`\`
+```bash
+git clone https://github.com/WindriderQc/AgentX.git
+cd AgentX
+npm install
+```
 
-2. **Configure environment** (create \`.env\` file):
-   \`\`\`bash
-   MONGODB_URI=mongodb://localhost:27017/agentx
-  # Single Ollama host
-  OLLAMA_HOST=http://localhost:11434
+### Configure
 
-  # Optional: multi-host Ollama discovery for the UI (Benchmark page host picker)
-  # OLLAMA_HOST_PRIMARY=http://192.168.2.99:11434
-  # OLLAMA_HOST_2=http://192.168.2.12:11434
-   EMBEDDING_MODEL=nomic-embed-text
-   PORT=3080
-   \`\`\`
+Create a `.env` file:
 
-Notes:
-- The Benchmark page populates its host dropdown via `GET /api/ollama-hosts`.
-- The UI only falls back to `http://localhost:11434` if no hosts are configured on the server.
+```bash
+MONGODB_URI=mongodb://localhost:27017/agentx
+OLLAMA_HOST=http://localhost:11434
 
-### DataAPI tool server (optional, recommended)
+# Optional: multi-host Ollama (for benchmark host picker)
+# OLLAMA_HOST_PRIMARY=http://192.168.2.99:11434
+# OLLAMA_HOST_2=http://192.168.2.12:11434
 
-AgentX can use a companion headless tool server (DataAPI) for file scanning/search/exports. AgentX remains the only UI; browsers never talk to DataAPI directly.
+EMBEDDING_MODEL=nomic-embed-text
+PORT=3080
+```
 
-AgentX integrates with DataAPI via server-side proxy routes under `/api/dataapi/*`.
+### Run
 
-Add to AgentX `.env`:
+```bash
+npm start
+# Open http://localhost:3080
+```
+
+### DataAPI (optional)
+
+AgentX can use a companion headless tool server (DataAPI) for file scanning/search/exports. Add to `.env`:
 
 ```bash
 DATAAPI_BASE_URL=http://127.0.0.1:3003
 DATAAPI_API_KEY=change-me-long-random
 ```
 
-DataAPI must be configured with the matching `DATAAPI_API_KEY` and will require an `x-api-key` header on all tool endpoints under `/api/v1/*`.
-
-3. **Start the server:**
-   \`\`\`bash
-   npm start
-   \`\`\`
-
-4. **Open your browser:**
-   \`\`\`
-   http://localhost:3080
-   \`\`\`
-
-See [Quick Start Guide](docs/onboarding/quickstart.md) for detailed setup instructions.
+See [Quick Start Guide](docs/onboarding/quickstart.md) for detailed setup.
 
 ---
 
-## 📖 Documentation
+## Documentation
 
-### 🚀 Getting Started
-- [**Quick Start Guide**](docs/onboarding/quickstart.md) - Installation and first steps
-- [**Onboarding Hub**](docs/onboarding/README.md) - Complete onboarding resources
-- [**v1.0.0 Release Notes**](docs/reports/REVISED_PLAN_STATUS.md) - What's in this release
+**Start here:** [`docs/INDEX.md`](docs/INDEX.md) — complete documentation hub.
 
-### 🏗️ Architecture
-- [**Backend Overview**](docs/architecture/backend-overview.md) - System architecture
-- [**Database Schema**](docs/architecture/database.md) - MongoDB models
-- [**Architecture Diagrams**](docs/architecture/diagrams.md) - Visual documentation
+| Audience | Start With |
+|----------|-----------|
+| New Users | [Quick Start](docs/onboarding/quickstart.md), [User Manual](docs/user-manual/README.md) |
+| Developers | [AGENTS.md](AGENTS.md), [Architecture](docs/architecture/backend-overview.md), [Testing Patterns](docs/patterns/TESTING_PATTERNS.md) |
+| Operators | [Deployment](docs/operations/DEPLOYMENT.md), [SBQC Stack](docs/architecture/SBQC-Stack-Final/00-OVERVIEW.md) |
+| AI Agents | [CLAUDE.md](CLAUDE.md), [Critical Conventions](docs/patterns/CRITICAL_CONVENTIONS.md) |
 
-### 🔌 API Documentation
-- [**API Reference**](docs/api/reference.md) - Complete endpoint documentation
-- [**V3 RAG Contract**](docs/api/contracts/v3-snapshot.md) - RAG ingestion API
-- [**V4 Analytics Contract**](docs/api/contracts/v4-contract.md) - Analytics API
-
-### 📋 Specifications
-- [**V3 RAG Architecture**](specs/V3_RAG_ARCHITECTURE.md) - RAG system design
-- [**V4 Analytics Architecture**](specs/V4_ANALYTICS_ARCHITECTURE.md) - Analytics and improvement loops
-
-### 🔧 Operations
-- [**n8n Ingestion Workflows**](docs/reports/n8n-ingestion.md) - Document automation
-- [**n8n Prompt Improvement**](docs/reports/n8n-prompt-improvement-v4.md) - Automated optimization
-- [**Implementation Reports**](docs/reports/) - Feature summaries
+Key references:
+- **[ROADMAP.md](ROADMAP.md)** — Project status (all 8 tracks complete)
+- **[API Reference](docs/architecture/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md)** — 40+ endpoints
+- **[Critical Gotchas](docs/operations/CRITICAL_GOTCHAS.md)** — Common pitfalls
 
 ---
 
-## 🎯 Usage Examples
+## Architecture
 
-### Basic Chat
-\`\`\`bash
-curl -X POST http://localhost:3080/api/chat \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "model": "llama3",
-    "message": "Explain quantum computing",
-    "options": {"temperature": 0.7}
-  }'
-\`\`\`
+Service-Oriented Architecture: Routes (validation) → Services (orchestration) → Models (data) → MongoDB/Ollama.
 
-### RAG-Enhanced Chat
-\`\`\`bash
-curl -X POST http://localhost:3080/api/chat \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "model": "llama3",
-    "message": "What does our documentation say about RAG?",
-    "useRag": true,
-    "ragTopK": 5
-  }'
-\`\`\`
-
-### Document Ingestion
-\`\`\`bash
-curl -X POST http://localhost:3080/api/rag/ingest \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "source": "docs",
-    "path": "/guides/getting-started.md",
-    "title": "Getting Started Guide",
-    "text": "Your document content here...",
-    "tags": ["guide", "documentation"]
-  }'
-\`\`\`
-
----
-
-## 🗂️ Project Structure
-
-\`\`\`
+```
 AgentX/
-├── server.js              # Express app entry point
-├── package.json           # Dependencies and scripts
-├── config/
-│   └── db.js             # MongoDB connection
-├── models/               # Mongoose schemas
-│   ├── Conversation.js   # Chat history with feedback
-│   ├── UserProfile.js    # User memory and preferences
-│   └── PromptConfig.js   # Versioned system prompts
-├── routes/               # API endpoints
-│   ├── api.js           # Core chat and profile endpoints
-│   ├── rag.js           # RAG ingestion and search
-│   ├── analytics.js     # Usage and feedback metrics
-│   └── dataset.js       # Conversation export
+├── server.js                # Express entry point
 ├── src/
-│   ├── services/
-│   │   ├── ragStore.js  # Vector store implementation
-│   │   └── embeddings.js # Ollama embedding service
-│   └── utils.js         # Helper functions
-├── public/              # Frontend (HTML/JS/CSS)
-├── docs/                # Documentation
-└── specs/               # Architecture specifications
-\`\`\`
-
----
-
-## 🧪 Testing
-
-Run endpoint validation tests:
-
-\`\`\`bash
-# Test V3 RAG endpoints
-./test-v3-rag.sh
-
-# Test V4 Analytics endpoints
-./test-v4-analytics.sh http://localhost:3080
-\`\`\`
-
----
-
-## 🚀 Deployment Checklist
-
-- [ ] MongoDB instance configured and accessible
-- [ ] Ollama running with required models installed
-- [ ] Environment variables set correctly
-- [ ] Port 3080 accessible (or configured alternative)
-- [ ] Health check passes: \`curl http://localhost:3080/health\`
-- [ ] Models load successfully: \`curl http://localhost:3080/api/ollama/models\`
-
----
-
-## 🛠️ Ops Quick Reference (PM2 ecosystem)
-
-Standard workflow (apply changes + persist for reboot):
-
-```bash
-cd /home/yb/codes/AgentX
-pm2 reload ecosystem.config.js --update-env
-pm2 save
-pm2 status
+│   ├── app.js              # Express app setup
+│   ├── services/ (46)      # Business logic (chatService, ragStore, modelRouter, benchmark, ...)
+│   ├── helpers/            # Pure utilities (response parsing, template cleaning)
+│   └── middleware/         # Auth, workspace, performance tracking
+├── routes/ (42)            # API endpoints (thin HTTP layer)
+├── models/ (43)            # Mongoose schemas
+├── config/                 # DB connection, categories, self-healing rules
+├── public/ (38 pages)      # Frontend (HTML/JS/CSS, Bootstrap, Chart.js)
+├── scripts/                # Seeding, backups, migrations
+├── tests/                  # Jest unit/integration, Playwright E2E, Artillery load
+├── personas/               # Chat persona configurations
+├── docs/                   # Documentation
+└── AgentC/                 # n8n workflow templates
 ```
 
-Logs:
+---
+
+## Testing
 
 ```bash
-pm2 logs agentx --lines 200
-pm2 logs dataapi --lines 200
+npm test                     # Jest tests (unit + integration)
+npm run test:unit            # Unit tests with coverage
+npm run test:integration     # Integration tests
+npm run test:e2e             # E2E via test-all.sh
+npm run test:e2e:playwright  # Playwright browser tests
+npm run test:load            # Artillery load tests
+npm run test:coverage        # Full coverage report
 ```
 
-Boot startup status (systemd):
+---
 
-```bash
-systemctl is-enabled pm2-yb
-systemctl show -p ActiveState,SubState,Result pm2-yb
-```
+## Deployment
 
-## 🔮 Roadmap
+Health check: `curl http://localhost:3080/health`
 
-### v1.1.0 (Planned)
-- Persistent vector database (Qdrant/Chroma migration)
-- API authentication and rate limiting
-- Structured logging and monitoring
-- Docker deployment support
-
-### v1.2.0 (Planned)
-- Hybrid search (semantic + keyword)
-- Multi-agent conversation support
-- Tool use / function calling
-- Enhanced prompt evaluation metrics
+For PM2 production deployment, see [Deployment Guide](docs/operations/DEPLOYMENT.md).
 
 ---
 
-## �� License
+## Contributing
 
-MIT License - See LICENSE file for details
-
----
-
-## 🤝 Contributing
-
-AgentX is part of the GraphysX ecosystem. Contributions are welcome! Please read our contribution guidelines and submit pull requests to the main branch.
+Development workflow, git conventions, testing standards, and PR process are documented in [AGENTS.md](AGENTS.md#contributing-to-agentx).
 
 ---
 
-## 📞 Support
+## License
 
-- **Documentation**: [docs/](docs/)
+MIT License — See LICENSE file for details.
+
+---
+
+## Support
+
+- **Documentation**: [docs/INDEX.md](docs/INDEX.md)
 - **Issues**: [GitHub Issues](https://github.com/WindriderQc/AgentX/issues)
-- **Architecture**: See [docs/architecture/](docs/architecture/)
+- **Architecture**: [docs/architecture/](docs/architecture/)
 
 ---
 
-**Version**: 1.0.0 | **Status**: Production Ready ✅
+**Version**: 1.4.1 | **Status**: Production Ready | All 8 development tracks complete

@@ -751,7 +751,7 @@ Write-Host "  Model used: $($response.modelUsed)" -ForegroundColor Gray
 
 After completing all tests, create a validation report:
 
-**Template:** `docs/SBQC-Stack-Final/VALIDATION-REPORT-[DATE].md`
+**Template:** `docs/architecture/SBQC-Stack-Final/VALIDATION-REPORT-[DATE].md`
 
 ```markdown
 # SBQC Stack Validation Report
@@ -857,7 +857,7 @@ To run the complete validation suite, use this master script:
 
 $ErrorActionPreference = "Continue"
 $timestamp = Get-Date -Format "yyyy-MM-dd-HHmmss"
-$reportFile = "docs/SBQC-Stack-Final/VALIDATION-REPORT-$timestamp.md"
+$reportFile = "docs/architecture/SBQC-Stack-Final/VALIDATION-REPORT-$timestamp.md"
 
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "   SBQC STACK VALIDATION SUITE" -ForegroundColor Cyan

@@ -279,6 +279,6 @@ Auto-refresh (optional) → Repeat every 30s
 ## Support
 
 For issues or questions, refer to:
-- `/docs/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md` - API documentation
+- `/docs/architecture/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md` - API documentation
 - `/specs/V4_ANALYTICS_ARCHITECTURE.md` - Analytics architecture
 - `/CLAUDE.md` - Development guidelines

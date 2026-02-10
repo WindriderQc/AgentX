@@ -1,6 +1,6 @@
 # AgentX User Manual (SBQC Stack)
 
-**Last updated:** 2026-01-03
+**Last updated:** 2026-02-09
 
 **Audience:** operators and admins using the SBQC stack through AgentX.
 
@@ -20,8 +20,8 @@
 
 Canonical documentation hubs:
 - AgentX docs index: [docs/INDEX.md](../INDEX.md)
-- Stack overview (architecture + how pieces fit): [SBQC-Stack-Final/00-OVERVIEW.md](../SBQC-Stack-Final/00-OVERVIEW.md)
-- Troubleshooting hub: [TROUBLESHOOTING_README.md](../TROUBLESHOOTING_README.md)
+- Stack overview (architecture + how pieces fit): [SBQC-Stack-Final/00-OVERVIEW.md](../architecture/SBQC-Stack-Final/00-OVERVIEW.md)
+- Troubleshooting hub: [TROUBLESHOOTING_README.md](../guides/TROUBLESHOOTING_README.md)
 
 ---
 
@@ -109,7 +109,7 @@ AgentX also ships a couple of UI test pages under [public/](../../public/) (e.g.
 #### Check stack health (fast)
 1. Open `http://localhost:3080/dashboard.html` (Operations Center).
 2. Look at the “System Health” strip (AgentX / MongoDB / DataAPI / Ollama / n8n).
-3. If anything is degraded, jump to [TROUBLESHOOTING_QUICK_REF.md](../TROUBLESHOOTING_QUICK_REF.md).
+3. If anything is degraded, jump to [TROUBLESHOOTING.md](../guides/TROUBLESHOOTING.md).
 
 #### Trigger an n8n webhook (from Operations Center)
 1. Open `http://localhost:3080/dashboard.html`.
@@ -306,7 +306,7 @@ Use reports for “what happened” and keep them immutable once published.
 
 See:
 - Reports folder: [reports/](../reports/)
-- Latest validation report: [VALIDATION_REPORT_2026-01-03.md](../VALIDATION_REPORT_2026-01-03.md)
+- Latest validation report: see [reports/](../reports/)
 
 ---
 
@@ -334,19 +334,16 @@ Test backend endpoints:
 
 ### 8.3 Where the “real” deployment docs are
 
-- Stack deployment guide: [SBQC-Stack-Final/05-DEPLOYMENT.md](../SBQC-Stack-Final/05-DEPLOYMENT.md)
-- Runner management: [RUNNER_MANAGEMENT.md](../RUNNER_MANAGEMENT.md)
-- Security hardening: [SECURITY_HARDENING.md](../SECURITY_HARDENING.md)
+- Stack deployment guide: [SBQC-Stack-Final/05-DEPLOYMENT.md](../architecture/SBQC-Stack-Final/05-DEPLOYMENT.md)
+- Runner management: [RUNNER_MANAGEMENT.md](../operations/RUNNER_MANAGEMENT.md)
+- Security hardening: [SECURITY_HARDENING.md](../architecture/SECURITY_HARDENING.md)
 
 ---
 
 ## 9) Troubleshooting
 
-Start here (fast):
-- [TROUBLESHOOTING_QUICK_REF.md](../TROUBLESHOOTING_QUICK_REF.md)
-
-Deep dive playbook:
-- [TROUBLESHOOTING.md](../TROUBLESHOOTING.md)
+Start here:
+- [TROUBLESHOOTING.md](../guides/TROUBLESHOOTING.md)
 
 ### Fast triage checklist
 1. Run health check(s).
@@ -362,8 +359,8 @@ Deep dive playbook:
 ### “Do I need to use DataAPI directly?”
 Usually no. Use AgentX.
 
-### “Where is the canonical roadmap?”
-- [planning/ROADMAP.md](../planning/ROADMAP.md)
+### "Where is the canonical roadmap?"
+- [ROADMAP.md](../../ROADMAP.md)
 
 ---
 

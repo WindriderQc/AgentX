@@ -733,7 +733,7 @@ Deployment is considered successful when:
 **Documentation:**
 - Main docs: `/docs/INDEX.md`
 - User manual: `/docs/user-manual/README.md`
-- API reference: `/docs/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md`
+- API reference: `/docs/architecture/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md`
 - CLAUDE.md: Development reference
 - ROADMAP.md: Project status
 

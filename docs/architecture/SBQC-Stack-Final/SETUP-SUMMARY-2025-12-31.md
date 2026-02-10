@@ -59,7 +59,7 @@ const brutal = $input.all()[1]?.json || {};
 ### 3. Created Comprehensive Documentation ✅
 
 #### New Documents:
-1. **`docs/SBQC-Stack-Final/N8N-API-SETUP.md`**
+1. **`docs/architecture/SBQC-Stack-Final/N8N-API-SETUP.md`**
    - How to enable n8n API
    - Generate API keys
    - Configure environment variables
@@ -72,7 +72,7 @@ const brutal = $input.all()[1]?.json || {};
    - Git hooks examples
 
 #### Updated Documents:
-1. **`docs/SBQC-Stack-Final/04-N8N-WORKFLOWS.md`**
+1. **`docs/architecture/SBQC-Stack-Final/04-N8N-WORKFLOWS.md`**
    - Added complete "Automated Workflow Deployment" section
    - Deployment workflow diagram
    - CI/CD integration examples
@@ -197,14 +197,14 @@ The script uses these endpoints:
 ### New Files ✨
 
 1. `scripts/deploy-n8n-workflows.sh` - Deployment script
-2. `docs/SBQC-Stack-Final/N8N-API-SETUP.md` - API setup guide
+2. `docs/architecture/SBQC-Stack-Final/N8N-API-SETUP.md` - API setup guide
 3. `AgentC/README.md` - Workflow development guide
-4. `docs/SBQC-Stack-Final/SETUP-SUMMARY-2025-12-31.md` - This file
+4. `docs/architecture/SBQC-Stack-Final/SETUP-SUMMARY-2025-12-31.md` - This file
 
 ### Modified Files 📝
 
 1. `AgentC/N3.1.json` - Fixed node reference bug
-2. `docs/SBQC-Stack-Final/04-N8N-WORKFLOWS.md` - Added deployment section
+2. `docs/architecture/SBQC-Stack-Final/04-N8N-WORKFLOWS.md` - Added deployment section
 
 ---
 
