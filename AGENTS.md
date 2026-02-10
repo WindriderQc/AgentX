@@ -212,7 +212,7 @@ Automated remediation system (`/src/services/selfHealingEngine.js` - 1015 lines)
 
 **Integration:** N4.4 Self-Healing Orchestrator (n8n) triggers remediation via webhook, scheduled evaluation every 5 minutes.
 
-**Full documentation:** [docs/SELF_HEALING_QUICK_START.md](docs/SELF_HEALING_QUICK_START.md) and [ROADMAP.md](ROADMAP.md) (Track 4)
+**Full documentation:** [docs/guides/SELF_HEALING_QUICK_START.md](docs/guides/SELF_HEALING_QUICK_START.md) and [ROADMAP.md](ROADMAP.md) (Track 4)
 
 ---
 

@@ -465,7 +465,7 @@ Planned features:
 
 ## Related Documentation
 
-- [Self-Healing Quick Start](./SELF_HEALING_QUICK_START.md)
+- [Self-Healing Quick Start](../guides/SELF_HEALING_QUICK_START.md)
 - [API Routes Implementation](./API_ROUTES_IMPLEMENTATION.md)
 - [Alert Dashboard](./ALERTS_DASHBOARD.md)
 - [SelfHealingEngine Service](../src/services/selfHealingEngine.js)

@@ -109,7 +109,7 @@ if (!process.env.MONGODB_URI) {
 }
 ```
 
-See [Deployment Guide](../SBQC-Stack-Final/05-DEPLOYMENT.md) for complete environment configuration.
+See [Deployment Guide](../architecture/SBQC-Stack-Final/05-DEPLOYMENT.md) for complete environment configuration.
 
 ---
 
@@ -118,7 +118,7 @@ See [Deployment Guide](../SBQC-Stack-Final/05-DEPLOYMENT.md) for complete enviro
 - [Response Handling](../operations/RESPONSE_HANDLING.md) - Response formatting patterns
 - [Testing Patterns](TESTING_PATTERNS.md) - Testing conventions
 - [CONTRIBUTING.md](../../CONTRIBUTING.md) - Development workflow
-- [Deployment Guide](../SBQC-Stack-Final/05-DEPLOYMENT.md) - Environment setup
+- [Deployment Guide](../architecture/SBQC-Stack-Final/05-DEPLOYMENT.md) - Environment setup
 
 ---
 

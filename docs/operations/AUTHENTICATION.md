@@ -71,7 +71,7 @@ curl -H "x-api-key: ${AGENTX_API_KEY}" http://localhost:3080/api/rag/ingest
 ## Related Documentation
 
 - [AUTHENTICATION_IMPLEMENTATION_DETAILS.md](../AUTHENTICATION_IMPLEMENTATION_DETAILS.md) - Full implementation guide
-- [API Reference](../SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md) - Authentication endpoints
+- [API Reference](../architecture/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md) - Authentication endpoints
 - [Multi-Tenancy](../architecture/MULTI_TENANCY.md) - Workspace-level permissions
 
 ---

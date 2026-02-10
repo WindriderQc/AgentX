@@ -80,7 +80,7 @@ The Model Router integrates with the Self-Healing System (Track 4) for automated
 3. Failover state persists for monitoring
 4. Health checks can trigger `resetToPrimary()` when recovered
 
-**Full documentation:** [Self-Healing Quick Start](../SELF_HEALING_QUICK_START.md)
+**Full documentation:** [Self-Healing Quick Start](../guides/SELF_HEALING_QUICK_START.md)
 
 ---
 

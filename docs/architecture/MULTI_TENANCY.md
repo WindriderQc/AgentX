@@ -500,7 +500,7 @@ element.style.display = isAdmin ? 'block' : 'none';
 ## Related Documentation
 
 - [Backend Overview](backend-overview.md) - Service architecture
-- [API Reference](../SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md) - Workspace endpoints
+- [API Reference](SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md) - Workspace endpoints
 - [Workspace Audit Logs](../../AUDIT_LOGGING_COMPLETE.md) - Activity tracking
 
 ---

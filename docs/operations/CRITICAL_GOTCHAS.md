@@ -91,7 +91,7 @@ These are the 8 most common issues and their solutions. Understanding these will
 - [RAG System Architecture](../architecture/RAG_SYSTEM.md) - Vector store details
 - [Model Routing](../architecture/MODEL_ROUTING.md) - Auto-routing behavior
 - [Startup Sequence](../architecture/STARTUP_SEQUENCE.md) - Initialization order
-- [Troubleshooting](../TROUBLESHOOTING_README.md) - Problem resolution
+- [Troubleshooting](../guides/TROUBLESHOOTING_README.md) - Problem resolution
 
 ---
 

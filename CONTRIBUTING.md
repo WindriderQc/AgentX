@@ -112,7 +112,7 @@ npm run test:load            # Load tests
 
 **API Reference:** Update `docs/architecture/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md` for new/changed endpoints.
 
-**Changelog:** Record changes in `CHANGELOG.md` following [Keep a Changelog](https://keepachangelog.com/).
+**Changelog:** Use conventional commit messages — git history serves as the changelog.
 
 ---
 

@@ -801,8 +801,8 @@ For DataAPI-specific planning, see: `../DataAPI/docs/ROADMAP.md` (if exists)
 - **Main Documentation Index:** [docs/INDEX.md](docs/INDEX.md)
 - **Agent/Human Guidance:** [CLAUDE.md](CLAUDE.md)
 - **Stack Documentation Hub:** [docs/architecture/SBQC-Stack-Final/](docs/architecture/SBQC-Stack-Final/)
-- **Multi-Agent Enhancement Plan:** [docs/planning/MULTI_AGENT_ENHANCEMENT_PLAN.md](docs/planning/MULTI_AGENT_ENHANCEMENT_PLAN.md) *(to be archived)*
-- **Progression Log:** [docs/planning/PROGRESSION_LOG.md](docs/planning/PROGRESSION_LOG.md) *(to be archived)*
+- ~~Multi-Agent Enhancement Plan~~ *(archived — docs/planning/ no longer exists)*
+- ~~Progression Log~~ *(archived — docs/planning/ no longer exists)*
 
 ---
 

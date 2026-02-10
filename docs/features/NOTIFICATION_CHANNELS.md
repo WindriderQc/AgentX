@@ -647,7 +647,7 @@ Verify notification channel configuration without sending actual notification.
 ## Related Documentation
 
 - [Alerts Dashboard Implementation](ALERTS_DASHBOARD_IMPLEMENTATION.md)
-- [Self-Healing Quick Start](SELF_HEALING_QUICK_START.md)
+- [Self-Healing Quick Start](../guides/SELF_HEALING_QUICK_START.md)
 - [ROADMAP.md](../ROADMAP.md) - Track 1: Alerts & Notifications
 
 ---
