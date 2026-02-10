@@ -139,11 +139,6 @@ curl -H "x-api-key: ${AGENTX_API_KEY}" http://localhost:3080/api/rag/ingest
 | `/api/rag/deletion-preview` | GET | Find orphaned RAG documents |
 | `/api/rag/documents` | GET | List all RAG documents |
 | `/api/rag/metrics` | GET | RAG system health metrics |
-| `/api/rag/manifests` | POST | Store folder scan manifest |
-| `/api/rag/manifests/latest` | GET | Get latest manifest |
-| `/api/rag/deletion-preview` | GET | Find orphaned RAG documents |
-| `/api/rag/documents` | GET | List all RAG documents |
-| `/api/rag/metrics` | GET | RAG system health metrics |
 
 ---
 
