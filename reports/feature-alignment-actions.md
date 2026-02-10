@@ -18,15 +18,15 @@ _Features that need UI development, excluding API-only endpoints_
 **Priority:** CRITICAL (critical)
 
 **Endpoints (9):**
-- GET /api/dashboards/ (`dashboards.js`) [Conf: 47%]
-- POST /api/dashboards/ (`dashboards.js`) [Conf: 47%]
-- GET /api/dashboards/:id (`dashboards.js`) [Conf: 47%]
-- PATCH /api/dashboards/:id (`dashboards.js`) [Conf: 47%]
-- POST /api/dashboards/:id/panels (`dashboards.js`) [Conf: 42%]
-- PATCH /api/dashboards/:id/panels/:panelId (`dashboards.js`) [Conf: 42%]
-- DELETE /api/dashboards/:id/panels/:panelId (`dashboards.js`) [Conf: 42%]
-- DELETE /api/dashboards/:id (`dashboards.js`) [Conf: 47%]
-- POST /api/dashboards/:id/refresh (`dashboards.js`) [Conf: 42%]
+- GET /api/dashboards/ (`dashboards.js`) [Conf: 50%]
+- POST /api/dashboards/ (`dashboards.js`) [Conf: 50%]
+- GET /api/dashboards/:id (`dashboards.js`) [Conf: 50%]
+- PATCH /api/dashboards/:id (`dashboards.js`) [Conf: 50%]
+- POST /api/dashboards/:id/panels (`dashboards.js`) [Conf: 45%]
+- PATCH /api/dashboards/:id/panels/:panelId (`dashboards.js`) [Conf: 45%]
+- DELETE /api/dashboards/:id/panels/:panelId (`dashboards.js`) [Conf: 45%]
+- DELETE /api/dashboards/:id (`dashboards.js`) [Conf: 50%]
+- POST /api/dashboards/:id/refresh (`dashboards.js`) [Conf: 45%]
 
 **Score Breakdown:**
 - n8n Workflow Usage: ➖ (0)
@@ -48,9 +48,15 @@ _Features that need UI development, excluding API-only endpoints_
 
 **Endpoints (4):**
 - GET /api/dataset/conversations (`dataset.js`) [Conf: 80%]
+<<<<<<< ours
 - POST /api/dataset/prompts (`dataset.js`) [Conf: 55%]
 - GET /api/dataset/prompts (`dataset.js`) [Conf: 55%]
 - PATCH /api/dataset/prompts/:id/activate (`dataset.js`) [Conf: 55%]
+=======
+- POST /api/dataset/prompts (`dataset.js`) [Conf: 60%]
+- GET /api/dataset/prompts (`dataset.js`) [Conf: 60%]
+- PATCH /api/dataset/prompts/:id/activate (`dataset.js`) [Conf: 60%]
+>>>>>>> theirs
 
 **Score Breakdown:**
 - n8n Workflow Usage: ➖ (0)
@@ -73,10 +79,17 @@ _Features that need UI development, excluding API-only endpoints_
 **Endpoints (6):**
 - GET /api/invitations/validate/:token (`invitations.js`) [Conf: 55%]
 - POST /api/invitations/accept (`invitations.js`) [Conf: 80%]
+<<<<<<< ours
 - GET /api/invitations/my-invitations (`invitations.js`) [Conf: 40%]
 - POST /api/workspaces/:slug/invitations (`workspaces.js`) [Conf: 42%]
 - GET /api/workspaces/:slug/invitations (`workspaces.js`) [Conf: 42%]
 - DELETE /api/workspaces/:slug/invitations/:invitationId (`workspaces.js`) [Conf: 42%]
+=======
+- GET /api/invitations/my-invitations (`invitations.js`) [Conf: 45%]
+- POST /api/workspaces/:slug/invitations (`workspaces.js`) [Conf: 45%]
+- GET /api/workspaces/:slug/invitations (`workspaces.js`) [Conf: 45%]
+- DELETE /api/workspaces/:slug/invitations/:invitationId (`workspaces.js`) [Conf: 45%]
+>>>>>>> theirs
 
 **Score Breakdown:**
 - n8n Workflow Usage: ➖ (0)
@@ -99,6 +112,7 @@ _Features that need UI development, excluding API-only endpoints_
 **Endpoints (12):**
 - GET /api/models/registry/ (`model-registry.js`) [Conf: 70%]
 - GET /api/models/registry/stats (`model-registry.js`) [Conf: 70%]
+<<<<<<< ours
 - GET /api/models/registry/grouped (`model-registry.js`) [Conf: 37%]
 - GET /api/models/registry/category/:category (`model-registry.js`) [Conf: 32%]
 - GET /api/models/registry/tag/:tag (`model-registry.js`) [Conf: 32%]
@@ -109,6 +123,18 @@ _Features that need UI development, excluding API-only endpoints_
 - POST /api/models/registry/:name/sync (`model-registry.js`) [Conf: 47%]
 - POST /api/models/registry/:name/categories (`model-registry.js`) [Conf: 37%]
 - DELETE /api/models/registry/:name/categories/:category (`model-registry.js`) [Conf: 37%]
+=======
+- GET /api/models/registry/grouped (`model-registry.js`) [Conf: 40%]
+- GET /api/models/registry/category/:category (`model-registry.js`) [Conf: 35%]
+- GET /api/models/registry/tag/:tag (`model-registry.js`) [Conf: 35%]
+- GET /api/models/registry/:name (`model-registry.js`) [Conf: 50%]
+- POST /api/models/registry/ (`model-registry.js`) [Conf: 70%]
+- PATCH /api/models/registry/:name (`model-registry.js`) [Conf: 50%]
+- DELETE /api/models/registry/:name (`model-registry.js`) [Conf: 50%]
+- POST /api/models/registry/:name/sync (`model-registry.js`) [Conf: 50%]
+- POST /api/models/registry/:name/categories (`model-registry.js`) [Conf: 40%]
+- DELETE /api/models/registry/:name/categories/:category (`model-registry.js`) [Conf: 40%]
+>>>>>>> theirs
 
 **Score Breakdown:**
 - n8n Workflow Usage: ➖ (0)
