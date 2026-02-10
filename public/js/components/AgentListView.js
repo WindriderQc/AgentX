@@ -37,8 +37,8 @@ class AgentListView {
         this.viewMode = 'grid';  // 'grid' or 'list'
         this.loading = false;
 
-        // Initialize
-        this.init();
+        // Initialize and expose a promise so callers can await first render/load.
+        this.readyPromise = this.init();
     }
 
     async init() {

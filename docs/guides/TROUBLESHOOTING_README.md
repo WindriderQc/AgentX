@@ -24,7 +24,7 @@ The comprehensive troubleshooting playbook covering:
 - Deployment failures
 - Authentication issues
 
-### 2. [TROUBLESHOOTING_QUICK_REF.md](./TROUBLESHOOTING_QUICK_REF.md) - Quick Reference
+### 2. TROUBLESHOOTING_QUICK_REF.md - Quick Reference
 **Size:** 4.5KB | **Lines:** 149
 
 One-page quick reference with:
@@ -38,7 +38,7 @@ One-page quick reference with:
 
 **Use Case:** Print this for quick desk reference or keep open in terminal
 
-### 3. [../scripts/health-check.sh](../scripts/health-check.sh) - Automated Health Check
+### 3. [../scripts/health-check.sh](../../scripts/health-check.sh) - Automated Health Check
 **Size:** 3.2KB | **Executable:** Yes
 
 Automated health check script that tests:
@@ -79,10 +79,10 @@ Use main playbook as reference when:
 
 ## Related Documentation
 
-- [WORKFLOW-GUIDE.md](../AgentC/WORKFLOW-GUIDE.md) - n8n workflow development
-- [API.md](./API.md) - SBQC API documentation
-- [AUTHENTICATION.md](./AUTHENTICATION.md) - Security and auth
-- [SECURITY_HARDENING.md](./SECURITY_HARDENING.md) - Production security
+- [WORKFLOW-GUIDE.md](../../AgentC/WORKFLOW-GUIDE.md) - n8n workflow development
+- [API.md](../api/API.md) - SBQC API documentation
+- [AUTHENTICATION.md](../operations/AUTHENTICATION.md) - Security and auth
+- [SECURITY_HARDENING.md](../architecture/SECURITY_HARDENING.md) - Production security
 
 ## Document Structure
 
@@ -237,7 +237,7 @@ These troubleshooting documents are part of the AgentX project.
 ---
 
 **Quick Access:**
-- Emergency? → [Quick Reference](./TROUBLESHOOTING_QUICK_REF.md)
+- Emergency? → Quick Reference
 - Deep dive? → [Main Playbook](./TROUBLESHOOTING.md)
 - Automated check? → `./scripts/health-check.sh`
 

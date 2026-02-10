@@ -225,6 +225,6 @@ curl -X POST http://localhost:6333/collections/agentx_embeddings/points/scroll \
 
 ## Related Documentation
 
-- [AgentX RAG Architecture](./architecture/RAG_ARCHITECTURE.md)
-- [Qdrant Deployment Guide](./QDRANT_DEPLOYMENT.md)
-- [V3 Contract Snapshot](../specs/V3_CONTRACT_SNAPSHOT.md)
+- [AgentX RAG Architecture](../architecture/RAG_SYSTEM.md)
+- [Qdrant Deployment Guide](../operations/QDRANT_DEPLOYMENT.md)
+- V3 Contract Snapshot

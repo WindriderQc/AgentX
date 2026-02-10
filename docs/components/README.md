@@ -104,15 +104,15 @@ export class ComponentName {
 4. **Responsive Testing:** Desktop, tablet, mobile
 5. **Accessibility Testing:** Keyboard nav, screen readers
 
+## Dashboard Components
+
+- [PerformanceMetricsDashboard](./PerformanceMetricsDashboard.md) - Performance metrics visualization component
+
 ## Related Documentation
 
-- **Global Plan:** `/GLOBAL_PLAN_REVISED.md`
-- **API Documentation:** `/docs/api/reference.md`
-- **CLAUDE.md Guidelines:** `/CLAUDE.md`
-- **Phase 1 Plan:** `/docs/plans/phase-1-prompt-ui.md`
+- **API Documentation:** [/docs/api/reference.md](../api/reference.md)
+- **CLAUDE.md Guidelines:** [CLAUDE.md](../../CLAUDE.md)
 
 ## Quick Links
 
 - [Template Tester Documentation](./TemplateTester.md)
-- [Prompt Management UI Test Page](/test-template-tester.html)
-- [Main Prompt Management](/prompts.html)

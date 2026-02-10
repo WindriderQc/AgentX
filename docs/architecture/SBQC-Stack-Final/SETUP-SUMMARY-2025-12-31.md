@@ -229,7 +229,7 @@ From [VALIDATION-REPORT-2025-12-31-1622.md](VALIDATION-REPORT-2025-12-31-1622.md
 |----------|---------|
 | [04-N8N-WORKFLOWS.md](04-N8N-WORKFLOWS.md) | Complete workflow specs + deployment |
 | [N8N-API-SETUP.md](N8N-API-SETUP.md) | API configuration guide |
-| [AgentC/README.md](../AgentC/README.md) | Workflow development |
+| [AgentC/README.md](../../../AgentC/README.md) | Workflow development |
 | [05-DEPLOYMENT.md](05-DEPLOYMENT.md) | System deployment |
 | [VALIDATION-REPORT-2025-12-31-1622.md](VALIDATION-REPORT-2025-12-31-1622.md) | Validation results |
 

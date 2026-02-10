@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "scan:features": "node scripts/feature-alignment-scan.js --root .",
+    "validate": "node scripts/comprehensive-validation.js",
     "test": "node --max-old-space-size=4096 node_modules/.bin/jest --silent",
     "test:ci": "node --max-old-space-size=4096 node_modules/.bin/jest --silent --detectOpenHandles",
     "test:debug:handles": "node --max-old-space-size=4096 node_modules/.bin/jest --detectOpenHandles --runInBand",

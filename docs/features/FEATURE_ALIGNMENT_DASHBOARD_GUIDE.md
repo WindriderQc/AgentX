@@ -478,10 +478,10 @@ node scripts/feature-alignment-scan.js
 ## Related Documentation
 
 - **Priority Algorithm:** [docs/FEATURE_ALIGNMENT_PRIORITY_ALGORITHM.md](FEATURE_ALIGNMENT_PRIORITY_ALGORITHM.md)
-- **Orphan Analysis:** [ORPHAN_ENDPOINTS_ANALYSIS.md](../ORPHAN_ENDPOINTS_ANALYSIS.md)
-- **Scanner Improvements:** [EXTERNAL_AGENT_NEXT_SCANNER_IMPROVEMENTS.md](../EXTERNAL_AGENT_NEXT_SCANNER_IMPROVEMENTS.md)
-- **Implementation Plan:** [IMPLEMENTATION_PLAN.md](../IMPLEMENTATION_PLAN.md)
-- **Roadmap:** [ROADMAP.md](../ROADMAP.md) (Track 8)
+- **Orphan Analysis:** ORPHAN_ENDPOINTS_ANALYSIS.md
+- **Scanner Improvements:** EXTERNAL_AGENT_NEXT_SCANNER_IMPROVEMENTS.md
+- **Implementation Plan:** IMPLEMENTATION_PLAN.md
+- **Roadmap:** [ROADMAP.md](../../ROADMAP.md) (Track 8)
 
 ---
 

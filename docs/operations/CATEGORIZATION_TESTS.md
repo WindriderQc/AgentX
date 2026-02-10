@@ -577,7 +577,7 @@ The categorization script uses these endpoints:
 ## Related Documentation
 
 - [Benchmark System](BENCHMARK_SYSTEM.md) - Overall benchmarking architecture
-- [Benchmark Quality Scoring](BENCHMARK_QUALITY_SCORING.md) - How scoring works
+- [Benchmark Quality Scoring](../testing/BENCHMARK_QUALITY_SCORING.md) - How scoring works
 - [Model Registry](../architecture/MODEL_REGISTRY.md) - Category schema and usage
 - [Model Routing](../architecture/MODEL_ROUTING.md) - How categories affect routing
 

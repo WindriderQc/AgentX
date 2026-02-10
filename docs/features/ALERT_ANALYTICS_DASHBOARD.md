@@ -304,10 +304,10 @@ For issues or questions:
 1. Check logs in browser console
 2. Review server logs for API errors
 3. Verify MongoDB connection and indexes
-4. Consult API documentation in `/docs/API_ROUTES_IMPLEMENTATION.md`
+4. Consult API documentation
 
 ## Related Documentation
 
-- [API Routes Implementation](./API_ROUTES_IMPLEMENTATION.md)
-- [Alert Service Documentation](../src/services/README.md)
-- [Alert Model Schema](../models/Alert.js)
+- API Routes Implementation
+- Alert Service Documentation
+- [Alert Model Schema](../../models/Alert.js)

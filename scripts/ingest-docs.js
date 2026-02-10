@@ -16,6 +16,7 @@ const AGENTX_ROOT = path.join(WORKSPACE_ROOT, 'AgentX');
 const args = process.argv.slice(2);
 const DRY_RUN = args.includes('--dry-run');
 const FULL_SCAN = args.includes('--full');
+const JSON_OUTPUT = args.includes('--json');
 const LIMIT = (() => {
     const idx = args.findIndex(a => a.startsWith('--limit='));
     return idx >= 0 ? parseInt(args[idx].split('=')[1], 10) : 0;
@@ -82,6 +83,14 @@ function contentHash(text) {
 const stats = { scanned: 0, ingested: 0, skipped: 0, failed: 0, errors: [] };
 const seenHashes = new Set();
 
+function log(...messages) {
+    if (!JSON_OUTPUT) console.log(...messages);
+}
+
+function logError(...messages) {
+    if (!JSON_OUTPUT) console.error(...messages);
+}
+
 async function ingestFile(filePath) {
     try {
         const content = fs.readFileSync(filePath, 'utf8');
@@ -113,7 +122,7 @@ async function ingestFile(filePath) {
         };
 
         if (DRY_RUN) {
-            console.log(`[DRY RUN] ${relativePath} (${content.length} bytes, ${payload.tags.join(', ')})`);
+            log(`[DRY RUN] ${relativePath} (${content.length} bytes, ${payload.tags.join(', ')})`);
             stats.ingested++;
             return;
         }
@@ -130,15 +139,15 @@ async function ingestFile(filePath) {
         const data = await response.json();
 
         if (response.ok) {
-            console.log(`✅ Ingested: ${relativePath}`);
+            log(`✅ Ingested: ${relativePath}`);
             stats.ingested++;
         } else {
-            console.error(`❌ Failed: ${relativePath} - ${data.message || JSON.stringify(data)}`);
+            logError(`❌ Failed: ${relativePath} - ${data.message || JSON.stringify(data)}`);
             stats.failed++;
             stats.errors.push({ path: relativePath, error: data.message });
         }
     } catch (error) {
-        console.error(`❌ Error processing ${filePath}:`, error.message);
+        logError(`❌ Error processing ${filePath}:`, error.message);
         stats.failed++;
         stats.errors.push({ path: filePath, error: error.message });
     }
@@ -170,33 +179,51 @@ function scanDirectory(dir) {
 
 async function main() {
     const mode = FULL_SCAN ? 'FULL CODEBASE' : 'DOCS ONLY';
-    console.log(`🚀 Starting documentation ingestion (${mode})${DRY_RUN ? ' [DRY RUN]' : ''}...`);
+    log(`🚀 Starting documentation ingestion (${mode})${DRY_RUN ? ' [DRY RUN]' : ''}...`);
 
     const targets = getScanTargets();
     let allFiles = [];
 
     for (const target of targets) {
-        console.log(`📂 Scanning: ${target}`);
+        log(`📂 Scanning: ${target}`);
         allFiles = allFiles.concat(scanDirectory(target));
     }
 
     if (LIMIT > 0) {
         allFiles = allFiles.slice(0, LIMIT);
-        console.log(`🔢 Limited to ${LIMIT} files`);
+        log(`🔢 Limited to ${LIMIT} files`);
     }
 
-    console.log(`📄 Found ${allFiles.length} files to process\n`);
+    log(`📄 Found ${allFiles.length} files to process\n`);
 
     for (const file of allFiles) {
         await ingestFile(file);
     }
 
-    console.log(`\n✨ Ingestion complete!`);
-    console.log(`   Scanned: ${stats.scanned} | Ingested: ${stats.ingested} | Skipped: ${stats.skipped} | Failed: ${stats.failed}`);
+    if (JSON_OUTPUT) {
+        console.log(JSON.stringify({
+            status: stats.failed > 0 ? 'partial' : 'success',
+            mode: FULL_SCAN ? 'full' : 'docs',
+            dryRun: DRY_RUN,
+            limit: LIMIT || null,
+            scanned: stats.scanned,
+            ingested: stats.ingested,
+            skipped: stats.skipped,
+            failed: stats.failed,
+            errors: stats.errors
+        }));
+    } else {
+        console.log(`\n✨ Ingestion complete!`);
+        console.log(`   Scanned: ${stats.scanned} | Ingested: ${stats.ingested} | Skipped: ${stats.skipped} | Failed: ${stats.failed}`);
 
-    if (stats.errors.length > 0) {
-        console.log(`\n⚠️  Errors:`);
-        stats.errors.forEach(e => console.log(`   - ${e.path}: ${e.error}`));
+        if (stats.errors.length > 0) {
+            console.log(`\n⚠️  Errors:`);
+            stats.errors.forEach(e => console.log(`   - ${e.path}: ${e.error}`));
+        }
+    }
+
+    if (!DRY_RUN && stats.failed > 0) {
+        process.exitCode = 1;
     }
 }
 

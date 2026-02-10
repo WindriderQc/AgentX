@@ -1916,67 +1916,67 @@ Legend:
 ### Backend (Services & Models)
 
 **Modify Existing:**
-1. [src/services/qualityScorer.js](src/services/qualityScorer.js) - Add ENHANCED_SCORING_CONFIGS, multi-judge, category-specific composite
-2. [src/services/benchmarkService.js](src/services/benchmarkService.js) - Add config variants, prompt templates, hardware profiling
-3. [models/BenchmarkPrompt.js](models/BenchmarkPrompt.js) - Add `scoring_dimensions`, update `prompt_level` max
-4. [models/BenchmarkResult.js](models/BenchmarkResult.js) - Add `quality_breakdown.judges`, `config_variant_id`, `hardware_snapshot`, `system_prompt_template_id`
-5. [models/BenchmarkBatch.js](models/BenchmarkBatch.js) - Add `judge_config`, `config_variants`
-6. [models/Conversation.js](models/Conversation.js) - Add `quality_assessment`
-7. [routes/benchmark.js](routes/benchmark.js) - Add config comparison, prompt template, host comparison endpoints
-8. [routes/chat.js](routes/chat.js) - Add conversation judging endpoint
+1. [src/services/qualityScorer.js](../../src/services/qualityScorer.js) - Add ENHANCED_SCORING_CONFIGS, multi-judge, category-specific composite
+2. [src/services/benchmark/index.js](../../src/services/benchmark/index.js) - Add config variants, prompt templates, hardware profiling
+3. [models/BenchmarkPrompt.js](../../models/BenchmarkPrompt.js) - Add `scoring_dimensions`, update `prompt_level` max
+4. [models/BenchmarkResult.js](../../models/BenchmarkResult.js) - Add `quality_breakdown.judges`, `config_variant_id`, `hardware_snapshot`, `system_prompt_template_id`
+5. [models/BenchmarkBatch.js](../../models/BenchmarkBatch.js) - Add `judge_config`, `config_variants`
+6. [models/Conversation.js](../../models/Conversation.js) - Add `quality_assessment`
+7. [routes/benchmark/index.js](../../routes/benchmark/index.js) - Add config comparison, prompt template, host comparison endpoints
+8. routes/chat.js - Add conversation judging endpoint
 
 **Create New:**
-9. [models/ConfigVariant.js](models/ConfigVariant.js) - Config variant schema
-10. [models/PromptTemplate.js](models/PromptTemplate.js) - System prompt template schema
-11. [models/HardwareProfile.js](models/HardwareProfile.js) - Hardware profile schema
-12. [scripts/generate-test-prompts.js](scripts/generate-test-prompts.js) - Script to generate 120+ new prompts (use external LLM)
-13. [scripts/seed-config-variants.js](scripts/seed-config-variants.js) - Seed predefined configs
-14. [scripts/seed-prompt-templates.js](scripts/seed-prompt-templates.js) - Seed predefined templates
+9. [models/ConfigVariant.js](../../models/ConfigVariant.js) - Config variant schema
+10. [models/PromptTemplate.js](../../models/PromptTemplate.js) - System prompt template schema
+11. [models/HardwareProfile.js](../../models/HardwareProfile.js) - Hardware profile schema
+12. scripts/generate-test-prompts.js - Script to generate 120+ new prompts (use external LLM)
+13. [scripts/seed-config-variants.js](../../scripts/seed-config-variants.js) - Seed predefined configs
+14. [scripts/seed-prompt-templates.js](../../scripts/seed-prompt-templates.js) - Seed predefined templates
 
 ### Frontend (UI/UX)
 
 **Create New:**
-15. [public/model-explorer.html](public/model-explorer.html) - Model explorer dashboard
-16. [public/js/model-explorer.js](public/js/model-explorer.js) - Model explorer logic
-17. [public/css/model-explorer.css](public/css/model-explorer.css) - Model explorer styling
-18. [public/config-optimizer.html](public/config-optimizer.html) - Config optimizer
-19. [public/js/config-optimizer.js](public/js/config-optimizer.js) - Config optimizer logic
-20. [public/hardware-matrix.html](public/hardware-matrix.html) - Hardware matrix
-21. [public/js/hardware-matrix.js](public/js/hardware-matrix.js) - Hardware matrix logic
+15. [public/model-explorer.html](../../public/model-explorer.html) - Model explorer dashboard
+16. [public/js/model-explorer.js](../../public/js/model-explorer.js) - Model explorer logic
+17. [public/css/model-explorer.css](../../public/css/model-explorer.css) - Model explorer styling
+18. [public/config-optimizer.html](../../public/config-optimizer.html) - Config optimizer
+19. [public/js/config-optimizer.js](../../public/js/config-optimizer.js) - Config optimizer logic
+20. [public/hardware-matrix.html](../../public/hardware-matrix.html) - Hardware matrix
+21. [public/js/hardware-matrix.js](../../public/js/hardware-matrix.js) - Hardware matrix logic
 
 **Modify Existing:**
-22. [public/benchmark.html](public/benchmark.html) - Enhanced results explorer
-23. [public/js/benchmark-inline.js](public/js/benchmark-inline.js) - Add grouping, filtering, export
-24. [public/js/chat.js](public/js/chat.js) - Add "Analyze Quality" button
+22. [public/benchmark.html](../../public/benchmark.html) - Enhanced results explorer
+23. public/js/benchmark-inline.js - Add grouping, filtering, export
+24. [public/js/chat.js](../../public/js/chat.js) - Add "Analyze Quality" button
 
 ### Data Files
 
 **Modify:**
-25. [data/categorization-prompts.json](data/categorization-prompts.json) - Add 120+ new prompts
+25. [data/categorization-prompts.json](../../data/categorization-prompts.json) - Add 120+ new prompts
 
 **Create:**
-26. [data/config-variants.json](data/config-variants.json) - Predefined config variants
-27. [data/prompt-templates.json](data/prompt-templates.json) - Predefined system prompts
+26. [data/config-variants.json](../../data/config-variants.json) - Predefined config variants
+27. [data/prompt-templates.json](../../data/prompt-templates.json) - Predefined system prompts
 
 ### Tests
 
 **Create:**
-28. [tests/services/qualityScorer.enhanced.test.js](tests/services/qualityScorer.enhanced.test.js) - Multi-dimensional + multi-judge tests
-29. [tests/integration/config-variation.test.js](tests/integration/config-variation.test.js) - Config comparison tests
-30. [tests/integration/prompt-templates.test.js](tests/integration/prompt-templates.test.js) - Prompt template tests
-31. [tests/integration/conversation-judging.test.js](tests/integration/conversation-judging.test.js) - Conversation judge tests
+28. tests/services/qualityScorer.enhanced.test.js - Multi-dimensional + multi-judge tests
+29. tests/integration/config-variation.test.js - Config comparison tests
+30. tests/integration/prompt-templates.test.js - Prompt template tests
+31. tests/integration/conversation-judging.test.js - Conversation judge tests
 
 ### Documentation
 
 **Update:**
-32. [docs/operations/BENCHMARK_SYSTEM.md](docs/operations/BENCHMARK_SYSTEM.md) - Document new features
-33. [docs/architecture/MODEL_REGISTRY.md](docs/architecture/MODEL_REGISTRY.md) - Update schema docs
-34. [ROADMAP.md](ROADMAP.md) - Add Track 9: Enhanced Model Intelligence
+32. [docs/operations/BENCHMARK_SYSTEM.md](BENCHMARK_SYSTEM.md) - Document new features
+33. [docs/architecture/MODEL_REGISTRY.md](../architecture/MODEL_REGISTRY.md) - Update schema docs
+34. [ROADMAP.md](../../ROADMAP.md) - Add Track 9: Enhanced Model Intelligence
 
 **Create:**
-35. [docs/user-manual/MODEL_EXPLORER.md](docs/user-manual/MODEL_EXPLORER.md) - Model explorer guide
-36. [docs/user-manual/CONFIG_OPTIMIZER.md](docs/user-manual/CONFIG_OPTIMIZER.md) - Config optimizer guide
-37. [docs/user-manual/CONVERSATION_JUDGING.md](docs/user-manual/CONVERSATION_JUDGING.md) - Conversation judging guide
+35. docs/user-manual/MODEL_EXPLORER.md - Model explorer guide
+36. docs/user-manual/CONFIG_OPTIMIZER.md - Config optimizer guide
+37. docs/user-manual/CONVERSATION_JUDGING.md - Conversation judging guide
 
 ---
 

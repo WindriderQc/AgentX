@@ -248,10 +248,10 @@ const results = await ragStore.search(query, {
 
 ## 📚 Additional Resources
 
-- **Full Deployment Guide:** [docs/QDRANT_DEPLOYMENT.md](docs/QDRANT_DEPLOYMENT.md)
-- **RAG Architecture:** [specs/V3_RAG_ARCHITECTURE.md](specs/V3_RAG_ARCHITECTURE.md)
+- **Full Deployment Guide:** [docs/operations/QDRANT_DEPLOYMENT.md](../operations/QDRANT_DEPLOYMENT.md)
+- **RAG Architecture:** [docs/architecture/V3_RAG_ARCHITECTURE.md](../architecture/V3_RAG_ARCHITECTURE.md)
 - **Qdrant Official Docs:** https://qdrant.tech/documentation/
-- **Fix Log:** [docs/FIXES_2026-01-05.md](docs/FIXES_2026-01-05.md)
+- **Fix Log:** FIXES_2026-01-05.md
 
 ---
 

@@ -620,5 +620,5 @@ All endpoints return errors in this format:
 ## Related Documentation
 
 - [Artillery Documentation](https://www.artillery.io/docs)
-- [AgentX Load Testing Guide](/docs/testing/load-testing.md)
-- [MongoDB Schema Reference](/docs/architecture/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md)
+- AgentX Load Testing Guide
+- [MongoDB Schema Reference](../architecture/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md)

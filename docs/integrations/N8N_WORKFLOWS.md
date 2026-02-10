@@ -8,6 +8,22 @@
 
 AgentX integrates with n8n for automated document ingestion and prompt optimization loops.
 
+## Orchestration Boundary (n8n vs Cron)
+
+Use this rule across the architecture:
+
+- Use **cron + scripts** for single-host, time-based, deterministic jobs.
+- Use **n8n** for cross-system orchestration (webhooks, retries, human approvals, multi-step integrations, centralized workflow audit trail).
+- Keep **business logic in AgentX scripts/services**. n8n should orchestrate, not reimplement logic.
+
+For N2.4 specifically, the canonical ingestion path is:
+
+```bash
+./scripts/archive-and-ingest-all.sh
+```
+
+Both cron and n8n should call this same command to avoid drift.
+
 ---
 
 ## Document Ingestion Workflows
@@ -47,7 +63,11 @@ AgentX integrates with n8n for automated document ingestion and prompt optimizat
 - **Trigger:** Weekly (Mon 2AM) + Manual webhook (`POST /webhook/sbqc-n2-4-codebase-rag`)
 - **Scope:** Entire AgentX codebase — all `.md` files (234+ files)
 - **No limits:** No date filter, no file count cap
-- **Flow:** Archive all `.md` files → Find all `.md` → Auto-tag by path → POST `/api/rag/ingest` → Log to DataAPI
+- **Preferred flow:** Execute canonical scripts (no duplicated ingestion logic in workflow)
+  - `./scripts/archive-md-files.sh --json`
+  - `node scripts/ingest-docs.js --full --json`
+  - or single wrapper: `./scripts/archive-and-ingest-all.sh --json`
+- **Legacy flow:** Archive all `.md` files → Find all `.md` → Auto-tag by path → POST `/api/rag/ingest` → Log to DataAPI
 - **Source tag:** `agentx-complete` (vs N2.3's `nas-docs`)
 
 **N2.3 vs N2.4 coverage:**
@@ -66,6 +86,11 @@ AgentX integrates with n8n for automated document ingestion and prompt optimizat
 For use outside of n8n:
 
 ```bash
+# Canonical end-to-end command (archive + full ingestion)
+./scripts/archive-and-ingest-all.sh               # Human-readable output
+./scripts/archive-and-ingest-all.sh --json        # JSON output (automation-friendly)
+./scripts/archive-and-ingest-all.sh --dry-run     # Validate pipeline without writing
+
 # Archive all markdown files (preserves folder hierarchy)
 ./scripts/archive-md-files.sh                     # Human-readable output
 ./scripts/archive-md-files.sh --json              # JSON output (for automation)
@@ -73,9 +98,28 @@ For use outside of n8n:
 # Ingest docs into RAG
 node scripts/ingest-docs.js                       # Default: docs/ folders only
 node scripts/ingest-docs.js --full                # Full codebase (all .md files)
+node scripts/ingest-docs.js --full --json         # Machine-readable summary
 node scripts/ingest-docs.js --full --dry-run      # Preview what would be ingested
 node scripts/ingest-docs.js --full --limit=10     # Test with limited files
 ```
+
+### Cron Alternative (without n8n)
+
+If you only need scheduled local execution, use cron:
+
+```bash
+# Weekly Monday 2:00 AM
+0 2 * * 1 cd /home/yb/codes/AgentX && ./scripts/archive-and-ingest-all.sh >> /home/yb/codes/AgentX/logs/rag-codebase-sync.log 2>&1
+```
+
+UI/monitoring is still possible in AgentX:
+
+- Reuse the operations dashboard pattern (status card + recent runs + manual trigger button).
+- Back the card with script output/log status and `GET /api/rag/metrics` for ingestion health context.
+- Use dashboard API endpoints:
+  - `GET /api/dashboard/rag-sync/status` (cron + last run status)
+  - `POST /api/dashboard/rag-sync/run` (manual trigger, optional `{ "dryRun": true }`)
+- This gives dashboard visibility without requiring n8n for a simple periodic task.
 
 ---
 

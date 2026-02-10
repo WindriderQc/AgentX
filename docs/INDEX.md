@@ -80,20 +80,44 @@ Last Updated: 2026-02-09
 
 ---
 
+## Directory Indexes
+
+- **[API Documentation](api/README.md)** - API endpoint guides and references
+- **[Architecture](architecture/README.md)** - System architecture deep dives
+- **[Archives](Archives/README.md)** - Historical completed work (preserved for reference)
+- **[Components](components/README.md)** - Shared UI component documentation
+- **[Features](features/README.md)** - Feature-specific documentation
+- **[Future](future/README.md)** - Planned features and design proposals
+- **[Guides](guides/README.md)** - How-to guides and tutorials
+- **[Integrations](integrations/README.md)** - External service integration guides
+- **[Onboarding](onboarding/README.md)** - Getting started and setup
+- **[Operations](operations/README.md)** - Operational procedures and runbooks
+- **[Reports](reports/README.md)** - Generated reports and audits
+- **[Reviews](reviews/README.md)** - Code and architecture reviews
+- **[Testing](testing/README.md)** - Test strategies, load testing, E2E
+- **[User Manual](user-manual/README.md)** - End-user documentation
+
+---
+
 ## Additional Resources
 
 ### File Structure Overview
 ```
 AgentX/
-├── src/services/        # 39 services (business logic, orchestration)
-├── routes/              # 40 route files (API endpoints)
-├── models/              # 38 Mongoose models (data layer)
-├── public/              # Frontend UI (HTML/JS/CSS)
+├── src/services/        # 60+ services (business logic, orchestration)
+├── routes/              # 49 route files (API endpoints)
+├── models/              # 41 Mongoose models (data layer)
+├── public/              # Frontend UI (38 HTML pages, JS/CSS)
 ├── docs/                # Documentation (you are here)
+│   ├── api/             # API endpoint guides
 │   ├── architecture/    # Architecture deep dives
-│   ├── patterns/        # Development patterns
-│   ├── operations/      # Operational procedures
+│   ├── Archives/        # Historical/completed work
+│   ├── features/        # Feature documentation
+│   ├── guides/          # How-to guides
 │   ├── integrations/    # External integration guides
+│   ├── operations/      # Operational procedures
+│   ├── patterns/        # Development patterns
+│   ├── testing/         # Test strategies
 │   └── user-manual/     # End-user documentation
 ├── config/              # Configuration files
 ├── scripts/             # Utility scripts, seeding, backups

@@ -264,13 +264,13 @@ Each version tracks:
 
 ## Related Documentation
 
-- [Prompt Management Guide](./prompt-management.md)
-- [Analytics Dashboard](./analytics.md)
-- [API Reference](/docs/api/reference.md#prompts)
+- Prompt Management Guide
+- Analytics Dashboard
+- [API Reference](../api/reference.md#prompts)
 
 ## Support
 
 For issues or questions:
 - Check [GitHub Issues](https://github.com/your-org/agentx/issues)
 - Contact development team
-- Review [CLAUDE.md](/CLAUDE.md) for architecture details
+- Review [CLAUDE.md](../../CLAUDE.md) for architecture details

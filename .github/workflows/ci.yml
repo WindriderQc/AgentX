@@ -138,6 +138,34 @@ jobs:
           AGENTX_API_KEY: test-e2e-key
           BASE_URL: http://localhost:3080
 
+  validate:
+    name: Codebase Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Validation Scanner
+        run: npm run validate
+
+      - name: Upload Validation Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-report
+          path: |
+            reports/comprehensive-validation.json
+            reports/comprehensive-validation-actions.md
+
   ci-status:
     name: CI Status
     runs-on: ubuntu-latest

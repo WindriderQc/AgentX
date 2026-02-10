@@ -287,6 +287,10 @@ app.use('/api/voice', voiceRoutes);
 const promptRoutes = require('../routes/prompts');
 app.use('/api/prompts', promptRoutes);
 
+// Prompt template routes (CRUD, render, duplicate)
+const promptTemplateRoutes = require('../routes/prompt-templates');
+app.use('/api/prompt-templates', promptTemplateRoutes);
+
 // AgentX routes (unified agents with model + prompt + tools)
 const agentRoutes = require('../routes/agents');
 app.use('/api/agents', agentRoutes);
@@ -330,10 +334,6 @@ app.use('/api/models/registry', modelRegistryRoutes);
 // Unified Models API (Aggregates Ollama + n8n + custom + registry)
 const modelsUnifiedRoutes = require('../routes/models-unified');
 app.use('/api/models', modelsUnifiedRoutes);
-
-// Feature Dashboard routes (Feature Inventory, Telemetry, Usage, Flags)
-const featuresRoutes = require('../routes/features');
-app.use('/api/features', featuresRoutes);
 
 // Performance routes
 const performanceRoutes = require('../routes/performance');

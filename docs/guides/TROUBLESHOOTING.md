@@ -1472,9 +1472,9 @@ docker logs n8n
 ### Documentation
 
 - [Workflow Development Guide](/home/yb/codes/AgentX/AgentC/WORKFLOW-GUIDE.md)
-- [API Documentation](/home/yb/codes/AgentX/docs/API.md)
-- [Authentication Guide](/home/yb/codes/AgentX/docs/AUTHENTICATION.md)
-- [Security Hardening](/home/yb/codes/AgentX/docs/SECURITY_HARDENING.md)
+- [API Documentation](/home/yb/codes/AgentX/docs/api/API.md)
+- [Authentication Guide](/home/yb/codes/AgentX/docs/operations/AUTHENTICATION.md)
+- [Security Hardening](/home/yb/codes/AgentX/docs/architecture/SECURITY_HARDENING.md)
 
 ### External Resources
 

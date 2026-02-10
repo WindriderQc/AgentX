@@ -4,5 +4,6 @@ Use these documents to get up and running quickly and to understand what changed
 
 - [Quick Start Guide](./quickstart.md): Install dependencies, start the server, and run smoke tests.
 - [V4 Quick Reference](./v4-quick-reference.md): Fast answers for the most common V4 workflows.
+- [n8n Deployment](./n8n-deployment.md): Deploy and configure n8n for workflow automation.
 
 For release history and deeper context, see the implementation reports in `../reports/`.

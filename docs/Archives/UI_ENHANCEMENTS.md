@@ -115,7 +115,7 @@ Consolidated 2400+ lines of inline CSS into a maintainable stylesheet.
 ---
 
 ### 3. **Enhanced benchmark.html** ✅
-**Updated:** [benchmark.html](public/benchmark.html#L6935-L6985)
+**Updated:** [benchmark.html](../../public/benchmark.html#L6935-L6985)
 
 #### Changes:
 - ✅ Added CategoryBadge component import
@@ -160,7 +160,7 @@ const formatRecommendedCategory = (category, benchmarkScores = null) => {
 ---
 
 ### 4. **Enhanced model-categorization.html** ✅
-**Updated:** [model-categorization.html](public/model-categorization.html)
+**Updated:** [model-categorization.html](../../public/model-categorization.html)
 
 #### Changes:
 - ✅ Removed 2400+ lines of inline CSS
@@ -184,7 +184,7 @@ const formatRecommendedCategory = (category, benchmarkScores = null) => {
 ---
 
 ### 5. **Enhanced model-categorization.js** ✅
-**Updated:** [model-categorization.js](public/js/model-categorization.js)
+**Updated:** [model-categorization.js](../../public/js/model-categorization.js)
 
 #### New Features:
 

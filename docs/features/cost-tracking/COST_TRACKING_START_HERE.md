@@ -17,7 +17,7 @@ Start with: **[COST_TRACKING_SUMMARY.txt](COST_TRACKING_SUMMARY.txt)**
 - Performance targets
 
 ### For Frontend Developers
-Start with: **[COST_TRACKING_QUICK_REF.md](COST_TRACKING_QUICK_REF.md)**
+Start with: **COST_TRACKING_QUICK_REF.md**
 - Copy-paste HTML code snippets
 - JavaScript integration (pseudo-code)
 - API query examples
@@ -283,7 +283,7 @@ GET /api/analytics/costs
 - **Outcome:** Understand all 4 components, design decisions, file changes
 
 ### Step 2: Read the Quick Reference
-- **File:** [COST_TRACKING_QUICK_REF.md](COST_TRACKING_QUICK_REF.md)
+- **File:** COST_TRACKING_QUICK_REF.md
 - **Time:** 15 minutes
 - **Outcome:** Copy-paste HTML and JS pseudo-code, understand API responses
 
@@ -380,7 +380,7 @@ A: Create a new `CostConfig` model with pricing by model. See COST_TRACKING_UI_D
 ## Next Steps
 
 1. **Read:** [COST_TRACKING_SUMMARY.txt](COST_TRACKING_SUMMARY.txt) (5 minutes)
-2. **Scan:** [COST_TRACKING_QUICK_REF.md](COST_TRACKING_QUICK_REF.md) (15 minutes)
+2. **Scan:** COST_TRACKING_QUICK_REF.md (15 minutes)
 3. **Plan:** Identify your team members (frontend dev, backend dev)
 4. **Design:** Cost config model and pricing structure
 5. **Start Coding:** Follow implementation phases 1-6

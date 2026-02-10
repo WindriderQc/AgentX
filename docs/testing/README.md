@@ -4,6 +4,25 @@
 
 AgentX now includes comprehensive test coverage using Jest framework. Tests are organized by service layer and include both unit and integration tests.
 
+## Testing Documentation
+
+### Test Plans & Guides
+- [Bug Hunt Quick Reference](./BUG_HUNT_QUICK_REF.md) - Fast bug triage checklist
+- [Bug Reporting Guide](./BUG_REPORTING_GUIDE.md) - How to report bugs effectively
+- [Chat Onboarding Test Plan](./CHAT_ONBOARDING_TEST_PLAN.md) - Chat feature test scenarios
+- [Manual Test Now](./MANUAL_TEST_NOW.md) - Priority manual test checklist
+- [RAG Testing Guide](./RAG_TESTING_GUIDE.md) - RAG system test procedures
+- [Streaming Tests Quick Start](./STREAMING_TESTS_QUICK_START.md) - Streaming endpoint test setup
+- [UAT Invitation Acceptance](./UAT_INVITATION_ACCEPTANCE.md) - User acceptance testing criteria
+
+### Test Reports
+- [Alerts Integration Verification](./ALERTS_INTEGRATION_VERIFICATION.md) - Alert system test results
+- [E2E Test Completion Report](./E2E_TEST_COMPLETION_REPORT.md) - End-to-end test results
+- [N8N Deployment Test Results](./N8N_DEPLOYMENT_TEST_RESULTS.md) - n8n integration test results
+- [Performance API Testing](./PERFORMANCE_API_TESTING.md) - Performance endpoint test results
+- [Phase 3 Test Report](./PHASE3_TEST_REPORT.md) - Phase 3 test summary
+- [Prompt UI Test Report](./PROMPT_UI_TEST_REPORT.md) - Prompt management UI test results
+
 ## Setup
 
 ### Installation

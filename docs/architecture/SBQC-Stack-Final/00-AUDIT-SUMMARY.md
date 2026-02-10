@@ -282,7 +282,7 @@ All **Priority 1 (Critical)** issues that would block development have been reso
 
 ### New Files Created This Session
 📄 [README.md](README.md) - Navigation hub for SBQC-Stack-Final documentation  
-📄 [DISCREPANCY_AUDIT.md](archive/DISCREPANCY_AUDIT.md) - Detailed audit (archived - all issues resolved)  
+📄 DISCREPANCY_AUDIT.md - Detailed audit (archived - all issues resolved)  
 📄 [00-AUDIT-SUMMARY.md](00-AUDIT-SUMMARY.md) - This file (executive summary)  
 📄 [07-AGENTX-API-REFERENCE.md](07-AGENTX-API-REFERENCE.md) - Complete API documentation (40+ endpoints)
 

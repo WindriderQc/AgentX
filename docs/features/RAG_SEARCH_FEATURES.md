@@ -169,9 +169,9 @@ _reciprocalRankFusion(vectorResults, keywordResults, k=60)
 
 ## Related Documentation
 
-- **Ingestion Monitoring:** [RAG_METRICS_GUIDE.md](../RAG_METRICS_GUIDE.md)
+- **Ingestion Monitoring:** [RAG_METRICS_GUIDE.md](../guides/RAG_METRICS_GUIDE.md)
 - **Backend Overview:** [architecture/backend-overview.md](../architecture/backend-overview.md)
-- **Qdrant Deployment:** [QDRANT_DEPLOYMENT.md](../QDRANT_DEPLOYMENT.md)
+- **Qdrant Deployment:** [QDRANT_DEPLOYMENT.md](../operations/QDRANT_DEPLOYMENT.md)
 
 ## Next Steps
 

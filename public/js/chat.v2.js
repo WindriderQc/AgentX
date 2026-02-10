@@ -2377,10 +2377,12 @@ async function refreshStats(conversationId) {
         });
     }
 
-    // Load agents and show launcher if needed
-    // Only load if visible or needed to save bandwidth? No, load fast.
+    // Wait for initial agent load performed by AgentListView initialization
     try {
-        await agentListView.load();
+        const initialLoadPromise = agentListView.readyPromise && typeof agentListView.readyPromise.then === 'function'
+            ? agentListView.readyPromise
+            : agentListView.load();
+        await initialLoadPromise;
         console.log(`Loaded ${agentListView.agents.length} agents for launcher.`);
 
         // Fire custom event so persona-selector can inject personas after agents load

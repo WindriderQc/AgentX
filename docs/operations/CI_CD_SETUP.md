@@ -188,7 +188,7 @@ AgentX requires the following services to be running:
 3. **Qdrant** (embedded or external)
 4. **PM2** Process Manager
 
-See [DEPLOYMENT.md](DEPLOYMENT.md) for complete service setup.
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for complete service setup.
 
 ## Best Practices
 
@@ -218,7 +218,7 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for complete service setup.
 
 - [DEPLOYMENT.md](DEPLOYMENT.md) - Complete deployment guide
 - [README.md](README.md) - Project overview
-- [DataAPI CI_CD_SETUP.md](../DataAPI/CI_CD_SETUP.md) - Related pipeline
+- DataAPI CI_CD_SETUP.md - Related pipeline
 
 ## Multi-Repository Runner Setup
 

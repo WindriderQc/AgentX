@@ -2,7 +2,7 @@
 
 > **Navigation:** [CLAUDE.md](../../CLAUDE.md) → [Documentation Index](../INDEX.md) → Authentication
 
-> **Context:** Operational guide for AgentX authentication. For detailed implementation, see [AUTHENTICATION_IMPLEMENTATION_DETAILS.md](../AUTHENTICATION_IMPLEMENTATION_DETAILS.md).
+> **Context:** Operational guide for AgentX authentication. For detailed implementation, see [AUTHENTICATION_IMPLEMENTATION_DETAILS.md](../architecture/AUTHENTICATION_IMPLEMENTATION_DETAILS.md).
 
 ## Dual Auth System
 
@@ -70,7 +70,7 @@ curl -H "x-api-key: ${AGENTX_API_KEY}" http://localhost:3080/api/rag/ingest
 
 ## Related Documentation
 
-- [AUTHENTICATION_IMPLEMENTATION_DETAILS.md](../AUTHENTICATION_IMPLEMENTATION_DETAILS.md) - Full implementation guide
+- [AUTHENTICATION_IMPLEMENTATION_DETAILS.md](../architecture/AUTHENTICATION_IMPLEMENTATION_DETAILS.md) - Full implementation guide
 - [API Reference](../architecture/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md) - Authentication endpoints
 - [Multi-Tenancy](../architecture/MULTI_TENANCY.md) - Workspace-level permissions
 

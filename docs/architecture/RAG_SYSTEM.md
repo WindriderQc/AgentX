@@ -2,7 +2,7 @@
 
 > **Navigation:** [CLAUDE.md](../../CLAUDE.md) → [Documentation Index](../INDEX.md) → RAG System
 
-> **Context:** Three-layer RAG design with Qdrant integration. For complete architecture details, see [V3_RAG_ARCHITECTURE.md](../../specs/V3_RAG_ARCHITECTURE.md).
+> **Context:** Three-layer RAG design with Qdrant integration. For complete architecture details, see [V3_RAG_ARCHITECTURE.md](V3_RAG_ARCHITECTURE.md).
 
 ## Overview
 
@@ -52,7 +52,7 @@ In chatService: `useRag=true` triggers semantic search, appends top-K results to
 
 ## Qdrant Deployment
 
-**Complete Guide:** [docs/QDRANT_DEPLOYMENT.md](../QDRANT_DEPLOYMENT.md) (600+ lines)
+**Complete Guide:** [docs/operations/QDRANT_DEPLOYMENT.md](../operations/QDRANT_DEPLOYMENT.md) (600+ lines)
 
 **Production Status:** ✅ **OPERATIONAL** (as of 2026-01-05)
 - Running via PM2 (process ID 5, port 6333, 128MB RAM)
@@ -112,10 +112,10 @@ node scripts/migrate-vector-store.js --from in-memory --to qdrant
 
 ## Related Documentation
 
-- [V3_RAG_ARCHITECTURE.md](../../specs/V3_RAG_ARCHITECTURE.md) - Full architecture specification
-- [QDRANT_DEPLOYMENT.md](../QDRANT_DEPLOYMENT.md) - Deployment guide
+- [V3_RAG_ARCHITECTURE.md](V3_RAG_ARCHITECTURE.md) - Full architecture specification
+- [QDRANT_DEPLOYMENT.md](../operations/QDRANT_DEPLOYMENT.md) - Deployment guide
 - [N8N Workflows](../integrations/N8N_WORKFLOWS.md) - Document ingestion workflows
-- [RAG Metrics Guide](../RAG_METRICS_GUIDE.md) - Monitoring and metrics
+- [RAG Metrics Guide](../guides/RAG_METRICS_GUIDE.md) - Monitoring and metrics
 
 ---
 

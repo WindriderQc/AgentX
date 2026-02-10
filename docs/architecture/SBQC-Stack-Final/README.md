@@ -44,7 +44,7 @@
 | **[05-DEPLOYMENT.md](05-DEPLOYMENT.md)** | Deployment & env config | Setup & configuration |
 | **[06-AGENT-PROMPTS.md](06-AGENT-PROMPTS.md)** | System prompts for AI agents | Agent configuration |
 | **[07-AGENTX-API-REFERENCE.md](07-AGENTX-API-REFERENCE.md)** | Complete API docs (40+ endpoints) | API integration |
-| **[archive/](archive/)** | Historical/superseded documents | Reference only |
+| **archive/** | Historical/superseded documents | Reference only |
 
 ---
 

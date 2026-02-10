@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
 const logger = require('../config/logger');
 const { getEmbeddingsService } = require('../src/services/embeddings');
+const { getRagCodebaseSyncService } = require('../src/services/ragCodebaseSyncService');
 let EmbeddingCacheStats;
 try {
     EmbeddingCacheStats = require('../models/EmbeddingCacheStats');
@@ -398,6 +399,52 @@ router.get('/scans/:id/report', async (req, res) => {
     } catch (err) {
         logger.error('Proxy scan report error', { error: err.message });
         res.status(502).json({ status: 'error', message: 'Failed to fetch scan report' });
+    }
+});
+
+/**
+ * GET /api/dashboard/rag-sync/status
+ * Status for cron-driven codebase markdown archive+ingest pipeline.
+ */
+router.get('/rag-sync/status', async (_req, res) => {
+    try {
+        const service = getRagCodebaseSyncService();
+        const status = await service.getStatus();
+        return res.json({ status: 'success', data: status });
+    } catch (error) {
+        logger.error('RAG sync status error', { error: error.message });
+        return res.status(500).json({ status: 'error', message: error.message });
+    }
+});
+
+/**
+ * POST /api/dashboard/rag-sync/run
+ * Trigger manual run of codebase markdown archive+ingest pipeline.
+ */
+router.post('/rag-sync/run', async (req, res) => {
+    try {
+        const dryRun = req.body?.dryRun === true;
+        const docsOnly = req.body?.docsOnly === true;
+
+        const service = getRagCodebaseSyncService();
+        const result = await service.runNow({ dryRun, docsOnly });
+
+        if (!result.started && result.reason === 'already_running') {
+            return res.status(409).json({
+                status: 'error',
+                message: 'RAG codebase sync is already running',
+                data: result
+            });
+        }
+
+        return res.json({
+            status: 'success',
+            message: 'RAG codebase sync started',
+            data: result
+        });
+    } catch (error) {
+        logger.error('RAG sync run trigger error', { error: error.message });
+        return res.status(500).json({ status: 'error', message: error.message });
     }
 });
 

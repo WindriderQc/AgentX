@@ -313,9 +313,9 @@ const url = WorkspaceManager.addWorkspaceParam('/api/models');
 
 ## 🔗 Related Documentation
 
-- [WORKSPACE_API_INTEGRATION_COMPLETE.md](../WORKSPACE_API_INTEGRATION_COMPLETE.md) - Full implementation report
-- [MULTI_TENANCY.md](./architecture/MULTI_TENANCY.md) - Architecture overview
-- [workspace-api.js](../public/js/utils/workspace-api.js) - Source code with JSDoc
+- WORKSPACE_API_INTEGRATION_COMPLETE.md - Full implementation report
+- [MULTI_TENANCY.md](../architecture/MULTI_TENANCY.md) - Architecture overview
+- [workspace-api.js](../../public/js/utils/workspace-api.js) - Source code with JSDoc
 
 ---
 

@@ -289,6 +289,6 @@ See [openapi.yaml](./openapi.yaml) for the full OpenAPI 3.0 specification suitab
 ## Support
 
 For issues or questions:
-- Check the [WORKFLOW-GUIDE.md](../AgentC/WORKFLOW-GUIDE.md) for troubleshooting
+- Check the [WORKFLOW-GUIDE.md](../../AgentC/WORKFLOW-GUIDE.md) for troubleshooting
 - Review workflow execution logs in n8n UI
 - Check AgentX and DataAPI health endpoints
