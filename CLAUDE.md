@@ -137,15 +137,32 @@ If an agent grows too big:
 FILE SIZE DISCIPLINE
 ---------------------------------------------------------------------
 
-Hard limits:
+Limits by file type:
 
+Backend logic (services, helpers, models):
 - 300–400 lines ideal
 - 600 lines max
-- beyond that → split
+- Split signal: multiple unrelated responsibilities
 
-Claude must proactively refactor oversized files.
+Routes (API endpoint files):
+- 400–600 lines ideal
+- 1000 lines max
+- Split signal: separate resource domains
 
-Large files = design smell.
+Frontend JS (UI, dashboards, components):
+- 500–800 lines ideal
+- 1200 lines max
+- Split signal: distinct page sections or widgets
+
+Orchestrators (multi-phase coordinators):
+- 400–600 lines ideal
+- 800 lines max
+- Split signal: extractable sub-phases
+
+Claude must proactively refactor files exceeding their type max.
+
+Large files = design smell. But splitting too aggressively
+creates indirection worse than length.
 
 
 ---------------------------------------------------------------------
