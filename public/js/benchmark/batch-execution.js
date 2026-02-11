@@ -464,9 +464,15 @@ function updatePerModelProgress(batch, results, showHyper) {
     const perModelContainer = document.getElementById('perModelProgressContainer');
     if (!perModelContainer) return;
 
-    const models = Array.isArray(batch.models) && batch.models.length > 0
-        ? batch.models
-        : Array.from(new Set(results.map(r => r && r.model).filter(Boolean)));
+    const configuredModels = Array.isArray(batch.models) && batch.models.length > 0
+        ? batch.models.filter(Boolean)
+        : [];
+    const sampledResultModels = Array.from(new Set(results.map(r => r && r.model).filter(Boolean)));
+    const fullCounterModels = batch && batch.per_model_counters
+        ? Object.keys(batch.per_model_counters)
+        : [];
+    const models = Array.from(new Set([...configuredModels, ...fullCounterModels, ...sampledResultModels]));
+    const perModelCounters = batch && batch.per_model_counters ? batch.per_model_counters : {};
 
     // Get planned tests per model from batch plan
     const perModelPlannedFromPlan = batch.plan && batch.plan.tests_per_model
@@ -517,12 +523,29 @@ function updatePerModelProgress(batch, results, showHyper) {
 
     const rows = models.map(model => {
         const modelResults = results.filter(r => r && r.model === model);
-        const execDone = modelResults.length;
-        const execFailed = modelResults.filter(isExecFailed).length;
+        const fullModelCounters = perModelCounters[model] || null;
+        const execDone = Number.isFinite(fullModelCounters && fullModelCounters.exec_done)
+            ? fullModelCounters.exec_done
+            : modelResults.length;
+        const execFailed = Number.isFinite(fullModelCounters && fullModelCounters.exec_failed)
+            ? fullModelCounters.exec_failed
+            : modelResults.filter(isExecFailed).length;
         const execPct = Math.min(100, Math.round((execDone / perModelPlannedFromPlan) * 100));
 
-        const judgeDone = isQualityEnabled ? modelResults.filter(isJudgeDone).length : 0;
-        const judgeFailed = isQualityEnabled ? modelResults.filter(isJudgeFailed).length : 0;
+        const judgeDone = isQualityEnabled
+            ? (
+                Number.isFinite(fullModelCounters && fullModelCounters.judge_done)
+                    ? fullModelCounters.judge_done
+                    : modelResults.filter(isJudgeDone).length
+            )
+            : 0;
+        const judgeFailed = isQualityEnabled
+            ? (
+                Number.isFinite(fullModelCounters && fullModelCounters.judge_failed)
+                    ? fullModelCounters.judge_failed
+                    : modelResults.filter(isJudgeFailed).length
+            )
+            : 0;
         const judgePct = isQualityEnabled
             ? Math.min(100, Math.round((judgeDone / perModelPlannedFromPlan) * 100))
             : 0;
@@ -690,10 +713,15 @@ function updatePerModelProgress(batch, results, showHyper) {
     }).join('');
 
     perModelContainer.style.display = 'block';
+    const resultsMeta = batch && batch.results_meta ? batch.results_meta : null;
+    const sampledNotice = resultsMeta && resultsMeta.truncated
+        ? ` | detailed metric columns use sampled results (${resultsMeta.returned}/${resultsMeta.total})`
+        : '';
+
     perModelContainer.innerHTML = `
         <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom: 10px;">
             <div style="font-weight: 700; color: var(--text);">Per-model Progress</div>
-            <div style="color: var(--muted); font-size: 0.85em;">Planned per model: ${perModelPlannedFromPlan}</div>
+            <div style="color: var(--muted); font-size: 0.85em;">Planned per model: ${perModelPlannedFromPlan}${sampledNotice}</div>
         </div>
         <div style="overflow-x: auto;">
             <table style="width: 100%; border-collapse: collapse;">

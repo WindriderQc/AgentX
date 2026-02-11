@@ -1,0 +1,456 @@
+[
+  {
+    "level": 1,
+    "category": "refactoring",
+    "name": "Rename Variables Clearly",
+    "prompt": "Refactor this Python snippet for readability only, no behavior changes:\n\ndef f(a,b):\n c=a+b\n return c\n",
+    "expected_tokens": 120,
+    "expected_answer": "Clearer names and formatting while preserving behavior.",
+    "scoring_type": "refactoring"
+  },
+  {
+    "level": 2,
+    "category": "refactoring",
+    "name": "Extract Helper Function",
+    "prompt": "Refactor this JS code by extracting repeated logic without changing output:\nfunction t(x){let s=0; for(let i=0;i<x.length;i++){s+=x[i]} return s}\nfunction u(y){let s=0; for(let i=0;i<y.length;i++){s+=y[i]} return s}",
+    "expected_tokens": 180,
+    "expected_answer": "Duplication removed with a shared helper and equivalent behavior.",
+    "scoring_type": "refactoring"
+  },
+  {
+    "level": 3,
+    "category": "refactoring",
+    "name": "Guard Clauses",
+    "prompt": "Refactor this function to use guard clauses and improve readability while preserving behavior:\nfunction status(u){ if(u){ if(u.active){ if(u.role==='admin'){ return 'ok' } } } return 'no' }",
+    "expected_tokens": 180,
+    "expected_answer": "Equivalent logic with flatter control flow and clearer intent.",
+    "scoring_type": "refactoring"
+  },
+  {
+    "level": 4,
+    "category": "refactoring",
+    "name": "Split Monolithic Function",
+    "prompt": "Refactor this function into smaller units while preserving behavior: it validates input, transforms records, and formats a report all in one block. Provide clean, testable code.",
+    "expected_tokens": 260,
+    "expected_answer": "Modularized code with separated responsibilities and unchanged behavior.",
+    "scoring_type": "refactoring"
+  },
+  {
+    "level": 5,
+    "category": "refactoring",
+    "name": "Improve Error Boundaries",
+    "prompt": "Refactor this async handler to isolate side effects and narrow try/catch scopes while preserving behavior and return shape.",
+    "expected_tokens": 280,
+    "expected_answer": "Focused error boundaries, clearer flow, same externally visible behavior.",
+    "scoring_type": "refactoring"
+  },
+  {
+    "level": 6,
+    "category": "refactoring",
+    "name": "Dependency Injection Refactor",
+    "prompt": "Refactor a service that directly imports database and HTTP clients into a design using dependency injection for easier testing. Keep runtime behavior equivalent.",
+    "expected_tokens": 320,
+    "expected_answer": "Injected dependencies and improved testability without behavior regressions.",
+    "scoring_type": "refactoring"
+  },
+  {
+    "level": 7,
+    "category": "refactoring",
+    "name": "State Machine Cleanup",
+    "prompt": "Refactor a nested switch-based workflow into a clearer state-machine-style structure while preserving transitions and outputs.",
+    "expected_tokens": 360,
+    "expected_answer": "Cleaner state modeling with preserved transition semantics.",
+    "scoring_type": "refactoring"
+  },
+  {
+    "level": 8,
+    "category": "refactoring",
+    "name": "Performance-Neutral Refactor",
+    "prompt": "Refactor this data pipeline for readability and maintainability while keeping algorithmic complexity unchanged.",
+    "expected_tokens": 360,
+    "expected_answer": "Readability and structure improved with same complexity characteristics.",
+    "scoring_type": "refactoring"
+  },
+  {
+    "level": 9,
+    "category": "refactoring",
+    "name": "Legacy Module Decomposition",
+    "prompt": "Propose and implement a refactor plan for a legacy 800-line module into cohesive components with clear contracts, preserving public API behavior.",
+    "expected_tokens": 420,
+    "expected_answer": "Concrete decomposition with preserved API behavior and improved maintainability.",
+    "scoring_type": "refactoring"
+  },
+  {
+    "level": 10,
+    "category": "refactoring",
+    "name": "Concurrent Refactor Safety",
+    "prompt": "Refactor a concurrent job scheduler for clarity while preserving thread-safety guarantees and throughput characteristics. Explain invariants preserved.",
+    "expected_tokens": 480,
+    "expected_answer": "Clearer design with explicit preserved concurrency invariants.",
+    "scoring_type": "refactoring"
+  },
+
+  {
+    "level": 1,
+    "category": "debugging",
+    "name": "Off-by-One Fix",
+    "prompt": "Debug and fix this bug:\nfor (let i = 0; i <= arr.length; i++) { sum += arr[i]; }\nExplain root cause briefly.",
+    "expected_tokens": 140,
+    "expected_answer": "Identifies off-by-one error and corrects loop bound.",
+    "scoring_type": "debugging"
+  },
+  {
+    "level": 2,
+    "category": "debugging",
+    "name": "Null Check Crash",
+    "prompt": "A function crashes when user.profile is null. Diagnose and provide minimal fix with explanation.",
+    "expected_tokens": 160,
+    "expected_answer": "Root cause identified and null-safe access or guard introduced.",
+    "scoring_type": "debugging"
+  },
+  {
+    "level": 3,
+    "category": "debugging",
+    "name": "Incorrect Async Await",
+    "prompt": "An endpoint returns empty data intermittently because a promise is not awaited. Find the bug and provide a minimal patch.",
+    "expected_tokens": 180,
+    "expected_answer": "Missing await identified with correct async control flow fix.",
+    "scoring_type": "debugging"
+  },
+  {
+    "level": 4,
+    "category": "debugging",
+    "name": "Race Condition in Counter",
+    "prompt": "Multiple workers increment a shared counter and totals are wrong. Diagnose likely race condition and provide a safe fix.",
+    "expected_tokens": 240,
+    "expected_answer": "Race condition explained with synchronization or atomic fix.",
+    "scoring_type": "debugging"
+  },
+  {
+    "level": 5,
+    "category": "debugging",
+    "name": "Memory Leak from Event Listeners",
+    "prompt": "A Node service memory grows over time after repeated requests. Identify likely listener leak pattern and propose minimal fix.",
+    "expected_tokens": 260,
+    "expected_answer": "Leak source identified and proper listener cleanup applied.",
+    "scoring_type": "debugging"
+  },
+  {
+    "level": 6,
+    "category": "debugging",
+    "name": "Deadlock Investigation",
+    "prompt": "Two services occasionally deadlock around lock A and lock B. Diagnose root cause and propose ordering-based remediation.",
+    "expected_tokens": 320,
+    "expected_answer": "Circular wait root cause identified with deterministic lock-order fix.",
+    "scoring_type": "debugging"
+  },
+  {
+    "level": 7,
+    "category": "debugging",
+    "name": "Phantom Reads in Transaction",
+    "prompt": "A reporting query in concurrent writes produces inconsistent counts. Diagnose transaction isolation issue and propose safe fix.",
+    "expected_tokens": 340,
+    "expected_answer": "Isolation-level issue identified with practical transaction strategy.",
+    "scoring_type": "debugging"
+  },
+  {
+    "level": 8,
+    "category": "debugging",
+    "name": "Distributed Timeout Cascade",
+    "prompt": "Under partial outage, retries amplify traffic and cause cascading failures. Diagnose failure mode and provide mitigation patch strategy.",
+    "expected_tokens": 380,
+    "expected_answer": "Retry storm/cascade identified with backoff, jitter, and circuit-breaker style mitigation.",
+    "scoring_type": "debugging"
+  },
+  {
+    "level": 9,
+    "category": "debugging",
+    "name": "Data Corruption Root Cause",
+    "prompt": "A background job occasionally writes partial records due to interleaved writes and idempotency gaps. Find root cause and propose minimal robust fix.",
+    "expected_tokens": 420,
+    "expected_answer": "Root cause traced to non-idempotent writes or ordering; proposes robust corrective patch.",
+    "scoring_type": "debugging"
+  },
+  {
+    "level": 10,
+    "category": "debugging",
+    "name": "Heisenbug in Multi-Threaded Pipeline",
+    "prompt": "A production pipeline has a rare nondeterministic bug only under high load. Provide systematic diagnosis plan, likely root causes, and a validated minimal fix path.",
+    "expected_tokens": 500,
+    "expected_answer": "Structured high-signal debugging plan with plausible concurrency root causes and verification strategy.",
+    "scoring_type": "debugging"
+  },
+
+  {
+    "level": 1,
+    "category": "explanation",
+    "name": "Explain API vs SDK",
+    "prompt": "Explain the difference between an API and an SDK in 3-4 simple sentences.",
+    "expected_tokens": 100,
+    "expected_answer": "Clear distinction between API interface and SDK toolkit in beginner-friendly terms.",
+    "scoring_type": "explanation"
+  },
+  {
+    "level": 2,
+    "category": "explanation",
+    "name": "What Is Big-O",
+    "prompt": "Explain Big-O notation for a beginner and give two concrete examples.",
+    "expected_tokens": 140,
+    "expected_answer": "Accurate and clear explanation with practical examples.",
+    "scoring_type": "explanation"
+  },
+  {
+    "level": 3,
+    "category": "explanation",
+    "name": "TCP vs UDP",
+    "prompt": "Explain TCP vs UDP with tradeoffs and one real-world use case for each.",
+    "expected_tokens": 180,
+    "expected_answer": "Technically correct explanation with sensible tradeoffs and examples.",
+    "scoring_type": "explanation"
+  },
+  {
+    "level": 4,
+    "category": "explanation",
+    "name": "Database Indexes",
+    "prompt": "Explain how database indexes improve read performance and why they can hurt writes.",
+    "expected_tokens": 200,
+    "expected_answer": "Accurate performance explanation covering read/write tradeoff.",
+    "scoring_type": "explanation"
+  },
+  {
+    "level": 5,
+    "category": "explanation",
+    "name": "Event Loop Internals",
+    "prompt": "Explain the JavaScript event loop, task queue, and microtask queue with a short execution-order example.",
+    "expected_tokens": 260,
+    "expected_answer": "Correct event-loop model and practical execution-order explanation.",
+    "scoring_type": "explanation"
+  },
+  {
+    "level": 6,
+    "category": "explanation",
+    "name": "CAP Theorem in Practice",
+    "prompt": "Explain CAP theorem and what tradeoffs teams actually make in distributed systems.",
+    "expected_tokens": 300,
+    "expected_answer": "Correct CAP explanation grounded in practical system tradeoffs.",
+    "scoring_type": "explanation"
+  },
+  {
+    "level": 7,
+    "category": "explanation",
+    "name": "Exactly-Once Semantics",
+    "prompt": "Explain why exactly-once delivery is hard and how systems approximate it using idempotency and deduplication.",
+    "expected_tokens": 320,
+    "expected_answer": "Nuanced explanation of guarantees and practical approximations.",
+    "scoring_type": "explanation"
+  },
+  {
+    "level": 8,
+    "category": "explanation",
+    "name": "Consensus Protocol Intuition",
+    "prompt": "Explain consensus protocols (like Raft/Paxos) at a conceptual level, focusing on leader election and log agreement.",
+    "expected_tokens": 360,
+    "expected_answer": "Coherent conceptual explanation of consensus core mechanics.",
+    "scoring_type": "explanation"
+  },
+  {
+    "level": 9,
+    "category": "explanation",
+    "name": "Zero-Downtime Migrations",
+    "prompt": "Explain a safe multi-step approach for zero-downtime schema migrations with backward compatibility.",
+    "expected_tokens": 380,
+    "expected_answer": "Stepwise migration strategy with compatibility safeguards.",
+    "scoring_type": "explanation"
+  },
+  {
+    "level": 10,
+    "category": "explanation",
+    "name": "Formal vs Empirical Guarantees",
+    "prompt": "Explain the difference between formal correctness guarantees and empirical reliability in production systems, with examples.",
+    "expected_tokens": 420,
+    "expected_answer": "Accurate distinction between proof-based guarantees and observed reliability.",
+    "scoring_type": "explanation"
+  },
+
+  {
+    "level": 1,
+    "category": "dialogue",
+    "name": "Friendly Clarification",
+    "prompt": "User: 'My app is slow.' Assistant: ask 2 concise clarifying questions before giving advice.",
+    "expected_tokens": 90,
+    "expected_answer": "Conversational follow-up questions that move problem-solving forward.",
+    "scoring_type": "dialogue"
+  },
+  {
+    "level": 2,
+    "category": "dialogue",
+    "name": "Support Tone Consistency",
+    "prompt": "Continue this support chat with empathetic and concise tone while collecting key details: platform, error message, and recent changes.",
+    "expected_tokens": 120,
+    "expected_answer": "Natural multi-turn support response with relevant information gathering.",
+    "scoring_type": "dialogue"
+  },
+  {
+    "level": 3,
+    "category": "dialogue",
+    "name": "Context-Aware Follow Up",
+    "prompt": "Previous turn: user already shared they run PostgreSQL 15 and Node 20. Respond without repeating those questions and propose next diagnostic step.",
+    "expected_tokens": 130,
+    "expected_answer": "Uses prior context and advances troubleshooting.",
+    "scoring_type": "dialogue"
+  },
+  {
+    "level": 4,
+    "category": "dialogue",
+    "name": "De-Escalation Chat",
+    "prompt": "User is frustrated after repeated build failures. Respond calmly, acknowledge frustration, and offer a structured next-step plan in conversational style.",
+    "expected_tokens": 170,
+    "expected_answer": "Emotionally appropriate response with actionable plan.",
+    "scoring_type": "dialogue"
+  },
+  {
+    "level": 5,
+    "category": "dialogue",
+    "name": "Multi-Turn Goal Tracking",
+    "prompt": "In this conversation, the user goal is shipping by Friday with minimal risk. Reply in a way that keeps decisions aligned to that goal.",
+    "expected_tokens": 190,
+    "expected_answer": "Conversational response that tracks stated objective and constraints.",
+    "scoring_type": "dialogue"
+  },
+  {
+    "level": 6,
+    "category": "dialogue",
+    "name": "Tradeoff Conversation",
+    "prompt": "User asks whether to optimize latency or reliability first. Respond as a dialogue turn that explores tradeoffs and asks one decisive follow-up.",
+    "expected_tokens": 220,
+    "expected_answer": "Balanced tradeoff guidance with a useful follow-up question.",
+    "scoring_type": "dialogue"
+  },
+  {
+    "level": 7,
+    "category": "dialogue",
+    "name": "Collaborative Design Chat",
+    "prompt": "Continue a design conversation where the user prefers incremental changes over rewrites. Provide options and ask for preference.",
+    "expected_tokens": 240,
+    "expected_answer": "Collaborative, context-aware turn with clear options.",
+    "scoring_type": "dialogue"
+  },
+  {
+    "level": 8,
+    "category": "dialogue",
+    "name": "Cross-Functional Mediation",
+    "prompt": "Engineering and product disagree on scope. Respond as a mediator in chat, summarize both sides fairly, and propose a next step.",
+    "expected_tokens": 280,
+    "expected_answer": "Balanced dialogue with constructive facilitation.",
+    "scoring_type": "dialogue"
+  },
+  {
+    "level": 9,
+    "category": "dialogue",
+    "name": "Long-Horizon Conversation Coherence",
+    "prompt": "Given prior turns with changing constraints, respond coherently without contradiction and propose an updated plan.",
+    "expected_tokens": 320,
+    "expected_answer": "Consistent, coherent continuation reflecting prior-turn constraints.",
+    "scoring_type": "dialogue"
+  },
+  {
+    "level": 10,
+    "category": "dialogue",
+    "name": "High-Stakes Stakeholder Conversation",
+    "prompt": "Respond to an executive stakeholder asking for incident status, risk, and ETA. Keep conversational tone, avoid speculation, and maintain trust.",
+    "expected_tokens": 360,
+    "expected_answer": "Clear, trustworthy, context-appropriate high-stakes dialogue response.",
+    "scoring_type": "dialogue"
+  },
+
+  {
+    "level": 1,
+    "category": "general",
+    "name": "Actionable Next Step",
+    "prompt": "User asks: 'I keep missing deadlines.' Provide one practical next step and one clarifying question.",
+    "expected_tokens": 90,
+    "expected_answer": "Helpful concise guidance with one relevant follow-up question.",
+    "scoring_type": "general"
+  },
+  {
+    "level": 2,
+    "category": "general",
+    "name": "Plan in Three Steps",
+    "prompt": "Create a 3-step plan for preparing a technical interview in 2 weeks.",
+    "expected_tokens": 120,
+    "expected_answer": "Clear and realistic short plan with actionable steps.",
+    "scoring_type": "general"
+  },
+  {
+    "level": 3,
+    "category": "general",
+    "name": "Pros and Cons Summary",
+    "prompt": "Compare monolith vs microservices for a small startup and provide a recommendation.",
+    "expected_tokens": 160,
+    "expected_answer": "Balanced tradeoff discussion and context-sensitive recommendation.",
+    "scoring_type": "general"
+  },
+  {
+    "level": 4,
+    "category": "general",
+    "name": "Constraint-Aware Advice",
+    "prompt": "User has a low budget, tight timeline, and small team. Recommend a deployment approach with rationale.",
+    "expected_tokens": 180,
+    "expected_answer": "Advice aligned to explicit constraints with practical rationale.",
+    "scoring_type": "general"
+  },
+  {
+    "level": 5,
+    "category": "general",
+    "name": "Decision Matrix",
+    "prompt": "Provide a simple decision matrix for choosing between three cloud providers for a web API.",
+    "expected_tokens": 220,
+    "expected_answer": "Structured and useful decision framework with relevant criteria.",
+    "scoring_type": "general"
+  },
+  {
+    "level": 6,
+    "category": "general",
+    "name": "Risk-First Roadmap",
+    "prompt": "Draft a 30-day roadmap for shipping an MVP while minimizing operational risk.",
+    "expected_tokens": 260,
+    "expected_answer": "Coherent roadmap that prioritizes risk reduction and delivery milestones.",
+    "scoring_type": "general"
+  },
+  {
+    "level": 7,
+    "category": "general",
+    "name": "Stakeholder Communication",
+    "prompt": "Write an update to stakeholders about a one-week delay, preserving trust and providing concrete mitigation steps.",
+    "expected_tokens": 280,
+    "expected_answer": "Clear, honest communication with concrete recovery actions.",
+    "scoring_type": "general"
+  },
+  {
+    "level": 8,
+    "category": "general",
+    "name": "Ambiguous Requirement Handling",
+    "prompt": "Given an ambiguous product request, propose assumptions, validation steps, and a safe implementation path.",
+    "expected_tokens": 320,
+    "expected_answer": "Structured ambiguity handling with explicit assumptions and validation.",
+    "scoring_type": "general"
+  },
+  {
+    "level": 9,
+    "category": "general",
+    "name": "Cross-Team Execution Plan",
+    "prompt": "Create a cross-functional execution plan involving engineering, product, support, and security for a major release.",
+    "expected_tokens": 360,
+    "expected_answer": "Comprehensive but practical cross-team plan with dependencies and checkpoints.",
+    "scoring_type": "general"
+  },
+  {
+    "level": 10,
+    "category": "general",
+    "name": "Crisis Response Strategy",
+    "prompt": "During a production incident affecting payments, outline immediate response, communication cadence, and stabilization priorities.",
+    "expected_tokens": 420,
+    "expected_answer": "High-quality incident strategy balancing technical mitigation and stakeholder communication.",
+    "scoring_type": "general"
+  }
+]

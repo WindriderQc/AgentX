@@ -8,25 +8,158 @@ const path = require('path');
 const logger = require('../../../config/logger');
 const BenchmarkPrompt = require('../../../models/BenchmarkPrompt');
 const BenchmarkBatch = require('../../../models/BenchmarkBatch');
+const { validateCategoryParity } = require('./categoryParity');
 
-/**
- * Seed prompts from JSON file if database is empty
- */
-async function seedPrompts() {
-    const count = await BenchmarkPrompt.countDocuments();
+const PROMPT_LIBRARY_FILES = [
+    'benchmark-prompts.json',
+    'benchmark-prompts-enhanced.json',
+    'benchmark-prompts-deep.json'
+];
 
-    if (count === 0) {
-        const promptsPath = path.join(__dirname, '..', '..', '..', 'data', 'benchmark-prompts.json');
-        const promptsData = await fs.readFile(promptsPath, 'utf-8');
-        const prompts = JSON.parse(promptsData);
+function promptIdentityKey(prompt) {
+    const category = String(prompt && prompt.category ? prompt.category : '').trim().toLowerCase();
+    const name = String(prompt && prompt.name ? prompt.name : '').trim().toLowerCase();
+    const level = Number(prompt && prompt.level);
+    return `${category}::${name}::${Number.isFinite(level) ? level : ''}`;
+}
 
-        const seededCount = await BenchmarkPrompt.seedFromArray(prompts);
-        logger.info('Seeded benchmark prompts', { count: seededCount });
+function toBoundedNumber(value, min, max) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return null;
+    return Math.max(min, Math.min(max, n));
+}
 
-        return seededCount;
+function sanitizePromptRecord(rawPrompt, sourceFile) {
+    const name = String(rawPrompt && rawPrompt.name ? rawPrompt.name : '').trim();
+    const prompt = String(rawPrompt && rawPrompt.prompt ? rawPrompt.prompt : '').trim();
+    const category = String(rawPrompt && rawPrompt.category ? rawPrompt.category : '').trim();
+    const level = toBoundedNumber(rawPrompt && rawPrompt.level, 1, 10);
+
+    if (!name || !prompt || !category || level === null) {
+        logger.warn('Skipping invalid prompt record in benchmark library', {
+            sourceFile,
+            name: name || null,
+            category: category || null,
+            level: rawPrompt && rawPrompt.level !== undefined ? rawPrompt.level : null
+        });
+        return null;
     }
 
-    return 0;
+    const expectedTokens = toBoundedNumber(rawPrompt.expected_tokens, 10, 10000);
+    const scoringType = rawPrompt && rawPrompt.scoring_type ? String(rawPrompt.scoring_type).trim() : null;
+    const expectedAnswer = rawPrompt && rawPrompt.expected_answer ? String(rawPrompt.expected_answer) : null;
+    const referenceAnswer = rawPrompt && rawPrompt.reference_answer ? String(rawPrompt.reference_answer) : null;
+
+    const sanitized = {
+        name,
+        prompt,
+        level,
+        category
+    };
+
+    if (expectedAnswer) sanitized.expected_answer = expectedAnswer;
+    if (expectedTokens !== null) sanitized.expected_tokens = expectedTokens;
+    if (scoringType) sanitized.scoring_type = scoringType;
+    if (referenceAnswer) sanitized.reference_answer = referenceAnswer;
+
+    if (rawPrompt && rawPrompt.deterministic_scoring && typeof rawPrompt.deterministic_scoring === 'object') {
+        sanitized.deterministic_scoring = rawPrompt.deterministic_scoring;
+    }
+
+    if (Array.isArray(rawPrompt && rawPrompt.scoring_dimensions) && rawPrompt.scoring_dimensions.length > 0) {
+        sanitized.scoring_dimensions = rawPrompt.scoring_dimensions;
+    }
+
+    return sanitized;
+}
+
+async function loadPromptLibraryRecords() {
+    const records = [];
+
+    for (const fileName of PROMPT_LIBRARY_FILES) {
+        const promptsPath = path.join(__dirname, '..', '..', '..', 'data', fileName);
+
+        try {
+            const promptsData = await fs.readFile(promptsPath, 'utf-8');
+            const parsed = JSON.parse(promptsData);
+
+            if (!Array.isArray(parsed)) {
+                logger.warn('Benchmark prompt library file is not an array; skipping', { file: fileName });
+                continue;
+            }
+
+            for (const rawPrompt of parsed) {
+                const sanitized = sanitizePromptRecord(rawPrompt, fileName);
+                if (sanitized) records.push(sanitized);
+            }
+        } catch (err) {
+            logger.warn('Failed to load benchmark prompt library file', {
+                file: fileName,
+                error: err.message
+            });
+        }
+    }
+
+    return records;
+}
+
+/**
+ * Seed/sync benchmark prompts from local library files.
+ * Inserts only missing prompts using category+name+level identity.
+ */
+async function seedPrompts() {
+    const libraryRecords = await loadPromptLibraryRecords();
+    if (libraryRecords.length === 0) {
+        logger.warn('No benchmark prompts loaded from prompt library files');
+        return 0;
+    }
+
+    const existing = await BenchmarkPrompt.find({}, 'name category level').lean();
+    const existingKeys = new Set(existing.map(promptIdentityKey));
+    const stagedKeys = new Set();
+    const promptsToInsert = [];
+
+    for (const record of libraryRecords) {
+        const key = promptIdentityKey(record);
+        if (!key || existingKeys.has(key) || stagedKeys.has(key)) continue;
+        stagedKeys.add(key);
+        promptsToInsert.push(record);
+    }
+
+    if (promptsToInsert.length === 0) {
+        logger.debug('Benchmark prompt library already synchronized', {
+            existingCount: existing.length,
+            libraryCount: libraryRecords.length
+        });
+        await validateCategoryParity();
+        return 0;
+    }
+
+    let insertedCount = 0;
+    try {
+        const inserted = await BenchmarkPrompt.insertMany(promptsToInsert, { ordered: false });
+        insertedCount = Array.isArray(inserted) ? inserted.length : 0;
+    } catch (err) {
+        if (err && err.writeErrors && Array.isArray(err.writeErrors)) {
+            insertedCount = Math.max(0, promptsToInsert.length - err.writeErrors.length);
+            logger.warn('Partial benchmark prompt sync completed with write errors', {
+                attempted: promptsToInsert.length,
+                inserted: insertedCount,
+                writeErrors: err.writeErrors.length
+            });
+        } else {
+            throw err;
+        }
+    }
+
+    logger.info('Seeded benchmark prompts', {
+        inserted: insertedCount,
+        promptLibraryCount: libraryRecords.length,
+        sourceFiles: PROMPT_LIBRARY_FILES
+    });
+
+    await validateCategoryParity();
+    return insertedCount;
 }
 
 /**

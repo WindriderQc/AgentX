@@ -26,6 +26,7 @@
  */
 
 const BenchmarkResult = require('../../../models/BenchmarkResult');
+const BenchmarkPrompt = require('../../../models/BenchmarkPrompt');
 const { GENERALIST_CATEGORY_WEIGHTS } = require('../../../config/categories');
 
 // Explicit input quality scale for generalist normalization.
@@ -76,11 +77,69 @@ function normalizeQualityTo100(rawQuality) {
 }
 
 /**
+ * Normalize category key into canonical benchmark category naming.
+ * Handles legacy aliases and snake_case variants.
+ */
+function normalizeCategoryKey(rawCategory) {
+    if (!rawCategory) return null;
+    const normalized = String(rawCategory).trim().toLowerCase().replace(/_/g, '-');
+    if (!normalized) return null;
+    if (normalized === 'code') return 'coding';
+    return normalized;
+}
+
+/**
+ * Normalize a weight map so values sum to 1.0 while preserving key order.
+ */
+function normalizeWeightMap(weights) {
+    const entries = Object.entries(weights || {});
+    if (entries.length === 0) return {};
+    const total = entries.reduce((sum, [, w]) => sum + (Number(w) || 0), 0);
+    if (!Number.isFinite(total) || total <= 0) return {};
+
+    const normalized = {};
+    for (const [category, weight] of entries) {
+        normalized[category] = (Number(weight) || 0) / total;
+    }
+    return normalized;
+}
+
+/**
+ * Resolve active category weights from the current benchmark prompt catalog.
+ * Falls back to configured defaults when prompts are unavailable.
+ */
+async function getActiveCategoryWeights() {
+    try {
+        const promptCategories = await BenchmarkPrompt.distinct('category');
+        const available = new Set(
+            (Array.isArray(promptCategories) ? promptCategories : [])
+                .map(normalizeCategoryKey)
+                .filter((cat) => cat && Object.prototype.hasOwnProperty.call(GENERALIST_CATEGORY_WEIGHTS, cat))
+        );
+
+        if (available.size === 0) {
+            return { ...GENERALIST_CATEGORY_WEIGHTS };
+        }
+
+        const active = {};
+        for (const [category, weight] of Object.entries(GENERALIST_CATEGORY_WEIGHTS)) {
+            if (available.has(category)) {
+                active[category] = weight;
+            }
+        }
+
+        return normalizeWeightMap(active);
+    } catch (_) {
+        return { ...GENERALIST_CATEGORY_WEIGHTS };
+    }
+}
+
+/**
  * Calculate generalist score from category data
  * @param {Object} categoryScores - Map of category -> { avg, count, stddev, attempted }
  * @returns {Object} Generalist score breakdown
  */
-function calculateGeneralistScoreFromCategories(categoryScores) {
+function calculateGeneralistScoreFromCategories(categoryScores, categoryWeights = GENERALIST_CATEGORY_WEIGHTS) {
     let weightedSum = 0;
     let coveragePenalty = 0;
     let weightsCovered = 0;
@@ -89,7 +148,7 @@ function calculateGeneralistScoreFromCategories(categoryScores) {
     const categoryStdDevs = [];
     let testedCategories = 0;
 
-    for (const [category, weight] of Object.entries(GENERALIST_CATEGORY_WEIGHTS)) {
+    for (const [category, weight] of Object.entries(categoryWeights || {})) {
         const categoryData = categoryScores[category];
 
         const hasScore = !!(categoryData && (categoryData.count > 0 || categoryData.avg > 0));
@@ -120,8 +179,10 @@ function calculateGeneralistScoreFromCategories(categoryScores) {
         }
     }
 
-    const totalCategories = Object.keys(GENERALIST_CATEGORY_WEIGHTS).length;
-    const coveragePercent = (testedCategories / totalCategories) * 100;
+    const totalCategories = Object.keys(categoryWeights || {}).length;
+    const coveragePercent = totalCategories > 0
+        ? (testedCategories / totalCategories) * 100
+        : 0;
 
     // Within-category consistency: average stddev across tested categories
     // Lower stddev = more consistent = bonus
@@ -225,8 +286,8 @@ async function getCategoryScoresByModel(matchQuery = { success: true }) {
 
     for (const stat of categoryStats) {
         const key = `${stat._id.model}@@${stat._id.host}`;
-        // Normalize 'code' → 'coding' to match GENERALIST_CATEGORY_WEIGHTS key
-        const category = stat._id.category === 'code' ? 'coding' : stat._id.category;
+        const category = normalizeCategoryKey(stat._id.category);
+        if (!category || !Object.prototype.hasOwnProperty.call(GENERALIST_CATEGORY_WEIGHTS, category)) continue;
 
         if (!modelCategoryMap.has(key)) {
             modelCategoryMap.set(key, {});
@@ -245,8 +306,8 @@ async function getCategoryScoresByModel(matchQuery = { success: true }) {
     // Mark infra-attempted categories as attempted to avoid coverage penalty
     for (const att of infraAttempts) {
         const key = `${att._id.model}@@${att._id.host}`;
-        const category = att._id.category === 'code' ? 'coding' : att._id.category;
-        if (!category) continue;
+        const category = normalizeCategoryKey(att._id.category);
+        if (!category || !Object.prototype.hasOwnProperty.call(GENERALIST_CATEGORY_WEIGHTS, category)) continue;
         if (!modelCategoryMap.has(key)) {
             modelCategoryMap.set(key, {});
         }
@@ -265,12 +326,12 @@ async function getCategoryScoresByModel(matchQuery = { success: true }) {
  * @param {Object} matchQuery - MongoDB match query for filtering
  * @returns {Map} Model key -> generalist score data
  */
-async function calculateAllGeneralistScores(matchQuery = { success: true }) {
+async function calculateAllGeneralistScores(matchQuery = { success: true }, { categoryWeights = GENERALIST_CATEGORY_WEIGHTS } = {}) {
     const categoryMap = await getCategoryScoresByModel(matchQuery);
     const generalistScores = new Map();
 
     for (const [key, categoryScores] of categoryMap) {
-        const scoreData = calculateGeneralistScoreFromCategories(categoryScores);
+        const scoreData = calculateGeneralistScoreFromCategories(categoryScores, categoryWeights);
         generalistScores.set(key, scoreData);
     }
 
@@ -283,6 +344,8 @@ module.exports = {
     CONSISTENCY_BONUS,
     CONSISTENCY_STDDEV_THRESHOLD,
     normalizeQualityTo100,
+    normalizeCategoryKey,
+    getActiveCategoryWeights,
     calculateGeneralistScoreFromCategories,
     getCategoryScoresByModel,
     calculateAllGeneralistScores

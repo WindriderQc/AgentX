@@ -99,6 +99,15 @@ describe('Benchmark System - Integration Tests', () => {
             // Verify prompts were seeded
             const count = await BenchmarkPrompt.countDocuments();
             expect(count).toBeGreaterThan(0);
+
+            const seededCategories = await BenchmarkPrompt.distinct('category');
+            expect(seededCategories).toEqual(expect.arrayContaining([
+                'general',
+                'refactoring',
+                'debugging',
+                'explanation',
+                'dialogue'
+            ]));
         });
 
         it('should return prompts grouped by level', async () => {
@@ -121,11 +130,11 @@ describe('Benchmark System - Integration Tests', () => {
             const response = await request(app).get('/api/benchmark/prompts');
 
             expect(response.status).toBe(200);
-            expect(response.body.data.prompts).toHaveLength(2);
+            expect(response.body.data.prompts.length).toBeGreaterThanOrEqual(2);
             expect(response.body.data.by_level).toHaveProperty('1');
             expect(response.body.data.by_level).toHaveProperty('3');
-            expect(response.body.data.by_level['1']).toHaveLength(1);
-            expect(response.body.data.by_level['3']).toHaveLength(1);
+            expect(response.body.data.by_level['1'].some((p) => p.name === 'Test Prompt 1')).toBe(true);
+            expect(response.body.data.by_level['3'].some((p) => p.name === 'Test Prompt 2')).toBe(true);
         });
     });
 
@@ -482,7 +491,8 @@ describe('Benchmark System - Integration Tests', () => {
             expect(response.status).toBe(200);
             expect(response.body.status).toBe('success');
             expect(response.body.data).toHaveProperty('batch_id');
-            expect(response.body.data.total_tests).toBe(1); // 1 model * 1 prompt (level 1)
+            const promptsAtLevel1 = await BenchmarkPrompt.countDocuments({ level: 1 });
+            expect(response.body.data.total_tests).toBe(promptsAtLevel1); // 1 model * seeded prompts at level 1
 
             // Verify batch was created in database
             const batch = await BenchmarkBatch.findById(response.body.data.batch_id);
@@ -502,7 +512,8 @@ describe('Benchmark System - Integration Tests', () => {
                 });
 
             expect(response.status).toBe(200);
-            expect(response.body.data.total_tests).toBe(4); // 2 models * 2 prompts
+            const promptsAtLevels = await BenchmarkPrompt.countDocuments({ level: { $in: [1, 3] } });
+            expect(response.body.data.total_tests).toBe(2 * promptsAtLevels); // 2 models * seeded prompts in selected levels
         });
 
         it('should return 409 on duplicate-key race collision during start', async () => {
@@ -762,6 +773,90 @@ describe('Benchmark System - Integration Tests', () => {
                 offset: 1,
                 limit: 2,
                 truncated: false
+            });
+        });
+
+        it('should include full per_model_counters even when results are paginated', async () => {
+            const batch = await BenchmarkBatch.create({
+                host: 'http://localhost:11434',
+                models: ['model-a', 'model-b'],
+                levels: [1],
+                run_name: 'Per Model Counters Batch',
+                total_tests: 3,
+                status: 'completed',
+                quality_scoring: true,
+                completed: 3,
+                failed: 1,
+                judge_total: 3,
+                judge_completed: 2
+            });
+
+            await BenchmarkResult.create([
+                {
+                    batch_id: batch._id.toString(),
+                    model: 'model-a',
+                    host: 'http://localhost:11434',
+                    prompt: 'p1',
+                    prompt_name: 'P1',
+                    prompt_level: 1,
+                    prompt_category: 'math',
+                    response: 'r1',
+                    latency: 100,
+                    tokens: 10,
+                    quality_score: 9,
+                    success: true
+                },
+                {
+                    batch_id: batch._id.toString(),
+                    model: 'model-a',
+                    host: 'http://localhost:11434',
+                    prompt: 'p2',
+                    prompt_name: 'P2',
+                    prompt_level: 1,
+                    prompt_category: 'math',
+                    response: 'r2',
+                    latency: 110,
+                    tokens: 11,
+                    quality_score: 8,
+                    success: true
+                },
+                {
+                    batch_id: batch._id.toString(),
+                    model: 'model-b',
+                    host: 'http://localhost:11434',
+                    prompt: 'p3',
+                    prompt_name: 'P3',
+                    prompt_level: 1,
+                    prompt_category: 'reasoning',
+                    error: 'boom',
+                    latency: 150,
+                    tokens: 5,
+                    scoring_method: 'exec_failed',
+                    success: false
+                }
+            ]);
+
+            const response = await request(app)
+                .get(`/api/benchmark/batch/${batch._id}?result_limit=1`);
+
+            expect(response.status).toBe(200);
+            expect(response.body.data.results_meta).toMatchObject({
+                returned: 1,
+                total: 3,
+                truncated: true
+            });
+            expect(response.body.data.per_model_counters).toBeTruthy();
+            expect(response.body.data.per_model_counters['model-a']).toMatchObject({
+                exec_done: 2,
+                exec_failed: 0,
+                judge_done: 2,
+                judge_failed: 0
+            });
+            expect(response.body.data.per_model_counters['model-b']).toMatchObject({
+                exec_done: 1,
+                exec_failed: 1,
+                judge_done: 0,
+                judge_failed: 1
             });
         });
     });
@@ -1153,6 +1248,21 @@ describe('Benchmark System - Integration Tests', () => {
 
     describe('GET /api/benchmark/generalist-leaderboard', () => {
         it('should return generalist leaderboard data from benchmark results', async () => {
+            await BenchmarkPrompt.create([
+                {
+                    name: 'Coding Prompt',
+                    prompt: 'Write a helper function',
+                    level: 2,
+                    category: 'coding'
+                },
+                {
+                    name: 'Reasoning Prompt',
+                    prompt: 'Solve a logic puzzle',
+                    level: 3,
+                    category: 'reasoning'
+                }
+            ]);
+
             await BenchmarkResult.create([
                 {
                     model: 'generalist-model',
@@ -1182,6 +1292,9 @@ describe('Benchmark System - Integration Tests', () => {
             expect(response.body.status).toBe('success');
             expect(Array.isArray(response.body.data.leaderboard)).toBe(true);
             expect(response.body.data.categoryWeights).toBeTruthy();
+            expect(response.body.data.categoryWeights).toHaveProperty('coding');
+            expect(response.body.data.categoryWeights).toHaveProperty('reasoning');
+            expect(response.body.data.categoryWeights).not.toHaveProperty('refactoring');
             expect(response.body.data.leaderboard.length).toBeGreaterThan(0);
             expect(response.body.data.leaderboard[0]).toHaveProperty('generalistScore');
         });

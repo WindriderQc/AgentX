@@ -58,7 +58,7 @@ async function getBatch(batchId, {
     if (normalizedLimit !== null) queryOptions.limit = normalizedLimit;
     if (normalizedOffset > 0) queryOptions.offset = normalizedOffset;
 
-    const [results, totalResultsCount, actualFailedCount, judgedAgg] = await Promise.all([
+    const [results, totalResultsCount, actualFailedCount, judgedAgg, perModelAgg] = await Promise.all([
         BenchmarkResult.getByBatch(batchId, queryOptions).lean(),
         BenchmarkResult.countDocuments({ batch_id: batchId }),
         BenchmarkResult.countDocuments({ batch_id: batchId, success: false }),
@@ -76,8 +76,63 @@ async function getBatch(batchId, {
                     avg_judge_time_ms: { $avg: '$scoring_time_ms' }
                 }
             }
+        ]),
+        BenchmarkResult.aggregate([
+            { $match: { batch_id: batchId } },
+            {
+                $group: {
+                    _id: '$model',
+                    exec_done: { $sum: 1 },
+                    exec_failed: {
+                        $sum: {
+                            $cond: [{ $eq: ['$success', false] }, 1, 0]
+                        }
+                    },
+                    judge_done: {
+                        $sum: {
+                            $cond: [
+                                { $ne: [{ $ifNull: ['$quality_score', null] }, null] },
+                                1,
+                                0
+                            ]
+                        }
+                    },
+                    judge_failed: {
+                        $sum: {
+                            $cond: [
+                                {
+                                    $or: [
+                                        { $eq: ['$success', false] },
+                                        {
+                                            $in: [
+                                                { $toLower: { $ifNull: ['$scoring_method', ''] } },
+                                                ['exec_failed', 'llm_failed']
+                                            ]
+                                        }
+                                    ]
+                                },
+                                1,
+                                0
+                            ]
+                        }
+                    }
+                }
+            }
         ])
     ]);
+
+    const perModelCounters = perModelAgg.reduce((acc, row) => {
+        const model = row && row._id ? String(row._id) : null;
+        if (!model) return acc;
+
+        acc[model] = {
+            exec_done: Number(row.exec_done) || 0,
+            exec_failed: Number(row.exec_failed) || 0,
+            judge_done: Number(row.judge_done) || 0,
+            judge_failed: Number(row.judge_failed) || 0
+        };
+        return acc;
+    }, {});
 
     const defaultJudgeModel = (batch && batch.judge_config && batch.judge_config.model)
         ? batch.judge_config.model
@@ -278,6 +333,7 @@ async function getBatch(batchId, {
         judge_stats: judgeStats,
         success_rate: batch.success_rate,
         _countMismatch: hasCounterMismatch,  // Debug flag
+        per_model_counters: perModelCounters,
         results_meta: {
             returned: returnedResultsCount,
             total: actualResultsCount,

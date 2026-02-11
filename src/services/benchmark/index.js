@@ -17,7 +17,7 @@ const { runTest, startBatch, executeBatch, stopBatch, getActiveBatchId, getActiv
 const { getResults, getSummary, getDashboard, compareModels, getQualityBreakdown, getModelTrends, compareBatches } = require('./results');
 const { getBatches, getBatch, getBatchStatsByTag, clearResults, clearFailedResults, getActiveStats } = require('./batches');
 const { getJudgeLeaderboard, getJudgeBreakdown, getJudgeActivity, getTruncationStats } = require('./judges');
-const { calculateAllGeneralistScores, GENERALIST_CATEGORY_WEIGHTS } = require('./generalistScore');
+const { calculateAllGeneralistScores, getActiveCategoryWeights } = require('./generalistScore');
 const { judgeResult, judgeBatch, stopJudging, getJudgingStatus, stopAllJudging } = require('./judging');
 
 // Graceful shutdown handler - mark batch as interrupted when PM2 restarts
@@ -133,7 +133,11 @@ class BenchmarkService {
 
     // Generalist Leaderboard
     async getGeneralistLeaderboard() {
-        const generalistScores = await calculateAllGeneralistScores({ success: true });
+        const categoryWeights = await getActiveCategoryWeights();
+        const generalistScores = await calculateAllGeneralistScores(
+            { success: true },
+            { categoryWeights }
+        );
 
         // Convert Map to sorted array
         const leaderboard = [];
@@ -158,7 +162,7 @@ class BenchmarkService {
 
         return {
             leaderboard,
-            categoryWeights: GENERALIST_CATEGORY_WEIGHTS
+            categoryWeights
         };
     }
 }
