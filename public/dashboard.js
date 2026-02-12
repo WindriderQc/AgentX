@@ -246,7 +246,7 @@ async function handleWebhookTrigger() {
     try {
         let endpoint;
         if (selector.value === 'agentmail') {
-            endpoint = 'https://n8n.specialblend.icu/webhook/c1deca83-ecb4-48ad-b485-59195cee9a61';
+            endpoint = '/api/n8n/trigger/agentmail';
         } else if (selector.value === 'custom') {
             const customId = document.getElementById('customWebhookId').value.trim();
             endpoint = customId.startsWith('http') ? customId : `/api/n8n/trigger/${customId}`;

@@ -2,7 +2,7 @@
 # Test n8n workflow deployment with proper API handling
 set -e
 
-N8N_URL="http://192.168.2.199:5678"
+N8N_URL="${N8N_URL:-http://localhost:5678}"
 N8N_API_KEY="${N8N_API_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkNGEwZDRhMi1lZTM1LTRkNTAtYjUxMC00ZjQyNTRmODBkMjMiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwiaWF0IjoxNzY2MDM3NjUyfQ.6M1ytDtLOq8zuVk1-g9KeYgwTVdv9QPh2HnBebWCHeg}"
 WORKFLOW_FILE="/home/yb/codes/AgentX/AgentC/N0.0-test-deployment.json"
 

@@ -441,7 +441,7 @@ app.get('/api/health/external', async (_req, res) => {
   const targets = [
     { name: 'dataapi', url: 'http://192.168.2.33:3003/health' },
     { name: 'ollama', url: 'http://192.168.2.99:11434/api/tags' }, // Primary Ollama
-    { name: 'n8n', url: process.env.N8N_WEBHOOK_BASE_URL ? process.env.N8N_WEBHOOK_BASE_URL.split('/webhook')[0] + '/healthz' : 'https://n8n.specialblend.icu/healthz' }
+    { name: 'n8n', url: (process.env.N8N_URL || 'http://localhost:5678') + '/healthz' }
   ];
 
   const results = {};

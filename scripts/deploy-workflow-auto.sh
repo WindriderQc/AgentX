@@ -16,7 +16,7 @@ if [ -f ".env" ]; then
     source .env
 fi
 
-N8N_URL="${N8N_URL:-https://n8n.specialblend.icu}"
+N8N_URL="${N8N_URL:-http://localhost:5678}"
 N8N_API_KEY="${N8N_API_KEY:-}"
 
 if [ -z "$N8N_API_KEY" ]; then
@@ -200,7 +200,7 @@ echo -e "${BLUE}Status:${NC} $([ "$AUTO_ACTIVATE" = true ] && echo "Active" || e
 # Show webhook endpoints if any
 if [ "$WEBHOOK_COUNT" -gt 0 ]; then
     echo -e "${BLUE}Webhooks:${NC}"
-    jq -r '.nodes[] | select(.type == "n8n-nodes-base.webhook") | "  • \(.parameters.httpMethod // "GET") https://n8n.specialblend.icu/webhook/\(.parameters.path)"' "$WORKFLOW_FILE"
+    jq -r --arg url "$N8N_URL" '.nodes[] | select(.type == "n8n-nodes-base.webhook") | "  \u2022 \(.parameters.httpMethod // "GET") \($url)/webhook/\(.parameters.path)"' "$WORKFLOW_FILE"
 fi
 
 echo ""

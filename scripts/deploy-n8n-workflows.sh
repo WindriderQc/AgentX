@@ -3,9 +3,10 @@
 # Automatically imports/updates workflows to n8n instance via REST API
 # 
 # Usage:
-#   ./deploy-n8n-workflows.sh                    # Deploy all workflows
+#   ./deploy-n8n-workflows.sh                    # Deploy and activate all workflows
 #   ./deploy-n8n-workflows.sh N3.1.json          # Deploy specific workflow
 #   ./deploy-n8n-workflows.sh --check            # Check API connectivity
+#   ./deploy-n8n-workflows.sh --no-activate      # Deploy without activating
 
 set -e
 
@@ -17,10 +18,11 @@ if [ -f "$PROJECT_ROOT/.env" ]; then
 fi
 
 # Configuration
-N8N_URL="${N8N_URL:-https://n8n.specialblend.icu}"
+N8N_URL="${N8N_URL:-http://localhost:5678}"
 N8N_API_KEY="${N8N_API_KEY:-}"
 WORKFLOWS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../AgentC" && pwd)"
 COLORED_OUTPUT=true
+ACTIVATE=true
 
 # Colors
 if [ "$COLORED_OUTPUT" = true ]; then
@@ -52,6 +54,33 @@ log_warning() {
 
 log_error() {
     echo -e "${RED}✗${NC} $1"
+}
+
+# Activate a workflow by ID
+activate_workflow() {
+    local wf_id="$1"
+    local wf_name="$2"
+
+    if [ "$ACTIVATE" != "true" ]; then
+        log_info "Skipping activation for $wf_name (--no-activate)"
+        return 0
+    fi
+
+    local response
+    response=$(curl -s -w "\n%{http_code}" -X POST \
+        -H "X-N8N-API-KEY: $N8N_API_KEY" \
+        "$N8N_URL/api/v1/workflows/$wf_id/activate" 2>/dev/null || echo -e "\n000")
+
+    local http_code
+    http_code=$(echo "$response" | tail -n 1)
+
+    if [ "$http_code" = "200" ]; then
+        log_success "Activated: $wf_name (ID: $wf_id)"
+        return 0
+    else
+        log_warning "Failed to activate $wf_name (HTTP $http_code) - activate manually"
+        return 0  # Non-fatal: workflow is deployed, just not active
+    fi
 }
 
 # Check if jq is installed
@@ -159,8 +188,9 @@ deploy_workflow() {
         body=$(echo "$response" | head -n -1)
 
         if [ "$http_code" = "200" ] || [ "$http_code" = "201" ]; then
-            new_id=$(echo "$body" | jq -r '.data.id // .id' 2>/dev/null || echo "unknown")
+            new_id=$(echo "$body" | jq -r '.id // .data.id' 2>/dev/null || echo "unknown")
             log_success "Replaced workflow: $wf_name (New ID: $new_id)"
+            activate_workflow "$new_id" "$wf_name"
             return 0
         else
             log_error "Failed to recreate workflow (HTTP $http_code)"
@@ -184,8 +214,9 @@ deploy_workflow() {
         body=$(echo "$response" | head -n -1)
         
         if [ "$http_code" = "200" ] || [ "$http_code" = "201" ]; then
-            new_id=$(echo "$body" | jq -r '.data.id' 2>/dev/null || echo "unknown")
+            new_id=$(echo "$body" | jq -r '.id // .data.id' 2>/dev/null || echo "unknown")
             log_success "Created workflow: $wf_name (ID: $new_id)"
+            activate_workflow "$new_id" "$wf_name"
             return 0
         else
             log_error "Failed to create workflow (HTTP $http_code)"
@@ -203,11 +234,13 @@ main() {
     echo "╚═══════════════════════════════════════════════════════════╝"
     echo ""
     
-    # Check for --check flag
-    if [ "$1" = "--check" ]; then
-        check_n8n_api
-        exit $?
-    fi
+    # Parse flags
+    for arg in "$@"; do
+        case "$arg" in
+            --no-activate) ACTIVATE=false ;;
+            --check) check_n8n_api; exit $? ;;
+        esac
+    done
     
     # Check API connectivity first
     if ! check_n8n_api; then
@@ -215,7 +248,7 @@ main() {
         echo ""
         log_info "Troubleshooting steps:"
         echo "  1. Verify n8n is running: docker ps | grep n8n"
-        echo "  2. Check firewall: curl http://192.168.2.199:5678/healthz"
+        echo "  2. Check firewall: curl http://192.168.2.125:5678/healthz"
         echo "  3. Set API key: export N8N_API_KEY='your-api-key'"
         echo ""
         exit 1
@@ -223,13 +256,22 @@ main() {
     
     echo ""
     
+    # Find first non-flag argument (workflow file)
+    local target_file=""
+    for arg in "$@"; do
+        case "$arg" in
+            --*) ;; # skip flags
+            *) target_file="$arg"; break ;;
+        esac
+    done
+
     # Deploy specific workflow or all
-    if [ -n "$1" ] && [ "$1" != "--check" ]; then
+    if [ -n "$target_file" ]; then
         # Deploy specific workflow
-        if [[ "$1" == *.json ]]; then
-            workflow_path="$WORKFLOWS_DIR/$1"
+        if [[ "$target_file" == *.json ]]; then
+            workflow_path="$WORKFLOWS_DIR/$target_file"
         else
-            workflow_path="$WORKFLOWS_DIR/$1.json"
+            workflow_path="$WORKFLOWS_DIR/$target_file.json"
         fi
         
         if [ ! -f "$workflow_path" ]; then
@@ -246,13 +288,13 @@ main() {
         
         success_count=0
         fail_count=0
-        
+
         for workflow_file in "$WORKFLOWS_DIR"/N*.json; do
             if [ -f "$workflow_file" ]; then
                 if deploy_workflow "$workflow_file"; then
-                    ((success_count++))
+                    ((success_count++)) || true
                 else
-                    ((fail_count++))
+                    ((fail_count++)) || true
                 fi
                 echo ""
             fi

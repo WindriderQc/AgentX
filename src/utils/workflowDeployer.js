@@ -327,7 +327,7 @@ async function deployWithRetry(workflowJson, maxRetries = 3, options = {}) {
  */
 async function rollbackWorkflow(workflowId, options = {}) {
   const {
-    n8nUrl = process.env.N8N_URL || 'https://n8n.specialblend.icu',
+    n8nUrl = process.env.N8N_URL || 'http://localhost:5678',
     n8nApiKey = process.env.N8N_API_KEY
   } = options;
 
@@ -411,7 +411,7 @@ async function rollbackWorkflow(workflowId, options = {}) {
  */
 async function getWorkflowStatus(workflowId, options = {}) {
   const {
-    n8nUrl = process.env.N8N_URL || 'https://n8n.specialblend.icu',
+    n8nUrl = process.env.N8N_URL || 'http://localhost:5678',
     n8nApiKey = process.env.N8N_API_KEY
   } = options;
 

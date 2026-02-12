@@ -11,7 +11,7 @@ const logger = require('../../config/logger');
 
 class N8nLLMProvider {
   constructor() {
-    this.n8nBase = process.env.N8N_BASE_URL || 'https://n8n.specialblend.icu';
+    this.n8nBase = process.env.N8N_URL || 'http://localhost:5678';
     this.timeout = 60000; // 60 seconds for LLM responses
   }
 

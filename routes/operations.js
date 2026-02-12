@@ -19,7 +19,7 @@ const util = require('util');
 const execPromise = util.promisify(exec);
 
 // n8n configuration
-const N8N_BASE = process.env.N8N_BASE_URL || 'https://n8n.specialblend.icu';
+const N8N_BASE = process.env.N8N_URL || 'http://localhost:5678';
 
 // Workflow definitions (from n8n-monitor.html)
 const WORKFLOWS = [

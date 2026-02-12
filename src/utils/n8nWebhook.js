@@ -42,7 +42,7 @@ async function fetchWithTimeoutAndRetry(url, options = {}) {
  * @returns {Promise<object>} n8n response
  */
 async function triggerWebhook(webhookId, data = {}, options = {}) {
-  const n8nBaseUrl = process.env.N8N_WEBHOOK_BASE_URL || 'https://n8n.specialblend.icu/webhook';
+  const n8nBaseUrl = process.env.N8N_WEBHOOK_BASE_URL || 'http://localhost:5678/webhook';
   const url = `${n8nBaseUrl}/${webhookId}`;
   const timeout = options.timeout || parseInt(process.env.N8N_WEBHOOK_TIMEOUT_MS, 10) || 120000; // 2 minutes for AI agents (Ollama can be slow)
   const requestStart = Date.now();

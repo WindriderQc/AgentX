@@ -6,6 +6,15 @@
 echo "=== SBQC System Health Check ==="
 echo ""
 
+# Load environment variables from .env if it exists
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+if [ -f "$PROJECT_ROOT/.env" ]; then
+    export $(grep -v '^#' "$PROJECT_ROOT/.env" | grep -v '^$' | xargs)
+fi
+
+N8N_URL="${N8N_URL:-http://localhost:5678}"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -43,7 +52,7 @@ else
 fi
 
 echo -n "   n8n: "
-N8N_HEALTH=$(curl -s -m 5 https://n8n.specialblend.icu/webhook/sbqc-health 2>/dev/null | jq -r '.overall_status' 2>/dev/null)
+N8N_HEALTH=$(curl -s -m 5 "$N8N_URL/webhook/sbqc-health" 2>/dev/null | jq -r '.overall_status' 2>/dev/null)
 if [ "$N8N_HEALTH" = "healthy" ]; then
     echo -e "${GREEN}✓${NC} healthy"
 else
@@ -74,7 +83,7 @@ echo ""
 # 5. Webhooks
 echo "5. Webhook Tests:"
 echo -n "   Deployment Test: "
-DEPLOY_TEST=$(curl -s -m 5 https://n8n.specialblend.icu/webhook/test-deployment 2>/dev/null | jq -r '.status' 2>/dev/null)
+DEPLOY_TEST=$(curl -s -m 5 "$N8N_URL/webhook/test-deployment" 2>/dev/null | jq -r '.status' 2>/dev/null)
 if [ "$DEPLOY_TEST" = "success" ]; then
     echo -e "${GREEN}✓${NC} success"
 else

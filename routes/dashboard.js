@@ -233,9 +233,7 @@ router.get('/summary', async (req, res) => {
             { name: 'ollama', url: OLLAMA_HOST + '/api/tags' },
             {
                 name: 'n8n',
-                url: process.env.N8N_WEBHOOK_BASE_URL
-                    ? process.env.N8N_WEBHOOK_BASE_URL.split('/webhook')[0] + '/healthz'
-                    : 'https://n8n.specialblend.icu/healthz'
+                url: (process.env.N8N_URL || 'http://localhost:5678') + '/healthz'
             }
         ];
 

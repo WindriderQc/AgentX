@@ -5,7 +5,7 @@
 
 set -e
 
-N8N_URL="${N8N_URL:-https://n8n.specialblend.icu}"
+N8N_URL="${N8N_URL:-http://localhost:5678}"
 N8N_API_KEY="${N8N_API_KEY:-}"
 
 if [ -z "$N8N_API_KEY" ]; then

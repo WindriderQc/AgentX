@@ -1,6 +1,6 @@
 # 04 - n8n Workflow Specifications
 
-**n8n Instance:** https://n8n.specialblend.icu (http://192.168.2.199:5678)  
+**n8n Instance:** https://n8n.specialblend.icu (http://192.168.2.125:5678)  
 **SMB Mounts:** To be configured on the n8n host  
 **Workflow Location:** `/home/yb/codes/AgentX/AgentC/*.json`  
 **Deployment Script:** `/home/yb/codes/AgentX/scripts/deploy-n8n-workflows.sh`
@@ -66,7 +66,7 @@ The SBQC Stack uses an automated deployment script to import and update n8n work
 
 #### Option 1: Enable API in n8n Settings (Recommended)
 
-1. **Access n8n:** https://n8n.specialblend.icu (LAN fallback: http://192.168.2.199:5678)
+1. **Access n8n:** https://n8n.specialblend.icu (LAN fallback: http://192.168.2.125:5678)
 2. **Navigate to:** Settings → API
 3. **Enable:** "API enabled"
 4. **Generate API Key:** Click "Generate API Key"
@@ -82,7 +82,7 @@ Add to your shell profile (`~/.bashrc` or `~/.zshrc`):
 
 ```bash
 # n8n API Configuration
-export N8N_URL="https://n8n.specialblend.icu"  # LAN fallback: http://192.168.2.199:5678
+export N8N_URL="https://n8n.specialblend.icu"  # LAN fallback: http://192.168.2.125:5678
 export N8N_API_KEY="n8n_api_YOUR_KEY_HERE"
 ```
 
@@ -213,7 +213,7 @@ chmod +x .git/hooks/post-merge
                      ▼
 ┌─────────────────────────────────────────────────────────────┐
 │  5. Verify in n8n UI                                        │
-│     http://192.168.2.199:5678                               │
+│     http://192.168.2.125:5678                               │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -233,7 +233,7 @@ chmod +x .git/hooks/post-merge
 #### API Key Issues
 ```bash
 # Test API key
-curl -H "X-N8N-API-KEY: $N8N_API_KEY" http://192.168.2.199:5678/api/v1/workflows
+curl -H "X-N8N-API-KEY: $N8N_API_KEY" http://192.168.2.125:5678/api/v1/workflows
 
 # Expected: {"data": [...]}
 # If 401: Check API key
@@ -243,7 +243,7 @@ curl -H "X-N8N-API-KEY: $N8N_API_KEY" http://192.168.2.199:5678/api/v1/workflows
 #### Connection Issues
 ```bash
 # Test n8n service
-curl http://192.168.2.199:5678/healthz
+curl http://192.168.2.125:5678/healthz
 
 # Check if n8n is running
 ssh ubundocker
@@ -1194,7 +1194,7 @@ POST /webhook/sbqc-workflow-architect
 # Option 2: Via API
 curl -X DELETE \
   -H "X-N8N-API-KEY: $N8N_API_KEY" \
-  "http://192.168.2.199:5678/api/v1/workflows/N1.2_ID"
+  "http://192.168.2.125:5678/api/v1/workflows/N1.2_ID"
 
 # Option 3: Use cleanup script (see below)
 ./scripts/cleanup-n8n-workflows.sh N1.2
@@ -1219,7 +1219,7 @@ curl -X DELETE \
 # Option 2: Via API
 curl -X DELETE \
   -H "X-N8N-API-KEY: $N8N_API_KEY" \
-  "http://192.168.2.199:5678/api/v1/workflows/TEST_PACK_ID"
+  "http://192.168.2.125:5678/api/v1/workflows/TEST_PACK_ID"
 
 # Option 3: Use cleanup script (see below)
 ./scripts/cleanup-n8n-workflows.sh TEST
@@ -1338,7 +1338,7 @@ chmod +x scripts/cleanup-n8n-workflows.sh
 
 ## SMB Mount Setup
 
-On the n8n host (192.168.2.199), configure SMB mounts:
+On the n8n host (192.168.2.125), configure SMB mounts:
 
 ```bash
 # /etc/fstab entries
