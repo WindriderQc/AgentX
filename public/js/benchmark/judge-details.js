@@ -297,6 +297,68 @@ function populateJudgeModal(result, resultIndex) {
         }
     }
 
+    // Scoring Breakdown section (semantic, format, quality)
+    let scoringBreakdownEl = document.getElementById('detailScoringBreakdown');
+    if (!scoringBreakdownEl) {
+        const parent = explanationEl ? explanationEl.parentElement : document.querySelector('.modal-body');
+        if (parent) {
+            const container = document.createElement('div');
+            container.className = 'detail-section';
+            container.style.marginTop = '20px';
+            container.innerHTML = `
+                <h4>Scoring Breakdown</h4>
+                <div id="detailScoringBreakdown" class="explanation-box" style="border-left-color: var(--accent-2, #9b59b6);"></div>
+            `;
+            if (explanationEl && explanationEl.parentElement) {
+                explanationEl.parentElement.after(container);
+            } else {
+                parent.appendChild(container);
+            }
+            scoringBreakdownEl = document.getElementById('detailScoringBreakdown');
+        }
+    }
+
+    if (scoringBreakdownEl) {
+        const hasSemantic = result.semantic_score !== undefined && result.semantic_score !== null;
+        const hasFormat = result.format_score !== undefined && result.format_score !== null;
+        const hasQuality = result.quality_score !== undefined && result.quality_score !== null;
+
+        if (hasSemantic || hasFormat) {
+            const rows = [];
+            if (hasQuality) {
+                const qColor = result.quality_score >= 7 ? '#2ecc71' : result.quality_score >= 4 ? '#f39c12' : '#e74c3c';
+                rows.push(`<div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                    <span>Quality Score (overall)</span>
+                    <span style="font-weight: 600; color: ${qColor};">${Number(result.quality_score).toFixed(1)}/10</span>
+                </div>`);
+            }
+            if (hasSemantic) {
+                const sColor = result.semantic_score >= 7 ? '#2ecc71' : result.semantic_score >= 4 ? '#f39c12' : '#e74c3c';
+                rows.push(`<div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                    <span>Semantic Score <span style="color: var(--muted); font-size: 0.85em;">(correctness ignoring format)</span></span>
+                    <span style="font-weight: 600; color: ${sColor};">${Number(result.semantic_score).toFixed(1)}/10</span>
+                </div>`);
+            }
+            if (hasFormat) {
+                const fCompliant = result.format_compliant;
+                const fIcon = fCompliant === true ? '<i class="fas fa-check-circle" style="color: #2ecc71;"></i>' :
+                              fCompliant === false ? '<i class="fas fa-times-circle" style="color: #e74c3c;"></i>' : '';
+                const fColor = result.format_score >= 7 ? '#2ecc71' : result.format_score >= 4 ? '#f39c12' : '#e74c3c';
+                rows.push(`<div style="display: flex; justify-content: space-between; padding: 4px 0;">
+                    <span>${fIcon} Format Compliance <span style="color: var(--muted); font-size: 0.85em;">(output format match)</span></span>
+                    <span style="font-weight: 600; color: ${fColor};">${Number(result.format_score).toFixed(1)}/10</span>
+                </div>`);
+            }
+            scoringBreakdownEl.innerHTML = rows.join('');
+            scoringBreakdownEl.style.borderLeftColor = 'var(--accent-2, #9b59b6)';
+            scoringBreakdownEl.style.background = 'rgba(0,0,0,0.1)';
+        } else {
+            scoringBreakdownEl.innerHTML = '<span style="color: var(--muted);">Dual scoring data not available for this result.</span>';
+            scoringBreakdownEl.style.borderLeftColor = 'var(--muted)';
+            scoringBreakdownEl.style.background = 'rgba(0,0,0,0.05)';
+        }
+    }
+
     // Complexity Analysis - element ID: detailComplexity
     // This section shows the complexity vs judge capability analysis
     let complexityEl = document.getElementById('detailComplexity');

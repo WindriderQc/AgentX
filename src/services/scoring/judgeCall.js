@@ -10,7 +10,6 @@ const { getFetchOptions } = require('../../helpers/httpAgent');
 // Judge model configuration
 const JUDGE_CONFIG = {
     model: 'qwen2.5:7b-instruct-q5_K_M',
-    fallback_model: 'llama3.2:1b',
     host: null,
     timeout: 120000,
     temperature: 0.3,

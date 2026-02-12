@@ -76,6 +76,18 @@ export async function createModelRegistry(data) {
 }
 
 /**
+ * Validate judge model availability and output capability
+ */
+export async function validateJudgeModelApi(host, model) {
+    const res = await fetch(`${BENCHMARK_API}/validate-judge`, {
+        method: 'POST',
+        headers: getWorkspaceHeaders(),
+        body: JSON.stringify({ host, model })
+    });
+    return { res, json: await res.json() };
+}
+
+/**
  * Start batch test
  */
 export async function startBatchTest(data) {

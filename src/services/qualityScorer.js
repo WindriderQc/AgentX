@@ -17,6 +17,7 @@ const { calculateCompositeScore } = require('./scoring/compositeScorer');
 const { stripMarkdownCodeFences, jsonDeepEqual, tryParseJson } = require('./scoring/jsonUtils');
 const { quickScore } = require('./scoring/quickScorer');
 const { JUDGE_CONFIG, callJudge, buildDynamicJudgePrompt, incrementJudgeFailureCount } = require('./scoring/judgeCall');
+const { scoreFormatCompliance } = require('./scoring/formatComplianceScorer');
 
 /**
  * Score a model response for quality
@@ -24,6 +25,24 @@ const { JUDGE_CONFIG, callJudge, buildDynamicJudgePrompt, incrementJudgeFailureC
 async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = {}, _batchHardwareSnapshot = null }) {
     const startTime = Date.now();
     const mergedJudgeConfig = { ...JUDGE_CONFIG, ...judgeConfig };
+
+    // Helper: compute format compliance and semantic score, then merge into result
+    const enrichWithDualScores = (result, opts = {}) => {
+        const contract = prompt.output_contract;
+        const formatResult = scoreFormatCompliance(response, contract);
+        result.format_score = formatResult.format_score;
+        result.format_compliant = formatResult.format_compliant;
+
+        // Semantic score: correctness regardless of format
+        if (opts.deterministicMatch !== undefined) {
+            // Deterministic/quick: matched = high semantic, regardless of format
+            result.semantic_score = opts.deterministicMatch ? Math.max(result.quality_score, 8) : result.quality_score;
+        } else {
+            // LLM judge: semantic_score equals quality_score (judge evaluates content)
+            result.semantic_score = result.quality_score;
+        }
+        return result;
+    };
 
     // Phase 1: Try deterministic scoring first (highest priority)
     if (prompt.deterministic_scoring) {
@@ -35,7 +54,7 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
                 score: detResult.score,
                 matched: detResult.matched
             });
-            return {
+            return enrichWithDualScores({
                 quality_score: detResult.score,
                 scoring_method: 'deterministic',
                 deterministic_type: detResult.deterministic_type,
@@ -45,7 +64,7 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
                 scoring_time_ms: Date.now() - startTime,
                 judge_confidence: 1.0,
                 needs_review: false
-            };
+            }, { deterministicMatch: detResult.matched });
         }
     }
 
@@ -63,7 +82,7 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
             prompt: prompt.name || prompt.prompt_name || 'unknown'
         });
 
-        return {
+        return enrichWithDualScores({
             quality_score: quickResult.score,
             scoring_method: 'quick',
             matched_expected: quickResult.matched,
@@ -78,16 +97,16 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
             },
             judge_confidence: 1.0,
             needs_review: false
-        };
+        }, { deterministicMatch: quickResult.matched });
     }
 
     if (skipLLM) {
-        return {
+        return enrichWithDualScores({
             quality_score: null,
             scoring_method: 'skipped',
             reason: 'LLM scoring disabled',
             scoring_time_ms: Date.now() - startTime
-        };
+        });
     }
 
     // Validate that response is not empty before scoring
@@ -97,7 +116,7 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
             response_length: response ? response.length : 0,
             task: prompt.prompt ? prompt.prompt.substring(0, 100) : 'unknown'
         });
-        return {
+        return enrichWithDualScores({
             quality_score: 0,
             scoring_method: 'empty_response',
             scoring_type: prompt.scoring_type || 'general',
@@ -115,29 +134,30 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
             judge_raw_response: 'Model failed to generate any response text',
             judge_confidence: 1.0,
             needs_review: false
-        };
+        });
     }
 
     // Phase 3: Try routed scoring (reference, decomposed, etc.)
     const routedResult = await routeScoring(response, prompt, mergedJudgeConfig);
     if (routedResult) {
+        const isDeterministicMatch = routedResult.matched_expected !== undefined ? routedResult.matched_expected : undefined;
         if (routedResult.judge_confidence !== undefined && routedResult.needs_review !== undefined) {
-            return {
+            return enrichWithDualScores({
                 ...routedResult,
                 scoring_time_ms: Date.now() - startTime
-            };
+            }, { deterministicMatch: isDeterministicMatch });
         }
 
         const confidence = judgeConfidence.assess(routedResult, prompt);
 
-        return {
+        return enrichWithDualScores({
             ...routedResult,
             scoring_time_ms: Date.now() - startTime,
             judge_confidence: confidence.judge_confidence,
             prompt_complexity: confidence.prompt_complexity,
             needs_review: confidence.needs_review,
             review_reason: confidence.review_reason
-        };
+        }, { deterministicMatch: isDeterministicMatch });
     }
 
     // Phase 4: Fall back to standard LLM-as-judge for complex evaluation
@@ -172,7 +192,7 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
             judge_model: mergedJudgeConfig.model || JUDGE_CONFIG.model,
             scoring_type: scoringType
         });
-        return {
+        return enrichWithDualScores({
             quality_score: 0,
             scoring_method: 'llm_failed',
             error: judgeResult.error,
@@ -187,7 +207,7 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
                 clarity: 0,
                 overall: 0
             }
-        };
+        });
     }
 
     const scores = judgeResult.scores;
@@ -302,13 +322,13 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
 
     const confidence = judgeConfidence.assess(baseResult, prompt);
 
-    return {
+    return enrichWithDualScores({
         ...baseResult,
         judge_confidence: confidence.judge_confidence,
         prompt_complexity: confidence.prompt_complexity,
         needs_review: confidence.needs_review,
         review_reason: confidence.review_reason
-    };
+    });
 }
 
 /**

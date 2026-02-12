@@ -121,6 +121,9 @@ async function applyScoresToResult(resultId, scores, resultData) {
                 composite_score: composite.composite_score,
                 composite_profile_used: composite.composite_profile_used,
                 normalized_scores: composite.normalized,
+                semantic_score: scores.semantic_score !== undefined ? scores.semantic_score : null,
+                format_score: scores.format_score !== undefined ? scores.format_score : null,
+                format_compliant: scores.format_compliant !== undefined ? scores.format_compliant : null,
                 judge_confidence: scores.judge_confidence,
                 prompt_complexity: scores.prompt_complexity,
                 needs_review: scores.needs_review || false,
@@ -164,7 +167,7 @@ async function judgeResult(resultId, judgeConfig = {}) {
     let originalPrompt = null;
     if (result.prompt_name) {
         originalPrompt = await BenchmarkPrompt.findOne({ name: result.prompt_name })
-            .select('scoring_dimensions reference_answer')
+            .select('scoring_dimensions reference_answer output_contract')
             .lean();
     }
 
@@ -177,7 +180,8 @@ async function judgeResult(resultId, judgeConfig = {}) {
         scoring_type: result.scoring_type,
         deterministic_scoring: result.deterministic_scoring,
         scoring_dimensions: originalPrompt?.scoring_dimensions || undefined,
-        reference_answer: originalPrompt?.reference_answer || undefined
+        reference_answer: originalPrompt?.reference_answer || undefined,
+        output_contract: originalPrompt?.output_contract || undefined
     };
 
     const mergedConfig = {

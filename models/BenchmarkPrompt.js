@@ -116,6 +116,19 @@ const BenchmarkPromptSchema = new mongoose.Schema({
         // For exact type: only trim whitespace, don't normalize
         trim_only: { type: Boolean, default: false }
     },
+    // Output format contract for dual scoring (semantic vs format)
+    output_contract: {
+        type: {
+            type: String,
+            enum: ['number_only', 'exact', 'regex', 'json_schema', 'none'],
+            default: undefined
+        },
+        pattern: { type: String, default: undefined },        // for regex type
+        template: { type: String, default: undefined },       // for exact type
+        schema_keys: [String],                                // for json_schema type
+        allow_latex: { type: Boolean, default: true },        // for number_only
+        description: { type: String, default: undefined }     // human-readable
+    },
     // Expert reference answer for reference-based scoring (levels 6+)
     reference_answer: {
         type: String,

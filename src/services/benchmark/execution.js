@@ -222,18 +222,15 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                 else if (hostUrl === HOSTS.secondary) judgeHostUrl = HOSTS.primary;
             }
 
-            // Warmup judge model on separate host BEFORE tests start
+            // Warmup judge model on separate host BEFORE tests start (strict: failure aborts)
             if (enableQualityScoring && !judgeSameHost) {
                 const jModel = judgeConfig.model || JUDGE_CONFIG.model;
-                try {
-                    await warmupModel(judgeHostUrl, jModel, {
-                        timelinePrefix: 'judge_warmup',
-                        recordTimelineEvent: recordBatchTimelineEvent
-                    });
-                    logger.info('Judge model ready', { host: judgeHostUrl, model: jModel });
-                } catch (err) {
-                    logger.warn('Judge warmup failed, judge calls may be slow', { error: err.message });
-                }
+                await warmupModel(judgeHostUrl, jModel, {
+                    timelinePrefix: 'judge_warmup',
+                    recordTimelineEvent: recordBatchTimelineEvent,
+                    strict: true
+                });
+                logger.info('Judge model ready', { host: judgeHostUrl, model: jModel });
             }
 
             for (const model of hostModels) {

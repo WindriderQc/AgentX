@@ -2,12 +2,13 @@
 
 import * as state from './state.js';
 import { getWorkspaceHeaders } from './api.js';
-import { startBatchTest, stopBatchTest, fetchBatchProgress, fetchActiveBatches, recoverBatchApi, fetchBatchHistory } from './api.js';
+import { startBatchTest, stopBatchTest, fetchBatchProgress, fetchActiveBatches, recoverBatchApi, fetchBatchHistory, validateJudgeModelApi } from './api.js';
 import { renderBatchPlan, setAdvancedMode, setHyperMode, getAnomalyThresholds, hydrateThresholdInputs, bindThresholdInputs, getDepthConfig, getSelectedLevels } from './batch-config.js';
 import { escapeHtml, formatDuration, toFiniteNumber, summarizeNumbers, countBy, topCounts, formatHostLabel, findRowByAttr } from './utils.js';
 import { updateTimeline } from './timeline.js';
 import { pickRepresentativeResultId, pickRepresentativeResultIdForModel } from './results-analysis.js';
 import { showJudgeDetails } from './judge-details.js';
+import { buildBatchScoringBar } from './results-table.js';
 
 /**
  * Gather execution config from form inputs
@@ -172,6 +173,33 @@ export async function runBatch() {
     const executionConfig = gatherExecutionConfig();
 
     try {
+        // Pre-flight: validate judge model before starting batch
+        if (qualityScoring) {
+            const judgeHost = state.currentJudgeConfig.host;
+            const judgeModel = state.currentJudgeConfig.model;
+            if (judgeHost && judgeModel) {
+                btn.textContent = 'Validating judge...';
+                try {
+                    const { res: valRes, json: valJson } = await validateJudgeModelApi(judgeHost, judgeModel);
+                    if (valRes.status === 422) {
+                        const availList = (valJson.available_models || []).slice(0, 10).join(', ') || 'none';
+                        alert(`Judge model validation failed: ${valJson.error}\n\nAvailable models: ${availList}`);
+                        resetBatchUI();
+                        return;
+                    } else if (!valRes.ok) {
+                        alert(`Judge validation error: ${valJson.error || 'Unknown error'}`);
+                        resetBatchUI();
+                        return;
+                    }
+                } catch (valErr) {
+                    alert(`Judge validation failed: ${valErr.message}`);
+                    resetBatchUI();
+                    return;
+                }
+                btn.textContent = 'Starting...';
+            }
+        }
+
         const { res, json } = await startBatchTest({
             host,
             models: selectedModels,
@@ -197,6 +225,12 @@ export async function runBatch() {
             // Poll for progress
             const interval = setInterval(pollBatchProgress, 2000);
             state.setBatchPollInterval(interval);
+        } else if (res.status === 422) {
+            // Judge model validation failed on server side
+            const availList = (json.available_models || []).slice(0, 10).join(', ') || 'none';
+            alert(`Judge model validation failed: ${json.error}\n\nAvailable models: ${availList}`);
+            resetBatchUI();
+            return;
         } else if (res.status === 409) {
             btn.disabled = false;
             btn.textContent = 'Start Batch Test';
@@ -777,6 +811,16 @@ function updateResultsTable(results) {
     const container = document.getElementById('batchResultsContainer');
     const tbody = document.getElementById('batchResultsBody');
     container.style.display = 'block';
+
+    // Scoring summary bar
+    let scoringBarEl = document.getElementById('batchScoringBar');
+    if (!scoringBarEl) {
+        scoringBarEl = document.createElement('div');
+        scoringBarEl.id = 'batchScoringBar';
+        const table = tbody.closest('table');
+        if (table) table.parentElement.insertBefore(scoringBarEl, table);
+    }
+    scoringBarEl.innerHTML = buildBatchScoringBar(results);
 
     const getFailureBadgeHtml = (r) => {
         const isFailed = r.success === false;

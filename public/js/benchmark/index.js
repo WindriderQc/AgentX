@@ -106,6 +106,11 @@ function populateJudgeModelSelect() {
     const select = document.getElementById('judgeModel');
     if (!select) return;
     const candidates = getJudgeModelCandidates();
+
+    // Remove any previous warning banner
+    const existingWarning = document.getElementById('judgeModelWarning');
+    if (existingWarning) existingWarning.remove();
+
     if (candidates.length === 0) {
         select.innerHTML = '<option value="" disabled>No models available</option>';
         return;
@@ -118,6 +123,14 @@ function populateJudgeModelSelect() {
     if (current && candidates.includes(current)) {
         select.value = current;
     } else {
+        // Configured model not in available list - show warning
+        if (current) {
+            const warningBanner = document.createElement('div');
+            warningBanner.id = 'judgeModelWarning';
+            warningBanner.style.cssText = 'background: rgba(243, 156, 18, 0.15); border: 1px solid rgba(243, 156, 18, 0.5); border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; font-size: 0.85em; color: #f39c12;';
+            warningBanner.innerHTML = `<i class="fas fa-exclamation-triangle"></i> Configured judge model <strong>${escapeHtml(current)}</strong> not found in available models. Using <strong>${escapeHtml(candidates[0])}</strong> instead.`;
+            select.parentElement.insertBefore(warningBanner, select);
+        }
         select.value = candidates[0];
         const next = { ...state.currentJudgeConfig, model: select.value };
         state.setCurrentJudgeConfig(next);
@@ -304,7 +317,20 @@ async function loadJudgeConfig() {
         const judgeConfig = data.judge_config || data.judgeConfig || {};
         const executionConfig = data.execution_config || data.executionConfig || {};
         const storedJudgeConfig = readStoredJudgeConfig();
-        const mergedJudgeConfig = storedJudgeConfig ? { ...judgeConfig, ...storedJudgeConfig } : judgeConfig;
+
+        // Server is authoritative for model and host.
+        // localStorage only persists UI preferences (temperature, concurrency, timeout, num_predict).
+        const uiOnlyKeys = ['temperature', 'timeout', 'num_predict', 'concurrency', 'judge_same_host'];
+        const storedUiPrefs = {};
+        if (storedJudgeConfig) {
+            for (const key of uiOnlyKeys) {
+                if (storedJudgeConfig[key] !== undefined) {
+                    storedUiPrefs[key] = storedJudgeConfig[key];
+                }
+            }
+        }
+        const mergedJudgeConfig = { ...storedUiPrefs, ...judgeConfig };
+
         state.setCurrentJudgeConfig(mergedJudgeConfig);
         state.setCurrentExecutionConfig(executionConfig);
         populateJudgeModelSelect();

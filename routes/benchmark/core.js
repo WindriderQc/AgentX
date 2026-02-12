@@ -11,6 +11,7 @@ const benchmarkService = require('../../src/services/benchmark');
 const { JUDGE_CONFIG, ENHANCED_SCORING_CONFIGS } = require('../../src/services/qualityScorer');
 const { stopJudging } = require('../../src/services/benchmark/judging');
 const BenchmarkBatch = require('../../models/BenchmarkBatch');
+const { validateJudgeModel } = require('../../src/services/benchmark/judgeModelValidator');
 
 function isDuplicateKeyError(err) {
     return !!(err && (err.code === 11000 || String(err.message || '').includes('E11000')));
@@ -136,6 +137,23 @@ router.post('/batch', optionalWorkspaceContext, async (req, res) => {
             return res.status(409).json(buildActiveBatchConflict(activeBatches[0]));
         }
 
+        // Validate judge model before starting batch (when quality scoring enabled)
+        if (quality_scoring !== false) {
+            const judgeHost = (judge_config && judge_config.host) || JUDGE_CONFIG.host;
+            const judgeModel = (judge_config && judge_config.model) || JUDGE_CONFIG.model;
+            if (judgeHost && judgeModel) {
+                const validation = await validateJudgeModel(judgeHost, judgeModel);
+                if (!validation.valid) {
+                    return res.status(422).json({
+                        status: 'error',
+                        error: `Judge model validation failed: ${validation.error}`,
+                        available_models: validation.available_models || [],
+                        latency_ms: validation.latency_ms
+                    });
+                }
+            }
+        }
+
         const data = await benchmarkService.startBatch({
             host,
             models,
@@ -199,6 +217,49 @@ router.post('/batch/:id/stop', async (req, res) => {
 
         const statusCode = err.message.includes('not found') ? 404 : 500;
         res.status(statusCode).json({ status: 'error', error: err.message });
+    }
+});
+
+/**
+ * POST /api/benchmark/validate-judge
+ * Pre-flight check: validate judge model availability and output capability
+ */
+router.post('/validate-judge', async (req, res) => {
+    const { host, model } = req.body;
+    const judgeHost = host || JUDGE_CONFIG.host;
+    const judgeModel = model || JUDGE_CONFIG.model;
+
+    if (!judgeHost || !judgeModel) {
+        return res.status(400).json({
+            status: 'error',
+            error: 'host and model are required'
+        });
+    }
+
+    try {
+        const validation = await validateJudgeModel(judgeHost, judgeModel);
+        if (validation.valid) {
+            res.json({
+                status: 'success',
+                data: {
+                    valid: true,
+                    model: judgeModel,
+                    host: judgeHost,
+                    available_models: validation.available_models,
+                    latency_ms: validation.latency_ms
+                }
+            });
+        } else {
+            res.status(422).json({
+                status: 'error',
+                error: validation.error,
+                available_models: validation.available_models || [],
+                latency_ms: validation.latency_ms
+            });
+        }
+    } catch (err) {
+        logger.error('Judge validation failed', { error: err.message });
+        res.status(500).json({ status: 'error', error: err.message });
     }
 });
 

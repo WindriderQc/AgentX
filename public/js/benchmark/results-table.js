@@ -38,17 +38,36 @@ export function renderResultsTable(results, tbody) {
             : '';
 
         const hostInfo = r.host ? `<div style="font-size: 0.75em; color: var(--muted); margin-top: 2px;">Exec: ${formatHostLabel(r.host)}</div>` : '';
-        
+
         let judgeInfo = r.judge_host ? `<div style="font-size: 0.75em; color: var(--muted);">Judge: ${formatHostLabel(r.judge_host)}</div>` : '';
-        
-        // Add confidence/complexity warning if needed
+
+        // Dual score display: semantic + format
+        const hasSemantic = r.semantic_score !== undefined && r.semantic_score !== null;
+        const hasFormat = r.format_score !== undefined && r.format_score !== null;
+        let dualScoreHtml = '';
+        if (!isFailed && (hasSemantic || hasFormat)) {
+            const parts = [];
+            if (hasSemantic) {
+                const semColor = r.semantic_score >= 7 ? '#2ecc71' : r.semantic_score >= 4 ? '#f39c12' : '#e74c3c';
+                parts.push(`<span style="color: ${semColor};" title="Semantic: correctness ignoring format">S:${Number(r.semantic_score).toFixed(1)}</span>`);
+            }
+            if (hasFormat) {
+                const fmtIcon = r.format_compliant ? '<i class="fas fa-check" style="color: #2ecc71;"></i>' : '<i class="fas fa-times" style="color: #e74c3c;"></i>';
+                parts.push(`<span title="Format compliance">${fmtIcon} F:${Number(r.format_score).toFixed(0)}</span>`);
+            }
+            dualScoreHtml = `<div style="font-size: 0.75em; margin-top: 2px;">${parts.join(' ')}</div>`;
+        }
+
+        // Enhanced confidence badges
+        let confidenceHtml = '';
         if (r.judge_confidence !== undefined && r.judge_confidence !== null) {
             if (r.needs_review) {
-                 judgeInfo += `<div style="font-size: 0.75em; color: #e74c3c; margin-top: 1px;"><i class="fas fa-exclamation-triangle"></i> Review Needed</div>`;
+                const reviewTitle = r.review_reason ? escapeHtml(r.review_reason) : 'Manual review recommended';
+                confidenceHtml = `<span class="badge" style="background: #e74c3c; color: white; font-size: 0.7em; padding: 2px 6px; border-radius: 4px; cursor: help;" title="${reviewTitle}"><i class="fas fa-exclamation-triangle"></i> Review</span>`;
             } else if (r.judge_confidence < 0.8) {
-                 judgeInfo += `<div style="font-size: 0.75em; color: #f39c12; margin-top: 1px;"><i class="fas fa-exclamation-circle"></i> Low Conf</div>`;
+                confidenceHtml = `<span class="badge" style="background: #f39c12; color: white; font-size: 0.7em; padding: 2px 6px; border-radius: 4px;" title="Judge confidence: ${(r.judge_confidence * 100).toFixed(0)}%"><i class="fas fa-exclamation-circle"></i> Low Conf</span>`;
             } else if (r.prompt_complexity && r.prompt_complexity > 8) {
-                 judgeInfo += `<div style="font-size: 0.75em; color: #3498db; margin-top: 1px;"><i class="fas fa-brain"></i> Complex</div>`;
+                confidenceHtml = `<span class="badge" style="background: #3498db; color: white; font-size: 0.7em; padding: 2px 6px; border-radius: 4px;" title="Complexity: ${r.prompt_complexity.toFixed(1)}/10"><i class="fas fa-brain"></i> Complex</span>`;
             }
         }
 
@@ -69,6 +88,8 @@ export function renderResultsTable(results, tbody) {
                 </td>
                 <td style="padding: 8px 12px; text-align: center;" class="${qualityClass}">
                     ${isFailed ? `<span style="color: #e74c3c; font-weight: 600;">FAILED</span>${failureBadge}` : qualityScore}
+                    ${dualScoreHtml}
+                    ${confidenceHtml}
                     ${judgeInfo}
                 </td>
                 <td style="padding: 8px 12px; text-align: center;">
@@ -163,6 +184,56 @@ export function getUniqueModels(results) {
         if (r.model) models.add(r.model);
     });
     return Array.from(models).sort();
+}
+
+/**
+ * Build batch-level confidence/scoring summary bar HTML
+ */
+export function buildBatchScoringBar(results) {
+    if (!results || results.length === 0) return '';
+
+    const successResults = results.filter(r => r.success !== false);
+    if (successResults.length === 0) return '';
+
+    // Avg confidence
+    const confValues = successResults.map(r => r.judge_confidence).filter(v => v !== undefined && v !== null);
+    const avgConf = confValues.length > 0 ? (confValues.reduce((s, v) => s + v, 0) / confValues.length) : null;
+
+    // Needs review count
+    const reviewCount = successResults.filter(r => r.needs_review).length;
+
+    // Format non-compliant count
+    const formatResults = successResults.filter(r => r.format_compliant !== undefined && r.format_compliant !== null);
+    const formatNonCompliant = formatResults.filter(r => r.format_compliant === false).length;
+
+    // Avg semantic vs quality gap
+    const dualScoreResults = successResults.filter(r =>
+        r.semantic_score !== undefined && r.semantic_score !== null &&
+        r.quality_score !== undefined && r.quality_score !== null
+    );
+
+    const parts = [];
+
+    if (avgConf !== null) {
+        const confColor = avgConf >= 0.8 ? '#2ecc71' : avgConf >= 0.6 ? '#f39c12' : '#e74c3c';
+        parts.push(`<span style="color: ${confColor};" title="Average judge confidence"><i class="fas fa-shield-alt"></i> Conf: ${(avgConf * 100).toFixed(0)}%</span>`);
+    }
+
+    if (reviewCount > 0) {
+        parts.push(`<span style="color: #e74c3c;" title="Results needing manual review"><i class="fas fa-exclamation-triangle"></i> Review: ${reviewCount}</span>`);
+    }
+
+    if (formatResults.length > 0) {
+        const fmtColor = formatNonCompliant === 0 ? '#2ecc71' : '#f39c12';
+        parts.push(`<span style="color: ${fmtColor};" title="Format non-compliant results"><i class="fas fa-align-left"></i> Fmt fail: ${formatNonCompliant}/${formatResults.length}</span>`);
+    }
+
+    if (parts.length === 0) return '';
+
+    return `<div style="display: flex; gap: 16px; padding: 8px 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--panel-border); border-radius: 6px; font-size: 0.85em; margin-bottom: 10px; flex-wrap: wrap; align-items: center;">
+        <span style="color: var(--muted); font-weight: 600;">Scoring Summary</span>
+        ${parts.join('<span style="color: rgba(255,255,255,0.1);">|</span>')}
+    </div>`;
 }
 
 /**

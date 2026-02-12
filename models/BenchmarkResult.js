@@ -116,6 +116,26 @@ const BenchmarkResultSchema = new mongoose.Schema({
         type: Number,
         default: null
     },
+    // Dual scoring: semantic correctness vs format compliance
+    semantic_score: {
+        type: Number,
+        min: 0,
+        max: 10,
+        default: null,
+        description: 'Correctness score ignoring format (0-10)'
+    },
+    format_score: {
+        type: Number,
+        min: 0,
+        max: 10,
+        default: null,
+        description: 'Format compliance score (0-10, null = no contract)'
+    },
+    format_compliant: {
+        type: Boolean,
+        default: null,
+        description: 'Whether output matches the output_contract format'
+    },
     // Quality scoring fields
     quality_score: {
         type: Number,

@@ -15,10 +15,11 @@ const logger = require('../../../config/logger');
  * @param {Object} options - Optional settings
  * @param {string} options.timelinePrefix - Timeline event prefix for batch tracking
  * @param {Function} options.recordTimelineEvent - Async callback for timeline events
+ * @param {boolean} options.strict - When true, throw on failure instead of swallowing
  * @returns {Object} Warmup data for validation/debugging
  */
 async function warmupModel(hostUrl, model, options = {}) {
-    const { timelinePrefix = null, recordTimelineEvent = null } = options;
+    const { timelinePrefix = null, recordTimelineEvent = null, strict = false } = options;
     const warmupStart = Date.now();
     const warmupPrompt = 'Hi';
     const warmupData = {
@@ -115,6 +116,10 @@ async function warmupModel(hostUrl, model, options = {}) {
             await recordTimelineEvent(`${timelinePrefix}_complete`, {
                 model, duration_ms: durationMs, success: false, error: err.message
             });
+        }
+        // In strict mode, propagate the error (used for judge warmup)
+        if (strict) {
+            throw err;
         }
         // Don't throw - let tests try anyway
     }
