@@ -187,7 +187,7 @@ export async function runBatch() {
                         resetBatchUI();
                         return;
                     } else if (!valRes.ok) {
-                        alert(`Judge validation error: ${valJson.error || 'Unknown error'}`);
+                        alert(`Judge validation error: ${valJson.error || valJson.message || 'Unknown error'}`);
                         resetBatchUI();
                         return;
                     }

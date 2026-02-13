@@ -100,17 +100,36 @@ const MODELS = [
 
   // ========== GENERALISTS ==========
   {
-    modelName: 'qwen2.5-7b-instruct-q4_0',
+    modelName: 'qwen2.5:7b-instruct-q4_0',
     displayName: 'Qwen 2.5 7B Instruct (Q4)',
     vendor: 'alibaba',
-    description: 'Fast, quantized generalist model optimized for interactive use',
-    categories: ['generalist', 'ops'],
-    tags: ['production', 'fast', 'recommended', 'front-door'],
+    description: 'Fast, quantized generalist model optimized for interactive use and quality judging',
+    categories: ['generalist', 'judge', 'ops'],
+    tags: ['production', 'fast', 'recommended', 'front-door', 'judge'],
     capabilities: {
       maxContext: 32768,
       supportsThinking: false,
       avgLatencyMs: 2000,
-      targetUseCase: 'General-purpose chat, quick queries, routing decisions'
+      targetUseCase: 'General-purpose chat, quick queries, routing decisions, LLM-as-judge'
+    },
+    routingRules: {
+      preferredFor: ['quick_chat', 'factual_qa'],
+      avoidFor: [],
+      priority: 10
+    }
+  },
+  {
+    modelName: 'qwen2.5:7b-instruct-q5_K_M',
+    displayName: 'Qwen 2.5 7B Instruct (Q5_K_M)',
+    vendor: 'alibaba',
+    description: 'Higher-quality quantized generalist model, excellent for judging tasks',
+    categories: ['generalist', 'judge', 'ops'],
+    tags: ['production', 'fast', 'recommended', 'judge'],
+    capabilities: {
+      maxContext: 32768,
+      supportsThinking: false,
+      avgLatencyMs: 2500,
+      targetUseCase: 'General-purpose chat, quality scoring, LLM-as-judge'
     },
     routingRules: {
       preferredFor: ['quick_chat', 'factual_qa'],
