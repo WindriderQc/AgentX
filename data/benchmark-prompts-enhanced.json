@@ -1895,11 +1895,11 @@
     "name": "Counter Floor",
     "prompt": "Process the operations on a counter starting at 0. Operations: +3, -2, -2, +1, -1. The counter cannot go below 0; any decrement that would go negative is rejected. Output final_value,rejected_count.",
     "expected_tokens": 6,
-    "expected_answer": "0,1",
+    "expected_answer": "1,1",
     "judge_criteria": [
       "Applies increments and decrements in order",
       "Rejects the decrement that would go below zero",
-      "Final value is 0",
+      "Final value is 1",
       "Rejected count is 1"
     ],
     "scoring_type": "reasoning"
