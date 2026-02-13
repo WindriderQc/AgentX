@@ -457,6 +457,31 @@ async function scoreDimension(response, questions, judgeConfig, taskContext = {}
 }
 
 /**
+ * Build a rich human-readable explanation from dimension scores
+ */
+function buildExplanation(overallScore, category, dimensionScores, dimensionBreakdowns) {
+    const parts = [];
+    for (const [dim, dimScore] of Object.entries(dimensionScores)) {
+        const breakdown = dimensionBreakdowns[dim] || [];
+        const total = breakdown.length;
+        const passed = breakdown.filter(q => q.contributed).length;
+        const dimLabel = dim.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        let dimStr = `${dimLabel}: ${dimScore} (${passed}/${total})`;
+        if (dimScore < 8.0) {
+            const firstFail = breakdown.find(q => !q.contributed);
+            if (firstFail) {
+                const qText = firstFail.question.length > 60
+                    ? firstFail.question.substring(0, 57) + '...'
+                    : firstFail.question;
+                dimStr += ` -- "${qText}" failed`;
+            }
+        }
+        parts.push(dimStr);
+    }
+    return `Score ${overallScore}/10 (${category}). ${parts.join('. ')}.`;
+}
+
+/**
  * Main decomposed scoring function
  * Evaluates a response using binary questions for each dimension
  * @param {string} response - Model response to evaluate
@@ -547,7 +572,7 @@ async function score(response, prompt, judgeConfig) {
         scoring_type: category,
         breakdown: dimensionScores,
         decomposed_breakdown: dimensionBreakdowns,
-        explanation: `Evaluated ${totalQuestions} binary questions across ${dimensionCount} dimensions`,
+        explanation: buildExplanation(overallScore, category, dimensionScores, dimensionBreakdowns),
         scoring_time_ms: scoringTimeMs,
         judge_model: judgeConfig.model,
         judge_host: judgeConfig.host

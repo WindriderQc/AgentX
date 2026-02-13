@@ -286,8 +286,8 @@ function populateJudgeModal(result, resultIndex) {
             explanationEl.textContent = failureText;
             explanationEl.style.borderLeftColor = '#e74c3c';
             explanationEl.style.background = 'rgba(231, 76, 60, 0.1)';
-        } else if (result.judge_reasoning || result.quality_reasoning || result.judge_explanation) {
-            explanationEl.textContent = result.judge_reasoning || result.quality_reasoning || result.judge_explanation;
+        } else if (result.quality_explanation || result.judge_reasoning || result.quality_reasoning || result.judge_explanation) {
+            explanationEl.textContent = result.quality_explanation || result.judge_reasoning || result.quality_reasoning || result.judge_explanation;
             explanationEl.style.borderLeftColor = '#2ecc71';
             explanationEl.style.background = 'rgba(46, 204, 113, 0.1)';
         } else {
