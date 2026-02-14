@@ -459,13 +459,11 @@ describe('Enhanced Scoring Dimensions', () => {
         it('should extract proper noun phrases (stripping leading verbs)', () => {
             const pattern = extractCriterionPattern('Names Pine Ridge as the closed trail');
             expect(pattern).toBe('Pine\\s+Ridge');
-            // Verify it works as a regex against actual text
             expect(new RegExp(pattern, 'i').test('The Pine Ridge trail is closed')).toBe(true);
         });
 
         it('should extract number+unit patterns', () => {
             const pattern = extractCriterionPattern('States the total budget as 1.2 million');
-            // Pattern is regex-escaped: 1\.2\s*million
             expect(new RegExp(pattern, 'i').test('The budget is 1.2 million')).toBe(true);
         });
 
@@ -484,18 +482,55 @@ describe('Enhanced Scoring Dimensions', () => {
             expect(pattern).toBe('Alder\\s+Cove');
             expect(new RegExp(pattern, 'i').test('staying at Alder Cove')).toBe(true);
         });
+
+        it('should extract lowercase content via verb-qualifier pattern', () => {
+            const pattern = extractCriterionPattern('Identifies rye sandwiches as the main lunch item');
+            expect(pattern).toBe('rye\\s+sandwiches');
+            expect(new RegExp(pattern, 'i').test('We had rye sandwiches')).toBe(true);
+        });
+
+        it('should extract comma-separated alphanumeric labels', () => {
+            const pattern = extractCriterionPattern('Answers are labeled Q1, Q2, Q3');
+            expect(pattern).toBe('Q1[\\s\\S]*Q2[\\s\\S]*Q3');
+            expect(new RegExp(pattern, 'i').test('Q1: Pine Ridge.\nQ2: Rye.\nQ3: Alder')).toBe(true);
+        });
+
+        it('should prefer proper nouns over verb-qualifier for uppercase content', () => {
+            const pattern = extractCriterionPattern('Names Maya Chen as volunteer coordinator');
+            expect(pattern).toBe('Maya\\s+Chen');
+        });
     });
 
     describe('criteriaBasedScore', () => {
-        it('should score Lake Trip Journal data correctly (full match)', () => {
-            const response = 'The Pine Ridge trail is closed. They had rye sandwiches for lunch. They will stay at Alder Cove campsite.';
+        it('should score Lake Trip Journal with real Q-format expected_answer (full match)', () => {
+            const response = 'Q1: The Pine Ridge trail is closed.\nQ2: They had rye sandwiches for lunch.\nQ3: They stayed at Alder Cove campsite.';
             const prompt = {
                 name: 'Lake Trip Journal',
-                expected_answer: '1. Pine Ridge\n2. Rye sandwiches\n3. Alder Cove',
+                expected_answer: 'Q1: Pine Ridge trail. Q2: Rye sandwiches. Q3: Alder Cove.',
                 judge_criteria: [
                     'Names Pine Ridge as the closed trail',
                     'Identifies rye sandwiches as the main lunch item',
-                    'Names Alder Cove as the campsite'
+                    'Names Alder Cove as the campsite',
+                    'Answers are labeled Q1, Q2, Q3'
+                ]
+            };
+
+            const result = criteriaBasedScore(response, prompt);
+            expect(result).not.toBeNull();
+            expect(result.score).toBe(10);
+            expect(result.matched).toBe(true);
+        });
+
+        it('should score Community Center Renovation Memo (full match)', () => {
+            const response = 'Q1: The reopening is on October 12.\nQ2: The total budget is 1.2 million dollars.\nQ3: Maya Chen is the volunteer coordinator.';
+            const prompt = {
+                name: 'Community Center Renovation Memo',
+                expected_answer: 'Q1: October 12. Q2: 1.2 million dollars. Q3: Maya Chen.',
+                judge_criteria: [
+                    'Identifies the reopening date as October 12',
+                    'States the total budget as 1.2 million dollars',
+                    'Names Maya Chen as volunteer coordinator',
+                    'Answers are labeled Q1, Q2, Q3'
                 ]
             };
 
@@ -506,21 +541,21 @@ describe('Enhanced Scoring Dimensions', () => {
         });
 
         it('should score partial matches proportionally', () => {
-            const response = 'The Pine Ridge trail is closed. They had some food. They camped at Alder Cove.';
+            const response = 'Q1: The Pine Ridge trail is closed. Q2: They had some food. Q3: They camped at Alder Cove.';
             const prompt = {
                 name: 'Lake Trip Journal',
-                expected_answer: '1. Pine Ridge\n2. Rye sandwiches\n3. Alder Cove',
+                expected_answer: 'Q1: Pine Ridge trail. Q2: Rye sandwiches. Q3: Alder Cove.',
                 judge_criteria: [
                     'Names Pine Ridge as the closed trail',
                     'Identifies rye sandwiches as the main lunch item',
-                    'Names Alder Cove as the campsite'
+                    'Names Alder Cove as the campsite',
+                    'Answers are labeled Q1, Q2, Q3'
                 ]
             };
 
             const result = criteriaBasedScore(response, prompt);
             expect(result).not.toBeNull();
-            // Pine Ridge matched, rye sandwiches NOT matched, Alder Cove matched
-            // expected_answer lines: Pine Ridge (already covered), Rye sandwiches (not matched), Alder Cove (covered)
+            // Pine Ridge, Alder Cove, Q1/Q2/Q3 matched; rye sandwiches NOT matched
             expect(result.score).toBeGreaterThan(0);
             expect(result.score).toBeLessThan(10);
         });
@@ -547,6 +582,20 @@ describe('Enhanced Scoring Dimensions', () => {
 
             const result = criteriaBasedScore(response, prompt);
             expect(result).not.toBeNull();
+            expect(result.score).toBe(10);
+        });
+
+        it('should split Q-format expected_answer into separate patterns', () => {
+            const response = 'Pine Ridge trail is nice. Rye sandwiches were great. Alder Cove is beautiful.';
+            const prompt = {
+                name: 'test',
+                expected_answer: 'Q1: Pine Ridge trail. Q2: Rye sandwiches. Q3: Alder Cove.',
+                judge_criteria: ['Names Pine Ridge as the closed trail']
+            };
+
+            const result = criteriaBasedScore(response, prompt);
+            expect(result).not.toBeNull();
+            // Should have patterns for: Pine Ridge (from criteria) + Rye sandwiches + Alder Cove (from expected_answer split)
             expect(result.score).toBe(10);
         });
     });

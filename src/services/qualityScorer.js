@@ -342,18 +342,38 @@ function extractCriterionPattern(criterion) {
     const quoted = criterion.match(/"([^"]+)"/);
     if (quoted) return quoted[1].replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+    // Try comma-separated alphanumeric labels: "Q1, Q2, Q3" or "A1, B2"
+    const labelMatch = criterion.match(/([A-Z]\d+(?:\s*,\s*[A-Z]\d+)+)/);
+    if (labelMatch) {
+        const labels = labelMatch[1].split(/\s*,\s*/);
+        return labels.join('[\\s\\S]*');
+    }
+
     // Try number+unit patterns: "1.2 million", "$500", "42%"
-    const numUnit = criterion.match(/(\$?\d[\d,.]*\s*(?:million|billion|thousand|percent|%|kg|lb|miles?|km|hours?|minutes?|seconds?|days?|years?)?)/i);
+    const numUnit = criterion.match(/(?<![A-Za-z])(\$?\d[\d,.]*\s*(?:million|billion|thousand|percent|%|kg|lb|miles?|km|hours?|minutes?|seconds?|days?|years?)?)/i);
     if (numUnit) return numUnit[1].replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s*');
+
+    // Try verb-qualifier content extraction:
+    // "Identifies rye sandwiches as the main lunch item" → "rye sandwiches"
+    const criterionVerbs = new Set([
+        'names', 'states', 'identifies', 'mentions', 'recalls',
+        'lists', 'specifies', 'notes', 'includes', 'describes',
+        'answers'
+    ]);
+    const verbQualifierMatch = criterion.match(
+        /^\w+\s+(?:the\s+)?(.+?)\s+(?:as\s+(?:the|a|an)\s+|is\s+(?:the|a|an)\s+)/i
+    );
+    if (verbQualifierMatch) {
+        const content = verbQualifierMatch[1].trim();
+        // Only use if it's lowercase content (not a proper noun phrase we'd catch later)
+        if (content.length > 2 && content[0] === content[0].toLowerCase()) {
+            return content.replace(/\s+/g, '\\s+');
+        }
+    }
 
     // Extract capitalized proper nouns / key noun phrases
     const properNouns = criterion.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*/g);
     if (properNouns && properNouns.length > 0) {
-        // Strip common sentence-initial verbs from proper noun matches
-        const criterionVerbs = new Set([
-            'names', 'states', 'identifies', 'mentions', 'recalls',
-            'lists', 'specifies', 'notes', 'includes', 'describes'
-        ]);
         const cleaned = properNouns.map(pn => {
             const words = pn.split(/\s+/);
             if (words.length > 1 && criterionVerbs.has(words[0].toLowerCase())) {
@@ -361,7 +381,6 @@ function extractCriterionPattern(criterion) {
             }
             return pn;
         }).filter(pn => {
-            // Filter out single words that are criterion verbs (sentence-initial caps)
             if (pn.split(/\s+/).length === 1 && criterionVerbs.has(pn.toLowerCase())) {
                 return false;
             }
@@ -381,17 +400,17 @@ function extractCriterionPattern(criterion) {
         'as', 'of', 'in', 'on', 'at', 'to', 'for', 'with', 'by', 'from',
         'and', 'or', 'not', 'no', 'if', 'but', 'so', 'any', 'all',
         'names', 'states', 'identifies', 'mentions', 'recalls', 'correctly',
-        'response', 'answer', 'total', 'main', 'closed', 'specific'
+        'response', 'answer', 'total', 'main', 'closed', 'specific',
+        'answers', 'labeled', 'lists', 'includes'
     ]);
     const words = criterion.toLowerCase().split(/\s+/)
-        .filter(w => w.length > 2 && !stopWords.has(w));
+        .filter(w => w.length > 2 && !stopWords.has(w.replace(/[,.:;]/g, '')));
 
     if (words.length >= 2) {
-        // Join most significant words with flexible spacing
-        return words.slice(0, 3).join('.*');
+        return words.slice(0, 3).map(w => w.replace(/[,.:;]/g, '')).join('.*');
     }
     if (words.length === 1) {
-        return words[0];
+        return words[0].replace(/[,.:;]/g, '');
     }
 
     return null;
@@ -418,11 +437,20 @@ function criteriaBasedScore(response, prompt) {
 
     // Also extract patterns from expected_answer if available
     if (prompt.expected_answer) {
-        const lines = prompt.expected_answer.split(/\n/).filter(l => l.trim());
-        for (const line of lines) {
-            const trimmed = line.replace(/^\d+\.\s*/, '').trim();
+        // Split by newlines AND by sentence boundaries (". Q" pattern for Q&A format)
+        let segments = prompt.expected_answer.split(/\n/).filter(l => l.trim());
+        // If single line with multiple Q-prefixed answers, split by ". Q" boundaries
+        if (segments.length === 1 && /Q\d+\s*:/.test(segments[0])) {
+            segments = segments[0].split(/\.\s+(?=Q\d+\s*:)/).filter(s => s.trim());
+        }
+        for (const segment of segments) {
+            // Strip numbered prefixes (1. 2.) and Q-prefixes (Q1: Q2:)
+            const trimmed = segment
+                .replace(/^\d+\.\s*/, '')
+                .replace(/^Q\d+\s*:\s*/i, '')
+                .replace(/\.\s*$/, '')
+                .trim();
             if (trimmed.length > 2) {
-                // Check if we already have a pattern that covers this
                 const alreadyCovered = patterns.some(p => {
                     try { return new RegExp(p.pattern, 'i').test(trimmed); } catch { return false; }
                 });
