@@ -889,33 +889,33 @@ function showModelDetail(modelName, board, host) {
 
         modalBody.innerHTML = `
             <div class="detail-grid">
-                <div class="detail-item" title="Final calculated score combining weighted performance, coverage penalty, and consistency bonus">
-                    <span class="detail-label">Generalist Score <i class="fas fa-info-circle tip-icon"></i></span>
+                <div class="detail-item">
+                    <span class="detail-label">Generalist Score <i class="fas fa-info-circle tip-icon" data-tip="Final calculated score combining weighted performance, coverage penalty, and consistency bonus"></i></span>
                     <span class="detail-value highlight">${model.generalistScore.toFixed(1)}</span>
                 </div>
-                <div class="detail-item" title="Percentage of the 11 task categories this model has been tested on. Higher coverage = more reliable ranking.">
-                    <span class="detail-label">Coverage <i class="fas fa-info-circle tip-icon"></i></span>
+                <div class="detail-item">
+                    <span class="detail-label">Coverage <i class="fas fa-info-circle tip-icon" data-tip="Percentage of the 11 task categories this model has been tested on. Higher coverage = more reliable ranking."></i></span>
                     <span class="detail-value">${model.coverage}%</span>
                 </div>
-                <div class="detail-item" title="How consistent the model performs across categories. Lower standard deviation (σ) = more predictable performance.">
-                    <span class="detail-label">Consistency <i class="fas fa-info-circle tip-icon"></i></span>
+                <div class="detail-item">
+                    <span class="detail-label">Consistency <i class="fas fa-info-circle tip-icon" data-tip="How consistent the model performs across categories. Lower standard deviation (σ) = more predictable performance."></i></span>
                     <span class="detail-value">${model.consistencyScore}%</span>
                     <span class="detail-sub">σ = ${model.stdDev}</span>
                 </div>
-                <div class="detail-item" title="Total number of benchmark tests run for this model">
+                <div class="detail-item">
                     <span class="detail-label">Total Tests</span>
                     <span class="detail-value">${model.totalTests}</span>
                 </div>
             </div>
 
-            <h4>Tests by Difficulty Level <span class="tip-text" title="Distribution of tests across difficulty levels 1-10. Green=easy, Yellow=medium, Red=hard, Purple=extreme">ⓘ</span></h4>
+            <h4>Tests by Difficulty Level <span class="tip-text" data-tip="Distribution of tests across difficulty levels 1-10. Green=easy, Yellow=medium, Red=hard, Purple=extreme">ⓘ</span></h4>
             <div class="level-distribution">
                 ${levelBars || '<span class="no-data">No level data</span>'}
             </div>
 
             <div class="info-box">
                 <div class="info-row">
-                    <span class="info-label" title="Simple arithmetic mean of scores, treating all categories equally regardless of their assigned weights">Unweighted Avg (${testedCats} categories): <i class="fas fa-info-circle tip-icon"></i></span>
+                    <span class="info-label">Unweighted Avg (${testedCats} categories): <i class="fas fa-info-circle tip-icon" data-tip="Simple arithmetic mean of scores, treating all categories equally regardless of their assigned weights"></i></span>
                     <span class="info-value">${model.avgScore.toFixed(1)}</span>
                 </div>
                 <span class="info-note">Simple mean across tested categories, ignoring weights</span>
@@ -923,7 +923,7 @@ function showModelDetail(modelName, board, host) {
 
                 <div class="info-box consistency-info">
                 <div class="info-row">
-                    <span class="info-label" title="Statistical measure of how much scores vary between categories. Lower = more consistent performance.">Standard Deviation (σ): <i class="fas fa-info-circle tip-icon"></i></span>
+                    <span class="info-label">Standard Deviation (σ): <i class="fas fa-info-circle tip-icon" data-tip="Statistical measure of how much scores vary between categories. Lower = more consistent performance."></i></span>
                     <span class="info-value">${model.stdDev}</span>
                 </div>
                 <span class="info-note">
@@ -933,37 +933,37 @@ function showModelDetail(modelName, board, host) {
                 </span>
             </div>
 
-            <h4>Score Breakdown <span class="tip-text" title="How the final Generalist Score is calculated from components">ⓘ</span></h4>
+            <h4>Score Breakdown <span class="tip-text" data-tip="How the final Generalist Score is calculated from components">ⓘ</span></h4>
             <div class="formula-breakdown">
-                <div class="formula-line" title="Sum of (category_score × category_weight) for all tested categories. Core component of the generalist score.">
-                    <span>Weighted Sum: <i class="fas fa-info-circle tip-icon"></i></span>
+                <div class="formula-line">
+                    <span>Weighted Sum: <i class="fas fa-info-circle tip-icon" data-tip="Sum of (category_score × category_weight) for all tested categories. Core component of the generalist score."></i></span>
                     <span class="formula-value">+${model.weightedSum.toFixed(1)}</span>
                 </div>
                 ${model.coveragePenalty > 0 ? `
-                    <div class="formula-line penalty" title="Penalty for missing category coverage. Max penalty is -20 points. Formula: (1 - coverage%) × 20. Test more categories to reduce this!">
-                        <span>Coverage Penalty: <i class="fas fa-info-circle tip-icon"></i></span>
+                    <div class="formula-line penalty">
+                        <span>Coverage Penalty: <i class="fas fa-info-circle tip-icon" data-tip="Penalty for missing category coverage. Max penalty is -20 points. Formula: (1 - coverage%) × 20. Test more categories to reduce this!"></i></span>
                         <span class="formula-value">-${model.coveragePenalty.toFixed(1)}</span>
                     </div>
                 ` : ''}
                 ${model.consistencyBonus > 0 ? `
-                    <div class="formula-line bonus" title="Bonus awarded for consistent performance across categories. Earned when standard deviation (σ) is less than 15.">
-                        <span>Consistency Bonus: <i class="fas fa-info-circle tip-icon"></i></span>
+                    <div class="formula-line bonus">
+                        <span>Consistency Bonus: <i class="fas fa-info-circle tip-icon" data-tip="Bonus awarded for consistent performance across categories. Earned when standard deviation (σ) is less than 15."></i></span>
                         <span class="formula-value">+${model.consistencyBonus}</span>
                     </div>
                 ` : ''}
-                <div class="formula-line total" title="Weighted Sum - Coverage Penalty + Consistency Bonus">
+                <div class="formula-line total">
                     <span><strong>Final Score:</strong></span>
                     <span class="formula-value"><strong>${model.generalistScore.toFixed(1)}</strong></span>
                 </div>
             </div>
 
-            <h4>Category Performance <span class="tip-text" title="Breakdown by task category showing score, assigned weight, and contribution to final score">ⓘ</span></h4>
+            <h4>Category Performance <span class="tip-text" data-tip="Breakdown by task category showing score, assigned weight, and contribution to final score">ⓘ</span></h4>
             <div class="category-breakdown">
                 <div class="category-header">
-                    <span title="Task category type">Category</span>
-                    <span title="Average quality score (0-10) in this category">Score</span>
-                    <span title="How much this category contributes to the total (weights sum to 100%)">Weight</span>
-                    <span title="Actual points contributed: score × weight">Contrib</span>
+                    <span data-tip="Task category type">Category</span>
+                    <span data-tip="Average quality score (0-10) in this category">Score</span>
+                    <span data-tip="How much this category contributes to the total (weights sum to 100%)">Weight</span>
+                    <span data-tip="Actual points contributed: score × weight">Contrib</span>
                 </div>
                 ${categoryRows}
             </div>

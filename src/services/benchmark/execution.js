@@ -64,6 +64,7 @@ async function startBatch({ host, models, levels, run_name, quality_scoring = tr
     if (strictCategoryBalance) {
         const beforeBalanceCount = selectedPrompts.length;
         selectedPrompts = sampleBalancedByCategory(selectedPrompts);
+        selectedPrompts.sort((a, b) => (a.level || 0) - (b.level || 0));
         logger.info('Applied strict category balance to benchmark prompt selection', {
             before: beforeBalanceCount,
             after: selectedPrompts.length,

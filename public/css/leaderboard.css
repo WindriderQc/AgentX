@@ -1352,28 +1352,55 @@ body {
     opacity: 1;
 }
 
-/* Enhanced native tooltip styling (via title attribute) */
-[title] {
+/* Custom CSS tooltips via data-tip attribute */
+[data-tip] {
+    position: relative;
     cursor: help;
 }
 
-.detail-item[title],
-.formula-line[title] {
-    position: relative;
+[data-tip]::after {
+    content: attr(data-tip);
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg-primary, #1a1a2e);
+    color: var(--text-secondary, #ccc);
+    border: 1px solid var(--border-color, #333);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 12px;
+    font-weight: 400;
+    font-style: normal;
+    line-height: 1.4;
+    white-space: normal;
+    width: max-content;
+    max-width: 280px;
+    z-index: 9999;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
-.detail-item[title]:hover,
-.formula-line[title]:hover {
-    background: rgba(255, 255, 255, 0.02);
-    border-radius: 6px;
+[data-tip]:hover::after {
+    opacity: 1;
+}
+
+/* Prevent tooltip overflow on right edge */
+.formula-breakdown [data-tip]::after,
+.detail-grid [data-tip]::after,
+.info-box [data-tip]::after {
+    left: 0;
+    transform: none;
 }
 
 /* Category header tooltips */
-.category-header span[title] {
+.category-header span[data-tip] {
     cursor: help;
 }
 
-.category-header span[title]:hover {
+.category-header span[data-tip]:hover {
     color: var(--text-primary);
 }
 
