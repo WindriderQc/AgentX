@@ -332,6 +332,125 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
 }
 
 /**
+ * Extract key terms from a judge criterion string for regex matching.
+ * Pulls out quoted values, numbers with units, and proper nouns/key phrases.
+ * @param {string} criterion - e.g. "Names Pine Ridge as the closed trail"
+ * @returns {string} Regex pattern string, case-insensitive
+ */
+function extractCriterionPattern(criterion) {
+    // Try quoted values first: "Pine Ridge"
+    const quoted = criterion.match(/"([^"]+)"/);
+    if (quoted) return quoted[1].replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    // Try number+unit patterns: "1.2 million", "$500", "42%"
+    const numUnit = criterion.match(/(\$?\d[\d,.]*\s*(?:million|billion|thousand|percent|%|kg|lb|miles?|km|hours?|minutes?|seconds?|days?|years?)?)/i);
+    if (numUnit) return numUnit[1].replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s*');
+
+    // Extract capitalized proper nouns / key noun phrases
+    const properNouns = criterion.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*/g);
+    if (properNouns && properNouns.length > 0) {
+        // Strip common sentence-initial verbs from proper noun matches
+        const criterionVerbs = new Set([
+            'names', 'states', 'identifies', 'mentions', 'recalls',
+            'lists', 'specifies', 'notes', 'includes', 'describes'
+        ]);
+        const cleaned = properNouns.map(pn => {
+            const words = pn.split(/\s+/);
+            if (words.length > 1 && criterionVerbs.has(words[0].toLowerCase())) {
+                return words.slice(1).join(' ');
+            }
+            return pn;
+        }).filter(pn => {
+            // Filter out single words that are criterion verbs (sentence-initial caps)
+            if (pn.split(/\s+/).length === 1 && criterionVerbs.has(pn.toLowerCase())) {
+                return false;
+            }
+            return pn.length > 1;
+        });
+
+        if (cleaned.length > 0) {
+            const longest = cleaned.sort((a, b) => b.length - a.length)[0];
+            return longest.replace(/\s+/g, '\\s+');
+        }
+    }
+
+    // Fallback: extract significant words (skip common verbs/articles/prepositions)
+    const stopWords = new Set([
+        'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+        'does', 'do', 'did', 'has', 'have', 'had', 'that', 'this', 'it',
+        'as', 'of', 'in', 'on', 'at', 'to', 'for', 'with', 'by', 'from',
+        'and', 'or', 'not', 'no', 'if', 'but', 'so', 'any', 'all',
+        'names', 'states', 'identifies', 'mentions', 'recalls', 'correctly',
+        'response', 'answer', 'total', 'main', 'closed', 'specific'
+    ]);
+    const words = criterion.toLowerCase().split(/\s+/)
+        .filter(w => w.length > 2 && !stopWords.has(w));
+
+    if (words.length >= 2) {
+        // Join most significant words with flexible spacing
+        return words.slice(0, 3).join('.*');
+    }
+    if (words.length === 1) {
+        return words[0];
+    }
+
+    return null;
+}
+
+/**
+ * Score a response using judge_criteria + expected_answer via regex matching.
+ * For Q&A prompts with clear expected answers, matches answers deterministically.
+ * @param {string} response - Model response text
+ * @param {Object} prompt - Prompt with judge_criteria and expected_answer
+ * @returns {Object|null} Deterministic score result, or null if can't score
+ */
+function criteriaBasedScore(response, prompt) {
+    const criteria = prompt.judge_criteria;
+    if (!Array.isArray(criteria) || criteria.length === 0) return null;
+
+    const patterns = [];
+    for (const criterion of criteria) {
+        const pattern = extractCriterionPattern(criterion);
+        if (pattern) {
+            patterns.push({ pattern, weight: 1 });
+        }
+    }
+
+    // Also extract patterns from expected_answer if available
+    if (prompt.expected_answer) {
+        const lines = prompt.expected_answer.split(/\n/).filter(l => l.trim());
+        for (const line of lines) {
+            const trimmed = line.replace(/^\d+\.\s*/, '').trim();
+            if (trimmed.length > 2) {
+                // Check if we already have a pattern that covers this
+                const alreadyCovered = patterns.some(p => {
+                    try { return new RegExp(p.pattern, 'i').test(trimmed); } catch { return false; }
+                });
+                if (!alreadyCovered) {
+                    patterns.push({ pattern: trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), weight: 1 });
+                }
+            }
+        }
+    }
+
+    if (patterns.length === 0) return null;
+
+    const result = deterministicScorer.regexPatterns(response, {
+        must_contain: patterns,
+        must_not_contain: []
+    });
+
+    logger.info('Criteria-based scoring', {
+        prompt: prompt.name || prompt.prompt_name || 'unknown',
+        patterns: patterns.length,
+        score: result.score,
+        matched: result.matched
+    });
+
+    return result;
+}
+
+/**
  * Route scoring to the appropriate strategy based on category and prompt
  */
 async function routeScoring(response, prompt, judgeConfig) {
@@ -390,6 +509,14 @@ async function routeScoring(response, prompt, judgeConfig) {
                     deterministic_type: 'numeric'
                 }, 'deterministic');
             }
+        }
+    }
+
+    // Phase 1.5: Try criteria-based scoring (judge_criteria + expected_answer)
+    if (prompt.judge_criteria?.length > 0 && prompt.expected_answer) {
+        const criteriaResult = criteriaBasedScore(response, prompt);
+        if (criteriaResult) {
+            return normalizeDeterministic(criteriaResult, 'deterministic');
         }
     }
 
@@ -516,6 +643,8 @@ module.exports = {
     jsonDeepEqual,
     tryParseJson,
     routeScoring,
+    criteriaBasedScore,
+    extractCriterionPattern,
     ENHANCED_SCORING_CONFIGS,
     CATEGORY_COMPOSITE_PROFILES,
     CATEGORY_STRATEGIES,

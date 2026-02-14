@@ -43,81 +43,113 @@ beforeEach(() => {
     jest.clearAllMocks();
 });
 
-describe('Majority voting (askBinaryQuestion)', () => {
+describe('Default voting (single call, voting_count=1)', () => {
+    test('YES → true (1 call)', async () => {
+        mockFetchSequence(['YES']);
+        const result = await askBinaryQuestion('response', 'Is this good?', JUDGE_CONFIG);
+        expect(result).toBe(true);
+        expect(mockFetchFn).toHaveBeenCalledTimes(1);
+    });
+
+    test('NO → false (1 call)', async () => {
+        mockFetchSequence(['NO']);
+        const result = await askBinaryQuestion('response', 'Is this good?', JUDGE_CONFIG);
+        expect(result).toBe(false);
+        expect(mockFetchFn).toHaveBeenCalledTimes(1);
+    });
+
+    test('failure → defaults to false', async () => {
+        mockFetchSequence([new Error('timeout')]);
+        const result = await askBinaryQuestion('response', 'Is this good?', JUDGE_CONFIG);
+        expect(result).toBe(false);
+        expect(logger.error).toHaveBeenCalledWith('Binary call failed', expect.any(Object));
+    });
+
+    test('ambiguous response defaults to NO', async () => {
+        mockFetchSequence(['maybe']);
+        const result = await askBinaryQuestion('response', 'Is this good?', JUDGE_CONFIG);
+        expect(result).toBe(false);
+    });
+
+    test('YES with preamble tokens still detected', async () => {
+        mockFetchSequence(['Based on the analysis, YES']);
+        const result = await askBinaryQuestion('response', 'Is this good?', JUDGE_CONFIG);
+        expect(result).toBe(true);
+        expect(mockFetchFn).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('Majority voting (voting_count: 3)', () => {
+    const VOTING_CONFIG = { ...JUDGE_CONFIG, voting_count: 3 };
+
     test('3 YES → YES', async () => {
         mockFetchSequence(['YES', 'YES', 'YES']);
-        const result = await askBinaryQuestion('response', 'Is this good?', JUDGE_CONFIG);
+        const result = await askBinaryQuestion('response', 'Is this good?', VOTING_CONFIG);
         expect(result).toBe(true);
         expect(mockFetchFn).toHaveBeenCalledTimes(3);
     });
 
     test('3 NO → NO', async () => {
         mockFetchSequence(['NO', 'NO', 'NO']);
-        const result = await askBinaryQuestion('response', 'Is this good?', JUDGE_CONFIG);
+        const result = await askBinaryQuestion('response', 'Is this good?', VOTING_CONFIG);
         expect(result).toBe(false);
     });
 
     test('2 YES + 1 NO → YES (majority wins)', async () => {
         mockFetchSequence(['YES', 'NO', 'YES']);
-        const result = await askBinaryQuestion('response', 'Is this good?', JUDGE_CONFIG);
+        const result = await askBinaryQuestion('response', 'Is this good?', VOTING_CONFIG);
         expect(result).toBe(true);
         expect(logger.warn).toHaveBeenCalledWith('Binary vote disagreement', expect.any(Object));
     });
 
     test('1 YES + 2 NO → NO (majority wins)', async () => {
         mockFetchSequence(['YES', 'NO', 'NO']);
-        const result = await askBinaryQuestion('response', 'Is this good?', JUDGE_CONFIG);
+        const result = await askBinaryQuestion('response', 'Is this good?', VOTING_CONFIG);
         expect(result).toBe(false);
         expect(logger.warn).toHaveBeenCalledWith('Binary vote disagreement', expect.any(Object));
     });
 
     test('no disagreement log when unanimous YES', async () => {
         mockFetchSequence(['YES', 'YES', 'YES']);
-        await askBinaryQuestion('response', 'Is this good?', JUDGE_CONFIG);
+        await askBinaryQuestion('response', 'Is this good?', VOTING_CONFIG);
         expect(logger.warn).not.toHaveBeenCalledWith('Binary vote disagreement', expect.any(Object));
     });
 
     test('no disagreement log when unanimous NO', async () => {
         mockFetchSequence(['NO', 'NO', 'NO']);
-        await askBinaryQuestion('response', 'Is this good?', JUDGE_CONFIG);
+        await askBinaryQuestion('response', 'Is this good?', VOTING_CONFIG);
         expect(logger.warn).not.toHaveBeenCalledWith('Binary vote disagreement', expect.any(Object));
     });
 
     test('2 failures + 1 YES → uses single success', async () => {
         mockFetchSequence([new Error('timeout'), new Error('timeout'), 'YES']);
-        const result = await askBinaryQuestion('response', 'Is this good?', JUDGE_CONFIG);
+        const result = await askBinaryQuestion('response', 'Is this good?', VOTING_CONFIG);
         expect(result).toBe(true);
     });
 
     test('2 failures + 1 NO → uses single success', async () => {
         mockFetchSequence([new Error('timeout'), new Error('timeout'), 'NO']);
-        const result = await askBinaryQuestion('response', 'Is this good?', JUDGE_CONFIG);
+        const result = await askBinaryQuestion('response', 'Is this good?', VOTING_CONFIG);
         expect(result).toBe(false);
     });
 
     test('all 3 fail → defaults to false', async () => {
         mockFetchSequence([new Error('fail'), new Error('fail'), new Error('fail')]);
-        const result = await askBinaryQuestion('response', 'Is this good?', JUDGE_CONFIG);
+        const result = await askBinaryQuestion('response', 'Is this good?', VOTING_CONFIG);
         expect(result).toBe(false);
         expect(logger.error).toHaveBeenCalledWith('All 3 binary votes failed', expect.any(Object));
     });
 
     test('ambiguous responses default to NO', async () => {
         mockFetchSequence(['maybe', 'perhaps', 'unclear']);
-        const result = await askBinaryQuestion('response', 'Is this good?', JUDGE_CONFIG);
+        const result = await askBinaryQuestion('response', 'Is this good?', VOTING_CONFIG);
         expect(result).toBe(false);
-    });
-
-    test('YES with preamble tokens still detected', async () => {
-        mockFetchSequence(['Based on the analysis, YES', 'YES', 'YES']);
-        const result = await askBinaryQuestion('response', 'Is this good?', JUDGE_CONFIG);
-        expect(result).toBe(true);
     });
 });
 
 describe('Prompt structure and context limits', () => {
     test('prompt includes role instruction and labeled sections', async () => {
-        mockFetchSequence(['YES', 'YES', 'YES']);
+        mockFetchSequence(['YES']);
         const task = 'Write a function';
         const expected = 'function foo() {}';
         await askBinaryQuestion('some response', 'Is it correct?', JUDGE_CONFIG, { task, expected });
@@ -131,7 +163,7 @@ describe('Prompt structure and context limits', () => {
     });
 
     test('task truncated at 2000 chars', async () => {
-        mockFetchSequence(['YES', 'YES', 'YES']);
+        mockFetchSequence(['YES']);
         const longTask = 'x'.repeat(5000);
         await askBinaryQuestion('resp', 'q?', JUDGE_CONFIG, { task: longTask });
 
@@ -142,7 +174,7 @@ describe('Prompt structure and context limits', () => {
     });
 
     test('expected truncated at 500 chars', async () => {
-        mockFetchSequence(['YES', 'YES', 'YES']);
+        mockFetchSequence(['YES']);
         const longExpected = 'e'.repeat(1000);
         await askBinaryQuestion('resp', 'q?', JUDGE_CONFIG, { task: 'task', expected: longExpected });
 
@@ -152,7 +184,7 @@ describe('Prompt structure and context limits', () => {
     });
 
     test('response truncated at 3000 chars', async () => {
-        mockFetchSequence(['YES', 'YES', 'YES']);
+        mockFetchSequence(['YES']);
         const longResponse = 'r'.repeat(5000);
         await askBinaryQuestion(longResponse, 'q?', JUDGE_CONFIG);
 
@@ -162,7 +194,7 @@ describe('Prompt structure and context limits', () => {
     });
 
     test('no task context → no TASK/EXPECTED sections', async () => {
-        mockFetchSequence(['YES', 'YES', 'YES']);
+        mockFetchSequence(['YES']);
         await askBinaryQuestion('response', 'q?', JUDGE_CONFIG);
 
         const body = JSON.parse(mockFetchFn.mock.calls[0][1].body);
@@ -172,7 +204,7 @@ describe('Prompt structure and context limits', () => {
     });
 
     test('task without expected → TASK but no EXPECTED section', async () => {
-        mockFetchSequence(['YES', 'YES', 'YES']);
+        mockFetchSequence(['YES']);
         await askBinaryQuestion('response', 'q?', JUDGE_CONFIG, { task: 'do stuff' });
 
         const body = JSON.parse(mockFetchFn.mock.calls[0][1].body);
@@ -183,7 +215,7 @@ describe('Prompt structure and context limits', () => {
 
 describe('Model options', () => {
     test('sends num_predict: 20, num_ctx: 8192, temperature: 0.1', async () => {
-        mockFetchSequence(['YES', 'YES', 'YES']);
+        mockFetchSequence(['YES']);
         await askBinaryQuestion('response', 'q?', JUDGE_CONFIG);
 
         const body = JSON.parse(mockFetchFn.mock.calls[0][1].body);
@@ -193,7 +225,7 @@ describe('Model options', () => {
     });
 
     test('sends correct model name', async () => {
-        mockFetchSequence(['YES', 'YES', 'YES']);
+        mockFetchSequence(['YES']);
         await askBinaryQuestion('response', 'q?', JUDGE_CONFIG);
 
         const body = JSON.parse(mockFetchFn.mock.calls[0][1].body);
@@ -201,7 +233,7 @@ describe('Model options', () => {
     });
 
     test('stream is false', async () => {
-        mockFetchSequence(['YES', 'YES', 'YES']);
+        mockFetchSequence(['YES']);
         await askBinaryQuestion('response', 'q?', JUDGE_CONFIG);
 
         const body = JSON.parse(mockFetchFn.mock.calls[0][1].body);
@@ -211,7 +243,7 @@ describe('Model options', () => {
 
 describe('scoreDimension', () => {
     test('all YES → score 10', async () => {
-        mockFetchSequence(['YES', 'YES', 'YES']); // repeated for 3 votes each
+        mockFetchSequence(['YES', 'YES']);
         const questions = [
             { q: 'Q1?', weight: 0.5 },
             { q: 'Q2?', weight: 0.5 }
@@ -223,7 +255,7 @@ describe('scoreDimension', () => {
     });
 
     test('all NO → score 0', async () => {
-        mockFetchSequence(['NO', 'NO', 'NO']);
+        mockFetchSequence(['NO', 'NO']);
         const questions = [
             { q: 'Q1?', weight: 0.5 },
             { q: 'Q2?', weight: 0.5 }
@@ -233,13 +265,7 @@ describe('scoreDimension', () => {
     });
 
     test('inverted question: YES→false contribution', async () => {
-        // First question: normal, YES → contributed=true
-        // Second question: inverted, YES → contributed=false
-        let callCount = 0;
-        mockFetchFn.mockImplementation(() => {
-            callCount++;
-            return mockFetchResponse('YES');
-        });
+        mockFetchFn.mockImplementation(() => mockFetchResponse('YES'));
 
         const questions = [
             { q: 'Is it good?', weight: 0.5 },
@@ -258,8 +284,8 @@ describe('scoreDimension', () => {
         let callCount = 0;
         mockFetchFn.mockImplementation(() => {
             callCount++;
-            // Calls 1-3 for Q1, calls 4-6 for Q2
-            const answer = callCount <= 3 ? 'YES' : 'NO';
+            // Call 1 for Q1, call 2 for Q2 (single vote each)
+            const answer = callCount <= 1 ? 'YES' : 'NO';
             return mockFetchResponse(answer);
         });
 

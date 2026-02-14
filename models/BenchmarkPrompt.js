@@ -134,6 +134,11 @@ const BenchmarkPromptSchema = new mongoose.Schema({
         type: String,
         default: null
     },
+    // Structured criteria for deterministic judging (e.g. ["Names Pine Ridge as the closed trail"])
+    judge_criteria: {
+        type: [String],
+        default: undefined
+    },
     custom: {
         type: Boolean,
         default: false,

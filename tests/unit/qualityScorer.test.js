@@ -9,6 +9,8 @@ const {
     scoreResponse,
     calculateCompositeScore,
     quickScore,
+    criteriaBasedScore,
+    extractCriterionPattern,
     ENHANCED_SCORING_CONFIGS,
     CATEGORY_COMPOSITE_PROFILES
 } = require('../../src/services/qualityScorer');
@@ -450,6 +452,102 @@ describe('Enhanced Scoring Dimensions', () => {
             expect(result.quality_score).toBe(10);
             expect(result.judge_confidence).toBe(1);
             expect(result.needs_review).toBe(false);
+        });
+    });
+
+    describe('extractCriterionPattern', () => {
+        it('should extract proper noun phrases (stripping leading verbs)', () => {
+            const pattern = extractCriterionPattern('Names Pine Ridge as the closed trail');
+            expect(pattern).toBe('Pine\\s+Ridge');
+            // Verify it works as a regex against actual text
+            expect(new RegExp(pattern, 'i').test('The Pine Ridge trail is closed')).toBe(true);
+        });
+
+        it('should extract number+unit patterns', () => {
+            const pattern = extractCriterionPattern('States the total budget as 1.2 million');
+            // Pattern is regex-escaped: 1\.2\s*million
+            expect(new RegExp(pattern, 'i').test('The budget is 1.2 million')).toBe(true);
+        });
+
+        it('should extract quoted values', () => {
+            const pattern = extractCriterionPattern('Mentions "rye sandwiches" as the food');
+            expect(pattern).toBe('rye sandwiches');
+        });
+
+        it('should return null for empty/trivial strings', () => {
+            const pattern = extractCriterionPattern('is it');
+            expect(pattern).toBeNull();
+        });
+
+        it('should handle multi-word proper nouns like Alder Cove', () => {
+            const pattern = extractCriterionPattern('Names Alder Cove as the campsite');
+            expect(pattern).toBe('Alder\\s+Cove');
+            expect(new RegExp(pattern, 'i').test('staying at Alder Cove')).toBe(true);
+        });
+    });
+
+    describe('criteriaBasedScore', () => {
+        it('should score Lake Trip Journal data correctly (full match)', () => {
+            const response = 'The Pine Ridge trail is closed. They had rye sandwiches for lunch. They will stay at Alder Cove campsite.';
+            const prompt = {
+                name: 'Lake Trip Journal',
+                expected_answer: '1. Pine Ridge\n2. Rye sandwiches\n3. Alder Cove',
+                judge_criteria: [
+                    'Names Pine Ridge as the closed trail',
+                    'Identifies rye sandwiches as the main lunch item',
+                    'Names Alder Cove as the campsite'
+                ]
+            };
+
+            const result = criteriaBasedScore(response, prompt);
+            expect(result).not.toBeNull();
+            expect(result.score).toBe(10);
+            expect(result.matched).toBe(true);
+        });
+
+        it('should score partial matches proportionally', () => {
+            const response = 'The Pine Ridge trail is closed. They had some food. They camped at Alder Cove.';
+            const prompt = {
+                name: 'Lake Trip Journal',
+                expected_answer: '1. Pine Ridge\n2. Rye sandwiches\n3. Alder Cove',
+                judge_criteria: [
+                    'Names Pine Ridge as the closed trail',
+                    'Identifies rye sandwiches as the main lunch item',
+                    'Names Alder Cove as the campsite'
+                ]
+            };
+
+            const result = criteriaBasedScore(response, prompt);
+            expect(result).not.toBeNull();
+            // Pine Ridge matched, rye sandwiches NOT matched, Alder Cove matched
+            // expected_answer lines: Pine Ridge (already covered), Rye sandwiches (not matched), Alder Cove (covered)
+            expect(result.score).toBeGreaterThan(0);
+            expect(result.score).toBeLessThan(10);
+        });
+
+        it('should return null when no judge_criteria', () => {
+            const result = criteriaBasedScore('some response', { expected_answer: 'foo' });
+            expect(result).toBeNull();
+        });
+
+        it('should return null when judge_criteria is empty', () => {
+            const result = criteriaBasedScore('some response', {
+                expected_answer: 'foo',
+                judge_criteria: []
+            });
+            expect(result).toBeNull();
+        });
+
+        it('should handle criteria with numbers', () => {
+            const response = 'The budget is $1.2 million for the project.';
+            const prompt = {
+                expected_answer: '$1.2 million',
+                judge_criteria: ['States the total budget as $1.2 million']
+            };
+
+            const result = criteriaBasedScore(response, prompt);
+            expect(result).not.toBeNull();
+            expect(result.score).toBe(10);
         });
     });
 });

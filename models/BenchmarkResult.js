@@ -65,6 +65,11 @@ const BenchmarkResultSchema = new mongoose.Schema({
         type: String,
         default: null
     },
+    // Structured criteria for deterministic judging (carried from prompt)
+    judge_criteria: {
+        type: [String],
+        default: undefined
+    },
     response: {
         type: String,
         default: ''

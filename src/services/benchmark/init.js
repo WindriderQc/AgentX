@@ -70,6 +70,10 @@ function sanitizePromptRecord(rawPrompt, sourceFile) {
         sanitized.scoring_dimensions = rawPrompt.scoring_dimensions;
     }
 
+    if (Array.isArray(rawPrompt && rawPrompt.judge_criteria) && rawPrompt.judge_criteria.length > 0) {
+        sanitized.judge_criteria = rawPrompt.judge_criteria;
+    }
+
     return sanitized;
 }
 

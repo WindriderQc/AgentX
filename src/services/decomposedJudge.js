@@ -418,18 +418,31 @@ Based on the above, answer ONLY "YES" or "NO": ${question}`;
  * @returns {Promise<boolean>} True for YES, false for NO
  */
 async function askBinaryQuestion(response, question, judgeConfig, taskContext = {}) {
-    const votes = await Promise.allSettled([
-        singleBinaryCall(response, question, judgeConfig, taskContext),
-        singleBinaryCall(response, question, judgeConfig, taskContext),
-        singleBinaryCall(response, question, judgeConfig, taskContext)
-    ]);
+    const votingCount = judgeConfig.voting_count || 1;
+
+    // Single call mode (default) — no voting overhead
+    if (votingCount <= 1) {
+        try {
+            return await singleBinaryCall(response, question, judgeConfig, taskContext);
+        } catch (err) {
+            logger.error('Binary call failed', { question, error: err.message });
+            return false;
+        }
+    }
+
+    // Majority voting mode
+    const calls = [];
+    for (let i = 0; i < votingCount; i++) {
+        calls.push(singleBinaryCall(response, question, judgeConfig, taskContext));
+    }
+    const votes = await Promise.allSettled(calls);
 
     const successes = votes
         .filter(v => v.status === 'fulfilled')
         .map(v => v.value);
 
     if (successes.length === 0) {
-        logger.error('All 3 binary votes failed', {
+        logger.error(`All ${votingCount} binary votes failed`, {
             question,
             errors: votes.map(v => v.reason?.message || 'unknown')
         });

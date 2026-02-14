@@ -311,7 +311,10 @@ const CATEGORY_STRATEGIES = {
         confidence_threshold: 0.7
     },
     'context-retention': {
-        primary: 'decomposed',
+        primary: 'hybrid',
+        deterministic_type: 'criteria',
+        llm_fallback: true,
+        llm_strategy: 'decomposed',
         confidence_threshold: 0.7
     },
     'edge-cases': {
