@@ -11,8 +11,10 @@ const {
     quickScore,
     criteriaBasedScore,
     extractCriterionPattern,
+    routeScoring,
     ENHANCED_SCORING_CONFIGS,
-    CATEGORY_COMPOSITE_PROFILES
+    CATEGORY_COMPOSITE_PROFILES,
+    CATEGORY_STRATEGIES
 } = require('../../src/services/qualityScorer');
 
 // Mock logger to avoid console noise in tests
@@ -30,6 +32,18 @@ jest.mock('node-fetch', () => jest.fn());
 jest.mock('../../src/services/hardwareProfileService', () => ({
     detectHardware: jest.fn().mockResolvedValue(null)
 }));
+
+// Mock complianceScorer for hybrid scoring tests
+const mockScoreCompliance = jest.fn();
+const mockBlendHybridScore = jest.fn();
+jest.mock('../../src/services/scoring/complianceScorer', () => {
+    const actual = jest.requireActual('../../src/services/scoring/complianceScorer');
+    return {
+        ...actual,
+        scoreCompliance: (...args) => mockScoreCompliance(...args),
+        blendHybridScore: (...args) => mockBlendHybridScore(...args)
+    };
+});
 
 describe('Enhanced Scoring Dimensions', () => {
     describe('buildDynamicJudgePrompt', () => {
@@ -597,6 +611,109 @@ describe('Enhanced Scoring Dimensions', () => {
             expect(result).not.toBeNull();
             // Should have patterns for: Pine Ridge (from criteria) + Rye sandwiches + Alder Cove (from expected_answer split)
             expect(result.score).toBe(10);
+        });
+    });
+
+    describe('Hybrid Scoring (routeScoring Phase 1.5)', () => {
+        beforeEach(() => {
+            mockScoreCompliance.mockReset();
+            mockBlendHybridScore.mockReset();
+        });
+
+        it('should return hybrid result when criteria match and compliance succeeds', async () => {
+            const complianceResult = {
+                score: 6,
+                breakdown: [{ question: 'Q1', answer: true, contributed: true }]
+            };
+            mockScoreCompliance.mockResolvedValue(complianceResult);
+            mockBlendHybridScore.mockReturnValue({
+                quality_score: 9,
+                scoring_method: 'hybrid',
+                scoring_type: 'context-retention',
+                accuracy_score: 10,
+                compliance_score: 6,
+                matched_expected: true,
+                explanation: 'Hybrid: accuracy 10 + compliance 6',
+                breakdown: { overall: 9, accuracy: 10, compliance: 6 },
+                judge_confidence: 0.95,
+                needs_review: false
+            });
+
+            const response = 'Q1: The Pine Ridge trail is closed.\nQ2: They had rye sandwiches for lunch.\nQ3: They stayed at Alder Cove campsite.';
+            const prompt = {
+                name: 'Lake Trip Journal',
+                scoring_type: 'context-retention',
+                category: 'context-retention',
+                expected_answer: 'Q1: Pine Ridge trail. Q2: Rye sandwiches. Q3: Alder Cove.',
+                judge_criteria: [
+                    'Names Pine Ridge as the closed trail',
+                    'Identifies rye sandwiches as the main lunch item',
+                    'Names Alder Cove as the campsite',
+                    'Answers are labeled Q1, Q2, Q3'
+                ]
+            };
+
+            const result = await routeScoring(response, prompt, { host: 'http://localhost:11434', model: 'test' });
+
+            expect(result).not.toBeNull();
+            expect(result.scoring_method).toBe('hybrid');
+            expect(result.accuracy_score).toBe(10);
+            expect(result.compliance_score).toBe(6);
+            expect(mockScoreCompliance).toHaveBeenCalled();
+            expect(mockBlendHybridScore).toHaveBeenCalled();
+        });
+
+        it('should fall back to pure deterministic when compliance fails', async () => {
+            mockScoreCompliance.mockResolvedValue(null);
+
+            const response = 'Q1: Pine Ridge. Q2: Rye sandwiches. Q3: Alder Cove.';
+            const prompt = {
+                name: 'Lake Trip',
+                scoring_type: 'context-retention',
+                category: 'context-retention',
+                expected_answer: 'Q1: Pine Ridge trail. Q2: Rye sandwiches. Q3: Alder Cove.',
+                judge_criteria: [
+                    'Names Pine Ridge as the closed trail',
+                    'Identifies rye sandwiches as the main lunch item',
+                    'Names Alder Cove as the campsite'
+                ]
+            };
+
+            const result = await routeScoring(response, prompt, { host: 'http://localhost:11434', model: 'test' });
+
+            expect(result).not.toBeNull();
+            expect(result.scoring_method).toBe('deterministic');
+            expect(mockScoreCompliance).toHaveBeenCalled();
+            expect(mockBlendHybridScore).not.toHaveBeenCalled();
+        });
+
+        it('should have hybrid_compliance enabled for context-retention category', () => {
+            const strategy = CATEGORY_STRATEGIES['context-retention'];
+            expect(strategy.hybrid_compliance).toBe(true);
+            expect(strategy.hybrid_weights).toEqual({ accuracy: 0.75, compliance: 0.25 });
+        });
+
+        it('should have hybrid_compliance enabled for instruction-following category', () => {
+            const strategy = CATEGORY_STRATEGIES['instruction-following'];
+            expect(strategy.hybrid_compliance).toBe(true);
+            expect(strategy.hybrid_weights).toEqual({ accuracy: 0.55, compliance: 0.45 });
+        });
+
+        it('should NOT have hybrid_compliance on math category', () => {
+            const strategy = CATEGORY_STRATEGIES.math;
+            expect(strategy.hybrid_compliance).toBeUndefined();
+        });
+
+        it('should have hybrid weights summing to 1.0 for all configured categories', () => {
+            const hybridCategories = Object.entries(CATEGORY_STRATEGIES)
+                .filter(([_, s]) => s.hybrid_weights);
+
+            expect(hybridCategories.length).toBeGreaterThanOrEqual(6);
+
+            hybridCategories.forEach(([cat, strategy]) => {
+                const sum = strategy.hybrid_weights.accuracy + strategy.hybrid_weights.compliance;
+                expect(sum).toBeCloseTo(1.0, 3);
+            });
         });
     });
 });

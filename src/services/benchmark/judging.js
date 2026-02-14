@@ -121,6 +121,8 @@ async function applyScoresToResult(resultId, scores, resultData) {
                 composite_score: composite.composite_score,
                 composite_profile_used: composite.composite_profile_used,
                 normalized_scores: composite.normalized,
+                accuracy_score: scores.accuracy_score !== undefined ? scores.accuracy_score : null,
+                compliance_score: scores.compliance_score !== undefined ? scores.compliance_score : null,
                 semantic_score: scores.semantic_score !== undefined ? scores.semantic_score : null,
                 format_score: scores.format_score !== undefined ? scores.format_score : null,
                 format_compliant: scores.format_compliant !== undefined ? scores.format_compliant : null,

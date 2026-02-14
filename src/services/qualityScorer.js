@@ -18,6 +18,7 @@ const { stripMarkdownCodeFences, jsonDeepEqual, tryParseJson } = require('./scor
 const { quickScore } = require('./scoring/quickScorer');
 const { JUDGE_CONFIG, callJudge, buildDynamicJudgePrompt, incrementJudgeFailureCount } = require('./scoring/judgeCall');
 const { scoreFormatCompliance } = require('./scoring/formatComplianceScorer');
+const { scoreCompliance, blendHybridScore } = require('./scoring/complianceScorer');
 
 /**
  * Score a model response for quality
@@ -544,6 +545,13 @@ async function routeScoring(response, prompt, judgeConfig) {
     if (prompt.judge_criteria?.length > 0 && prompt.expected_answer) {
         const criteriaResult = criteriaBasedScore(response, prompt);
         if (criteriaResult) {
+            // Hybrid: blend deterministic accuracy with LLM compliance check
+            if (strategy.hybrid_compliance !== false) {
+                const complianceResult = await scoreCompliance(response, prompt, judgeConfig);
+                if (complianceResult) {
+                    return blendHybridScore(criteriaResult, complianceResult, category);
+                }
+            }
             return normalizeDeterministic(criteriaResult, 'deterministic');
         }
     }

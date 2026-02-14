@@ -773,6 +773,7 @@ AgentX development is organized across **eight development tracks**, each focusi
 - [x] RAG citation tracking (source references in LLM responses) ✅ COMPLETE (2026-01-08)
 - [x] Cost tracking & usage analytics (dashboard, token counting, cost by model) ✅ COMPLETE (2026-01-08)
 - [x] RAG contextual compression (LLM extracts relevant sentences from chunks) ✅ COMPLETE (2026-01-08)
+- [x] Hybrid scoring: deterministic accuracy + LLM compliance blend ✅ COMPLETE (2026-02-14)
 - [ ] Custom dashboard builder for metrics visualization
 - [ ] Webhook retry logic with exponential backoff
 

@@ -141,6 +141,21 @@ const BenchmarkResultSchema = new mongoose.Schema({
         default: null,
         description: 'Whether output matches the output_contract format'
     },
+    // Hybrid scoring sub-scores
+    accuracy_score: {
+        type: Number,
+        min: 0,
+        max: 10,
+        default: null,
+        description: 'Deterministic content accuracy score (0-10), hybrid scoring'
+    },
+    compliance_score: {
+        type: Number,
+        min: 0,
+        max: 10,
+        default: null,
+        description: 'LLM compliance score (0-10), hybrid scoring'
+    },
     // Quality scoring fields
     quality_score: {
         type: Number,
@@ -170,7 +185,7 @@ const BenchmarkResultSchema = new mongoose.Schema({
             'reasoning', 'quick', 'pattern', 'llm_judge', 'llm_failed', 'exec_failed',
             'disabled', 'pending', 'skipped', 'empty_response',
             // New multi-strategy scoring methods
-            'deterministic', 'decomposed', 'reference', 'reference_quick'
+            'deterministic', 'decomposed', 'reference', 'reference_quick', 'hybrid'
         ],
         default: 'disabled'
     },

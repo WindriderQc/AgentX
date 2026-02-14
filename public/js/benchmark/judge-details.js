@@ -323,13 +323,30 @@ function populateJudgeModal(result, resultIndex) {
         const hasFormat = result.format_score !== undefined && result.format_score !== null;
         const hasQuality = result.quality_score !== undefined && result.quality_score !== null;
 
-        if (hasSemantic || hasFormat) {
+        const hasAccuracy = result.accuracy_score !== undefined && result.accuracy_score !== null;
+        const hasCompliance = result.compliance_score !== undefined && result.compliance_score !== null;
+
+        if (hasSemantic || hasFormat || hasAccuracy || hasCompliance) {
             const rows = [];
             if (hasQuality) {
                 const qColor = result.quality_score >= 7 ? '#2ecc71' : result.quality_score >= 4 ? '#f39c12' : '#e74c3c';
                 rows.push(`<div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
                     <span>Quality Score (overall)</span>
                     <span style="font-weight: 600; color: ${qColor};">${Number(result.quality_score).toFixed(1)}/10</span>
+                </div>`);
+            }
+            if (hasAccuracy) {
+                const aColor = result.accuracy_score >= 7 ? '#2ecc71' : result.accuracy_score >= 4 ? '#f39c12' : '#e74c3c';
+                rows.push(`<div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                    <span><i class="fas fa-bullseye" style="color: ${aColor}; width: 18px;"></i> Accuracy <span style="color: var(--muted); font-size: 0.85em;">(content correctness, deterministic)</span></span>
+                    <span style="font-weight: 600; color: ${aColor};">${Number(result.accuracy_score).toFixed(1)}/10</span>
+                </div>`);
+            }
+            if (hasCompliance) {
+                const cColor = result.compliance_score >= 7 ? '#2ecc71' : result.compliance_score >= 4 ? '#f39c12' : '#e74c3c';
+                rows.push(`<div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                    <span><i class="fas fa-clipboard-check" style="color: ${cColor}; width: 18px;"></i> Compliance <span style="color: var(--muted); font-size: 0.85em;">(conciseness, format, instruction-following)</span></span>
+                    <span style="font-weight: 600; color: ${cColor};">${Number(result.compliance_score).toFixed(1)}/10</span>
                 </div>`);
             }
             if (hasSemantic) {

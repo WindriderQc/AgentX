@@ -257,7 +257,9 @@ const CATEGORY_STRATEGIES = {
         deterministic_type: 'json',
         llm_fallback: true,
         llm_strategy: 'decomposed',
-        confidence_threshold: 0.8
+        confidence_threshold: 0.8,
+        hybrid_compliance: true,
+        hybrid_weights: { accuracy: 0.55, compliance: 0.45 }
     },
     code: {
         primary: 'hybrid',
@@ -298,28 +300,38 @@ const CATEGORY_STRATEGIES = {
     summarization: {
         primary: 'decomposed',
         reference_fallback: true,
-        confidence_threshold: 0.75
+        confidence_threshold: 0.75,
+        hybrid_compliance: true,
+        hybrid_weights: { accuracy: 0.60, compliance: 0.40 }
     },
     translation: {
         primary: 'reference',
         llm_fallback: true,
         llm_strategy: 'decomposed',
-        confidence_threshold: 0.75
+        confidence_threshold: 0.75,
+        hybrid_compliance: true,
+        hybrid_weights: { accuracy: 0.70, compliance: 0.30 }
     },
     'multi-turn-reasoning': {
         primary: 'decomposed',
-        confidence_threshold: 0.7
+        confidence_threshold: 0.7,
+        hybrid_compliance: true,
+        hybrid_weights: { accuracy: 0.75, compliance: 0.25 }
     },
     'context-retention': {
         primary: 'hybrid',
         deterministic_type: 'criteria',
         llm_fallback: true,
         llm_strategy: 'decomposed',
-        confidence_threshold: 0.7
+        confidence_threshold: 0.7,
+        hybrid_compliance: true,
+        hybrid_weights: { accuracy: 0.75, compliance: 0.25 }
     },
     'edge-cases': {
         primary: 'decomposed',
-        confidence_threshold: 0.7
+        confidence_threshold: 0.7,
+        hybrid_compliance: true,
+        hybrid_weights: { accuracy: 0.70, compliance: 0.30 }
     },
     refactoring: {
         primary: 'hybrid',
