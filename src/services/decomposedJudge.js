@@ -340,24 +340,24 @@ const DECOMPOSED_QUESTIONS = {
 };
 
 /**
- * Ask a single binary (YES/NO) question to the judge
+ * Make a single binary YES/NO call to the judge model
  * @param {string} response - The model response to evaluate
  * @param {string} question - The yes/no question to ask
  * @param {Object} judgeConfig - Judge configuration (host, model, etc.)
  * @param {Object} taskContext - Optional { task, expected } for context
  * @returns {Promise<boolean>} True for YES, false for NO
  */
-async function askBinaryQuestion(response, question, judgeConfig, taskContext = {}) {
+async function singleBinaryCall(response, question, judgeConfig, taskContext = {}) {
     const taskSection = taskContext.task
-        ? `TASK: ${taskContext.task.substring(0, 500)}\n${taskContext.expected ? `EXPECTED: ${taskContext.expected.substring(0, 300)}\n` : ''}\n`
+        ? `TASK:\n${taskContext.task.substring(0, 2000)}\n\n${taskContext.expected ? `EXPECTED ANSWER:\n${taskContext.expected.substring(0, 500)}\n\n` : ''}`
         : '';
 
-    const prompt = `${taskSection}Given this response:
----
-${response.substring(0, 2000)}
----
+    const prompt = `You are evaluating a model's response. Compare it against the expected answer.
 
-Answer ONLY "YES" or "NO": ${question}`;
+${taskSection}MODEL RESPONSE:
+${response.substring(0, 3000)}
+
+Based on the above, answer ONLY "YES" or "NO": ${question}`;
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), judgeConfig.timeout || 15000);
@@ -372,8 +372,9 @@ Answer ONLY "YES" or "NO": ${question}`;
                 prompt,
                 stream: false,
                 options: {
-                    temperature: 0.1, // Very low for consistent binary answers
-                    num_predict: 10   // Only need YES or NO
+                    temperature: 0.1,
+                    num_predict: 20,
+                    num_ctx: 8192
                 }
             }),
             signal: controller.signal
@@ -389,13 +390,11 @@ Answer ONLY "YES" or "NO": ${question}`;
         const data = await res.json();
         const text = (data.response || '').toLowerCase().trim();
 
-        // Interpret response
         if (text.includes('yes')) {
             return true;
         } else if (text.includes('no')) {
             return false;
         } else {
-            // Ambiguous - log and default to false (conservative)
             logger.warn('Ambiguous binary response', {
                 question,
                 response: text,
@@ -405,12 +404,54 @@ Answer ONLY "YES" or "NO": ${question}`;
         }
     } catch (err) {
         clearTimeout(timeoutId);
-        logger.error('Binary question failed', {
-            error: err.message,
-            question
-        });
-        return false; // Conservative default
+        throw err; // Let caller handle
     }
+}
+
+/**
+ * Ask a binary (YES/NO) question with majority voting (best-of-3)
+ * Fires 3 parallel calls and takes majority vote for stability
+ * @param {string} response - The model response to evaluate
+ * @param {string} question - The yes/no question to ask
+ * @param {Object} judgeConfig - Judge configuration (host, model, etc.)
+ * @param {Object} taskContext - Optional { task, expected } for context
+ * @returns {Promise<boolean>} True for YES, false for NO
+ */
+async function askBinaryQuestion(response, question, judgeConfig, taskContext = {}) {
+    const votes = await Promise.allSettled([
+        singleBinaryCall(response, question, judgeConfig, taskContext),
+        singleBinaryCall(response, question, judgeConfig, taskContext),
+        singleBinaryCall(response, question, judgeConfig, taskContext)
+    ]);
+
+    const successes = votes
+        .filter(v => v.status === 'fulfilled')
+        .map(v => v.value);
+
+    if (successes.length === 0) {
+        logger.error('All 3 binary votes failed', {
+            question,
+            errors: votes.map(v => v.reason?.message || 'unknown')
+        });
+        return false;
+    }
+
+    if (successes.length === 1) {
+        return successes[0];
+    }
+
+    const yesCount = successes.filter(v => v === true).length;
+    const result = yesCount > successes.length / 2;
+
+    if (yesCount > 0 && yesCount < successes.length) {
+        logger.warn('Binary vote disagreement', {
+            question: question.substring(0, 80),
+            votes: successes.map(v => v ? 'YES' : 'NO'),
+            result: result ? 'YES' : 'NO'
+        });
+    }
+
+    return result;
 }
 
 /**
