@@ -2,7 +2,7 @@
  * Unit Tests for samplePromptsByDepth
  */
 
-const { samplePromptsByDepth, sampleBalancedByCategory } = require('../../src/services/benchmark/promptSampling');
+const { samplePromptsByDepth } = require('../../src/services/benchmark/promptSampling');
 
 // Helper to generate mock prompts
 function makePrompts(level, category, count) {
@@ -195,34 +195,5 @@ describe('samplePromptsByDepth', () => {
             // Unknown depth should not match any case, resulting in no prompts
             expect(result).toHaveLength(0);
         });
-    });
-});
-
-
-describe('sampleBalancedByCategory', () => {
-    it('should enforce equal prompt counts per category using minimum available count', () => {
-        const prompts = [
-            ...makePrompts(1, 'coding', 7),
-            ...makePrompts(1, 'reasoning', 6),
-            ...makePrompts(1, 'math', 3)
-        ];
-
-        const result = sampleBalancedByCategory(prompts);
-        const counts = result.reduce((acc, p) => {
-            acc[p.category] = (acc[p.category] || 0) + 1;
-            return acc;
-        }, {});
-
-        expect(Object.keys(counts).sort()).toEqual(['coding', 'math', 'reasoning']);
-        expect(counts.coding).toBe(3);
-        expect(counts.reasoning).toBe(3);
-        expect(counts.math).toBe(3);
-        expect(result).toHaveLength(9);
-    });
-
-    it('should return prompts unchanged when only one category exists', () => {
-        const prompts = makePrompts(1, 'coding', 5);
-        const result = sampleBalancedByCategory(prompts);
-        expect(result).toHaveLength(5);
     });
 });

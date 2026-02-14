@@ -14,9 +14,6 @@ describe('batchPlanner workload summary', () => {
         expect(plan.workload_summary).toMatchObject({
             category_count: 2,
             total_category_prompts: 4,
-            min_prompts_per_category: 2,
-            max_prompts_per_category: 2,
-            matrix_balanced: true,
             projected_tests: 8
         });
     });
@@ -34,9 +31,6 @@ describe('batchPlanner workload summary', () => {
         expect(plan.workload_summary).toMatchObject({
             category_count: 2,
             total_category_prompts: 4,
-            min_prompts_per_category: 1,
-            max_prompts_per_category: 3,
-            matrix_balanced: false,
             projected_tests: 4
         });
     });

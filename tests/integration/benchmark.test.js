@@ -492,9 +492,7 @@ describe('Benchmark System - Integration Tests', () => {
             expect(response.body.status).toBe('success');
             expect(response.body.data).toHaveProperty('batch_id');
             const promptsAtLevel1 = await BenchmarkPrompt.countDocuments({ level: 1 });
-            // Category balancing may reduce prompt count below the raw total
-            expect(response.body.data.total_tests).toBeGreaterThan(0);
-            expect(response.body.data.total_tests).toBeLessThanOrEqual(promptsAtLevel1);
+            expect(response.body.data.total_tests).toBe(promptsAtLevel1);
 
             // Verify batch was created in database
             const batch = await BenchmarkBatch.findById(response.body.data.batch_id);
@@ -515,9 +513,7 @@ describe('Benchmark System - Integration Tests', () => {
 
             expect(response.status).toBe(200);
             const promptsAtLevels = await BenchmarkPrompt.countDocuments({ level: { $in: [1, 3] } });
-            // Category balancing may reduce prompt count below the raw total
-            expect(response.body.data.total_tests).toBeGreaterThan(0);
-            expect(response.body.data.total_tests).toBeLessThanOrEqual(2 * promptsAtLevels);
+            expect(response.body.data.total_tests).toBe(2 * promptsAtLevels);
         });
 
         it('should return 409 on duplicate-key race collision during start', async () => {

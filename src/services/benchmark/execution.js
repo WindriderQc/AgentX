@@ -19,7 +19,7 @@ const { classifyBenchmarkError } = require('./errorClassifier');
 const { extractThinkingBlocks } = require('../../helpers/ollamaResponseHandler');
 
 // Extracted modules
-const { samplePromptsByDepth, sampleBalancedByCategory } = require('./promptSampling');
+const { samplePromptsByDepth } = require('./promptSampling');
 const { runTest } = require('./testExecution');
 const { warmupModel } = require('./modelWarmup');
 const { buildExecutionPlan } = require('./batchPlanner');
@@ -60,17 +60,7 @@ async function startBatch({ host, models, levels, run_name, quality_scoring = tr
         selectedPrompts = samplePromptsByDepth(selectedPrompts, depth_config);
     }
 
-    const strictCategoryBalance = process.env.BENCHMARK_STRICT_CATEGORY_BALANCE !== 'false';
-    if (strictCategoryBalance) {
-        const beforeBalanceCount = selectedPrompts.length;
-        selectedPrompts = sampleBalancedByCategory(selectedPrompts);
-        selectedPrompts.sort((a, b) => (a.level || 0) - (b.level || 0));
-        logger.info('Applied strict category balance to benchmark prompt selection', {
-            before: beforeBalanceCount,
-            after: selectedPrompts.length,
-            categories: Array.from(new Set(selectedPrompts.map((p) => p.category || 'uncategorized'))).length
-        });
-    }
+    selectedPrompts.sort((a, b) => (a.level || 0) - (b.level || 0));
 
     if (selectedPrompts.length === 0) {
         throw new Error('No prompts found for selected levels');

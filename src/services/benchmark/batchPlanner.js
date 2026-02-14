@@ -63,13 +63,7 @@ function buildExecutionPlan(host, models, selectedPrompts, options = {}) {
         }))
         .sort((a, b) => b.tests - a.tests);
 
-    const promptCounts = categories
-        .map((c) => Number(c.prompt_count) || 0)
-        .filter((n) => n > 0);
-    const minPromptsPerCategory = promptCounts.length > 0 ? Math.min(...promptCounts) : 0;
-    const maxPromptsPerCategory = promptCounts.length > 0 ? Math.max(...promptCounts) : 0;
-    const matrixBalanced = promptCounts.length > 0 && minPromptsPerCategory === maxPromptsPerCategory;
-    const totalCategoryPrompts = promptCounts.reduce((sum, n) => sum + n, 0);
+    const totalCategoryPrompts = categories.reduce((sum, c) => sum + (Number(c.prompt_count) || 0), 0);
     const projectedTests = models.length * totalCategoryPrompts;
 
     const plan = {
@@ -83,9 +77,6 @@ function buildExecutionPlan(host, models, selectedPrompts, options = {}) {
         workload_summary: {
             category_count: categories.length,
             total_category_prompts: totalCategoryPrompts,
-            min_prompts_per_category: minPromptsPerCategory,
-            max_prompts_per_category: maxPromptsPerCategory,
-            matrix_balanced: matrixBalanced,
             projected_tests: projectedTests
         }
     };
