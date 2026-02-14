@@ -29,6 +29,12 @@ class RagFileWatcher {
     this.processingQueue = new Set();
     this.manifestUpdateInterval = config.manifestUpdateInterval || 300000; // 5 minutes
     this.manifestUpdateTimer = null;
+    this.autoDeleteOnUnlink = typeof config.autoDeleteOnUnlink === 'boolean'
+      ? config.autoDeleteOnUnlink
+      : process.env.RAG_WATCHER_AUTO_DELETE_ON_UNLINK === 'true';
+    this.autoCleanupObsolete = typeof config.autoCleanupObsolete === 'boolean'
+      ? config.autoCleanupObsolete
+      : process.env.RAG_WATCHER_AUTO_CLEANUP === 'true';
 
     // Lightweight runtime telemetry for UI/status endpoints (no external deps)
     this.startedAt = new Date().toISOString();
@@ -292,11 +298,13 @@ class RagFileWatcher {
       const stats = await fs.stat(filePath);
       const relativePath = path.relative(this.ragDir, filePath);
       const sha256 = await this.calculateSHA256(filePath);
+      const documentId = this.buildDocumentId(this.source, relativePath);
 
       const metadata = {
         source: this.source,
         path: relativePath,
         title: this.extractTitle(content, relativePath),
+        hash: sha256,
         tags: ['auto-ingested'],
         author: 'rag-watcher',
         createdAt: stats.birthtime,
@@ -305,28 +313,18 @@ class RagFileWatcher {
         size: stats.size
       };
 
-      // Check if document already exists
-      const existingDocs = await this.ragStore.listDocuments({
-        source: this.source,
-        path: relativePath
-      });
+      // Check if document already exists (deterministic document ID by source+path)
+      const existingDoc = await this.ragStore.getDocument(documentId);
 
-      if (existingDocs.length > 0) {
-        // Update existing document
-        const existingDoc = existingDocs[0];
-
-        // Check if content actually changed
-        if (existingDoc.sha256 === sha256) {
+      if (existingDoc) {
+        const existingHash = existingDoc.sha256 || existingDoc.hash;
+        if (existingHash && existingHash === sha256) {
           logger.debug('File unchanged, skipping update', { filePath, sha256 });
           return;
         }
 
-        // Delete old document
-        await this.ragStore.deleteDocument(existingDoc.documentId);
-        logger.info('Deleted old document version', {
-          documentId: existingDoc.documentId,
-          filePath
-        });
+        await this.ragStore.deleteDocument(documentId);
+        logger.info('Deleted old document version', { documentId, filePath });
       }
 
       // Ingest new/updated document
@@ -374,34 +372,52 @@ class RagFileWatcher {
    */
   async removeDocument(filePath) {
     try {
-      const relativePath = path.relative(this.ragDir, filePath);
+      if (!this.autoDeleteOnUnlink) {
+        logger.warn('Skipping auto-delete for removed file (disabled by config)', {
+          filePath,
+          env: 'RAG_WATCHER_AUTO_DELETE_ON_UNLINK'
+        });
+        return { deletedCount: 0, skipped: true };
+      }
 
-      const docs = await this.ragStore.listDocuments({
-        source: this.source,
-        path: relativePath
+      const relativePath = path.relative(this.ragDir, filePath);
+      const documentId = this.buildDocumentId(this.source, relativePath);
+      const existingDoc = await this.ragStore.getDocument(documentId);
+
+      if (!existingDoc) {
+        return { deletedCount: 0, skipped: false };
+      }
+
+      if (existingDoc.source !== this.source || existingDoc.path !== relativePath) {
+        logger.error('Refusing delete due to metadata mismatch', {
+          filePath,
+          expectedSource: this.source,
+          expectedPath: relativePath,
+          actualSource: existingDoc.source,
+          actualPath: existingDoc.path
+        });
+        return { deletedCount: 0, skipped: true };
+      }
+
+      await this.ragStore.deleteDocument(documentId);
+      logger.info('Document removed from RAG', { documentId, filePath });
+
+      // Broadcast RAG activity event
+      systemEvents.emit('rag-activity', {
+        type: 'file-removed',
+        filePath: relativePath,
+        documentId,
+        timestamp: new Date().toISOString()
       });
 
-      for (const doc of docs) {
-        await this.ragStore.deleteDocument(doc.documentId);
-        logger.info('Document removed from RAG', {
-          documentId: doc.documentId,
-          filePath
-        });
-
-        // Broadcast RAG activity event
-        systemEvents.emit('rag-activity', {
-          type: 'file-removed',
-          filePath: relativePath,
-          documentId: doc.documentId,
-          timestamp: new Date().toISOString()
-        });
-      }
+      return { deletedCount: 1, skipped: false };
 
     } catch (error) {
       logger.error('Failed to remove document', {
         filePath,
         error: error.message
       });
+      return { deletedCount: 0, skipped: true, error: error.message };
     }
   }
 
@@ -476,8 +492,10 @@ class RagFileWatcher {
   async processManifestUpdate() {
     await this.updateManifest();
 
-    // Also clean up obsolete documents
-    await this.cleanupObsoleteDocuments();
+    // Also clean up obsolete documents when enabled
+    if (this.autoCleanupObsolete) {
+      await this.cleanupObsoleteDocuments();
+    }
   }
 
   /**
@@ -491,6 +509,13 @@ class RagFileWatcher {
       let cleanedCount = 0;
 
       for (const doc of docs) {
+        if (!doc || typeof doc.path !== 'string' || doc.path.trim().length === 0) {
+          logger.warn('Skipping cleanup for document missing path metadata', {
+            documentId: doc?.documentId
+          });
+          continue;
+        }
+
         const fullPath = path.join(this.ragDir, doc.path);
 
         if (!currentFiles.has(fullPath)) {
@@ -515,11 +540,20 @@ class RagFileWatcher {
       }
 
       this.lastCleanupAt = new Date().toISOString();
+      return cleanedCount;
 
     } catch (error) {
       this.lastError = { message: error.message, at: new Date().toISOString() };
       logger.error('Failed to cleanup obsolete documents', { error: error.message });
+      return 0;
     }
+  }
+
+  /**
+   * Build deterministic document ID from source/path (must match RagStore)
+   */
+  buildDocumentId(source, relativePath) {
+    return crypto.createHash('md5').update(`${source}:${relativePath}`).digest('hex');
   }
 
   /**
@@ -593,7 +627,9 @@ class RagFileWatcher {
       lastError: this.lastError,
       processingQueueSize: this.processingQueue.size,
       processingQueueSample,
-      manifestUpdateInterval: this.manifestUpdateInterval
+      manifestUpdateInterval: this.manifestUpdateInterval,
+      autoDeleteOnUnlink: this.autoDeleteOnUnlink,
+      autoCleanupObsolete: this.autoCleanupObsolete
     };
   }
 }

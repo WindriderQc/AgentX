@@ -67,4 +67,30 @@ function samplePromptsByDepth(prompts, depthConfig) {
     return sampled;
 }
 
-module.exports = { groupBy, randomPick, samplePromptsByDepth };
+/**
+ * Enforce balanced category coverage by selecting the same number of prompts per category.
+ * Default behavior uses the smallest category size (strict matrix).
+ */
+function sampleBalancedByCategory(prompts) {
+    const safePrompts = Array.isArray(prompts) ? prompts : [];
+    if (safePrompts.length === 0) return [];
+
+    const byCategory = groupBy(safePrompts, (p) => (p && p.category) ? p.category : 'uncategorized');
+    const categories = Object.keys(byCategory);
+    if (categories.length <= 1) return [...safePrompts];
+
+    const counts = categories.map((category) => byCategory[category].length);
+    const minCount = Math.min(...counts);
+
+    const target = Math.max(0, minCount);
+    if (target === 0) return [];
+
+    const balanced = [];
+    for (const category of categories) {
+        balanced.push(...randomPick(byCategory[category], target));
+    }
+
+    return balanced;
+}
+
+module.exports = { groupBy, randomPick, samplePromptsByDepth, sampleBalancedByCategory };

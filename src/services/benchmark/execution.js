@@ -19,7 +19,7 @@ const { classifyBenchmarkError } = require('./errorClassifier');
 const { extractThinkingBlocks } = require('../../helpers/ollamaResponseHandler');
 
 // Extracted modules
-const { samplePromptsByDepth } = require('./promptSampling');
+const { samplePromptsByDepth, sampleBalancedByCategory } = require('./promptSampling');
 const { runTest } = require('./testExecution');
 const { warmupModel } = require('./modelWarmup');
 const { buildExecutionPlan } = require('./batchPlanner');
@@ -58,6 +58,17 @@ async function startBatch({ host, models, levels, run_name, quality_scoring = tr
 
     if (depth_config && typeof depth_config === 'object') {
         selectedPrompts = samplePromptsByDepth(selectedPrompts, depth_config);
+    }
+
+    const strictCategoryBalance = process.env.BENCHMARK_STRICT_CATEGORY_BALANCE !== 'false';
+    if (strictCategoryBalance) {
+        const beforeBalanceCount = selectedPrompts.length;
+        selectedPrompts = sampleBalancedByCategory(selectedPrompts);
+        logger.info('Applied strict category balance to benchmark prompt selection', {
+            before: beforeBalanceCount,
+            after: selectedPrompts.length,
+            categories: Array.from(new Set(selectedPrompts.map((p) => p.category || 'uncategorized'))).length
+        });
     }
 
     if (selectedPrompts.length === 0) {
@@ -656,6 +667,5 @@ module.exports = {
     stopBatch,
     getActiveBatchId,
     getActiveHeartbeatInterval,
-    clearActiveBatch,
-    samplePromptsByDepth
+    clearActiveBatch
 };

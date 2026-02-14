@@ -5,8 +5,6 @@ const { app, systemHealth, setRagWatcherInstance } = require('./src/app');
 const SelfHealingEngine = require('./src/services/selfHealingEngine');
 const { getAutomationRunnerService } = require('./src/services/automationRunnerService');
 
-console.log('SERVER.JS STARTING UP - DEBUG TEST');
-
 const PORT = process.env.PORT || 3080;
 const HOST = process.env.HOST || 'localhost';
 const OLLAMA_HOST = process.env.OLLAMA_HOST;
@@ -229,34 +227,26 @@ async function startServer() {
   // Initialize RAG file watcher
   let ragWatcher = null;
   try {
-    console.log('Initializing RAG file watcher...');
     const RagFileWatcher = require('./src/services/ragFileWatcher');
-    console.log('RagFileWatcher module loaded');
     ragWatcher = new RagFileWatcher({
       ragDir: '/mnt/datalake/RAG',
       source: 'rag-folder',
       vectorStoreType: process.env.VECTOR_STORE_TYPE,
-      manifestUpdateInterval: 5 * 60 * 1000 // 5 minutes
+      manifestUpdateInterval: 5 * 60 * 1000, // 5 minutes
+      autoDeleteOnUnlink: process.env.RAG_WATCHER_AUTO_DELETE_ON_UNLINK === 'true',
+      autoCleanupObsolete: process.env.RAG_WATCHER_AUTO_CLEANUP === 'true'
     });
-    console.log('RagFileWatcher instance created');
     await ragWatcher.start();
-    console.log('RagFileWatcher started successfully');
 
     // Set the watcher instance on the app
-    console.log('Checking setRagWatcherInstance function:', typeof setRagWatcherInstance);
     if (setRagWatcherInstance) {
-      console.log('Calling setRagWatcherInstance...');
       setRagWatcherInstance(ragWatcher);
-      console.log('setRagWatcherInstance called successfully');
-    } else {
-      console.log('setRagWatcherInstance function not available');
     }
 
     console.log(`   ✓ RAG Watcher: Monitoring /mnt/datalake/RAG`);
     logger.info('RAG file watcher started');
   } catch (err) {
     console.log(`   ⚠ RAG Watcher: ${err.message}`);
-    console.log('Full error:', err);
     logger.warn('RAG file watcher not started - automatic ingestion disabled', { error: err.message });
   }
 

@@ -87,6 +87,27 @@ class QdrantVectorStore extends VectorStoreAdapter {
   }
 
   /**
+   * Build Qdrant payload filters from generic metadata filters.
+   * @private
+   */
+  _buildMustFilters(filters = {}) {
+    const must = [];
+    if (filters.source) {
+      must.push({ key: 'source', match: { value: filters.source } });
+    }
+    if (filters.path) {
+      must.push({ key: 'path', match: { value: filters.path } });
+    }
+    if (filters.documentId) {
+      must.push({ key: 'documentId', match: { value: filters.documentId } });
+    }
+    if (filters.tags && filters.tags.length > 0) {
+      must.push({ key: 'tags', match: { any: filters.tags } });
+    }
+    return must;
+  }
+
+  /**
    * Upsert a document with chunks
    */
   async upsertDocument(documentId, metadata, chunks) {
@@ -136,13 +157,7 @@ class QdrantVectorStore extends VectorStoreAdapter {
     const filters = options.filters || {};
 
     // Build Qdrant filter
-    const must = [];
-    if (filters.source) {
-      must.push({ key: 'source', match: { value: filters.source } });
-    }
-    if (filters.tags && filters.tags.length > 0) {
-      must.push({ key: 'tags', match: { any: filters.tags } });
-    }
+    const must = this._buildMustFilters(filters);
 
     const searchRequest = {
       vector: queryEmbedding,
@@ -223,6 +238,8 @@ class QdrantVectorStore extends VectorStoreAdapter {
       source: firstChunk.source,
       path: firstChunk.path,
       title: firstChunk.title,
+      hash: firstChunk.hash,
+      sha256: firstChunk.sha256,
       tags: firstChunk.tags || [],
       chunkCount: countData.result.count,
       createdAt: firstChunk.createdAt,
@@ -237,13 +254,7 @@ class QdrantVectorStore extends VectorStoreAdapter {
     await this._ensureCollection();
 
     // Build filter
-    const must = [];
-    if (filters.source) {
-      must.push({ key: 'source', match: { value: filters.source } });
-    }
-    if (filters.tags && filters.tags.length > 0) {
-      must.push({ key: 'tags', match: { any: filters.tags } });
-    }
+    const must = this._buildMustFilters(filters);
 
     // Get all unique documentIds
     // Note: This is a simplified implementation that fetches points to group them.
@@ -262,10 +273,11 @@ class QdrantVectorStore extends VectorStoreAdapter {
     if (!response.ok) return [];
 
     const data = await response.json();
+    const points = data?.result?.points || [];
     
     // Group by documentId
     const docMap = new Map();
-    for (const point of data.result.points) {
+    for (const point of points) {
       const docId = point.payload.documentId;
       const textLen = point.payload.text ? point.payload.text.length : 0;
 
@@ -275,6 +287,8 @@ class QdrantVectorStore extends VectorStoreAdapter {
           source: point.payload.source,
           path: point.payload.path,
           title: point.payload.title,
+          hash: point.payload.hash,
+          sha256: point.payload.sha256,
           tags: point.payload.tags || [],
           chunkCount: 0,
           textLength: 0, // Track total text length
@@ -288,6 +302,39 @@ class QdrantVectorStore extends VectorStoreAdapter {
     }
 
     return Array.from(docMap.values());
+  }
+
+  /**
+   * Get all chunks for a document
+   */
+  async getDocumentChunks(documentId) {
+    await this._ensureCollection();
+
+    const response = await this.fetch(`${this.host}/collections/${this.collection}/points/scroll`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        filter: {
+          must: [{ key: 'documentId', match: { value: documentId } }]
+        },
+        limit: 10000,
+        with_payload: true,
+        with_vector: false
+      })
+    });
+
+    if (!response.ok) return [];
+
+    const data = await response.json();
+    const points = data?.result?.points || [];
+
+    return points
+      .map(point => ({
+        text: point.payload?.text,
+        chunkIndex: point.payload?.chunkIndex
+      }))
+      .filter(chunk => typeof chunk.text === 'string')
+      .sort((a, b) => (a.chunkIndex || 0) - (b.chunkIndex || 0));
   }
 
   /**

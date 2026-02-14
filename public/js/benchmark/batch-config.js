@@ -54,7 +54,7 @@ export function getDepthConfig() {
 /**
  * Save depth config to localStorage
  */
-export function setDepthConfig(config) {
+function setDepthConfig(config) {
     try {
         localStorage.setItem(DEPTH_STORAGE_KEY, JSON.stringify(config));
     } catch (e) {
@@ -65,7 +65,7 @@ export function setDepthConfig(config) {
 /**
  * Estimate prompt count for a given level and depth
  */
-export function calculatePromptCount(level, depth) {
+function calculatePromptCount(level, depth) {
     const meta = LEVEL_PROMPT_META[level] || { prompts: 10, categories: 6 };
     switch (depth) {
         case 'off':    return 0;
@@ -80,13 +80,130 @@ export function calculatePromptCount(level, depth) {
 /**
  * Get total estimated prompts from current depth config
  */
-export function getTotalEstimatedPrompts(config) {
+function getTotalEstimatedPrompts(config) {
     let total = 0;
     for (let level = 1; level <= 10; level++) {
         const depth = (config && config[level]) || 'off';
         total += calculatePromptCount(level, depth);
     }
     return total;
+}
+
+
+/**
+ * Build approximate per-category prompt counts from selected depths.
+ * Uses synthetic category buckets (cat1..cat10) for preview math only.
+ */
+function buildEstimatedCategoryCounts(config) {
+    const counts = {};
+
+    for (let level = 1; level <= 10; level++) {
+        const depth = (config && config[level]) || 'off';
+        const total = calculatePromptCount(level, depth);
+        if (total <= 0) continue;
+
+        const meta = LEVEL_PROMPT_META[level] || { prompts: 10, categories: 6 };
+        const categoryKeys = Array.from({ length: meta.categories }, (_, idx) => `cat${idx + 1}`);
+
+        if (depth === 'single') {
+            const key = categoryKeys[0];
+            counts[key] = (counts[key] || 0) + 1;
+            continue;
+        }
+
+        let remaining = total;
+        for (let i = 0; i < categoryKeys.length; i++) {
+            const key = categoryKeys[i];
+            const slotsLeft = categoryKeys.length - i;
+            const add = Math.max(0, Math.ceil(remaining / slotsLeft));
+            if (add > 0) {
+                counts[key] = (counts[key] || 0) + add;
+                remaining -= add;
+            }
+        }
+    }
+
+    return counts;
+}
+
+/**
+ * Estimate matrix-balanced prompt totals from depth config.
+ */
+function estimateMatrixBalancedPrompts(config) {
+    const categoryCounts = buildEstimatedCategoryCounts(config);
+    const values = Object.values(categoryCounts).filter((n) => Number.isFinite(n) && n > 0);
+    if (values.length === 0) {
+        return {
+            categories: 0,
+            minPerCategory: 0,
+            matrixPrompts: 0
+        };
+    }
+
+    const minPerCategory = Math.min(...values);
+    return {
+        categories: values.length,
+        minPerCategory,
+        matrixPrompts: minPerCategory * values.length
+    };
+}
+
+
+function getBalanceBadgeClass(matrixBalanced) {
+    return matrixBalanced
+        ? 'bg-success-subtle text-success-emphasis border border-success-subtle'
+        : 'bg-warning-subtle text-warning-emphasis border border-warning-subtle';
+}
+
+function getPromptCountToneClass(matrixBalanced, promptCount, minPromptsPerCategory) {
+    if (matrixBalanced || promptCount === minPromptsPerCategory) {
+        return 'bg-success-subtle text-success-emphasis';
+    }
+    return 'bg-warning-subtle text-warning-emphasis';
+}
+
+
+function resolveWorkloadSummary(plan, categories) {
+    const promptCounts = categories
+        .map((c) => Number(c.prompt_count) || 0)
+        .filter((n) => n > 0);
+
+    const raw = (plan && plan.workload_summary && typeof plan.workload_summary === 'object')
+        ? plan.workload_summary
+        : {};
+
+    const minPromptsPerCategory = Number.isFinite(Number(raw.min_prompts_per_category))
+        ? Number(raw.min_prompts_per_category)
+        : (promptCounts.length > 0 ? Math.min(...promptCounts) : 0);
+
+    const maxPromptsPerCategory = Number.isFinite(Number(raw.max_prompts_per_category))
+        ? Number(raw.max_prompts_per_category)
+        : (promptCounts.length > 0 ? Math.max(...promptCounts) : 0);
+
+    const matrixBalanced = typeof raw.matrix_balanced === 'boolean'
+        ? raw.matrix_balanced
+        : (promptCounts.length > 0 && minPromptsPerCategory === maxPromptsPerCategory);
+
+    const totalCategoryPrompts = Number.isFinite(Number(raw.total_category_prompts))
+        ? Number(raw.total_category_prompts)
+        : promptCounts.reduce((sum, n) => sum + n, 0);
+
+    const projectedTests = Number.isFinite(Number(raw.projected_tests))
+        ? Number(raw.projected_tests)
+        : ((Number(plan && plan.total_models) || 0) * totalCategoryPrompts);
+
+    const categoryCount = Number.isFinite(Number(raw.category_count))
+        ? Number(raw.category_count)
+        : categories.length;
+
+    return {
+        minPromptsPerCategory,
+        maxPromptsPerCategory,
+        matrixBalanced,
+        totalCategoryPrompts,
+        projectedTests,
+        categoryCount
+    };
 }
 
 /**
@@ -164,7 +281,9 @@ export function updateDepthSummary() {
     if (info) {
         if (totalPrompts > 0 && modelCount > 0) {
             const totalTests = totalPrompts * modelCount;
-            info.textContent = `${modelCount} models x ~${totalPrompts} prompts = ~${totalTests} tests`;
+            const matrix = estimateMatrixBalancedPrompts(config);
+            const matrixTests = matrix.matrixPrompts * modelCount;
+            info.textContent = `${modelCount} models × ~${totalPrompts} prompts = ~${totalTests} tests (raw preview) · Matrix estimate: ~${matrixTests} tests (${matrix.categories} categories × ${matrix.minPerCategory}/category)`;
         } else {
             info.textContent = 'Select levels and models to start';
         }
@@ -263,6 +382,15 @@ export function renderBatchPlan(plan, fallbackHostUrl, qualityScoringEnabled, ex
     const hasLengthHint = execConfig.include_length_hint;
     const hasCustomHint = execConfig.custom_hint && execConfig.custom_hint.trim();
     const hasAnyHint = hasLengthHint || hasCustomHint;
+    const categories = Array.isArray(plan.categories) ? plan.categories : [];
+    const {
+        minPromptsPerCategory,
+        maxPromptsPerCategory,
+        matrixBalanced,
+        totalCategoryPrompts,
+        projectedTests,
+        categoryCount
+    } = resolveWorkloadSummary(plan, categories);
 
     let html = '';
 
@@ -289,6 +417,20 @@ export function renderBatchPlan(plan, fallbackHostUrl, qualityScoringEnabled, ex
     }
     html += `</div>`;
 
+    html += `<div class="card mb-3 shadow-0 border">`;
+    html += `<div class="card-header py-2 bg-light d-flex justify-content-between align-items-center"><strong>Run Snapshot</strong><span class="badge ${getBalanceBadgeClass(matrixBalanced)}">${matrixBalanced ? 'Matrix Balanced' : 'Category Mixed'}</span></div>`;
+    html += `<div class="card-body py-2">`;
+    html += `<div class="d-flex flex-wrap gap-2">`;
+    html += `<span class="badge bg-light text-dark border">Categories: ${categoryCount}</span>`;
+    html += `<span class="badge bg-light text-dark border">Prompts: ${totalCategoryPrompts}</span>`;
+    html += `<span class="badge bg-light text-dark border">Projected Tests: ${projectedTests}</span>`;
+    if (categoryCount > 0) {
+        html += `<span class="badge bg-light text-dark border">Per Category: ${minPromptsPerCategory}${matrixBalanced ? '' : `–${maxPromptsPerCategory}`}</span>`;
+    }
+    html += `</div>`;
+    html += `<small class="text-muted d-block mt-2">Selection prioritizes balanced category coverage for precise model comparison.</small>`;
+    html += `</div></div>`;
+
     if (Array.isArray(plan.exec_hosts) && plan.exec_hosts.length > 0) {
         html += `<div class="card mb-3 shadow-0 border">`;
         html += `<div class="card-header py-2 bg-light"><strong>Execution Nodes</strong></div>`;
@@ -309,15 +451,26 @@ export function renderBatchPlan(plan, fallbackHostUrl, qualityScoringEnabled, ex
         html += `</ul></div>`;
     }
 
-    if (Array.isArray(plan.categories) && plan.categories.length > 0) {
+    if (categories.length > 0) {
         html += `<div class="card shadow-0 border">`;
-        html += `<div class="card-header py-2 bg-light"><strong>Workload Breakdown</strong></div>`;
+        html += `<div class="card-header py-2 bg-light d-flex justify-content-between align-items-center">`;
+        html += `<strong>Workload Breakdown</strong>`;
+        html += `<span class="badge ${getBalanceBadgeClass(matrixBalanced)}">${matrixBalanced ? 'Even by Category' : 'Uneven by Category'}</span>`;
+        html += `</div>`;
         html += `<div class="table-responsive">`;
         html += `<table class="table table-sm table-striped mb-0 align-middle" style="font-size: 0.9em;">`;
         html += `<thead class="table-light"><tr><th>Category</th><th class="text-center">Prompts</th><th class="text-center">Models</th><th class="text-end">Total Tests</th></tr></thead>`;
         html += `<tbody>`;
-        for (const c of plan.categories) {
-            html += `<tr><td class="fw-bold text-capitalize">${c.category}</td><td class="text-center">${c.prompt_count}</td><td class="text-center">${plan.total_models}</td><td class="text-end fw-bold">${c.tests}</td></tr>`;
+        for (const c of categories) {
+            const categoryLabel = escapeHtml(String(c.category || 'uncategorized'));
+            const promptCount = Number(c.prompt_count) || 0;
+            const cellTone = getPromptCountToneClass(matrixBalanced, promptCount, minPromptsPerCategory);
+            html += `<tr>`;
+            html += `<td class="fw-bold"><span class="badge bg-light text-dark border text-capitalize">${categoryLabel}</span></td>`;
+            html += `<td class="text-center"><span class="badge ${cellTone}">${promptCount}</span></td>`;
+            html += `<td class="text-center">${plan.total_models}</td>`;
+            html += `<td class="text-end fw-bold">${c.tests}</td>`;
+            html += `</tr>`;
         }
         html += `</tbody></table></div></div>`;
     }

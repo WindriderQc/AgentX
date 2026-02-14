@@ -6,6 +6,7 @@
 const logger = require('../../config/logger');
 const fetch = require('node-fetch');
 const { getFetchOptions } = require('../helpers/httpAgent');
+const crypto = require('crypto');
 
 class RAGCompressionService {
   constructor() {
@@ -43,7 +44,7 @@ class RAGCompressionService {
 
     const compressionPromises = chunks.map(async (chunk) => {
       // Check cache first
-      const cacheKey = `${query}:${chunk._id || chunk.id}`;
+      const cacheKey = this._buildCacheKey(query, chunk);
       if (useCache && this.compressionCache.has(cacheKey)) {
         const cached = this.compressionCache.get(cacheKey);
         if (Date.now() - cached.timestamp < this.cacheTTL) {
@@ -86,6 +87,27 @@ class RAGCompressionService {
     });
 
     return validChunks;
+  }
+
+  /**
+   * Build stable cache key for a query/chunk pair.
+   * Uses metadata identifiers first, then content hash fallback.
+   * @private
+   */
+  _buildCacheKey(query, chunk) {
+    const metadata = chunk && chunk.metadata ? chunk.metadata : {};
+    const documentId = metadata.documentId || chunk.documentId || chunk._id || chunk.id || '';
+    const chunkIndex = metadata.chunkIndex ?? chunk.chunkIndex ?? '';
+
+    if (documentId !== '' || chunkIndex !== '') {
+      return `${query}:${documentId}:${chunkIndex}`;
+    }
+
+    const textHash = crypto
+      .createHash('sha1')
+      .update(chunk && typeof chunk.text === 'string' ? chunk.text : '')
+      .digest('hex');
+    return `${query}:hash:${textHash}`;
   }
 
   /**

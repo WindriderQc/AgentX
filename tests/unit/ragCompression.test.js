@@ -76,6 +76,21 @@ describe('RAGCompressionService', () => {
         expect(fetch).toHaveBeenCalledTimes(1); // Should not call fetch again
     });
 
+    test('should not collide cache entries for different chunks without _id/id', async () => {
+        fetch.mockResolvedValue({
+            ok: true,
+            json: async () => ({ response: 'Compressed output' })
+        });
+
+        const chunks = [
+            { text: 'Chunk A text', metadata: { documentId: 'doc-1', chunkIndex: 0 } },
+            { text: 'Chunk B text', metadata: { documentId: 'doc-1', chunkIndex: 1 } }
+        ];
+
+        await service.compressChunks('same-query', chunks);
+        expect(fetch).toHaveBeenCalledTimes(2);
+    });
+
     test('should handle API errors gracefully (fallback)', async () => {
         fetch.mockResolvedValue({
             ok: false,

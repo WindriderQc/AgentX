@@ -167,6 +167,21 @@ describe('RagStore Advanced Features', () => {
              const results = await ragStore.keywordSearch('test');
              expect(results).toEqual([]);
         });
+
+        it('should use documentId when id field is not present', async () => {
+            mockVectorStore.listDocuments.mockResolvedValue([
+                { documentId: 'docA', title: 'Doc A', source: 'rag' }
+            ]);
+
+            mockVectorStore.getDocumentChunks.mockResolvedValue([
+                { text: 'banana appears here', chunkIndex: 2 }
+            ]);
+
+            const results = await ragStore.keywordSearch('banana');
+
+            expect(mockVectorStore.getDocumentChunks).toHaveBeenCalledWith('docA');
+            expect(results[0].metadata.documentId).toBe('docA');
+        });
     });
 
     // 4. Reciprocal Rank Fusion

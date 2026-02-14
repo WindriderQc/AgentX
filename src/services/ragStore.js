@@ -398,6 +398,11 @@ Score:`;
     const filters = options.filters || {};
 
     try {
+      if (typeof this.vectorStore.getDocumentChunks !== 'function') {
+        logger.warn('Keyword search is not supported by current vector store adapter');
+        return [];
+      }
+
       // Get all documents from vector store
       const allDocuments = await this.vectorStore.listDocuments(filters);
 
@@ -410,12 +415,16 @@ Score:`;
       const results = [];
 
       for (const doc of allDocuments) {
+        const docId = doc.documentId || doc.id;
+        if (!docId) continue;
+
         // Get all chunks for this document
-        const chunks = await this.vectorStore.getDocumentChunks(doc.id);
+        const chunks = await this.vectorStore.getDocumentChunks(docId);
 
         if (!chunks) continue;
 
         for (const chunk of chunks) {
+          if (!chunk || typeof chunk.text !== 'string') continue;
           const text = chunk.text.toLowerCase();
           let score = 0;
 
@@ -436,7 +445,7 @@ Score:`;
               text: chunk.text,
               score: Math.min(score / 10, 1.0), // Normalize to 0-1
               metadata: {
-                documentId: doc.id,
+                documentId: docId,
                 chunkIndex: chunk.chunkIndex || 0,
                 source: doc.source,
                 title: doc.title,

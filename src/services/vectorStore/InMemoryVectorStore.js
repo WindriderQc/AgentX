@@ -130,6 +130,19 @@ class InMemoryVectorStore extends VectorStoreAdapter {
   }
 
   /**
+   * Get all chunks for a document
+   */
+  async getDocumentChunks(documentId) {
+    return this.vectors
+      .filter(v => v.documentId === documentId)
+      .sort((a, b) => (a.chunkIndex || 0) - (b.chunkIndex || 0))
+      .map(v => ({
+        text: v.text,
+        chunkIndex: v.chunkIndex
+      }));
+  }
+
+  /**
    * Delete a document and its chunks
    */
   async deleteDocument(documentId) {

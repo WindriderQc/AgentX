@@ -22,14 +22,9 @@ const logger = require('../config/logger');
 const n8nAuth = require('../src/middleware/n8nAuth');
 const RagManifest = require('../models/RagManifest');
 
-// Global reference to RAG watcher (set during server startup)
-const routeId = Math.random();
-
-console.log('RAG routes loaded, ID:', routeId);
-
 // Legacy function for backward compatibility - no longer used
 function setRagWatcherInstance(watcher) {
-  console.log('setRagWatcherInstance called (legacy), route ID:', routeId, 'watcher:', !!watcher);
+  void watcher;
   // This function is kept for module export compatibility but no longer used
   // The watcher instance is now stored in app.locals
 }
@@ -38,18 +33,13 @@ function setRagWatcherInstance(watcher) {
 function getRagWatcherInstance() {
   try {
     const { app } = require('../src/app');
-    console.log('App instance found:', !!app);
-    console.log('App.locals exists:', !!app.locals);
-    console.log('App.locals.ragWatcherInstance exists:', !!app.locals?.ragWatcherInstance);
     if (app && app.locals && app.locals.ragWatcherInstance) {
-      console.log('Returning watcher from app.locals');
       return app.locals.ragWatcherInstance;
     }
   } catch (e) {
-    console.log('Error accessing app:', e.message);
+    logger.debug('Error accessing RAG watcher instance', { error: e.message });
   }
 
-  console.log('No watcher instance found in app.locals');
   return null;
 }
 
@@ -173,7 +163,7 @@ async function computeMdFolderStats(rootDir, options = {}) {
  * 
  * Contract: V3_CONTRACT_SNAPSHOT.md § 2.1
  */
-router.post(['/ingest', '/documents'], async (req, res) => {
+router.post(['/ingest', '/documents'], n8nAuth, async (req, res) => {
   try {
     // Extract and validate required fields
     const { source, path, title, text, hash, tags, metadata, target } = req.body;
@@ -244,14 +234,24 @@ router.post(['/ingest', '/documents'], async (req, res) => {
       });
     }
 
-    // Build metadata object
+    const incomingMetadata = (metadata && typeof metadata === 'object' && !Array.isArray(metadata))
+      ? metadata
+      : {};
+    const safeMetadata = { ...incomingMetadata };
+    delete safeMetadata.source;
+    delete safeMetadata.path;
+    delete safeMetadata.title;
+    delete safeMetadata.hash;
+    delete safeMetadata.tags;
+
+    // Build metadata object (validated fields always win)
     const docMetadata = {
+      ...safeMetadata, // Additional metadata from n8n
       source,
       path,
       title,
       hash,
-      tags: Array.isArray(tags) ? tags : [],
-      ...metadata // Allow additional metadata from n8n
+      tags: Array.isArray(tags) ? tags : []
     };
 
     // Track processing time
@@ -428,7 +428,7 @@ router.get('/documents', async (req, res) => {
  * Delete a document from the RAG store (for debugging).
  * NOT in contract but useful for development.
  */
-router.delete('/documents/:documentId', async (req, res) => {
+router.delete('/documents/:documentId', n8nAuth, async (req, res) => {
   try {
     const { documentId } = req.params;
     const deleted = await ragStore().deleteDocument(documentId);
@@ -820,10 +820,8 @@ router.get('/deletion-preview', async (req, res) => {
  * Get RAG file watcher status
  */
 router.get('/watcher/status', async (req, res) => {
-  console.log('RAG watcher status endpoint called');
   try {
     const watcher = getRagWatcherInstance();
-    console.log('Watcher instance:', !!watcher);
     if (!watcher) {
       return res.json({
         status: 'success',
@@ -878,7 +876,7 @@ router.get('/watcher/status', async (req, res) => {
  * POST /api/rag/watcher/trigger-scan
  * Manually trigger a folder scan and manifest update
  */
-router.post('/watcher/trigger-scan', async (req, res) => {
+router.post('/watcher/trigger-scan', n8nAuth, async (req, res) => {
   try {
     const watcher = getRagWatcherInstance();
     if (!watcher) {
@@ -907,7 +905,7 @@ router.post('/watcher/trigger-scan', async (req, res) => {
  * POST /api/rag/watcher/cleanup-obsolete
  * Manually trigger cleanup of obsolete documents
  */
-router.post('/watcher/cleanup-obsolete', async (req, res) => {
+router.post('/watcher/cleanup-obsolete', n8nAuth, async (req, res) => {
   try {
     const watcher = getRagWatcherInstance();
     if (!watcher) {

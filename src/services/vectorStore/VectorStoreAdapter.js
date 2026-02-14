@@ -57,6 +57,15 @@ class VectorStoreAdapter {
   }
 
   /**
+   * Get all chunks for a document
+   * @param {string} documentId - Document ID
+   * @returns {Promise<Array<{text: string, chunkIndex: number}>>}
+   */
+  async getDocumentChunks(documentId) {
+    throw new Error('getDocumentChunks() must be implemented by subclass');
+  }
+
+  /**
    * Delete a document and all its chunks
    * @param {string} documentId - Document ID
    * @returns {Promise<boolean>} True if deleted

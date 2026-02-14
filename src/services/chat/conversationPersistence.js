@@ -19,7 +19,9 @@ function buildRagSourceEntries(ragSources) {
             filename: source.title,
             source: source.source,
             timestamp: new Date()
-        }
+        },
+        wasCompressed: source.wasCompressed === true,
+        compressionRatio: Number.isFinite(source.compressionRatio) ? source.compressionRatio : 0
     }));
 }
 
