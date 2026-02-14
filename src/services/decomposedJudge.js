@@ -9,7 +9,7 @@
  * - "Is logic broken into reasonable steps? YES/NO"
  */
 
-const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
+const fetch = require('node-fetch');
 const logger = require('../../config/logger');
 const { getFetchOptions } = require('../helpers/httpAgent');
 
