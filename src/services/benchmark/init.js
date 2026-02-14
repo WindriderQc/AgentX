@@ -66,6 +66,10 @@ function sanitizePromptRecord(rawPrompt, sourceFile) {
         sanitized.deterministic_scoring = rawPrompt.deterministic_scoring;
     }
 
+    if (Array.isArray(rawPrompt && rawPrompt.judge_criteria) && rawPrompt.judge_criteria.length > 0) {
+        sanitized.judge_criteria = rawPrompt.judge_criteria;
+    }
+
     if (Array.isArray(rawPrompt && rawPrompt.scoring_dimensions) && rawPrompt.scoring_dimensions.length > 0) {
         sanitized.scoring_dimensions = rawPrompt.scoring_dimensions;
     }

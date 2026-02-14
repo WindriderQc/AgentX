@@ -65,6 +65,10 @@ const BenchmarkResultSchema = new mongoose.Schema({
         type: String,
         default: null
     },
+    judge_criteria: {
+        type: [String],
+        default: undefined
+    },
     response: {
         type: String,
         default: ''

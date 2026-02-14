@@ -5,7 +5,8 @@
     "name": "Rename Variables Clearly",
     "prompt": "Refactor this Python snippet for readability only, no behavior changes:\n\ndef f(a,b):\n c=a+b\n return c\n",
     "expected_tokens": 120,
-    "expected_answer": "Clearer names and formatting while preserving behavior.",
+    "expected_answer": "Renamed function and variables to descriptive names (e.g., add_numbers, first, second, result) with proper formatting, while preserving the addition and return behavior.",
+    "judge_criteria": ["Function and variables have descriptive names", "Behavior is identical (adds two inputs and returns result)", "Code is valid Python", "Formatting is clean (proper spacing and indentation)"],
     "scoring_type": "refactoring"
   },
   {
@@ -14,7 +15,8 @@
     "name": "Extract Helper Function",
     "prompt": "Refactor this JS code by extracting repeated logic without changing output:\nfunction t(x){let s=0; for(let i=0;i<x.length;i++){s+=x[i]} return s}\nfunction u(y){let s=0; for(let i=0;i<y.length;i++){s+=y[i]} return s}",
     "expected_tokens": 180,
-    "expected_answer": "Duplication removed with a shared helper and equivalent behavior.",
+    "expected_answer": "A single shared helper function (e.g., sumArray) replaces the duplicated loop logic. Both t and u delegate to it or are replaced entirely.",
+    "judge_criteria": ["Duplication eliminated via a shared helper function", "Helper correctly sums array elements", "Original behavior preserved for both functions", "Code is valid JavaScript"],
     "scoring_type": "refactoring"
   },
   {
@@ -23,7 +25,8 @@
     "name": "Guard Clauses",
     "prompt": "Refactor this function to use guard clauses and improve readability while preserving behavior:\nfunction status(u){ if(u){ if(u.active){ if(u.role==='admin'){ return 'ok' } } } return 'no' }",
     "expected_tokens": 180,
-    "expected_answer": "Equivalent logic with flatter control flow and clearer intent.",
+    "expected_answer": "Early returns for falsy u, !u.active, or non-admin role, with the final return 'ok' for the valid case. Flatter control flow, same logic.",
+    "judge_criteria": ["Uses early return guard clauses instead of nested ifs", "Control flow is flatter (max one level of nesting)", "All original return values preserved ('ok' and 'no')", "Handles same edge cases (falsy u, inactive, non-admin)"],
     "scoring_type": "refactoring"
   },
   {
@@ -32,7 +35,8 @@
     "name": "Split Monolithic Function",
     "prompt": "Refactor this function into smaller units while preserving behavior. Provide clean, testable code.\n\nfunction processOrders(orders) {\n  if (!orders || !Array.isArray(orders)) throw new Error('invalid');\n  for (const o of orders) {\n    if (!o.id || !o.amount || o.amount < 0) throw new Error('bad order: ' + o.id);\n  }\n  const transformed = orders.map(o => ({\n    orderId: o.id, total: o.amount * 1.08,\n    label: o.amount > 100 ? 'premium' : 'standard',\n    ts: new Date().toISOString()\n  }));\n  let report = 'Order Report\\n';\n  let grandTotal = 0;\n  for (const t of transformed) {\n    report += t.orderId + ': $' + t.total.toFixed(2) + ' [' + t.label + ']\\n';\n    grandTotal += t.total;\n  }\n  report += 'Total: $' + grandTotal.toFixed(2);\n  return { transformed, report };\n}",
     "expected_tokens": 260,
-    "expected_answer": "Modularized code with separated responsibilities and unchanged behavior.",
+    "expected_answer": "Split into at least three functions: validation, transformation (with 1.08 tax and premium/standard labeling), and report generation. The main function orchestrates them and returns the same { transformed, report } shape.",
+    "judge_criteria": ["Split into at least 3 separate functions with clear responsibilities", "Validation, transformation, and report generation are separated", "Return shape { transformed, report } is preserved", "Tax multiplier (1.08) and premium threshold (100) logic unchanged"],
     "scoring_type": "refactoring"
   },
   {
@@ -41,7 +45,8 @@
     "name": "Improve Error Boundaries",
     "prompt": "Refactor this async handler to isolate side effects and narrow try/catch scopes while preserving behavior and return shape.\n\nasync function handleUpdate(req, res) {\n  try {\n    const user = await db.findUser(req.params.id);\n    const profile = await fetch('https://api.ext.com/profile/' + user.extId).then(r => r.json());\n    user.name = profile.name;\n    user.email = profile.email;\n    user.lastSync = new Date();\n    await db.saveUser(user);\n    await emailService.send(user.email, 'Profile synced');\n    await auditLog.record('profile_sync', { userId: user.id });\n    res.json({ ok: true, user });\n  } catch (err) {\n    console.error('handleUpdate failed', err);\n    res.status(500).json({ ok: false, error: err.message });\n  }\n}",
     "expected_tokens": 280,
-    "expected_answer": "Focused error boundaries, clearer flow, same externally visible behavior.",
+    "expected_answer": "Narrower try/catch blocks separating critical operations (db, fetch) from non-critical side effects (email, audit). Non-critical failures should not cause a 500 response. Same success/error response shape.",
+    "judge_criteria": ["Try/catch scopes are narrower than the original single block", "Critical path (db lookup, fetch, save) separated from non-critical side effects (email, audit)", "Non-critical side effect failure does not produce a 500 response", "Response shape { ok, user } and { ok, error } preserved"],
     "scoring_type": "refactoring"
   },
   {
@@ -50,16 +55,18 @@
     "name": "Dependency Injection Refactor",
     "prompt": "Refactor this service to use dependency injection for easier testing. Keep runtime behavior equivalent.\n\nconst db = require('../db/connection');\nconst axios = require('axios');\nconst cache = require('../cache/redis');\n\nclass OrderService {\n  async getOrder(id) {\n    const cached = await cache.get('order:' + id);\n    if (cached) return JSON.parse(cached);\n    const order = await db.query('SELECT * FROM orders WHERE id = $1', [id]);\n    await cache.set('order:' + id, JSON.stringify(order), 'EX', 300);\n    return order;\n  }\n  async enrichOrder(id) {\n    const order = await this.getOrder(id);\n    const shipping = await axios.get('https://ship.api.com/status/' + order.trackingId);\n    order.shippingStatus = shipping.data.status;\n    return order;\n  }\n}",
     "expected_tokens": 320,
-    "expected_answer": "Injected dependencies and improved testability without behavior regressions.",
+    "expected_answer": "Dependencies (db, cache, axios/httpClient) passed via constructor or factory instead of top-level require. Cache-aside pattern (get/set with 300s TTL) and enrich logic preserved. Tests can now inject mocks.",
+    "judge_criteria": ["Dependencies injected via constructor, factory, or parameter instead of require", "All three dependencies (db, cache, http client) are injectable", "Cache-aside pattern preserved (check cache, fallback to DB, write cache with TTL)", "Class can be instantiated with mock dependencies for testing"],
     "scoring_type": "refactoring"
   },
   {
     "level": 7,
     "category": "refactoring",
     "name": "State Machine Cleanup",
-    "prompt": "Refactor this nested switch-based workflow into a clearer state-machine-style structure while preserving transitions and outputs.\n\nfunction processOrder(order) {\n  switch (order.status) {\n    case 'new':\n      if (!order.paymentId) { order.status = 'awaiting_payment'; break; }\n      order.status = 'paid';\n      // fallthrough\n    case 'paid':\n      if (order.items.some(i => !i.inStock)) {\n        order.status = 'backorder'; order.backorderAt = Date.now(); break;\n      }\n      order.status = 'picking';\n      // fallthrough\n    case 'picking':\n      if (!order.assignedPicker) { assignPicker(order); break; }\n      if (!order.pickedAt) break;\n      order.status = 'shipping';\n      // fallthrough\n    case 'shipping':\n      if (!order.trackingNumber) { requestShipment(order); break; }\n      if (order.deliveredAt) { order.status = 'delivered'; break; }\n      break;\n    case 'backorder':\n      if (Date.now() - order.backorderAt > 86400000) {\n        notifyCustomer(order, 'delay');\n        if (Date.now() - order.backorderAt > 604800000) {\n          order.status = 'cancelled'; refund(order); break;\n        }\n      }\n      if (order.items.every(i => i.inStock)) { order.status = 'paid'; return processOrder(order); }\n      break;\n    default: throw new Error('Unknown status: ' + order.status);\n  }\n  return order;\n}",
+    "prompt": "Refactor this nested switch-based workflow into a clearer state-machine-style structure while preserving transitions and outputs.\n\nfunction processOrder(order) {\n  switch (order.status) {\n    case 'new':\n      if (!order.paymentId) { order.status = 'awaiting_payment'; break; }\n      order.status = 'paid';\n      // fallthrough\n    case 'paid':\n      if (order.items.some(i => !i.inStock)) {\n        order.status = 'backorder'; order.backorderAt = Date.now(); break;\n      }\n      order.status = 'picking';\n      // fallthrough\n    case 'picking':\n      if (!order.assignedPicker) { assignPicker(order); break; }\n      if (!order.pickedAt) break;\n      order.status = 'shipping';\n      // fallthrough\n    case 'shipping':\n      if (!order.trackingNumber) { requestShipment(order); break; }\n      if (order.deliveredAt) { order.status = 'delivered'; break; }\n      break;\n    case 'backorder':\n      if (Date.now() - order.backorderAt > 86400000) {\n        notifyCustomer(order, 'delay');\n        if (Date.now() - order.backorderAt > 604800000) {\n          order.status = 'cancelled'; refund(order); break;\n        }\n      }\n      if (order.items.every(i => i.inStock)) { order.status = 'paid'; return processOrder(order); }\n      break;\n    default: throw new Error('Unknown status: ' + order.status);\n  }\n  return order;\n}\n",
     "expected_tokens": 360,
-    "expected_answer": "Cleaner state modeling with preserved transition semantics.",
+    "expected_answer": "States modeled as a transition table or handler map. Each state has its own handler function. Fallthroughs replaced with explicit next-state calls. Backorder re-entry and timeout logic preserved.",
+    "judge_criteria": ["States defined as a map, table, or individual handler functions instead of switch/fallthrough", "All original transitions preserved (new->awaiting_payment, new->paid->picking, etc.)", "Backorder timeout logic (24h notify, 7d cancel+refund) and re-entry to paid state preserved", "Fallthrough behavior replaced with explicit state advancement"],
     "scoring_type": "refactoring"
   },
   {
@@ -68,7 +75,8 @@
     "name": "Performance-Neutral Refactor",
     "prompt": "Refactor this data pipeline for readability and maintainability while keeping algorithmic complexity unchanged.\n\nfunction analyze(records) {\n  const r = records.filter(x => x.active && x.ts > Date.now() - 86400000 && x.type !== 'internal');\n  const groups = {};\n  for (let i = 0; i < r.length; i++) {\n    const k = r[i].region + ':' + r[i].tier;\n    if (!groups[k]) groups[k] = { items: [], sum: 0, min: Infinity, max: -Infinity, count: 0 };\n    groups[k].items.push(r[i]);\n    groups[k].sum += r[i].value;\n    groups[k].min = Math.min(groups[k].min, r[i].value);\n    groups[k].max = Math.max(groups[k].max, r[i].value);\n    groups[k].count++;\n  }\n  const result = [];\n  for (const k in groups) {\n    const g = groups[k];\n    const avg = g.sum / g.count;\n    const variance = g.items.reduce((s, x) => s + Math.pow(x.value - avg, 2), 0) / g.count;\n    const outliers = g.items.filter(x => Math.abs(x.value - avg) > 2 * Math.sqrt(variance));\n    const [region, tier] = k.split(':');\n    result.push({ region, tier, avg: Math.round(avg * 100) / 100, min: g.min, max: g.max, count: g.count, stdDev: Math.round(Math.sqrt(variance) * 100) / 100, outlierCount: outliers.length, topOutlier: outliers.sort((a, b) => b.value - a.value)[0] || null });\n  }\n  return result.sort((a, b) => b.count - a.count);\n}",
     "expected_tokens": 360,
-    "expected_answer": "Readability and structure improved with same complexity characteristics.",
+    "expected_answer": "Pipeline split into named stages: filter, group-by, compute stats (avg/variance/stdDev/outliers), and sort. Each stage is a readable function or clearly delineated block. Same O(n) grouping and per-group stats computation.",
+    "judge_criteria": ["Pipeline split into named stages or functions (filter, group, stats, format)", "Algorithmic complexity unchanged (no extra passes over full dataset)", "Statistical calculations preserved (avg, variance, stdDev, outlier detection at 2 sigma)", "Output shape and sort order (by count descending) identical"],
     "scoring_type": "refactoring"
   },
   {
@@ -77,7 +85,8 @@
     "name": "Legacy Module Decomposition",
     "prompt": "Propose and implement a refactor plan for this legacy module. Decompose into cohesive components with clear contracts, preserving the public API.\n\n// userManager.js — 800-line legacy module (condensed)\nconst db = require('./db');\nconst bcrypt = require('bcrypt');\nconst jwt = require('jsonwebtoken');\nconst mailer = require('./mailer');\nconst sessions = {};\n\nmodule.exports.createUser = async (data) => {\n  const hash = await bcrypt.hash(data.password, 10);\n  const user = await db.insert('users', { ...data, password: hash });\n  await mailer.send(data.email, 'Welcome!', 'Account created.');\n  return user;\n};\nmodule.exports.login = async (email, password) => {\n  const user = await db.findOne('users', { email });\n  if (!user || !(await bcrypt.compare(password, user.password))) throw new Error('invalid');\n  const token = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '8h' });\n  sessions[token] = { userId: user.id, createdAt: Date.now() };\n  return { token, user: { id: user.id, name: user.name, role: user.role } };\n};\nmodule.exports.verifySession = (token) => {\n  const s = sessions[token];\n  if (!s || Date.now() - s.createdAt > 28800000) { delete sessions[token]; return null; }\n  return jwt.verify(token, process.env.JWT_SECRET);\n};\nmodule.exports.logout = (token) => { delete sessions[token]; };\nmodule.exports.assignRole = async (userId, role) => {\n  await db.update('users', { id: userId }, { role });\n  await mailer.send((await db.findOne('users', { id: userId })).email, 'Role changed', 'New role: ' + role);\n};\nmodule.exports.resetPassword = async (email) => {\n  const user = await db.findOne('users', { email });\n  if (!user) return;\n  const code = Math.random().toString(36).slice(2, 8);\n  await db.update('users', { id: user.id }, { resetCode: code, resetExpiry: Date.now() + 3600000 });\n  await mailer.send(email, 'Password Reset', 'Code: ' + code);\n};\nmodule.exports.confirmReset = async (email, code, newPassword) => {\n  const user = await db.findOne('users', { email });\n  if (!user || user.resetCode !== code || Date.now() > user.resetExpiry) throw new Error('invalid reset');\n  await db.update('users', { id: user.id }, { password: await bcrypt.hash(newPassword, 10), resetCode: null });\n};",
     "expected_tokens": 420,
-    "expected_answer": "Concrete decomposition with preserved API behavior and improved maintainability.",
+    "expected_answer": "Decomposed into at least 3 modules: auth (login/logout/verify/session management), user CRUD (createUser/assignRole), and password reset (resetPassword/confirmReset). A facade re-exports the original public API for backward compatibility.",
+    "judge_criteria": ["Decomposed into at least 3 cohesive modules with single responsibilities", "Auth concerns (login, logout, verifySession, JWT, sessions) grouped together", "Password reset flow (resetPassword, confirmReset) isolated from auth", "Original public API preserved via facade or re-exports"],
     "scoring_type": "refactoring"
   },
   {
@@ -86,7 +95,8 @@
     "name": "Concurrent Refactor Safety",
     "prompt": "Refactor this concurrent job scheduler for clarity while preserving thread-safety guarantees and throughput characteristics. Explain invariants preserved.\n\nclass JobScheduler {\n  constructor(concurrency = 4) {\n    this.concurrency = concurrency;\n    this.queue = []; this.active = new Set(); this.results = new Map();\n    this.lock = false; this.waiters = [];\n  }\n  async acquireLock() {\n    while (this.lock) await new Promise(r => this.waiters.push(r));\n    this.lock = true;\n  }\n  releaseLock() {\n    this.lock = false;\n    if (this.waiters.length) this.waiters.shift()();\n  }\n  async submit(jobId, fn) {\n    await this.acquireLock();\n    if (this.results.has(jobId)) { this.releaseLock(); return this.results.get(jobId); }\n    this.queue.push({ jobId, fn });\n    this.releaseLock();\n    this._drain();\n    return new Promise((resolve, reject) => {\n      const interval = setInterval(() => {\n        if (this.results.has(jobId)) {\n          clearInterval(interval);\n          const r = this.results.get(jobId);\n          r.error ? reject(r.error) : resolve(r.value);\n        }\n      }, 50);\n    });\n  }\n  async _drain() {\n    await this.acquireLock();\n    while (this.queue.length && this.active.size < this.concurrency) {\n      const job = this.queue.shift();\n      this.active.add(job.jobId);\n      this._run(job);\n    }\n    this.releaseLock();\n  }\n  async _run(job) {\n    try {\n      const value = await job.fn();\n      await this.acquireLock();\n      this.results.set(job.jobId, { value });\n      this.active.delete(job.jobId);\n      this.releaseLock();\n    } catch (error) {\n      await this.acquireLock();\n      this.results.set(job.jobId, { error });\n      this.active.delete(job.jobId);\n      this.releaseLock();\n    }\n    this._drain();\n  }\n}",
     "expected_tokens": 480,
-    "expected_answer": "Clearer design with explicit preserved concurrency invariants.",
+    "expected_answer": "Clearer lock/unlock patterns (e.g., try/finally for lock release), polling replaced with event-based or Promise-based notification, and explicit documentation of invariants: mutual exclusion on queue/active/results, bounded concurrency, idempotent submit, and drain-after-complete.",
+    "judge_criteria": ["Lock acquire/release uses safer pattern (try/finally or equivalent)", "Polling interval replaced with event-based or Promise-based result notification", "Concurrency bound (active.size < concurrency) preserved", "Invariants explicitly documented: mutual exclusion, bounded concurrency, idempotent submit"],
     "scoring_type": "refactoring"
   },
 
@@ -96,7 +106,8 @@
     "name": "Off-by-One Fix",
     "prompt": "Debug and fix this bug:\nfor (let i = 0; i <= arr.length; i++) { sum += arr[i]; }\nExplain root cause briefly.",
     "expected_tokens": 140,
-    "expected_answer": "Identifies off-by-one error and corrects loop bound.",
+    "expected_answer": "The loop condition i <= arr.length accesses arr[arr.length] which is undefined. Fix: change to i < arr.length.",
+    "judge_criteria": ["Identifies <= as the bug (should be <)", "Explains that arr[arr.length] is out of bounds / undefined", "Provides corrected loop condition", "Explanation is concise"],
     "scoring_type": "debugging"
   },
   {
@@ -105,7 +116,8 @@
     "name": "Null Check Crash",
     "prompt": "This function crashes intermittently. Diagnose and provide minimal fix with explanation.\n\nfunction getBadge(user) {\n  const level = user.profile.settings.badge.level;\n  const name = user.profile.settings.badge.name;\n  return level + ':' + name;\n}",
     "expected_tokens": 160,
-    "expected_answer": "Root cause identified and null-safe access or guard introduced.",
+    "expected_answer": "Deep property access crashes when any intermediate property (profile, settings, badge) is null/undefined. Fix with optional chaining (?.) or guard checks at each level.",
+    "judge_criteria": ["Identifies deep property chain as the crash source", "Explains that any intermediate property could be null/undefined", "Provides a fix using optional chaining or guard clauses", "Fix is minimal and preserves the return format"],
     "scoring_type": "debugging"
   },
   {
@@ -114,7 +126,8 @@
     "name": "Incorrect Async Await",
     "prompt": "This endpoint returns empty items intermittently. Find the bug and provide a minimal patch.\n\nasync function getOrderDetails(req, res) {\n  const order = await db.getOrder(req.params.id);\n  const items = db.getOrderItems(order.id);\n  const total = items.reduce((s, i) => s + i.price * i.qty, 0);\n  res.json({ order, items, total });\n}",
     "expected_tokens": 180,
-    "expected_answer": "Missing await identified with correct async control flow fix.",
+    "expected_answer": "Missing await on db.getOrderItems(). Without await, items is a Promise, not an array, so reduce fails or returns wrong value. Fix: const items = await db.getOrderItems(order.id).",
+    "judge_criteria": ["Identifies the missing await on db.getOrderItems()", "Explains that items is a Promise object without await", "Explains why reduce fails or produces wrong results on a Promise", "Provides the one-word fix (adding await)"],
     "scoring_type": "debugging"
   },
   {
@@ -123,7 +136,8 @@
     "name": "Race Condition in Counter",
     "prompt": "Multiple workers increment a shared counter and totals are wrong. Diagnose the race condition and provide a safe fix.\n\nconst counters = {};\n\nasync function incrementCounter(key) {\n  const current = await redis.get('counter:' + key) || 0;\n  const newVal = parseInt(current) + 1;\n  await redis.set('counter:' + key, newVal);\n  return newVal;\n}\n\n// Called concurrently by multiple workers:\n// worker1: incrementCounter('visits')\n// worker2: incrementCounter('visits')\n// Expected: 2, Actual: sometimes 1",
     "expected_tokens": 240,
-    "expected_answer": "Race condition explained with synchronization or atomic fix.",
+    "expected_answer": "Read-modify-write is not atomic: both workers read 0, both write 1. Fix with Redis INCR (atomic increment) or a Lua script that reads and increments in one operation.",
+    "judge_criteria": ["Identifies the read-modify-write race condition (both read same value)", "Explains the interleaving that produces wrong results", "Proposes atomic fix using INCR, MULTI/EXEC, or Lua script", "Fix eliminates the race without external locks"],
     "scoring_type": "debugging"
   },
   {
@@ -132,7 +146,8 @@
     "name": "Memory Leak from Event Listeners",
     "prompt": "This Node service's memory grows continuously under load. Identify the leak and propose minimal fix.\n\nconst EventEmitter = require('events');\nconst bus = new EventEmitter();\n\nfunction handleRequest(req, res) {\n  const onUpdate = (data) => {\n    if (data.requestId === req.id) {\n      res.write('data: ' + JSON.stringify(data) + '\\n\\n');\n    }\n  };\n  bus.on('update', onUpdate);\n\n  req.on('close', () => {\n    res.end();\n  });\n\n  processAsync(req.body).then(result => {\n    bus.emit('update', { requestId: req.id, ...result });\n  });\n}",
     "expected_tokens": 260,
-    "expected_answer": "Leak source identified and proper listener cleanup applied.",
+    "expected_answer": "The listener onUpdate is added to bus on every request but never removed. The close handler does not call bus.removeListener(). Fix: add bus.removeListener('update', onUpdate) inside the close handler.",
+    "judge_criteria": ["Identifies the leak: event listener never removed from bus", "Notes that each request adds a new permanent listener", "Fix adds bus.removeListener or bus.off in the close handler", "Fix preserves the SSE write and close behavior"],
     "scoring_type": "debugging"
   },
   {
@@ -141,7 +156,8 @@
     "name": "Deadlock Investigation",
     "prompt": "These two transfer functions occasionally deadlock. Diagnose root cause and propose ordering-based remediation.\n\nasync function transferAtoB(amount) {\n  const lockA = await acquireLock('account:A');\n  await sleep(10); // simulate processing\n  const lockB = await acquireLock('account:B');\n  const balA = await getBalance('A');\n  const balB = await getBalance('B');\n  if (balA < amount) { releaseLock(lockA); releaseLock(lockB); throw new Error('insufficient'); }\n  await setBalance('A', balA - amount);\n  await setBalance('B', balB + amount);\n  releaseLock(lockB);\n  releaseLock(lockA);\n}\n\nasync function transferBtoA(amount) {\n  const lockB = await acquireLock('account:B');\n  await sleep(10);\n  const lockA = await acquireLock('account:A');\n  const balA = await getBalance('A');\n  const balB = await getBalance('B');\n  if (balB < amount) { releaseLock(lockB); releaseLock(lockA); throw new Error('insufficient'); }\n  await setBalance('B', balB - amount);\n  await setBalance('A', balA + amount);\n  releaseLock(lockA);\n  releaseLock(lockB);\n}",
     "expected_tokens": 320,
-    "expected_answer": "Circular wait root cause identified with deterministic lock-order fix.",
+    "expected_answer": "Circular wait: transferAtoB locks A then B, transferBtoA locks B then A. Concurrent execution can deadlock. Fix: always acquire locks in a consistent global order (e.g., alphabetical: A before B) in both functions.",
+    "judge_criteria": ["Identifies circular wait as the deadlock cause", "Explains the specific interleaving (AtoB holds A waits B, BtoA holds B waits A)", "Proposes consistent lock ordering as the fix", "Fix applies the same order to both functions"],
     "scoring_type": "debugging"
   },
   {
@@ -150,7 +166,8 @@
     "name": "Phantom Reads in Transaction",
     "prompt": "This reporting function produces inconsistent counts when run during concurrent writes. Diagnose transaction isolation issue and propose safe fix.\n\nasync function generateDailyReport(db) {\n  const totalOrders = await db.query('SELECT COUNT(*) as cnt FROM orders WHERE date = CURDATE()');\n  // ... other processing happens here, taking ~200ms ...\n  const totalRevenue = await db.query('SELECT SUM(amount) as rev FROM orders WHERE date = CURDATE()');\n  const avgOrder = totalRevenue.rev / totalOrders.cnt;\n\n  const itemCounts = await db.query(\n    'SELECT product_id, COUNT(*) as cnt FROM order_items oi ' +\n    'JOIN orders o ON oi.order_id = o.id WHERE o.date = CURDATE() GROUP BY product_id'\n  );\n  const totalItems = itemCounts.reduce((s, r) => s + r.cnt, 0);\n\n  // Sometimes totalItems > totalOrders * max_items_per_order\n  // Sometimes avgOrder doesn't match a manual check\n  return { totalOrders: totalOrders.cnt, totalRevenue: totalRevenue.rev, avgOrder, itemCounts, totalItems };\n}",
     "expected_tokens": 340,
-    "expected_answer": "Isolation-level issue identified with practical transaction strategy.",
+    "expected_answer": "Each query runs independently and sees different data snapshots as concurrent writes insert rows between queries. Fix: wrap all queries in a single transaction with REPEATABLE READ or SERIALIZABLE isolation to get a consistent snapshot.",
+    "judge_criteria": ["Identifies that separate queries see different snapshots due to concurrent writes", "Names the isolation issue (phantom reads or non-repeatable reads)", "Proposes wrapping queries in a transaction with appropriate isolation level", "Mentions REPEATABLE READ or SERIALIZABLE as the required isolation"],
     "scoring_type": "debugging"
   },
   {
@@ -159,7 +176,8 @@
     "name": "Distributed Timeout Cascade",
     "prompt": "Under partial outage, this client causes cascading failures. Diagnose the failure mode and provide mitigation strategy.\n\nclass ServiceClient {\n  constructor(baseUrl, maxRetries = 5) {\n    this.baseUrl = baseUrl;\n    this.maxRetries = maxRetries;\n  }\n  async request(path, opts = {}) {\n    const timeout = opts.timeout || 5000;\n    for (let attempt = 0; attempt <= this.maxRetries; attempt++) {\n      try {\n        const controller = new AbortController();\n        setTimeout(() => controller.abort(), timeout);\n        const res = await fetch(this.baseUrl + path, { ...opts, signal: controller.signal });\n        if (res.status === 503) throw new Error('service unavailable');\n        if (!res.ok) throw new Error('HTTP ' + res.status);\n        return await res.json();\n      } catch (err) {\n        if (attempt === this.maxRetries) throw err;\n        // retry immediately\n      }\n    }\n  }\n}\n\n// Gateway aggregates 3 services, each with their own ServiceClient:\nasync function handleGatewayRequest(req) {\n  const [users, orders, inventory] = await Promise.all([\n    userClient.request('/users/' + req.userId),\n    orderClient.request('/orders?user=' + req.userId),\n    inventoryClient.request('/stock?items=' + req.itemIds.join(','))\n  ]);\n  return { users, orders, inventory };\n}",
     "expected_tokens": 380,
-    "expected_answer": "Retry storm/cascade identified with backoff, jitter, and circuit-breaker style mitigation.",
+    "expected_answer": "Immediate retries with 5 attempts and 5s timeout per attempt means a failing service blocks for up to 30s. Promise.all means one slow service blocks the entire gateway response. Mitigations: exponential backoff with jitter, circuit breaker to stop retrying after threshold, per-service timeouts, and independent failure handling instead of Promise.all.",
+    "judge_criteria": ["Identifies retry storm: immediate retries amplify load on failing service", "Calculates worst-case latency (5 retries * 5s = 25-30s blocking)", "Proposes backoff with jitter between retries", "Proposes circuit breaker or independent failure handling for the gateway"],
     "scoring_type": "debugging"
   },
   {
@@ -168,7 +186,8 @@
     "name": "Data Corruption Root Cause",
     "prompt": "This background job occasionally writes partial or duplicate records. Find root cause and propose minimal robust fix.\n\nasync function processQueue(queue, db) {\n  while (true) {\n    const jobs = await queue.fetch(10);\n    for (const job of jobs) {\n      try {\n        const record = await db.findOne('records', { externalId: job.externalId });\n        let target;\n        if (record) {\n          target = record;\n        } else {\n          target = await db.insert('records', { externalId: job.externalId, status: 'init', items: [] });\n        }\n        // Enrich from external API\n        const details = await fetchExternal(job.externalId);\n        target.items = details.items;\n        target.total = details.items.reduce((s, i) => s + i.amount, 0);\n        target.status = 'complete';\n        await db.update('records', { id: target.id }, target);\n        await queue.ack(job.id);\n      } catch (err) {\n        console.error('job failed', job.id, err.message);\n        // job will be redelivered by queue after visibility timeout\n      }\n    }\n    await sleep(1000);\n  }\n}\n// Two worker instances run this concurrently on the same queue",
     "expected_tokens": 420,
-    "expected_answer": "Root cause traced to non-idempotent writes or ordering; proposes robust corrective patch.",
+    "expected_answer": "Two workers can process the same externalId concurrently: both find no record, both insert (duplicate), or one overwrites the other's enrichment (partial). Fix: use upsert with externalId as unique key, or acquire a per-externalId lock before processing.",
+    "judge_criteria": ["Identifies concurrent workers processing the same externalId as root cause", "Explains the duplicate insert race (both find no record, both insert)", "Explains the overwrite race (one worker's update clobbers the other's)", "Proposes fix using upsert, unique constraint, or distributed locking"],
     "scoring_type": "debugging"
   },
   {
@@ -177,7 +196,8 @@
     "name": "Heisenbug in Multi-Threaded Pipeline",
     "prompt": "This pipeline has a rare nondeterministic bug: under high load, final stats are occasionally wrong and some batches silently drop. Provide systematic diagnosis, likely root causes, and minimal fix.\n\nclass Pipeline {\n  constructor(workers = 8, batchTimeout = 5000) {\n    this.workers = workers;\n    this.batchTimeout = batchTimeout;\n    this.stats = { processed: 0, errors: 0, dropped: 0 };\n    this.activeBatches = new Map();\n  }\n  async run(inputStream) {\n    const batches = this.toBatches(inputStream, 100);\n    const pool = [];\n    for await (const batch of batches) {\n      const batchId = Date.now() + '-' + Math.random().toString(36).slice(2, 6);\n      this.activeBatches.set(batchId, { startedAt: Date.now(), size: batch.length });\n      const work = this.processBatch(batchId, batch);\n      pool.push(work);\n      if (pool.length >= this.workers) {\n        await Promise.race(pool);\n        // remove settled promises\n        for (let i = pool.length - 1; i >= 0; i--) {\n          const status = await Promise.race([pool[i].then(() => 'done'), Promise.resolve('pending')]);\n          if (status === 'done') pool.splice(i, 1);\n        }\n      }\n    }\n    await Promise.allSettled(pool);\n    return this.stats;\n  }\n  async processBatch(batchId, items) {\n    const timer = setTimeout(() => {\n      this.stats.dropped += this.activeBatches.get(batchId)?.size || 0;\n      this.activeBatches.delete(batchId);\n    }, this.batchTimeout);\n    try {\n      for (const item of items) {\n        const result = await this.transform(item);\n        if (result.error) { this.stats.errors++; continue; }\n        this.stats.processed++;\n      }\n    } catch (err) {\n      this.stats.errors += items.length;\n    } finally {\n      clearTimeout(timer);\n      this.activeBatches.delete(batchId);\n    }\n  }\n  async transform(item) {\n    await sleep(Math.random() * 100);\n    if (Math.random() < 0.01) throw new Error('transient');\n    return { data: item.value * 2 };\n  }\n}",
     "expected_tokens": 500,
-    "expected_answer": "Structured high-signal debugging plan with plausible concurrency root causes and verification strategy.",
+    "expected_answer": "Multiple bugs: (1) stats.processed/errors/dropped are mutated concurrently without synchronization — increments are not atomic across await boundaries. (2) The timeout fires even after batch completes if clearTimeout races with the callback — double-counting dropped + processed. (3) Pool cleanup logic can miss settled promises due to the race check pattern. Fixes: use atomic counters or collect per-batch stats and merge at the end; guard the timeout callback against already-completed batches; use a proper pool with promise resolution tracking.",
+    "judge_criteria": ["Identifies concurrent mutation of shared stats object as a root cause", "Identifies the timeout/clearTimeout race that can double-count items", "Identifies the pool cleanup race that can lose track of settled promises", "Proposes concrete fixes for at least two of the three issues"],
     "scoring_type": "debugging"
   },
 
@@ -187,7 +207,8 @@
     "name": "Explain API vs SDK",
     "prompt": "Explain the difference between an API and an SDK in 3-4 simple sentences.",
     "expected_tokens": 100,
-    "expected_answer": "Clear distinction between API interface and SDK toolkit in beginner-friendly terms.",
+    "expected_answer": "An API is an interface that defines how software components communicate (e.g., HTTP endpoints). An SDK is a toolkit that includes libraries, tools, and documentation to help developers build against an API. An SDK typically wraps an API to make it easier to use.",
+    "judge_criteria": ["Defines API as an interface or contract for communication", "Defines SDK as a toolkit or package of development tools", "Explains the relationship (SDK often wraps or simplifies API usage)", "Language is beginner-friendly"],
     "scoring_type": "explanation"
   },
   {
@@ -196,7 +217,8 @@
     "name": "What Is Big-O",
     "prompt": "Explain Big-O notation for a beginner and give two concrete examples.",
     "expected_tokens": 140,
-    "expected_answer": "Accurate and clear explanation with practical examples.",
+    "expected_answer": "Big-O describes how an algorithm's performance scales with input size, focusing on the worst case. Example 1: O(n) — linear search checks each element once. Example 2: O(n^2) — nested loops comparing all pairs.",
+    "judge_criteria": ["Explains Big-O as a measure of how performance scales with input size", "Provides two distinct concrete examples with correct complexities", "Examples are practical and relatable (not purely abstract)", "Explanation avoids jargon overload"],
     "scoring_type": "explanation"
   },
   {
@@ -205,7 +227,8 @@
     "name": "TCP vs UDP",
     "prompt": "Explain TCP vs UDP with tradeoffs and one real-world use case for each.",
     "expected_tokens": 180,
-    "expected_answer": "Technically correct explanation with sensible tradeoffs and examples.",
+    "expected_answer": "TCP provides reliable, ordered delivery with connection setup overhead — used for HTTP/web browsing. UDP is connectionless with no delivery guarantees but lower latency — used for live video streaming or gaming.",
+    "judge_criteria": ["TCP described as reliable and ordered with connection overhead", "UDP described as connectionless with lower latency but no delivery guarantee", "One valid use case for TCP (web, file transfer, email, etc.)", "One valid use case for UDP (streaming, gaming, DNS, VoIP, etc.)"],
     "scoring_type": "explanation"
   },
   {
@@ -214,7 +237,8 @@
     "name": "Database Indexes",
     "prompt": "Explain how database indexes improve read performance and why they can hurt writes.",
     "expected_tokens": 200,
-    "expected_answer": "Accurate performance explanation covering read/write tradeoff.",
+    "expected_answer": "Indexes create a sorted data structure (like a B-tree) that allows the database to find rows without scanning the entire table, turning O(n) reads into O(log n). However, every INSERT/UPDATE/DELETE must also update the index, adding write overhead and storage cost.",
+    "judge_criteria": ["Explains that indexes enable faster lookups by avoiding full table scans", "Mentions a data structure like B-tree or sorted index", "Explains that writes are slower because the index must be updated on each mutation", "Mentions the storage cost tradeoff"],
     "scoring_type": "explanation"
   },
   {
@@ -223,7 +247,8 @@
     "name": "Event Loop Internals",
     "prompt": "Explain the JavaScript event loop, task queue, and microtask queue with a short execution-order example.",
     "expected_tokens": 260,
-    "expected_answer": "Correct event-loop model and practical execution-order explanation.",
+    "expected_answer": "The event loop processes the call stack, then drains all microtasks (Promises), then picks one macrotask (setTimeout). Example: console.log('A'); setTimeout(() => console.log('B'), 0); Promise.resolve().then(() => console.log('C')); Output: A, C, B — because microtasks (Promise) run before macrotasks (setTimeout).",
+    "judge_criteria": ["Explains that the event loop processes call stack then microtasks then macrotasks", "Distinguishes microtask queue (Promises) from macrotask queue (setTimeout)", "Provides a concrete execution-order example", "Example output order is correct"],
     "scoring_type": "explanation"
   },
   {
@@ -232,7 +257,8 @@
     "name": "CAP Theorem in Practice",
     "prompt": "Explain CAP theorem and what tradeoffs teams actually make in distributed systems.",
     "expected_tokens": 300,
-    "expected_answer": "Correct CAP explanation grounded in practical system tradeoffs.",
+    "expected_answer": "CAP states a distributed system can guarantee at most two of Consistency, Availability, and Partition tolerance. Since network partitions are unavoidable, the real choice is between CP (consistent but may reject requests during partitions, e.g., ZooKeeper) and AP (available but may serve stale data, e.g., Cassandra). Most systems choose tunable consistency.",
+    "judge_criteria": ["Correctly states CAP: at most two of Consistency, Availability, Partition tolerance", "Explains that partition tolerance is generally required, making the real choice CP vs AP", "Provides at least one real system example for CP or AP", "Mentions practical nuances (tunable consistency, eventual consistency, or PACELC)"],
     "scoring_type": "explanation"
   },
   {
@@ -241,7 +267,8 @@
     "name": "Exactly-Once Semantics",
     "prompt": "Explain why exactly-once delivery is hard and how systems approximate it using idempotency and deduplication.",
     "expected_tokens": 320,
-    "expected_answer": "Nuanced explanation of guarantees and practical approximations.",
+    "expected_answer": "True exactly-once is impossible in distributed systems because a sender cannot distinguish a lost acknowledgment from a lost message. Systems approximate it with at-least-once delivery plus idempotency (same operation applied multiple times has the same effect) and deduplication (tracking message IDs to discard duplicates). Examples: Kafka consumer offsets, database upserts with unique keys.",
+    "judge_criteria": ["Explains why true exactly-once is impossible (Two Generals problem or ack ambiguity)", "Defines idempotency and its role in safe reprocessing", "Defines deduplication and its role in discarding duplicates", "Provides at least one practical example (Kafka offsets, upserts, message IDs)"],
     "scoring_type": "explanation"
   },
   {
@@ -250,7 +277,8 @@
     "name": "Consensus Protocol Intuition",
     "prompt": "Explain consensus protocols (like Raft/Paxos) at a conceptual level, focusing on leader election and log agreement.",
     "expected_tokens": 360,
-    "expected_answer": "Coherent conceptual explanation of consensus core mechanics.",
+    "expected_answer": "Consensus protocols let a cluster of nodes agree on a sequence of values despite failures. A leader is elected by majority vote (nodes with the most up-to-date log win). The leader proposes entries; once a majority acknowledges, the entry is committed. If the leader fails, a new election starts with timeouts. This ensures safety (no conflicting commits) and liveness (progress with a majority).",
+    "judge_criteria": ["Explains leader election via majority vote or term-based mechanism", "Explains log replication: leader proposes, majority acknowledges, then commit", "Describes what happens on leader failure (new election with timeout)", "Mentions safety guarantee (no conflicting commits with a quorum)"],
     "scoring_type": "explanation"
   },
   {
@@ -259,7 +287,8 @@
     "name": "Zero-Downtime Migrations",
     "prompt": "Explain a safe multi-step approach for zero-downtime schema migrations with backward compatibility.",
     "expected_tokens": 380,
-    "expected_answer": "Stepwise migration strategy with compatibility safeguards.",
+    "expected_answer": "Multi-phase approach: (1) Add new column/table without removing old ones. (2) Deploy code that writes to both old and new schemas. (3) Backfill existing data. (4) Deploy code that reads from new schema. (5) Remove old column/table after verification. Each step is independently deployable and rollback-safe.",
+    "judge_criteria": ["Describes an expand-then-contract or multi-phase approach", "New schema additions happen before old schema removals", "Includes a dual-write or backfill step for data migration", "Each phase is independently deployable and rollback-safe"],
     "scoring_type": "explanation"
   },
   {
@@ -268,7 +297,8 @@
     "name": "Formal vs Empirical Guarantees",
     "prompt": "Explain the difference between formal correctness guarantees and empirical reliability in production systems, with examples.",
     "expected_tokens": 420,
-    "expected_answer": "Accurate distinction between proof-based guarantees and observed reliability.",
+    "expected_answer": "Formal guarantees come from mathematical proofs (e.g., TLA+ verifying Raft's safety properties, type systems preventing certain bugs). Empirical reliability comes from observation and testing (e.g., five nines uptime, chaos engineering, fuzz testing). Formal methods prove absence of certain bugs; empirical methods measure observed failure rates. Most production systems rely on empirical reliability with formal verification only for critical components.",
+    "judge_criteria": ["Defines formal guarantees as proof-based (mathematical verification, type systems, model checking)", "Defines empirical reliability as observation-based (testing, uptime metrics, chaos engineering)", "Provides at least one example of each", "Discusses the practical tradeoff (formal is expensive, empirical is the norm, formal for critical paths)"],
     "scoring_type": "explanation"
   },
 
@@ -276,90 +306,100 @@
     "level": 1,
     "category": "dialogue",
     "name": "Friendly Clarification",
-    "prompt": "User: 'My app is slow.' Assistant: ask 2 concise clarifying questions before giving advice.",
+    "prompt": "User: 'My app is slow.' Respond by asking 2 concise clarifying questions before giving advice.",
     "expected_tokens": 90,
-    "expected_answer": "Conversational follow-up questions that move problem-solving forward.",
+    "expected_answer": "Two specific clarifying questions (e.g., which part of the app is slow, and when did it start) followed by a brief note on why these answers matter for diagnosis.",
+    "judge_criteria": ["Asks exactly 2 clarifying questions", "Questions are specific and diagnostic (not vague)", "Does not jump to solutions before gathering info", "Tone is friendly and helpful"],
     "scoring_type": "dialogue"
   },
   {
     "level": 2,
     "category": "dialogue",
     "name": "Support Tone Consistency",
-    "prompt": "Continue this support chat with empathetic and concise tone while collecting key details: platform, error message, and recent changes.",
+    "prompt": "User: 'I've been trying to log in for 20 minutes and nothing works. This is ridiculous.' Respond with empathetic and concise tone while collecting key details: platform, error message, and recent changes.",
     "expected_tokens": 120,
-    "expected_answer": "Natural multi-turn support response with relevant information gathering.",
+    "expected_answer": "Acknowledges frustration, apologizes for the experience, then asks about platform, error message, and any recent changes — all in a warm but efficient support tone.",
+    "judge_criteria": ["Acknowledges the user's frustration empathetically", "Asks about platform or device", "Asks about error message or what happens on login attempt", "Asks about recent changes (password, app update, etc.)"],
     "scoring_type": "dialogue"
   },
   {
     "level": 3,
     "category": "dialogue",
     "name": "Context-Aware Follow Up",
-    "prompt": "Previous turn: user already shared they run PostgreSQL 15 and Node 20. Respond without repeating those questions and propose next diagnostic step.",
+    "prompt": "Previous conversation context: User reported slow API responses. They already shared they run PostgreSQL 15 on Ubuntu, Node 20 with Express, and the issue started after a deploy last Thursday. Respond without repeating those questions and propose the next diagnostic step.",
     "expected_tokens": 130,
-    "expected_answer": "Uses prior context and advances troubleshooting.",
+    "expected_answer": "References the known stack without re-asking. Proposes a concrete next step like checking query plans, connection pool settings, or comparing response times before and after the Thursday deploy.",
+    "judge_criteria": ["Does not re-ask about PostgreSQL version, Node version, or OS", "References the Thursday deploy as a likely trigger", "Proposes a specific next diagnostic step", "Step is actionable and relevant to the symptoms"],
     "scoring_type": "dialogue"
   },
   {
     "level": 4,
     "category": "dialogue",
     "name": "De-Escalation Chat",
-    "prompt": "User is frustrated after repeated build failures. Respond calmly, acknowledge frustration, and offer a structured next-step plan in conversational style.",
+    "prompt": "User: 'This is the THIRD time the build broke today. I already wasted 2 hours. I can't keep dealing with this.' Respond calmly, acknowledge frustration, and offer a structured next-step plan in conversational style.",
     "expected_tokens": 170,
-    "expected_answer": "Emotionally appropriate response with actionable plan.",
+    "expected_answer": "Validates the frustration without being dismissive. Offers a short, numbered plan (e.g., 1. look at the latest build log, 2. identify the failing step, 3. check what changed since last green build). Keeps tone calm and action-oriented.",
+    "judge_criteria": ["Acknowledges the frustration and time lost without dismissing it", "Does not blame the user or be defensive", "Provides a structured plan with 2-3 concrete steps", "Tone is calm, empathetic, and action-oriented"],
     "scoring_type": "dialogue"
   },
   {
     "level": 5,
     "category": "dialogue",
     "name": "Multi-Turn Goal Tracking",
-    "prompt": "In this conversation, the user goal is shipping by Friday with minimal risk. Reply in a way that keeps decisions aligned to that goal.",
+    "prompt": "Conversation context: The team needs to ship a feature by Friday with minimal risk. Previous turns established: the feature is 80% done, CI is green, but the remaining 20% touches the payment flow. The PM asked whether to ship the full feature or split it. Respond in a way that keeps decisions aligned to the Friday deadline with minimal risk.",
     "expected_tokens": 190,
-    "expected_answer": "Conversational response that tracks stated objective and constraints.",
+    "expected_answer": "Recommends shipping the 80% behind a feature flag and deferring the payment flow changes to avoid risk. References the Friday deadline explicitly. Offers a concrete split plan.",
+    "judge_criteria": ["References the Friday deadline as a constraint", "Weighs risk of touching payment flow against the deadline", "Proposes a concrete approach (feature flag, phased rollout, or scope split)", "Keeps the user's goal (ship Friday, minimal risk) central to the recommendation"],
     "scoring_type": "dialogue"
   },
   {
     "level": 6,
     "category": "dialogue",
     "name": "Tradeoff Conversation",
-    "prompt": "User asks whether to optimize latency or reliability first. Respond as a dialogue turn that explores tradeoffs and asks one decisive follow-up.",
+    "prompt": "User: 'We can either spend the next sprint optimizing API latency from 200ms to 50ms, or adding retry logic and circuit breakers for reliability. We can only pick one. What should we do?' Respond by exploring tradeoffs and asking one decisive follow-up.",
     "expected_tokens": 220,
-    "expected_answer": "Balanced tradeoff guidance with a useful follow-up question.",
+    "expected_answer": "Explores both options: latency optimization improves UX but doesn't help during failures; reliability work prevents cascading outages. Asks a decisive follow-up like 'How often are you seeing failures in production today?' to guide the decision.",
+    "judge_criteria": ["Explores both options with specific tradeoffs", "Does not pick one without understanding context", "Asks exactly one decisive follow-up question", "Follow-up question would genuinely differentiate the choice"],
     "scoring_type": "dialogue"
   },
   {
     "level": 7,
     "category": "dialogue",
     "name": "Collaborative Design Chat",
-    "prompt": "Continue a design conversation where the user prefers incremental changes over rewrites. Provide options and ask for preference.",
+    "prompt": "Conversation context: The team is discussing how to add caching to a slow dashboard. The user said in a previous turn: 'I'd rather do small incremental improvements than a big rewrite of the data layer.' Propose 2-3 incremental caching options and ask which they prefer.",
     "expected_tokens": 240,
-    "expected_answer": "Collaborative, context-aware turn with clear options.",
+    "expected_answer": "Respects the incremental preference. Proposes options like: (1) add HTTP cache headers for static dashboard data, (2) cache expensive DB queries in Redis with short TTL, (3) precompute and store dashboard summaries on a schedule. Asks which aligns best with their current stack.",
+    "judge_criteria": ["Respects the stated preference for incremental changes over rewrites", "Proposes 2-3 distinct caching strategies", "Options are concrete and actionable, not vague", "Asks the user to choose or express a preference"],
     "scoring_type": "dialogue"
   },
   {
     "level": 8,
     "category": "dialogue",
     "name": "Cross-Functional Mediation",
-    "prompt": "Engineering and product disagree on scope. Respond as a mediator in chat, summarize both sides fairly, and propose a next step.",
+    "prompt": "Context: Engineering wants to defer a feature to fix tech debt (test coverage is at 40%, deploys take 45 minutes). Product wants the feature shipped this quarter because a key client is waiting. Respond as a mediator: summarize both sides fairly and propose a next step.",
     "expected_tokens": 280,
-    "expected_answer": "Balanced dialogue with constructive facilitation.",
+    "expected_answer": "Summarizes engineering's concern (low test coverage and slow deploys create risk) and product's concern (client commitment and revenue impact). Proposes a compromise: allocate part of the sprint to the highest-impact tech debt (e.g., CI speedup) while shipping a reduced-scope version of the feature.",
+    "judge_criteria": ["Summarizes both positions accurately and fairly", "Does not take sides or dismiss either concern", "Proposes a concrete compromise or next step", "Compromise addresses both the client timeline and the tech debt risk"],
     "scoring_type": "dialogue"
   },
   {
     "level": 9,
     "category": "dialogue",
     "name": "Long-Horizon Conversation Coherence",
-    "prompt": "Given prior turns with changing constraints, respond coherently without contradiction and propose an updated plan.",
+    "prompt": "Conversation history: Turn 1 — User chose microservices over monolith. Turn 2 — Team decided on Kubernetes for orchestration. Turn 3 — Budget was cut by 30%, and the user said 'We might need to simplify.' Turn 4 — User confirmed they still want microservices but need to reduce infrastructure cost. Respond coherently, acknowledge the constraint changes, and propose an updated plan that doesn't contradict earlier decisions.",
     "expected_tokens": 320,
-    "expected_answer": "Consistent, coherent continuation reflecting prior-turn constraints.",
+    "expected_answer": "Acknowledges the budget cut without abandoning microservices. Proposes cost reductions within the existing architecture: fewer nodes, spot instances, consolidating low-traffic services, or using a lighter orchestrator. Does not suggest switching to monolith (contradicts Turn 1) or dropping K8s entirely (contradicts Turn 2 unless justified).",
+    "judge_criteria": ["References the budget constraint from Turn 3", "Maintains consistency with microservices decision from Turn 1", "Does not contradict Kubernetes choice from Turn 2 without justification", "Proposes concrete cost reduction strategies within the existing architecture"],
     "scoring_type": "dialogue"
   },
   {
     "level": 10,
     "category": "dialogue",
     "name": "High-Stakes Stakeholder Conversation",
-    "prompt": "Respond to an executive stakeholder asking for incident status, risk, and ETA. Keep conversational tone, avoid speculation, and maintain trust.",
+    "prompt": "Context: A payment processing outage started 45 minutes ago. 12% of transactions are failing. The engineering team identified the root cause (a misconfigured database connection pool after a routine deploy) and a fix is being rolled out. An executive stakeholder asks: 'What's the status, what's the risk, and when will this be fixed?' Respond maintaining trust, avoiding speculation, and staying factual.",
     "expected_tokens": 360,
-    "expected_answer": "Clear, trustworthy, context-appropriate high-stakes dialogue response.",
+    "expected_answer": "States current status factually (12% failure rate, root cause identified as connection pool misconfiguration). Gives a concrete ETA range for the fix rollout without overpromising. Describes risk honestly (limited to transaction failures, no data loss). Mentions next steps (monitoring after fix, postmortem planned).",
+    "judge_criteria": ["States the current impact factually (failure rate, duration)", "Identifies the root cause clearly without excessive technical detail", "Provides an ETA range without overpromising", "Addresses risk honestly and mentions follow-up actions (monitoring, postmortem)"],
     "scoring_type": "dialogue"
   },
 
@@ -369,7 +409,8 @@
     "name": "Actionable Next Step",
     "prompt": "User asks: 'I keep missing deadlines.' Provide one practical next step and one clarifying question.",
     "expected_tokens": 90,
-    "expected_answer": "Helpful concise guidance with one relevant follow-up question.",
+    "expected_answer": "One concrete next step (e.g., break tasks into smaller milestones with intermediate deadlines) and one clarifying question (e.g., 'Are you missing deadlines because of scope creep or estimation issues?').",
+    "judge_criteria": ["Provides exactly one practical, actionable next step", "Provides exactly one clarifying question", "Next step is specific enough to act on immediately", "Clarifying question would help diagnose the root cause"],
     "scoring_type": "general"
   },
   {
@@ -378,7 +419,8 @@
     "name": "Plan in Three Steps",
     "prompt": "Create a 3-step plan for preparing a technical interview in 2 weeks.",
     "expected_tokens": 120,
-    "expected_answer": "Clear and realistic short plan with actionable steps.",
+    "expected_answer": "Three distinct, time-bounded steps. E.g., Week 1: review core data structures and algorithms. Week 1-2: practice coding problems daily. Final 2 days: do mock interviews and review system design basics.",
+    "judge_criteria": ["Exactly three steps", "Steps are time-bounded within the 2-week window", "Steps are actionable and specific", "Covers both practice and preparation aspects"],
     "scoring_type": "general"
   },
   {
@@ -387,7 +429,8 @@
     "name": "Pros and Cons Summary",
     "prompt": "Compare monolith vs microservices for a small startup and provide a recommendation.",
     "expected_tokens": 160,
-    "expected_answer": "Balanced tradeoff discussion and context-sensitive recommendation.",
+    "expected_answer": "Monolith pros: simpler to deploy, debug, and operate with a small team. Microservices pros: independent scaling and deployment. For a small startup, recommends monolith due to lower operational overhead, with a note to split later when complexity warrants it.",
+    "judge_criteria": ["Lists clear pros and cons for both approaches", "Considers the small startup context (team size, operational capacity)", "Makes a definitive recommendation", "Recommendation is well-reasoned for the stated context"],
     "scoring_type": "general"
   },
   {
@@ -396,7 +439,8 @@
     "name": "Constraint-Aware Advice",
     "prompt": "User has a low budget, tight timeline, and small team. Recommend a deployment approach with rationale.",
     "expected_tokens": 180,
-    "expected_answer": "Advice aligned to explicit constraints with practical rationale.",
+    "expected_answer": "Recommends a managed platform (e.g., Heroku, Railway, Fly.io, or a simple VPS with Docker) to minimize ops overhead. Rationale: reduces infrastructure management, fast setup, scales later. Avoids Kubernetes or complex CI/CD given the constraints.",
+    "judge_criteria": ["Recommendation accounts for all three constraints (budget, timeline, team size)", "Suggests a low-ops approach (managed platform, PaaS, or simple deployment)", "Provides clear rationale tied to the constraints", "Avoids over-engineered solutions like Kubernetes for this context"],
     "scoring_type": "general"
   },
   {
@@ -405,7 +449,8 @@
     "name": "Decision Matrix",
     "prompt": "Provide a simple decision matrix for choosing between three cloud providers for a web API.",
     "expected_tokens": 220,
-    "expected_answer": "Structured and useful decision framework with relevant criteria.",
+    "expected_answer": "A table or structured comparison with criteria (cost, ease of use, scaling, ecosystem, free tier) rated across 3 providers. Includes a summary recommendation based on the criteria weights.",
+    "judge_criteria": ["Compares exactly three providers", "Uses at least 3 relevant criteria (cost, ease of use, scaling, etc.)", "Structured as a matrix, table, or clear comparison format", "Includes a summary or recommendation based on the comparison"],
     "scoring_type": "general"
   },
   {
@@ -414,7 +459,8 @@
     "name": "Risk-First Roadmap",
     "prompt": "Draft a 30-day roadmap for shipping an MVP while minimizing operational risk.",
     "expected_tokens": 260,
-    "expected_answer": "Coherent roadmap that prioritizes risk reduction and delivery milestones.",
+    "expected_answer": "Phased roadmap: Week 1 — core feature buildout and basic monitoring. Week 2 — integration testing and staging deployment. Week 3 — soft launch with limited users and error tracking. Week 4 — iterate on feedback and harden for wider release. Risks addressed at each phase.",
+    "judge_criteria": ["Covers the full 30-day period with distinct phases", "Risks are identified and addressed at each phase", "Includes validation steps before wider launch (staging, soft launch, etc.)", "Balances speed of delivery with risk reduction"],
     "scoring_type": "general"
   },
   {
@@ -423,16 +469,18 @@
     "name": "Stakeholder Communication",
     "prompt": "Write an update to stakeholders about a one-week delay, preserving trust and providing concrete mitigation steps.",
     "expected_tokens": 280,
-    "expected_answer": "Clear, honest communication with concrete recovery actions.",
+    "expected_answer": "Transparent message: states the delay and reason clearly, provides the new timeline, lists 2-3 concrete mitigation steps to prevent recurrence, and reaffirms commitment to delivery. Professional but not defensive.",
+    "judge_criteria": ["States the delay and reason honestly without excessive blame or excuses", "Provides a revised timeline or delivery date", "Includes 2-3 concrete mitigation steps", "Tone preserves trust (transparent, professional, forward-looking)"],
     "scoring_type": "general"
   },
   {
     "level": 8,
     "category": "general",
     "name": "Ambiguous Requirement Handling",
-    "prompt": "Given an ambiguous product request, propose assumptions, validation steps, and a safe implementation path.",
+    "prompt": "A product manager says: 'We need the search to be faster and smarter.' Propose assumptions, validation steps, and a safe implementation path.",
     "expected_tokens": 320,
-    "expected_answer": "Structured ambiguity handling with explicit assumptions and validation.",
+    "expected_answer": "Breaks down 'faster' and 'smarter' into measurable assumptions (e.g., faster = p95 under 200ms, smarter = typo tolerance and relevance ranking). Validation: benchmark current performance, define success metrics, A/B test. Implementation: start with indexing/caching for speed, then add fuzzy matching for 'smarter', ship incrementally.",
+    "judge_criteria": ["Makes the ambiguous terms explicit with measurable definitions", "Lists assumptions that can be validated with the PM", "Proposes validation steps (benchmarks, metrics, A/B testing)", "Implementation path is incremental and low-risk"],
     "scoring_type": "general"
   },
   {
@@ -441,7 +489,8 @@
     "name": "Cross-Team Execution Plan",
     "prompt": "Create a cross-functional execution plan involving engineering, product, support, and security for a major release.",
     "expected_tokens": 360,
-    "expected_answer": "Comprehensive but practical cross-team plan with dependencies and checkpoints.",
+    "expected_answer": "Timeline with responsibilities per team: Engineering (feature freeze, testing, staging). Product (release notes, customer communication). Support (runbook, escalation plan, training). Security (audit, pen test, sign-off). Includes dependencies between teams and go/no-go checkpoints.",
+    "judge_criteria": ["Assigns specific responsibilities to each of the four teams", "Includes a timeline with phases or milestones", "Identifies cross-team dependencies", "Includes go/no-go checkpoints or decision gates"],
     "scoring_type": "general"
   },
   {
@@ -450,7 +499,8 @@
     "name": "Crisis Response Strategy",
     "prompt": "During a production incident affecting payments, outline immediate response, communication cadence, and stabilization priorities.",
     "expected_tokens": 420,
-    "expected_answer": "High-quality incident strategy balancing technical mitigation and stakeholder communication.",
+    "expected_answer": "Immediate: declare incident, assign commander, assess blast radius, start mitigation. Communication: initial stakeholder notification within 15 minutes, updates every 30 minutes, customer-facing status page update. Stabilization: rollback or hotfix, then monitor for recurrence. Post-incident: postmortem within 48 hours, action items tracked.",
+    "judge_criteria": ["Immediate response includes incident declaration and role assignment", "Communication cadence is defined with specific intervals", "Includes both internal (stakeholder) and external (customer) communication", "Post-incident follow-up (postmortem, action items) is mentioned"],
     "scoring_type": "general"
   }
 ]

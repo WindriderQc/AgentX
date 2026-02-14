@@ -369,6 +369,7 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                             prompt_category: prompt.category,
                             prompt_name: prompt.name,
                             expected_answer: prompt.expected_answer,
+                            judge_criteria: prompt.judge_criteria || [],
                             latency,
                             tokens,
                             tokens_per_sec,
