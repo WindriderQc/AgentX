@@ -281,7 +281,7 @@ const DECOMPOSED_QUESTIONS = {
     },
     'multi-turn-reasoning': {
         context_retention: [
-            { q: 'Does the response correctly reference information from previous turns?', weight: 0.40 },
+            { q: 'Does the response correctly use information from earlier steps or context?', weight: 0.40 },
             { q: 'Is context from earlier steps used accurately?', weight: 0.35 },
             { q: 'Does it avoid contradicting earlier established facts?', weight: 0.25 }
         ],
@@ -295,7 +295,7 @@ const DECOMPOSED_QUESTIONS = {
             { q: 'Are intermediate results accurate?', weight: 0.50 }
         ],
         coherence: [
-            { q: 'Is the overall response coherent across turns?', weight: 0.50 },
+            { q: 'Is the overall response coherent across all steps?', weight: 0.50 },
             { q: 'Does the response maintain a consistent position?', weight: 0.50 }
         ]
     },
