@@ -167,7 +167,7 @@ async function judgeResult(resultId, judgeConfig = {}) {
     let originalPrompt = null;
     if (result.prompt_name) {
         originalPrompt = await BenchmarkPrompt.findOne({ name: result.prompt_name })
-            .select('scoring_dimensions reference_answer output_contract')
+            .select('scoring_dimensions reference_answer output_contract judge_criteria')
             .lean();
     }
 
@@ -181,7 +181,8 @@ async function judgeResult(resultId, judgeConfig = {}) {
         deterministic_scoring: result.deterministic_scoring,
         scoring_dimensions: originalPrompt?.scoring_dimensions || undefined,
         reference_answer: originalPrompt?.reference_answer || undefined,
-        output_contract: originalPrompt?.output_contract || undefined
+        output_contract: originalPrompt?.output_contract || undefined,
+        judge_criteria: originalPrompt?.judge_criteria || result.judge_criteria || undefined
     };
 
     const mergedConfig = {
