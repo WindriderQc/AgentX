@@ -653,7 +653,7 @@
       "Natural phrasing",
       "Complete translation of both clauses"
     ],
-    "scoring_type": "reasoning"
+    "scoring_type": "translation"
   },
   {
     "level": 1,
@@ -669,7 +669,7 @@
       "Accent on Où",
       "Natural phrasing"
     ],
-    "scoring_type": "reasoning"
+    "scoring_type": "translation"
   },
   {
     "level": 2,
@@ -685,7 +685,7 @@
       "Natural English phrasing",
       "Complete translation"
     ],
-    "scoring_type": "reasoning"
+    "scoring_type": "translation"
   },
   {
     "level": 2,
@@ -701,7 +701,7 @@
       "Natural English phrasing",
       "Complete translation"
     ],
-    "scoring_type": "reasoning"
+    "scoring_type": "translation"
   },
   {
     "level": 3,
@@ -717,7 +717,7 @@
       "Because clause preserved",
       "Natural phrasing"
     ],
-    "scoring_type": "reasoning"
+    "scoring_type": "translation"
   },
   {
     "level": 3,
@@ -733,7 +733,7 @@
       "Natural French phrasing",
       "Pronoun choice is consistent"
     ],
-    "scoring_type": "reasoning"
+    "scoring_type": "translation"
   },
   {
     "level": 4,
@@ -749,7 +749,7 @@
       "Natural Spanish expression",
       "Correct spelling and accents"
     ],
-    "scoring_type": "reasoning"
+    "scoring_type": "translation"
   },
   {
     "level": 4,
@@ -765,7 +765,7 @@
       "Keeps the reference to the story",
       "Natural English phrasing"
     ],
-    "scoring_type": "reasoning"
+    "scoring_type": "translation"
   },
   {
     "level": 4,
@@ -781,7 +781,7 @@
       "Save me a seat translated naturally",
       "Time in 10 conveyed"
     ],
-    "scoring_type": "reasoning"
+    "scoring_type": "translation"
   },
   {
     "level": 5,
@@ -797,7 +797,7 @@
       "Signed contract included",
       "Professional English tone"
     ],
-    "scoring_type": "reasoning"
+    "scoring_type": "translation"
   },
   {
     "level": 5,
@@ -813,7 +813,7 @@
       "Accurate meaning of received and respond",
       "Natural Spanish phrasing"
     ],
-    "scoring_type": "reasoning"
+    "scoring_type": "translation"
   },
   {
     "level": 5,
@@ -829,7 +829,7 @@
       "Decision context included",
       "Complete translation"
     ],
-    "scoring_type": "reasoning"
+    "scoring_type": "translation"
   },
   {
     "level": 6,
@@ -845,7 +845,7 @@
       "Natural Spanish phrasing",
       "Not a literal sincere compliment"
     ],
-    "scoring_type": "reasoning"
+    "scoring_type": "translation"
   },
   {
     "level": 6,
@@ -861,7 +861,7 @@
       "Natural English phrasing",
       "Complete translation"
     ],
-    "scoring_type": "reasoning"
+    "scoring_type": "translation"
   },
   {
     "level": 7,
@@ -877,7 +877,7 @@
       "Natural French phrasing",
       "Overall meaning intact"
     ],
-    "scoring_type": "reasoning"
+    "scoring_type": "translation"
   },
   {
     "level": 7,
@@ -893,7 +893,7 @@
       "Deadline before Friday included",
       "Natural English phrasing"
     ],
-    "scoring_type": "reasoning"
+    "scoring_type": "translation"
   },
   {
     "level": 8,
@@ -909,7 +909,7 @@
       "Natural English phrasing",
       "Meaning accurately conveyed"
     ],
-    "scoring_type": "reasoning"
+    "scoring_type": "translation"
   },
   {
     "level": 8,
@@ -925,7 +925,7 @@
       "Terms and law correctly translated",
       "Accents and spelling correct"
     ],
-    "scoring_type": "reasoning"
+    "scoring_type": "translation"
   },
   {
     "level": 9,
@@ -941,7 +941,7 @@
       "Natural English phrasing",
       "Not a literal word-for-word translation"
     ],
-    "scoring_type": "reasoning"
+    "scoring_type": "translation"
   },
   {
     "level": 10,
@@ -957,7 +957,7 @@
       "Natural English phrasing",
       "Not reduced to a literal explanation"
     ],
-    "scoring_type": "reasoning"
+    "scoring_type": "translation"
   },
   {
     "level": 1,

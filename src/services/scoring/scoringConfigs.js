@@ -307,7 +307,7 @@ const CATEGORY_STRATEGIES = {
     translation: {
         primary: 'reference',
         llm_fallback: true,
-        llm_strategy: 'decomposed',
+        llm_strategy: 'composite',
         confidence_threshold: 0.75,
         hybrid_compliance: true,
         hybrid_weights: { accuracy: 0.70, compliance: 0.30 }

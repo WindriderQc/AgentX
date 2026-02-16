@@ -9,11 +9,11 @@ const { getFetchOptions } = require('../../helpers/httpAgent');
 
 // Judge model configuration
 const JUDGE_CONFIG = {
-    model: 'qwen2.5:7b-instruct-q5_K_M',
+    model: 'qwen2.5:14b-instruct-q4_K_M',
     host: null,
     timeout: 120000,
     temperature: 0.3,
-    num_predict: 500,
+    num_predict: 800,
     max_retries: 2
 };
 
@@ -97,7 +97,7 @@ async function callJudge(evalPrompt, config = {}, retryCount = 0) {
                 options: {
                     temperature: judgeConfig.temperature,
                     num_predict: judgeConfig.num_predict,
-                    num_ctx: 8192
+                    num_ctx: 16384
                 }
             }),
             signal: controller.signal
