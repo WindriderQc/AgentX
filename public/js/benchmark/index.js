@@ -99,6 +99,12 @@ function getJudgeModelCandidates() {
         candidates = hostModels;
     }
 
+    // Always include the server's configured judge model so it can't silently fall back
+    const serverDefault = state.currentJudgeConfig.model;
+    if (serverDefault && !candidates.includes(serverDefault)) {
+        candidates.push(serverDefault);
+    }
+
     return Array.from(new Set(candidates)).sort();
 }
 

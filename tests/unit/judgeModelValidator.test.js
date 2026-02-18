@@ -155,15 +155,15 @@ describe('Judge Model Validator', () => {
             expect(result.latency_ms).toBeGreaterThanOrEqual(0);
         });
 
-        it('should handle timeout during generation', async () => {
+        it('should treat timeout during generation as valid (cold start)', async () => {
             const _fetch = mockFetch(
                 tagsResponse(),
                 Object.assign(new Error('timeout'), { name: 'AbortError' })
             );
 
             const result = await validateJudgeModel(HOST, 'qwen2.5:7b-instruct', { _fetch });
-            expect(result.valid).toBe(false);
-            expect(result.error).toContain('Validation timed out');
+            expect(result.valid).toBe(true);
+            expect(result.warning).toContain('cold start');
         });
     });
 });

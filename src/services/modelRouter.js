@@ -1,9 +1,10 @@
 /**
  * Model Router Service
  * Routes chat requests to appropriate Ollama host based on model/task complexity
- * 
+ *
  * Primary: UGFrank (192.168.2.99) - Fast 7B models, front-door
  * Secondary: UGBrutal (192.168.2.12) - Heavy 70B+ models, specialists
+ * Tertiary: ClawdX (192.168.2.66) - Additional capacity
  */
 
 const logger = require('../../config/logger');
@@ -18,13 +19,15 @@ const { getFetchOptions } = require('../helpers/httpAgent');
 // the host URLs from process.env on demand.
 const HOSTS = {
     primary: null,
-    secondary: null
+    secondary: null,
+    tertiary: null
 };
 
 function refreshHosts() {
     HOSTS.primary = process.env.OLLAMA_HOST;
     // Prefer explicit SECONDARY override if both are present (tests often set it)
     HOSTS.secondary = process.env.OLLAMA_HOST_SECONDARY || process.env.OLLAMA_HOST_2;
+    HOSTS.tertiary = process.env.OLLAMA_HOST_TERTIARY || process.env.OLLAMA_HOST_3;
 }
 
 refreshHosts();
@@ -198,7 +201,11 @@ const MODEL_ROUTING = {
     'llama3.1:8b': 'secondary',
     'olmo2:13b': 'secondary',
     
-    // Embeddings 
+    // ClawdX (66) - 32B models
+    'qwen2.5:32b-instruct-q4_K_M': 'tertiary',
+    'qwen32b:perf': 'tertiary',
+
+    // Embeddings
     'nomic-embed-text': 'primary',
     'nomic-embed-text:latest': 'primary'
 };
@@ -407,9 +414,11 @@ async function checkHostHealth(hostKey) {
     let host = null;
     if (hostKey === 'primary' || hostKey === 'ollama-main') host = HOSTS.primary;
     else if (hostKey === 'secondary' || hostKey === 'ollama-secondary') host = HOSTS.secondary;
+    else if (hostKey === 'tertiary' || hostKey === 'ollama-tertiary') host = HOSTS.tertiary;
     else if (typeof hostKey === 'string' && hostKey.startsWith('http')) host = hostKey;
     else if (hostKey === HOSTS.primary) host = HOSTS.primary;
     else if (hostKey === HOSTS.secondary) host = HOSTS.secondary;
+    else if (hostKey === HOSTS.tertiary) host = HOSTS.tertiary;
     else if (typeof hostKey === 'string') host = HOSTS[hostKey];
 
     if (!host) {
@@ -460,16 +469,24 @@ async function checkHostHealth(hostKey) {
  */
 async function getRoutingStatus() {
     refreshHosts();
-    const [primaryHealth, secondaryHealth] = await Promise.all([
+    const healthChecks = [
         checkHostHealth('primary'),
         checkHostHealth('secondary')
-    ]);
-    
+    ];
+    if (HOSTS.tertiary) healthChecks.push(checkHostHealth('tertiary'));
+
+    const [primaryHealth, secondaryHealth, tertiaryHealth] = await Promise.all(healthChecks);
+
+    const hosts = {
+        primary: { url: HOSTS.primary, ...primaryHealth },
+        secondary: { url: HOSTS.secondary, ...secondaryHealth }
+    };
+    if (HOSTS.tertiary) {
+        hosts.tertiary = { url: HOSTS.tertiary, ...tertiaryHealth };
+    }
+
     return {
-        hosts: {
-            primary: { url: HOSTS.primary, ...primaryHealth },
-            secondary: { url: HOSTS.secondary, ...secondaryHealth }
-        },
+        hosts,
         modelRouting: MODEL_ROUTING,
         taskModels: TASK_MODELS
     };
@@ -533,7 +550,8 @@ function getFailoverStatus() {
         reason: ACTIVE_HOST_STATE.reason,
         failoverCount: ACTIVE_HOST_STATE.failoverCount,
         primaryHost: HOSTS.primary,
-        secondaryHost: HOSTS.secondary
+        secondaryHost: HOSTS.secondary,
+        tertiaryHost: HOSTS.tertiary
     };
 }
 

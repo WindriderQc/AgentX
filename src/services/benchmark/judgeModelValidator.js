@@ -11,11 +11,16 @@ const VALIDATION_TIMEOUT_MS = 30000;
 /**
  * Validate that a judge model is available and can produce structured JSON output.
  *
+ * Step 1 (hard): model must exist on the host — fail if not found.
+ * Step 2 (soft): test generation for JSON output — timeout is treated as valid
+ *   (cold-loading a large model can exceed the timeout; the benchmark warmup
+ *   phase handles that separately).
+ *
  * @param {string} host - Ollama host URL (e.g. http://localhost:11434)
  * @param {string} model - Model name to validate
  * @param {Object} [options] - Options
  * @param {Function} [options._fetch] - Override fetch for testing
- * @returns {Promise<{valid: boolean, error?: string, available_models?: string[], latency_ms?: number}>}
+ * @returns {Promise<{valid: boolean, error?: string, warning?: string, available_models?: string[], latency_ms?: number}>}
  */
 async function validateJudgeModel(host, model, options = {}) {
     const _fetch = options._fetch || fetch;
@@ -69,7 +74,9 @@ async function validateJudgeModel(host, model, options = {}) {
         };
     }
 
-    // Step 2: Verify model can produce structured JSON output
+    // Step 2: Verify model can produce structured JSON output (soft check)
+    // Timeout here is NOT a failure — cold-loading a model can take longer than
+    // the validation window. The benchmark warmup phase handles cold starts.
     try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), VALIDATION_TIMEOUT_MS);
@@ -123,10 +130,21 @@ async function validateJudgeModel(host, model, options = {}) {
             latency_ms: Date.now() - start
         };
     } catch (err) {
-        const msg = err.name === 'AbortError' ? 'Validation timed out' : err.message;
+        if (err.name === 'AbortError') {
+            // Timeout = model is loading (cold start). Still valid — warmup handles this.
+            logger.info('Judge model validation: generation timed out (cold start), model exists — treating as valid', {
+                host, model, timeout_ms: VALIDATION_TIMEOUT_MS, latency_ms: Date.now() - start
+            });
+            return {
+                valid: true,
+                warning: 'Judge model is loading (cold start). Warmup phase will handle this.',
+                available_models: availableModels,
+                latency_ms: Date.now() - start
+            };
+        }
         return {
             valid: false,
-            error: `Judge output validation failed: ${msg}`,
+            error: `Judge output validation failed: ${err.message}`,
             available_models: availableModels,
             latency_ms: Date.now() - start
         };
