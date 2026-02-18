@@ -307,6 +307,11 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                         const testController = new AbortController();
                         const testTimeoutId = setTimeout(() => testController.abort(), 180000);
 
+                        const ollamaOptions = { num_predict: numPredict };
+                        if (executionConfig.num_ctx) {
+                            ollamaOptions.num_ctx = executionConfig.num_ctx;
+                        }
+
                         const fetchOptions = getFetchOptions(url, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
@@ -314,7 +319,7 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                                 model,
                                 prompt: promptText,
                                 stream: false,
-                                options: { num_predict: numPredict }
+                                options: ollamaOptions
                             }),
                             signal: testController.signal
                         });

@@ -8,6 +8,9 @@ const DEFAULT_EXECUTION_CONFIG = {
     response_max_tokens: 32000,  // High enough for any response including <think> reasoning
     response_min_tokens: 100,
     response_tokens_multiplier: 1,  // No multiplier games - just use the max
+    // Context window sent to Ollama. Lower values reduce KV cache VRAM usage,
+    // keeping large models fully on GPU. 8192 is plenty for benchmark prompts.
+    num_ctx: 8192,
     // Length hints can constrain models - disabled by default
     include_length_hint: false,
     length_hint_template: 'Keep your response under {max} tokens.',
@@ -52,6 +55,12 @@ function normalizeExecutionConfig(config = {}) {
     if (merged.response_max_tokens < merged.response_min_tokens) {
         merged.response_max_tokens = merged.response_min_tokens;
     }
+    merged.num_ctx = Math.round(toNumber(
+        merged.num_ctx,
+        DEFAULT_EXECUTION_CONFIG.num_ctx,
+        512,
+        131072
+    ));
     merged.include_length_hint = !!merged.include_length_hint;
     if (typeof merged.length_hint_template !== 'string' || !merged.length_hint_template.trim()) {
         merged.length_hint_template = DEFAULT_EXECUTION_CONFIG.length_hint_template;
