@@ -44,11 +44,8 @@
    */
   async function loadAgents() {
     try {
-      const token = localStorage.getItem('token');
       const response = await fetch('/api/agents', {
-        headers: {
-          'Authorization': `Bearer ${token || ''}`
-        }
+        credentials: 'include'
       });
 
       if (!response.ok) {
@@ -83,11 +80,8 @@
 
       personaLog.debug(`Found ${usedPromptIds.size} prompts used by agents.`, Array.from(usedPromptIds));
 
-      const token = localStorage.getItem('token');
       const response = await fetch('/api/prompts', {
-        headers: {
-          'Authorization': `Bearer ${token || ''}`
-        }
+        credentials: 'include'
       });
 
       if (!response.ok) {

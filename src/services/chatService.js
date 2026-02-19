@@ -237,10 +237,17 @@ const handleChatRequest = async ({
             assistantMessageContent = n8nResponse.content;
             thinking = null;
             warning = null;
+            const inputTokens = n8nResponse.usage?.inputTokens || 0;
+            const outputTokens = n8nResponse.usage?.outputTokens || 0;
             stats = {
-                total_duration: n8nResponse._metadata.latency * 1000000,
-                eval_count: n8nResponse.usage?.outputTokens || 0,
-                prompt_eval_count: n8nResponse.usage?.inputTokens || 0
+                usage: {
+                    promptTokens: inputTokens,
+                    completionTokens: outputTokens,
+                    totalTokens: inputTokens + outputTokens
+                },
+                performance: {
+                    totalDuration: n8nResponse._metadata.latency * 1000000
+                }
             };
             await n8nModel.recordUsage();
 
@@ -330,7 +337,7 @@ const handleChatRequest = async ({
                 warning = extracted.warning;
                 stats = extracted.stats;
             } else {
-                const extracted = extractResponse(data, model);
+                const extracted = extractResponse(data, effectiveModel);
                 assistantMessageContent = extracted.content;
                 thinking = extracted.thinking;
                 warning = extracted.warning;
@@ -494,18 +501,35 @@ const handleChatRequestStream = async ({
 
             if (!abortSignal?.aborted) onToken(n8nResponse.content);
 
+            const n8nInputTokens = n8nResponse.usage?.inputTokens || 0;
+            const n8nOutputTokens = n8nResponse.usage?.outputTokens || 0;
             const stats = {
-                total_duration: n8nResponse._metadata.latency * 1000000,
-                eval_count: n8nResponse.usage?.outputTokens || 0,
-                prompt_eval_count: n8nResponse.usage?.inputTokens || 0
+                usage: {
+                    promptTokens: n8nInputTokens,
+                    completionTokens: n8nOutputTokens,
+                    totalTokens: n8nInputTokens + n8nOutputTokens
+                },
+                performance: {
+                    totalDuration: n8nResponse._metadata.latency * 1000000
+                }
             };
 
             await n8nModel.recordUsage();
 
+            // Persist conversation (was missing for n8n streaming path)
+            const { conversation: n8nConv, assistantMessageId: n8nMsgId } = await persistConversation({
+                userId, workspaceId, conversationId, model: effectiveModel,
+                effectiveSystemPrompt, message, assistantContent: n8nResponse.content,
+                activePrompt,
+                metadata: { options },
+                stats, ragUsed, useRag, ragSources
+            });
+
             if (!abortSignal?.aborted) {
                 onComplete({
                     response: n8nResponse.content,
-                    conversationId: conversationId || null,
+                    conversationId: n8nConv?._id || conversationId || null,
+                    messageId: n8nMsgId,
                     model: effectiveModel, target: effectiveTarget,
                     stats, ragUsed, ragSources
                 });
@@ -576,10 +600,22 @@ const handleChatRequestStream = async ({
                             }
 
                             if (data.done) {
+                                const evalCount = data.eval_count || 0;
+                                const promptEvalCount = data.prompt_eval_count || 0;
                                 stats = {
-                                    total_duration: data.total_duration || 0,
-                                    eval_count: data.eval_count || 0,
-                                    prompt_eval_count: data.prompt_eval_count || 0
+                                    usage: {
+                                        promptTokens: promptEvalCount,
+                                        completionTokens: evalCount,
+                                        totalTokens: promptEvalCount + evalCount
+                                    },
+                                    performance: {
+                                        totalDuration: data.total_duration || 0,
+                                        evalDuration: data.eval_duration || 0,
+                                        promptEvalDuration: data.prompt_eval_duration || 0,
+                                        tokensPerSecond: data.eval_duration > 0
+                                            ? Math.round((evalCount / data.eval_duration) * 1e9)
+                                            : 0
+                                    }
                                 };
                             }
                         } catch (parseErr) {

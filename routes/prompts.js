@@ -430,7 +430,9 @@ function renderTemplate(template, variables) {
             // Support object properties {{property}}
             if (typeof item === 'object') {
                 Object.keys(item).forEach(key => {
-                    const regex = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
+                    // Escape regex special chars in key to prevent ReDoS
+                    const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    const regex = new RegExp(`\\{\\{${escaped}\\}\\}`, 'g');
                     itemContent = itemContent.replace(regex, String(item[key]));
                 });
             }

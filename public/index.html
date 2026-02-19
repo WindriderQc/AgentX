@@ -228,7 +228,7 @@
         z-index: 10;
         background: rgba(13, 17, 23, 0.95);
         backdrop-filter: blur(8px);
-        border-bottom: 1px solid var(--border);
+        border-bottom: 1px solid var(--panel-border);
         padding: 10px 20px;
         margin: -20px -20px 20px -20px; /* Offset chat window padding */
         display: flex;
@@ -386,6 +386,17 @@
         </div>
       </div>
 
+      <!-- History View Tabs -->
+      <div class="history-view-tabs">
+        <button id="viewAllBtn" class="history-tab active" title="All conversations">All</button>
+        <button id="viewJudgedBtn" class="history-tab" title="Judged conversations only">
+          <i class="fas fa-star" style="font-size:0.65rem"></i> Judged
+        </button>
+        <div id="minScoreControl" class="min-score-control" style="display:none;">
+          <label>Min <input type="number" id="minScoreInput" min="0" max="100" value="0" step="10" class="min-score-input"></label>
+        </div>
+      </div>
+
       <!-- History List -->
       <div id="historyList" class="history-list">
         <!-- History items will be injected here -->
@@ -421,11 +432,6 @@
                <i class="fas fa-keyboard"></i> Shortcuts
              </button>
              <button id="profileBtn" class="ghost small">User Profile</button>
-             <button id="loginBtn" class="ghost small" style="display: none;">Login</button>
-             <div id="userMenu" class="user-menu" style="display: none;">
-                <span id="userName" class="user-name"></span>
-                <button id="logoutBtn" class="ghost small">Logout</button>
-             </div>
         </div>
 
         <p class="lede">

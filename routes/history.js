@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const Conversation = require('../models/Conversation');
 const { getUserId } = require('../src/helpers/userHelpers');
 const { optionalAuth } = require('../src/middleware/auth');
@@ -8,13 +9,17 @@ const conversationSearchService = require('../src/services/conversationSearchSer
 const conversationJudge = require('../src/services/conversationJudge');
 const logger = require('../config/logger');
 
+// ============================================================================
+// IMPORTANT: Named GET routes MUST come BEFORE /:id to avoid route shadowing.
+// Express matches top-to-bottom; /:id would catch /search, /tags, /judged, etc.
+// ============================================================================
+
 // HISTORY: Get list (workspace-aware)
 router.get('/', optionalAuth, attachWorkspace, async (req, res) => {
     try {
         const userId = getUserId(res);
         const query = { userId };
 
-        // Week 4: Multi-tenancy - Filter by workspace if available
         if (req.workspace) {
             query.workspaceId = req.workspace._id;
         }
@@ -24,9 +29,7 @@ router.get('/', optionalAuth, attachWorkspace, async (req, res) => {
             .limit(50)
             .select('title updatedAt model messages quality_assessment.overall_score quality_assessment.judged_at');
 
-        // Transform for frontend preview
         const previews = conversations.map(c => {
-            // Fix: Handle empty messages array and undefined content
             const lastMessage = c.messages && c.messages.length > 0
                 ? c.messages[c.messages.length - 1]
                 : null;
@@ -50,124 +53,12 @@ router.get('/', optionalAuth, attachWorkspace, async (req, res) => {
     }
 });
 
-// HISTORY: Get single (workspace-aware)
-router.get('/:id', optionalAuth, attachWorkspace, async (req, res) => {
-    try {
-        const mongoose = require('mongoose');
-
-        // Validate ObjectId format first
-        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-            return res.status(400).json({ status: 'error', message: 'Invalid conversation ID format' });
-        }
-
-        const userId = getUserId(res);
-
-        // DEBUG: Find without filters to see what's wrong
-        const debugConv = await Conversation.findOne({ _id: req.params.id });
-        if (debugConv) {
-             logger.info('DEBUG: Conversation found but maybe filtered out', {
-                 paramsId: req.params.id,
-                 convId: debugConv._id,
-                 convUserId: debugConv.userId,
-                 reqUserId: userId,
-                 convWorkspaceId: debugConv.workspaceId,
-                 reqWorkspaceId: req.workspace ? req.workspace._id : 'no-workspace-context'
-             });
-        } else {
-             logger.info('DEBUG: Conversation strictly not found by ID', { id: req.params.id });
-        }
-
-
-        // Build query with security filters FIRST
-        // SECURITY: Cast to ObjectId to prevent NoSQL injection
-        const query = { _id: new mongoose.Types.ObjectId(req.params.id), userId };
-
-        // Add workspace filter if in workspace context
-        if (req.workspace) {
-            query.workspaceId = req.workspace._id;
-        }
-
-        const conversation = await Conversation.findOne(query);
-
-        if (!conversation) {
-            return res.status(404).json({ status: 'error', message: 'Conversation not found' });
-        }
-
-        res.json({ status: 'success', data: conversation });
-    } catch (err) {
-        res.status(500).json({ status: 'error', message: err.message });
-    }
-});
-
-// Route aliases for backwards compatibility (workspace-aware)
-router.get('/conversations', optionalAuth, attachWorkspace, async (req, res) => {
-    try {
-        const userId = getUserId(res);
-        const query = { userId };
-
-        // Week 4: Multi-tenancy - Filter by workspace if available
-        if (req.workspace) {
-            query.workspaceId = req.workspace._id;
-        }
-
-        const conversations = await Conversation.find(query)
-            .sort({ updatedAt: -1 })
-            .limit(50)
-            .select('title updatedAt model messages');
-
-        const previews = conversations.map(c => ({
-            id: c._id,
-            title: c.title,
-            date: c.updatedAt,
-            model: c.model,
-            messageCount: c.messages.length
-        }));
-
-        res.json({ status: 'success', data: previews });
-    } catch (err) {
-        res.status(500).json({ status: 'error', message: err.message });
-    }
-});
-
-router.get('/conversations/:id', optionalAuth, attachWorkspace, async (req, res) => {
-    try {
-        const mongoose = require('mongoose');
-
-        // Validate ObjectId format first
-        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-            return res.status(400).json({ status: 'error', message: 'Invalid conversation ID format' });
-        }
-
-        const userId = getUserId(res);
-
-        // Build query with security filters FIRST
-        // SECURITY: Cast to ObjectId to prevent NoSQL injection
-        const query = { _id: new mongoose.Types.ObjectId(req.params.id), userId };
-
-        // Add workspace filter if in workspace context
-        if (req.workspace) {
-            query.workspaceId = req.workspace._id;
-        }
-
-        const conversation = await Conversation.findOne(query);
-
-        if (!conversation) {
-            return res.status(404).json({ status: 'error', message: 'Conversation not found' });
-        }
-
-        res.json({ status: 'success', data: conversation });
-    } catch (err) {
-        res.status(500).json({ status: 'error', message: err.message });
-    }
-});
-
 // LOGS - Get latest conversation messages (workspace-aware)
 router.get('/logs', optionalAuth, attachWorkspace, async (req, res) => {
     try {
         const userId = getUserId(res);
         const query = { userId };
 
-        // Week 4: Multi-tenancy - Filter by workspace if available
         if (req.workspace) {
             query.workspaceId = req.workspace._id;
         }
@@ -186,30 +77,17 @@ router.get('/logs', optionalAuth, attachWorkspace, async (req, res) => {
 });
 
 // ============================================================================
-// V7: SEARCH & TAG MANAGEMENT ENDPOINTS (2026-01-08)
+// V7: SEARCH & TAG MANAGEMENT ENDPOINTS
 // ============================================================================
 
 /**
  * SEARCH: Advanced conversation search with filtering
  * GET /api/history/search
- *
- * Query Parameters:
- * - q: Search query (full-text)
- * - models: Comma-separated model names
- * - dateFrom: ISO 8601 date string
- * - dateTo: ISO 8601 date string
- * - ragOnly: 'true' to filter conversations with RAG
- * - feedbackRating: 1, -1, or 0
- * - tags: Comma-separated tag names
- * - sortBy: 'relevance', 'date_desc', 'date_asc', 'model', 'feedback', 'messages'
- * - page: Page number (default: 1)
- * - limit: Results per page (default: 20, max: 100)
  */
 router.get('/search', optionalAuth, attachWorkspace, async (req, res) => {
     try {
         const userId = getUserId(res);
 
-        // Parse query parameters
         const {
             q: query,
             models,
@@ -223,19 +101,15 @@ router.get('/search', optionalAuth, attachWorkspace, async (req, res) => {
             limit = '20'
         } = req.query;
 
-        // Parse arrays from comma-separated strings
         const modelArray = models ? models.split(',').map(m => m.trim()).filter(m => m) : [];
         const tagArray = tags ? tags.split(',').map(t => t.trim()).filter(t => t) : [];
 
-        // Parse numeric values
         const pageNum = Math.max(1, parseInt(page, 10) || 1);
         const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
         const feedbackNum = feedbackRating !== undefined ? parseInt(feedbackRating, 10) : undefined;
 
-        // Parse boolean
         const ragOnlyBool = ragOnly === 'true';
 
-        // Build search options
         const searchOptions = {
             userId,
             workspaceId: req.workspace?._id,
@@ -251,7 +125,6 @@ router.get('/search', optionalAuth, attachWorkspace, async (req, res) => {
             limit: limitNum
         };
 
-        // Execute search
         const result = await conversationSearchService.searchConversations(searchOptions);
 
         logger.info('Conversation search executed', {
@@ -275,116 +148,8 @@ router.get('/search', optionalAuth, attachWorkspace, async (req, res) => {
 });
 
 /**
- * TAGS: Add tags to a conversation
- * POST /api/history/:id/tags
- *
- * Body:
- * - tags: Array of tag strings
- */
-router.post('/:id/tags', optionalAuth, attachWorkspace, async (req, res) => {
-    try {
-        const mongoose = require('mongoose');
-
-        // Validate ObjectId format
-        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-            return res.status(400).json({ status: 'error', message: 'Invalid conversation ID format' });
-        }
-
-        const userId = getUserId(res);
-        const { tags } = req.body;
-
-        // Validate input
-        if (!tags || !Array.isArray(tags) || tags.length === 0) {
-            return res.status(400).json({
-                status: 'error',
-                message: 'Tags array is required and must not be empty'
-            });
-        }
-
-        // Add tags
-        const result = await conversationSearchService.addTagsToConversation({
-            conversationId: req.params.id,
-            userId,
-            workspaceId: req.workspace?._id,
-            tags
-        });
-
-        res.json(result);
-
-    } catch (err) {
-        logger.error('Failed to add tags', {
-            error: err.message,
-            conversationId: req.params.id,
-            userId: getUserId(res)
-        });
-
-        if (err.message.includes('not found') || err.message.includes('access denied')) {
-            return res.status(404).json({ status: 'error', message: err.message });
-        }
-
-        res.status(500).json({ status: 'error', message: err.message });
-    }
-});
-
-/**
- * TAGS: Remove tags from a conversation
- * DELETE /api/history/:id/tags
- *
- * Body:
- * - tags: Array of tag strings to remove
- */
-router.delete('/:id/tags', optionalAuth, attachWorkspace, async (req, res) => {
-    try {
-        const mongoose = require('mongoose');
-
-        // Validate ObjectId format
-        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-            return res.status(400).json({ status: 'error', message: 'Invalid conversation ID format' });
-        }
-
-        const userId = getUserId(res);
-        const { tags } = req.body;
-
-        // Validate input
-        if (!tags || !Array.isArray(tags) || tags.length === 0) {
-            return res.status(400).json({
-                status: 'error',
-                message: 'Tags array is required and must not be empty'
-            });
-        }
-
-        // Remove tags
-        const result = await conversationSearchService.removeTagsFromConversation({
-            conversationId: req.params.id,
-            userId,
-            workspaceId: req.workspace?._id,
-            tags
-        });
-
-        res.json(result);
-
-    } catch (err) {
-        logger.error('Failed to remove tags', {
-            error: err.message,
-            conversationId: req.params.id,
-            userId: getUserId(res)
-        });
-
-        if (err.message.includes('not found') || err.message.includes('access denied')) {
-            return res.status(404).json({ status: 'error', message: err.message });
-        }
-
-        res.status(500).json({ status: 'error', message: err.message });
-    }
-});
-
-/**
  * TAGS: Get all user tags (for autocomplete)
  * GET /api/history/tags
- *
- * Query Parameters:
- * - prefix: Filter tags by prefix (for autocomplete)
- * - limit: Max tags to return (default: 50)
  */
 router.get('/tags', optionalAuth, attachWorkspace, async (req, res) => {
     try {
@@ -411,77 +176,21 @@ router.get('/tags', optionalAuth, attachWorkspace, async (req, res) => {
     }
 });
 
-// ========== Phase 3 Week 11: Conversation Quality Judging ==========
-
-/**
- * POST /api/conversations/:id/judge
- * Judge conversation quality on 10 dimensions
- * Query params:
- *   - judgeModel: Model to use for judging (optional, defaults to llama3.1:8b)
- */
-router.post('/:id/judge', optionalAuth, attachWorkspace, async (req, res) => {
-    try {
-        const mongoose = require('mongoose');
-
-        // Validate ObjectId format
-        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-            return res.status(400).json({
-                status: 'error',
-                message: 'Invalid conversation ID format'
-            });
-        }
-
-        const conversationId = req.params.id;
-        const judgeModel = req.query.judgeModel || req.body.judgeModel || null;
-
-        // Verify conversation belongs to user/workspace
-        const userId = getUserId(res);
-        const query = { _id: conversationId, userId };
-        if (req.workspace) {
-            query.workspaceId = req.workspace._id;
-        }
-
-        const conversation = await Conversation.findOne(query);
-        if (!conversation) {
-            return res.status(404).json({
-                status: 'error',
-                message: 'Conversation not found or access denied'
-            });
-        }
-
-        // Judge conversation
-        const result = await conversationJudge.judgeConversation(conversationId, judgeModel);
-
-        res.json({
-            status: 'success',
-            data: result
-        });
-
-    } catch (err) {
-        logger.error('Failed to judge conversation', {
-            conversationId: req.params.id,
-            error: err.message,
-            userId: getUserId(res)
-        });
-        res.status(500).json({
-            status: 'error',
-            message: err.message
-        });
-    }
-});
+// ============================================================================
+// Conversation Quality Judging
+// ============================================================================
 
 /**
  * GET /api/conversations/judged
  * Get conversations with quality assessments
- * Query params:
- *   - limit: Max results (default 50)
- *   - minScore: Min quality score (default 0)
  */
 router.get('/judged', optionalAuth, attachWorkspace, async (req, res) => {
     try {
+        const userId = getUserId(res);
         const { limit = '50', minScore = '0' } = req.query;
 
         const conversations = await conversationJudge.getJudgedConversations({
+            userId,
             limit: parseInt(limit, 10) || 50,
             minScore: parseInt(minScore, 10) || 0,
             workspaceId: req.workspace?._id
@@ -524,6 +233,228 @@ router.get('/judge-stats', optionalAuth, attachWorkspace, async (req, res) => {
 
     } catch (err) {
         logger.error('Failed to get judge stats', {
+            error: err.message,
+            userId: getUserId(res)
+        });
+        res.status(500).json({
+            status: 'error',
+            message: err.message
+        });
+    }
+});
+
+// Route aliases for backwards compatibility (workspace-aware)
+router.get('/conversations', optionalAuth, attachWorkspace, async (req, res) => {
+    try {
+        const userId = getUserId(res);
+        const query = { userId };
+
+        if (req.workspace) {
+            query.workspaceId = req.workspace._id;
+        }
+
+        const conversations = await Conversation.find(query)
+            .sort({ updatedAt: -1 })
+            .limit(50)
+            .select('title updatedAt model messages');
+
+        const previews = conversations.map(c => ({
+            id: c._id,
+            title: c.title,
+            date: c.updatedAt,
+            model: c.model,
+            messageCount: c.messages?.length || 0
+        }));
+
+        res.json({ status: 'success', data: previews });
+    } catch (err) {
+        res.status(500).json({ status: 'error', message: err.message });
+    }
+});
+
+router.get('/conversations/:id', optionalAuth, attachWorkspace, async (req, res) => {
+    try {
+        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+            return res.status(400).json({ status: 'error', message: 'Invalid conversation ID format' });
+        }
+
+        const userId = getUserId(res);
+        const query = { _id: new mongoose.Types.ObjectId(req.params.id), userId };
+
+        if (req.workspace) {
+            query.workspaceId = req.workspace._id;
+        }
+
+        const conversation = await Conversation.findOne(query);
+
+        if (!conversation) {
+            return res.status(404).json({ status: 'error', message: 'Conversation not found' });
+        }
+
+        res.json({ status: 'success', data: conversation });
+    } catch (err) {
+        res.status(500).json({ status: 'error', message: err.message });
+    }
+});
+
+// ============================================================================
+// Parameterized routes LAST — /:id matches any path segment
+// ============================================================================
+
+// HISTORY: Get single conversation (workspace-aware)
+router.get('/:id', optionalAuth, attachWorkspace, async (req, res) => {
+    try {
+        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+            return res.status(400).json({ status: 'error', message: 'Invalid conversation ID format' });
+        }
+
+        const userId = getUserId(res);
+        const query = { _id: new mongoose.Types.ObjectId(req.params.id), userId };
+
+        if (req.workspace) {
+            query.workspaceId = req.workspace._id;
+        }
+
+        const conversation = await Conversation.findOne(query);
+
+        if (!conversation) {
+            return res.status(404).json({ status: 'error', message: 'Conversation not found' });
+        }
+
+        res.json({ status: 'success', data: conversation });
+    } catch (err) {
+        res.status(500).json({ status: 'error', message: err.message });
+    }
+});
+
+/**
+ * TAGS: Add tags to a conversation
+ * POST /api/history/:id/tags
+ */
+router.post('/:id/tags', optionalAuth, attachWorkspace, async (req, res) => {
+    try {
+        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+            return res.status(400).json({ status: 'error', message: 'Invalid conversation ID format' });
+        }
+
+        const userId = getUserId(res);
+        const { tags } = req.body;
+
+        if (!tags || !Array.isArray(tags) || tags.length === 0) {
+            return res.status(400).json({
+                status: 'error',
+                message: 'Tags array is required and must not be empty'
+            });
+        }
+
+        const result = await conversationSearchService.addTagsToConversation({
+            conversationId: req.params.id,
+            userId,
+            workspaceId: req.workspace?._id,
+            tags
+        });
+
+        res.json(result);
+
+    } catch (err) {
+        logger.error('Failed to add tags', {
+            error: err.message,
+            conversationId: req.params.id,
+            userId: getUserId(res)
+        });
+
+        if (err.message.includes('not found') || err.message.includes('access denied')) {
+            return res.status(404).json({ status: 'error', message: err.message });
+        }
+
+        res.status(500).json({ status: 'error', message: err.message });
+    }
+});
+
+/**
+ * TAGS: Remove tags from a conversation
+ * DELETE /api/history/:id/tags
+ */
+router.delete('/:id/tags', optionalAuth, attachWorkspace, async (req, res) => {
+    try {
+        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+            return res.status(400).json({ status: 'error', message: 'Invalid conversation ID format' });
+        }
+
+        const userId = getUserId(res);
+        const { tags } = req.body;
+
+        if (!tags || !Array.isArray(tags) || tags.length === 0) {
+            return res.status(400).json({
+                status: 'error',
+                message: 'Tags array is required and must not be empty'
+            });
+        }
+
+        const result = await conversationSearchService.removeTagsFromConversation({
+            conversationId: req.params.id,
+            userId,
+            workspaceId: req.workspace?._id,
+            tags
+        });
+
+        res.json(result);
+
+    } catch (err) {
+        logger.error('Failed to remove tags', {
+            error: err.message,
+            conversationId: req.params.id,
+            userId: getUserId(res)
+        });
+
+        if (err.message.includes('not found') || err.message.includes('access denied')) {
+            return res.status(404).json({ status: 'error', message: err.message });
+        }
+
+        res.status(500).json({ status: 'error', message: err.message });
+    }
+});
+
+/**
+ * POST /api/conversations/:id/judge
+ * Judge conversation quality on 10 dimensions
+ */
+router.post('/:id/judge', optionalAuth, attachWorkspace, async (req, res) => {
+    try {
+        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+            return res.status(400).json({
+                status: 'error',
+                message: 'Invalid conversation ID format'
+            });
+        }
+
+        const conversationId = req.params.id;
+        const judgeModel = req.query.judgeModel || req.body.judgeModel || null;
+
+        const userId = getUserId(res);
+        const query = { _id: conversationId, userId };
+        if (req.workspace) {
+            query.workspaceId = req.workspace._id;
+        }
+
+        const conversation = await Conversation.findOne(query);
+        if (!conversation) {
+            return res.status(404).json({
+                status: 'error',
+                message: 'Conversation not found or access denied'
+            });
+        }
+
+        const result = await conversationJudge.judgeConversation(conversationId, judgeModel);
+
+        res.json({
+            status: 'success',
+            data: result
+        });
+
+    } catch (err) {
+        logger.error('Failed to judge conversation', {
+            conversationId: req.params.id,
             error: err.message,
             userId: getUserId(res)
         });

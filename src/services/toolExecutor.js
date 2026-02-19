@@ -154,6 +154,15 @@ async function executeTool(toolName, params = {}) {
         const response = await fetch(url, options);
         const data = await response.json();
 
+        if (!response.ok) {
+            return {
+                status: 'error',
+                tool: toolName,
+                error: `HTTP ${response.status}`,
+                data
+            };
+        }
+
         return {
             status: 'success',
             tool: toolName,

@@ -373,15 +373,10 @@
         </div>
     </div>
 
-    <script src="js/components/nav.js"></script>
+    <script src="/js/components/nav.js"></script>
     <script src="/js/workspace.js"></script>
+    <script>injectNav('feature-alignment');</script>
     <script>
-        // Initialize Navigation
-        document.addEventListener('DOMContentLoaded', () => {
-            if (typeof injectNav === 'function') {
-                injectNav('feature-alignment');
-            }
-        });
 
         function exportReport() {
             // Placeholder link to the report

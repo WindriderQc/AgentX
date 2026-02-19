@@ -861,7 +861,11 @@ class SelfHealingEngine {
   _checkTimeWindow(timeWindow) {
     const now = new Date();
     const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-    
+
+    // Handle overnight ranges (e.g., "22:00" to "06:00")
+    if (timeWindow.start > timeWindow.end) {
+      return currentTime >= timeWindow.start || currentTime <= timeWindow.end;
+    }
     return currentTime >= timeWindow.start && currentTime <= timeWindow.end;
   }
 

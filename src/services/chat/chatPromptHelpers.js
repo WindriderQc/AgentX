@@ -9,7 +9,7 @@ const logger = require('../../../config/logger');
 // Detect thinking models by name pattern
 const isThinkingModel = (model) => {
     if (!model) return false;
-    const thinkingModels = ['qwen', 'deepseek-r1', 'deepthink', 'o1', 'o3', 'reasoning'];
+    const thinkingModels = ['qwq', 'deepseek-r1', 'deepthink', 'o1-', 'o3-', 'reasoning'];
     return thinkingModels.some(pattern => model.toLowerCase().includes(pattern));
 };
 

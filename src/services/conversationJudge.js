@@ -320,10 +320,14 @@ async function judgeConversation(conversationId, judgeModel = null, judgeHost = 
  * Get conversations with quality assessments
  * Used for analytics and model comparison
  */
-async function getJudgedConversations({ limit = 50, minScore = 0, workspaceId = null } = {}) {
+async function getJudgedConversations({ userId, limit = 50, minScore = 0, workspaceId = null } = {}) {
     const query = {
         'quality_assessment.overall_score': { $gte: minScore, $ne: null }
     };
+
+    if (userId) {
+        query.userId = userId;
+    }
 
     if (workspaceId) {
         query.workspaceId = workspaceId;
@@ -332,7 +336,7 @@ async function getJudgedConversations({ limit = 50, minScore = 0, workspaceId = 
     const conversations = await Conversation.find(query)
         .sort({ 'quality_assessment.judged_at': -1 })
         .limit(limit)
-        .select('title model quality_assessment createdAt messages.length');
+        .select('title model quality_assessment createdAt');
 
     return conversations;
 }

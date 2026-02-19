@@ -317,7 +317,7 @@
 
                 if (res.status === 401) {
                     // Not logged in - redirect to login with return URL
-                    window.location.href = `/login.html?returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`;
+                    window.location.href = `/login.html?redirect=${encodeURIComponent(window.location.pathname + window.location.search)}`;
                     return;
                 }
 

@@ -146,26 +146,6 @@
       font-size: 12px;
     }
 
-    .nav-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 32px;
-    }
-
-    .back-link {
-      color: var(--text-secondary);
-      text-decoration: none;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      transition: color 0.2s;
-    }
-
-    .back-link:hover {
-      color: var(--accent);
-    }
-
     @media (max-width: 900px) {
       .charts-row {
         grid-template-columns: 1fr;
@@ -174,14 +154,13 @@
   </style>
 </head>
 <body class="dark-theme">
+  <div id="nav-container"></div>
+  <script src="/js/components/nav.js"></script>
+  <script src="/js/workspace.js"></script>
+  <script>injectNav('cost-tracking');</script>
+
   <div class="dashboard-container">
-    <div class="nav-header">
-      <a href="/" class="back-link">
-        <i class="fas fa-arrow-left"></i> Back to Chat
-      </a>
-      <h1>Cost Tracking & Analytics</h1>
-      <div style="width: 100px;"></div> <!-- Spacer -->
-    </div>
+    <h1 style="margin-bottom: 24px;"><i class="fas fa-dollar-sign"></i> Cost Tracking & Analytics</h1>
 
     <!-- Period Selector -->
     <div class="period-selector">

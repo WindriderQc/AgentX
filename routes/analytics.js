@@ -967,8 +967,6 @@ router.get('/feedback/summary', optionalAuth, optionalWorkspaceContext, async (r
       convDateFilter.promptName = promptName;
     }
 
-    const Conversation = require('../models/Conversation');
-
     const [overallAggB, byModelB, byPromptVersionB] = await Promise.all([
       Conversation.aggregate([
         { $match: convDateFilter },
@@ -1633,7 +1631,7 @@ function parsePeriod(period) {
  * Helper to get user ID safely
  */
 function getUserId(res) {
-  return res.locals.user ? res.locals.user.userId : 'default'; // 'default' for unauth users
+  return res.locals.user ? res.locals.user.userId : null;
 }
 
 /**
@@ -1643,7 +1641,7 @@ function getUserId(res) {
 router.get('/usage/summary', optionalAuth, optionalWorkspace, async (req, res) => {
   try {
     const userId = getUserId(res);
-    const workspaceId = res.locals.workspace ? res.locals.workspace._id : null;
+    const workspaceId = req.workspace ? req.workspace._id : null;
     const { startDate, endDate } = parsePeriod(req.query.period);
 
     const analytics = getUsageAnalytics();
@@ -1663,7 +1661,7 @@ router.get('/usage/summary', optionalAuth, optionalWorkspace, async (req, res) =
 router.get('/usage/by-model', optionalAuth, optionalWorkspace, async (req, res) => {
   try {
     const userId = getUserId(res);
-    const workspaceId = res.locals.workspace ? res.locals.workspace._id : null;
+    const workspaceId = req.workspace ? req.workspace._id : null;
     const { startDate, endDate } = parsePeriod(req.query.period);
 
     const analytics = getUsageAnalytics();
@@ -1683,7 +1681,7 @@ router.get('/usage/by-model', optionalAuth, optionalWorkspace, async (req, res) 
 router.get('/usage/daily', optionalAuth, optionalWorkspace, async (req, res) => {
   try {
     const userId = getUserId(res);
-    const workspaceId = res.locals.workspace ? res.locals.workspace._id : null;
+    const workspaceId = req.workspace ? req.workspace._id : null;
     const days = parseInt(req.query.days || '30', 10);
 
     const analytics = getUsageAnalytics();
@@ -1703,7 +1701,7 @@ router.get('/usage/daily', optionalAuth, optionalWorkspace, async (req, res) => 
 router.get('/usage/top-conversations', optionalAuth, optionalWorkspace, async (req, res) => {
   try {
     const userId = getUserId(res);
-    const workspaceId = res.locals.workspace ? res.locals.workspace._id : null;
+    const workspaceId = req.workspace ? req.workspace._id : null;
     const limit = parseInt(req.query.limit || '10', 10);
 
     const analytics = getUsageAnalytics();
@@ -1723,7 +1721,7 @@ router.get('/usage/top-conversations', optionalAuth, optionalWorkspace, async (r
 router.get('/compression', optionalAuth, optionalWorkspace, async (req, res) => {
   try {
     const userId = getUserId(res);
-    const workspaceId = res.locals.workspace ? res.locals.workspace._id : null;
+    const workspaceId = req.workspace ? req.workspace._id : null;
     const { startDate, endDate } = parsePeriod(req.query.period);
 
     // Build filter
@@ -1760,7 +1758,7 @@ router.get('/compression', optionalAuth, optionalWorkspace, async (req, res) => 
       status: 'success',
       data: {
         totalCompressedChunks: result.totalCompressedChunks,
-        avgCompressionRatio: parseFloat(result.avgCompressionRatio.toFixed(1)),
+        avgCompressionRatio: parseFloat((result.avgCompressionRatio || 0).toFixed(1)),
         totalTokenSavings: savedTokens
       }
     });

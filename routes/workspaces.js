@@ -838,11 +838,11 @@ router.post('/:slug/transfer', requireAuth, async (req, res) => {
       });
     }
 
-    // Transfer ownership
+    // Transfer ownership (use profile _id, not the raw userId string)
     await WorkspaceMember.transferOwnership(
       workspace._id,
       userProfileId,
-      newOwnerId
+      newOwnerProfile._id
     );
 
     // Audit log

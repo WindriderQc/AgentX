@@ -734,7 +734,7 @@ async function refreshEfficiencyTable() {
 
     if (!data || breakdown.length === 0) {
       elements.efficiencyEmpty.style.display = 'block';
-      elements.efficiencyTableBody.innerHTML = '<tr><td colspan="7" style="padding: 16px; text-align: center; color: var(--muted);">No data</td></tr>';
+      elements.efficiencyTableBody.innerHTML = '<tr><td colspan="8" style="padding: 16px; text-align: center; color: var(--muted);">No data</td></tr>';
       return;
     }
 
@@ -789,7 +789,7 @@ async function refreshEfficiencyTable() {
     }).join('');
   } catch (err) {
     console.error('Efficiency table refresh error:', err);
-    elements.efficiencyTableBody.innerHTML = '<tr><td colspan="7" style="padding: 16px; text-align: center; color: #f87171;">Error loading data</td></tr>';
+    elements.efficiencyTableBody.innerHTML = '<tr><td colspan="8" style="padding: 16px; text-align: center; color: #f87171;">Error loading data</td></tr>';
   }
 }
 

@@ -29,7 +29,8 @@ async function handleImageGeneration({ message, effectiveModel, effectiveTarget,
         const url = `${imageTarget}/api/chat`;
         const payload = {
             model: effectiveModel,
-            messages: [{ role: 'user', content: message }]
+            messages: [{ role: 'user', content: message }],
+            stream: false
         };
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 120000);

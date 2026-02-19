@@ -170,36 +170,11 @@
     </style>
 </head>
 <body>
-    <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-dark">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="/">
-                <i class="fas fa-robot"></i> AgentX
-            </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
-                    <li class="nav-item">
-                        <a class="nav-link" href="/dashboard.html">
-                            <i class="fas fa-chart-line"></i> Dashboard
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/alerts.html">
-                            <i class="fas fa-bell"></i> Alerts
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link active" href="/self-healing.html">
-                            <i class="fas fa-medkit"></i> Self-Healing
-                        </a>
-                    </li>
-                </ul>
-            </div>
-        </div>
-    </nav>
+    <!-- Navigation (shared nav component) -->
+    <div id="nav-container"></div>
+    <script src="/js/components/nav.js"></script>
+    <script src="/js/workspace.js"></script>
+    <script>injectNav('self-healing');</script>
 
     <!-- Main Content -->
     <div class="container-fluid mt-4">

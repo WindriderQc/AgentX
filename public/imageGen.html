@@ -300,6 +300,11 @@
   </style>
 </head>
 <body>
+  <div id="nav-container"></div>
+  <script src="/js/components/nav.js"></script>
+  <script src="/js/workspace.js"></script>
+  <script>injectNav('');</script>
+
   <div class="gallery-container">
     <div class="gallery-header">
       <h1><i class="fas fa-image"></i> Visual LLM Gallery</h1>
@@ -371,9 +376,7 @@
     async function loadImages() {
       try {
         const response = await fetch('/api/gallery/images', {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          }
+          credentials: 'include'
         });
 
         if (!response.ok) {
@@ -406,9 +409,9 @@
       try {
         const response = await fetch('/api/chat', {
           method: 'POST',
+          credentials: 'include',
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
+            'Content-Type': 'application/json'
           },
           body: JSON.stringify({
             message: prompt,

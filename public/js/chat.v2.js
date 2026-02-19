@@ -22,64 +22,9 @@ function sanitizeHTML(dirty) {
 }
 
 // Authentication check
-async function checkAuth() {
-  try {
-    const response = await fetch('/api/auth/me', {
-      credentials: 'include'
-    });
-    
-    if (response.ok) {
-      const data = await response.json();
-      if (data.status === 'success') {
-        displayUserInfo(data.user);
-        return true;
-      }
-    }
-    
-    // Not authenticated - show login button
-    showLoginButton();
-    return false;
-  } catch (error) {
-    console.log('Auth check failed:', error);
-    showLoginButton();
-    return false;
-  }
-}
-
-function showLoginButton() {
-  const loginBtn = document.getElementById('loginBtn');
-  if (loginBtn) {
-    loginBtn.style.display = 'block';
-  }
-}
-
-function displayUserInfo(user) {
-  const userMenu = document.getElementById('userMenu');
-  const userName = document.getElementById('userName');
-  
-  if (userMenu && userName) {
-    userName.textContent = user.name || user.email;
-    userMenu.style.display = 'flex';
-  }
-}
-
-async function logout() {
-  try {
-    await fetch('/api/auth/logout', {
-      method: 'POST',
-      credentials: 'include'
-    });
-    
-    localStorage.removeItem('user');
-    window.location.href = '/login.html';
-  } catch (error) {
-    console.error('Logout failed:', error);
-  }
-}
+// Auth is now handled by nav.js (checkNavAuth + global window.AgentXAuth)
 
 document.addEventListener('DOMContentLoaded', () => {
-  // Check authentication first
-  checkAuth();
 
   const elements = {
     chatWindow: document.getElementById('chatWindow'),
@@ -145,11 +90,6 @@ document.addEventListener('DOMContentLoaded', () => {
     saveProfileBtn: document.getElementById('saveProfileBtn'),
     userAbout: document.getElementById('userAbout'),
     userInstructions: document.getElementById('userInstructions'),
-    // Auth elements
-    userMenu: document.getElementById('userMenu'),
-    userName: document.getElementById('userName'),
-    logoutBtn: document.getElementById('logoutBtn'),
-    loginBtn: document.getElementById('loginBtn'),
     // Prompt selection elements
     promptSelect: document.getElementById('promptSelect'),
     promptInfoBtn: document.getElementById('promptInfoBtn'),
@@ -442,7 +382,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const meta = document.createElement('div');
     meta.className = 'meta';
-    meta.innerHTML = `<span>${role === 'user' ? 'You' : 'AgentX'}</span>`;
+    meta.innerHTML = `<span>${role === 'user' ? 'You' : role === 'system' ? 'System' : 'AgentX'}</span>`;
 
     const time = document.createElement('span');
     time.className = 'time';
@@ -860,11 +800,11 @@ document.addEventListener('DOMContentLoaded', () => {
           ${dimensionHTML}
         </div>
         <div class="quality-explanation">
-          <p><strong>Analysis:</strong> ${assessment.explanation}</p>
+          <p><strong>Analysis:</strong> ${sanitizeHTML(assessment.explanation || '')}</p>
           <p class="quality-meta">
-            Judged by ${assessment.judge_model} •
-            ${assessment.conversation_length} turns •
-            Avg latency: ${assessment.avg_latency_ms}ms
+            Judged by ${sanitizeHTML(assessment.judge_model || '')} •
+            ${Number(assessment.conversation_length) || 0} turns •
+            Avg latency: ${Number(assessment.avg_latency_ms) || 0}ms
           </p>
         </div>
       </div>
@@ -1228,9 +1168,6 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // OLD BROKEN IMPLEMENTATION (Disabled)
-  async function sendMessageStreamFetch_DISABLED(msgInput, modelInput) {
-    // ... code removed ...
-  }
   // Streaming message handler (SSE via EventSource)
   async function sendMessageStreamEventSource(msgInput, modelInput) {
     const message = msgInput || elements.messageInput.value.trim();
@@ -1318,29 +1255,32 @@ document.addEventListener('DOMContentLoaded', () => {
       state.eventSource = eventSource;
 
       eventSource.addEventListener('token', (event) => {
-        const data = JSON.parse(event.data);
+        let data;
+        try { data = JSON.parse(event.data); } catch { return; }
         fullContent += data.content;
-        
+
         try {
             contentDiv.innerHTML = sanitizeHTML(marked.parse(fullContent));
         } catch (e) {
             console.error('EventSource render failed:', e);
             contentDiv.textContent = fullContent;
         }
-        
+
         elements.chatWindow.scrollTop = elements.chatWindow.scrollHeight;
       });
 
       eventSource.addEventListener('thinking', (event) => {
-        const data = JSON.parse(event.data);
+        let data;
+        try { data = JSON.parse(event.data); } catch { return; }
         thinkingContent += data.content;
-        thinkingDiv.innerHTML = `<strong>Thinking:</strong><br>${marked.parse(thinkingContent)}`;
+        thinkingDiv.innerHTML = `<strong>Thinking:</strong><br>${sanitizeHTML(marked.parse(thinkingContent))}`;
         thinkingDiv.style.display = 'block';
         elements.chatWindow.scrollTop = elements.chatWindow.scrollHeight;
       });
 
       eventSource.addEventListener('done', (event) => {
-        const finalData = JSON.parse(event.data);
+        let finalData;
+        try { finalData = JSON.parse(event.data); } catch { finalData = {}; }
         state.conversationId = finalData.conversationId || state.conversationId;
 
         const assistantMessage = {
@@ -1362,6 +1302,10 @@ document.addEventListener('DOMContentLoaded', () => {
           state.eventSource = null;
         }
 
+        state.sending = false;
+        elements.sendBtn.textContent = 'Send';
+        elements.sendBtn.onclick = () => sendMessage();
+
         speakText(fullContent);
         setFeedback('Response received.', 'success');
         loadHistoryList();
@@ -1380,7 +1324,10 @@ document.addEventListener('DOMContentLoaded', () => {
           state.eventSource.close();
           state.eventSource = null;
         }
-        const data = event?.data ? JSON.parse(event.data) : { message: 'Streaming failed.' };
+        let data = { message: 'Streaming failed.' };
+        if (event?.data) {
+          try { data = JSON.parse(event.data); } catch { /* malformed SSE error data */ }
+        }
         if (elements.chatWindow.contains(assistantMessageDiv)) {
           elements.chatWindow.removeChild(assistantMessageDiv);
         }
@@ -1404,11 +1351,9 @@ document.addEventListener('DOMContentLoaded', () => {
         { persist: false }
       );
       setFeedback(err.message, 'error');
-    } finally {
-      state.sending = false;
-      elements.sendBtn.textContent = 'Send';
-      elements.sendBtn.onclick = () => sendMessage();
     }
+    // Note: state cleanup is handled in the done/error EventSource handlers,
+    // NOT in a finally block, because EventSource handlers fire asynchronously.
   }
 
   async function sendMessage() {
@@ -1548,6 +1493,7 @@ document.addEventListener('DOMContentLoaded', () => {
           const res = await fetch(url);
           const { data } = await res.json();
           elements.historyList.innerHTML = '';
+          if (!Array.isArray(data)) return [];
           data.forEach(item => {
               const div = document.createElement('div');
               div.className = 'history-item';
@@ -1582,6 +1528,71 @@ document.addEventListener('DOMContentLoaded', () => {
           console.error('Failed to load history', err);
           return [];
       }
+  }
+
+  // --- Judged Conversations View ---
+  async function loadJudgedConversations(minScore = 0) {
+    try {
+      const params = new URLSearchParams({ limit: '50', minScore: String(minScore) });
+      let url = `/api/conversations/judged?${params}`;
+      if (window.WorkspaceManager) url = WorkspaceManager.addWorkspaceParam(url);
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const { data } = await res.json();
+      elements.historyList.innerHTML = '';
+      if (!data?.conversations?.length) {
+        elements.historyList.innerHTML = '<div style="padding:1rem;color:var(--muted);font-size:0.8rem;text-align:center;">No judged conversations found.</div>';
+        return;
+      }
+      data.conversations.forEach(conv => {
+        const div = document.createElement('div');
+        div.className = 'history-item';
+        const score = conv.quality_assessment?.overall_score ?? 0;
+        const color = score >= 80 ? '#22c55e' : score >= 60 ? '#eab308' : score >= 40 ? '#f59e0b' : '#ef4444';
+        const judgedAt = conv.quality_assessment?.judged_at
+          ? new Date(conv.quality_assessment.judged_at).toLocaleDateString()
+          : '';
+        div.innerHTML = `
+          <div class="history-item-header">
+            <div class="title">${sanitizeHTML(conv.title || 'Untitled')}<span class="quality-badge" style="background:${color};color:#000;padding:1px 5px;border-radius:3px;font-size:0.65rem;font-weight:700;margin-left:6px;" title="Quality: ${score}/100">${score}</span></div>
+          </div>
+          <div class="date">${conv.model || ''} ${judgedAt ? '· Judged ' + judgedAt : ''}</div>
+        `;
+        div.addEventListener('click', () => loadConversation(conv._id));
+        elements.historyList.appendChild(div);
+      });
+    } catch (err) {
+      console.error('Failed to load judged conversations', err);
+      elements.historyList.innerHTML = '<div style="padding:1rem;color:var(--muted);font-size:0.8rem;">Failed to load judged conversations.</div>';
+    }
+  }
+
+  // Wire up history view tabs
+  const viewAllBtn = document.getElementById('viewAllBtn');
+  const viewJudgedBtn = document.getElementById('viewJudgedBtn');
+  const minScoreControl = document.getElementById('minScoreControl');
+  const minScoreInput = document.getElementById('minScoreInput');
+
+  if (viewAllBtn && viewJudgedBtn) {
+    viewAllBtn.addEventListener('click', () => {
+      viewAllBtn.classList.add('active');
+      viewJudgedBtn.classList.remove('active');
+      if (minScoreControl) minScoreControl.style.display = 'none';
+      loadHistoryList();
+    });
+    viewJudgedBtn.addEventListener('click', () => {
+      viewJudgedBtn.classList.add('active');
+      viewAllBtn.classList.remove('active');
+      if (minScoreControl) minScoreControl.style.display = '';
+      loadJudgedConversations(parseInt(minScoreInput?.value) || 0);
+    });
+    if (minScoreInput) {
+      minScoreInput.addEventListener('change', () => {
+        if (viewJudgedBtn.classList.contains('active')) {
+          loadJudgedConversations(parseInt(minScoreInput.value) || 0);
+        }
+      });
+    }
   }
 
   async function judgeConversationFromHistory(conversationId, btn) {
@@ -1648,6 +1659,7 @@ document.addEventListener('DOMContentLoaded', () => {
           // V8: Update stats
           updateConversationStats(data);
 
+          if (!Array.isArray(data.messages)) return false;
             data.messages.forEach(msg => {
                 // Manually construct message object to include stats and ragSources
                 const messageObj = {
@@ -1685,26 +1697,6 @@ document.addEventListener('DOMContentLoaded', () => {
       } catch (err) {
           console.error('Failed to load conversation', err);
           return false;
-      }
-  }
-
-  async function submitFeedback(messageId, rating) {
-      if(!state.conversationId) return;
-      try {
-          await fetch('/api/feedback', {
-            method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                  conversationId: state.conversationId,
-                  messageId,
-                  rating
-              }),
-              credentials: 'include'
-          });
-          // Refresh to show active state
-          loadConversation(state.conversationId);
-      } catch (err) {
-          console.error('Feedback failed', err);
       }
   }
 
@@ -2185,7 +2177,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function attachEvents() {
-    elements.micBtn.addEventListener('click', toggleVoiceInput);
+    if (elements.micBtn) elements.micBtn.addEventListener('click', toggleVoiceInput);
     elements.ttsToggle.addEventListener('change', () => {
       const ttsProviderField = document.getElementById('ttsProviderField');
       if (ttsProviderField) ttsProviderField.style.display = elements.ttsToggle.checked ? '' : 'none';
@@ -2211,15 +2203,7 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
-    // Auth events
-    if (elements.logoutBtn) {
-      elements.logoutBtn.addEventListener('click', logout);
-    }
-    if (elements.loginBtn) {
-      elements.loginBtn.addEventListener('click', () => {
-        window.location.href = '/login.html';
-      });
-    }
+    // Auth is handled by nav.js (centralized login/logout in nav bar)
 
     // Prompt selection events
     if (elements.promptInfoBtn) {
@@ -2471,7 +2455,7 @@ function updateConversationStats(conversation) {
       const contextProgressFill = document.getElementById('contextProgressFill');
 
       const currentTokens = conversation.usage.totalTokens || 0;
-      const maxTokens = state.config?.options?.num_ctx || 4096;
+      const maxTokens = Number(elements.numCtx?.value) || state.config?.options?.num_ctx || 4096;
       const percentage = Math.min(100, Math.round((currentTokens / maxTokens) * 100));
 
       if (tokenCount) tokenCount.textContent = currentTokens.toLocaleString();
@@ -2638,7 +2622,7 @@ async function refreshStats(conversationId) {
           if (agentListView) agentListView.setSelectedAgent(null);
 
           hideLauncher();
-          appendMessage({ role: 'system', content: 'Agent selection cleared. You are now in manual mode.' });
+          appendMessage({ role: 'system', content: 'Agent selection cleared. You are now in manual mode.' }, { persist: false, count: false });
           
           // Show default summary
           if (agentElements.summaryName) agentElements.summaryName.textContent = 'No Agent';
@@ -2681,7 +2665,7 @@ async function refreshStats(conversationId) {
       appendMessage({
           role: 'system',
           content: `Activated agent **${agent.displayName}**. ${agent.description ? agent.description.slice(0, 100) : ''}...`
-      });
+      }, { persist: false, count: false });
 
       const pendingMessage = elements.messageInput?.value.trim();
       if (pendingMessage) {
@@ -2699,14 +2683,16 @@ async function refreshStats(conversationId) {
       if (agentElements.activeRole) agentElements.activeRole.textContent = agent.category ? agent.category.charAt(0).toUpperCase() + agent.category.slice(1) : 'Agent';
       
       // Avatar
-      const avatarHtml = agent.avatar.startsWith('http') 
+      const avatarHtml = agent.avatar && agent.avatar.startsWith('http')
         ? `<img src="${agent.avatar}" alt="${agent.displayName}">`
-        : `<i class="fas ${agent.avatar}"></i>`;
+        : `<i class="fas ${agent.avatar || 'fa-robot'}"></i>`;
       if (agentElements.activeAvatar) agentElements.activeAvatar.innerHTML = avatarHtml;
-      
+
       // Stats
-      if (agentElements.activeModel) agentElements.activeModel.querySelector('span').textContent = agent.defaultModel;
-      if (agentElements.activeTools) agentElements.activeTools.querySelector('span').textContent = `${agent.n8nTools?.length || 0} Tools`;
+      const activeModelSpan = agentElements.activeModel?.querySelector('span');
+      if (activeModelSpan) activeModelSpan.textContent = agent.defaultModel;
+      const activeToolsSpan = agentElements.activeTools?.querySelector('span');
+      if (activeToolsSpan) activeToolsSpan.textContent = `${agent.n8nTools?.length || 0} Tools`;
       
       // Summary Panel (Collapsed)
       if (agentElements.summaryName) agentElements.summaryName.textContent = agent.displayName;

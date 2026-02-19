@@ -8,7 +8,7 @@ const router = express.Router();
 const logger = require('../../config/logger');
 const judgeValidation = require('../../src/services/judgeValidation');
 const JudgeGroundTruth = require('../../models/JudgeGroundTruth');
-const { validateObjectId } = require('../../src/helpers/objectIdValidator');
+const { isValidObjectId } = require('../../src/helpers/objectIdValidator');
 
 // ============ Judge Validation Endpoints ============
 
@@ -300,7 +300,7 @@ router.patch('/judge/ground-truth/:id', async (req, res) => {
     try {
         const { id } = req.params;
 
-        if (!validateObjectId(id)) {
+        if (!isValidObjectId(id)) {
             return res.status(400).json({
                 status: 'error',
                 error: 'Invalid ground truth ID'
@@ -347,7 +347,7 @@ router.delete('/judge/ground-truth/:id', async (req, res) => {
     try {
         const { id } = req.params;
 
-        if (!validateObjectId(id)) {
+        if (!isValidObjectId(id)) {
             return res.status(400).json({
                 status: 'error',
                 error: 'Invalid ground truth ID'

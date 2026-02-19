@@ -1,12 +1,62 @@
 /**
  * Navigation Component
  * Injects the standard AgentX navigation bar with all pages.
+ * Also handles auth state: checks /api/auth/me and shows login/logout in nav.
+ *
  * Usage: injectNav('activePageId') where activePageId is one of:
  * 'chat', 'operations', 'self-healing', 'alerts', 'backup', 'models', 'benchmark', 'courthouse',
  * 'performance', 'analytics', 'features-inventory', 'features-telemetry',
  * 'features-adoption', 'features-admin', 'feature-alignment', 'workspaces', 'audit-logs', 'rag', 'personas', 'profile',
  * 'results-explorer', 'model-explorer', 'leaderboard', 'hardware-matrix', 'config-optimizer', 'docjanitor'
  */
+
+// Global auth state — accessible by all pages via window.AgentXAuth
+window.AgentXAuth = { user: null, isAuthenticated: false, checked: false };
+
+async function checkNavAuth() {
+    try {
+        const response = await fetch('/api/auth/me', { credentials: 'include' });
+        if (response.ok) {
+            const data = await response.json();
+            if (data.status === 'success' && data.user) {
+                window.AgentXAuth = { user: data.user, isAuthenticated: true, checked: true };
+                updateNavAuthUI();
+                return;
+            }
+        }
+    } catch (e) {
+        // Auth check failed — treat as not authenticated
+    }
+    window.AgentXAuth = { user: null, isAuthenticated: false, checked: true };
+    updateNavAuthUI();
+}
+
+function updateNavAuthUI() {
+    const authArea = document.getElementById('nav-auth-area');
+    if (!authArea) return;
+
+    if (window.AgentXAuth.isAuthenticated) {
+        const user = window.AgentXAuth.user;
+        const name = user.name || user.email || 'User';
+        authArea.innerHTML = `
+            <span class="nav-user-name">${name.replace(/</g, '&lt;')}</span>
+            <button id="navLogoutBtn" class="nav-link" title="Logout">
+                <i class="fas fa-sign-out-alt"></i>
+            </button>`;
+        document.getElementById('navLogoutBtn').addEventListener('click', async () => {
+            try {
+                await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+            } catch (e) { /* ignore */ }
+            localStorage.removeItem('user');
+            window.location.href = '/login.html';
+        });
+    } else {
+        authArea.innerHTML = `
+            <a href="/login.html" class="nav-link" title="Login">
+                <i class="fas fa-sign-in-alt"></i> Login
+            </a>`;
+    }
+}
 
 function injectNav(activePageId = '') {
     const navStructure = [
@@ -199,6 +249,25 @@ function injectNav(activePageId = '') {
             transition: all 0.2s;
         }
         .workspace-btn:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2); }
+
+        /* Auth area in nav */
+        .nav-auth-area {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-left: 8px;
+            padding-left: 12px;
+            border-left: 1px solid rgba(255,255,255,0.08);
+        }
+        .nav-user-name {
+            color: #e2e8f0;
+            font-size: 13px;
+            font-weight: 500;
+            max-width: 120px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
     `;
     document.head.appendChild(style);
 
@@ -253,6 +322,8 @@ function injectNav(activePageId = '') {
         }
     });
 
+    // Auth area (login/logout)
+    navHTML += '    <div id="nav-auth-area" class="nav-auth-area"></div>\n';
     navHTML += '  </div>\n';
     navHTML += '  </nav>';
 
@@ -302,6 +373,9 @@ function injectNav(activePageId = '') {
     } else {
         console.error('nav.js: #nav-container element not found. Add <div id="nav-container"></div> to your HTML.');
     }
+
+    // Check auth state and update nav
+    checkNavAuth();
 }
 
 // Make function available globally (not using ES6 modules since pages don't use module imports)
