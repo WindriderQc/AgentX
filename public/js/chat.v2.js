@@ -191,6 +191,7 @@ document.addEventListener('DOMContentLoaded', () => {
     model: '',
     stream: true,  // Enable streaming by default for better UX and thinking model support
     tts: false,    // Disable TTS by default
+    ttsProvider: 'browser', // 'browser', 'openai', 'local'
     useRag: true,  // Enable RAG by default
     system: 'You are AgentX, a concise and capable local assistant. Keep answers brief and actionable.',
     options: {
@@ -274,6 +275,7 @@ document.addEventListener('DOMContentLoaded', () => {
       model: elements.modelSelect.value,
       stream: elements.streamToggle.checked,
       tts: elements.ttsToggle.checked,
+      ttsProvider: document.getElementById('ttsProviderSelect')?.value || 'browser',
       useRag: elements.ragToggle.checked,
       showStats: elements.statsToggle.checked, // V4: Save stats preference
       // RAG Advanced Options
@@ -372,6 +374,10 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.systemPrompt.value = cfg.system;
     elements.streamToggle.checked = cfg.stream;
     elements.ttsToggle.checked = cfg.tts || false;
+    const ttsProviderSelect = document.getElementById('ttsProviderSelect');
+    const ttsProviderField = document.getElementById('ttsProviderField');
+    if (ttsProviderSelect) ttsProviderSelect.value = cfg.ttsProvider || 'browser';
+    if (ttsProviderField) ttsProviderField.style.display = cfg.tts ? '' : 'none';
     elements.ragToggle.checked = cfg.useRag !== undefined ? cfg.useRag : true;
     elements.statsToggle.checked = state.showStats; // V4
     // RAG Advanced Options
@@ -550,8 +556,8 @@ document.addEventListener('DOMContentLoaded', () => {
       bubble.appendChild(citationsDiv);
     }
 
-    // V4: Stats Footer
-    if (state.showStats && message.stats && role === 'assistant') {
+    // V4: Stats Footer + V5: Cost Display
+    if (state.showStats && role === 'assistant' && (message.stats || message.cost)) {
       const statsDiv = document.createElement('div');
       statsDiv.className = 'message-stats';
       statsDiv.style.fontSize = '0.75rem';
@@ -560,17 +566,24 @@ document.addEventListener('DOMContentLoaded', () => {
       statsDiv.style.paddingTop = '0.5rem';
       statsDiv.style.borderTop = '1px solid rgba(255,255,255,0.05)';
 
-      const { usage, performance } = message.stats;
       const parts = [];
 
-      if (usage) {
-        parts.push(`${usage.totalTokens} tokens`);
+      if (message.stats) {
+        const { usage, performance } = message.stats;
+        if (usage) {
+          parts.push(`${usage.totalTokens} tokens`);
+        }
+        if (performance) {
+          const duration = (performance.totalDuration / 1e9).toFixed(2);
+          const tps = performance.tokensPerSecond ? `(${performance.tokensPerSecond} t/s)` : '';
+          parts.push(`${duration}s ${tps}`);
+        }
       }
-      if (performance) {
-        // Convert ns to s
-        const duration = (performance.totalDuration / 1e9).toFixed(2);
-        const tps = performance.tokensPerSecond ? `(${performance.tokensPerSecond} t/s)` : '';
-        parts.push(`${duration}s ${tps}`);
+
+      if (message.cost && message.cost.totalCost > 0) {
+        const cost = message.cost.totalCost;
+        const costStr = cost < 0.01 ? `$${cost.toFixed(6)}` : `$${cost.toFixed(4)}`;
+        parts.push(costStr);
       }
 
       if (parts.length > 0) {
@@ -1538,11 +1551,30 @@ document.addEventListener('DOMContentLoaded', () => {
           data.forEach(item => {
               const div = document.createElement('div');
               div.className = 'history-item';
+
+              // Build score badge if judged
+              let scoreBadge = '';
+              if (item.qualityScore != null) {
+                const color = item.qualityScore >= 80 ? '#22c55e' : item.qualityScore >= 60 ? '#eab308' : item.qualityScore >= 40 ? '#f59e0b' : '#ef4444';
+                scoreBadge = `<span class="quality-badge" style="background:${color};color:#000;padding:1px 5px;border-radius:3px;font-size:0.65rem;font-weight:700;margin-left:6px;" title="Quality: ${item.qualityScore}/100">${item.qualityScore}</span>`;
+              }
+
               div.innerHTML = `
-                <div class="title">${sanitizeHTML(item.title)}</div>
+                <div class="history-item-header">
+                  <div class="title">${sanitizeHTML(item.title)}${scoreBadge}</div>
+                  <button class="judge-btn ghost" title="Judge quality" data-id="${item.id}" style="padding:2px 6px;font-size:0.7rem;flex-shrink:0;">
+                    <i class="fas fa-star"></i>
+                  </button>
+                </div>
                 <div class="date">${new Date(item.date).toLocaleString()}</div>
               `;
-              div.onclick = () => loadConversation(item.id);
+              div.querySelector('.title').parentElement.addEventListener('click', (e) => {
+                if (!e.target.closest('.judge-btn')) loadConversation(item.id);
+              });
+              div.querySelector('.judge-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                judgeConversationFromHistory(item.id, e.currentTarget);
+              });
               elements.historyList.appendChild(div);
           });
           return data;
@@ -1550,6 +1582,36 @@ document.addEventListener('DOMContentLoaded', () => {
           console.error('Failed to load history', err);
           return [];
       }
+  }
+
+  async function judgeConversationFromHistory(conversationId, btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    try {
+      const fetchOptions = { method: 'POST', credentials: 'include' };
+      const res = await fetch(
+        `/api/conversations/${conversationId}/judge`,
+        window.WorkspaceManager ? WorkspaceManager.addWorkspaceHeader(fetchOptions) : fetchOptions
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (data.status === 'success' && data.data?.quality_assessment) {
+        const score = data.data.quality_assessment.overall_score;
+        const color = score >= 80 ? '#22c55e' : score >= 60 ? '#eab308' : score >= 40 ? '#f59e0b' : '#ef4444';
+        // Update badge in parent
+        const titleEl = btn.parentElement.querySelector('.title');
+        if (titleEl && !titleEl.querySelector('.quality-badge')) {
+          titleEl.insertAdjacentHTML('beforeend', `<span class="quality-badge" style="background:${color};color:#000;padding:1px 5px;border-radius:3px;font-size:0.65rem;font-weight:700;margin-left:6px;" title="Quality: ${score}/100">${score}</span>`);
+        }
+        if (typeof Toast !== 'undefined') Toast.success(`Judged: ${score}/100`);
+      }
+    } catch (err) {
+      console.error('Judge from history failed:', err);
+      if (typeof Toast !== 'undefined') Toast.error(`Judge failed: ${err.message}`);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-star"></i>';
+    }
   }
 
   async function loadConversation(id, preserveModelSelection = false) {
@@ -1595,6 +1657,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     id: msg._id,
                     feedback: msg.feedback,
                     stats: msg.stats, // V4: Pass stats to rendering
+                    cost: msg.cost,   // V5: Cost tracking
                     ragSources: msg.ragSources // V6: Pass RAG sources for citations
                 };
 
@@ -1611,6 +1674,11 @@ document.addEventListener('DOMContentLoaded', () => {
               if(modelExists) {
                   elements.modelSelect.value = data.model;
               }
+          }
+
+          // Show quality assessment if conversation was previously judged
+          if (data.quality_assessment?.overall_score != null) {
+            displayQualityAssessment(data.quality_assessment);
           }
 
           return true;
@@ -1873,9 +1941,105 @@ document.addEventListener('DOMContentLoaded', () => {
   // --- Voice Functions ---
 
   let recognition = null;
+  let mediaRecorder = null;
+  let audioChunks = [];
   let isRecording = false;
+  let recordingStartTime = null;
+  let recordingTimer = null;
 
-  function startVoiceInput() {
+  // Voice provider state: 'server' (Whisper) or 'browser' (Web Speech API)
+  state.voiceProvider = 'browser';
+
+  // Check voice service health on load
+  async function checkVoiceHealth() {
+    try {
+      const res = await fetch('/api/voice/health');
+      if (!res.ok) return;
+      const { data } = await res.json();
+      if (data?.stt?.local) {
+        state.voiceProvider = 'server';
+        console.log('Voice: using server-side Whisper STT');
+      } else {
+        state.voiceProvider = 'browser';
+        console.log('Voice: using browser Web Speech API (Whisper unavailable)');
+      }
+    } catch {
+      state.voiceProvider = 'browser';
+    }
+  }
+
+  function showVoiceStatus(text) {
+    const el = document.getElementById('voiceStatus');
+    if (el) { el.textContent = text; el.style.display = text ? 'inline' : 'none'; }
+  }
+
+  function updateRecordingTimer() {
+    if (!recordingStartTime) return;
+    const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
+    showVoiceStatus(`Recording... ${elapsed}s`);
+  }
+
+  // --- Server-side STT (MediaRecorder → /api/voice/transcribe) ---
+  async function startServerVoiceInput() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioChunks = [];
+      mediaRecorder = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg' });
+
+      mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data); };
+      mediaRecorder.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        clearInterval(recordingTimer);
+        showVoiceStatus('Transcribing...');
+        setStatus('Transcribing...', 'success');
+
+        const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType });
+        const formData = new FormData();
+        formData.append('audio', blob, 'recording.webm');
+
+        try {
+          const res = await fetch('/api/voice/transcribe?provider=local', { method: 'POST', body: formData });
+          if (!res.ok) throw new Error(`Transcription failed: ${res.status}`);
+          const { data } = await res.json();
+          if (data?.text) {
+            elements.messageInput.value = data.text;
+            setFeedback(`Transcribed (${data.provider}, ${data.duration}ms)`, 'success');
+          } else {
+            setFeedback('No speech detected. Try again.', 'error');
+          }
+        } catch (err) {
+          console.error('Server transcription error:', err);
+          setFeedback(`Transcription error: ${err.message}`, 'error');
+        }
+        cleanupVoiceInput();
+      };
+
+      mediaRecorder.start();
+      isRecording = true;
+      recordingStartTime = Date.now();
+      recordingTimer = setInterval(updateRecordingTimer, 1000);
+      elements.micBtn.classList.add('recording');
+      elements.micBtn.setAttribute('aria-pressed', 'true');
+      showVoiceStatus('Recording... 0s');
+      setStatus('Recording...', 'success');
+      window.speechSynthesis.cancel();
+    } catch (err) {
+      console.error('Microphone access error:', err);
+      setFeedback(`Mic error: ${err.message}. Falling back to browser.`, 'error');
+      startBrowserVoiceInput();
+    }
+  }
+
+  function stopServerVoiceInput() {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      mediaRecorder.stop();
+    } else {
+      cleanupVoiceInput();
+    }
+  }
+
+  // --- Browser-side STT (Web Speech API fallback) ---
+  function startBrowserVoiceInput() {
     if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
       setFeedback('Speech recognition not supported in this browser.', 'error');
       return;
@@ -1891,14 +2055,13 @@ document.addEventListener('DOMContentLoaded', () => {
       isRecording = true;
       elements.micBtn.classList.add('recording');
       elements.micBtn.setAttribute('aria-pressed', 'true');
+      showVoiceStatus('Listening...');
       setStatus('Listening...', 'success');
     };
 
     recognition.onresult = (event) => {
       const transcript = event.results[0][0].transcript;
       elements.messageInput.value = transcript;
-      // Optional: Automatically send? For now let user review.
-      // sendMessage();
     };
 
     recognition.onerror = (event) => {
@@ -1911,41 +2074,68 @@ document.addEventListener('DOMContentLoaded', () => {
       cleanupVoiceInput();
     };
 
-    // Cancel any ongoing speech when starting input
     window.speechSynthesis.cancel();
     recognition.start();
   }
 
-  function stopVoiceInput() {
-    // User requested stop
-    if (recognition) {
-      // recognition.stop() will trigger onend, which calls cleanupVoiceInput
-      recognition.stop();
-    } else {
-      cleanupVoiceInput();
-    }
+  function stopBrowserVoiceInput() {
+    if (recognition) recognition.stop();
+    else cleanupVoiceInput();
   }
 
   function cleanupVoiceInput() {
     recognition = null;
+    mediaRecorder = null;
+    audioChunks = [];
     isRecording = false;
+    recordingStartTime = null;
+    clearInterval(recordingTimer);
+    recordingTimer = null;
     elements.micBtn.classList.remove('recording');
     elements.micBtn.setAttribute('aria-pressed', 'false');
+    showVoiceStatus('');
     setStatus('Idle');
   }
 
   function toggleVoiceInput() {
     if (isRecording) {
-      stopVoiceInput();
+      if (state.voiceProvider === 'server') stopServerVoiceInput();
+      else stopBrowserVoiceInput();
     } else {
-      startVoiceInput();
+      if (state.voiceProvider === 'server') startServerVoiceInput();
+      else startBrowserVoiceInput();
     }
   }
 
-  function speakText(text) {
+  // --- TTS (Text-to-Speech) ---
+  async function speakText(text) {
     if (!state.settings.tts) return;
 
-    // Simple browser TTS
+    const provider = state.settings.ttsProvider || 'browser';
+
+    if (provider !== 'browser') {
+      // Server-side TTS
+      try {
+        const res = await fetch('/api/voice/synthesize', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, provider })
+        });
+        if (res.ok && res.headers.get('content-type')?.startsWith('audio/')) {
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          const audio = new Audio(url);
+          audio.onended = () => URL.revokeObjectURL(url);
+          audio.play();
+          return;
+        }
+        // Fall through to browser TTS if server returned JSON (browser provider)
+      } catch (err) {
+        console.warn('Server TTS failed, falling back to browser:', err.message);
+      }
+    }
+
+    // Browser TTS fallback
     const utterance = new SpeechSynthesisUtterance(text);
 
     const setVoice = () => {
@@ -1996,7 +2186,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function attachEvents() {
     elements.micBtn.addEventListener('click', toggleVoiceInput);
-    elements.ttsToggle.addEventListener('change', persistSettings);
+    elements.ttsToggle.addEventListener('change', () => {
+      const ttsProviderField = document.getElementById('ttsProviderField');
+      if (ttsProviderField) ttsProviderField.style.display = elements.ttsToggle.checked ? '' : 'none';
+      persistSettings();
+    });
+    const ttsProviderSelect = document.getElementById('ttsProviderSelect');
+    if (ttsProviderSelect) ttsProviderSelect.addEventListener('change', persistSettings);
     elements.sendBtn.addEventListener('click', sendMessage);
     elements.clearBtn.addEventListener('click', clearChat);
     elements.analyzeQualityBtn.addEventListener('click', analyzeConversationQuality);
@@ -2163,6 +2359,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Check RAG availability and show/hide advanced options panel
     checkRagAvailability();
+
+    // Check voice service availability (async, non-blocking)
+    checkVoiceHealth();
     
     // RE-EVALUATE AGENT SELECTION
     // Ensure that if an agent was selected during initAgentSystem (which runs largely in parallel or before fetchModels),

@@ -538,6 +538,7 @@
           <textarea id="messageInput" rows="3" placeholder="Type to your agent..."></textarea>
           <div class="composer-actions">
             <button class="icon-btn" id="micBtn" title="Voice Input" aria-label="Voice Input" aria-pressed="false">🎤</button>
+            <span id="voiceStatus" class="voice-status" style="display: none; font-size: 0.75rem; color: var(--accent); margin-left: 4px;"></span>
             <div class="flex-spacer"></div>
             <button class="ghost small" id="analyzeQualityBtn" title="Analyze conversation quality on 10 dimensions" style="display: none;">
               <i class="fas fa-star"></i> Analyze Quality
@@ -706,7 +707,17 @@
             <input type="checkbox" id="ttsToggle">
             <span class="slider"></span>
           </label>
-          <div class="hint">Read responses aloud (Browser TTS).</div>
+          <div class="hint">Read responses aloud.</div>
+        </div>
+
+        <div class="field" id="ttsProviderField" style="display: none;">
+          <label>TTS Provider</label>
+          <select id="ttsProviderSelect">
+            <option value="browser">Browser (Web Speech API)</option>
+            <option value="openai">OpenAI TTS</option>
+            <option value="local">Local (Coqui/Piper)</option>
+          </select>
+          <div class="hint">Server-side TTS requires running voice service.</div>
         </div>
 
         <div class="field inline-toggle">

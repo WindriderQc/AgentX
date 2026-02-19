@@ -1,3 +1,21 @@
+/**
+ * Tool Executor — Parsing Utility & DataAPI Tool Registry
+ *
+ * This module is ONE of three tool execution patterns in AgentX:
+ *   1. Slash commands  (toolService.js)       — user-triggered DataAPI lookups
+ *   2. N8N tool proxy  (agentService.js)       — agent tool calls during chat
+ *   3. SpecialX tasks  (specialxTaskHandlers.js) — background queue automation
+ *
+ * toolExecutor.js provides:
+ *   - AVAILABLE_TOOLS registry for DataAPI/AgentX HTTP tools
+ *   - executeTool()     — fire-and-forget HTTP call to a registered tool
+ *   - parseToolCalls()  — extract ```json { tool, params } ``` blocks from LLM output
+ *   - formatToolResult() — render tool results for chat display
+ *
+ * It is imported by chatService.js to detect and execute inline tool calls
+ * that the LLM emits in its response text.
+ */
+
 const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
 const logger = require('../../config/logger');
 

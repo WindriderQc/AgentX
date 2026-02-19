@@ -22,7 +22,7 @@ router.get('/', optionalAuth, attachWorkspace, async (req, res) => {
         const conversations = await Conversation.find(query)
             .sort({ updatedAt: -1 })
             .limit(50)
-            .select('title updatedAt model messages');
+            .select('title updatedAt model messages quality_assessment.overall_score quality_assessment.judged_at');
 
         // Transform for frontend preview
         const previews = conversations.map(c => {
@@ -39,7 +39,8 @@ router.get('/', optionalAuth, attachWorkspace, async (req, res) => {
                 title: c.title,
                 date: c.updatedAt,
                 model: c.model,
-                preview: previewText
+                preview: previewText,
+                qualityScore: c.quality_assessment?.overall_score ?? null
             };
         });
 

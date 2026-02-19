@@ -145,6 +145,25 @@ body:has(.app-layout) {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+
+.history-item-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.history-item .judge-btn {
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.history-item:hover .judge-btn {
+  opacity: 0.7;
+}
+.history-item .judge-btn:hover {
+  opacity: 1;
 }
 
 .main-content {
