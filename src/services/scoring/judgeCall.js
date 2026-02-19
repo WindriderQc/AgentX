@@ -97,7 +97,7 @@ async function callJudge(evalPrompt, config = {}, retryCount = 0) {
                 options: {
                     temperature: judgeConfig.temperature,
                     num_predict: judgeConfig.num_predict,
-                    num_ctx: 16384
+                    num_ctx: 8192
                 }
             }),
             signal: controller.signal
@@ -210,6 +210,7 @@ async function callJudge(evalPrompt, config = {}, retryCount = 0) {
         const isRetryable = err.message.includes('timeout') ||
                            err.message.includes('ECONNRESET') ||
                            err.message.includes('ETIMEDOUT') ||
+                           err.message.includes('500') ||
                            err.message.includes('503') ||
                            err.message.includes('502');
 
