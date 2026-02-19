@@ -205,14 +205,16 @@ function getConfigPresets() {
             {
                 id: 'quick-test',
                 name: 'Quick Test',
-                description: 'Fast validation test with simple prompts',
+                description: 'Fast validation with simple prompts + quality scoring',
                 config: {
                     levels: [1, 2],
-                    quality_scoring: false,
-                    judge_config: null
+                    judge_config: {
+                        concurrency: 2,
+                        judge_same_host: false
+                    }
                 },
                 recommended_for: 'Initial model validation, quick checks',
-                estimated_duration: '2-5 minutes'
+                estimated_duration: '5-10 minutes'
             },
             {
                 id: 'standard-benchmark',
@@ -220,7 +222,6 @@ function getConfigPresets() {
                 description: 'Balanced test across all levels with quality scoring',
                 config: {
                     levels: [1, 2, 3, 4, 5],
-                    quality_scoring: true,
                     judge_config: {
                         concurrency: 2,
                         judge_same_host: false
@@ -235,7 +236,6 @@ function getConfigPresets() {
                 description: 'Comprehensive quality scoring on complex prompts',
                 config: {
                     levels: [3, 4, 5],
-                    quality_scoring: true,
                     judge_config: {
                         concurrency: 1,
                         judge_same_host: false,
@@ -248,11 +248,13 @@ function getConfigPresets() {
             {
                 id: 'speed-test',
                 name: 'Speed Test',
-                description: 'Focus on latency and throughput measurement',
+                description: 'Latency and throughput focus with quality scoring',
                 config: {
                     levels: [1, 2],
-                    quality_scoring: false,
-                    judge_config: null
+                    judge_config: {
+                        concurrency: 2,
+                        judge_same_host: false
+                    }
                 },
                 recommended_for: 'Performance optimization, latency testing',
                 estimated_duration: '5-10 minutes'
@@ -263,7 +265,6 @@ function getConfigPresets() {
                 description: 'Test logical reasoning and problem-solving',
                 config: {
                     levels: [3, 4],
-                    quality_scoring: true,
                     judge_config: {
                         concurrency: 2,
                         judge_same_host: false

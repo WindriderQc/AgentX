@@ -29,9 +29,7 @@ export async function loadPresets() {
                         <i class="fas fa-layer-group"></i> Levels: ${preset.config.levels.join(', ')}
                     </div>
                     <div class="preset-badge">
-                        ${preset.config.quality_scoring
-                            ? '<i class="fas fa-check-circle"></i> Quality Scoring'
-                            : '<i class="fas fa-times-circle"></i> No Scoring'}
+                        <i class="fas fa-check-circle"></i> Quality Scoring
                     </div>
                 </div>
                 <div class="preset-recommended">
@@ -63,10 +61,6 @@ export async function applyPreset(presetId) {
             const checkbox = document.getElementById(`level${level}`);
             if (checkbox) checkbox.checked = preset.config.levels.includes(level);
         });
-
-        // Apply quality scoring
-        const qualityCheckbox = document.getElementById('qualityScoring');
-        if (qualityCheckbox) qualityCheckbox.checked = preset.config.quality_scoring;
 
         showToast(`Applied preset: ${preset.name}`, 'success');
     } catch (err) {

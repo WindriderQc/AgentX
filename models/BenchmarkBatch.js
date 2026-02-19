@@ -346,7 +346,7 @@ BenchmarkBatchSchema.statics.cleanupStale = async function(inactivityThresholdSe
                     batch_id: batch._id,
                     scoring_method: { $nin: [null, 'pending', 'skipped'] }
                 });
-                if (judgedCount >= actualResultCount || !batch.quality_scoring) {
+                if (judgedCount >= actualResultCount) {
                     newStatus = 'completed';
                 }
             }
@@ -358,7 +358,7 @@ BenchmarkBatchSchema.statics.cleanupStale = async function(inactivityThresholdSe
                         status: newStatus,
                         completed_at: new Date(),
                         // Fix judge_total to match actual executed tests
-                        judge_total: batch.quality_scoring ? actualResultCount : 0,
+                        judge_total: actualResultCount,
                         // Update completed counter if it's wrong
                         completed: actualResultCount
                     }

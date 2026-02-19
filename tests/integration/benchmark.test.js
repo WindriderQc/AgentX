@@ -49,6 +49,11 @@ jest.mock('../../src/services/qualityScorer', () => {
     };
 });
 
+// Mock judge model validation to bypass network calls in tests
+jest.mock('../../src/services/benchmark/judgeModelValidator', () => ({
+    validateJudgeModel: jest.fn(async () => ({ valid: true, latency_ms: 10 }))
+}));
+
 const { app } = require('../../src/app');
 
 const BenchmarkPrompt = require('../../models/BenchmarkPrompt');
@@ -485,7 +490,7 @@ describe('Benchmark System - Integration Tests', () => {
                     models: ['test-model'],
                     levels: [1],
                     run_name: 'Test Batch',
-                    quality_scoring: false
+                    judge_config: { judge_same_host: true }
                 });
 
             expect(response.status).toBe(200);
@@ -508,7 +513,7 @@ describe('Benchmark System - Integration Tests', () => {
                     host: 'http://localhost:11434',
                     models: ['model-a', 'model-b'],
                     levels: [1, 3],
-                    quality_scoring: false
+                    judge_config: { judge_same_host: true }
                 });
 
             expect(response.status).toBe(200);
@@ -552,7 +557,7 @@ describe('Benchmark System - Integration Tests', () => {
                     host: 'http://localhost:11434',
                     models: ['new-model'],
                     levels: [1],
-                    quality_scoring: false
+                    judge_config: { judge_same_host: true }
                 });
 
             getActiveSpy.mockRestore();
@@ -579,8 +584,7 @@ describe('Benchmark System - Integration Tests', () => {
                 levels: [1],
                 run_name: 'Test Batch',
                 total_tests: 5,
-                status: 'completed',
-                quality_scoring: false
+                status: 'completed'
             });
 
             const response = await request(app).get(`/api/benchmark/batch/${batch._id}`);
@@ -601,7 +605,6 @@ describe('Benchmark System - Integration Tests', () => {
                 run_name: 'Counter Drift Batch',
                 total_tests: 2,
                 status: 'completed',
-                quality_scoring: false,
                 completed: 0,
                 failed: 0
             });
@@ -713,7 +716,6 @@ describe('Benchmark System - Integration Tests', () => {
                 run_name: 'Paginated Batch',
                 total_tests: 3,
                 status: 'completed',
-                quality_scoring: false,
                 completed: 3,
                 failed: 0
             });

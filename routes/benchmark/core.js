@@ -116,10 +116,10 @@ router.post('/test', optionalWorkspaceContext, async (req, res) => {
 
 /**
  * POST /api/benchmark/batch
- * Start a batch benchmark test with optional quality scoring - workspace-aware
+ * Start a batch benchmark test with quality scoring - workspace-aware
  */
 router.post('/batch', optionalWorkspaceContext, async (req, res) => {
-    const { host, models, levels, run_name, quality_scoring, judge_config, execution_config, execution_mode, depth_config } = req.body;
+    const { host, models, levels, run_name, judge_config, execution_config, execution_mode, depth_config } = req.body;
 
     // Validation
     if (!host || !models || !Array.isArray(models) || !levels || !Array.isArray(levels)) {
@@ -137,20 +137,18 @@ router.post('/batch', optionalWorkspaceContext, async (req, res) => {
             return res.status(409).json(buildActiveBatchConflict(activeBatches[0]));
         }
 
-        // Validate judge model before starting batch (when quality scoring enabled)
-        if (quality_scoring !== false) {
-            const judgeHost = (judge_config && judge_config.host) || JUDGE_CONFIG.host;
-            const judgeModel = (judge_config && judge_config.model) || JUDGE_CONFIG.model;
-            if (judgeHost && judgeModel) {
-                const validation = await validateJudgeModel(judgeHost, judgeModel);
-                if (!validation.valid) {
-                    return res.status(422).json({
-                        status: 'error',
-                        error: `Judge model validation failed: ${validation.error}`,
-                        available_models: validation.available_models || [],
-                        latency_ms: validation.latency_ms
-                    });
-                }
+        // Validate judge model before starting batch
+        const judgeHost = (judge_config && judge_config.host) || JUDGE_CONFIG.host;
+        const judgeModel = (judge_config && judge_config.model) || JUDGE_CONFIG.model;
+        if (judgeHost && judgeModel) {
+            const validation = await validateJudgeModel(judgeHost, judgeModel);
+            if (!validation.valid) {
+                return res.status(422).json({
+                    status: 'error',
+                    error: `Judge model validation failed: ${validation.error}`,
+                    available_models: validation.available_models || [],
+                    latency_ms: validation.latency_ms
+                });
             }
         }
 
@@ -159,7 +157,6 @@ router.post('/batch', optionalWorkspaceContext, async (req, res) => {
             models,
             levels,
             run_name,
-            quality_scoring,
             judge_config,
             execution_config,
             execution_mode: execution_mode || 'latency',
@@ -171,7 +168,7 @@ router.post('/batch', optionalWorkspaceContext, async (req, res) => {
             status: 'success',
             data: {
                 ...data,
-                message: `Batch test started${data.quality_scoring ? ' with quality scoring' : ''}`
+                message: 'Batch test started with quality scoring'
             }
         });
     } catch (err) {

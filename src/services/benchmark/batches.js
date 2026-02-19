@@ -203,17 +203,9 @@ async function getBatch(batchId, {
         const promptText = typeof r.prompt === 'string' ? r.prompt : '';
         const responseText = typeof r.response === 'string' ? r.response : '';
 
-        const inferredJudgeHost = batch.quality_scoring !== false
-            ? (r.judge_host || inferJudgeHost(r.host))
-            : null;
-
-        const inferredJudgeModel = batch.quality_scoring !== false
-            ? (r.judge_model || defaultJudgeModel)
-            : null;
-
-        const inferredScoringMethod = r.scoring_method
-            ? r.scoring_method
-            : (batch.quality_scoring !== false ? (r.success ? 'pending' : 'disabled') : 'disabled');
+        const inferredJudgeHost = r.judge_host || inferJudgeHost(r.host);
+        const inferredJudgeModel = r.judge_model || defaultJudgeModel;
+        const inferredScoringMethod = r.scoring_method || (r.success ? 'pending' : 'exec_failed');
 
         return {
             id: r._id ? r._id.toString() : null,

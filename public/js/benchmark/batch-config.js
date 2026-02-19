@@ -253,14 +253,12 @@ export function updateBatchInfo() {
 /**
  * Render batch plan display
  */
-export function renderBatchPlan(plan, fallbackHostUrl, qualityScoringEnabled, executionMode = 'latency') {
+export function renderBatchPlan(plan, fallbackHostUrl, _qualityScoringEnabled = true, executionMode = 'latency') {
     if (!plan) {
         const judgeModel = state.currentJudgeConfig.model || '(server default)';
         const exec = fallbackHostUrl ? formatHostLabel(fallbackHostUrl) : '(unknown)';
-        const judgeHostUrl = qualityScoringEnabled
-            ? (state.currentJudgeConfig.judge_same_host ? fallbackHostUrl : inferOppositeHostUrl(fallbackHostUrl, state.ollamaHosts))
-            : null;
-        const judgeHost = qualityScoringEnabled ? formatHostLabel(judgeHostUrl) : 'Disabled';
+        const judgeHostUrl = state.currentJudgeConfig.judge_same_host ? fallbackHostUrl : inferOppositeHostUrl(fallbackHostUrl, state.ollamaHosts);
+        const judgeHost = formatHostLabel(judgeHostUrl);
 
         const modeIcon = executionMode === 'throughput' ? '\uD83D\uDD25' : '\u26A1';
         const modeLabel = executionMode === 'throughput' ? 'Throughput Mode' : 'Latency Mode';
@@ -305,9 +303,6 @@ export function renderBatchPlan(plan, fallbackHostUrl, qualityScoringEnabled, ex
     html += `<i class="fas fa-gavel me-2 text-primary"></i>`;
     html += `<strong class="me-2">Judge Model:</strong>`;
     html += `<span class="badge bg-primary me-2">${judgeModel}</span>`;
-    if (!qualityScoringEnabled) {
-        html += `<span class="badge bg-danger me-2">Disabled</span>`;
-    }
     html += `<span class="text-muted me-2">-</span>`;
     html += `<span class="badge bg-${modeColor} text-dark">${modeIcon} ${modeLabel}</span>`;
     html += `<span class="text-muted mx-2">-</span>`;
@@ -340,7 +335,7 @@ export function renderBatchPlan(plan, fallbackHostUrl, qualityScoringEnabled, ex
         html += `<ul class="list-group list-group-flush">`;
         for (const h of plan.exec_hosts) {
             const execLabel = formatHostLabel(h.exec_host);
-            const judgeLabel = qualityScoringEnabled ? formatHostLabel(h.judge_host) : 'Disabled';
+            const judgeLabel = formatHostLabel(h.judge_host);
             const modelCount = Array.isArray(h.models) ? h.models.length : 0;
             html += `<li class="list-group-item p-2">`;
             html += `<div class="row align-items-center g-2">`;

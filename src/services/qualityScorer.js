@@ -194,20 +194,14 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
             scoring_type: scoringType
         });
         return enrichWithDualScores({
-            quality_score: 0,
+            quality_score: null,
             scoring_method: 'llm_failed',
             error: judgeResult.error,
             explanation: `Judge model failed: ${judgeResult.error}`,
             judge_prompt: evalPrompt,
             judge_model: mergedJudgeConfig.model || JUDGE_CONFIG.model,
             scoring_time_ms: Date.now() - startTime,
-            breakdown: {
-                accuracy: 0,
-                correctness: 0,
-                completeness: 0,
-                clarity: 0,
-                overall: 0
-            }
+            breakdown: null
         });
     }
 

@@ -111,7 +111,6 @@ export async function runBatch() {
     const selectedModels = Array.from(document.querySelectorAll('.batch-model-checkbox:checked'))
         .map(cb => cb.value);
     const host = document.getElementById('host')?.value;
-    const qualityScoring = document.getElementById('qualityScoring')?.checked;
 
     if (selectedLevels.length === 0) {
         alert('Please select at least one prompt level (set depth to something other than Off)');
@@ -174,30 +173,28 @@ export async function runBatch() {
 
     try {
         // Pre-flight: validate judge model before starting batch
-        if (qualityScoring) {
-            const judgeHost = state.currentJudgeConfig.host;
-            const judgeModel = state.currentJudgeConfig.model;
-            if (judgeHost && judgeModel) {
-                btn.textContent = 'Validating judge...';
-                try {
-                    const { res: valRes, json: valJson } = await validateJudgeModelApi(judgeHost, judgeModel);
-                    if (valRes.status === 422) {
-                        const availList = (valJson.available_models || []).slice(0, 10).join(', ') || 'none';
-                        alert(`Judge model validation failed: ${valJson.error}\n\nAvailable models: ${availList}`);
-                        resetBatchUI();
-                        return;
-                    } else if (!valRes.ok) {
-                        alert(`Judge validation error: ${valJson.error || valJson.message || 'Unknown error'}`);
-                        resetBatchUI();
-                        return;
-                    }
-                } catch (valErr) {
-                    alert(`Judge validation failed: ${valErr.message}`);
+        const judgeHost = state.currentJudgeConfig.host;
+        const judgeModel = state.currentJudgeConfig.model;
+        if (judgeHost && judgeModel) {
+            btn.textContent = 'Validating judge...';
+            try {
+                const { res: valRes, json: valJson } = await validateJudgeModelApi(judgeHost, judgeModel);
+                if (valRes.status === 422) {
+                    const availList = (valJson.available_models || []).slice(0, 10).join(', ') || 'none';
+                    alert(`Judge model validation failed: ${valJson.error}\n\nAvailable models: ${availList}`);
+                    resetBatchUI();
+                    return;
+                } else if (!valRes.ok) {
+                    alert(`Judge validation error: ${valJson.error || valJson.message || 'Unknown error'}`);
                     resetBatchUI();
                     return;
                 }
-                btn.textContent = 'Starting...';
+            } catch (valErr) {
+                alert(`Judge validation failed: ${valErr.message}`);
+                resetBatchUI();
+                return;
             }
+            btn.textContent = 'Starting...';
         }
 
         const { res, json } = await startBatchTest({
@@ -205,7 +202,6 @@ export async function runBatch() {
             models: selectedModels,
             levels: selectedLevels,
             depth_config: depthConfig,
-            quality_scoring: qualityScoring,
             judge_config: state.currentJudgeConfig,
             execution_config: executionConfig,
             tags,
@@ -216,10 +212,10 @@ export async function runBatch() {
         if (json.status === 'success') {
             state.setCurrentBatchId(json.data.batch_id);
             localStorage.setItem('currentBatchId', json.data.batch_id);
-            btn.textContent = qualityScoring ? 'Running (with quality)...' : 'Running...';
+            btn.textContent = 'Running (with quality)...';
 
             if (batchInfo) {
-                batchInfo.innerHTML = renderBatchPlan(json.data.plan, host, qualityScoring, executionMode);
+                batchInfo.innerHTML = renderBatchPlan(json.data.plan, host, true, executionMode);
             }
 
             // Poll for progress
@@ -327,7 +323,7 @@ export async function pollBatchProgress() {
         const batchInfo = document.getElementById('batchInfo');
         if (batchInfo && (batch.plan || batch.judge_config || batch.host)) {
             if (batchInfo.innerHTML.trim() === '' || batch.plan) {
-                batchInfo.innerHTML = renderBatchPlan(batch.plan, batch.host, batch.quality_scoring !== false);
+                batchInfo.innerHTML = renderBatchPlan(batch.plan, batch.host, true);
             }
         }
 
@@ -513,7 +509,7 @@ function updatePerModelProgress(batch, results, showHyper) {
         ? batch.plan.tests_per_model
         : (batch.total_tests && models.length > 0 ? Math.ceil(batch.total_tests / models.length) : 0);
 
-    const isQualityEnabled = batch.quality_scoring !== false;
+    const isQualityEnabled = true;
     const thresholds = getAnomalyThresholds();
     const minSamples = Math.max(1, Number(thresholds.min_samples) || 3);
     const showHyperDetails = showHyper;

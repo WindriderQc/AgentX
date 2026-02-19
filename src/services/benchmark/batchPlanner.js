@@ -18,7 +18,7 @@ const { normalizeExecutionConfig } = require('./config');
  * @returns {Object} { plan, modelsByHost, normalizedExecutionConfig }
  */
 function buildExecutionPlan(host, models, selectedPrompts, options = {}) {
-    const { quality_scoring = true, judge_config = {}, execution_config = {} } = options;
+    const { judge_config = {}, execution_config = {} } = options;
 
     // Group models by host
     const modelsByHost = {};
@@ -43,7 +43,7 @@ function buildExecutionPlan(host, models, selectedPrompts, options = {}) {
 
         return {
             exec_host,
-            judge_host: quality_scoring ? judge_host : null,
+            judge_host,
             models: hostModels,
             tests: hostModels.length * selectedPrompts.length
         };

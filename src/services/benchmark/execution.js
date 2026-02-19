@@ -71,7 +71,7 @@ async function getModelExecutionConfig(modelName, batchConfig) {
 /**
  * Start a batch benchmark test
  */
-async function startBatch({ host, models, levels, run_name, quality_scoring = true, judge_config = {}, execution_config = {}, tags = [], description = '', execution_mode = 'latency', depth_config = null }) {
+async function startBatch({ host, models, levels, run_name, judge_config = {}, execution_config = {}, tags = [], description = '', execution_mode = 'latency', depth_config = null }) {
     if (!host || !models || !Array.isArray(models) || !levels || !Array.isArray(levels)) {
         throw new Error('host, models (array), and levels (array) are required');
     }
@@ -91,14 +91,14 @@ async function startBatch({ host, models, levels, run_name, quality_scoring = tr
     }
 
     const { plan, normalizedExecutionConfig, judgeSameHost } = buildExecutionPlan(host, models, selectedPrompts, {
-        quality_scoring, judge_config, execution_config
+        judge_config, execution_config
     });
 
     const batch = new BenchmarkBatch({
         host,
         models,
         levels,
-        quality_scoring,
+        quality_scoring: true,
         judge_config,
         execution_config: normalizedExecutionConfig,
         depth_config: (depth_config && typeof depth_config === 'object') ? depth_config : null,
@@ -107,7 +107,7 @@ async function startBatch({ host, models, levels, run_name, quality_scoring = tr
         total_tests: models.length * selectedPrompts.length,
         plan,
         judge_same_host: judgeSameHost,
-        judge_total: quality_scoring ? (models.length * selectedPrompts.length) : 0,
+        judge_total: models.length * selectedPrompts.length,
         status: 'running',
         started_at: new Date(),
         tags: Array.isArray(tags) ? tags : [],
@@ -120,7 +120,7 @@ async function startBatch({ host, models, levels, run_name, quality_scoring = tr
     const batchId = batch._id.toString();
 
     if (process.env.NODE_ENV !== 'test') {
-        executeBatch(batchId, host, models, selectedPrompts, { quality_scoring, judge_config, execution_config: normalizedExecutionConfig, execution_mode }).catch(err => {
+        executeBatch(batchId, host, models, selectedPrompts, { judge_config, execution_config: normalizedExecutionConfig, execution_mode }).catch(err => {
             logger.error('Batch execution failed', { batchId, error: err.message });
         });
     }
@@ -128,7 +128,7 @@ async function startBatch({ host, models, levels, run_name, quality_scoring = tr
     return {
         batch_id: batchId,
         total_tests: batch.total_tests,
-        quality_scoring,
+        quality_scoring: true,
         plan
     };
 }
@@ -137,7 +137,6 @@ async function startBatch({ host, models, levels, run_name, quality_scoring = tr
  * Execute batch tests with parallel or serial host execution
  */
 async function executeBatch(batchId, defaultHost, models, prompts, options = {}) {
-    const enableQualityScoring = options.quality_scoring !== false;
     const judgeConfig = options.judge_config || {};
     const judgeSameHost = judgeConfig.judge_same_host !== undefined ? !!judgeConfig.judge_same_host : false;
     const executionMode = options.execution_mode || 'latency';
@@ -192,13 +191,13 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
     };
 
     await recordBatchTimelineEvent('prep_start', {
-        model: enableQualityScoring ? (judgeConfig.model || JUDGE_CONFIG.model) : null,
+        model: judgeConfig.model || JUDGE_CONFIG.model,
         success: true
     });
 
     // Per-batch judge queue
     const judgeConcurrency = executionMode === 'latency' ? 1 : (judgeConfig.concurrency || 2);
-    const judgeQueue = enableQualityScoring ? new ConcurrencyQueue(judgeConcurrency) : null;
+    const judgeQueue = new ConcurrencyQueue(judgeConcurrency);
 
     // Periodic heartbeat
     const heartbeatInterval = setInterval(async () => {
@@ -249,7 +248,7 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
             }
 
             // Warmup judge model on separate host BEFORE tests start (strict: failure aborts)
-            if (enableQualityScoring && !judgeSameHost) {
+            if (!judgeSameHost) {
                 const jModel = judgeConfig.model || JUDGE_CONFIG.model;
                 await warmupModel(judgeHostUrl, jModel, {
                     timelinePrefix: 'judge_warmup',
@@ -402,7 +401,7 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                         const result = new BenchmarkResult({
                             model,
                             host: hostUrl,
-                            judge_host: enableQualityScoring ? judgeHostUrl : null,
+                            judge_host: judgeHostUrl,
                             prompt: promptText,
                             prompt_level: prompt.level,
                             prompt_category: prompt.category,
@@ -418,8 +417,8 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                             batch_id: batchId,
                             timestamp: new Date(),
                             quality_score: null,
-                            scoring_method: enableQualityScoring ? 'pending' : 'disabled',
-                            judge_model: enableQualityScoring ? (judgeConfig.model || JUDGE_CONFIG.model) : null,
+                            scoring_method: 'pending',
+                            judge_model: judgeConfig.model || JUDGE_CONFIG.model,
                             hardware_snapshot: hardwareSnapshot,
                             truncation: {
                                 response_truncated: responseTruncated,
@@ -457,7 +456,7 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                                     results: {
                                         $each: [{
                                             model, host: hostUrl,
-                                            judge_host: enableQualityScoring ? judgeHostUrl : null,
+                                            judge_host: judgeHostUrl,
                                             prompt_name: prompt.name, success: true,
                                             latency,
                                             response_preview: (data.response || '').substring(0, 100) + '...'
@@ -478,7 +477,7 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                         logger.info('Batch test completed', { batchId, model, prompt: prompt.name, latency });
 
                         // Pipeline: judge on separate machine while next test runs
-                        if (enableQualityScoring && judgeQueue) {
+                        if (judgeQueue) {
                             const { judgeResult } = require('./judging');
                             const capturedResultId = resultId.toString();
                             const capturedJudgeConfig = { ...judgeConfig, host: judgeHostUrl };
@@ -526,9 +525,9 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                                 batch_id: batchId,
                                 timestamp: new Date(),
                                 quality_score: null,
-                                scoring_method: enableQualityScoring ? 'exec_failed' : 'disabled',
-                                judge_model: enableQualityScoring ? (judgeConfig.model || JUDGE_CONFIG.model) : null,
-                                judge_host: enableQualityScoring ? judgeHostUrl : null
+                                scoring_method: 'exec_failed',
+                                judge_model: judgeConfig.model || JUDGE_CONFIG.model,
+                                judge_host: judgeHostUrl
                             });
 
                             await result.save();
@@ -585,7 +584,7 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
     }
 
     // Drain pipelined judge queue
-    if (enableQualityScoring && judgeQueue) {
+    if (judgeQueue) {
         const judgeableCount = await BenchmarkResult.countDocuments({ batch_id: batchId, success: true });
         await BenchmarkBatch.updateOne(
             { _id: batchId },

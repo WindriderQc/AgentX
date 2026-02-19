@@ -648,21 +648,19 @@ async function compareBatches(batchIds) {
         let avg_quality = null;
         let avg_composite = null;
 
-        if (batch.quality_scoring) {
-            const scores = await BenchmarkResult.aggregate([
-                { $match: { batch_id: batch._id.toString() } },
-                {
-                    $group: {
-                        _id: null,
-                        avg_quality: { $avg: '$quality_score' },
-                        avg_composite: { $avg: '$composite_score' }
-                    }
+        const scores = await BenchmarkResult.aggregate([
+            { $match: { batch_id: batch._id.toString() } },
+            {
+                $group: {
+                    _id: null,
+                    avg_quality: { $avg: '$quality_score' },
+                    avg_composite: { $avg: '$composite_score' }
                 }
-            ]);
-            if (scores.length > 0) {
-                avg_quality = scores[0].avg_quality !== null ? parseFloat(scores[0].avg_quality.toFixed(1)) : null;
-                avg_composite = scores[0].avg_composite !== null ? parseFloat(scores[0].avg_composite.toFixed(1)) : null;
             }
+        ]);
+        if (scores.length > 0) {
+            avg_quality = scores[0].avg_quality !== null ? parseFloat(scores[0].avg_quality.toFixed(1)) : null;
+            avg_composite = scores[0].avg_composite !== null ? parseFloat(scores[0].avg_composite.toFixed(1)) : null;
         }
 
         return {
@@ -677,7 +675,7 @@ async function compareBatches(batchIds) {
             config_snapshot: batch.config_snapshot,
             created_at: batch.created_at,
             completed_at: batch.completed_at,
-            quality_scoring: batch.quality_scoring,
+            quality_scoring: true,
             avg_quality,
             avg_composite
         };
