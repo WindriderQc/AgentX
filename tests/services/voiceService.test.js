@@ -3,6 +3,10 @@
  * Tests for STT (Whisper) and TTS functionality
  */
 
+// Set env vars before requiring (module reads them at import time)
+process.env.WHISPER_URL = 'http://test-whisper:8000';
+process.env.TTS_URL = 'http://test-tts:5002';
+
 const voiceService = require('../../src/services/voiceService');
 
 // Create a mock fetch function
@@ -141,8 +145,8 @@ describe('Voice Service', () => {
     });
 
     describe('Configuration', () => {
-        it('should have WHISPER_LOCAL_URL defined', () => {
-            expect(voiceService.WHISPER_LOCAL_URL).toBeDefined();
+        it('should use WHISPER_URL from env', () => {
+            expect(voiceService.WHISPER_LOCAL_URL).toBe('http://test-whisper:8000');
         });
 
         it('should have default TTS provider', () => {

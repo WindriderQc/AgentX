@@ -6,31 +6,44 @@
 
 ---
 
+## 🔐 Authentication
+
+Self-healing endpoints require either:
+- Authenticated web session cookie, or
+- API key header: `x-api-key: ${AGENTX_API_KEY}`
+
+Example helper:
+```bash
+AUTH_HEADER=(-H "x-api-key: ${AGENTX_API_KEY}")
+```
+
+---
+
 ## 📋 Quick Commands
 
 ### Check Status
 ```bash
-curl http://localhost:3080/api/self-healing/status | jq
+curl "${AUTH_HEADER[@]}" http://localhost:3080/api/self-healing/status | jq
 ```
 
 ### List All Rules
 ```bash
-curl http://localhost:3080/api/self-healing/rules | jq '.data.rules[] | {name, strategy: .remediation.strategy, priority: .remediation.priority}'
+curl "${AUTH_HEADER[@]}" http://localhost:3080/api/self-healing/rules | jq '.data.rules[] | {name, strategy: .remediation.strategy, priority: .remediation.priority}'
 ```
 
 ### Get Specific Rule
 ```bash
-curl http://localhost:3080/api/self-healing/rules/model_slow_response_failover | jq
+curl "${AUTH_HEADER[@]}" http://localhost:3080/api/self-healing/rules/model_slow_response_failover | jq
 ```
 
 ### Evaluate All Rules
 ```bash
-curl -X POST http://localhost:3080/api/self-healing/evaluate | jq
+curl "${AUTH_HEADER[@]}" -X POST http://localhost:3080/api/self-healing/evaluate | jq
 ```
 
 ### Execute Specific Rule (Manual Trigger)
 ```bash
-curl -X POST http://localhost:3080/api/self-healing/execute \
+curl "${AUTH_HEADER[@]}" -X POST http://localhost:3080/api/self-healing/execute \
   -H "Content-Type: application/json" \
   -d '{
     "ruleName": "model_slow_response_failover",
@@ -43,12 +56,12 @@ curl -X POST http://localhost:3080/api/self-healing/execute \
 
 ### Get Execution History
 ```bash
-curl http://localhost:3080/api/self-healing/history | jq
+curl "${AUTH_HEADER[@]}" http://localhost:3080/api/self-healing/history | jq
 ```
 
 ### Reload Rules from Config
 ```bash
-curl -X POST http://localhost:3080/api/self-healing/rules/load | jq
+curl "${AUTH_HEADER[@]}" -X POST http://localhost:3080/api/self-healing/rules/load | jq
 ```
 
 ---

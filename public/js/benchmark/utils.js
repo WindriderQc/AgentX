@@ -125,6 +125,7 @@ export function formatHostLabel(url) {
     if (!url) return 'Unknown';
     if (url.includes('192.168.2.99')) return 'UGFrank';
     if (url.includes('192.168.2.12')) return 'UGBrutal';
+    if (url.includes('192.168.2.66')) return 'UGClawdX';
     if (url.includes('localhost')) return 'Local';
     return url.replace('http://', '').replace(':11434', '');
 }

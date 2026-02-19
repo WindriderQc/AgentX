@@ -39,12 +39,20 @@
         },
         "comparison": {
           "type": "string",
-          "enum": ["greater_than", "less_than", "equals", "not_equals"],
+          "enum": [
+            "greater_than",
+            "less_than",
+            "equal",
+            "equals",
+            "not_equals",
+            "greater_or_equal",
+            "less_or_equal"
+          ],
           "description": "How to compare the metric value to the threshold"
         },
         "window": {
           "type": "string",
-          "pattern": "^\\d+[smh]$",
+          "pattern": "^\\d+[smhd]$",
           "description": "Time window for aggregation (e.g., '5m', '1h')",
           "examples": ["5m", "15m", "1h", "24h"]
         },
@@ -96,7 +104,7 @@
         },
         "cooldown": {
           "type": "string",
-          "pattern": "^\\d+[smh]$",
+          "pattern": "^\\d+[smhd]$",
           "description": "Minimum time between executions to prevent thrashing",
           "examples": ["5m", "15m", "1h"]
         },

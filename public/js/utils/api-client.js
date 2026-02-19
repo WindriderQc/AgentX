@@ -96,6 +96,10 @@ class ApiClient {
         return this.request(endpoint, { method: 'PUT', body });
     }
 
+    patch(endpoint, body = {}) {
+        return this.request(endpoint, { method: 'PATCH', body });
+    }
+
     delete(endpoint) {
         return this.request(endpoint, { method: 'DELETE' });
     }

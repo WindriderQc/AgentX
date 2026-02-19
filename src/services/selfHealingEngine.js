@@ -1,7 +1,11 @@
 const Alert = require('../../models/Alert');
 const MetricsSnapshot = require('../../models/MetricsSnapshot');
+const SelfHealingExecution = require('../../models/SelfHealingExecution');
+const SelfHealingApproval = require('../../models/SelfHealingApproval');
 const alertService = require('./alertService');
 const ModelRouter = require('./modelRouter');
+const RulesValidator = require('../utils/validateRules');
+const { getSelfHealingStateStore } = require('./selfHealingStateStore');
 const logger = require('../../config/logger');
 const fs = require('fs').promises;
 const path = require('path');
@@ -37,12 +41,15 @@ class SelfHealingEngine {
     this.executionHistory = new Map(); // ruleName -> last execution timestamp
     this.actionQueue = []; // Priority queue for actions
     this.isProcessing = false;
+    this.ruleConfigPath = path.join(__dirname, '../../config/self-healing-rules.json');
+    this.stateStore = getSelfHealingStateStore();
 
     // Configuration
     this.config = {
       enableAutomation: process.env.SELF_HEALING_ENABLED !== 'false',
       requireApprovalForCritical: process.env.REQUIRE_APPROVAL !== 'false',
       maxConcurrentActions: parseInt(process.env.MAX_CONCURRENT_ACTIONS || '3', 10),
+      evaluationIntervalMs: parseInt(process.env.SELF_HEALING_EVALUATION_INTERVAL_MS || '300000', 10),
       defaultCooldownMs: 15 * 60 * 1000 // 15 minutes
     };
 
@@ -55,8 +62,14 @@ class SelfHealingEngine {
    * @param {string} configPath - Path to rules JSON file
    * @returns {Promise<number>} Number of rules loaded
    */
-  async loadRules(configPath = path.join(__dirname, '../../config/self-healing-rules.json')) {
+  async loadRules(configPath = this.ruleConfigPath) {
     try {
+      const validator = new RulesValidator();
+      const validation = validator.loadAndValidate(configPath);
+      if (!validation.valid) {
+        throw new Error(`Rules validation failed: ${JSON.stringify(validation.errors)}`);
+      }
+
       const content = await fs.readFile(configPath, 'utf-8');
       const rules = JSON.parse(content);
 
@@ -64,6 +77,7 @@ class SelfHealingEngine {
         throw new Error('Rules configuration must be an array');
       }
 
+      this.ruleConfigPath = configPath;
       // Filter enabled rules only
       this.rules = rules.filter(rule => rule.enabled !== false);
 
@@ -91,11 +105,11 @@ class SelfHealingEngine {
       const { detectionQuery } = rule;
 
       // Check cooldown period
-      if (!this._canExecute(rule.name, rule.remediation.cooldown)) {
+      if (!(await this._canExecuteDistributed(rule.name, rule.remediation.cooldown))) {
         return {
           shouldTrigger: false,
           reason: 'cooldown_active',
-          cooldownRemaining: this._getCooldownRemaining(rule.name, rule.remediation.cooldown)
+          cooldownRemaining: await this._getCooldownRemainingDistributed(rule.name, rule.remediation.cooldown)
         };
       }
 
@@ -120,6 +134,20 @@ class SelfHealingEngine {
             shouldTrigger: false,
             reason: 'outside_time_window',
             window: rule.conditions.timeOfDay
+          };
+        }
+      }
+
+      // Check day-of-week conditions
+      if (Array.isArray(rule.conditions?.daysOfWeek) && rule.conditions.daysOfWeek.length > 0) {
+        const allowedDays = rule.conditions.daysOfWeek.map(d => String(d).toLowerCase());
+        const currentDay = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][new Date().getDay()];
+        if (!allowedDays.includes(currentDay)) {
+          return {
+            shouldTrigger: false,
+            reason: 'outside_day_window',
+            allowedDays,
+            currentDay
           };
         }
       }
@@ -167,14 +195,24 @@ class SelfHealingEngine {
    * @param {Object} context - Execution context (metrics, metadata)
    * @returns {Promise<Object>} Execution result
    */
-  async executeRemediation(rule, context = {}) {
-    const { remediation, notifications } = rule;
+  async executeRemediation(rule, context = {}, options = {}) {
+    const { remediation } = rule;
     const startTime = Date.now();
+    const shouldBypassApproval = options.bypassApproval === true;
+    const skipTriggerNotification = options.skipTriggerNotification === true;
+    const triggerSource = options.triggerSource || context?.triggeredBy || 'auto';
 
     try {
       // Check if automation is enabled
       if (!this.config.enableAutomation) {
         logger.warn('Self-healing automation disabled', { rule: rule.name });
+        await this._saveExecutionRecord(rule, {
+          status: 'skipped',
+          duration: Date.now() - startTime,
+          triggerSource,
+          context,
+          error: 'automation_disabled'
+        });
         return {
           status: 'skipped',
           reason: 'automation_disabled',
@@ -183,19 +221,38 @@ class SelfHealingEngine {
       }
 
       // Check if requires approval
-      if (remediation.requiresApproval && this.config.requireApprovalForCritical) {
+      if (remediation.requiresApproval && this.config.requireApprovalForCritical && !shouldBypassApproval) {
         logger.info('Action requires approval', { rule: rule.name, action: remediation.action });
         await this._sendNotifications(rule, 'onTrigger', context);
+        let approval = null;
+        try {
+          approval = await this._createPendingApproval(rule, context);
+        } catch (approvalError) {
+          logger.error('Failed to persist approval request', {
+            rule: rule.name,
+            error: approvalError.message
+          });
+        }
+        await this._saveExecutionRecord(rule, {
+          status: 'pending_approval',
+          duration: Date.now() - startTime,
+          triggerSource,
+          context,
+          approvalId: approval?._id || null
+        });
         return {
           status: 'pending_approval',
           rule: rule.name,
           action: remediation.action,
-          approvalRequired: true
+          approvalRequired: true,
+          approvalId: approval?._id || null
         };
       }
 
       // Send trigger notifications
-      await this._sendNotifications(rule, 'onTrigger', context);
+      if (!skipTriggerNotification) {
+        await this._sendNotifications(rule, 'onTrigger', context);
+      }
 
       // Execute action based on strategy
       let result;
@@ -220,7 +277,15 @@ class SelfHealingEngine {
       }
 
       // Record successful execution
-      this._recordExecution(rule.name, Date.now());
+      const executedAt = Date.now();
+      await this._recordExecution(rule.name, executedAt);
+      const executionRecord = await this._saveExecutionRecord(rule, {
+        status: 'success',
+        result,
+        duration: Date.now() - startTime,
+        triggerSource,
+        context
+      });
 
       // Send success notifications
       await this._sendNotifications(rule, 'onSuccess', {
@@ -241,7 +306,8 @@ class SelfHealingEngine {
         rule: rule.name,
         action: remediation.action,
         result,
-        duration: Date.now() - startTime
+        duration: Date.now() - startTime,
+        executionId: executionRecord?._id || null
       };
 
     } catch (error) {
@@ -259,12 +325,21 @@ class SelfHealingEngine {
         duration: Date.now() - startTime
       });
 
+      const executionRecord = await this._saveExecutionRecord(rule, {
+        status: 'failed',
+        duration: Date.now() - startTime,
+        error: error.message,
+        triggerSource,
+        context
+      });
+
       return {
         status: 'failed',
         rule: rule.name,
         action: remediation.action,
         error: error.message,
-        duration: Date.now() - startTime
+        duration: Date.now() - startTime,
+        executionId: executionRecord?._id || null
       };
     }
   }
@@ -596,7 +671,8 @@ class SelfHealingEngine {
         global._selfHealingThrottle = {};
       }
 
-      const previousState = global._selfHealingThrottle.enabled || false;
+      const persistedState = await this.stateStore.getThrottleState();
+      const previousState = global._selfHealingThrottle.enabled || persistedState?.enabled || false;
 
       // Cancel any existing timeout to prevent premature disabling
       if (global._selfHealingThrottleTimeout) {
@@ -604,7 +680,7 @@ class SelfHealingEngine {
         logger.debug('Cleared previous throttle timeout');
       }
 
-      global._selfHealingThrottle = {
+      const throttleState = {
         enabled: true,
         token, // Unique identifier for this throttle state
         reductionFactor,
@@ -616,6 +692,8 @@ class SelfHealingEngine {
           api: 100  // per 15 minutes
         }
       };
+      global._selfHealingThrottle = throttleState;
+      await this.stateStore.setThrottleState(throttleState, throttleDurationMs);
 
       logger.warn('Request throttling activated', {
         token,
@@ -633,6 +711,7 @@ class SelfHealingEngine {
           // This prevents race where newer throttle gets disabled by older timeout
           if (global._selfHealingThrottle?.token === token && global._selfHealingThrottle.enabled) {
             global._selfHealingThrottle.enabled = false;
+            this.stateStore.clearThrottleState().catch(() => {});
             logger.info('Request throttling automatically restored', {
               token,
               duration: throttleDurationMs,
@@ -738,7 +817,20 @@ class SelfHealingEngine {
     }
 
     // Fetch and aggregate
-    const metrics = await MetricsSnapshot.find(query).sort({ timestamp: -1 }).limit(100);
+    let metrics = await MetricsSnapshot.find(query).sort({ timestamp: -1 }).limit(200);
+
+    // Prefer records that explicitly match the configured metric key if present in metadata.
+    if (metric && metrics.length > 0) {
+      const metricMatched = metrics.filter((m) => {
+        const configured = String(metric).toLowerCase();
+        const metadataMetric = String(m?.metadata?.metric || m?.metadata?.metricName || m?.metadata?.metricKey || '').toLowerCase();
+        return metadataMetric && metadataMetric === configured;
+      });
+
+      if (metricMatched.length > 0) {
+        metrics = metricMatched;
+      }
+    }
 
     if (metrics.length === 0) {
       return { value: null, count: 0 };
@@ -803,8 +895,11 @@ class SelfHealingEngine {
       case 'less_than':
         return (numericValue !== null && numericThreshold !== null && numericValue < numericThreshold) ||
           (maybeSecondsToMs && (numericValue * 1000) < numericThreshold);
+      case 'equals':
       case 'equal':
         return value === threshold;
+      case 'not_equals':
+        return value !== threshold;
       case 'greater_or_equal':
         return value >= threshold;
       case 'less_or_equal':
@@ -844,15 +939,81 @@ class SelfHealingEngine {
    */
   _recordExecution(ruleName, timestamp) {
     this.executionHistory.set(ruleName, timestamp);
+    this.stateStore.setLastExecution(ruleName, timestamp).catch((error) => {
+      logger.warn('Failed to persist self-healing execution timestamp', {
+        ruleName,
+        error: error.message
+      });
+    });
   }
 
   /**
    * Count recent occurrences of threshold breaches
    */
   async _countRecentOccurrences(rule, window) {
-    // This would query MetricsSnapshot for breaches in the window
-    // For now, return 1 (assuming current breach)
-    return 1;
+    const { detectionQuery } = rule;
+    const windowMs = this._parseTimeWindow(window || detectionQuery?.window || '15m');
+    const startTime = new Date(Date.now() - windowMs);
+
+    const query = {
+      timestamp: { $gte: startTime },
+      type: this._mapMetricToType(detectionQuery?.metric)
+    };
+
+    if (detectionQuery?.componentPattern && detectionQuery.componentPattern !== '*') {
+      const escapedPattern = detectionQuery.componentPattern
+        .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+        .replace(/\*/g, '.*');
+      query.componentId = new RegExp('^' + escapedPattern + '$');
+    }
+
+    const docs = await MetricsSnapshot.find(query).sort({ timestamp: -1 }).limit(500);
+    if (!docs || docs.length === 0) return 0;
+
+    let sourceDocs = docs;
+    if (detectionQuery?.metric) {
+      const metricMatched = docs.filter((doc) => {
+        const configured = String(detectionQuery.metric).toLowerCase();
+        const metadataMetric = String(doc?.metadata?.metric || doc?.metadata?.metricName || doc?.metadata?.metricKey || '').toLowerCase();
+        return metadataMetric && metadataMetric === configured;
+      });
+      if (metricMatched.length > 0) {
+        sourceDocs = metricMatched;
+      }
+    }
+
+    return sourceDocs.filter((doc) => this._checkThreshold(
+      doc.value,
+      detectionQuery?.threshold,
+      detectionQuery?.comparison
+    )).length;
+  }
+
+  async _getLastExecutionTimestamp(ruleName) {
+    const fromStateStore = await this.stateStore.getLastExecution(ruleName);
+    if (fromStateStore) {
+      this.executionHistory.set(ruleName, fromStateStore);
+      return fromStateStore;
+    }
+    return this.executionHistory.get(ruleName) || null;
+  }
+
+  async _canExecuteDistributed(ruleName, cooldownPeriod) {
+    const lastExecution = await this._getLastExecutionTimestamp(ruleName);
+    if (!lastExecution) return true;
+
+    const cooldownMs = this._parseTimeWindow(cooldownPeriod);
+    const timeSinceLastExecution = Date.now() - lastExecution;
+    return timeSinceLastExecution >= cooldownMs;
+  }
+
+  async _getCooldownRemainingDistributed(ruleName, cooldownPeriod) {
+    const lastExecution = await this._getLastExecutionTimestamp(ruleName);
+    if (!lastExecution) return 0;
+
+    const cooldownMs = this._parseTimeWindow(cooldownPeriod);
+    const elapsed = Date.now() - lastExecution;
+    return Math.max(0, cooldownMs - elapsed);
   }
 
   /**
@@ -892,7 +1053,9 @@ class SelfHealingEngine {
         .update(`${rule.name}|${component}|${eventType}`)
         .digest('hex');
 
-      const createAlertFn = typeof Alert.createAlert === 'function' ? Alert.createAlert : Alert.create;
+      const createAlertFn = typeof Alert.createAlert === 'function'
+        ? Alert.createAlert.bind(Alert)
+        : Alert.create.bind(Alert);
       const alert = await createAlertFn({
         ruleId: rule.name,
         ruleName: rule.description || rule.name,
@@ -995,14 +1158,121 @@ class SelfHealingEngine {
   }
 
   /**
-   * Get current rules
+   * Persist execution record for dashboard/history
+   */
+  async _saveExecutionRecord(rule, data = {}) {
+    try {
+      const cooldownMs = data.status === 'success'
+        ? this._parseTimeWindow(rule?.remediation?.cooldown || '15m')
+        : 0;
+
+      return await SelfHealingExecution.create({
+        ruleName: rule?.name || 'unknown_rule',
+        strategy: rule?.remediation?.strategy || 'unknown_strategy',
+        action: rule?.remediation?.action || 'unknown_action',
+        status: data.status || 'failed',
+        duration: data.duration || 0,
+        error: data.error || null,
+        cooldownMs,
+        cooldownExpiresAt: cooldownMs > 0 ? new Date(Date.now() + cooldownMs) : null,
+        approvalId: data.approvalId || null,
+        triggerSource: data.triggerSource || 'auto',
+        context: {
+          ...(data.context || {}),
+          result: data.result || null
+        },
+        executedAt: new Date()
+      });
+    } catch (error) {
+      logger.warn('Failed to persist self-healing execution record', {
+        rule: rule?.name,
+        error: error.message
+      });
+      return null;
+    }
+  }
+
+  /**
+   * Create pending approval request for critical actions
+   */
+  async _createPendingApproval(rule, context = {}) {
+    const existing = await SelfHealingApproval.findOne({
+      ruleName: rule.name,
+      status: 'pending'
+    }).sort({ createdAt: -1 });
+
+    if (existing) return existing;
+
+    const remediation = rule?.remediation || {};
+    const fallbackAction = remediation.action || remediation.strategy || 'approval_required_action';
+
+    return SelfHealingApproval.create({
+      ruleName: rule.name,
+      strategy: remediation.strategy || 'unknown_strategy',
+      action: fallbackAction,
+      status: 'pending',
+      reason: rule.description || '',
+      ruleSnapshot: rule,
+      context,
+      requestedBy: context?.triggeredBy || 'system',
+      requestedAt: new Date()
+    });
+  }
+
+  /**
+   * Get current rules (enabled only)
    */
   getRules() {
     return this.rules;
   }
 
   /**
-   * Get execution history
+   * Get the config path used for rule loading
+   */
+  getRuleConfigPath() {
+    return this.ruleConfigPath;
+  }
+
+  /**
+   * Get execution history (persisted)
+   */
+  async getExecutionHistoryPersisted({ ruleName = null, limit = 200 } = {}) {
+    try {
+      const query = ruleName ? { ruleName } : {};
+      const rows = await SelfHealingExecution
+        .find(query)
+        .sort({ executedAt: -1 })
+        .limit(limit)
+        .lean();
+
+      const now = Date.now();
+      return rows.map((row) => {
+        const expiresAtMs = row.cooldownExpiresAt ? new Date(row.cooldownExpiresAt).getTime() : 0;
+        return {
+          id: row._id?.toString?.() || String(row._id),
+          ruleName: row.ruleName,
+          strategy: row.strategy,
+          action: row.action,
+          status: row.status,
+          duration: row.duration || 0,
+          error: row.error || null,
+          triggerSource: row.triggerSource || 'auto',
+          lastExecuted: new Date(row.executedAt || row.createdAt).toISOString(),
+          cooldownRemaining: Math.max(0, expiresAtMs - now),
+          approvalId: row.approvalId ? row.approvalId.toString() : null
+        };
+      });
+    } catch (error) {
+      logger.warn('Falling back to in-memory self-healing history', {
+        error: error.message
+      });
+      return this.getExecutionHistory();
+    }
+  }
+
+  /**
+   * Backward-compatible in-memory execution history.
+   * Used by existing tests and as local fallback.
    */
   getExecutionHistory() {
     return Array.from(this.executionHistory.entries()).map(([ruleName, timestamp]) => ({
@@ -1013,6 +1283,126 @@ class SelfHealingEngine {
         this.rules.find(r => r.name === ruleName)?.remediation?.cooldown || '15m'
       )
     }));
+  }
+
+  /**
+   * List pending/decided approval requests
+   */
+  async getApprovals({ status = 'pending', limit = 100 } = {}) {
+    try {
+      const query = status ? { status } : {};
+      const rows = await SelfHealingApproval.find(query).sort({ requestedAt: -1 }).limit(limit).lean();
+      return rows.map((row) => ({
+        id: row._id.toString(),
+        ruleName: row.ruleName,
+        strategy: row.strategy,
+        action: row.action,
+        status: row.status,
+        reason: row.reason || '',
+        requestedBy: row.requestedBy || 'system',
+        requestedAt: row.requestedAt,
+        decidedBy: row.decidedBy || null,
+        decidedAt: row.decidedAt || null,
+        decisionComment: row.decisionComment || ''
+      }));
+    } catch (error) {
+      logger.warn('Failed to load self-healing approvals', { error: error.message });
+      return [];
+    }
+  }
+
+  /**
+   * Approve a pending remediation request and execute it immediately.
+   */
+  async approveApproval(approvalId, decidedBy = 'admin', comment = '') {
+    const approval = await SelfHealingApproval.findById(approvalId);
+    if (!approval) {
+      throw new Error('Approval request not found');
+    }
+    if (approval.status !== 'pending') {
+      throw new Error(`Approval request is already ${approval.status}`);
+    }
+
+    approval.status = 'approved';
+    approval.decidedBy = decidedBy;
+    approval.decidedAt = new Date();
+    approval.decisionComment = comment || '';
+    await approval.save();
+
+    const result = await this.executeRemediation(
+      approval.ruleSnapshot,
+      {
+        ...(approval.context || {}),
+        approvedBy: decidedBy,
+        approvalId: approval._id.toString(),
+        triggeredBy: 'approval'
+      },
+      {
+        bypassApproval: true,
+        skipTriggerNotification: true,
+        triggerSource: 'approval'
+      }
+    );
+
+    approval.status = result.status === 'success' ? 'executed' : 'failed';
+    approval.executionId = result.executionId || null;
+    await approval.save();
+
+    return {
+      approvalId: approval._id.toString(),
+      status: approval.status,
+      execution: result
+    };
+  }
+
+  /**
+   * Reject a pending remediation request.
+   */
+  async rejectApproval(approvalId, decidedBy = 'admin', comment = '') {
+    const approval = await SelfHealingApproval.findById(approvalId);
+    if (!approval) {
+      throw new Error('Approval request not found');
+    }
+    if (approval.status !== 'pending') {
+      throw new Error(`Approval request is already ${approval.status}`);
+    }
+
+    approval.status = 'rejected';
+    approval.decidedBy = decidedBy;
+    approval.decidedAt = new Date();
+    approval.decisionComment = comment || '';
+    await approval.save();
+
+    return {
+      approvalId: approval._id.toString(),
+      status: approval.status
+    };
+  }
+
+  /**
+   * Cooldown status helper used by route/UI.
+   */
+  async getCooldownStatus(ruleName, cooldownPeriod) {
+    const remainingMs = await this._getCooldownRemainingDistributed(ruleName, cooldownPeriod);
+    return {
+      inCooldown: remainingMs > 0,
+      cooldownRemaining: remainingMs
+    };
+  }
+
+  /**
+   * Throttle state helper for rate limiter middleware.
+   */
+  async getThrottleState() {
+    return this.stateStore.getThrottleState();
+  }
+
+  async acquireEvaluationLock(ttlMs = 55000) {
+    return this.stateStore.acquireEvaluationLock(ttlMs);
+  }
+
+  async releaseEvaluationLock(token) {
+    return this.stateStore.releaseEvaluationLock(token);
   }
 }
 

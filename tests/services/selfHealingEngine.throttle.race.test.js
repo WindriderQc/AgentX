@@ -25,10 +25,13 @@ describe('SelfHealingEngine - Throttle Race Condition Fix', () => {
     await mongoose.connection.close();
   });
 
-  beforeEach(() => {
+  beforeEach(async () => {
     // Clear global throttle state
     delete global._selfHealingThrottle;
     delete global._selfHealingThrottleTimeout;
+    if (engine?.stateStore?.clearThrottleState) {
+      await engine.stateStore.clearThrottleState();
+    }
   });
 
   afterEach(() => {

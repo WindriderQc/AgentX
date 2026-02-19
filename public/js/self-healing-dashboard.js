@@ -19,11 +19,13 @@ class SelfHealingDashboard {
         this.containerId = options.containerId || 'self-healing-container';
         this.statsContainerId = options.statsContainerId || 'self-healing-stats';
         this.historyContainerId = options.historyContainerId || 'self-healing-history';
+        this.approvalsContainerId = options.approvalsContainerId || 'self-healing-approvals';
         this.refreshInterval = options.refreshInterval || 30000; // 30 seconds
 
         // State
         this.rules = [];
         this.executionHistory = [];
+        this.pendingApprovals = [];
         this.engineStatus = null;
         this.autoRefreshPoller = null;
         this.cooldownPoller = null;
@@ -86,6 +88,7 @@ class SelfHealingDashboard {
             await this.loadStatus();
             await this.loadRules();
             await this.loadHistory();
+            await this.loadApprovals();
             this.startAutoRefresh();
             this.startCooldownTimers();
             console.log('Self-Healing Dashboard initialized');
@@ -144,17 +147,39 @@ class SelfHealingDashboard {
     }
 
     /**
+     * Load pending approval queue
+     */
+    async loadApprovals() {
+        try {
+            const response = await apiClient.get('self-healing/approvals', { status: 'pending' });
+            this.pendingApprovals = response.data?.approvals || response.approvals || [];
+            this.renderApprovals();
+        } catch (error) {
+            // Approvals endpoint requires admin. If current user is not admin,
+            // we render an empty state silently to avoid noisy UX.
+            if (error?.status === 403) {
+                this.pendingApprovals = [];
+                this.renderApprovals('Admin access required to review approvals');
+                return;
+            }
+            console.error('Failed to load approvals:', error);
+            this.showToast('Failed to load approval queue', 'error');
+        }
+    }
+
+    /**
      * Render engine status banner
      */
     renderStatus() {
         const container = document.getElementById(this.statsContainerId);
         if (!container || !this.engineStatus) return;
 
-        const { enabled, rules, executions } = this.engineStatus;
+        const { enabled, rules, executions, approvals } = this.engineStatus;
         
         // Safety check for required data
         const safeRules = rules || { total: 0, enabled: 0, byStrategy: {} };
         const safeExecutions = executions || { total: 0, recentlyExecuted: 0 };
+        const safeApprovals = approvals || { pending: 0 };
         const strategiesCount = safeRules.byStrategy ? Object.keys(safeRules.byStrategy).length : 0;
 
         container.innerHTML = `
@@ -200,6 +225,14 @@ class SelfHealingDashboard {
                         <div class="card-body text-center">
                             <h3 class="mb-0">${strategiesCount}</h3>
                             <small>Strategies</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="card ${safeApprovals.pending > 0 ? 'bg-danger' : 'bg-success'} text-white">
+                        <div class="card-body text-center">
+                            <h3 class="mb-0">${safeApprovals.pending || 0}</h3>
+                            <small>Pending Approval</small>
                         </div>
                     </div>
                 </div>
@@ -403,6 +436,14 @@ class SelfHealingDashboard {
         const historyHtml = recentHistory.map(entry => {
             const timeAgo = this.formatTimeAgo(entry.lastExecuted);
             const cooldownRemaining = this.formatDuration(entry.cooldownRemaining);
+            const statusClass = entry.status === 'success'
+                ? 'success'
+                : entry.status === 'failed'
+                    ? 'danger'
+                    : entry.status === 'pending_approval'
+                        ? 'warning'
+                        : 'secondary';
+            const statusLabel = entry.status ? String(entry.status).replace(/_/g, ' ') : 'unknown';
 
             return `
                 <div class="card mb-2">
@@ -414,6 +455,9 @@ class SelfHealingDashboard {
                                 <small class="text-muted">
                                     <i class="fas fa-clock"></i> ${timeAgo}
                                 </small>
+                                <div>
+                                    <span class="badge bg-${statusClass} mt-1">${this.escapeHtml(statusLabel)}</span>
+                                </div>
                             </div>
                             <div class="text-end">
                                 ${entry.cooldownRemaining > 0 ? `
@@ -425,6 +469,7 @@ class SelfHealingDashboard {
                                         <i class="fas fa-check"></i> Ready
                                     </span>
                                 `}
+                                ${entry.error ? `<div class="small text-danger mt-1">${this.escapeHtml(entry.error)}</div>` : ''}
                             </div>
                         </div>
                     </div>
@@ -441,6 +486,72 @@ class SelfHealingDashboard {
                 </div>
                 <div class="card-body p-2" style="max-height: 600px; overflow-y: auto;">
                     ${historyHtml}
+                </div>
+            </div>
+        `;
+    }
+
+    /**
+     * Render pending approvals panel
+     */
+    renderApprovals(emptyMessage = null) {
+        const container = document.getElementById(this.approvalsContainerId);
+        if (!container) return;
+
+        if (emptyMessage) {
+            container.innerHTML = `
+                <div class="alert alert-info text-center mb-3">
+                    <i class="fas fa-info-circle"></i> ${this.escapeHtml(emptyMessage)}
+                </div>
+            `;
+            return;
+        }
+
+        if (!Array.isArray(this.pendingApprovals) || this.pendingApprovals.length === 0) {
+            container.innerHTML = `
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h6 class="mb-0"><i class="fas fa-user-check"></i> Pending Approvals</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="alert alert-success text-center mb-0">
+                            <i class="fas fa-check-circle"></i> No pending approvals
+                        </div>
+                    </div>
+                </div>
+            `;
+            return;
+        }
+
+        const items = this.pendingApprovals.map((approval) => `
+            <div class="card mb-2">
+                <div class="card-body p-2">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <strong>${this.escapeHtml(approval.ruleName)}</strong>
+                            <div class="small text-muted">${this.escapeHtml(approval.strategy)} · ${this.escapeHtml(approval.action)}</div>
+                            <div class="small text-muted">Requested ${this.formatTimeAgo(approval.requestedAt)}</div>
+                        </div>
+                        <div class="btn-group btn-group-sm">
+                            <button class="btn btn-outline-success" onclick="window.selfHealingDashboard.approveRemediation('${approval.id}')">
+                                Approve
+                            </button>
+                            <button class="btn btn-outline-danger" onclick="window.selfHealingDashboard.rejectRemediation('${approval.id}')">
+                                Reject
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+
+        container.innerHTML = `
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="fas fa-user-check"></i> Pending Approvals (${this.pendingApprovals.length})</h6>
+                </div>
+                <div class="card-body p-2">
+                    ${items}
                 </div>
             </div>
         `;
@@ -467,13 +578,14 @@ class SelfHealingDashboard {
      * Get effectiveness metrics for a rule
      */
     getRuleMetrics(rule) {
-        // This would ideally come from a dedicated metrics endpoint
-        // For now, calculate from execution history
         const ruleExecutions = this.executionHistory.filter(h => h.ruleName === rule.name);
+        const successful = ruleExecutions.filter(e => e.status === 'success').length;
+        const denominator = ruleExecutions.length || 1;
+        const successRate = Math.round((successful / denominator) * 100);
 
         return {
             executions: ruleExecutions.length,
-            successRate: 100, // Placeholder - would need status tracking
+            successRate,
             lastExecuted: ruleExecutions.length > 0 ? ruleExecutions[0].lastExecuted : null
         };
     }
@@ -482,18 +594,15 @@ class SelfHealingDashboard {
      * Toggle rule enable/disable
      */
     async toggleRule(ruleName, enabled) {
-        // Note: This would require a PUT endpoint to update rule configuration
-        // For now, show a notification
-        this.showToast(
-            `Rule "${ruleName}" ${enabled ? 'enabled' : 'disabled'}. Note: This requires server-side implementation.`,
-            'info'
-        );
-
-        // Update local state
-        const rule = this.rules.find(r => r.name === ruleName);
-        if (rule) {
-            rule.enabled = enabled;
-            this.renderRules();
+        try {
+            await apiClient.patch(`self-healing/rules/${ruleName}/toggle`, { enabled });
+            this.showToast(`Rule "${ruleName}" ${enabled ? 'enabled' : 'disabled'}`, 'success');
+            await this.loadStatus();
+            await this.loadRules();
+        } catch (error) {
+            console.error('Failed to toggle rule:', error);
+            this.showToast(`Failed to ${enabled ? 'enable' : 'disable'} rule`, 'error');
+            await this.loadRules();
         }
     }
 
@@ -555,7 +664,9 @@ class SelfHealingDashboard {
             }
 
             // Reload data
+            await this.loadStatus();
             await this.loadHistory();
+            await this.loadApprovals();
             this.renderRules();
 
         } catch (error) {
@@ -628,10 +739,9 @@ class SelfHealingDashboard {
                                     </label>
                                 </div>
 
-                                <div class="alert alert-warning">
-                                    <i class="fas fa-exclamation-triangle"></i>
-                                    <strong>Note:</strong> Parameter changes require server-side implementation.
-                                    This is a UI demonstration.
+                                <div class="alert alert-info">
+                                    <i class="fas fa-info-circle"></i>
+                                    Changes are validated server-side and persisted to <code>config/self-healing-rules.json</code>.
                                 </div>
                             </form>
                         </div>
@@ -654,17 +764,50 @@ class SelfHealingDashboard {
      * Save rule edits
      */
     saveRuleEdits(ruleName) {
-        const threshold = document.getElementById('edit-threshold').value;
-        const window = document.getElementById('edit-window').value;
+        const threshold = parseFloat(document.getElementById('edit-threshold').value);
+        const windowValue = document.getElementById('edit-window').value;
         const cooldown = document.getElementById('edit-cooldown').value;
-        const priority = document.getElementById('edit-priority').value;
+        const priority = parseInt(document.getElementById('edit-priority').value, 10);
         const requiresApproval = document.getElementById('edit-requires-approval').checked;
+        const rule = this.rules.find(r => r.name === ruleName);
 
-        this.showToast(`Rule parameters updated (UI only). Server-side implementation needed.`, 'info');
+        if (!rule) {
+            this.showToast('Rule not found in local state', 'error');
+            return;
+        }
 
-        // Close modal
-        const modal = bootstrap.Modal.getInstance(document.getElementById('editRuleModal'));
-        modal.hide();
+        if (!Number.isFinite(threshold)) {
+            this.showToast('Threshold must be a valid number', 'error');
+            return;
+        }
+
+        const updatedRule = {
+            ...rule,
+            detectionQuery: {
+                ...rule.detectionQuery,
+                threshold,
+                window: windowValue
+            },
+            remediation: {
+                ...rule.remediation,
+                cooldown,
+                priority,
+                requiresApproval
+            }
+        };
+
+        apiClient.put(`self-healing/rules/${ruleName}`, updatedRule)
+            .then(async () => {
+                this.showToast('Rule updated successfully', 'success');
+                const modal = bootstrap.Modal.getInstance(document.getElementById('editRuleModal'));
+                modal.hide();
+                await this.loadStatus();
+                await this.loadRules();
+            })
+            .catch((error) => {
+                console.error('Failed to save rule edits:', error);
+                this.showToast('Failed to save rule edits', 'error');
+            });
     }
 
     /**
@@ -695,6 +838,8 @@ class SelfHealingDashboard {
                                                 <div class="d-flex justify-content-between">
                                                     <div>
                                                         <strong>Executed:</strong> ${new Date(entry.lastExecuted).toLocaleString()}
+                                                        <div><strong>Status:</strong> ${this.escapeHtml((entry.status || 'unknown').replace(/_/g, ' '))}</div>
+                                                        ${entry.error ? `<div class="text-danger"><strong>Error:</strong> ${this.escapeHtml(entry.error)}</div>` : ''}
                                                     </div>
                                                     <div>
                                                         ${entry.cooldownRemaining > 0 ? `
@@ -722,6 +867,45 @@ class SelfHealingDashboard {
         } catch (error) {
             console.error('Failed to load rule history:', error);
             this.showToast('Failed to load rule history', 'error');
+        }
+    }
+
+    /**
+     * Approve a pending remediation action.
+     */
+    async approveRemediation(approvalId) {
+        if (!confirm('Approve and execute this remediation action?')) {
+            return;
+        }
+
+        try {
+            await apiClient.post(`self-healing/approvals/${approvalId}/approve`, {});
+            this.showToast('Approval accepted and remediation executed', 'success');
+            await this.loadStatus();
+            await this.loadApprovals();
+            await this.loadHistory();
+        } catch (error) {
+            console.error('Failed to approve remediation:', error);
+            this.showToast('Failed to approve remediation', 'error');
+        }
+    }
+
+    /**
+     * Reject a pending remediation action.
+     */
+    async rejectRemediation(approvalId) {
+        if (!confirm('Reject this remediation action?')) {
+            return;
+        }
+
+        try {
+            await apiClient.post(`self-healing/approvals/${approvalId}/reject`, {});
+            this.showToast('Approval request rejected', 'info');
+            await this.loadStatus();
+            await this.loadApprovals();
+        } catch (error) {
+            console.error('Failed to reject remediation:', error);
+            this.showToast('Failed to reject remediation', 'error');
         }
     }
 
@@ -828,6 +1012,7 @@ class SelfHealingDashboard {
             // Refresh dashboard
             await this.loadStatus();
             await this.loadRules();
+            await this.loadApprovals();
 
         } catch (error) {
             console.error('Failed to reload rules:', error);
@@ -845,11 +1030,13 @@ class SelfHealingDashboard {
             const response = await apiClient.post('self-healing/evaluate');
             const data = response.data || response;
 
-            const message = `Evaluation complete: ${data.triggered || 0} triggered, ${data.skipped || 0} skipped, ${data.failed || 0} failed`;
+            const message = `Evaluation complete: ${data.triggered || 0} triggered, ${data.pendingApproval || 0} pending approval, ${data.skipped || 0} skipped, ${data.failed || 0} failed`;
             this.showToast(message, data.triggered > 0 ? 'success' : 'info');
 
             // Refresh dashboard
+            await this.loadStatus();
             await this.loadHistory();
+            await this.loadApprovals();
             this.renderRules();
 
         } catch (error) {
@@ -883,6 +1070,7 @@ class SelfHealingDashboard {
             await this.loadStatus();
             await this.loadRules();
             await this.loadHistory();
+            await this.loadApprovals();
         }, this.refreshInterval, { runOnStart: false });
         this.autoRefreshPoller.start();
     }

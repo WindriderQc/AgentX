@@ -6,6 +6,7 @@
 const rateLimit = require('express-rate-limit');
 const { ipKeyGenerator } = require('express-rate-limit');
 const logger = require('../../config/logger');
+const SelfHealingEngine = require('../services/selfHealingEngine');
 
 function getClientKey(req) {
   // In tests, allow callers to isolate rate limit buckets deterministically.
@@ -22,7 +23,7 @@ function getClientKey(req) {
  * General API rate limiter
  * 100 requests per 15 minutes
  */
-const apiLimiter = rateLimit({
+const baseApiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // 100 requests per window
   message: {
@@ -50,6 +51,18 @@ const apiLimiter = rateLimit({
       retryAfter: req.rateLimit.resetTime
     });
   }
+});
+
+const throttledApiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 50,
+  message: {
+    status: 'error',
+    message: 'API temporarily throttled by self-healing safeguards'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: getClientKey
 });
 
 /**
@@ -100,7 +113,7 @@ const specialXLimiter = rateLimit({
  * 20 requests per minute (prevents spam/abuse)
  * Key by user session if available, otherwise IP
  */
-const chatLimiter = rateLimit({
+const baseChatLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
   max: 20, // 20 requests per minute
   message: {
@@ -130,6 +143,53 @@ const chatLimiter = rateLimit({
     });
   }
 });
+
+const throttledChatLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  message: {
+    status: 'error',
+    message: 'Chat temporarily throttled by self-healing safeguards'
+  },
+  keyGenerator: (req) => {
+    if (process.env.NODE_ENV === 'test') {
+      return getClientKey(req);
+    }
+    if (req.session?.userId) {
+      return req.session.userId;
+    }
+    return ipKeyGenerator(req.ip);
+  },
+  validate: { ip: false }
+});
+
+async function isSelfHealingThrottleActive() {
+  try {
+    const state = await SelfHealingEngine.getThrottleState();
+    if (!state || !state.enabled) return false;
+    const expiresAt = Number(state.expiresAt) || 0;
+    return expiresAt > Date.now();
+  } catch (error) {
+    logger.debug('Failed to read self-healing throttle state; defaulting to normal limits', {
+      error: error.message
+    });
+    return false;
+  }
+}
+
+const apiLimiter = async (req, res, next) => {
+  if (await isSelfHealingThrottleActive()) {
+    return throttledApiLimiter(req, res, next);
+  }
+  return baseApiLimiter(req, res, next);
+};
+
+const chatLimiter = async (req, res, next) => {
+  if (await isSelfHealingThrottleActive()) {
+    return throttledChatLimiter(req, res, next);
+  }
+  return baseChatLimiter(req, res, next);
+};
 
 /**
  * Strict rate limiter for expensive operations

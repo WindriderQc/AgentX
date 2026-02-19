@@ -61,6 +61,57 @@ async function checkOllamaHealth() {
   }
 }
 
+let selfHealingEvaluationTimer = null;
+
+async function runSelfHealingEvaluationCycle() {
+  const lock = await SelfHealingEngine.acquireEvaluationLock();
+  if (!lock.acquired) {
+    logger.debug('Skipped self-healing evaluation tick (lock held by another worker)');
+    return;
+  }
+
+  try {
+    const results = await SelfHealingEngine.evaluateAndExecute();
+    if (results.length > 0) {
+      const summary = {
+        total: results.length,
+        success: results.filter(r => r.status === 'success').length,
+        failed: results.filter(r => r.status === 'failed').length,
+        pendingApproval: results.filter(r => r.status === 'pending_approval').length,
+        skipped: results.filter(r => r.status === 'skipped').length
+      };
+      logger.info('Self-healing evaluation cycle completed', summary);
+    } else {
+      logger.debug('Self-healing evaluation cycle completed with no triggers');
+    }
+  } catch (error) {
+    logger.error('Self-healing evaluation cycle failed', { error: error.message });
+  } finally {
+    await SelfHealingEngine.releaseEvaluationLock(lock.token);
+  }
+}
+
+function startSelfHealingScheduler() {
+  if (process.env.NODE_ENV === 'test') return;
+  if (selfHealingEvaluationTimer) return;
+
+  const schedulerEnabled = process.env.SELF_HEALING_SCHEDULER_ENABLED !== 'false';
+  const intervalMs = Math.max(10000, parseInt(process.env.SELF_HEALING_EVALUATION_INTERVAL_MS || '300000', 10));
+
+  if (!schedulerEnabled) {
+    logger.info('Self-healing scheduler disabled via SELF_HEALING_SCHEDULER_ENABLED=false');
+    return;
+  }
+
+  selfHealingEvaluationTimer = setInterval(() => {
+    runSelfHealingEvaluationCycle().catch((error) => {
+      logger.error('Unhandled self-healing scheduler tick error', { error: error.message });
+    });
+  }, intervalMs);
+
+  logger.info('Self-healing scheduler started', { intervalMs });
+}
+
 // Health Check - Detailed (re-added here or we need to inject it into app.js)
 // Since app.js defines routes, we can add this route there if we export the check functions,
 // or we can add it here before listening.
@@ -236,6 +287,7 @@ async function startServer() {
     const rulesLoaded = await SelfHealingEngine.loadRules();
     console.log(`   ✓ Self-Healing: ${rulesLoaded} rules loaded`);
     logger.info('Self-healing rules loaded', { count: rulesLoaded });
+    startSelfHealingScheduler();
   } catch (err) {
     console.log(`   ⚠ Self-Healing: ${err.message}`);
     logger.warn('Self-healing rules not loaded - automation disabled', { error: err.message });

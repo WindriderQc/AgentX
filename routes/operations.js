@@ -16,10 +16,92 @@ const ActivityLog = require('../models/ActivityLog');
 const { systemHealth } = require('../src/app');
 const { exec } = require('child_process');
 const util = require('util');
+const fetch = require('node-fetch');
 const execPromise = util.promisify(exec);
 
 // n8n configuration
 const N8N_BASE = process.env.N8N_URL || 'http://localhost:5678';
+const DEFAULT_CLAWDX_OLLAMA_URL = 'http://192.168.2.66:11434';
+const DEFAULT_OPENCLAW_BASE_URL = 'http://192.168.2.66:3000';
+
+function parsePathList(value, fallback) {
+  if (!value || typeof value !== 'string') return fallback;
+  const paths = value
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => (entry.startsWith('/') ? entry : `/${entry}`));
+  return paths.length > 0 ? paths : fallback;
+}
+
+function joinUrl(baseUrl, path) {
+  const base = String(baseUrl || '').replace(/\/+$/, '');
+  const suffix = String(path || '').startsWith('/') ? path : `/${path || ''}`;
+  return `${base}${suffix}`;
+}
+
+async function probeFirstJson(baseUrl, paths, timeoutMs = 5000) {
+  let lastError = 'No response';
+  let lastStatus = null;
+
+  for (const path of paths) {
+    const url = joinUrl(baseUrl, path);
+    try {
+      const response = await fetch(url, { timeout: timeoutMs });
+      lastStatus = response.status;
+      const bodyText = await response.text();
+      let data = null;
+      if (bodyText) {
+        try {
+          data = JSON.parse(bodyText);
+        } catch (_err) {
+          data = bodyText;
+        }
+      }
+
+      if (response.ok) {
+        return {
+          ok: true,
+          url,
+          status: response.status,
+          data
+        };
+      }
+
+      lastError = `HTTP ${response.status}`;
+    } catch (error) {
+      lastError = error.message;
+    }
+  }
+
+  return { ok: false, error: lastError, status: lastStatus };
+}
+
+function extractAgentNames(payload) {
+  let list = [];
+
+  if (Array.isArray(payload)) {
+    list = payload;
+  } else if (Array.isArray(payload?.agents)) {
+    list = payload.agents;
+  } else if (Array.isArray(payload?.data)) {
+    list = payload.data;
+  } else if (Array.isArray(payload?.items)) {
+    list = payload.items;
+  } else if (Array.isArray(payload?.result)) {
+    list = payload.result;
+  }
+
+  const names = list
+    .map((item) => {
+      if (typeof item === 'string') return item;
+      if (!item || typeof item !== 'object') return null;
+      return item.name || item.agentName || item.slug || item.id || item.title || item.model || null;
+    })
+    .filter(Boolean);
+
+  return Array.from(new Set(names));
+}
 
 // Workflow definitions (from n8n-monitor.html)
 const WORKFLOWS = [
@@ -45,6 +127,22 @@ const WORKFLOWS = [
  */
 router.get('/health', async (req, res) => {
   try {
+    const clawdxOllamaUrl =
+      process.env.CLAWDX_OLLAMA_URL ||
+      process.env.OLLAMA_HOST_TERTIARY ||
+      process.env.OLLAMA_HOST_3 ||
+      DEFAULT_CLAWDX_OLLAMA_URL;
+    const openclawBaseUrl = process.env.OPENCLAW_BASE_URL || DEFAULT_OPENCLAW_BASE_URL;
+    const openclawTimeoutMs = Number(process.env.OPENCLAW_TIMEOUT_MS || 3000);
+    const openclawHealthPaths = parsePathList(
+      process.env.OPENCLAW_HEALTH_PATHS,
+      ['/api/health', '/health', '/healthz', '/api/status']
+    );
+    const openclawAgentsPaths = parsePathList(
+      process.env.OPENCLAW_AGENTS_PATHS,
+      ['/api/agents', '/agents', '/api/v1/agents']
+    );
+
     // 0. Fetch PM2 Data if available
     let pm2Data = {};
     try {
@@ -114,7 +212,6 @@ router.get('/health', async (req, res) => {
     // 3. Ollama (primary host)
     try {
       const ollamaHost = process.env.OLLAMA_HOST || 'http://localhost:11434';
-      const fetch = require('node-fetch');
       const response = await fetch(`${ollamaHost}/api/tags`, { timeout: 5000 });
 
       if (response.ok) {
@@ -140,8 +237,6 @@ router.get('/health', async (req, res) => {
     // 4. DataAPI
     try {
       const dataapiUrl = process.env.DATAAPI_BASE_URL || 'http://127.0.0.1:3003';
-      const fetch = require('node-fetch');
-
       // DataAPI has a public /health endpoint (no auth required)
       const response = await fetch(`${dataapiUrl}/health`, { timeout: 5000 });
 
@@ -166,7 +261,6 @@ router.get('/health', async (req, res) => {
 
     // 5. n8n
     try {
-      const fetch = require('node-fetch');
       const response = await fetch(`${N8N_BASE}/healthz`, { timeout: 5000 });
 
       if (response.ok) {
@@ -190,7 +284,6 @@ router.get('/health', async (req, res) => {
     if (process.env.VECTOR_STORE_TYPE === 'qdrant') {
       try {
         const qdrantUrl = process.env.QDRANT_URL || 'http://localhost:6333';
-        const fetch = require('node-fetch');
         const response = await fetch(`${qdrantUrl}/healthz`, { timeout: 5000 });
 
         if (response.ok) {
@@ -211,7 +304,81 @@ router.get('/health', async (req, res) => {
       }
     }
 
-    // 7. System Metrics
+    // 7. ClawdX host (UGClawdX 192.168.2.66) + OpenClaw status
+    const [clawdxTagsProbe, clawdxPsProbe] = await Promise.all([
+      probeFirstJson(clawdxOllamaUrl, ['/api/tags']),
+      probeFirstJson(clawdxOllamaUrl, ['/api/ps'])
+    ]);
+    const clawdxModels = clawdxTagsProbe.ok && Array.isArray(clawdxTagsProbe.data?.models)
+      ? clawdxTagsProbe.data.models
+        .map((model) => model?.name || model?.model)
+        .filter(Boolean)
+      : [];
+    const clawdxRunningModels = clawdxPsProbe.ok && Array.isArray(clawdxPsProbe.data?.models)
+      ? clawdxPsProbe.data.models
+        .map((model) => model?.name || model?.model)
+        .filter(Boolean)
+      : [];
+
+    if (clawdxTagsProbe.ok) {
+      healthStatus.services.clawdx = {
+        status: 'up',
+        host: clawdxOllamaUrl,
+        models: clawdxModels.length,
+        runningModels: clawdxRunningModels.length,
+        modelNames: clawdxModels.slice(0, 30),
+        runningModelNames: clawdxRunningModels.slice(0, 30)
+      };
+    } else {
+      healthStatus.services.clawdx = {
+        status: 'down',
+        host: clawdxOllamaUrl,
+        error: clawdxTagsProbe.error || 'Unable to query /api/tags'
+      };
+      healthStatus.status = 'degraded';
+    }
+
+    const [openclawHealthProbe, openclawAgentsProbe] = await Promise.all([
+      probeFirstJson(openclawBaseUrl, openclawHealthPaths, openclawTimeoutMs),
+      probeFirstJson(openclawBaseUrl, openclawAgentsPaths, openclawTimeoutMs)
+    ]);
+    const openclawAgentNames = openclawAgentsProbe.ok ? extractAgentNames(openclawAgentsProbe.data) : [];
+
+    if (openclawHealthProbe.ok || openclawAgentsProbe.ok) {
+      healthStatus.services.openclaw = {
+        status: 'up',
+        baseUrl: openclawBaseUrl,
+        healthEndpoint: openclawHealthProbe.ok ? openclawHealthProbe.url : null,
+        agentsEndpoint: openclawAgentsProbe.ok ? openclawAgentsProbe.url : null,
+        agentCount: openclawAgentNames.length,
+        agents: openclawAgentNames.slice(0, 30)
+      };
+    } else if (clawdxModels.length > 0) {
+      healthStatus.services.openclaw = {
+        status: 'degraded',
+        baseUrl: openclawBaseUrl,
+        healthEndpoint: null,
+        agentsEndpoint: null,
+        agentCount: clawdxModels.length,
+        agents: clawdxModels.slice(0, 30),
+        source: 'clawdx_ollama_fallback',
+        error: openclawAgentsProbe.error || openclawHealthProbe.error || 'OpenClaw API unreachable'
+      };
+      healthStatus.status = 'degraded';
+    } else {
+      healthStatus.services.openclaw = {
+        status: 'down',
+        baseUrl: openclawBaseUrl,
+        healthEndpoint: null,
+        agentsEndpoint: null,
+        agentCount: 0,
+        agents: [],
+        error: openclawAgentsProbe.error || openclawHealthProbe.error || 'OpenClaw API unreachable'
+      };
+      healthStatus.status = 'degraded';
+    }
+
+    // 8. System Metrics
     const memUsage = process.memoryUsage();
     healthStatus.system = {
       memory: {
@@ -226,7 +393,7 @@ router.get('/health', async (req, res) => {
       nodeVersion: process.version
     };
 
-    // 8. Recent Metrics (last 24 hours)
+    // 9. Recent Metrics (last 24 hours)
     try {
       const PerformanceSnapshot = require('../models/PerformanceSnapshot');
       const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);

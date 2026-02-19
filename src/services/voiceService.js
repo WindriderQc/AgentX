@@ -29,13 +29,13 @@ async function fetch(...args) {
     return fetchFn(...args);
 }
 
-// Configuration
-const WHISPER_LOCAL_URL = process.env.WHISPER_URL || 'http://192.168.2.99:8000';  // faster-whisper-server
+// Configuration — no defaults; if env var is unset, that provider is unavailable
+const WHISPER_LOCAL_URL = process.env.WHISPER_URL || null;       // e.g. http://192.168.2.99:8000
 const OPENAI_WHISPER_URL = 'https://api.openai.com/v1/audio/transcriptions';
 
 // TTS Configuration
-const TTS_PROVIDER = process.env.TTS_PROVIDER || 'browser';  // browser, openai, local
-const TTS_LOCAL_URL = process.env.TTS_URL || 'http://192.168.2.99:5002';  // Coqui/Piper
+const TTS_PROVIDER = process.env.TTS_PROVIDER || 'browser';     // browser, openai, local
+const TTS_LOCAL_URL = process.env.TTS_URL || null;               // e.g. http://192.168.2.99:5002
 
 // Helper to get API key dynamically (allows tests to override)
 function getOpenAIKey() {
@@ -73,8 +73,11 @@ async function transcribe(audioBuffer, options = {}) {
  * Transcribe using local faster-whisper-server
  */
 async function transcribeLocal(audioBuffer, language = 'en') {
+    if (!WHISPER_LOCAL_URL) {
+        throw new Error('Local Whisper not configured — set WHISPER_URL env variable');
+    }
     const startTime = Date.now();
-    
+
     // Create form data with audio file
     const formData = new FormData();
     formData.append('file', audioBuffer, {
@@ -258,6 +261,9 @@ async function synthesizeOpenAI(text, voice = 'alloy') {
  * Generate speech using local TTS (Coqui/Piper)
  */
 async function synthesizeLocal(text, voice = 'default') {
+    if (!TTS_LOCAL_URL) {
+        throw new Error('Local TTS not configured — set TTS_URL env variable');
+    }
     try {
         const response = await fetch(`${TTS_LOCAL_URL}/api/tts`, {
             method: 'POST',
@@ -292,21 +298,25 @@ async function checkHealth() {
         tts: { browser: true, openai: !!getOpenAIKey(), local: false }
     };
     
-    // Check local Whisper
-    try {
-        const response = await fetch(`${WHISPER_LOCAL_URL}/health`, { timeout: 3000 });
-        health.stt.local = response.ok;
-    } catch (err) {
-        health.stt.local = false;
-        health.stt.localError = err.message;
+    // Check local Whisper (skip if not configured)
+    if (WHISPER_LOCAL_URL) {
+        try {
+            const response = await fetch(`${WHISPER_LOCAL_URL}/health`, { timeout: 3000 });
+            health.stt.local = response.ok;
+        } catch (err) {
+            health.stt.local = false;
+            health.stt.localError = err.message;
+        }
     }
-    
-    // Check local TTS
-    try {
-        const response = await fetch(`${TTS_LOCAL_URL}/api/health`, { timeout: 3000 });
-        health.tts.local = response.ok;
-    } catch (err) {
-        health.tts.local = false;
+
+    // Check local TTS (skip if not configured)
+    if (TTS_LOCAL_URL) {
+        try {
+            const response = await fetch(`${TTS_LOCAL_URL}/api/health`, { timeout: 3000 });
+            health.tts.local = response.ok;
+        } catch (err) {
+            health.tts.local = false;
+        }
     }
     
     return health;

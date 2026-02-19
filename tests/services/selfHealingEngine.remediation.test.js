@@ -268,6 +268,7 @@ describe('Self-Healing Engine - Remediation Actions', () => {
       expect(result.status).toBe('pending_approval');
       expect(result.rule).toBe('test_service_restart');
       expect(result.approvalRequired).toBe(true);
+      expect(result.approvalId).toBeTruthy();
     });
 
     test('should execute restart when automation enabled and no approval required', async () => {

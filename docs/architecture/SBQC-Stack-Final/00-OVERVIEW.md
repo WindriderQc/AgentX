@@ -76,8 +76,9 @@
 
 | Host | IP | Role | Services |
 |------|-----|------|----------|
-| **UGBrutal** | 192.168.2.12 | GPU Inference (5070 Ti) | Ollama: deepseek-r1:8b, gemma3:12b-it-qat, qwen2.5-coder:14b, qwen3:14b, llama3.1:8b |
-| **UGFrank** | 192.168.2.99 | GPU Inference (3080 Ti) | Ollama: qwen2.5:7b-instruct-q4_0, qwen2.5:3b, qwen3:4b, qwen3:8b, nomic-embed-text:latest |
+| **UGBrutal** | 192.168.2.12 | GPU Inference (RTX 5070 Ti 16GB) | Ollama, faster-whisper-server:8000, Coqui TTS:5002 |
+| **UGFrank** | 192.168.2.99 | GPU Inference (RTX 3080 Ti 12GB) | Ollama: front-door models (qwen 3b-8b), nomic-embed-text |
+| **UGClawdX** | 192.168.2.66 | GPU Inference (RTX 3090 24GB) | Ollama: dedicated AI box |
 | **Docker Host** | 192.168.2.33 | App Server | DataAPI:3003, AgentX:3080, MongoDB:27017 |
 | **Ubundocker** | 192.168.2.199 | Automation | n8n:5678 (Docker container)<br/>Public: https://n8n.specialblend.icu (Cloudflare Tunnel) |
 

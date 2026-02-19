@@ -1070,6 +1070,7 @@ function extractHostName(hostUrl) {
     // Map known hosts to friendly names
     if (hostUrl.includes('192.168.2.99')) return 'UGFrank';
     if (hostUrl.includes('192.168.2.12')) return 'UGBrutal';
+    if (hostUrl.includes('192.168.2.66')) return 'UGClawdX';
     if (hostUrl.includes('localhost') || hostUrl.includes('127.0.0.1')) return 'Local';
     // Fallback: strip protocol and port
     return hostUrl.replace('http://', '').replace('https://', '').replace(':11434', '');

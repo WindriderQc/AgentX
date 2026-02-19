@@ -120,6 +120,13 @@ Comprehensive rule information:
 - Additional conditions
 - Complete rule JSON export
 
+### 10. Approval Queue
+
+- Pending remediation approvals panel
+- Approve/reject actions from dashboard
+- Immediate execution after approval
+- Full approval audit trail in backend
+
 ## API Integration
 
 ### Endpoints Used
@@ -243,17 +250,55 @@ Response: {
 }
 ```
 
+#### GET /api/self-healing/approvals
+```javascript
+// List approval requests (default: pending)
+{
+  status: 'success',
+  data: {
+    approvals: Array<Approval>,
+    count: number
+  }
+}
+```
+
+#### POST /api/self-healing/approvals/:approvalId/approve
+```javascript
+// Approve and execute a pending remediation
+{
+  status: 'success',
+  data: {
+    approvalId: string,
+    status: 'executed' | 'failed',
+    execution: object
+  }
+}
+```
+
+#### POST /api/self-healing/approvals/:approvalId/reject
+```javascript
+// Reject a pending remediation
+{
+  status: 'success',
+  data: {
+    approvalId: string,
+    status: 'rejected'
+  }
+}
+```
+
 ## Usage
 
 ### Basic Initialization
 
 ```javascript
-import SelfHealingDashboard from './js/self-healing-dashboard.js';
+import SelfHealingDashboard from '/js/self-healing-dashboard.js';
 
 const dashboard = new SelfHealingDashboard({
   containerId: 'self-healing-container',
   statsContainerId: 'self-healing-stats',
   historyContainerId: 'self-healing-history',
+  approvalsContainerId: 'self-healing-approvals',
   refreshInterval: 30000 // 30 seconds
 });
 
@@ -267,6 +312,7 @@ const dashboard = new SelfHealingDashboard({
   containerId: 'custom-container-id',
   statsContainerId: 'custom-stats-id',
   historyContainerId: 'custom-history-id',
+  approvalsContainerId: 'custom-approvals-id',
   refreshInterval: 60000 // 1 minute
 });
 ```

@@ -343,6 +343,10 @@
                                     <span class="dot"></span>
                                     <span><i class="fas fa-server micro-icon"></i> DataAPI</span>
                                 </div>
+                                <div class="health-strip-item" id="health-openclaw">
+                                    <span class="dot"></span>
+                                    <span><i class="fas fa-users micro-icon"></i> OpenClaw</span>
+                                </div>
                                 <div class="health-strip-item" id="health-qdrant">
                                     <span class="dot"></span>
                                     <span><i class="fas fa-layer-group micro-icon"></i> Qdrant</span>
@@ -364,6 +368,10 @@
                                 <div class="health-strip-item" id="health-ollama">
                                     <span class="dot"></span>
                                     <span><i class="fas fa-brain micro-icon"></i> Ollama</span>
+                                </div>
+                                <div class="health-strip-item" id="health-clawdx">
+                                    <span class="dot"></span>
+                                    <span><i class="fas fa-microchip micro-icon"></i> ClawdX</span>
                                 </div>
                             </div>
                         </div>
@@ -453,6 +461,41 @@
                                     <div class="sys-label">Process ID</div>
                                     <div class="sys-value" id="sys-pid">—</div>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="section-card section-card-compact" style="margin-top: 14px;">
+                        <div class="section-header">
+                            <h2><i class="fas fa-robot"></i> UGClawdX / OpenClaw</h2>
+                        </div>
+                        <div class="section-body">
+                            <div class="section-subtitle">Live status for host <code>192.168.2.66</code>, including model inventory and OpenClaw agents.</div>
+                            <div class="sys-grid">
+                                <div class="sys-item">
+                                    <div class="sys-label">Host</div>
+                                    <div class="sys-value" id="clawdx-host">—</div>
+                                </div>
+                                <div class="sys-item">
+                                    <div class="sys-label">Models (Ollama)</div>
+                                    <div class="sys-value" id="clawdx-models">—</div>
+                                </div>
+                                <div class="sys-item">
+                                    <div class="sys-label">Running Models</div>
+                                    <div class="sys-value" id="clawdx-running-models">—</div>
+                                </div>
+                                <div class="sys-item">
+                                    <div class="sys-label">Agents</div>
+                                    <div class="sys-value" id="openclaw-agents-count">—</div>
+                                </div>
+                            </div>
+                            <div style="margin-top: 12px;">
+                                <div class="sys-label">OpenClaw Endpoint</div>
+                                <div class="sys-value" id="openclaw-health-endpoint">—</div>
+                            </div>
+                            <div class="monitor-log-wrap" style="margin-top: 12px;">
+                                <div class="monitor-log-header">OpenClaw Agents</div>
+                                <pre id="openclaw-agents-list" class="monitor-log">Waiting for status update...</pre>
                             </div>
                         </div>
                     </div>
@@ -1017,9 +1060,13 @@
             try {
                 const response = await fetch('/api/operations/health');
                 const data = await response.json();
+                const setText = (id, value, fallback = '—') => {
+                    const el = document.getElementById(id);
+                    if (el) el.textContent = value ?? fallback;
+                };
 
                 // Update service health indicators
-                const services = ['agentx', 'mongodb', 'ollama', 'dataapi', 'n8n', 'qdrant'];
+                const services = ['agentx', 'mongodb', 'ollama', 'clawdx', 'dataapi', 'n8n', 'qdrant', 'openclaw'];
                 services.forEach(service => {
                     const element = document.getElementById(`health-${service}`);
                     if (element && data.services[service]) {
@@ -1056,10 +1103,23 @@
                              } else {
                                 infoSpan.innerHTML = '<span style="opacity: 0.7; font-size: 10px;">SYSTEM</span>';
                              }
+                        } else if (service === 'clawdx') {
+                            const modelCount = Number(data.services.clawdx.models || 0);
+                            const runningCount = Number(data.services.clawdx.runningModels || 0);
+                            infoSpan.innerHTML = `<i class="fas fa-microchip" style="opacity: 0.7; margin-right: 4px;"></i>${modelCount}/${runningCount}`;
+                            element.title = `ClawdX models: ${modelCount}, running: ${runningCount}`;
                         } else if (service === 'n8n' && status === 'up') {
                             if (data.services.n8n.workflows) {
                                 infoSpan.innerHTML = `<i class="fas fa-bolt" style="opacity: 0.7; margin-right: 4px;"></i>${data.services.n8n.workflows}`;
                                 element.title = `${data.services.n8n.workflows} Workflows`;
+                            }
+                        } else if (service === 'openclaw') {
+                            const agentCount = Number(data.services.openclaw.agentCount || 0);
+                            infoSpan.innerHTML = `<i class="fas fa-users" style="opacity: 0.7; margin-right: 4px;"></i>${agentCount}`;
+                            if (data.services.openclaw.source === 'clawdx_ollama_fallback') {
+                                element.title = `OpenClaw API unreachable, fallback list from ClawdX models (${agentCount})`;
+                            } else {
+                                element.title = `OpenClaw agents: ${agentCount}`;
                             }
                         } else {
                             infoSpan.innerHTML = '';
@@ -1126,6 +1186,31 @@
                 if (data.services.agentx) {
                     document.getElementById('sys-agentx-version').textContent = data.services.agentx.version || '—';
                     document.getElementById('sys-pid').textContent = data.services.agentx.pid || '—';
+                }
+
+                const clawdx = data.services.clawdx || {};
+                const openclaw = data.services.openclaw || {};
+                const agentNames = Array.isArray(openclaw.agents) ? openclaw.agents : [];
+                const endpointLabel = openclaw.healthEndpoint || openclaw.agentsEndpoint || openclaw.baseUrl || 'unavailable';
+                const fallbackNote = openclaw.source === 'clawdx_ollama_fallback'
+                    ? ' (fallback from ClawdX models)'
+                    : '';
+
+                setText('clawdx-host', clawdx.host || '192.168.2.66');
+                setText('clawdx-models', clawdx.models ?? 0);
+                setText('clawdx-running-models', clawdx.runningModels ?? 0);
+                setText('openclaw-agents-count', `${openclaw.agentCount ?? agentNames.length}${fallbackNote}`);
+                setText('openclaw-health-endpoint', endpointLabel);
+
+                const agentsListEl = document.getElementById('openclaw-agents-list');
+                if (agentsListEl) {
+                    if (agentNames.length > 0) {
+                        agentsListEl.textContent = agentNames.map((name, index) => `${index + 1}. ${name}`).join('\n');
+                    } else if (openclaw.error) {
+                        agentsListEl.textContent = `Unavailable: ${openclaw.error}`;
+                    } else {
+                        agentsListEl.textContent = 'No agents reported.';
+                    }
                 }
 
             } catch (error) {

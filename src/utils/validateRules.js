@@ -308,7 +308,7 @@ class RulesValidator {
    * @private
    */
   _isValidDuration(duration) {
-    return /^\d+[smh]$/.test(duration);
+    return /^\d+[smhd]$/.test(duration);
   }
 
   /**

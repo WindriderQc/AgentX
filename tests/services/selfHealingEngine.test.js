@@ -32,6 +32,7 @@ describe('SelfHealingEngine', () => {
 
   beforeEach(async () => {
     // Clear singleton instance to ensure fresh state
+    delete require.cache[require.resolve('../../src/services/selfHealingStateStore')];
     delete require.cache[require.resolve('../../src/services/selfHealingEngine')];
     const SelfHealingEngine = require('../../src/services/selfHealingEngine');
     engine = SelfHealingEngine;
@@ -44,6 +45,19 @@ describe('SelfHealingEngine', () => {
     if (engine.executionHistory) {
       engine.executionHistory.clear();
     }
+    if (engine.stateStore?.memoryCooldowns) {
+      engine.stateStore.memoryCooldowns.clear();
+    }
+    if (engine.stateStore) {
+      engine.stateStore.memoryThrottleState = null;
+      engine.stateStore.memoryEvalLock = null;
+      engine.stateStore.memoryEvalLockExpiresAt = 0;
+    }
+    if (global._selfHealingThrottleTimeout) {
+      clearTimeout(global._selfHealingThrottleTimeout);
+      delete global._selfHealingThrottleTimeout;
+    }
+    delete global._selfHealingThrottle;
   });
 
   afterAll(async () => {

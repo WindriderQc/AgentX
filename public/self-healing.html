@@ -208,6 +208,7 @@
 
             <!-- History Section -->
             <div class="col-lg-4">
+                <div id="self-healing-approvals"></div>
                 <div id="self-healing-history"></div>
             </div>
         </div>
@@ -221,7 +222,7 @@
 
     <!-- Self-Healing Dashboard -->
     <script type="module">
-        import SelfHealingDashboard from './js/self-healing-dashboard.js';
+        import SelfHealingDashboard from '/js/self-healing-dashboard.js';
 
         // Initialize dashboard when page loads
         document.addEventListener('DOMContentLoaded', async () => {
@@ -230,6 +231,7 @@
                 containerId: 'self-healing-container',
                 statsContainerId: 'self-healing-stats',
                 historyContainerId: 'self-healing-history',
+                approvalsContainerId: 'self-healing-approvals',
                 refreshInterval: 30000 // 30 seconds
             });
 
