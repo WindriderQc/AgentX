@@ -8,8 +8,9 @@ const DEFAULT_EXECUTION_CONFIG = {
     response_max_tokens: 32000,  // High enough for any response including <think> reasoning
     response_min_tokens: 100,
     response_tokens_multiplier: 1,  // No multiplier games - just use the max
-    // Context window sent to Ollama. Lower values reduce KV cache VRAM usage,
-    // keeping large models fully on GPU. 8192 is plenty for benchmark prompts.
+    // Fallback context window for Ollama when no per-model config exists in the registry.
+    // Per-model values are auto-detected by modelSync/parameterDetection.js based on
+    // model size and host VRAM, and stored in ModelRegistry.executionDefaults.
     num_ctx: 8192,
     // Length hints can constrain models - disabled by default
     include_length_hint: false,

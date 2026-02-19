@@ -23,6 +23,7 @@ const { samplePromptsByDepth } = require('./promptSampling');
 const { runTest } = require('./testExecution');
 const { warmupModel } = require('./modelWarmup');
 const { buildExecutionPlan } = require('./batchPlanner');
+const ModelRegistry = require('../../../models/ModelRegistry');
 
 // Track active batch for graceful shutdown
 let activeBatchId = null;
@@ -42,6 +43,29 @@ function clearActiveBatch() {
         activeHeartbeatInterval = null;
     }
     activeBatchId = null;
+}
+
+/**
+ * Get per-model execution config by merging batch config with registry defaults/overrides
+ * @param {string} modelName
+ * @param {object} batchConfig - Batch-level execution config
+ * @returns {Promise<object>} Merged execution config
+ */
+async function getModelExecutionConfig(modelName, batchConfig) {
+    try {
+        const entry = await ModelRegistry.findOne({ modelName }).lean();
+        if (!entry) return batchConfig;
+
+        const overrides = entry.executionOverrides || {};
+        const defaults = entry.executionDefaults || {};
+
+        // Priority: user override > auto-detected default > batch config
+        const numCtx = overrides.num_ctx ?? defaults.num_ctx ?? batchConfig.num_ctx;
+        return { ...batchConfig, num_ctx: numCtx };
+    } catch (err) {
+        logger.debug('Failed to lookup model execution config, using batch config', { modelName, error: err.message });
+        return batchConfig;
+    }
 }
 
 /**
@@ -243,6 +267,14 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
 
                 const hardwareSnapshot = await hardwareProfileService.detectHardware(hostUrl, model);
 
+                // Per-model execution config (registry defaults/overrides > batch config)
+                const modelExecConfig = await getModelExecutionConfig(model, executionConfig);
+                if (modelExecConfig.num_ctx !== executionConfig.num_ctx) {
+                    logger.info('Using per-model execution config', {
+                        model, num_ctx: modelExecConfig.num_ctx, batch_num_ctx: executionConfig.num_ctx
+                    });
+                }
+
                 let currentBatch;
                 try {
                     currentBatch = await BenchmarkBatch.findById(batchId);
@@ -298,9 +330,9 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                         );
 
                         const url = `${hostUrl}/api/generate`;
-                        const numPredict = executionConfig.response_max_tokens || 32000;
+                        const numPredict = modelExecConfig.response_max_tokens || 32000;
                         const expectedTokens = prompt.expected_tokens || null;
-                        const promptText = applyLengthHint(prompt.prompt, expectedTokens, numPredict, executionConfig);
+                        const promptText = applyLengthHint(prompt.prompt, expectedTokens, numPredict, modelExecConfig);
                         const hintApplied = promptText !== prompt.prompt;
                         const hintText = hintApplied ? promptText.slice(prompt.prompt.length).trim() : null;
 
@@ -308,8 +340,8 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                         const testTimeoutId = setTimeout(() => testController.abort(), 180000);
 
                         const ollamaOptions = { num_predict: numPredict };
-                        if (executionConfig.num_ctx) {
-                            ollamaOptions.num_ctx = executionConfig.num_ctx;
+                        if (modelExecConfig.num_ctx) {
+                            ollamaOptions.num_ctx = modelExecConfig.num_ctx;
                         }
 
                         const fetchOptions = getFetchOptions(url, {

@@ -5,18 +5,21 @@
  * Enables intelligent routing, benchmark filtering, and capability-based selection.
  *
  * Endpoints:
- *   GET    /api/models/registry              - List all active models
- *   GET    /api/models/registry/:name        - Get specific model details
- *   POST   /api/models/registry              - Create/register new model
- *   PATCH  /api/models/registry/:name        - Update model metadata
- *   DELETE /api/models/registry/:name        - Retire model
- *   GET    /api/models/registry/category/:cat - Get models by category
- *   GET    /api/models/registry/tag/:tag     - Get models by tag
- *   GET    /api/models/registry/stats        - Get category statistics
- *   POST   /api/models/registry/:name/sync   - Sync benchmark stats
+ *   GET    /api/models/registry                     - List all active models
+ *   GET    /api/models/registry/:name               - Get specific model details
+ *   POST   /api/models/registry                     - Create/register new model
+ *   PATCH  /api/models/registry/:name               - Update model metadata
+ *   DELETE /api/models/registry/:name               - Retire model
+ *   GET    /api/models/registry/category/:cat       - Get models by category
+ *   GET    /api/models/registry/tag/:tag            - Get models by tag
+ *   GET    /api/models/registry/stats               - Get category statistics
+ *   POST   /api/models/registry/:name/sync          - Sync benchmark stats
+ *   POST   /api/models/registry/sync-hosts          - Sync registry from Ollama hosts
+ *   GET    /api/models/registry/:name/execution-config  - Get per-model execution config
+ *   POST   /api/models/registry/:name/execution-config  - Set user config overrides
+ *   DELETE /api/models/registry/:name/execution-config  - Clear user overrides
  *
  * @see /models/ModelRegistry.js
- * @see /docs/planning/BENCHMARK_ENHANCEMENT_PLAN.md
  */
 
 const express = require('express');
@@ -204,6 +207,26 @@ router.get('/tag/:tag', async (req, res) => {
       message: 'Failed to retrieve models for tag',
       error: err.message
     });
+  }
+});
+
+/**
+ * POST /api/models/registry/sync-hosts
+ *
+ * Trigger full sync from all Ollama hosts into registry.
+ * Creates new entries, updates metadata, retires missing models.
+ *
+ * Returns: Sync summary { created, updated, retired, unchanged, errors }
+ */
+router.post('/sync-hosts', async (req, res) => {
+  try {
+    const { syncAllHosts } = require('../src/services/modelSync/syncOrchestrator');
+    const result = await syncAllHosts();
+    logger.info('Manual model registry sync completed', result);
+    res.json({ status: 'success', data: result });
+  } catch (err) {
+    logger.error('Model registry sync failed', { error: err.message });
+    res.status(500).json({ status: 'error', message: 'Sync failed', error: err.message });
   }
 });
 
@@ -510,6 +533,109 @@ router.delete('/:name/categories/:category', requireAuth, async (req, res) => {
       message: 'Failed to remove category',
       error: err.message
     });
+  }
+});
+
+/* ============================================================================
+ * Model Execution Config Endpoints
+ * ========================================================================= */
+
+/**
+ * GET /api/models/registry/:name/execution-config
+ *
+ * Get effective execution config with provenance for each field.
+ * Shows auto-detected defaults, user overrides, and effective values.
+ *
+ * Returns: { num_ctx: { value, source }, temperature: { value, source }, _reason }
+ */
+router.get('/:name/execution-config', async (req, res) => {
+  try {
+    const model = await ModelRegistry.findOne({ modelName: req.params.name });
+    if (!model) {
+      return res.status(404).json({ status: 'error', message: `Model not found: ${req.params.name}` });
+    }
+    const effective = model.getEffectiveConfig();
+    res.json({
+      status: 'success',
+      data: {
+        effective,
+        defaults: model.executionDefaults || {},
+        overrides: model.executionOverrides || {}
+      }
+    });
+  } catch (err) {
+    logger.error('Failed to get execution config', { name: req.params.name, error: err.message });
+    res.status(500).json({ status: 'error', message: 'Failed to get config', error: err.message });
+  }
+});
+
+/**
+ * POST /api/models/registry/:name/execution-config
+ *
+ * Set user overrides for execution config.
+ * Body: { num_ctx?: number, temperature?: number }
+ *
+ * Returns: Updated effective config
+ */
+router.post('/:name/execution-config', requireAuth, async (req, res) => {
+  try {
+    const model = await ModelRegistry.findOne({ modelName: req.params.name });
+    if (!model) {
+      return res.status(404).json({ status: 'error', message: `Model not found: ${req.params.name}` });
+    }
+
+    const { num_ctx, temperature } = req.body;
+    const overrides = { _overriddenAt: new Date() };
+    if (num_ctx != null) {
+      const parsed = Number(num_ctx);
+      if (!Number.isFinite(parsed) || parsed < 512 || parsed > 131072) {
+        return res.status(400).json({ status: 'error', message: 'num_ctx must be a number between 512 and 131072' });
+      }
+      overrides.num_ctx = Math.round(parsed);
+    }
+    if (temperature != null) {
+      const parsed = Number(temperature);
+      if (!Number.isFinite(parsed) || parsed < 0 || parsed > 2) {
+        return res.status(400).json({ status: 'error', message: 'temperature must be a number between 0 and 2' });
+      }
+      overrides.temperature = parsed;
+    }
+
+    model.executionOverrides = overrides;
+    model.lastUpdated = new Date();
+    await model.save();
+
+    logger.info('User set execution config override', { name: req.params.name, overrides });
+    res.json({ status: 'success', data: { effective: model.getEffectiveConfig(), defaults: model.executionDefaults || {}, overrides: model.executionOverrides } });
+  } catch (err) {
+    logger.error('Failed to set execution config', { name: req.params.name, error: err.message });
+    res.status(500).json({ status: 'error', message: 'Failed to set config', error: err.message });
+  }
+});
+
+/**
+ * DELETE /api/models/registry/:name/execution-config
+ *
+ * Clear user overrides, reverting to auto-detected defaults.
+ *
+ * Returns: Updated effective config
+ */
+router.delete('/:name/execution-config', requireAuth, async (req, res) => {
+  try {
+    const model = await ModelRegistry.findOne({ modelName: req.params.name });
+    if (!model) {
+      return res.status(404).json({ status: 'error', message: `Model not found: ${req.params.name}` });
+    }
+
+    model.executionOverrides = {};
+    model.lastUpdated = new Date();
+    await model.save();
+
+    logger.info('User cleared execution config overrides', { name: req.params.name });
+    res.json({ status: 'success', data: { effective: model.getEffectiveConfig(), defaults: model.executionDefaults || {}, overrides: {} } });
+  } catch (err) {
+    logger.error('Failed to clear execution config', { name: req.params.name, error: err.message });
+    res.status(500).json({ status: 'error', message: 'Failed to clear config', error: err.message });
   }
 });
 

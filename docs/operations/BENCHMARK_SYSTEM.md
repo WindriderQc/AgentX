@@ -20,8 +20,22 @@
   - `results.js` - Dashboard and statistics
   - `generalistScore.js` - Quality scoring (single source of truth)
   - `judges.js` - Judge leaderboard
-  - `execution.js` - Batch execution
+  - `execution.js` - Batch execution (with per-model execution config from registry)
   - `batches.js` - Batch management
+  - `config.js` - Default execution settings (fallback when no per-model config)
+- Model Sync: `/src/services/modelSync/` - Auto-sync and per-model config detection
+  - `syncOrchestrator.js` - Discovers models from Ollama hosts, populates registry
+  - `parameterDetection.js` - Auto-detects optimal num_ctx per model
+
+**Per-Model Execution Config:**
+
+During benchmark execution, each model gets its own `num_ctx` resolved via priority chain:
+```
+User override (executionOverrides.num_ctx)
+  → Auto-detected default (executionDefaults.num_ctx)
+    → Batch-level config (DEFAULT_EXECUTION_CONFIG.num_ctx = 8192)
+```
+See [Model Registry](../architecture/MODEL_REGISTRY.md#execution-config-priority) for full details.
 
 **Models:**
 - `BenchmarkPrompt` - Test prompts with categories

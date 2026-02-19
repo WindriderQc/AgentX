@@ -1,10 +1,9 @@
 /**
  * Model Router Service
- * Routes chat requests to appropriate Ollama host based on model/task complexity
- *
- * Primary: UGFrank (192.168.2.99) - Fast 7B models, front-door
- * Secondary: UGBrutal (192.168.2.12) - Heavy 70B+ models, specialists
- * Tertiary: ClawdX (192.168.2.66) - Additional capacity
+ * Routes chat requests to appropriate Ollama host based on model/task complexity.
+ * Host assignments are configured via env vars (OLLAMA_HOST, OLLAMA_HOST_2, OLLAMA_HOST_3).
+ * Model-to-host mapping is in MODEL_ROUTING below; auto-sync also stores sourceHost
+ * in the ModelRegistry for each discovered model.
  */
 
 const logger = require('../../config/logger');
@@ -309,7 +308,7 @@ async function classifyQuery(message, timeout = 10000) {
                 options: {
                     temperature: 0.1,  // Low temp for consistent classification
                     num_predict: 20,    // Short response expected
-                    num_ctx: 8192
+                    num_ctx: 4096       // Classification needs minimal context
                 }
             }),
             signal: controller.signal

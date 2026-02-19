@@ -96,7 +96,7 @@ async function getAllModels(options = {}) {
       cost: { promptCostPer1M: 0, completionCostPer1M: 0, currency: 'USD' } // Local = free
     };
 
-    // Enrich with registry metadata
+    // Enrich with registry metadata (auto-populated by modelSync on startup)
     const registryMatch = registryData.find(r => r.modelName === ollamaModel.name);
     if (registryMatch) {
       unified.categories = registryMatch.categories || [];
@@ -104,6 +104,18 @@ async function getAllModels(options = {}) {
       unified.capabilities.maxContext = registryMatch.capabilities?.maxContext || unified.capabilities.maxContext;
       unified.capabilities.supportsThinking = registryMatch.capabilities?.supportsThinking ?? unified.capabilities.supportsThinking;
       unified.benchmarkStats = registryMatch.benchmarkStats;
+      // Propagate registry fields added by auto-sync
+      if (registryMatch.displayName) unified.displayName = registryMatch.displayName;
+      if (registryMatch.vendor) unified.vendor = registryMatch.vendor;
+      if (registryMatch.description) unified.description = registryMatch.description;
+      if (registryMatch.sourceType) unified.sourceType = registryMatch.sourceType;
+      if (registryMatch.executionDefaults) unified.executionDefaults = registryMatch.executionDefaults;
+      if (registryMatch.executionOverrides) unified.executionOverrides = registryMatch.executionOverrides;
+      if (registryMatch.parameterSize) unified.parameterSize = registryMatch.parameterSize;
+      if (registryMatch.quantization) unified.quantization = registryMatch.quantization;
+      if (registryMatch.family) unified.family = registryMatch.family;
+      if (registryMatch.status) unified.registryStatus = registryMatch.status;
+      if (registryMatch.userNote) unified.userNote = registryMatch.userNote;
     }
 
     // Enrich with benchmark data

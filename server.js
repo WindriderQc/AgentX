@@ -152,6 +152,23 @@ async function startServer() {
     }
 
 
+    // Sync model registry from Ollama hosts
+    try {
+      const { syncAllHosts } = require('./src/services/modelSync/syncOrchestrator');
+      const syncResult = await syncAllHosts();
+      const syncParts = [];
+      if (syncResult.created) syncParts.push(`${syncResult.created} new`);
+      if (syncResult.updated) syncParts.push(`${syncResult.updated} updated`);
+      if (syncResult.retired) syncParts.push(`${syncResult.retired} retired`);
+      if (syncParts.length > 0) {
+        console.log(`   ✓ Registry: Synced ${syncParts.join(', ')}`);
+      } else {
+        console.log(`   ✓ Registry: ${syncResult.unchanged} models up to date`);
+      }
+    } catch (syncErr) {
+      logger.warn('Model registry sync failed (non-fatal)', { error: syncErr.message });
+    }
+
     // Cleanup orphaned benchmark batches after DB connection
     try {
       const benchmarkService = require('./src/services/benchmarkService');

@@ -585,6 +585,18 @@ class UnifiedModels {
                 this.manager?.testModel(model);
             });
 
+            // Config Action
+            tr.querySelector('.action-config')?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (window.modelExecutionConfig) window.modelExecutionConfig.open(model.name);
+            });
+
+            // Context cell click → open config
+            tr.querySelector('.context-cell')?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (window.modelExecutionConfig) window.modelExecutionConfig.open(model.name);
+            });
+
             this.tableBodyEl.appendChild(tr);
         });
 
@@ -607,7 +619,8 @@ class UnifiedModels {
 
         const params = model.details?.parameter_size || model.parameters || '-';
         const quant = model.details?.quantization_level || model.quantization || '-';
-        const context = model.capabilities?.maxContext || model.details?.context_length || '4k';
+        const rawContext = model.capabilities?.maxContext || model.details?.context_length || null;
+        const context = rawContext ? (rawContext >= 1024 ? Math.round(rawContext / 1024) + 'k' : rawContext) : '—';
 
         // Determine host indicator for Ollama models
         let hostIndicator = '';
@@ -640,7 +653,7 @@ class UnifiedModels {
             <td>${params}</td>
             <td>${quant}</td>
             <td style="font-family:monospace; color:#e2e8f0;">${sizeStr}</td>
-            <td>${context}</td>
+            <td class="context-cell" style="cursor:pointer;" data-model="${model.name}" title="Click to configure">${context}</td>
             <td class="text-right table-action-cell">
                 <div class="actions">
                      <button class="btn-icon action-compare ${isSelected ? 'active text-accent' : ''}" title="Compare">
@@ -656,6 +669,7 @@ class UnifiedModels {
                     <div class="action-menu glass-panel">
                         <button class="menu-item action-start"><i class="fas fa-play"></i> Start</button>
                         <button class="menu-item action-test"><i class="fas fa-flask"></i> Test</button>
+                        <button class="menu-item action-config"><i class="fas fa-sliders-h"></i> Config</button>
                         <div class="divider"></div>
                         <button class="menu-item action-delete text-red"><i class="fas fa-trash"></i> Delete</button>
                     </div>

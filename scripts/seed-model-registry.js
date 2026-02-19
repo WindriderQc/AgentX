@@ -1,14 +1,18 @@
 /**
- * Seed Model Registry
+ * Seed Model Registry — Metadata Enrichment
  *
- * Populates the ModelRegistry collection with known models from the AgentX environment.
- * Can be run manually or as part of startup initialization.
+ * Enriches registry entries with curated metadata (categories, tags, routing rules,
+ * descriptions). Does NOT create new entries — auto-sync from Ollama hosts handles
+ * discovery. Only enriches models that already exist in the registry.
+ *
+ * If a model is not yet in the registry (e.g. never discovered by auto-sync),
+ * it will be created with sourceType: 'manual'.
  *
  * Usage:
  *   node scripts/seed-model-registry.js [--force]
  *
  * Options:
- *   --force    Overwrite existing registry entries
+ *   --force    Update even models that already have curated metadata
  */
 
 const mongoose = require('mongoose');
@@ -259,13 +263,19 @@ const MODELS = [
   }
 ];
 
+// Fields safe to enrich without clobbering auto-sync data
+const ENRICHMENT_FIELDS = [
+  'displayName', 'vendor', 'description', 'categories', 'tags',
+  'capabilities', 'routingRules'
+];
+
 /**
  * Main seeding function
  */
 async function seedModelRegistry(options = {}) {
   const { force = false } = options;
 
-  logger.info('Starting ModelRegistry seeding...', { force });
+  logger.info('Starting ModelRegistry metadata enrichment...', { force });
 
   let created = 0;
   let updated = 0;
@@ -276,21 +286,38 @@ async function seedModelRegistry(options = {}) {
       const existing = await ModelRegistry.findOne({ modelName: modelData.modelName });
 
       if (existing && !force) {
-        logger.debug(`Skipping existing model: ${modelData.modelName}`);
-        skipped++;
+        // Only enrich if no categories set yet (auto-sync creates with empty categories)
+        if (existing.categories.length === 0) {
+          for (const field of ENRICHMENT_FIELDS) {
+            if (modelData[field] != null) existing[field] = modelData[field];
+          }
+          existing.lastUpdated = new Date();
+          await existing.save();
+          logger.info(`Enriched model: ${modelData.modelName}`);
+          updated++;
+        } else {
+          logger.debug(`Skipping model with existing metadata: ${modelData.modelName}`);
+          skipped++;
+        }
         continue;
       }
 
       if (existing && force) {
-        // Update existing
-        Object.assign(existing, modelData);
+        // Force mode: update enrichment fields only, preserve auto-sync fields
+        for (const field of ENRICHMENT_FIELDS) {
+          if (modelData[field] != null) existing[field] = modelData[field];
+        }
         existing.lastUpdated = new Date();
         await existing.save();
-        logger.info(`Updated model: ${modelData.modelName}`);
+        logger.info(`Updated model metadata: ${modelData.modelName}`);
         updated++;
       } else {
-        // Create new
-        await ModelRegistry.create(modelData);
+        // Create new — model not discovered by auto-sync yet
+        await ModelRegistry.create({
+          ...modelData,
+          sourceType: 'manual',
+          createdBy: 'seed-script'
+        });
         logger.info(`Created model: ${modelData.modelName}`);
         created++;
       }
@@ -299,7 +326,7 @@ async function seedModelRegistry(options = {}) {
     }
   }
 
-  logger.info('ModelRegistry seeding complete', {
+  logger.info('ModelRegistry enrichment complete', {
     created,
     updated,
     skipped,

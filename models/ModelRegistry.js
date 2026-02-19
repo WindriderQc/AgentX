@@ -92,6 +92,20 @@ const RoutingRulesSchema = new mongoose.Schema({
   }
 }, { _id: false });
 
+const ExecutionConfigSchema = new mongoose.Schema({
+  num_ctx: { type: Number, default: null, min: 512, max: 131072 },
+  temperature: { type: Number, default: null, min: 0, max: 2 },
+  _source: { type: String, enum: ['auto', 'user', 'system'], default: 'system' },
+  _reason: { type: String, default: null },
+  _detectedAt: { type: Date, default: null }
+}, { _id: false });
+
+const ExecutionOverridesSchema = new mongoose.Schema({
+  num_ctx: { type: Number, default: null, min: 512, max: 131072 },
+  temperature: { type: Number, default: null, min: 0, max: 2 },
+  _overriddenAt: { type: Date, default: null }
+}, { _id: false });
+
 const ModelRegistrySchema = new mongoose.Schema({
   // Identity
   modelName: {
@@ -156,6 +170,33 @@ const ModelRegistrySchema = new mongoose.Schema({
     type: String,
     default: process.env.OLLAMA_HOST || 'http://localhost:11434'
   },
+
+  // Source tracking (populated by auto-sync)
+  sourceType: {
+    type: String,
+    enum: ['ollama', 'n8n', 'manual'],
+    default: 'manual',
+    index: true
+  },
+  sourceHost: { type: String, default: null },
+  ollamaDigest: { type: String, default: null },
+  lastSeenAt: { type: Date, default: null },
+  modelSizeBytes: { type: Number, default: null },
+  parameterSize: { type: String, default: null },
+  quantization: { type: String, default: null },
+  family: { type: String, default: null },
+
+  // Per-model execution config (auto-detected or system defaults)
+  executionDefaults: {
+    type: ExecutionConfigSchema,
+    default: () => ({})
+  },
+  // User overrides (separate so original defaults always visible)
+  executionOverrides: {
+    type: ExecutionOverridesSchema,
+    default: () => ({})
+  },
+
   isActive: {
     type: Boolean,
     default: true,
@@ -204,6 +245,7 @@ ModelRegistrySchema.index({ status: 1, isActive: 1 });
 ModelRegistrySchema.index({ vendor: 1, categories: 1 });
 ModelRegistrySchema.index({ 'capabilities.maxContext': 1 });
 ModelRegistrySchema.index({ 'benchmarkStats.avgCompositeScore': -1 });
+ModelRegistrySchema.index({ sourceType: 1, isActive: 1 });
 
 // Virtual for full capability description
 ModelRegistrySchema.virtual('fullDescription').get(function() {
@@ -567,6 +609,29 @@ ModelRegistrySchema.methods.isSuitableFor = function(taskType, constraints = {})
 
   // Default: generalists can handle most tasks
   return this.categories.includes('generalist');
+};
+
+/**
+ * Get effective execution config merging defaults → overrides
+ * Returns object with { value, source } for each config key
+ */
+ModelRegistrySchema.methods.getEffectiveConfig = function() {
+  const SYSTEM_DEFAULTS = { num_ctx: 8192, temperature: 0.7 };
+  const defaults = this.executionDefaults || {};
+  const overrides = this.executionOverrides || {};
+
+  const result = {};
+  for (const key of ['num_ctx', 'temperature']) {
+    if (overrides[key] != null) {
+      result[key] = { value: overrides[key], source: 'user' };
+    } else if (defaults[key] != null) {
+      result[key] = { value: defaults[key], source: defaults._source || 'auto' };
+    } else {
+      result[key] = { value: SYSTEM_DEFAULTS[key], source: 'system' };
+    }
+  }
+  result._reason = defaults._reason || null;
+  return result;
 };
 
 module.exports = mongoose.model('ModelRegistry', ModelRegistrySchema);

@@ -190,6 +190,6 @@ else
     echo "Common issues:"
     echo "  - Server not running: npm start or pm2 restart agentx"
     echo "  - Routes not mounted: Check src/app.js for model-registry routes"
-    echo "  - Model registry empty: Run 'node scripts/seed-model-registry.js'"
+    echo "  - Model registry empty: Registry auto-syncs on startup. Restart server or POST /api/models/registry/sync-hosts"
     exit 1
 fi

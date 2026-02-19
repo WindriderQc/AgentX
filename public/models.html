@@ -75,7 +75,10 @@
                     <option value="size">Size (Largest)</option>
                     <option value="newest">Newest First</option>
                 </select>
-                <button id="openAddSourceBtn" class="btn-primary" style="margin-left: auto;" title="Add n8n webhook or custom model source">
+                <button id="syncRegistryBtn" class="btn-secondary" style="margin-left: auto;" title="Sync models from all Ollama hosts">
+                    <i class="fas fa-sync-alt"></i> Sync
+                </button>
+                <button id="openAddSourceBtn" class="btn-primary" title="Add n8n webhook or custom model source">
                     <i class="fas fa-plus"></i> Add Source
                 </button>
             </div>
@@ -229,9 +232,37 @@
         </div>
     </div>
 
+    <!-- Execution Config Modal -->
+    <div id="execConfigModal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2 id="execConfigTitle">Execution Config</h2>
+                <button id="closeExecConfigModal" class="close-modal"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body" id="execConfigBody">
+                <div class="form-group">
+                    <label>Context Window (num_ctx)</label>
+                    <div id="execConfigCtxDefault" class="text-sm" style="color:var(--muted); margin-bottom:4px;"></div>
+                    <input type="number" id="execConfigNumCtx" class="form-input" min="512" max="131072" step="1024" placeholder="e.g. 8192">
+                </div>
+                <div class="form-group">
+                    <label>Temperature</label>
+                    <div id="execConfigTempDefault" class="text-sm" style="color:var(--muted); margin-bottom:4px;"></div>
+                    <input type="number" id="execConfigTemperature" class="form-input" min="0" max="2" step="0.1" placeholder="e.g. 0.7">
+                </div>
+                <div id="execConfigReason" class="text-sm" style="color:var(--muted); margin-top:8px; padding:8px; background:rgba(255,255,255,0.03); border-radius:6px;"></div>
+                <div style="display:flex; gap:8px; margin-top:16px;">
+                    <button id="execConfigSave" class="btn-primary" style="flex:1;">Save Override</button>
+                    <button id="execConfigReset" class="btn-secondary" style="flex:1;">Reset to Auto</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Scripts -->
     <script src="js/models-unified.js"></script>
     <script src="js/models-management.js"></script>
     <script src="js/models-comparison.js"></script>
+    <script src="js/models-execution-config.js"></script>
 </body>
 </html>

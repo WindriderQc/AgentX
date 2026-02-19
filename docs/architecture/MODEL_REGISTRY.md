@@ -2,13 +2,31 @@
 
 > **Navigation:** [CLAUDE.md](../../CLAUDE.md) → [Documentation Index](../INDEX.md) → Model Registry
 
-> **Context:** Single source of truth for model metadata with multi-dimensional categorization. Enables task-specific benchmarking and intelligent routing.
+> **Context:** Single source of truth for model metadata, execution config, and categorization. Auto-synced from Ollama hosts on startup.
 
 ## Overview
 
-**Model:** `/models/ModelRegistry.js` (590 lines)
-**Routes:** `/routes/model-registry.js` (489 lines, 13 endpoints)
-**Seeded Data:** 11 pre-configured models
+**Model:** `/models/ModelRegistry.js` (~640 lines)
+**Routes:** `/routes/model-registry.js` (~630 lines, 16 endpoints)
+**Sync Service:** `/src/services/modelSync/syncOrchestrator.js` (~270 lines)
+**Parameter Detection:** `/src/services/modelSync/parameterDetection.js` (~190 lines)
+
+### How It Works
+
+1. **Auto-Sync on Startup** — The server queries all configured Ollama hosts (`OLLAMA_HOST`, `OLLAMA_HOST_2`, `OLLAMA_HOST_3`) via `/api/tags` and creates/updates registry entries automatically.
+2. **Per-Model Execution Defaults** — For each model, `num_ctx` is auto-detected based on model parameter count, quantization, and host VRAM capacity.
+3. **User Overrides** — Users can override auto-detected defaults per model. The UI clearly shows which values are auto-detected vs user-set.
+4. **Retirement** — Models no longer found on any Ollama host are automatically marked as `retired`.
+
+### Manual Sync
+
+```bash
+# Trigger sync via API
+curl -X POST http://localhost:3080/api/models/registry/sync-hosts
+
+# Enrich with curated metadata (categories, tags, descriptions)
+node scripts/seed-model-registry.js
+```
 
 ---
 
@@ -28,105 +46,116 @@ Models can have **multiple categories** (e.g., qwen2.5-coder is both `coding` an
 
 ---
 
-## Schema & Capabilities
+## Schema
 
 ```javascript
 {
-  modelName: String (unique, indexed),
-  displayName: String,
-  vendor: String,  // 'meta', 'alibaba', 'deepseek'
-  categories: [String],  // Multi-select: ['coding', 'specialist']
-  tags: [String],        // Freeform: ['production', 'fast', 'thinking-model']
+  // Identity
+  modelName: String,         // unique, from Ollama model name
+  displayName: String,       // human-readable
+  vendor: String,            // 'meta', 'alibaba', 'deepseek', 'mistral', 'google', etc.
+  description: String,
+  userNote: String,          // user-added notes
 
-  capabilities: {
-    maxContext: Number,           // 2048, 8192, 128000
-    supportsThinking: Boolean,    // Thinking models
-    avgLatencyMs: Number,         // Calibrated average
-    p95LatencyMs: Number,         // 95th percentile
-    targetUseCase: String         // Description
+  // Categorization
+  categories: [String],      // multi-select from 7-tier system
+  tags: [String],            // freeform
+
+  // Source tracking (populated by auto-sync)
+  sourceType: String,        // 'ollama' | 'n8n' | 'manual'
+  sourceHost: String,        // Ollama host URL where model lives
+  ollamaDigest: String,      // for change detection
+  lastSeenAt: Date,          // last discovery timestamp
+  modelSizeBytes: Number,    // from Ollama /api/tags
+  parameterSize: String,     // e.g. "7B", "32B"
+  quantization: String,      // e.g. "Q4_K_M", "Q5_K_M"
+  family: String,            // e.g. "qwen2", "llama"
+
+  // Per-model execution config
+  executionDefaults: {
+    num_ctx: Number,         // auto-detected optimal context window
+    temperature: Number,
+    _source: String,         // 'auto' | 'user' | 'system'
+    _reason: String,         // e.g. "32B Q4_K_M on 24576MiB VRAM → 8192 ctx"
+    _detectedAt: Date
+  },
+  executionOverrides: {      // user overrides (separate from defaults)
+    num_ctx: Number,
+    temperature: Number,
+    _overriddenAt: Date
   },
 
-  benchmarkStats: {
-    avgCompositeScore: Number,
-    bestCategory: String,         // Where it excels
-    worstCategory: String,        // Where it struggles
-    totalTests: Number
-  }
+  // Capabilities & stats
+  capabilities: { maxContext, supportsThinking, avgLatencyMs, p95LatencyMs },
+  benchmarkStats: { avgCompositeScore, bestCategory, worstCategory, totalTests },
+  routingRules: { preferredFor, avoidFor, priority },
+
+  // Status
+  status: String,            // 'active' | 'deprecated' | 'experimental' | 'retired'
+  isActive: Boolean,
+  host: String               // deployment host
 }
 ```
 
----
+### Execution Config Priority
 
-## Seeded Models (11)
+When running benchmarks or tests, the effective `num_ctx` is resolved as:
 
-```bash
-node scripts/seed-model-registry.js  # Populate registry
+```
+User override (executionOverrides.num_ctx)
+  → Auto-detected default (executionDefaults.num_ctx)
+    → Batch-level config (DEFAULT_EXECUTION_CONFIG.num_ctx = 8192)
 ```
 
-| Model | Categories | Tags | Use Case |
-|-------|-----------|------|----------|
-| qwen2.5-coder:7b | coding, specialist | production, fast, code-generation | Code generation, refactoring |
-| qwen2.5-coder:14b | coding, specialist, reasoning | production, high-quality | Complex code, architecture |
-| deepseek-r1:7b | reasoning, specialist | experimental, thinking-model | Deep reasoning, problem-solving |
-| qwen2.5:7b | reasoning, generalist | production, thinking-model | General reasoning |
-| qwen2.5-7b-instruct-q4_0 | generalist, ops | production, fast, recommended | Front-door model, routing |
-| llama3.3:70b | generalist, reasoning | production, high-quality, slow | High-quality responses |
-| smollm2:1.7b | ops, specialist | experimental, ultra-fast | Query classification |
-| gemma2:2b | ops, generalist | production, fast | Quick responses |
-| nomic-embed-text | embedding | production, rag, embeddings | RAG embeddings |
-| mxbai-embed-large | embedding | production, rag, high-quality | High-quality RAG |
-| llama3.1:8b | judge, generalist | production, judge, balanced | LLM-as-judge scoring |
+### Auto-Detection Logic
+
+`parameterDetection.js` calculates optimal `num_ctx` using:
+- Model parameter count (parsed from name or Ollama details)
+- Quantization level (determines bytes per parameter)
+- Host VRAM (via SSH nvidia-smi when available)
+- Fallback lookup table when VRAM is unknown
+
+| Model Size | VRAM Unknown | With VRAM |
+|-----------|-------------|-----------|
+| ≤3B | 32768 | Calculated to fill 90% VRAM |
+| ≤10B | 16384 | Calculated |
+| ≤30B | 8192 | Calculated |
+| ≤70B | 4096 | Calculated |
+| >70B | 2048 | Calculated |
 
 ---
 
 ## API Endpoints (`/api/models/registry`)
 
-### Query & List (13 endpoints total)
+### Query & List
 
 ```bash
-# List all models with filtering
-GET /api/models/registry?category=coding&tag=production&vendor=alibaba
-
-# Get category statistics
-GET /api/models/registry/stats
-
-# Get models grouped by category
-GET /api/models/registry/grouped
-
-# Get models in specific category
-GET /api/models/registry/category/coding
-
-# Get models with specific tag
-GET /api/models/registry/tag/production
-
-# Get specific model
-GET /api/models/registry/:name
+GET  /api/models/registry                          # List all active models
+GET  /api/models/registry/stats                    # Category statistics
+GET  /api/models/registry/grouped                  # Models grouped by category
+GET  /api/models/registry/category/:category       # Models in category
+GET  /api/models/registry/tag/:tag                 # Models with tag
+GET  /api/models/registry/:name                    # Specific model details
 ```
 
-### CRUD Operations (require auth)
+### Sync & Config
 
 ```bash
-# Register new model
-POST /api/models/registry
-{
-  "modelName": "new-model:7b",
-  "categories": ["generalist"],
-  "tags": ["experimental"],
-  "capabilities": { "maxContext": 4096 }
-}
+POST   /api/models/registry/sync-hosts             # Sync from all Ollama hosts
+GET    /api/models/registry/:name/execution-config  # Effective config with provenance
+POST   /api/models/registry/:name/execution-config  # Set user overrides
+DELETE /api/models/registry/:name/execution-config  # Clear overrides → revert to auto
+```
 
-# Update model
-PATCH /api/models/registry/:name
+### CRUD (require auth)
 
-# Retire model (soft delete)
-DELETE /api/models/registry/:name?reason=deprecated
-
-# Sync benchmark stats (auto-updates avgCompositeScore, bestCategory)
-POST /api/models/registry/:name/sync
-
-# Add/remove categories
-POST /api/models/registry/:name/categories
-DELETE /api/models/registry/:name/categories/:category
+```bash
+POST   /api/models/registry                        # Register new model
+PATCH  /api/models/registry/:name                  # Update metadata
+DELETE /api/models/registry/:name                  # Retire model
+POST   /api/models/registry/:name/sync             # Sync benchmark stats
+POST   /api/models/registry/:name/categories       # Add category
+DELETE /api/models/registry/:name/categories/:cat  # Remove category
 ```
 
 ---
@@ -134,8 +163,8 @@ DELETE /api/models/registry/:name/categories/:category
 ## Related Documentation
 
 - [Model Routing](MODEL_ROUTING.md) - Category-based routing integration
-- [Benchmark System](../operations/BENCHMARK_SYSTEM.md) - Category filtering
-- [ROADMAP.md](../../ROADMAP.md) - Model registry roadmap
+- [Benchmark System](../operations/BENCHMARK_SYSTEM.md) - Per-model config in benchmarks
+- [ROADMAP.md](../../ROADMAP.md) - Registry roadmap (phases 2-4)
 
 ---
 

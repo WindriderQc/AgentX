@@ -81,7 +81,10 @@ npm run test:load:stress                   # Stress testing
 ### Database Operations
 ```bash
 npm run seed:ops            # Seed SBQC operations data
-node scripts/seed-model-registry.js  # Seed model registry with 11 models
+# Model registry auto-syncs from Ollama hosts on server startup.
+# To manually enrich with curated metadata (categories, tags, routing):
+node scripts/seed-model-registry.js        # Enrich existing registry entries
+node scripts/seed-model-registry.js --force # Force-update metadata
 ```
 
 ### Production Deployment (PM2)
