@@ -13,6 +13,7 @@ import {
     setInspectorData
 } from './config.js';
 import { escapeHtml, showToast } from './utils.js';
+import { currentBatchId, currentBatchResults } from '../benchmark/state.js';
 
 /**
  * Load and display truncation statistics
@@ -26,7 +27,7 @@ export async function loadTruncationStats() {
     try {
         // If we have an active batch, show stats for entire batch (no limit)
         // Otherwise fall back to recent tests with a limit
-        const batchIdParam = window.currentBatchId ? `?batch_id=${window.currentBatchId}` : '?limit=100';
+        const batchIdParam = currentBatchId ? `?batch_id=${currentBatchId}` : '?limit=100';
         const res = await fetch(`${BENCHMARK_API}/truncation-stats${batchIdParam}`);
         const json = await res.json();
         if (json.status !== 'success') throw new Error(json.error);
@@ -76,7 +77,7 @@ export async function loadTruncationStats() {
             `;
         };
 
-        const scopeLabel = window.currentBatchId ? 'Current Batch' : 'Recent Tests';
+        const scopeLabel = currentBatchId ? 'Current Batch' : 'Recent Tests';
 
         grid.innerHTML = `
             ${makeCard('response_truncated', stats.response_truncated, 'Response Truncated', stats.response_truncated_pct, stats.response_truncated > 0 ? '#ff6b6b' : 'var(--text)', true)}
@@ -123,12 +124,12 @@ export async function loadTruncationStats() {
  */
 export function applyTruncationFilter() {
     const tbody = document.getElementById('batchResultsBody');
-    if (!tbody || !window.currentBatchResults) return;
+    if (!tbody || !currentBatchResults) return;
 
     const activeTruncationFilter = getActiveTruncationFilter();
     const allRows = tbody.querySelectorAll('tr');
     allRows.forEach((row, idx) => {
-        const result = window.currentBatchResults[idx];
+        const result = currentBatchResults[idx];
         if (!result) return;
 
         let shouldShow = true;
@@ -204,7 +205,7 @@ export async function openTruncationInspector() {
 async function loadInspectorData() {
     try {
         // Fetch all truncated tests from current batch
-        const batchResults = window.currentBatchResults || [];
+        const batchResults = currentBatchResults || [];
 
         // Helper to check truncation with fallback for nested structure
         const isResponseTruncated = (r) => r.response_truncated === true || r.truncation?.response_truncated === true;

@@ -85,14 +85,14 @@ describe('Judge Model Validator', () => {
             expect(result.error).toContain('Failed to list models');
         });
 
-        it('should match model by base name', async () => {
+        it('should require exact model name match (not base name)', async () => {
             const _fetch = mockFetch(
-                okJson({ models: [{ name: 'qwen2.5:7b-instruct-q5_K_M' }] }),
-                okJson({ response: '{"score": 5, "reason": "test"}' })
+                okJson({ models: [{ name: 'qwen2.5:7b-instruct-q5_K_M' }] })
             );
 
             const result = await validateJudgeModel(HOST, 'qwen2.5:latest', { _fetch });
-            expect(result.valid).toBe(true);
+            expect(result.valid).toBe(false);
+            expect(result.error).toContain('not found');
         });
     });
 

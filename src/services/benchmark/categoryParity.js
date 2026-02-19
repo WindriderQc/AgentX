@@ -7,14 +7,7 @@ const logger = require('../../../config/logger');
 const BenchmarkPrompt = require('../../../models/BenchmarkPrompt');
 const { GENERALIST_CATEGORY_WEIGHTS } = require('../../../config/categories');
 const { ENHANCED_SCORING_CONFIGS } = require('../scoring/scoringConfigs');
-
-function normalizeCategoryKey(rawCategory) {
-    if (!rawCategory) return null;
-    const normalized = String(rawCategory).trim().toLowerCase().replace(/_/g, '-');
-    if (!normalized) return null;
-    if (normalized === 'code') return 'coding';
-    return normalized;
-}
+const { normalizeCategoryKey } = require('./generalistScore');
 
 function uniqueNormalizedList(values) {
     const normalized = (Array.isArray(values) ? values : [])

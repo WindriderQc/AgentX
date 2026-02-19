@@ -264,7 +264,6 @@ describe('judgeBatch', () => {
         BenchmarkBatch.findById.mockResolvedValue({
             _id: 'batch-123',
             status: 'completed',
-            quality_scoring: true,
             calculateMetrics: jest.fn().mockResolvedValue(undefined)
         });
         BenchmarkBatch.updateOne.mockResolvedValue({ matchedCount: 1 });

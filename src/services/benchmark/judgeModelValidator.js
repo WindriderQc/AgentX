@@ -52,10 +52,7 @@ async function validateJudgeModel(host, model, options = {}) {
         const data = await res.json();
         availableModels = (data.models || []).map(m => m.name);
 
-        const found = availableModels.some(name =>
-            name === model ||
-            name.split(':')[0] === model.split(':')[0]
-        );
+        const found = availableModels.some(name => name === model);
 
         if (!found) {
             return {

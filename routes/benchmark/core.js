@@ -12,6 +12,7 @@ const { JUDGE_CONFIG, ENHANCED_SCORING_CONFIGS } = require('../../src/services/q
 const { stopJudging } = require('../../src/services/benchmark/judging');
 const BenchmarkBatch = require('../../models/BenchmarkBatch');
 const { validateJudgeModel } = require('../../src/services/benchmark/judgeModelValidator');
+const { HOSTS } = require('../../src/services/modelRouter');
 
 function isDuplicateKeyError(err) {
     return !!(err && (err.code === 11000 || String(err.message || '').includes('E11000')));
@@ -119,7 +120,7 @@ router.post('/test', optionalWorkspaceContext, async (req, res) => {
  * Start a batch benchmark test with quality scoring - workspace-aware
  */
 router.post('/batch', optionalWorkspaceContext, async (req, res) => {
-    const { host, models, levels, run_name, judge_config, execution_config, execution_mode, depth_config } = req.body;
+    const { host, models, levels, run_name, judge_config, execution_config, execution_mode, depth_config, tags, description } = req.body;
 
     // Validation
     if (!host || !models || !Array.isArray(models) || !levels || !Array.isArray(levels)) {
@@ -137,15 +138,23 @@ router.post('/batch', optionalWorkspaceContext, async (req, res) => {
             return res.status(409).json(buildActiveBatchConflict(activeBatches[0]));
         }
 
-        // Validate judge model before starting batch
-        const judgeHost = (judge_config && judge_config.host) || JUDGE_CONFIG.host;
+        // Validate judge model on the actual judge host (mirrors execution.js host resolution)
+        const judgeSameHost = !!(judge_config && judge_config.judge_same_host);
         const judgeModel = (judge_config && judge_config.model) || JUDGE_CONFIG.model;
-        if (judgeHost && judgeModel) {
-            const validation = await validateJudgeModel(judgeHost, judgeModel);
+        let actualJudgeHost;
+        if (judgeSameHost) {
+            actualJudgeHost = host;
+        } else {
+            actualJudgeHost = HOSTS.primary;
+            if (host === HOSTS.primary) actualJudgeHost = HOSTS.secondary;
+            else if (host === HOSTS.secondary) actualJudgeHost = HOSTS.primary;
+        }
+        if (actualJudgeHost && judgeModel) {
+            const validation = await validateJudgeModel(actualJudgeHost, judgeModel);
             if (!validation.valid) {
                 return res.status(422).json({
                     status: 'error',
-                    error: `Judge model validation failed: ${validation.error}`,
+                    error: `Judge model validation failed on ${actualJudgeHost}: ${validation.error}`,
                     available_models: validation.available_models || [],
                     latency_ms: validation.latency_ms
                 });
@@ -161,6 +170,8 @@ router.post('/batch', optionalWorkspaceContext, async (req, res) => {
             execution_config,
             execution_mode: execution_mode || 'latency',
             depth_config: depth_config || null,
+            tags,
+            description,
             workspaceId: req.workspace ? req.workspace._id : null
         });
 

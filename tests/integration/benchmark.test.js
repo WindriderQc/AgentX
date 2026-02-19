@@ -656,8 +656,7 @@ describe('Benchmark System - Integration Tests', () => {
                 levels: [1],
                 run_name: 'Payload Batch',
                 total_tests: 1,
-                status: 'completed',
-                quality_scoring: true
+                status: 'completed'
             });
 
             await BenchmarkResult.create({
@@ -786,7 +785,6 @@ describe('Benchmark System - Integration Tests', () => {
                 run_name: 'Per Model Counters Batch',
                 total_tests: 3,
                 status: 'completed',
-                quality_scoring: true,
                 completed: 3,
                 failed: 1,
                 judge_total: 3,
@@ -981,8 +979,7 @@ describe('Benchmark System - Integration Tests', () => {
                 levels: [1],
                 run_name: 'Judge Me',
                 status: 'completed',
-                total_tests: 1,
-                quality_scoring: true
+                total_tests: 1
             });
 
             await BenchmarkResult.create({
@@ -1083,8 +1080,7 @@ describe('Benchmark System - Integration Tests', () => {
                 levels: [1],
                 run_name: 'Rejudge Me',
                 status: 'completed',
-                total_tests: 1,
-                quality_scoring: true
+                total_tests: 1
             });
 
             await BenchmarkResult.create({

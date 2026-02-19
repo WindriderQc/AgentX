@@ -675,7 +675,6 @@ async function compareBatches(batchIds) {
             config_snapshot: batch.config_snapshot,
             created_at: batch.created_at,
             completed_at: batch.completed_at,
-            quality_scoring: true,
             avg_quality,
             avg_composite
         };

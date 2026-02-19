@@ -151,10 +151,10 @@ export async function runBatch() {
     state.setCurrentJudgeDetailId(null);
     state.setLastTimelineHash(null);
     state.setLastTimelineResultIds(new Set());
-    window.lastTimelineHash = null;
     if (batchInfo) batchInfo.innerHTML = '';
 
-    // Reset truncation inspector state for new batch
+    // Reset error counter and truncation inspector state for new batch
+    pollConsecutiveErrors = 0;
     if (window.BenchmarkAnalytics && typeof window.BenchmarkAnalytics.resetTruncationState === 'function') {
         window.BenchmarkAnalytics.resetTruncationState();
     }
@@ -278,6 +278,9 @@ export async function stopBatch() {
     }
 }
 
+let pollConsecutiveErrors = 0;
+const POLL_MAX_CONSECUTIVE_ERRORS = 10;
+
 /**
  * Poll batch progress
  */
@@ -292,13 +295,14 @@ export async function pollBatchProgress() {
             throw new Error('No batch data in response');
         }
 
+        pollConsecutiveErrors = 0;
+
         const showAdvanced = localStorage.getItem('benchmarkShowAdvanced') === 'true';
         const showHyper = localStorage.getItem('benchmarkShowHyper') === 'true';
         const results = Array.isArray(batch.results) ? batch.results : [];
 
         // Update state
         state.setCurrentBatchResults(results);
-        window.currentBatchResults = results;
 
         // Update progress bars
         updateProgressBars(batch);
@@ -329,7 +333,7 @@ export async function pollBatchProgress() {
 
         // Update results table
         if (results.length > 0) {
-            updateResultsTable(results);
+            updateResultsTable(results, batch.results_meta);
         }
 
         // Update hyper details if enabled
@@ -345,6 +349,18 @@ export async function pollBatchProgress() {
     } catch (err) {
         console.error('Failed to poll batch progress:', err);
         if (err.message.includes('404')) {
+            resetBatchUI();
+            return;
+        }
+        pollConsecutiveErrors++;
+        if (pollConsecutiveErrors >= POLL_MAX_CONSECUTIVE_ERRORS) {
+            console.error(`Polling stopped after ${POLL_MAX_CONSECUTIVE_ERRORS} consecutive errors`);
+            const status = document.getElementById('batchStatus');
+            if (status) {
+                status.className = 'status error';
+                status.textContent = 'Lost connection to batch. Click "Start Batch Test" to retry.';
+                status.style.display = 'block';
+            }
             resetBatchUI();
         }
     }
@@ -803,7 +819,7 @@ function updatePerModelProgress(batch, results, showHyper) {
 /**
  * Update results table
  */
-function updateResultsTable(results) {
+function updateResultsTable(results, resultsMeta) {
     const container = document.getElementById('batchResultsContainer');
     const tbody = document.getElementById('batchResultsBody');
     container.style.display = 'block';
@@ -817,6 +833,21 @@ function updateResultsTable(results) {
         if (table) table.parentElement.insertBefore(scoringBarEl, table);
     }
     scoringBarEl.innerHTML = buildBatchScoringBar(results);
+
+    // Truncation notice when results are paginated
+    let truncNotice = document.getElementById('batchResultsTruncNotice');
+    if (resultsMeta && resultsMeta.truncated) {
+        if (!truncNotice) {
+            truncNotice = document.createElement('div');
+            truncNotice.id = 'batchResultsTruncNotice';
+            truncNotice.style.cssText = 'padding: 6px 12px; color: var(--muted); font-size: 0.85em; text-align: right;';
+            const table = tbody.closest('table');
+            if (table) table.parentElement.insertBefore(truncNotice, table.nextSibling);
+        }
+        truncNotice.textContent = `Showing ${resultsMeta.returned} of ${resultsMeta.total} results`;
+    } else if (truncNotice) {
+        truncNotice.remove();
+    }
 
     const getFailureBadgeHtml = (r) => {
         const isFailed = r.success === false;
@@ -992,8 +1023,16 @@ export async function loadBatchDetails(batchId) {
     document.getElementById('batchStatus').style.display = 'none';
     document.getElementById('batchInfo').innerHTML = '';
 
+    pollConsecutiveErrors = 0;
     loadBatchHistory();
     await pollBatchProgress();
+
+    // Start polling if batch is still active (pollBatchProgress handles terminal states)
+    if (state.currentBatchId && !state.batchPollInterval) {
+        const interval = setInterval(pollBatchProgress, 2000);
+        state.setBatchPollInterval(interval);
+    }
+
     document.querySelector('.batch-section')?.scrollIntoView({ behavior: 'smooth' });
 }
 

@@ -14,7 +14,6 @@ export function showJudgeDetails(idOrIndex) {
     }
 
     state.setCurrentJudgeDetailId(idOrIndex);
-    window.currentJudgeDetailId = idOrIndex;
 
     // Find result by ID or index
     let result = null;
@@ -502,7 +501,6 @@ export function closeJudgeDetails() {
         modal.style.display = 'none';
     }
     state.setCurrentJudgeDetailId(null);
-    window.currentJudgeDetailId = null;
 }
 
 // Expose to window for legacy code

@@ -19,7 +19,7 @@ function classifyBenchmarkError(errorLike) {
 
     const upper = message.toUpperCase();
 
-    // Network / DNS / socket
+    // Network / DNS / socket / GPU / runtime
     const infraPatterns = [
         'ECONNREFUSED',
         'ECONNRESET',
@@ -35,7 +35,17 @@ function classifyBenchmarkError(errorLike) {
         'FETCH FAILED',
         'NETWORK',
         'CONNECTION',
-        'CONNECT '
+        'CONNECT ',
+        'OUT OF MEMORY',
+        'OUT_OF_MEMORY',
+        'OOM',
+        'CUDA',
+        'DEVICE NOT FOUND',
+        'UNEXPECTED EOF',
+        'BROKEN PIPE',
+        'NO SPACE LEFT',
+        'KILL',
+        'RUNNER '
     ];
 
     const isHttpError = /^HTTP\s+\d+\s*:/i.test(message);

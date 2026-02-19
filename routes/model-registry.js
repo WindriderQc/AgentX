@@ -218,7 +218,7 @@ router.get('/tag/:tag', async (req, res) => {
  *
  * Returns: Sync summary { created, updated, retired, unchanged, errors }
  */
-router.post('/sync-hosts', async (req, res) => {
+router.post('/sync-hosts', requireAuth, async (req, res) => {
   try {
     const { syncAllHosts } = require('../src/services/modelSync/syncOrchestrator');
     const result = await syncAllHosts();

@@ -224,7 +224,6 @@ Compare multiple batch runs side-by-side.
         },
         "created_at": "2026-01-03T10:00:00Z",
         "completed_at": "2026-01-03T10:30:00Z",
-        "quality_scoring": true
       }
     ],
     "stats": {
@@ -321,8 +320,10 @@ Get configuration presets for common test scenarios.
         "description": "Fast validation test with simple prompts",
         "config": {
           "levels": [1, 2],
-          "quality_scoring": false,
-          "judge_config": null
+          "judge_config": {
+            "concurrency": 2,
+            "judge_same_host": false
+          }
         },
         "recommended_for": "Initial model validation, quick checks",
         "estimated_duration": "2-5 minutes"
@@ -333,7 +334,6 @@ Get configuration presets for common test scenarios.
         "description": "Balanced test across all levels with quality scoring",
         "config": {
           "levels": [1, 2, 3, 4, 5],
-          "quality_scoring": true,
           "judge_config": {
             "concurrency": 2,
             "judge_same_host": false
@@ -510,7 +510,7 @@ const chartData = {
 │                                                          │
 │  [ Quick Test ]           Estimated: 2-5 minutes        │
 │  Fast validation with simple prompts                    │
-│  ✓ Levels: 1-2  ✗ Quality Scoring                      │
+│  ✓ Levels: 1-2  ✓ Quality Scoring                      │
 │  [Select]                                                │
 │                                                          │
 │  [ Standard Benchmark ]   Estimated: 15-30 minutes      │
@@ -728,5 +728,5 @@ const data = await batch.json();
 ---
 
 **Documentation Version:** 2.1
-**Last Updated:** February 9, 2026
+**Last Updated:** February 19, 2026
 **Feedback:** Report issues at github.com/anthropics/agentx/issues

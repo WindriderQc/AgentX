@@ -98,11 +98,10 @@ async function startBatch({ host, models, levels, run_name, judge_config = {}, e
         host,
         models,
         levels,
-        quality_scoring: true,
         judge_config,
         execution_config: normalizedExecutionConfig,
         depth_config: (depth_config && typeof depth_config === 'object') ? depth_config : null,
-        run_name: run_name || `Batch ${new Date().toLocaleString()}`,
+        run_name: run_name || description || `Batch ${new Date().toLocaleString()}`,
         active_slot: 'benchmark_singleton',
         total_tests: models.length * selectedPrompts.length,
         plan,
@@ -128,7 +127,6 @@ async function startBatch({ host, models, levels, run_name, judge_config = {}, e
     return {
         batch_id: batchId,
         total_tests: batch.total_tests,
-        quality_scoring: true,
         plan
     };
 }

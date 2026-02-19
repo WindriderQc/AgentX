@@ -35,10 +35,6 @@ const BenchmarkBatchSchema = new mongoose.Schema({
             message: 'Levels must be between 1 and 10' // Enhanced judging system: expanded from 5 to 10 levels
         }
     },
-    quality_scoring: {
-        type: Boolean,
-        default: true
-    },
     judge_config: {
         type: Object,
         default: {}

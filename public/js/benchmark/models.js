@@ -220,25 +220,6 @@ export async function loadBatchModels(hostUrl) {
             const registryEntry = state.modelRegistryCache[model];
             const savedNote = registryEntry ? (registryEntry.userNote || '') : (localStorage.getItem(`agentx_model_note_${model}`) || '');
 
-            let testCount = '-';
-            if (window.latestBenchmarkData && window.latestBenchmarkData.model_stats) {
-                const stats = window.latestBenchmarkData.model_stats.find(m => m.model === model && m.host === hostUrl);
-                if (stats) {
-                    const total = Number(stats.tests || 0) + Number(stats.failed_tests || 0);
-                    const infraFailed = Number.isFinite(stats.infra_failed_tests) ? Number(stats.infra_failed_tests) : null;
-                    const modelFailed = Number.isFinite(stats.model_failed_tests) ? Number(stats.model_failed_tests) : null;
-
-                    if (infraFailed !== null || modelFailed !== null) {
-                        const parts = [];
-                        if (infraFailed !== null) parts.push(`infra ${infraFailed}`);
-                        if (modelFailed !== null) parts.push(`model ${modelFailed}`);
-                        testCount = `${total}<div style="font-size: 0.72em; color: var(--muted); margin-top: 2px;">${parts.join(' • ')}</div>`;
-                    } else {
-                        testCount = total;
-                    }
-                }
-            }
-
             let category = 'generalist';
             if (registryEntry && registryEntry.categories && registryEntry.categories.length > 0) {
                 category = registryEntry.categories[0];
@@ -272,7 +253,7 @@ export async function loadBatchModels(hostUrl) {
                     </div>
                 </td>
                 <td style="text-align: center; padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.05); color: var(--muted);">
-                    ${testCount}
+                    -
                 </td>
                 <td style="padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.05);">
                     <input type="text" class="model-category-input" data-model="${model}" list="category-list-${safeId}" value="${category}"
@@ -378,7 +359,6 @@ export function selectAllVisibleModels(select) {
  * Update model selection badges
  */
 export function updateModelSelectionBadges() {
-    const offenders = window.benchmarkOffenders;
     const rows = document.querySelectorAll('#modelSelectionTableBody tr[data-model]');
 
     rows.forEach(row => {
@@ -441,60 +421,6 @@ export function updateModelSelectionBadges() {
             ">
                 <i class="fas ${icon}" style="font-size: 0.9em;"></i> ${escapeHtml(catDisplay)}
             </span>`;
-        }
-
-        // Offender Badges
-        if (offenders) {
-            const isOffender = (offenderObj) => {
-                if (!offenderObj) return false;
-                if (typeof offenderObj === 'string') return model === offenderObj;
-                return model === offenderObj.model;
-            };
-
-            if (isOffender(offenders.slowest)) {
-                badgesHtml += `<span title="Worst Latency" style="
-                    display: inline-flex; align-items: center; gap: 4px;
-                    font-size: 0.7rem; padding: 3px 8px; margin-right: 6px;
-                    border-radius: 12px;
-                    background: linear-gradient(135deg, rgba(231, 76, 60, 0.25) 0%, rgba(192, 57, 43, 0.15) 100%);
-                    border: 1.5px solid rgba(231, 76, 60, 0.5);
-                    color: #e74c3c; font-weight: 700; text-transform: uppercase;
-                    letter-spacing: 0.05em; box-shadow: 0 2px 4px rgba(231, 76, 60, 0.2);
-                ">SLOW</span>`;
-            }
-            if (isOffender(offenders.lowestTps)) {
-                badgesHtml += `<span title="Worst Throughput" style="
-                    display: inline-flex; align-items: center; gap: 4px;
-                    font-size: 0.7rem; padding: 3px 8px; margin-right: 6px;
-                    border-radius: 12px;
-                    background: linear-gradient(135deg, rgba(230, 126, 34, 0.25) 0%, rgba(211, 84, 0, 0.15) 100%);
-                    border: 1.5px solid rgba(230, 126, 34, 0.5);
-                    color: #e67e22; font-weight: 700; text-transform: uppercase;
-                    letter-spacing: 0.05em; box-shadow: 0 2px 4px rgba(230, 126, 34, 0.2);
-                ">SLUG</span>`;
-            }
-            if (isOffender(offenders.lowestQuality)) {
-                badgesHtml += `<span title="Lowest Quality Score" style="
-                    display: inline-flex; align-items: center; gap: 4px;
-                    font-size: 0.7rem; padding: 3px 8px; margin-right: 6px;
-                    border-radius: 12px;
-                    background: linear-gradient(135deg, rgba(243, 156, 18, 0.25) 0%, rgba(230, 126, 34, 0.15) 100%);
-                    border: 1.5px solid rgba(243, 156, 18, 0.5);
-                    color: #f39c12; font-weight: 700; text-transform: uppercase;
-                    letter-spacing: 0.05em; box-shadow: 0 2px 4px rgba(243, 156, 18, 0.2);
-                ">POOR</span>`;
-            }
-            if (isOffender(offenders.mostFailures)) {
-                badgesHtml += `<span title="Most Test Failures" style="
-                    display: inline-flex; align-items: center; gap: 4px;
-                    font-size: 0.7rem; padding: 3px 8px; margin-right: 6px;
-                    border-radius: 12px;
-                    background: linear-gradient(135deg, rgba(192, 57, 43, 0.3) 0%, rgba(142, 36, 36, 0.2) 100%);
-                    border: 1.5px solid rgba(192, 57, 43, 0.6);
-                    color: #c0392b; font-weight: 700; text-transform: uppercase;
-                    letter-spacing: 0.05em; box-shadow: 0 2px 4px rgba(192, 57, 43, 0.25);
-                ">UNSTABLE</span>`;
-            }
         }
 
         badgeContainer.innerHTML = badgesHtml;

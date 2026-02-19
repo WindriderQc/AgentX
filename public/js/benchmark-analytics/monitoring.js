@@ -38,6 +38,7 @@ export function stopActiveMonitoring() {
 export async function loadActiveStats() {
     try {
         const res = await fetch(`${BENCHMARK_API}/active-stats`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const { data } = await res.json();
 
         const container = document.getElementById('activeStatsContainer');

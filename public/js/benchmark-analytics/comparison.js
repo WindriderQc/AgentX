@@ -24,6 +24,7 @@ export async function compareBatches() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ batch_ids: [checkbox1, checkbox2] })
         });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
         const { data } = await res.json();
         setLastComparisonData(data);

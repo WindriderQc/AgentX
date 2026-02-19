@@ -57,10 +57,10 @@ export async function fetchModelRegistry() {
 export async function patchModelRegistry(model, data) {
     const res = await fetch(`/api/models/registry/${encodeURIComponent(model)}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getWorkspaceHeaders(),
         body: JSON.stringify(data)
     });
-    return { res, status: res.status };
+    return { res, status: res.status, json: await res.json().catch(() => null) };
 }
 
 /**
@@ -69,7 +69,7 @@ export async function patchModelRegistry(model, data) {
 export async function createModelRegistry(data) {
     const res = await fetch('/api/models/registry', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getWorkspaceHeaders(),
         body: JSON.stringify(data)
     });
     return res.json();
@@ -103,7 +103,10 @@ export async function startBatchTest(data) {
  * Stop batch test
  */
 export async function stopBatchTest(batchId) {
-    const res = await fetch(`${BENCHMARK_API}/batch/${batchId}/stop`, { method: 'POST' });
+    const res = await fetch(`${BENCHMARK_API}/batch/${batchId}/stop`, {
+        method: 'POST',
+        headers: getWorkspaceHeaders()
+    });
     return res;
 }
 
@@ -148,7 +151,8 @@ export async function fetchActiveBatches() {
  */
 export async function recoverBatchApi(batchId) {
     const res = await fetch(`${BENCHMARK_API}/batch/${batchId}/recover`, {
-        method: 'POST'
+        method: 'POST',
+        headers: getWorkspaceHeaders()
     });
     return res.json();
 }
@@ -169,7 +173,10 @@ export async function runSingleTest(data) {
  * Delete all benchmark results
  */
 export async function deleteAllResults() {
-    const res = await fetch(`${BENCHMARK_API}/results`, { method: 'DELETE' });
+    const res = await fetch(`${BENCHMARK_API}/results`, {
+        method: 'DELETE',
+        headers: getWorkspaceHeaders()
+    });
     return { res, json: await res.json().catch(() => null) };
 }
 
@@ -177,7 +184,10 @@ export async function deleteAllResults() {
  * Delete failed benchmark results
  */
 export async function deleteFailedResults() {
-    const res = await fetch(`${BENCHMARK_API}/results/failed`, { method: 'DELETE' });
+    const res = await fetch(`${BENCHMARK_API}/results/failed`, {
+        method: 'DELETE',
+        headers: getWorkspaceHeaders()
+    });
     return { res, json: await res.json().catch(() => null) };
 }
 

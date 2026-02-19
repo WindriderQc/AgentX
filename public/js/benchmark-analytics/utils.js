@@ -228,7 +228,6 @@ export function getActiveProfileKey() {
  * Ensure dashboard data is loaded
  */
 export async function ensureDashboardLoaded() {
-    if (window.latestBenchmarkData && Array.isArray(window.latestBenchmarkData.model_stats)) return;
     if (typeof window.loadDashboard === 'function') {
         try {
             await window.loadDashboard();

@@ -79,7 +79,7 @@ The model with the highest composite score is crowned **👑 Best Overall**. Thi
 - Reasonable response times
 - Good generation throughput
 
-If no quality-scored tests exist, you'll be prompted to run tests with quality scoring enabled.
+Quality scoring is always enabled — every batch run includes LLM-as-judge evaluation.
 
 ## Files Modified/Created
 
@@ -130,16 +130,19 @@ Now accepts `?sort=` query parameter:
 
 #### `POST /api/benchmark/batch`
 
-New optional parameter:
-
 ```json
 {
   "host": "http://192.168.2.99:11434",
   "models": ["qwen2.5:7b", "llama3.2:1b"],
   "levels": [1, 2, 3],
-  "quality_scoring": true  // NEW - default: true
+  "judge_config": {
+    "concurrency": 2,
+    "judge_same_host": false
+  }
 }
 ```
+
+Quality scoring is always enabled. Use `judge_config` to control judge behavior.
 
 ### New Endpoints
 
@@ -206,11 +209,12 @@ Prompts in `data/benchmark-prompts.json` now include:
 // src/services/qualityScorer.js
 
 const JUDGE_CONFIG = {
-    model: 'qwen2.5:7b-instruct-q4_0',  // Fast but capable judge
-    fallback_model: 'llama3.2:1b',       // Fallback if primary unavailable
-    host: HOSTS.primary,                  // Use primary host for judging
-    timeout: 30000,                       // 30s timeout for judge calls
-    temperature: 0.1                      // Low temp for consistent scoring
+    model: 'qwen2.5:14b-instruct-q4_K_M',  // 14B judge model
+    host: process.env.OLLAMA_HOST,           // Judge host (auto-resolved per batch)
+    timeout: 120000,                         // 120s timeout for judge calls
+    temperature: 0.3,                        // Low temp for consistent scoring
+    num_predict: 800,                        // Max judge output tokens
+    max_retries: 2                           // Retries with exponential backoff
 };
 ```
 
@@ -331,12 +335,9 @@ Use the dropdown to re-rank models by different metrics:
 | Quality (best) | Accuracy-critical tasks |
 | Composite (balanced) | General-purpose comparison |
 
-### Quality Scoring Toggle
+### Quality Scoring
 
-When running batch tests, you can enable/disable quality scoring:
-
-- ✅ **Enabled**: Each response is evaluated by the judge model (slower but comprehensive)
-- ❌ **Disabled**: Only speed metrics are collected (faster batch runs)
+Quality scoring is mandatory on all batch runs. Every response is evaluated by the judge model to produce quality metrics alongside performance metrics. There is no option to disable it.
 
 ## Database Schema
 
@@ -394,8 +395,7 @@ curl -X POST http://localhost:3080/api/benchmark/batch \
   -d '{
     "host": "http://192.168.2.99:11434",
     "models": ["qwen2.5:7b", "llama3.2:1b", "qwen2.5:3b"],
-    "levels": [1, 2, 3],
-    "quality_scoring": true
+    "levels": [1, 2, 3]
   }'
 ```
 
@@ -443,7 +443,6 @@ curl "http://localhost:3080/api/benchmark/quality-breakdown?model=qwen2.5:7b"
 
 ### Scoring is too slow
 
-- Disable quality scoring for speed-only benchmarks
 - Use lower prompt levels (L1-L2) for quick tests
 - The judge model processes each response, adding ~2-5s per test
 
@@ -464,4 +463,4 @@ curl "http://localhost:3080/api/benchmark/quality-breakdown?model=qwen2.5:7b"
 
 ---
 
-*Documentation generated: January 2026*
+*Documentation updated: February 2026*
