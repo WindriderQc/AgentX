@@ -1175,7 +1175,8 @@ button:active {
   transition: transform 0.3s ease;
 }
 
-.section-header.expanded .toggle-icon {
+.section-header.expanded .toggle-icon,
+.section-header.expanded .panel-toggle-icon {
   transform: rotate(-180deg);
 }
 

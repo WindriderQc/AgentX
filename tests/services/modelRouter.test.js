@@ -26,22 +26,22 @@ describe('Model Router Service', () => {
 
         it('should return primary for undefined model', () => {
             const target = getTargetForModel(undefined);
-            expect(target).toBe(HOSTS.primary);
+            expect(target).toBe(HOSTS.primary || HOSTS.secondary || HOSTS.tertiary);
         });
 
         it('should return primary for null model', () => {
             const target = getTargetForModel(null);
-            expect(target).toBe(HOSTS.primary);
+            expect(target).toBe(HOSTS.primary || HOSTS.secondary || HOSTS.tertiary);
         });
 
-        it('should fallback to secondary for 70b models', () => {
+        it('should fallback to the heavy host for 70b models', () => {
             const target = getTargetForModel('some-model:70b');
-            expect(target).toBe(HOSTS.secondary);
+            expect(target).toBe(HOSTS.tertiary || HOSTS.secondary);
         });
 
-        it('should fallback to secondary for 32b models', () => {
+        it('should fallback to the heavy host for 32b models', () => {
             const target = getTargetForModel('custom:32b');
-            expect(target).toBe(HOSTS.secondary);
+            expect(target).toBe(HOSTS.tertiary || HOSTS.secondary);
         });
     });
 

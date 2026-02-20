@@ -10,6 +10,7 @@ const BenchmarkResult = require('../../../models/BenchmarkResult');
 const BenchmarkBatch = require('../../../models/BenchmarkBatch');
 const { scoreResponse, calculateCompositeScore, JUDGE_CONFIG } = require('../qualityScorer');
 const { classifyBenchmarkError } = require('./errorClassifier');
+const hardwareProfileService = require('../hardwareProfileService');
 const BenchmarkPrompt = require('../../../models/BenchmarkPrompt');
 const ConcurrencyQueue = require('./ConcurrencyQueue');
 
@@ -154,7 +155,7 @@ async function applyScoresToResult(resultId, scores, resultData) {
  * @param {Object} judgeConfig - { host, model } overrides (merged with JUDGE_CONFIG defaults)
  * @returns {Object} Result from applyScoresToResult
  */
-async function judgeResult(resultId, judgeConfig = {}) {
+async function judgeResult(resultId, judgeConfig = {}, _batchHardwareSnapshot = null) {
     const result = await BenchmarkResult.findById(resultId);
     if (!result) {
         throw new Error(`Result not found: ${resultId}`);
@@ -198,7 +199,8 @@ async function judgeResult(resultId, judgeConfig = {}) {
     const scores = await scoreResponse({
         response: result.response,
         prompt: promptData,
-        judgeConfig: mergedConfig
+        judgeConfig: mergedConfig,
+        _batchHardwareSnapshot
     });
 
     return applyScoresToResult(resultId, scores, {
@@ -275,6 +277,27 @@ async function judgeBatch(batchId, options = {}) {
     const job = { queue, stopped: false };
     activeJudgingJobs.set(batchId, job);
 
+    // Detect judge hardware ONCE for entire batch
+    let batchHardwareSnapshot = null;
+    try {
+        const judgeHost = judgeConfig.host || JUDGE_CONFIG.host;
+        const judgeModel = judgeConfig.model || JUDGE_CONFIG.model;
+        if (judgeHost && judgeModel) {
+            const hwPromise = hardwareProfileService.detectHardware(judgeHost, judgeModel);
+            const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('Hardware detection timeout')), 5000)
+            );
+            batchHardwareSnapshot = await Promise.race([hwPromise, timeoutPromise]);
+            logger.debug('Judge batch hardware detection complete', {
+                batchId,
+                gpu: batchHardwareSnapshot?.gpu_layers,
+                vram: batchHardwareSnapshot?.total_vram_gb
+            });
+        }
+    } catch (hwErr) {
+        logger.debug('Judge batch hardware detection failed (non-critical)', { batchId, error: hwErr.message });
+    }
+
     let judged = 0;
     let failed = 0;
 
@@ -285,7 +308,7 @@ async function judgeBatch(batchId, options = {}) {
             if (job.stopped) return;
 
             try {
-                await judgeResult(result._id.toString(), judgeConfig);
+                await judgeResult(result._id.toString(), judgeConfig, batchHardwareSnapshot);
                 judged++;
 
                 await BenchmarkBatch.updateOne(

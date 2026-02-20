@@ -135,6 +135,9 @@ export function renderMessage(message, state, elements) {
       navigator.clipboard.writeText(content).then(() => {
         copyBtn.innerHTML = '<i class="fas fa-check"></i>';
         setTimeout(() => { copyBtn.innerHTML = '<i class="fas fa-copy"></i>'; }, 1500);
+      }).catch(() => {
+        copyBtn.innerHTML = '<i class="fas fa-times"></i>';
+        setTimeout(() => { copyBtn.innerHTML = '<i class="fas fa-copy"></i>'; }, 1500);
       });
     });
     actionBar.appendChild(copyBtn);
@@ -201,6 +204,9 @@ export function renderMessage(message, state, elements) {
       copyCodeBtn.addEventListener('click', () => {
         navigator.clipboard.writeText(block.textContent).then(() => {
           copyCodeBtn.innerHTML = '<i class="fas fa-check"></i> Copied';
+          setTimeout(() => { copyCodeBtn.innerHTML = '<i class="fas fa-copy"></i> Copy'; }, 1500);
+        }).catch(() => {
+          copyCodeBtn.innerHTML = '<i class="fas fa-times"></i> Failed';
           setTimeout(() => { copyCodeBtn.innerHTML = '<i class="fas fa-copy"></i> Copy'; }, 1500);
         });
       });

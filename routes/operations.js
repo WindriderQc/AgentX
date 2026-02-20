@@ -22,7 +22,11 @@ const execPromise = util.promisify(exec);
 // n8n configuration
 const N8N_BASE = process.env.N8N_URL || 'http://localhost:5678';
 const DEFAULT_CLAWDX_OLLAMA_URL = 'http://192.168.2.66:11434';
-const DEFAULT_OPENCLAW_BASE_URL = 'http://192.168.2.66:3000';
+const DEFAULT_OPENCLAW_BASE_URLS = [
+  'http://127.0.0.1:18789',
+  'http://localhost:18789',
+  'http://192.168.2.66:3000'
+];
 
 function parsePathList(value, fallback) {
   if (!value || typeof value !== 'string') return fallback;
@@ -38,6 +42,56 @@ function joinUrl(baseUrl, path) {
   const base = String(baseUrl || '').replace(/\/+$/, '');
   const suffix = String(path || '').startsWith('/') ? path : `/${path || ''}`;
   return `${base}${suffix}`;
+}
+
+function normalizeBaseUrl(value) {
+  if (!value) return null;
+  const trimmed = String(value).trim();
+  if (!trimmed) return null;
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed.replace(/\/+$/, '');
+  }
+  return `http://${trimmed.replace(/\/+$/, '')}`;
+}
+
+function dedupeUrls(urls) {
+  return Array.from(new Set((urls || []).filter(Boolean)));
+}
+
+function deriveOpenclawCandidates(clawdxOllamaUrl) {
+  const explicitList = dedupeUrls(
+    String(process.env.OPENCLAW_BASE_URLS || '')
+      .split(',')
+      .map((entry) => normalizeBaseUrl(entry))
+  );
+  if (explicitList.length > 0) {
+    return explicitList;
+  }
+
+  const explicitSingle = normalizeBaseUrl(process.env.OPENCLAW_BASE_URL);
+  if (explicitSingle) {
+    return [explicitSingle];
+  }
+
+  const candidates = [...DEFAULT_OPENCLAW_BASE_URLS];
+  const gatewayPort = Number(process.env.OPENCLAW_GATEWAY_PORT || 18789);
+  if (Number.isFinite(gatewayPort) && gatewayPort > 0) {
+    candidates.unshift(`http://127.0.0.1:${gatewayPort}`, `http://localhost:${gatewayPort}`);
+  }
+
+  try {
+    const parsed = new URL(normalizeBaseUrl(clawdxOllamaUrl));
+    if (parsed.hostname) {
+      candidates.push(`http://${parsed.hostname}:3000`);
+      if (Number.isFinite(gatewayPort) && gatewayPort > 0) {
+        candidates.push(`http://${parsed.hostname}:${gatewayPort}`);
+      }
+    }
+  } catch (_err) {
+    // ignore URL parsing failures; fall back to defaults
+  }
+
+  return dedupeUrls(candidates.map((entry) => normalizeBaseUrl(entry)));
 }
 
 async function probeFirstJson(baseUrl, paths, timeoutMs = 5000) {
@@ -75,6 +129,18 @@ async function probeFirstJson(baseUrl, paths, timeoutMs = 5000) {
   }
 
   return { ok: false, error: lastError, status: lastStatus };
+}
+
+async function probeFirstJsonAcrossBases(baseUrls, paths, timeoutMs = 5000) {
+  let lastResult = { ok: false, error: 'No response', status: null };
+  for (const baseUrl of baseUrls) {
+    const result = await probeFirstJson(baseUrl, paths, timeoutMs);
+    if (result.ok) {
+      return { ...result, baseUrl };
+    }
+    lastResult = { ...result, baseUrl };
+  }
+  return lastResult;
 }
 
 function extractAgentNames(payload) {
@@ -132,7 +198,7 @@ router.get('/health', async (req, res) => {
       process.env.OLLAMA_HOST_TERTIARY ||
       process.env.OLLAMA_HOST_3 ||
       DEFAULT_CLAWDX_OLLAMA_URL;
-    const openclawBaseUrl = process.env.OPENCLAW_BASE_URL || DEFAULT_OPENCLAW_BASE_URL;
+    const openclawBaseUrls = deriveOpenclawCandidates(clawdxOllamaUrl);
     const openclawTimeoutMs = Number(process.env.OPENCLAW_TIMEOUT_MS || 3000);
     const openclawHealthPaths = parsePathList(
       process.env.OPENCLAW_HEALTH_PATHS,
@@ -339,15 +405,21 @@ router.get('/health', async (req, res) => {
     }
 
     const [openclawHealthProbe, openclawAgentsProbe] = await Promise.all([
-      probeFirstJson(openclawBaseUrl, openclawHealthPaths, openclawTimeoutMs),
-      probeFirstJson(openclawBaseUrl, openclawAgentsPaths, openclawTimeoutMs)
+      probeFirstJsonAcrossBases(openclawBaseUrls, openclawHealthPaths, openclawTimeoutMs),
+      probeFirstJsonAcrossBases(openclawBaseUrls, openclawAgentsPaths, openclawTimeoutMs)
     ]);
+    const resolvedOpenclawBaseUrl =
+      openclawHealthProbe.baseUrl ||
+      openclawAgentsProbe.baseUrl ||
+      openclawBaseUrls[0] ||
+      null;
     const openclawAgentNames = openclawAgentsProbe.ok ? extractAgentNames(openclawAgentsProbe.data) : [];
 
     if (openclawHealthProbe.ok || openclawAgentsProbe.ok) {
       healthStatus.services.openclaw = {
         status: 'up',
-        baseUrl: openclawBaseUrl,
+        baseUrl: resolvedOpenclawBaseUrl,
+        baseUrls: openclawBaseUrls,
         healthEndpoint: openclawHealthProbe.ok ? openclawHealthProbe.url : null,
         agentsEndpoint: openclawAgentsProbe.ok ? openclawAgentsProbe.url : null,
         agentCount: openclawAgentNames.length,
@@ -356,7 +428,8 @@ router.get('/health', async (req, res) => {
     } else if (clawdxModels.length > 0) {
       healthStatus.services.openclaw = {
         status: 'degraded',
-        baseUrl: openclawBaseUrl,
+        baseUrl: resolvedOpenclawBaseUrl,
+        baseUrls: openclawBaseUrls,
         healthEndpoint: null,
         agentsEndpoint: null,
         agentCount: clawdxModels.length,
@@ -368,7 +441,8 @@ router.get('/health', async (req, res) => {
     } else {
       healthStatus.services.openclaw = {
         status: 'down',
-        baseUrl: openclawBaseUrl,
+        baseUrl: resolvedOpenclawBaseUrl,
+        baseUrls: openclawBaseUrls,
         healthEndpoint: null,
         agentsEndpoint: null,
         agentCount: 0,

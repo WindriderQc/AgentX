@@ -81,6 +81,76 @@ Do NOT respond with just keys, do NOT respond with an array, do NOT add explanat
 }
 
 /**
+ * Extract the first balanced JSON object from text using brace counting.
+ * Handles cases where judge preamble contains braces in explanatory text.
+ * @param {string} text - Raw judge response text
+ * @returns {string|null} Extracted JSON string or null
+ */
+function extractBalancedJson(text) {
+    const firstBrace = text.indexOf('{');
+    if (firstBrace === -1) return null;
+
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+
+    for (let i = firstBrace; i < text.length; i++) {
+        const ch = text[i];
+
+        if (escaped) {
+            escaped = false;
+            continue;
+        }
+
+        if (ch === '\\' && inString) {
+            escaped = true;
+            continue;
+        }
+
+        if (ch === '"') {
+            inString = !inString;
+            continue;
+        }
+
+        if (inString) continue;
+
+        if (ch === '{') {
+            depth++;
+        } else if (ch === '}') {
+            depth--;
+            if (depth === 0) {
+                return text.substring(firstBrace, i + 1);
+            }
+        }
+    }
+
+    // No balanced object found from firstBrace — fall back to last brace
+    const lastBrace = text.lastIndexOf('}');
+    if (lastBrace > firstBrace) {
+        return text.substring(firstBrace, lastBrace + 1);
+    }
+
+    return null;
+}
+
+/**
+ * Check if a judge error message is retryable.
+ * Retries on: network errors, HTTP 5xx, and JSON parse/extraction failures.
+ * @param {string} message - Error message
+ * @returns {boolean}
+ */
+function isRetryableError(message) {
+    return message.includes('timeout') ||
+           message.includes('ECONNRESET') ||
+           message.includes('ETIMEDOUT') ||
+           message.startsWith('Judge HTTP 5') ||
+           message.includes('No JSON found') ||
+           message.includes('JSON parse failed') ||
+           message.includes('returned non-object') ||
+           message.includes('returned array');
+}
+
+/**
  * Call the judge model to evaluate a response
  */
 async function callJudge(evalPrompt, config = {}, retryCount = 0) {
@@ -119,17 +189,25 @@ async function callJudge(evalPrompt, config = {}, retryCount = 0) {
         const judgeTruncated = data.done_reason === 'length';
         const judgeTokens = data.eval_count || 0;
 
+        // Retry with expanded num_predict on truncation before attempting parse
+        if (judgeTruncated && retryCount < (judgeConfig.max_retries || 2)) {
+            logger.warn('Judge output truncated, retrying with expanded num_predict', {
+                judge_model: judgeConfig.model || JUDGE_CONFIG.model,
+                original_num_predict: judgeConfig.num_predict || JUDGE_CONFIG.num_predict,
+                expanded_num_predict: (judgeConfig.num_predict || JUDGE_CONFIG.num_predict) * 2,
+                attempt: retryCount + 1
+            });
+            const expandedConfig = { ...config, num_predict: (judgeConfig.num_predict || JUDGE_CONFIG.num_predict) * 2 };
+            return callJudge(evalPrompt, expandedConfig, retryCount + 1);
+        }
+
         let jsonStr = null;
 
         const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
         if (codeBlockMatch) {
             jsonStr = codeBlockMatch[1];
         } else {
-            const firstBrace = text.indexOf('{');
-            const lastBrace = text.lastIndexOf('}');
-            if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-                jsonStr = text.substring(firstBrace, lastBrace + 1);
-            }
+            jsonStr = extractBalancedJson(text);
         }
 
         if (!jsonStr) {
@@ -210,12 +288,7 @@ async function callJudge(evalPrompt, config = {}, retryCount = 0) {
         clearTimeout(timeoutId);
 
         const maxRetries = judgeConfig.max_retries || 2;
-        const isRetryable = err.message.includes('timeout') ||
-                           err.message.includes('ECONNRESET') ||
-                           err.message.includes('ETIMEDOUT') ||
-                           err.message.includes('500') ||
-                           err.message.includes('503') ||
-                           err.message.includes('502');
+        const isRetryable = isRetryableError(err.message);
 
         if (isRetryable && retryCount < maxRetries) {
             const backoffMs = Math.min(1000 * Math.pow(2, retryCount), 5000);
@@ -241,6 +314,8 @@ module.exports = {
     JUDGE_CONFIG,
     callJudge,
     buildDynamicJudgePrompt,
+    extractBalancedJson,
+    isRetryableError,
     getJudgeFailureCount,
     incrementJudgeFailureCount
 };

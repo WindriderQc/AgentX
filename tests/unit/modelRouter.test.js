@@ -3,6 +3,7 @@
 // Set env vars BEFORE requiring the module to ensure constants are initialized correctly
 process.env.OLLAMA_HOST = 'http://primary:11434';
 process.env.OLLAMA_HOST_SECONDARY = 'http://secondary:11434';
+process.env.OLLAMA_HOST_TERTIARY = 'http://tertiary:11434';
 process.env.MODEL_HEALTH_CACHE_TTL_MS = '0'; // Disable cache for tests
 
 const fetch = require('node-fetch');
@@ -51,8 +52,10 @@ describe('Model Router Service', () => {
         });
 
         it('should use fallback routing logic for unknown models', () => {
-            expect(modelRouter.getTargetForModel('unknown-model:70b')).toBe('http://secondary:11434');
+            expect(modelRouter.getTargetForModel('unknown-model:70b')).toBe('http://tertiary:11434');
+            expect(modelRouter.getTargetForModel('unknown-model:32b')).toBe('http://tertiary:11434');
             expect(modelRouter.getTargetForModel('my-deepseek-finetune')).toBe('http://secondary:11434');
+            expect(modelRouter.getTargetForModel('my-embedding-model')).toBe('http://primary:11434');
             expect(modelRouter.getTargetForModel('some-random-small-model')).toBe('http://primary:11434');
         });
 
@@ -129,6 +132,26 @@ describe('Model Router Service', () => {
             const status = modelRouter.getFailoverStatus();
             expect(status.currentHost).toBe('http://primary:11434');
             expect(status.isFailedOver).toBe(false);
+        });
+    });
+
+    describe('Host Health Aggregation', () => {
+        it('should return health for all configured hosts', async () => {
+            fetch.mockResolvedValue({
+                ok: true,
+                status: 200,
+                json: () => Promise.resolve({ models: [{ name: 'qwen2.5:7b' }] })
+            });
+
+            const result = await modelRouter.getAllModelsHealth();
+
+            expect(Array.isArray(result)).toBe(true);
+            expect(result).toHaveLength(3);
+            expect(result.map((entry) => entry.hostKey).sort()).toEqual(['primary', 'secondary', 'tertiary']);
+            result.forEach((entry) => {
+                expect(entry.status).toBe('online');
+                expect(Array.isArray(entry.models)).toBe(true);
+            });
         });
     });
 });

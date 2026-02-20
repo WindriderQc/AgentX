@@ -169,7 +169,7 @@ function showHistoryContextMenu(btn, item, state, elements) {
   });
 }
 
-export async function loadJudgedConversations(elements, minScore = 0) {
+export async function loadJudgedConversations(elements, state, minScore = 0) {
   try {
     const params = new URLSearchParams({ limit: '50', minScore: String(minScore) });
     let url = `/api/conversations/judged?${params}`;
@@ -197,7 +197,7 @@ export async function loadJudgedConversations(elements, minScore = 0) {
         <div class="date">${conv.model || ''} ${judgedAt ? '\u00b7 Judged ' + judgedAt : ''}</div>
       `;
       div.addEventListener('click', () => {
-        if (typeof loadConversation === 'function') loadConversation(conv._id);
+        state._helpers.loadConversation(conv._id);
       });
       elements.historyList.appendChild(div);
     });
@@ -313,12 +313,12 @@ export function wireHistoryTabs(elements, state, helpers) {
       viewJudgedBtn.classList.add('active');
       viewAllBtn.classList.remove('active');
       if (minScoreControl) minScoreControl.style.display = '';
-      loadJudgedConversations(elements, parseInt(minScoreInput?.value) || 0);
+      loadJudgedConversations(elements, state, parseInt(minScoreInput?.value) || 0);
     });
     if (minScoreInput) {
       minScoreInput.addEventListener('change', () => {
         if (viewJudgedBtn.classList.contains('active')) {
-          loadJudgedConversations(elements, parseInt(minScoreInput.value) || 0);
+          loadJudgedConversations(elements, state, parseInt(minScoreInput.value) || 0);
         }
       });
     }

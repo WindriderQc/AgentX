@@ -117,7 +117,7 @@ document.addEventListener('DOMContentLoaded', () => {
     history: [],
     sending: false,
     stats: { messages: 0, replies: 0 },
-    settings: null,
+    settings: { ...DEFAULTS, options: { ...DEFAULTS.options } },
     threadId: `t-${Date.now().toString(36)}`,
     profile: { language: '', role: '', style: '' },
     conversationId: null,

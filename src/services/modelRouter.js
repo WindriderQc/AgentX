@@ -22,11 +22,19 @@ const HOSTS = {
     tertiary: null
 };
 
+function normalizeHostUrl(rawValue) {
+    if (!rawValue) return null;
+    const trimmed = String(rawValue).trim();
+    if (!trimmed) return null;
+    if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    return `http://${trimmed}`;
+}
+
 function refreshHosts() {
-    HOSTS.primary = process.env.OLLAMA_HOST;
+    HOSTS.primary = normalizeHostUrl(process.env.OLLAMA_HOST);
     // Prefer explicit SECONDARY override if both are present (tests often set it)
-    HOSTS.secondary = process.env.OLLAMA_HOST_SECONDARY || process.env.OLLAMA_HOST_2;
-    HOSTS.tertiary = process.env.OLLAMA_HOST_TERTIARY || process.env.OLLAMA_HOST_3;
+    HOSTS.secondary = normalizeHostUrl(process.env.OLLAMA_HOST_SECONDARY || process.env.OLLAMA_HOST_2);
+    HOSTS.tertiary = normalizeHostUrl(process.env.OLLAMA_HOST_TERTIARY || process.env.OLLAMA_HOST_3);
 }
 
 refreshHosts();
@@ -246,7 +254,7 @@ User query: `;
  */
 function getTargetForModel(model) {
     refreshHosts();
-    if (!model) return HOSTS.primary;
+    if (!model) return HOSTS.primary || HOSTS.secondary || HOSTS.tertiary;
     
     const normalizedModel = model.toLowerCase().trim();
     const hostKey = MODEL_ROUTING[normalizedModel];
@@ -255,16 +263,27 @@ function getTargetForModel(model) {
         return HOSTS[hostKey];
     }
     
-    // Smart fallback based on model name patterns
-    if (normalizedModel.includes('70b') || 
-        normalizedModel.includes('32b') || 
-        normalizedModel.includes('27b') ||
-        normalizedModel.includes('deepseek') ||
-        normalizedModel.includes('embed')) {
-        return HOSTS.secondary;
+    // Keep embeddings on the light host by default.
+    if (normalizedModel.includes('embed') || normalizedModel.includes('embedding') || normalizedModel.includes('nomic')) {
+        return HOSTS.primary || HOSTS.secondary || HOSTS.tertiary;
+    }
+
+    // Use tertiary for very large models when available.
+    if (normalizedModel.includes('70b') ||
+        normalizedModel.includes('32b') ||
+        normalizedModel.includes('34b') ||
+        normalizedModel.includes('27b')) {
+        return HOSTS.tertiary || HOSTS.secondary || HOSTS.primary;
+    }
+
+    // Route heavier reasoning/coder families away from the primary host.
+    if (normalizedModel.includes('deepseek') ||
+        normalizedModel.includes('coder') ||
+        normalizedModel.includes('reason')) {
+        return HOSTS.secondary || HOSTS.tertiary || HOSTS.primary;
     }
     
-    return HOSTS.primary;
+    return HOSTS.primary || HOSTS.secondary || HOSTS.tertiary;
 }
 
 /**
@@ -507,7 +526,45 @@ function getActiveHost() {
 function getBackupHost() {
     refreshHosts();
     const current = getActiveHost();
-    return current === HOSTS.primary ? HOSTS.secondary : HOSTS.primary;
+    if (current === HOSTS.primary) {
+        return HOSTS.secondary || HOSTS.tertiary || HOSTS.primary;
+    }
+    if (current === HOSTS.secondary) {
+        return HOSTS.primary || HOSTS.tertiary || HOSTS.secondary;
+    }
+    if (current === HOSTS.tertiary) {
+        return HOSTS.secondary || HOSTS.primary || HOSTS.tertiary;
+    }
+    return HOSTS.primary || HOSTS.secondary || HOSTS.tertiary;
+}
+
+/**
+ * Get health and model inventory across all configured hosts.
+ * @returns {Promise<Array<{hostKey: string, hostUrl: string, status: string, latency: number, models: string[], error?: string, checkedAt: string}>>}
+ */
+async function getAllModelsHealth() {
+    refreshHosts();
+
+    const hostEntries = [
+        { hostKey: 'primary', hostUrl: HOSTS.primary },
+        { hostKey: 'secondary', hostUrl: HOSTS.secondary },
+        { hostKey: 'tertiary', hostUrl: HOSTS.tertiary }
+    ].filter((entry) => !!entry.hostUrl);
+
+    const checks = await Promise.all(hostEntries.map(async (entry) => {
+        const health = await checkHostHealth(entry.hostKey);
+        return {
+            hostKey: entry.hostKey,
+            hostUrl: entry.hostUrl,
+            status: health.status,
+            latency: health.latency,
+            models: health.models || [],
+            ...(health.error ? { error: health.error } : {}),
+            checkedAt: new Date().toISOString()
+        };
+    }));
+
+    return checks;
 }
 
 /**
@@ -585,6 +642,7 @@ module.exports = {
     checkHostHealth,
     getModelHealth,
     getRoutingStatus,
+    getAllModelsHealth,
     getActiveHost,
     getBackupHost,
     switchHost,

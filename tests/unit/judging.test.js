@@ -223,7 +223,8 @@ describe('judgeResult', () => {
             }),
             judgeConfig: expect.objectContaining({
                 model: 'test-judge:latest'
-            })
+            }),
+            _batchHardwareSnapshot: null
         });
         expect(result.quality_score).toBe(8.0);
     });
