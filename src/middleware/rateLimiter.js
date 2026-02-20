@@ -5,6 +5,7 @@
 
 const rateLimit = require('express-rate-limit');
 const { ipKeyGenerator } = require('express-rate-limit');
+const crypto = require('crypto');
 const logger = require('../../config/logger');
 const SelfHealingEngine = require('../services/selfHealingEngine');
 
@@ -19,6 +20,28 @@ function getClientKey(req) {
   return ipKeyGenerator(req.ip);
 }
 
+function getGeneralApiKey(req) {
+  // In tests, preserve deterministic bucketing.
+  if (process.env.NODE_ENV === 'test') {
+    return getClientKey(req);
+  }
+
+  // Prefer authenticated identity to avoid NAT/proxy IP collisions.
+  if (req.session?.userId) {
+    return `user:${req.session.userId}`;
+  }
+
+  // API-key clients may share egress IPs; isolate by key prefix.
+  const apiKey = req.get('x-api-key');
+  if (apiKey) {
+    const digest = crypto.createHash('sha256').update(String(apiKey)).digest('hex').slice(0, 16);
+    return `api:${digest}`;
+  }
+
+  // Fallback for unauthenticated requests.
+  return ipKeyGenerator(req.ip);
+}
+
 /**
  * General API rate limiter
  * 100 requests per 15 minutes
@@ -28,11 +51,12 @@ const baseApiLimiter = rateLimit({
   max: 100, // 100 requests per window
   message: {
     status: 'error',
-    message: 'Too many requests from this IP, please try again after 15 minutes'
+    message: 'Too many requests. Please try again after 15 minutes.'
   },
   standardHeaders: true, // Return rate limit info in `RateLimit-*` headers
   legacyHeaders: false, // Disable `X-RateLimit-*` headers
-  keyGenerator: getClientKey,
+  keyGenerator: getGeneralApiKey,
+  validate: { ip: false }, // key can be user/session/api-key based
   skip: (req) => (
     req.originalUrl.startsWith('/api/benchmark')
     || req.originalUrl.startsWith('/api/specialx')

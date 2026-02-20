@@ -123,6 +123,10 @@ function injectNav(activePageId = '') {
         }
 
         .top-nav {
+            position: relative !important; /* Override legacy fixed rule in styles.css */
+            top: auto !important;
+            left: auto !important;
+            right: auto !important;
             background: rgba(13, 17, 23, 0.95);
             backdrop-filter: blur(12px);
             border-bottom: 1px solid rgba(255,255,255,0.06);

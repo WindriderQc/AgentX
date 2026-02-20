@@ -278,7 +278,8 @@
 .chat-layout {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 56px); /* Subtract nav height */
+  height: calc(100% - 48px); /* Subtract in-page chat header bar */
+  min-height: 0;
   overflow: hidden;
 }
 

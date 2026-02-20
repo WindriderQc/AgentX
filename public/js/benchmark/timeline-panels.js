@@ -124,7 +124,13 @@ export function renderEventList(batchTimeline) {
     );
 
     const eventsHtml = sortedEvents.map(event => {
-        const style = eventStyles[event.event] || { icon: 'fa-circle', color: 'var(--muted)', label: event.event };
+        const warmupFailed = (
+            (event.event === 'model_warmup_complete' || event.event === 'judge_warmup_complete') &&
+            event.success === false
+        );
+        const style = warmupFailed
+            ? { icon: 'fa-exclamation-triangle', color: '#e74c3c', label: 'Warmup Failed' }
+            : (eventStyles[event.event] || { icon: 'fa-circle', color: 'var(--muted)', label: event.event });
         const timeStr = formatTime(event.time_since_start_ms || 0);
         const durationStr = event.duration_ms ? ` (${formatTime(event.duration_ms)})` : '';
         const modelStr = event.model ? `<span style="color: var(--accent); font-weight: 500;">${escapeHtml(event.model)}</span> • ` : '';

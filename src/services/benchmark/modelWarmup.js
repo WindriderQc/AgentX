@@ -6,6 +6,18 @@
 const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
 const logger = require('../../../config/logger');
 
+function normalizeWarmupError(err, timeoutMs) {
+    const rawMessage = String(err?.message || '').trim();
+    const aborted = err?.name === 'AbortError' ||
+        err?.type === 'aborted' ||
+        /aborted|aborterror/i.test(rawMessage);
+    if (aborted) {
+        const timeoutSec = Math.max(1, Math.round((Number(timeoutMs) || 0) / 1000));
+        return `Warmup timed out after ${timeoutSec}s (model may still be loading)`;
+    }
+    return rawMessage || 'Warmup failed';
+}
+
 /**
  * Warm up a model by sending a minimal request
  * When response comes back, model is loaded in VRAM and ready for fast tests
@@ -19,9 +31,10 @@ const logger = require('../../../config/logger');
  * @returns {Object} Warmup data for validation/debugging
  */
 async function warmupModel(hostUrl, model, options = {}) {
-    const { timelinePrefix = null, recordTimelineEvent = null, strict = false } = options;
+    const { timelinePrefix = null, recordTimelineEvent = null, strict = false, _fetch = fetch } = options;
     const warmupStart = Date.now();
     const warmupPrompt = 'Hi';
+    let timeoutMs = 180000;
     const warmupData = {
         prompt: warmupPrompt,
         response: null,
@@ -41,7 +54,7 @@ async function warmupModel(hostUrl, model, options = {}) {
         try {
             const psController = new AbortController();
             const psTimeoutId = setTimeout(() => psController.abort(), 5000);
-            const psResponse = await fetch(`${hostUrl}/api/ps`, {
+            const psResponse = await _fetch(`${hostUrl}/api/ps`, {
                 method: 'GET',
                 signal: psController.signal
             });
@@ -68,26 +81,30 @@ async function warmupModel(hostUrl, model, options = {}) {
 
         warmupData.already_loaded = modelAlreadyLoaded;
 
-        const timeoutMs = modelAlreadyLoaded ? 30000 : 180000;
+        timeoutMs = modelAlreadyLoaded ? 30000 : 180000;
         logger.info('Warming up model', { host: hostUrl, model, alreadyLoaded: modelAlreadyLoaded, timeoutMs });
 
         const url = `${hostUrl}/api/generate`;
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                model,
-                prompt: warmupPrompt,
-                stream: false,
-                options: { num_predict: 1 }
-            }),
-            signal: controller.signal
-        });
+        let response;
+        try {
+            response = await _fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model,
+                    prompt: warmupPrompt,
+                    stream: false,
+                    options: { num_predict: 1 }
+                }),
+                signal: controller.signal
+            });
+        } finally {
+            clearTimeout(timeoutId);
+        }
 
-        clearTimeout(timeoutId);
         const durationMs = Date.now() - warmupStart;
         warmupData.latency_ms = durationMs;
 
@@ -109,17 +126,17 @@ async function warmupModel(hostUrl, model, options = {}) {
     } catch (err) {
         const durationMs = Date.now() - warmupStart;
         warmupData.latency_ms = durationMs;
-        warmupData.error = err.message;
-        logger.warn('Model warmup failed', { host: hostUrl, model, error: err.message, durationMs });
+        warmupData.error = normalizeWarmupError(err, timeoutMs);
+        logger.warn('Model warmup failed', { host: hostUrl, model, error: warmupData.error, durationMs });
 
         if (timelinePrefix && recordTimelineEvent) {
             await recordTimelineEvent(`${timelinePrefix}_complete`, {
-                model, duration_ms: durationMs, success: false, error: err.message
+                model, duration_ms: durationMs, success: false, error: warmupData.error
             });
         }
         // In strict mode, propagate the error (used for judge warmup)
         if (strict) {
-            throw err;
+            throw new Error(warmupData.error);
         }
         // Don't throw - let tests try anyway
     }
