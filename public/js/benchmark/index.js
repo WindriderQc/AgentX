@@ -84,28 +84,45 @@ function getJudgeModelCandidates() {
     const registryModels = Object.values(state.modelRegistryCache || {});
     let candidates = registryModels
         .filter(m => Array.isArray(m.categories) && m.categories.includes('judge'))
-        .map(m => m.modelName)
         .filter(Boolean);
 
     if (candidates.length === 0) {
-        candidates = registryModels.map(m => m.modelName).filter(Boolean);
+        candidates = registryModels.filter(Boolean);
     }
 
     if (candidates.length === 0 && Array.isArray(state.ollamaHosts)) {
         const hostModels = [];
         state.ollamaHosts.forEach(host => {
-            (host.models || []).forEach(model => hostModels.push(model));
+            (host.models || []).forEach(model => hostModels.push({ modelName: model }));
         });
         candidates = hostModels;
     }
 
-    // Always include the server's configured judge model so it can't silently fall back
+    // Always include the server's configured judge model
     const serverDefault = state.currentJudgeConfig.model;
-    if (serverDefault && !candidates.includes(serverDefault)) {
-        candidates.push(serverDefault);
+    if (serverDefault && !candidates.some(c => c.modelName === serverDefault)) {
+        candidates.push({ modelName: serverDefault });
     }
 
-    return Array.from(new Set(candidates)).sort();
+    // Deduplicate by modelName, keep first (richer metadata)
+    const seen = new Set();
+    const unique = [];
+    for (const c of candidates) {
+        const name = c.modelName || c;
+        if (!seen.has(name)) {
+            seen.add(name);
+            unique.push(c);
+        }
+    }
+    return unique.sort((a, b) => (a.modelName || '').localeCompare(b.modelName || ''));
+}
+
+/** Tier badge for judge model select */
+function judgeTierBadge(model) {
+    const tier = model.capabilities && model.capabilities.judgeTier;
+    if (!tier) return '';
+    const badges = { basic: 'BASIC', standard: 'STD', advanced: 'ADV', premium: 'PRO' };
+    return badges[tier] ? ` [${badges[tier]}]` : '';
 }
 
 function populateJudgeModelSelect() {
@@ -124,9 +141,13 @@ function populateJudgeModelSelect() {
 
     const current = state.currentJudgeConfig.model || select.value || '';
     select.innerHTML = candidates
-        .map(model => `<option value="${escapeHtml(model)}">${escapeHtml(model)}</option>`)
+        .map(model => {
+            const name = model.modelName || model;
+            const badge = judgeTierBadge(model);
+            return `<option value="${escapeHtml(name)}">${escapeHtml(name)}${badge}</option>`;
+        })
         .join('');
-    if (current && candidates.includes(current)) {
+    if (current && candidates.some(c => (c.modelName || c) === current)) {
         select.value = current;
     } else {
         // Configured model not in available list - show warning
@@ -134,10 +155,10 @@ function populateJudgeModelSelect() {
             const warningBanner = document.createElement('div');
             warningBanner.id = 'judgeModelWarning';
             warningBanner.style.cssText = 'background: rgba(243, 156, 18, 0.15); border: 1px solid rgba(243, 156, 18, 0.5); border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; font-size: 0.85em; color: #f39c12;';
-            warningBanner.innerHTML = `<i class="fas fa-exclamation-triangle"></i> Configured judge model <strong>${escapeHtml(current)}</strong> not found in available models. Using <strong>${escapeHtml(candidates[0])}</strong> instead.`;
+            warningBanner.innerHTML = `<i class="fas fa-exclamation-triangle"></i> Configured judge model <strong>${escapeHtml(current)}</strong> not found in available models. Using <strong>${escapeHtml((candidates[0] && candidates[0].modelName) || candidates[0])}</strong> instead.`;
             select.parentElement.insertBefore(warningBanner, select);
         }
-        select.value = candidates[0];
+        select.value = (candidates[0] && candidates[0].modelName) || candidates[0];
         const next = { ...state.currentJudgeConfig, model: select.value };
         state.setCurrentJudgeConfig(next);
         writeStoredJudgeConfig(next);
@@ -731,6 +752,65 @@ async function initBenchmarkUI() {
 }
 
 // Expose functions to window for legacy inline onclick handlers
+/** Run calibration test for the selected judge model */
+async function calibrateJudgeModel() {
+    const btn = document.getElementById('calibrateJudgeBtn');
+    const resultDiv = document.getElementById('calibrationResult');
+    const judgeModel = document.getElementById('judgeModel');
+    if (!btn || !resultDiv || !judgeModel) return;
+
+    const model = judgeModel.value;
+    if (!model) return;
+
+    // Get host from current config
+    const host = state.currentJudgeConfig.host || '';
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Calibrating...';
+    resultDiv.style.display = 'block';
+    resultDiv.style.background = 'rgba(52, 152, 219, 0.1)';
+    resultDiv.style.border = '1px solid rgba(52, 152, 219, 0.3)';
+    resultDiv.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running 5 calibration tests...';
+
+    try {
+        const res = await fetch('/api/benchmark/judge/calibrate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ host, model })
+        });
+        const json = await res.json();
+
+        if (json.status === 'success') {
+            const d = json.data;
+            const tierColors = { basic: '#e74c3c', standard: '#f39c12', advanced: '#2ecc71', premium: '#9b59b6' };
+            const color = tierColors[d.tier] || '#95a5a6';
+            const passRate = Math.round(d.reliability * 100);
+
+            resultDiv.style.background = `rgba(${d.reliability >= 0.8 ? '46, 204, 113' : '231, 76, 60'}, 0.1)`;
+            resultDiv.style.border = `1px solid ${color}`;
+            resultDiv.innerHTML = `
+                <div style="margin-bottom: 6px;"><strong>Tier:</strong> <span style="color: ${color}; font-weight: bold; text-transform: uppercase;">${d.tier}</span></div>
+                <div><strong>Reliability:</strong> ${passRate}% (${d.tests_passed}/${d.tests_total} tests passed)</div>
+                <div><strong>Avg Latency:</strong> ${d.avg_latency_ms}ms</div>
+                <div style="margin-top: 6px; font-size: 0.8em; opacity: 0.7;">
+                    ${d.details.map(t => `${t.passed ? '\u2705' : '\u274C'} ${t.id} (${t.latency_ms}ms)`).join(' | ')}
+                </div>
+            `;
+        } else {
+            resultDiv.style.background = 'rgba(231, 76, 60, 0.1)';
+            resultDiv.style.border = '1px solid rgba(231, 76, 60, 0.5)';
+            resultDiv.innerHTML = `<i class="fas fa-times-circle"></i> ${json.error || 'Calibration failed'}`;
+        }
+    } catch (err) {
+        resultDiv.style.background = 'rgba(231, 76, 60, 0.1)';
+        resultDiv.innerHTML = `<i class="fas fa-times-circle"></i> ${err.message}`;
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-flask"></i> Calibrate Judge';
+    }
+}
+
+window.calibrateJudgeModel = calibrateJudgeModel;
 window.switchCategoryTab = switchCategoryTab;
 window.showJudgeDetails = showJudgeDetails;
 window.closeJudgeDetails = closeJudgeDetails;

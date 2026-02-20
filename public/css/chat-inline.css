@@ -1,0 +1,490 @@
+/* Chat page inline styles (extracted from index.html) */
+
+/* Modal Overlay (for Chat Onboarding Wizard) */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(8px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Alert Styles */
+.alert {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  margin: 12px 16px;
+  border-radius: 8px;
+  background: rgba(124, 240, 255, 0.1);
+  border: 1px solid rgba(124, 240, 255, 0.3);
+  backdrop-filter: blur(10px);
+  animation: slideDown 0.3s ease;
+}
+
+.alert-info {
+  background: rgba(124, 240, 255, 0.1);
+  border-color: rgba(124, 240, 255, 0.3);
+  color: var(--accent);
+}
+
+.alert i.fa-info-circle { font-size: 20px; flex-shrink: 0; }
+.alert-content { flex: 1; }
+.alert-content p { margin: 0; font-size: 14px; line-height: 1.5; }
+.alert-content a { color: var(--accent); text-decoration: underline; font-weight: 600; }
+.alert-content a:hover { color: var(--text); }
+
+.alert-dismiss {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 24px;
+  cursor: pointer;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.alert-dismiss:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
+}
+
+/* Setup Checklist Styles */
+.setup-checklist {
+  margin: 12px 16px;
+  padding: 16px;
+  background: rgba(238, 176, 255, 0.08);
+  border: 1px solid rgba(238, 176, 255, 0.3);
+  border-radius: 12px;
+  backdrop-filter: blur(10px);
+  animation: slideDown 0.3s ease;
+}
+
+.checklist-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.checklist-header h4 { margin: 0; font-size: 16px; font-weight: 600; color: var(--accent-2); display: flex; align-items: center; gap: 8px; }
+
+.checklist-dismiss {
+  background: none; border: none; color: var(--muted); font-size: 24px; cursor: pointer;
+  padding: 0; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+  border-radius: 4px; transition: all 0.2s;
+}
+.checklist-dismiss:hover { background: rgba(255, 255, 255, 0.1); color: var(--text); }
+
+.checklist-items { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
+.checklist-items li { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--muted); transition: color 0.2s; }
+.checklist-items li i { font-size: 16px; width: 20px; flex-shrink: 0; }
+.checklist-items li.done { color: var(--accent); }
+.checklist-items li.done i { color: var(--accent); }
+.checklist-items li a { color: var(--accent-2); text-decoration: none; font-weight: 500; }
+.checklist-items li a:hover { text-decoration: underline; }
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 768px) {
+  .alert, .setup-checklist { margin: 8px; padding: 10px 12px; }
+  .alert-content p, .checklist-items li { font-size: 13px; }
+}
+
+/* Chat Agent Header (in-chat sticky header) */
+.chat-agent-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: rgba(13, 17, 23, 0.95);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--panel-border);
+  padding: 10px 20px;
+  margin: -20px -20px 20px -20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(100% + 40px);
+}
+
+.chat-agent-header-content { display: flex; align-items: center; gap: 12px; }
+.persona-type-badge { font-size: 10px; padding: 3px 8px; border-radius: 4px; background: rgba(124, 240, 255, 0.15); color: var(--accent); text-transform: uppercase; font-weight: 600; margin-left: 8px; }
+.capability-badge { font-size: 10px; padding: 3px 6px; border-radius: 3px; background: rgba(124, 240, 255, 0.1); color: var(--accent); border: 1px solid rgba(124, 240, 255, 0.2); }
+
+.chat-agent-avatar { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 8px; background: var(--surface-2); color: var(--accent); }
+.chat-agent-info { display: flex; flex-direction: column; line-height: 1.2; }
+.chat-agent-name { font-weight: 600; font-size: 0.95em; color: var(--text); }
+.chat-agent-model { font-size: 0.8em; color: var(--muted); display: flex; align-items: center; gap: 4px; }
+
+/* ==========================================
+   Compact Header Bar (Phase 1)
+   ========================================== */
+.chat-header-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: rgba(13, 17, 23, 0.95);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--panel-border);
+  min-height: 48px;
+  flex-shrink: 0;
+}
+
+.chat-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.header-agent-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: rgba(124, 240, 255, 0.12);
+  color: var(--accent);
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.header-agent-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.header-model-badge {
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(124, 240, 255, 0.1);
+  color: var(--accent);
+  border: 1px solid rgba(124, 240, 255, 0.2);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.chat-header-center {
+  flex-shrink: 0;
+}
+
+.chat-header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.chat-header-right .icon-btn {
+  width: 32px;
+  height: 32px;
+  font-size: 14px;
+}
+
+/* ==========================================
+   Config Drawer (Phase 1)
+   ========================================== */
+.config-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 999;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+
+.config-drawer-backdrop.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.config-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 340px;
+  height: 100vh;
+  background: var(--panel);
+  border-left: 1px solid var(--panel-border);
+  z-index: 1000;
+  transform: translateX(100%);
+  transition: transform 0.25s ease;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.4);
+}
+
+.config-drawer.open {
+  transform: translateX(0);
+}
+
+.config-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--panel-border);
+  flex-shrink: 0;
+}
+
+.config-drawer-header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.config-drawer-body {
+  padding: 18px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+@media (max-width: 768px) {
+  .config-drawer {
+    width: 100%;
+  }
+}
+
+/* ==========================================
+   Chat Layout (Phase 1 — fills viewport)
+   ========================================== */
+.chat-layout {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 56px); /* Subtract nav height */
+  overflow: hidden;
+}
+
+.chat-layout .chat-window {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+  border-radius: 0;
+  border-left: none;
+  border-right: none;
+}
+
+.chat-layout .composer {
+  flex-shrink: 0;
+  border-top: 1px solid var(--panel-border);
+}
+
+/* ==========================================
+   Message Actions (Phase 2)
+   ========================================== */
+.bubble {
+  position: relative;
+}
+
+.message-actions {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  pointer-events: none;
+}
+
+.bubble:hover .message-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.msg-action-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--muted);
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.15s;
+}
+
+.msg-action-btn:hover {
+  background: rgba(124, 240, 255, 0.15);
+  color: var(--accent);
+  border-color: rgba(124, 240, 255, 0.3);
+}
+
+/* ==========================================
+   Code Block Enhancements (Phase 2)
+   ========================================== */
+.code-block-wrapper {
+  position: relative;
+  margin: 12px 0;
+}
+
+.code-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  font-size: 0.75rem;
+}
+
+.code-lang-label {
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-size: 0.7rem;
+}
+
+.code-copy-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 4px;
+  transition: all 0.15s;
+}
+
+.code-copy-btn:hover {
+  background: rgba(124, 240, 255, 0.15);
+  color: var(--accent);
+}
+
+.code-block-wrapper pre {
+  margin-top: 0;
+  border-radius: 0 0 8px 8px;
+}
+
+/* ==========================================
+   Message Stats (Phase 2)
+   ========================================== */
+.message-stats {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* ==========================================
+   History Context Menu (Phase 4)
+   ========================================== */
+.history-context-menu {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 4px;
+  min-width: 140px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.ctx-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 0.85rem;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.1s;
+}
+
+.ctx-menu-item:hover {
+  background: rgba(124, 240, 255, 0.1);
+}
+
+.ctx-menu-item.ctx-menu-danger {
+  color: #ff6b6b;
+}
+
+.ctx-menu-item.ctx-menu-danger:hover {
+  background: rgba(255, 107, 107, 0.1);
+}
+
+/* ==========================================
+   Active history item (Phase 4)
+   ========================================== */
+.history-item.active {
+  background: rgba(124, 240, 255, 0.08);
+  border-color: rgba(124, 240, 255, 0.25);
+}
+
+.history-item-actions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+/* ==========================================
+   Composer Enhancements (Phase 5)
+   ========================================== */
+.composer textarea {
+  resize: none;
+  overflow-y: auto;
+  transition: height 0.1s ease;
+}
+
+.char-count {
+  font-size: 0.7rem;
+  color: var(--muted);
+  opacity: 0.6;
+  min-width: 40px;
+  text-align: right;
+}
+
+/* ==========================================
+   Pill in header bar (compact summary)
+   ========================================== */
+.header-pill {
+  font-size: 10px;
+  padding: 2px 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+}
+
+.header-pill strong {
+  color: var(--text);
+  font-weight: 600;
+}

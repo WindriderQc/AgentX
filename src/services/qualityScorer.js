@@ -18,14 +18,116 @@ const { stripMarkdownCodeFences, jsonDeepEqual, tryParseJson } = require('./scor
 const { quickScore } = require('./scoring/quickScorer');
 const { JUDGE_CONFIG, callJudge, buildDynamicJudgePrompt, incrementJudgeFailureCount } = require('./scoring/judgeCall');
 const { scoreFormatCompliance } = require('./scoring/formatComplianceScorer');
+const judgeTierResolver = require('./scoring/judgeTierResolver');
 const { scoreCompliance, blendHybridScore } = require('./scoring/complianceScorer');
+const ModelRegistry = require('../../models/ModelRegistry');
+
+const JUDGE_CANDIDATE_CACHE_TTL_MS = 30000;
+let judgeCandidateCache = {
+    ts: 0,
+    candidates: []
+};
+
+function hasExplicitJudgeConfigValue(config, key) {
+    return Object.prototype.hasOwnProperty.call(config || {}, key)
+        && config[key] !== undefined
+        && config[key] !== null
+        && config[key] !== '';
+}
+
+async function getJudgeCandidatesCached() {
+    const now = Date.now();
+    if (now - judgeCandidateCache.ts <= JUDGE_CANDIDATE_CACHE_TTL_MS && judgeCandidateCache.candidates.length > 0) {
+        return judgeCandidateCache.candidates;
+    }
+
+    try {
+        const models = await ModelRegistry.find({ categories: 'judge' })
+            .select('modelName host capabilities')
+            .lean();
+
+        const candidates = (models || []).map((model) => {
+            const inferredTier = judgeTierResolver.inferJudgeTier(model.modelName);
+            return {
+                modelName: model.modelName,
+                host: model.host || null,
+                capabilities: {
+                    judgeTier: model.capabilities?.judgeTier || inferredTier || null,
+                    judgeReliability: model.capabilities?.judgeReliability,
+                    avgJudgeLatencyMs: model.capabilities?.avgJudgeLatencyMs
+                }
+            };
+        });
+
+        judgeCandidateCache = {
+            ts: now,
+            candidates
+        };
+
+        return candidates;
+    } catch (err) {
+        logger.debug('Failed to load judge candidates from model registry', { error: err.message });
+        return [];
+    }
+}
+
+async function resolveJudgeConfigForPrompt(prompt, mergedJudgeConfig, rawJudgeConfig) {
+    const promptLevel = Number(prompt?.level ?? prompt?.prompt_level ?? 5);
+    const requiredTier = rawJudgeConfig?.preferred_tier
+        || prompt?.required_judge_tier
+        || judgeTierResolver.getRequiredTier(promptLevel);
+
+    const explicitModel = hasExplicitJudgeConfigValue(rawJudgeConfig, 'model');
+
+    const defaultMeta = {
+        tier: judgeTierResolver.inferJudgeTier(mergedJudgeConfig.model) || null,
+        tier_downgraded: false,
+        required_tier: requiredTier
+    };
+
+    if (explicitModel) {
+        return { mergedJudgeConfig, judgeTierMeta: defaultMeta };
+    }
+
+    const candidates = await getJudgeCandidatesCached();
+    if (!candidates.length) {
+        return { mergedJudgeConfig, judgeTierMeta: defaultMeta };
+    }
+
+    const resolution = judgeTierResolver.resolveJudgeModel(candidates, {
+        promptLevel,
+        preferredTier: requiredTier,
+        preferredHost: mergedJudgeConfig.host
+    });
+
+    if (resolution?.model) {
+        mergedJudgeConfig.model = resolution.model;
+    }
+    if (resolution?.host) {
+        mergedJudgeConfig.host = resolution.host;
+    }
+
+    return {
+        mergedJudgeConfig,
+        judgeTierMeta: {
+            tier: resolution?.tier || defaultMeta.tier,
+            tier_downgraded: !!resolution?.tier_downgraded,
+            required_tier: resolution?.required_tier || requiredTier
+        }
+    };
+}
 
 /**
  * Score a model response for quality
  */
 async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = {}, _batchHardwareSnapshot = null }) {
     const startTime = Date.now();
-    const mergedJudgeConfig = { ...JUDGE_CONFIG, ...judgeConfig };
+    let mergedJudgeConfig = { ...JUDGE_CONFIG, ...judgeConfig };
+    let judgeTierMeta = {
+        tier: judgeTierResolver.inferJudgeTier(mergedJudgeConfig.model) || null,
+        tier_downgraded: false,
+        required_tier: judgeConfig?.preferred_tier || prompt?.required_judge_tier || judgeTierResolver.getRequiredTier(prompt?.level ?? prompt?.prompt_level)
+    };
 
     // Helper: compute format compliance and semantic score, then merge into result
     const enrichWithDualScores = (result, opts = {}) => {
@@ -138,6 +240,12 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
         });
     }
 
+    if (!skipLLM) {
+        const tierResolved = await resolveJudgeConfigForPrompt(prompt, mergedJudgeConfig, judgeConfig);
+        mergedJudgeConfig = tierResolved.mergedJudgeConfig;
+        judgeTierMeta = tierResolved.judgeTierMeta;
+    }
+
     // Phase 3: Try routed scoring (reference, decomposed, etc.)
     const routedResult = await routeScoring(response, prompt, mergedJudgeConfig);
     if (routedResult) {
@@ -200,6 +308,9 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
             explanation: `Judge model failed: ${judgeResult.error}`,
             judge_prompt: evalPrompt,
             judge_model: mergedJudgeConfig.model || JUDGE_CONFIG.model,
+            judge_host: mergedJudgeConfig.host || JUDGE_CONFIG.host,
+            judge_tier: judgeTierMeta.tier,
+            judge_tier_downgraded: judgeTierMeta.tier_downgraded,
             scoring_time_ms: Date.now() - startTime,
             breakdown: null
         });
@@ -308,6 +419,8 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
         explanation: normalizedScores.explanation || scores.explanation || 'No explanation provided',
         judge_model: mergedJudgeConfig.model || JUDGE_CONFIG.model,
         judge_host: mergedJudgeConfig.host || JUDGE_CONFIG.host,
+        judge_tier: judgeTierMeta.tier,
+        judge_tier_downgraded: judgeTierMeta.tier_downgraded,
         judge_hardware_snapshot: judgeHardwareSnapshot,
         scoring_time_ms: Date.now() - startTime,
         judge_prompt: evalPrompt,
@@ -682,5 +795,6 @@ module.exports = {
     deterministicScorer,
     decomposedJudge,
     referenceScorer,
-    judgeConfidence
+    judgeConfidence,
+    judgeTierResolver
 };

@@ -40,9 +40,8 @@ body {
 
 /* Prevent body scroll on app-layout pages (chat interface) */
 body:has(.app-layout) {
-  min-height: 100vh; 
-  /* height: 100vh; */
-  /* overflow: hidden; */
+  height: 100vh;
+  overflow: hidden;
 }
 
 .bg-grid {
@@ -356,10 +355,11 @@ body:has(.app-layout) {
 
 /* App-like layout for chat interface (fixed viewport, internal scroll) */
 .main-content.app-layout {
-  min-height: 100vh;
-  /* height: 100vh; */
-  /* max-height: 100vh; */
-  /* overflow-y: hidden; */ /* Prevent outer scroll - chat-window handles internal scrolling */
+  height: calc(100vh - 56px); /* Full height minus nav */
+  max-height: calc(100vh - 56px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
   box-sizing: border-box;
 }
 
@@ -601,9 +601,19 @@ body:has(.app-layout) {
   border-radius: 14px;
   padding: 20px;
   height: 70vh;
-  min-height: 500px;
+  min-height: 200px;
   overflow-y: auto;
   background: rgba(255, 255, 255, 0.02);
+}
+
+/* Override for new chat layout — fill available height */
+.chat-layout .chat-window {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+  border-radius: 0;
+  border-left: none;
+  border-right: none;
 }
 
 .bubble {

@@ -114,6 +114,8 @@ async function applyScoresToResult(resultId, scores, resultData) {
                 judge_model: scores.judge_model,
                 judge_raw_response: scores.judge_raw_response,
                 judge_hardware_snapshot: scores.judge_hardware_snapshot || null,
+                judge_tier: scores.judge_tier || null,
+                judge_tier_downgraded: scores.judge_tier_downgraded || false,
                 scoring_method: scores.scoring_method,
                 scoring_type: scores.scoring_type || resultData.scoring_type || 'reasoning',
                 scoring_time_ms: scores.scoring_time_ms,
@@ -169,7 +171,7 @@ async function judgeResult(resultId, judgeConfig = {}) {
     let originalPrompt = null;
     if (result.prompt_name) {
         originalPrompt = await BenchmarkPrompt.findOne({ name: result.prompt_name })
-            .select('scoring_dimensions reference_answer output_contract judge_criteria')
+            .select('scoring_dimensions reference_answer output_contract judge_criteria required_judge_tier')
             .lean();
     }
 
@@ -184,7 +186,8 @@ async function judgeResult(resultId, judgeConfig = {}) {
         scoring_dimensions: originalPrompt?.scoring_dimensions || undefined,
         reference_answer: originalPrompt?.reference_answer || undefined,
         output_contract: originalPrompt?.output_contract || undefined,
-        judge_criteria: originalPrompt?.judge_criteria || result.judge_criteria || undefined
+        judge_criteria: originalPrompt?.judge_criteria || result.judge_criteria || undefined,
+        required_judge_tier: originalPrompt?.required_judge_tier || undefined
     };
 
     const mergedConfig = {

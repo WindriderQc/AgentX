@@ -192,22 +192,21 @@ describe('Enhanced Scoring Dimensions', () => {
     });
 
     describe('quickScore', () => {
-        it('should return score 10 for correct capital answer', () => {
-            const response = 'The capital of France is Paris.';
-            const prompt = { prompt: 'What is the capital of France?', expected_answer: 'Paris' };
-
+        it('should return score 10 for JSON exact match', () => {
+            const response = '{"name": "Alice", "age": 30}';
+            const prompt = { expected_answer: '{"name": "Alice", "age": 30}' };
             const result = quickScore(response, prompt);
 
             expect(result).not.toBeNull();
             expect(result.quick).toBe(true);
             expect(result.score).toBe(10);
             expect(result.matched).toBe(true);
+            expect(result.pattern).toBe('json_exact_match');
         });
 
-        it('should return score 0 for incorrect answer', () => {
-            const response = 'The capital of France is London.';
-            const prompt = { prompt: 'What is the capital of France?', expected_answer: 'Paris' };
-
+        it('should return score 0 for JSON mismatch', () => {
+            const response = '{"name": "Bob", "age": 30}';
+            const prompt = { expected_answer: '{"name": "Alice", "age": 30}' };
             const result = quickScore(response, prompt);
 
             expect(result).not.toBeNull();
@@ -218,31 +217,34 @@ describe('Enhanced Scoring Dimensions', () => {
         it('should return null for prompts without expected_answer', () => {
             const response = 'Some response';
             const prompt = { prompt: 'Explain something complex' };
-
             const result = quickScore(response, prompt);
-
             expect(result).toBeNull();
         });
 
-        it('should match math answers correctly', () => {
+        it('should return null for non-JSON text (deferred to downstream scorers)', () => {
+            const response = 'The capital of France is Paris.';
+            const prompt = { prompt: 'What is the capital of France?', expected_answer: 'Paris' };
+            const result = quickScore(response, prompt);
+            // Non-JSON: quickScorer defers to deterministic/LLM
+            expect(result).toBeNull();
+        });
+
+        it('should return null for math text answers (deferred to downstream scorers)', () => {
             const response = 'The answer is 42.';
             const prompt = { prompt: 'What is 15 + 27?', expected_answer: '42' };
+            const result = quickScore(response, prompt);
+            // Non-JSON: quickScorer defers to deterministic scorer
+            expect(result).toBeNull();
+        });
 
+        it('should handle JSON arrays', () => {
+            const response = '[1, 2, 3]';
+            const prompt = { expected_answer: '[1, 2, 3]' };
             const result = quickScore(response, prompt);
 
             expect(result).not.toBeNull();
             expect(result.score).toBe(10);
-        });
-
-        it('should use word boundaries to avoid false positives', () => {
-            const response = 'The answer is 320.'; // Contains "32" but not as standalone
-            const prompt = { prompt: 'What comes next in 2, 4, 8, 16?', expected_answer: '32' };
-
-            const result = quickScore(response, prompt);
-
-            // Should NOT match because 32 is not a word boundary in 320
-            expect(result).not.toBeNull();
-            expect(result.score).toBe(0);
+            expect(result.pattern).toBe('json_exact_match');
         });
     });
 
@@ -410,6 +412,32 @@ describe('Enhanced Scoring Dimensions', () => {
 
                 // factual has 30s cap, 100s should give 0 latency score
                 expect(result.normalized.latency).toBe(0);
+            });
+
+            it('should cap composite to 5.0 when quality is 0 (quality floor)', () => {
+                const zeroQualityMetrics = {
+                    latency: 500,         // very fast
+                    tokens_per_sec: 80,   // very fast
+                    quality_score: 0      // zero quality
+                };
+                const result = calculateCompositeScore(zeroQualityMetrics, 'factual');
+
+                // Without cap: 0*0.7 + ~98*0.2 + 80*0.1 = 27.6
+                // With quality floor cap: capped to 5.0
+                expect(result.composite_score).toBeLessThanOrEqual(5.0);
+                expect(result.normalized.quality).toBe(0);
+            });
+
+            it('should NOT cap composite when quality is above 0', () => {
+                const lowQualityMetrics = {
+                    latency: 500,
+                    tokens_per_sec: 80,
+                    quality_score: 1      // minimal but non-zero
+                };
+                const result = calculateCompositeScore(lowQualityMetrics, 'factual');
+
+                // quality_score=1 => qualityScore=10, no cap applies
+                expect(result.composite_score).toBeGreaterThan(5.0);
             });
         });
     });

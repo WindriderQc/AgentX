@@ -40,6 +40,33 @@ const CapabilitiesSchema = new mongoose.Schema({
     type: Number,
     default: 1,
     min: 1
+  },
+
+  // Judge capability tier (only meaningful when model has 'judge' category)
+  // basic:    small models (~2-3B), quick screening only
+  // standard: 7-8B models, reliable for most evaluations
+  // advanced: 14B+ or specialized reasoning models, high consistency
+  // premium:  70B+ frontier models, highest quality (VRAM-heavy)
+  judgeTier: {
+    type: String,
+    enum: ['basic', 'standard', 'advanced', 'premium', null],
+    default: null
+  },
+
+  // Judge reliability score (0-1), populated by judge validation tests.
+  // Tracks JSON reliability and scoring consistency.
+  judgeReliability: {
+    type: Number,
+    default: null,
+    min: 0,
+    max: 1
+  },
+
+  // Average judge latency in ms (from validation or live benchmarks)
+  avgJudgeLatencyMs: {
+    type: Number,
+    default: null,
+    min: 0
   }
 }, { _id: false });
 

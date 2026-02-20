@@ -179,6 +179,15 @@ const BenchmarkResultSchema = new mongoose.Schema({
         type: String,
         default: null
     },
+    judge_tier: {
+        type: String,
+        enum: ['basic', 'standard', 'advanced', 'premium', 'unknown', null],
+        default: null
+    },
+    judge_tier_downgraded: {
+        type: Boolean,
+        default: false
+    },
     scoring_method: {
         type: String,
         enum: [

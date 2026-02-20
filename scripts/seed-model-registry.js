@@ -114,7 +114,9 @@ const MODELS = [
       maxContext: 32768,
       supportsThinking: false,
       avgLatencyMs: 2000,
-      targetUseCase: 'General-purpose chat, quick queries, routing decisions, LLM-as-judge'
+      targetUseCase: 'General-purpose chat, quick queries, routing decisions, LLM-as-judge',
+      judgeTier: 'standard',
+      judgeReliability: 0.95
     },
     routingRules: {
       preferredFor: ['quick_chat', 'factual_qa'],
@@ -133,7 +135,9 @@ const MODELS = [
       maxContext: 32768,
       supportsThinking: false,
       avgLatencyMs: 2500,
-      targetUseCase: 'General-purpose chat, quality scoring, LLM-as-judge'
+      targetUseCase: 'General-purpose chat, quality scoring, LLM-as-judge',
+      judgeTier: 'standard',
+      judgeReliability: 0.95
     },
     routingRules: {
       preferredFor: ['quick_chat', 'factual_qa'],
@@ -253,7 +257,9 @@ const MODELS = [
       maxContext: 128000,
       supportsThinking: false,
       avgLatencyMs: 3500,
-      targetUseCase: 'LLM-as-judge quality scoring, evaluation tasks'
+      targetUseCase: 'LLM-as-judge quality scoring, evaluation tasks',
+      judgeTier: 'standard',
+      judgeReliability: 0.97
     },
     routingRules: {
       preferredFor: ['factual_qa'],

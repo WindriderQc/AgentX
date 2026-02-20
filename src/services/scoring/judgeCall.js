@@ -8,13 +8,16 @@ const logger = require('../../../config/logger');
 const { getFetchOptions } = require('../../helpers/httpAgent');
 
 // Judge model configuration
+// Default: 7B model — fits on most hosts without stealing context from the
+// model being tested. Upgrade per-batch via judge_config or tier resolver.
 const JUDGE_CONFIG = {
-    model: 'qwen2.5:14b-instruct-q4_K_M',
+    model: 'qwen2.5:7b-instruct-q5_K_M',
     host: null,
-    timeout: 120000,
+    timeout: 30000,
     temperature: 0.1,
     num_predict: 800,
-    max_retries: 2
+    max_retries: 2,
+    tier: 'standard'
 };
 
 // Track judge failures for observability

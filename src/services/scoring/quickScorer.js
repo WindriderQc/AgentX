@@ -1,23 +1,30 @@
 /**
  * Quick Scorer
- * Pattern-based fast scoring for simple factual answers
+ * Fast JSON-exact-match scoring for structured outputs.
+ * Only triggers when both expected_answer and response parse as valid JSON.
+ *
+ * Hardcoded text patterns were removed - deterministic scoring and the
+ * LLM judge handle all non-JSON cases through proper evaluation pipelines.
  */
 
 const logger = require('../../../config/logger');
 const { tryParseJson, jsonDeepEqual } = require('./jsonUtils');
 
 /**
- * Quick scoring for simple factual answers
- * Uses pattern matching and JSON comparison before calling LLM judge
- * Only triggers when prompt has expected_answer defined
+ * Quick scoring via JSON deep comparison.
+ * Returns null when prompt has no expected_answer or when either side is not JSON.
+ * Downstream scorers (deterministic, LLM judge) handle everything else.
  */
 function quickScore(response, prompt) {
+    if (!prompt) {
+        return null;
+    }
+
     const expectedAnswer = prompt.expected_answer || prompt.expected;
     if (!expectedAnswer) {
         return null;
     }
 
-    // Try JSON comparison first
     const expectedJson = tryParseJson(expectedAnswer);
     const responseJson = tryParseJson(response);
 
@@ -41,34 +48,7 @@ function quickScore(response, prompt) {
         };
     }
 
-    const resp = response.toLowerCase().trim();
-
-    const quickPatterns = {
-        'capital of france': { answer: 'paris', score: /\bparis\b/.test(resp) ? 10 : 0 },
-        '15 + 27': { answer: '42', score: /\b42\b/.test(resp) ? 10 : 0 },
-        '15+27': { answer: '42', score: /\b42\b/.test(resp) ? 10 : 0 },
-        'world war ii end': { answer: '1945', score: /\b1945\b/.test(resp) ? 10 : 0 },
-        'wwii end': { answer: '1945', score: /\b1945\b/.test(resp) ? 10 : 0 },
-        '2, 4, 8, 16': { answer: '32', score: /\b32\b/.test(resp) ? 10 : 0 },
-        '2x + 5 = 17': { answer: '6', score: /\bx\s*=\s*6\b|\b6\b/.test(resp) ? 10 : 0 }
-    };
-
-    const promptText = prompt.prompt || (typeof prompt === 'string' ? prompt : '');
-    const promptLower = promptText.toLowerCase();
-
-    for (const [pattern, check] of Object.entries(quickPatterns)) {
-        if (promptLower.includes(pattern)) {
-            logger.info('Quick scoring match', { pattern, score: check.score, expected: check.answer });
-            return {
-                quick: true,
-                score: check.score,
-                expected: check.answer,
-                matched: check.score === 10,
-                pattern
-            };
-        }
-    }
-
+    // Non-JSON prompts: let deterministic scorer or LLM judge handle them
     return null;
 }
 

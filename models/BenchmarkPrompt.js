@@ -139,6 +139,13 @@ const BenchmarkPromptSchema = new mongoose.Schema({
         type: [String],
         default: undefined
     },
+    // Override: minimum judge tier required for this prompt.
+    // If null, derived from prompt level via LEVEL_TIER_MAP.
+    required_judge_tier: {
+        type: String,
+        enum: ['basic', 'standard', 'advanced', 'premium', null],
+        default: null
+    },
     custom: {
         type: Boolean,
         default: false,

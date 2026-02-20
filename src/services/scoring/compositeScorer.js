@@ -81,11 +81,19 @@ function calculateCompositeScore(metrics, profileOrCategory = 'interactive') {
 
     const qualityScore = Math.max(0, Math.min(100, (quality_score || 0) * 10));
 
-    const composite = (
+    let composite = (
         qualityScore * weights.quality +
         latencyScore * weights.latency +
         speedScore * weights.speed
     );
+
+    // Quality floor: fast garbage is still garbage.
+    // When quality is zero, cap the composite so latency/speed alone
+    // cannot inflate the score above a trivial threshold.
+    const QUALITY_ZERO_CAP = 5.0;
+    if (qualityScore === 0) {
+        composite = Math.min(composite, QUALITY_ZERO_CAP);
+    }
 
     return {
         composite_score: Math.round(composite * 10) / 10,
