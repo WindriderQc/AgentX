@@ -1076,6 +1076,20 @@ button:active {
   100% { box-shadow: 0 0 0 0 rgba(255, 77, 77, 0); }
 }
 
+/* Voice health status dots */
+.voice-health-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+  margin-left: 4px;
+  vertical-align: middle;
+}
+.voice-health-dot.healthy { background: #4caf50; }
+.voice-health-dot.partial { background: #ff9800; }
+.voice-health-dot.unavailable { background: #f44336; }
+
 .flex-spacer {
   flex: 1;
 }

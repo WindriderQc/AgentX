@@ -47,7 +47,8 @@ const ragStore = getRagStore({
  */
 router.get('/health', async (req, res) => {
     try {
-        const health = await checkHealth();
+        const includeModels = req.query.models === 'true';
+        const health = await checkHealth({ includeModels });
         res.json({
             status: 'success',
             data: health
@@ -74,10 +75,10 @@ router.post('/transcribe', upload.single('audio'), async (req, res) => {
         });
     }
     
-    const { language = 'en', provider = 'local' } = req.query;
-    
+    const { language = 'en', provider = 'local', model } = req.query;
+
     try {
-        const result = await transcribe(req.file.buffer, { language, provider });
+        const result = await transcribe(req.file.buffer, { language, provider, model });
         
         res.json({
             status: 'success',

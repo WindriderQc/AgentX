@@ -129,22 +129,22 @@ const DECOMPOSED_QUESTIONS = {
     },
     'instruction-following': {
         instruction_adherence: [
-            { q: 'Does the response follow the main instruction?', weight: 0.40 },
-            { q: 'Are all sub-instructions followed?', weight: 0.35 },
-            { q: 'Is the intent of the instruction understood?', weight: 0.25 }
+            { q: 'Does the response attempt to perform the requested task (ignoring whether computed values are correct)?', weight: 0.40 },
+            { q: 'Does the response address all parts of the instruction (even if some values are wrong)?', weight: 0.35 },
+            { q: 'Does the response show understanding of what was asked?', weight: 0.25 }
         ],
         constraint_compliance: [
-            { q: 'Are all constraints respected?', weight: 0.40 },
-            { q: 'Are there any rule violations?', weight: 0.35, invert: true },
-            { q: 'Is forbidden content avoided?', weight: 0.25 }
+            { q: 'Does the response respect explicit constraints like word limits, language, or tone?', weight: 0.40 },
+            { q: 'Does the response contain content that was explicitly forbidden?', weight: 0.35, invert: true },
+            { q: 'Does the response include extra unrequested content like explanations when only a value was asked?', weight: 0.25, invert: true }
         ],
         format_accuracy: [
-            { q: 'Is the output format exactly as requested?', weight: 0.50 },
-            { q: 'Are structure requirements met?', weight: 0.50 }
+            { q: 'Does the response use the same structural format as the expected answer (ignore whether values are correct)?', weight: 0.50 },
+            { q: 'Does the response match the requested separators, delimiters, and key names (ignore value correctness)?', weight: 0.50 }
         ],
         completeness: [
-            { q: 'Are all required elements present?', weight: 0.50 },
-            { q: 'Is nothing missing from the response?', weight: 0.50 }
+            { q: 'Does the response include all the required fields or sections (ignore whether values are correct)?', weight: 0.50 },
+            { q: 'Are any required output elements entirely missing from the response?', weight: 0.50, invert: true }
         ]
     },
     general: {
@@ -352,12 +352,13 @@ async function singleBinaryCall(response, question, judgeConfig, taskContext = {
         ? `TASK:\n${taskContext.task.substring(0, 2000)}\n\n${taskContext.expected ? `EXPECTED ANSWER:\n${taskContext.expected.substring(0, 500)}\n\n` : ''}`
         : '';
 
-    const prompt = `You are evaluating a model's response. Compare it against the expected answer.
+    const prompt = `You are evaluating ONE specific aspect of a model's response.
+IMPORTANT: Focus ONLY on the specific question below. A wrong computed value does NOT mean the format or structure is wrong. Evaluate each aspect independently.
 
 ${taskSection}MODEL RESPONSE:
 ${response.substring(0, 3000)}
 
-Based on the above, answer ONLY "YES" or "NO": ${question}`;
+Answer ONLY "YES" or "NO" for this specific question: ${question}`;
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), judgeConfig.timeout || 15000);

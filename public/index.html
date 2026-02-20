@@ -707,23 +707,79 @@
           </div>
         </div>
 
-        <div class="field inline-toggle">
-          <label>TTS Output</label>
-          <label class="switch">
-            <input type="checkbox" id="ttsToggle">
-            <span class="slider"></span>
-          </label>
-          <div class="hint">Read responses aloud.</div>
-        </div>
+        <div class="collapsible-section">
+          <div class="section-header" id="voiceHeader">
+            <h3>Voice I/O <span class="voice-health-dot" id="sttHealthDot"></span> <span class="panel-toggle-icon">▼</span></h3>
+          </div>
+          <div class="section-content hidden" id="voiceContent">
 
-        <div class="field" id="ttsProviderField" style="display: none;">
-          <label>TTS Provider</label>
-          <select id="ttsProviderSelect">
-            <option value="browser">Browser (Web Speech API)</option>
-            <option value="openai">OpenAI TTS</option>
-            <option value="local">Local (Coqui/Piper)</option>
-          </select>
-          <div class="hint">Server-side TTS requires running voice service.</div>
+            <div class="field">
+              <label>STT Provider <span class="voice-health-dot" id="sttHealthDotInner"></span></label>
+              <select id="sttProviderSelect">
+                <option value="auto">Auto-detect</option>
+                <option value="local">Local Whisper</option>
+                <option value="openai">OpenAI Whisper</option>
+                <option value="browser">Browser</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label>STT Language</label>
+              <select id="sttLanguageSelect">
+                <option value="en">English</option>
+              </select>
+            </div>
+
+            <div class="field" id="whisperModelField">
+              <label>Whisper Model</label>
+              <select id="whisperModelSelect">
+                <option value="">Server default</option>
+              </select>
+            </div>
+
+            <div class="field inline-toggle">
+              <label>Auto-send</label>
+              <label class="switch">
+                <input type="checkbox" id="voiceAutoSend">
+                <span class="slider"></span>
+              </label>
+              <div class="hint">Auto-send message after transcription.</div>
+            </div>
+
+            <div class="field inline-toggle">
+              <label>TTS Output <span class="voice-health-dot" id="ttsHealthDot"></span></label>
+              <label class="switch">
+                <input type="checkbox" id="ttsToggle">
+                <span class="slider"></span>
+              </label>
+              <div class="hint">Read responses aloud.</div>
+            </div>
+
+            <div class="field" id="ttsProviderField" style="display: none;">
+              <label>TTS Provider</label>
+              <select id="ttsProviderSelect">
+                <option value="browser">Browser (Web Speech API)</option>
+                <option value="openai">OpenAI TTS</option>
+                <option value="local">Local (Coqui/Piper)</option>
+              </select>
+            </div>
+
+            <div class="field" id="ttsVoiceField" style="display: none;">
+              <label>TTS Voice</label>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <select id="ttsVoiceSelect" style="flex: 1;">
+                  <option value="alloy">Alloy</option>
+                  <option value="echo">Echo</option>
+                  <option value="fable">Fable</option>
+                  <option value="onyx">Onyx</option>
+                  <option value="nova">Nova</option>
+                  <option value="shimmer">Shimmer</option>
+                </select>
+                <button class="btn small" id="testVoiceBtn" type="button">Test</button>
+              </div>
+            </div>
+
+          </div>
         </div>
 
         <div class="field inline-toggle">

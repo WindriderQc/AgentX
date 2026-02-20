@@ -155,11 +155,11 @@ describe('Prompt structure and context limits', () => {
         await askBinaryQuestion('some response', 'Is it correct?', JUDGE_CONFIG, { task, expected });
 
         const body = JSON.parse(mockFetchFn.mock.calls[0][1].body);
-        expect(body.prompt).toContain('You are evaluating a model\'s response');
+        expect(body.prompt).toContain('You are evaluating ONE specific aspect');
         expect(body.prompt).toContain('TASK:\n');
         expect(body.prompt).toContain('EXPECTED ANSWER:\n');
         expect(body.prompt).toContain('MODEL RESPONSE:\n');
-        expect(body.prompt).toContain('Based on the above, answer ONLY "YES" or "NO"');
+        expect(body.prompt).toContain('Answer ONLY "YES" or "NO" for this specific question:');
     });
 
     test('task truncated at 2000 chars', async () => {

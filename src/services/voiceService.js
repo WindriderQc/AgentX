@@ -31,6 +31,7 @@ async function fetch(...args) {
 
 // Configuration — no defaults; if env var is unset, that provider is unavailable
 const WHISPER_LOCAL_URL = process.env.WHISPER_URL || null;       // e.g. http://192.168.2.99:8000
+const WHISPER_MODEL = process.env.WHISPER_MODEL || 'Systran/faster-whisper-small';  // small = fast + good quality
 const OPENAI_WHISPER_URL = 'https://api.openai.com/v1/audio/transcriptions';
 
 // TTS Configuration
@@ -38,9 +39,39 @@ const TTS_PROVIDER = process.env.TTS_PROVIDER || 'browser';     // browser, open
 const TTS_LOCAL_URL = process.env.TTS_URL || null;               // e.g. http://192.168.2.99:5002
 
 // Helper to get API key dynamically (allows tests to override)
+// Supports both OPENAI_API_KEY (standard) and OPENAI_KEY (legacy .env)
 function getOpenAIKey() {
-    return process.env.OPENAI_API_KEY || null;
+    return process.env.OPENAI_API_KEY || process.env.OPENAI_KEY || null;
 }
+
+// Core Whisper models (filter out 200+ community forks from /v1/models)
+const CORE_WHISPER_MODELS = [
+    'Systran/faster-whisper-tiny',
+    'Systran/faster-whisper-base',
+    'Systran/faster-whisper-small',
+    'Systran/faster-whisper-medium',
+    'Systran/faster-whisper-large-v3',
+    'Systran/faster-whisper-large-v3-turbo'
+];
+
+// Supported STT languages
+const STT_LANGUAGES = [
+    { code: 'en', name: 'English' },
+    { code: 'fr', name: 'French' },
+    { code: 'de', name: 'German' },
+    { code: 'es', name: 'Spanish' },
+    { code: 'ja', name: 'Japanese' },
+    { code: 'ko', name: 'Korean' },
+    { code: 'zh', name: 'Chinese' },
+    { code: 'pt', name: 'Portuguese' },
+    { code: 'ru', name: 'Russian' },
+    { code: 'ar', name: 'Arabic' },
+    { code: 'it', name: 'Italian' },
+    { code: 'nl', name: 'Dutch' }
+];
+
+// OpenAI TTS voice options
+const TTS_VOICES = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'];
 
 /**
  * Transcribe audio to text using Whisper
@@ -51,12 +82,12 @@ function getOpenAIKey() {
  * @returns {Promise<{text: string, language: string, duration: number, provider: string}>}
  */
 async function transcribe(audioBuffer, options = {}) {
-    const { language = 'en', provider = 'local' } = options;
+    const { language = 'en', provider = 'local', model } = options;
 
     // Try local first, fall back to OpenAI
     if (provider === 'local' || !getOpenAIKey()) {
         try {
-            return await transcribeLocal(audioBuffer, language);
+            return await transcribeLocal(audioBuffer, language, model);
         } catch (err) {
             logger.warn('Local Whisper failed, trying OpenAI fallback', { error: err.message });
             if (getOpenAIKey()) {
@@ -72,11 +103,12 @@ async function transcribe(audioBuffer, options = {}) {
 /**
  * Transcribe using local faster-whisper-server
  */
-async function transcribeLocal(audioBuffer, language = 'en') {
+async function transcribeLocal(audioBuffer, language = 'en', model = null) {
     if (!WHISPER_LOCAL_URL) {
         throw new Error('Local Whisper not configured — set WHISPER_URL env variable');
     }
     const startTime = Date.now();
+    const effectiveModel = model || WHISPER_MODEL;
 
     // Create form data with audio file
     const formData = new FormData();
@@ -84,9 +116,10 @@ async function transcribeLocal(audioBuffer, language = 'en') {
         filename: 'audio.wav',
         contentType: 'audio/wav'
     });
+    formData.append('model', effectiveModel);
     formData.append('language', language);
     formData.append('response_format', 'json');
-    
+
     try {
         const response = await fetch(`${WHISPER_LOCAL_URL}/v1/audio/transcriptions`, {
             method: 'POST',
@@ -290,14 +323,35 @@ async function synthesizeLocal(text, voice = 'default') {
 }
 
 /**
- * Check voice service health
+ * Get available Whisper models from local server
+ * Filters to core Systran models only (not 200+ community forks)
  */
-async function checkHealth() {
+async function getAvailableModels() {
+    if (!WHISPER_LOCAL_URL) return [];
+    try {
+        const response = await fetch(`${WHISPER_LOCAL_URL}/v1/models`, { timeout: 5000 });
+        if (!response.ok) return [];
+        const data = await response.json();
+        const allModels = (data.data || data || []).map(m => m.id || m);
+        return allModels.filter(id => CORE_WHISPER_MODELS.includes(id));
+    } catch (err) {
+        logger.warn('Failed to fetch Whisper models', { error: err.message });
+        return [];
+    }
+}
+
+/**
+ * Check voice service health
+ * @param {Object} opts
+ * @param {boolean} opts.includeModels - Include available models list
+ */
+async function checkHealth(opts = {}) {
+    const { includeModels = false } = opts;
     const health = {
         stt: { local: false, openai: !!getOpenAIKey() },
         tts: { browser: true, openai: !!getOpenAIKey(), local: false }
     };
-    
+
     // Check local Whisper (skip if not configured)
     if (WHISPER_LOCAL_URL) {
         try {
@@ -318,7 +372,15 @@ async function checkHealth() {
             health.tts.local = false;
         }
     }
-    
+
+    // Optionally include models, languages, voices
+    if (includeModels) {
+        health.models = await getAvailableModels();
+        health.activeModel = WHISPER_MODEL;
+        health.languages = STT_LANGUAGES;
+        health.ttsVoices = TTS_VOICES;
+    }
+
     return health;
 }
 
@@ -340,8 +402,13 @@ module.exports = {
     synthesizeOpenAI,
     synthesizeLocal,
     checkHealth,
+    getAvailableModels,
     WHISPER_LOCAL_URL,
+    WHISPER_MODEL,
     TTS_PROVIDER,
+    CORE_WHISPER_MODELS,
+    STT_LANGUAGES,
+    TTS_VOICES,
     __setMockFetch,  // For testing only
     __resetFetch     // For testing only
 };

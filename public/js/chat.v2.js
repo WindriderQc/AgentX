@@ -80,6 +80,17 @@ document.addEventListener('DOMContentLoaded', () => {
     // Voice Elements
     micBtn: document.getElementById('micBtn'),
     ttsToggle: document.getElementById('ttsToggle'),
+    sttProviderSelect: document.getElementById('sttProviderSelect'),
+    sttLanguageSelect: document.getElementById('sttLanguageSelect'),
+    whisperModelSelect: document.getElementById('whisperModelSelect'),
+    whisperModelField: document.getElementById('whisperModelField'),
+    voiceAutoSend: document.getElementById('voiceAutoSend'),
+    ttsVoiceSelect: document.getElementById('ttsVoiceSelect'),
+    ttsVoiceField: document.getElementById('ttsVoiceField'),
+    testVoiceBtn: document.getElementById('testVoiceBtn'),
+    sttHealthDot: document.getElementById('sttHealthDot'),
+    sttHealthDotInner: document.getElementById('sttHealthDotInner'),
+    ttsHealthDot: document.getElementById('ttsHealthDot'),
     // New Elements
     historyList: document.getElementById('historyList'),
     resetProfileBtn: document.getElementById('resetProfileBtn'),
@@ -216,6 +227,11 @@ document.addEventListener('DOMContentLoaded', () => {
       stream: elements.streamToggle.checked,
       tts: elements.ttsToggle.checked,
       ttsProvider: document.getElementById('ttsProviderSelect')?.value || 'browser',
+      ttsVoice: elements.ttsVoiceSelect?.value || 'alloy',
+      sttProvider: elements.sttProviderSelect?.value || 'auto',
+      sttLanguage: elements.sttLanguageSelect?.value || 'en',
+      whisperModel: elements.whisperModelSelect?.value || '',
+      voiceAutoSend: elements.voiceAutoSend?.checked || false,
       useRag: elements.ragToggle.checked,
       showStats: elements.statsToggle.checked, // V4: Save stats preference
       // RAG Advanced Options
@@ -318,6 +334,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const ttsProviderField = document.getElementById('ttsProviderField');
     if (ttsProviderSelect) ttsProviderSelect.value = cfg.ttsProvider || 'browser';
     if (ttsProviderField) ttsProviderField.style.display = cfg.tts ? '' : 'none';
+    // Voice I/O settings
+    if (elements.sttProviderSelect) elements.sttProviderSelect.value = cfg.sttProvider || 'auto';
+    if (elements.sttLanguageSelect) elements.sttLanguageSelect.value = cfg.sttLanguage || 'en';
+    if (elements.whisperModelSelect) elements.whisperModelSelect.value = cfg.whisperModel || '';
+    if (elements.voiceAutoSend) elements.voiceAutoSend.checked = cfg.voiceAutoSend || false;
+    if (elements.ttsVoiceSelect) elements.ttsVoiceSelect.value = cfg.ttsVoice || 'alloy';
+    updateVoiceFieldVisibility();
     elements.ragToggle.checked = cfg.useRag !== undefined ? cfg.useRag : true;
     elements.statsToggle.checked = state.showStats; // V4
     // RAG Advanced Options
@@ -1942,21 +1965,86 @@ document.addEventListener('DOMContentLoaded', () => {
   // Voice provider state: 'server' (Whisper) or 'browser' (Web Speech API)
   state.voiceProvider = 'browser';
 
+  function updateVoiceFieldVisibility() {
+    const sttProv = elements.sttProviderSelect?.value || 'auto';
+    const ttsOn = elements.ttsToggle?.checked;
+    const ttsProv = document.getElementById('ttsProviderSelect')?.value || 'browser';
+    // Show whisper model only for auto/local STT
+    if (elements.whisperModelField) {
+      elements.whisperModelField.style.display = (sttProv === 'auto' || sttProv === 'local') ? '' : 'none';
+    }
+    // Show TTS provider when TTS enabled
+    const ttsProviderField = document.getElementById('ttsProviderField');
+    if (ttsProviderField) ttsProviderField.style.display = ttsOn ? '' : 'none';
+    // Show TTS voice only when provider is openai
+    if (elements.ttsVoiceField) {
+      elements.ttsVoiceField.style.display = (ttsOn && ttsProv === 'openai') ? '' : 'none';
+    }
+  }
+
+  function setHealthDot(el, status) {
+    if (!el) return;
+    el.className = 'voice-health-dot ' + status; // healthy | partial | unavailable
+  }
+
   // Check voice service health on load
   async function checkVoiceHealth() {
     try {
-      const res = await fetch('/api/voice/health');
+      const res = await fetch('/api/voice/health?models=true');
       if (!res.ok) return;
       const { data } = await res.json();
-      if (data?.stt?.local) {
+
+      // Determine effective STT provider
+      const sttPref = elements.sttProviderSelect?.value || state.settings?.sttProvider || 'auto';
+      if (sttPref === 'auto') {
+        state.voiceProvider = data?.stt?.local ? 'server' : 'browser';
+      } else if (sttPref === 'local') {
         state.voiceProvider = 'server';
-        console.log('Voice: using server-side Whisper STT');
+      } else if (sttPref === 'openai') {
+        state.voiceProvider = 'server'; // still uses server route with provider=openai
       } else {
         state.voiceProvider = 'browser';
-        console.log('Voice: using browser Web Speech API (Whisper unavailable)');
       }
+
+      // Update health dots
+      const sttStatus = data?.stt?.local ? 'healthy' : (data?.stt?.openai ? 'partial' : 'unavailable');
+      setHealthDot(elements.sttHealthDot, sttStatus);
+      setHealthDot(elements.sttHealthDotInner, sttStatus);
+      const ttsStatus = (data?.tts?.openai || data?.tts?.local) ? 'healthy' : 'partial'; // browser always works
+      setHealthDot(elements.ttsHealthDot, ttsStatus);
+
+      // Populate Whisper models
+      if (data?.models?.length && elements.whisperModelSelect) {
+        const saved = state.settings?.whisperModel || '';
+        elements.whisperModelSelect.innerHTML = '<option value="">Server default</option>';
+        data.models.forEach(m => {
+          const opt = document.createElement('option');
+          opt.value = m;
+          opt.textContent = m.replace('Systran/faster-whisper-', '');
+          elements.whisperModelSelect.appendChild(opt);
+        });
+        if (saved) elements.whisperModelSelect.value = saved;
+      }
+
+      // Populate languages
+      if (data?.languages?.length && elements.sttLanguageSelect) {
+        const saved = state.settings?.sttLanguage || 'en';
+        elements.sttLanguageSelect.innerHTML = '';
+        data.languages.forEach(l => {
+          const opt = document.createElement('option');
+          opt.value = l.code;
+          opt.textContent = l.name;
+          elements.sttLanguageSelect.appendChild(opt);
+        });
+        elements.sttLanguageSelect.value = saved;
+      }
+
+      updateVoiceFieldVisibility();
+      console.log(`Voice: STT=${state.voiceProvider}, local=${data?.stt?.local}, openai=${data?.stt?.openai}`);
     } catch {
       state.voiceProvider = 'browser';
+      setHealthDot(elements.sttHealthDot, 'unavailable');
+      setHealthDot(elements.sttHealthDotInner, 'unavailable');
     }
   }
 
@@ -1990,12 +2078,20 @@ document.addEventListener('DOMContentLoaded', () => {
         formData.append('audio', blob, 'recording.webm');
 
         try {
-          const res = await fetch('/api/voice/transcribe?provider=local', { method: 'POST', body: formData });
+          const params = new URLSearchParams();
+          const sttProv = elements.sttProviderSelect?.value || 'auto';
+          params.set('provider', (sttProv === 'openai') ? 'openai' : 'local');
+          const lang = elements.sttLanguageSelect?.value || 'en';
+          if (lang) params.set('language', lang);
+          const model = elements.whisperModelSelect?.value || '';
+          if (model) params.set('model', model);
+          const res = await fetch(`/api/voice/transcribe?${params}`, { method: 'POST', body: formData });
           if (!res.ok) throw new Error(`Transcription failed: ${res.status}`);
           const { data } = await res.json();
           if (data?.text) {
             elements.messageInput.value = data.text;
             setFeedback(`Transcribed (${data.provider}, ${data.duration}ms)`, 'success');
+            if (state.settings?.voiceAutoSend) sendMessage();
           } else {
             setFeedback('No speech detected. Try again.', 'error');
           }
@@ -2039,7 +2135,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     recognition = new SpeechRecognition();
-    recognition.lang = 'en-US';
+    const langCode = elements.sttLanguageSelect?.value || state.settings?.sttLanguage || 'en';
+    recognition.lang = langCode.length === 2 ? `${langCode}-${langCode.toUpperCase()}` : langCode;
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
 
@@ -2054,6 +2151,7 @@ document.addEventListener('DOMContentLoaded', () => {
     recognition.onresult = (event) => {
       const transcript = event.results[0][0].transcript;
       elements.messageInput.value = transcript;
+      if (state.settings?.voiceAutoSend) sendMessage();
     };
 
     recognition.onerror = (event) => {
@@ -2108,10 +2206,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (provider !== 'browser') {
       // Server-side TTS
       try {
+        const voice = state.settings?.ttsVoice || 'alloy';
         const res = await fetch('/api/voice/synthesize', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text, provider })
+          body: JSON.stringify({ text, provider, voice })
         });
         if (res.ok && res.headers.get('content-type')?.startsWith('audio/')) {
           const blob = await res.blob();
@@ -2179,12 +2278,33 @@ document.addEventListener('DOMContentLoaded', () => {
   function attachEvents() {
     if (elements.micBtn) elements.micBtn.addEventListener('click', toggleVoiceInput);
     elements.ttsToggle.addEventListener('change', () => {
-      const ttsProviderField = document.getElementById('ttsProviderField');
-      if (ttsProviderField) ttsProviderField.style.display = elements.ttsToggle.checked ? '' : 'none';
+      updateVoiceFieldVisibility();
       persistSettings();
     });
     const ttsProviderSelect = document.getElementById('ttsProviderSelect');
-    if (ttsProviderSelect) ttsProviderSelect.addEventListener('change', persistSettings);
+    if (ttsProviderSelect) ttsProviderSelect.addEventListener('change', () => { updateVoiceFieldVisibility(); persistSettings(); });
+    // Voice I/O section toggle
+    const voiceHeader = document.getElementById('voiceHeader');
+    const voiceContent = document.getElementById('voiceContent');
+    if (voiceHeader && voiceContent) {
+      voiceHeader.addEventListener('click', () => {
+        voiceContent.classList.toggle('hidden');
+        voiceHeader.classList.toggle('expanded');
+      });
+    }
+    // STT provider change → re-evaluate voice provider
+    if (elements.sttProviderSelect) {
+      elements.sttProviderSelect.addEventListener('change', () => {
+        updateVoiceFieldVisibility();
+        persistSettings();
+        checkVoiceHealth();
+      });
+    }
+    if (elements.sttLanguageSelect) elements.sttLanguageSelect.addEventListener('change', persistSettings);
+    if (elements.whisperModelSelect) elements.whisperModelSelect.addEventListener('change', persistSettings);
+    if (elements.voiceAutoSend) elements.voiceAutoSend.addEventListener('change', persistSettings);
+    if (elements.ttsVoiceSelect) elements.ttsVoiceSelect.addEventListener('change', persistSettings);
+    if (elements.testVoiceBtn) elements.testVoiceBtn.addEventListener('click', () => speakText('Hello, this is your voice assistant.'));
     elements.sendBtn.addEventListener('click', sendMessage);
     elements.clearBtn.addEventListener('click', clearChat);
     elements.analyzeQualityBtn.addEventListener('click', analyzeConversationQuality);
