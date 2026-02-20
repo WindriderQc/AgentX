@@ -55,7 +55,7 @@ describe('Enhanced Scoring Dimensions', () => {
 
             const prompt = buildDynamicJudgePrompt(dimensions, task, expected, response);
 
-            expect(prompt).toContain('You are a quality evaluator');
+            expect(prompt).toContain('You are a strict quality evaluator');
             expect(prompt).toContain('CRITERIA TO EVALUATE:');
             expect(prompt).toContain('correctness');
             expect(prompt).toContain('clarity');

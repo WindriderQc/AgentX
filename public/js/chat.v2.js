@@ -1996,14 +1996,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // Determine effective STT provider
       const sttPref = elements.sttProviderSelect?.value || state.settings?.sttProvider || 'auto';
-      if (sttPref === 'auto') {
-        state.voiceProvider = data?.stt?.local ? 'server' : 'browser';
-      } else if (sttPref === 'local') {
-        state.voiceProvider = 'server';
-      } else if (sttPref === 'openai') {
-        state.voiceProvider = 'server'; // still uses server route with provider=openai
-      } else {
+      if (sttPref === 'browser') {
         state.voiceProvider = 'browser';
+      } else if (sttPref === 'openai') {
+        state.voiceProvider = data?.stt?.openai ? 'server' : 'browser';
+      } else if (sttPref === 'local') {
+        state.voiceProvider = data?.stt?.local ? 'server' : 'browser';
+      } else {
+        // auto: prefer local, fall back to openai server, then browser
+        state.voiceProvider = (data?.stt?.local || data?.stt?.openai) ? 'server' : 'browser';
       }
 
       // Update health dots
@@ -2041,7 +2042,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
       updateVoiceFieldVisibility();
       console.log(`Voice: STT=${state.voiceProvider}, local=${data?.stt?.local}, openai=${data?.stt?.openai}`);
-    } catch {
+    } catch (err) {
+      console.warn('Voice health check failed:', err);
       state.voiceProvider = 'browser';
       setHealthDot(elements.sttHealthDot, 'unavailable');
       setHealthDot(elements.sttHealthDotInner, 'unavailable');
@@ -2079,7 +2081,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
           const params = new URLSearchParams();
-          const sttProv = elements.sttProviderSelect?.value || 'auto';
+          const sttProv = elements.sttProviderSelect?.value || state.settings?.sttProvider || 'auto';
+          // For auto mode, server-side transcribe() handles local→openai fallback
           params.set('provider', (sttProv === 'openai') ? 'openai' : 'local');
           const lang = elements.sttLanguageSelect?.value || 'en';
           if (lang) params.set('language', lang);

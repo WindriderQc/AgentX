@@ -12,7 +12,7 @@ const JUDGE_CONFIG = {
     model: 'qwen2.5:14b-instruct-q4_K_M',
     host: null,
     timeout: 120000,
-    temperature: 0.3,
+    temperature: 0.1,
     num_predict: 800,
     max_retries: 2
 };
@@ -53,7 +53,7 @@ function buildDynamicJudgePrompt(dimensions, task, expected, response, options =
         ? `\n${options.judgeHints}\n`
         : '';
 
-    return `You are a quality evaluator. Analyze the given response and score it across multiple dimensions.
+    return `You are a strict quality evaluator. Score each dimension INDEPENDENTLY - a wrong value does not mean the format is wrong. Analyze the given response and score it across multiple dimensions.
 
 IMPORTANT: If the RESPONSE TO EVALUATE section is empty or blank, assign 0 to all dimensions - the model failed to produce output.
 ${hintsSection}

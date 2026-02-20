@@ -349,7 +349,7 @@ const DECOMPOSED_QUESTIONS = {
  */
 async function singleBinaryCall(response, question, judgeConfig, taskContext = {}) {
     const taskSection = taskContext.task
-        ? `TASK:\n${taskContext.task.substring(0, 2000)}\n\n${taskContext.expected ? `EXPECTED ANSWER:\n${taskContext.expected.substring(0, 500)}\n\n` : ''}`
+        ? `TASK:\n${taskContext.task.substring(0, 2000)}\n\n${taskContext.expected ? `EXPECTED ANSWER:\n${taskContext.expected.substring(0, 1000)}\n\n` : ''}`
         : '';
 
     const prompt = `You are evaluating ONE specific aspect of a model's response.
@@ -375,7 +375,7 @@ Answer ONLY "YES" or "NO" for this specific question: ${question}`;
                 options: {
                     temperature: 0.1,
                     num_predict: 20,
-                    num_ctx: 8192
+                    num_ctx: 4096
                 }
             }),
             signal: controller.signal
@@ -427,7 +427,7 @@ async function askBinaryQuestion(response, question, judgeConfig, taskContext = 
             return await singleBinaryCall(response, question, judgeConfig, taskContext);
         } catch (err) {
             logger.error('Binary call failed', { question, error: err.message });
-            return false;
+            return null; // null = error, distinct from false = judge said NO
         }
     }
 
@@ -447,7 +447,7 @@ async function askBinaryQuestion(response, question, judgeConfig, taskContext = 
             question,
             errors: votes.map(v => v.reason?.message || 'unknown')
         });
-        return false;
+        return null; // null = error, distinct from false = judge said NO
     }
 
     if (successes.length === 1) {
@@ -481,8 +481,25 @@ async function scoreDimension(response, questions, judgeConfig, taskContext = {}
     let totalWeight = 0;
     let earnedWeight = 0;
 
+    let errorCount = 0;
+
     for (const item of questions) {
         const answer = await askBinaryQuestion(response, item.q, judgeConfig, taskContext);
+
+        // null = judge error (timeout/failure), skip this question entirely
+        if (answer === null) {
+            errorCount++;
+            results.push({
+                question: item.q,
+                answer: null,
+                weight: item.weight,
+                inverted: item.invert || false,
+                contributed: false,
+                error: true
+            });
+            continue;
+        }
+
         const effectiveAnswer = item.invert ? !answer : answer;
 
         results.push({
@@ -503,11 +520,21 @@ async function scoreDimension(response, questions, judgeConfig, taskContext = {}
         ? Math.round((earnedWeight / totalWeight) * 10 * 10) / 10
         : 0;
 
+    // If all questions errored, signal that this dimension is unreliable
+    if (errorCount > 0) {
+        logger.warn('Binary call errors in dimension', {
+            errors: errorCount,
+            total: questions.length,
+            allFailed: errorCount === questions.length
+        });
+    }
+
     return {
         score,
         breakdown: results,
         earned: earnedWeight,
-        total: totalWeight
+        total: totalWeight,
+        errors: errorCount
     };
 }
 
@@ -581,11 +608,20 @@ async function score(response, prompt, judgeConfig) {
     // Look up dimension weights from prompt (passed by qualityScorer routeScoring)
     const dimensionWeights = prompt._dimensionWeights || null;
 
-    // Score each dimension
-    for (const [dimension, dimensionQuestions] of Object.entries(questions)) {
-        const result = await scoreDimension(response, dimensionQuestions, judgeConfig, taskContext);
+    // Score all dimensions concurrently (questions within each dimension are still sequential)
+    const dimensionEntries = Object.entries(questions);
+    const dimensionResults = await Promise.all(
+        dimensionEntries.map(([dimension, dimensionQuestions]) =>
+            scoreDimension(response, dimensionQuestions, judgeConfig, taskContext)
+                .then(result => ({ dimension, result }))
+        )
+    );
+
+    let totalErrors = 0;
+    for (const { dimension, result } of dimensionResults) {
         dimensionScores[dimension] = result.score;
         dimensionBreakdowns[dimension] = result.breakdown;
+        totalErrors += result.errors || 0;
         dimensionCount++;
     }
 
@@ -621,6 +657,17 @@ async function score(response, prompt, judgeConfig) {
         time_ms: scoringTimeMs
     });
 
+    // Flag if judge had significant errors
+    const judgeReliable = totalErrors === 0;
+    if (!judgeReliable) {
+        logger.warn('Decomposed judge had errors, result may be unreliable', {
+            prompt: prompt.name || 'unknown',
+            totalErrors,
+            totalQuestions,
+            errorRate: (totalErrors / totalQuestions * 100).toFixed(1) + '%'
+        });
+    }
+
     return {
         quality_score: overallScore,
         scoring_method: 'decomposed',
@@ -630,7 +677,9 @@ async function score(response, prompt, judgeConfig) {
         explanation: buildExplanation(overallScore, category, dimensionScores, dimensionBreakdowns),
         scoring_time_ms: scoringTimeMs,
         judge_model: judgeConfig.model,
-        judge_host: judgeConfig.host
+        judge_host: judgeConfig.host,
+        judge_reliable: judgeReliable,
+        judge_errors: totalErrors
     };
 }
 

@@ -58,10 +58,10 @@ describe('Default voting (single call, voting_count=1)', () => {
         expect(mockFetchFn).toHaveBeenCalledTimes(1);
     });
 
-    test('failure → defaults to false', async () => {
+    test('failure → defaults to null', async () => {
         mockFetchSequence([new Error('timeout')]);
         const result = await askBinaryQuestion('response', 'Is this good?', JUDGE_CONFIG);
-        expect(result).toBe(false);
+        expect(result).toBe(null);
         expect(logger.error).toHaveBeenCalledWith('Binary call failed', expect.any(Object));
     });
 
@@ -133,10 +133,10 @@ describe('Majority voting (voting_count: 3)', () => {
         expect(result).toBe(false);
     });
 
-    test('all 3 fail → defaults to false', async () => {
+    test('all 3 fail → defaults to null', async () => {
         mockFetchSequence([new Error('fail'), new Error('fail'), new Error('fail')]);
         const result = await askBinaryQuestion('response', 'Is this good?', VOTING_CONFIG);
-        expect(result).toBe(false);
+        expect(result).toBe(null);
         expect(logger.error).toHaveBeenCalledWith('All 3 binary votes failed', expect.any(Object));
     });
 
@@ -173,14 +173,14 @@ describe('Prompt structure and context limits', () => {
         expect(body.prompt).toContain('x'.repeat(2000));
     });
 
-    test('expected truncated at 500 chars', async () => {
+    test('expected truncated at 1000 chars', async () => {
         mockFetchSequence(['YES']);
-        const longExpected = 'e'.repeat(1000);
+        const longExpected = 'e'.repeat(2000);
         await askBinaryQuestion('resp', 'q?', JUDGE_CONFIG, { task: 'task', expected: longExpected });
 
         const body = JSON.parse(mockFetchFn.mock.calls[0][1].body);
-        expect(body.prompt).not.toContain('e'.repeat(501));
-        expect(body.prompt).toContain('e'.repeat(500));
+        expect(body.prompt).not.toContain('e'.repeat(1001));
+        expect(body.prompt).toContain('e'.repeat(1000));
     });
 
     test('response truncated at 3000 chars', async () => {
@@ -214,13 +214,13 @@ describe('Prompt structure and context limits', () => {
 });
 
 describe('Model options', () => {
-    test('sends num_predict: 20, num_ctx: 8192, temperature: 0.1', async () => {
+    test('sends num_predict: 20, num_ctx: 4096, temperature: 0.1', async () => {
         mockFetchSequence(['YES']);
         await askBinaryQuestion('response', 'q?', JUDGE_CONFIG);
 
         const body = JSON.parse(mockFetchFn.mock.calls[0][1].body);
         expect(body.options.num_predict).toBe(20);
-        expect(body.options.num_ctx).toBe(8192);
+        expect(body.options.num_ctx).toBe(4096);
         expect(body.options.temperature).toBe(0.1);
     });
 
