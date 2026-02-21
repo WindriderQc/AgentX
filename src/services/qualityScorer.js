@@ -16,7 +16,7 @@ const { ENHANCED_SCORING_CONFIGS, CATEGORY_COMPOSITE_PROFILES, CATEGORY_STRATEGI
 const { calculateCompositeScore } = require('./scoring/compositeScorer');
 const { stripMarkdownCodeFences, jsonDeepEqual, tryParseJson } = require('./scoring/jsonUtils');
 const { quickScore } = require('./scoring/quickScorer');
-const { JUDGE_CONFIG, callJudge, buildDynamicJudgePrompt, incrementJudgeFailureCount } = require('./scoring/judgeCall');
+const { JUDGE_CONFIG, callJudge, buildDynamicJudgePrompt, incrementJudgeFailureCount, normalizeJudgeHost } = require('./scoring/judgeCall');
 const { scoreFormatCompliance } = require('./scoring/formatComplianceScorer');
 const judgeTierResolver = require('./scoring/judgeTierResolver');
 const { scoreCompliance, blendHybridScore } = require('./scoring/complianceScorer');
@@ -124,6 +124,7 @@ async function resolveJudgeConfigForPrompt(prompt, mergedJudgeConfig, rawJudgeCo
 async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = {}, _batchHardwareSnapshot = null }) {
     const startTime = Date.now();
     let mergedJudgeConfig = { ...JUDGE_CONFIG, ...judgeConfig };
+    mergedJudgeConfig.host = normalizeJudgeHost(mergedJudgeConfig.host);
     let judgeTierMeta = {
         tier: judgeTierResolver.inferJudgeTier(mergedJudgeConfig.model) || null,
         tier_downgraded: false,
@@ -244,6 +245,7 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
     if (!skipLLM) {
         const tierResolved = await resolveJudgeConfigForPrompt(prompt, mergedJudgeConfig, judgeConfig);
         mergedJudgeConfig = tierResolved.mergedJudgeConfig;
+        mergedJudgeConfig.host = normalizeJudgeHost(mergedJudgeConfig.host);
         judgeTierMeta = tierResolved.judgeTierMeta;
     }
 

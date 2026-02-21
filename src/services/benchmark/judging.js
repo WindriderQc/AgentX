@@ -277,121 +277,163 @@ async function judgeBatch(batchId, options = {}) {
     const job = { queue, stopped: false };
     activeJudgingJobs.set(batchId, job);
 
-    // Detect judge hardware ONCE for entire batch
-    let batchHardwareSnapshot = null;
-    try {
-        const judgeHost = judgeConfig.host || JUDGE_CONFIG.host;
-        const judgeModel = judgeConfig.model || JUDGE_CONFIG.model;
-        if (judgeHost && judgeModel) {
-            const hwPromise = hardwareProfileService.detectHardware(judgeHost, judgeModel);
-            const timeoutPromise = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('Hardware detection timeout')), 5000)
-            );
-            batchHardwareSnapshot = await Promise.race([hwPromise, timeoutPromise]);
-            logger.debug('Judge batch hardware detection complete', {
-                batchId,
-                gpu: batchHardwareSnapshot?.gpu_layers,
-                vram: batchHardwareSnapshot?.total_vram_gb
-            });
-        }
-    } catch (hwErr) {
-        logger.debug('Judge batch hardware detection failed (non-critical)', { batchId, error: hwErr.message });
-    }
-
     let judged = 0;
     let failed = 0;
+    let finalStatus = 'failed';
+    let timedOut = false;
 
-    for (const result of pendingResults) {
-        if (job.stopped) break;
-
-        queue.add(async () => {
-            if (job.stopped) return;
-
-            try {
-                await judgeResult(result._id.toString(), judgeConfig, batchHardwareSnapshot);
-                judged++;
-
-                await BenchmarkBatch.updateOne(
-                    { _id: batchId },
-                    {
-                        $inc: { judge_completed: 1 },
-                        $set: { last_activity_at: new Date() }
-                    }
+    try {
+        // Detect judge hardware ONCE for entire batch
+        let batchHardwareSnapshot = null;
+        try {
+            const judgeHost = judgeConfig.host || JUDGE_CONFIG.host;
+            const judgeModel = judgeConfig.model || JUDGE_CONFIG.model;
+            if (judgeHost && judgeModel) {
+                const hwPromise = hardwareProfileService.detectHardware(judgeHost, judgeModel);
+                const timeoutPromise = new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('Hardware detection timeout')), 5000)
                 );
-            } catch (err) {
+                batchHardwareSnapshot = await Promise.race([hwPromise, timeoutPromise]);
+                logger.debug('Judge batch hardware detection complete', {
+                    batchId,
+                    gpu: batchHardwareSnapshot?.gpu_layers,
+                    vram: batchHardwareSnapshot?.total_vram_gb
+                });
+            }
+        } catch (hwErr) {
+            logger.debug('Judge batch hardware detection failed (non-critical)', { batchId, error: hwErr.message });
+        }
+
+        for (const result of pendingResults) {
+            if (job.stopped) break;
+
+            queue.add(async () => {
+                if (job.stopped) return;
+
+                try {
+                    await judgeResult(result._id.toString(), judgeConfig, batchHardwareSnapshot);
+                    judged++;
+
+                    await BenchmarkBatch.updateOne(
+                        { _id: batchId },
+                        {
+                            $inc: { judge_completed: 1 },
+                            $set: { last_activity_at: new Date() }
+                        }
+                    );
+                } catch (err) {
+                    failed++;
+                    logger.warn('Judge failed for result', {
+                        batchId,
+                        resultId: result._id.toString(),
+                        prompt_name: result.prompt_name,
+                        error: err.message
+                    });
+
+                    // Mark result as llm_failed if it wasn't already handled
+                    await BenchmarkResult.updateOne(
+                        { _id: result._id },
+                        {
+                            $set: {
+                                scoring_method: 'llm_failed',
+                                quality_explanation: err.message,
+                                judge_model: judgeConfig.model || JUDGE_CONFIG.model
+                            }
+                        }
+                    ).catch(() => {});
+
+                    await BenchmarkBatch.updateOne(
+                        { _id: batchId },
+                        { $inc: { judge_completed: 1, judge_failed: 1 } }
+                    );
+                }
+            }).catch(async (enqueueErr) => {
                 failed++;
-                logger.warn('Judge failed for result', {
+                logger.error('Failed to enqueue judge task', {
                     batchId,
                     resultId: result._id.toString(),
-                    prompt_name: result.prompt_name,
-                    error: err.message
+                    error: enqueueErr.message
                 });
-
-                // Mark result as llm_failed if it wasn't already handled
-                await BenchmarkResult.updateOne(
-                    { _id: result._id },
-                    {
-                        $set: {
-                            scoring_method: 'llm_failed',
-                            quality_explanation: err.message,
-                            judge_model: judgeConfig.model || JUDGE_CONFIG.model
-                        }
-                    }
-                ).catch(() => {});
-
+                // Count the lost task so counters stay consistent
                 await BenchmarkBatch.updateOne(
                     { _id: batchId },
                     { $inc: { judge_completed: 1, judge_failed: 1 } }
-                );
-            }
-        }).catch((enqueueErr) => {
-            logger.error('Failed to enqueue judge task', {
-                batchId,
-                resultId: result._id.toString(),
-                error: enqueueErr.message
+                ).catch(() => {});
             });
+        }
+
+        // Drain with timeout protection
+        const drainResult = await queue.drain({
+            timeoutMs: 30 * 60 * 1000,
+            stallTimeoutMs: 2 * 60 * 1000,
+            onProgress: (status) => {
+                logger.debug('Judge queue progress', { batchId, ...status });
+            }
         });
-    }
 
-    // Drain with timeout protection
-    const drainResult = await queue.drain({
-        timeoutMs: 30 * 60 * 1000,
-        stallTimeoutMs: 2 * 60 * 1000,
-        onProgress: (status) => {
-            logger.debug('Judge queue progress', { batchId, ...status });
-        }
-    });
+        timedOut = drainResult.timedOut;
+        finalStatus = job.stopped ? 'stopped' : (timedOut ? 'failed' : 'completed');
 
-    activeJudgingJobs.delete(batchId);
+        // Final authoritative reconciliation — all $inc operations are done, safe to $set.
+        const [finalJudgeTotal, finalJudgeCompleted, finalJudgeFailed] = await Promise.all([
+            BenchmarkResult.countDocuments({
+                batch_id: batchId,
+                success: true,
+                response: { $type: 'string', $nin: ['', null] }
+            }),
+            BenchmarkResult.countDocuments({
+                batch_id: batchId,
+                success: true,
+                response: { $type: 'string', $nin: ['', null] },
+                scoring_method: { $ne: 'pending' }
+            }),
+            BenchmarkResult.countDocuments({
+                batch_id: batchId,
+                success: true,
+                response: { $type: 'string', $nin: ['', null] },
+                scoring_method: 'llm_failed'
+            })
+        ]);
 
-    // Update batch judge status
-    const finalStatus = job.stopped ? 'stopped' : (drainResult.timedOut ? 'failed' : 'completed');
-    await BenchmarkBatch.updateOne(
-        { _id: batchId },
-        {
-            $set: {
-                judge_status: finalStatus,
-                last_activity_at: new Date()
+        await BenchmarkBatch.updateOne(
+            { _id: batchId },
+            {
+                $set: {
+                    judge_status: finalStatus,
+                    judge_total: finalJudgeTotal,
+                    judge_completed: finalJudgeCompleted,
+                    judge_failed: finalJudgeFailed,
+                    last_activity_at: new Date()
+                }
+            }
+        );
+
+        logger.info('Standalone judging completed', {
+            batchId,
+            finalStatus,
+            authoritative: { total: finalJudgeTotal, completed: finalJudgeCompleted, failed: finalJudgeFailed }
+        });
+
+        // Recalculate metrics if judging completed
+        if (finalStatus === 'completed') {
+            try {
+                const freshBatch = await BenchmarkBatch.findById(batchId);
+                if (freshBatch) {
+                    await freshBatch.calculateMetrics();
+                }
+            } catch (err) {
+                logger.warn('Failed to recalculate metrics after judging', { batchId, error: err.message });
             }
         }
-    );
-
-    // Recalculate metrics if judging completed
-    if (finalStatus === 'completed') {
-        try {
-            const freshBatch = await BenchmarkBatch.findById(batchId);
-            if (freshBatch) {
-                await freshBatch.calculateMetrics();
-            }
-        } catch (err) {
-            logger.warn('Failed to recalculate metrics after judging', { batchId, error: err.message });
-        }
+    } finally {
+        // Guarantee cleanup even on uncaught exceptions — prevents permanent lock
+        activeJudgingJobs.delete(batchId);
     }
 
     return {
         judged,
         failed,
-        timedOut: drainResult.timedOut
+        timedOut
     };
 }
 
@@ -407,6 +449,36 @@ function stopJudging(batchId) {
     job.stopped = true;
     logger.info('Judging stop requested', { batchId });
     return true;
+}
+
+async function getAuthoritativeJudgeCounters(batchId) {
+    const [totalResults, judgeTotal, judgeCompleted, judgeFailed] = await Promise.all([
+        BenchmarkResult.countDocuments({ batch_id: batchId }),
+        BenchmarkResult.countDocuments({
+            batch_id: batchId,
+            success: true,
+            response: { $type: 'string', $nin: ['', null] }
+        }),
+        BenchmarkResult.countDocuments({
+            batch_id: batchId,
+            success: true,
+            response: { $type: 'string', $nin: ['', null] },
+            scoring_method: { $ne: 'pending' }
+        }),
+        BenchmarkResult.countDocuments({
+            batch_id: batchId,
+            success: true,
+            response: { $type: 'string', $nin: ['', null] },
+            scoring_method: 'llm_failed'
+        })
+    ]);
+
+    return {
+        hasResults: totalResults > 0,
+        judge_total: judgeTotal,
+        judge_completed: judgeCompleted,
+        judge_failed: judgeFailed
+    };
 }
 
 /**
@@ -426,19 +498,64 @@ async function getJudgingStatus(batchId) {
     }
 
     const batch = await BenchmarkBatch.findById(batchId)
-        .select('judge_status judge_total judge_completed judge_failed')
+        .select('status judge_status judge_total judge_completed judge_failed')
         .lean();
 
     if (!batch) {
         throw new Error(`Batch not found: ${batchId}`);
     }
 
+    // While execution or judging is actively running, $inc operations are in flight.
+    // Self-healing $set would race with those and roll back progress.
+    const isActive = batch.status === 'running' || batch.judge_status === 'running';
+
+    if (isActive) {
+        return {
+            active: false,
+            judge_status: batch.judge_status || 'none',
+            judge_total: batch.judge_total,
+            judge_completed: batch.judge_completed,
+            judge_failed: batch.judge_failed
+        };
+    }
+
+    const authoritative = await getAuthoritativeJudgeCounters(batchId);
+
+    if (!authoritative.hasResults) {
+        return {
+            active: false,
+            judge_status: batch.judge_status || 'none',
+            judge_total: batch.judge_total,
+            judge_completed: batch.judge_completed,
+            judge_failed: batch.judge_failed
+        };
+    }
+
+    const countersDrifted =
+        Number(batch.judge_total || 0) !== authoritative.judge_total ||
+        Number(batch.judge_completed || 0) !== authoritative.judge_completed ||
+        Number(batch.judge_failed || 0) !== authoritative.judge_failed;
+
+    if (countersDrifted) {
+        await BenchmarkBatch.updateOne(
+            { _id: batchId },
+            {
+                $set: {
+                    judge_total: authoritative.judge_total,
+                    judge_completed: authoritative.judge_completed,
+                    judge_failed: authoritative.judge_failed,
+                    last_activity_at: new Date()
+                }
+            }
+        );
+    }
+
     return {
         active: false,
         judge_status: batch.judge_status || 'none',
-        judge_total: batch.judge_total,
-        judge_completed: batch.judge_completed,
-        judge_failed: batch.judge_failed
+        judge_total: authoritative.judge_total,
+        judge_completed: authoritative.judge_completed,
+        judge_failed: authoritative.judge_failed
     };
 }
 

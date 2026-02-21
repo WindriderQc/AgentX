@@ -39,6 +39,10 @@ function buildExecutionPlan(host, models, selectedPrompts, options = {}) {
             judge_host = HOSTS.primary;
             if (exec_host === HOSTS.primary) judge_host = HOSTS.secondary;
             else if (exec_host === HOSTS.secondary) judge_host = HOSTS.primary;
+            // Fall back to same-host if resolved judge host is null or same as exec
+            if (!judge_host || judge_host === exec_host) {
+                judge_host = exec_host;
+            }
         }
 
         return {

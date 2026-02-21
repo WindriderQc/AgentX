@@ -28,10 +28,11 @@ function normalizeWarmupError(err, timeoutMs) {
  * @param {string} options.timelinePrefix - Timeline event prefix for batch tracking
  * @param {Function} options.recordTimelineEvent - Async callback for timeline events
  * @param {boolean} options.strict - When true, throw on failure instead of swallowing
+ * @param {number} options.num_ctx - Context window size to match test execution parameters
  * @returns {Object} Warmup data for validation/debugging
  */
 async function warmupModel(hostUrl, model, options = {}) {
-    const { timelinePrefix = null, recordTimelineEvent = null, strict = false, _fetch = fetch } = options;
+    const { timelinePrefix = null, recordTimelineEvent = null, strict = false, num_ctx = null, _fetch = fetch } = options;
     const warmupStart = Date.now();
     const warmupPrompt = 'Hi';
     let timeoutMs = 180000;
@@ -90,6 +91,11 @@ async function warmupModel(hostUrl, model, options = {}) {
 
         let response;
         try {
+            const warmupOptions = { num_predict: 1 };
+            if (num_ctx) {
+                warmupOptions.num_ctx = num_ctx;
+            }
+
             response = await _fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -97,7 +103,7 @@ async function warmupModel(hostUrl, model, options = {}) {
                     model,
                     prompt: warmupPrompt,
                     stream: false,
-                    options: { num_predict: 1 }
+                    options: warmupOptions
                 }),
                 signal: controller.signal
             });

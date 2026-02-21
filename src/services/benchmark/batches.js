@@ -58,10 +58,27 @@ async function getBatch(batchId, {
     if (normalizedLimit !== null) queryOptions.limit = normalizedLimit;
     if (normalizedOffset > 0) queryOptions.offset = normalizedOffset;
 
-    const [results, totalResultsCount, actualFailedCount, judgedAgg, perModelAgg] = await Promise.all([
+    const [results, totalResultsCount, actualFailedCount, actualJudgeableCount, actualJudgeCompletedCount, actualJudgeFailedCount, judgedAgg, perModelAgg] = await Promise.all([
         BenchmarkResult.getByBatch(batchId, queryOptions).lean(),
         BenchmarkResult.countDocuments({ batch_id: batchId }),
         BenchmarkResult.countDocuments({ batch_id: batchId, success: false }),
+        BenchmarkResult.countDocuments({
+            batch_id: batchId,
+            success: true,
+            response: { $type: 'string', $nin: ['', null] }
+        }),
+        BenchmarkResult.countDocuments({
+            batch_id: batchId,
+            success: true,
+            response: { $type: 'string', $nin: ['', null] },
+            scoring_method: { $ne: 'pending' }
+        }),
+        BenchmarkResult.countDocuments({
+            batch_id: batchId,
+            success: true,
+            response: { $type: 'string', $nin: ['', null] },
+            scoring_method: 'llm_failed'
+        }),
         BenchmarkResult.aggregate([
             {
                 $match: {
@@ -106,7 +123,7 @@ async function getBatch(batchId, {
                                         {
                                             $in: [
                                                 { $toLower: { $ifNull: ['$scoring_method', ''] } },
-                                                ['exec_failed', 'llm_failed']
+                                                ['llm_failed']
                                             ]
                                         }
                                     ]
@@ -150,14 +167,18 @@ async function getBatch(batchId, {
         : 0;
 
     const rawJudgeTotal = Number(batch.judge_total) || 0;
-    const effectiveJudgeTotal = rawJudgeTotal > 0
-        ? Math.min(rawJudgeTotal, totalResultsCount || rawJudgeTotal)
-        : 0;
+    const effectiveJudgeTotal = totalResultsCount > 0
+        ? actualJudgeableCount
+        : (rawJudgeTotal > 0 ? rawJudgeTotal : 0);
 
-    const judgeCompletedCount = Number(batch.judge_completed) || 0;
-    const judgeFailedCount = Number(batch.judge_failed) || 0;
+    const judgeCompletedCount = totalResultsCount > 0
+        ? actualJudgeCompletedCount
+        : (Number(batch.judge_completed) || 0);
+    const judgeFailedCount = totalResultsCount > 0
+        ? actualJudgeFailedCount
+        : (Number(batch.judge_failed) || 0);
     const execFailedCount = Number(actualFailedCount) || 0;
-    const judgeLag = Math.max(0, totalResultsCount - judgeCompletedCount);
+    const judgeLag = Math.max(0, effectiveJudgeTotal - judgeCompletedCount);
 
     const inferredConcurrency = (batch && batch.judge_config && batch.judge_config.concurrency)
         ? Math.max(1, Number(batch.judge_config.concurrency) || 2)
@@ -177,6 +198,12 @@ async function getBatch(batchId, {
         ? Math.ceil((pending / inferredConcurrency) * inferredTimeoutMs)
         : null;
 
+    // Count judge warmup fallback events from timeline
+    const timelineEvents = (batch.timeline || []);
+    const warmupFallbackCount = timelineEvents.filter(
+        e => e.event === 'judge_warmup_fallback'
+    ).length;
+
     const judgeStats = {
         avg_time_ms: Math.round(avgJudgeTime),
         lag: judgeLag,
@@ -188,7 +215,9 @@ async function getBatch(batchId, {
         timeout_ms: inferredTimeoutMs,
         eta_avg_ms: etaAvgMs,
         eta_worst_ms: etaWorstMs,
-        concurrency: inferredConcurrency
+        concurrency: inferredConcurrency,
+        warmup_fallback_count: warmupFallbackCount,
+        judge_same_host_fallback: judgeSameHostFallback
     };
 
     const inferJudgeHost = (execHost) => {
@@ -255,30 +284,38 @@ async function getBatch(batchId, {
     });
 
     const judge_progress = rawJudgeTotal > 0
-        ? Math.min(Math.round(((batch.judge_completed || 0) / rawJudgeTotal) * 100), 100)
+        ? Math.min(Math.round((judgeCompletedCount / rawJudgeTotal) * 100), 100)
         : 0;
 
     const judge_progress_effective = effectiveJudgeTotal > 0
-        ? Math.min(Math.round(((batch.judge_completed || 0) / effectiveJudgeTotal) * 100), 100)
+        ? Math.min(Math.round((judgeCompletedCount / effectiveJudgeTotal) * 100), 100)
         : 0;
 
-    // Verify stored counters against actual persisted results and reconcile if needed.
+    // NOTE: We intentionally do NOT $set judge counters here.
+    // During active pipelined judging, execution.js uses $inc for judge_completed/judge_failed.
+    // A $set from this read-path would race with those $inc operations and roll back progress.
+    // The authoritative counts (from results queries above) are returned in the response
+    // for display accuracy, but the batch document is only reconciled after judging completes
+    // (see execution.js post-drain and judging.js judgeBatch final status).
+
+    // Verify stored counters against actual persisted results.
     // Results are the source of truth for execution progress.
     const actualResultsCount = totalResultsCount;
     const batchCompletedCount = Number(batch.completed) || 0;
     const batchFailedCount = Number(batch.failed) || 0;
     const hasCounterMismatch = actualResultsCount !== batchCompletedCount || actualFailedCount !== batchFailedCount;
 
-    if (hasCounterMismatch) {
+    // Only reconcile counters when batch is NOT actively running.
+    // During execution, $inc operations on completed/failed are in flight — a $set here
+    // would race and roll back progress (same pattern as judge counter fix).
+    const isActiveExecution = ['running', 'judging'].includes(batch.status);
+
+    if (hasCounterMismatch && !isActiveExecution) {
         const completedDiff = batchCompletedCount - actualResultsCount;
         const failedDiff = batchFailedCount - actualFailedCount;
         const mismatchMagnitude = Math.max(Math.abs(completedDiff), Math.abs(failedDiff));
-        const activeStatus = ['running', 'judging'].includes(batch.status);
 
-        // Reduce noise for expected in-flight drift while still surfacing large anomalies.
-        const logMethod = mismatchMagnitude >= 5
-            ? 'warn'
-            : (activeStatus ? 'debug' : 'info');
+        const logMethod = mismatchMagnitude >= 5 ? 'warn' : 'info';
 
         logger[logMethod]('Batch counter mismatch detected; reconciling from results', {
             batchId,
@@ -316,13 +353,14 @@ async function getBatch(batchId, {
         ...batch.toObject(),
         completed: actualResultsCount,  // Override with actual count
         failed: actualFailedCount,
-        judge_total: rawJudgeTotal,
+        judge_total: effectiveJudgeTotal,
         judge_total_effective: effectiveJudgeTotal,
         results: formattedResults,
         progress: accurateProgress,  // Use accurate progress based on actual results
         judge_progress,
         judge_progress_effective,
         judge_stats: judgeStats,
+        judge_same_host_fallback: judgeSameHostFallback,
         success_rate: batch.success_rate,
         _countMismatch: hasCounterMismatch,  // Debug flag
         per_model_counters: perModelCounters,

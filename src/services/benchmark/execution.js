@@ -237,40 +237,65 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
     const STOP_CHECK_MIN_INTERVAL_MS = 2000;
     const hostTasks = Object.entries(modelsByHost).map(([hostUrl, hostModels]) => async () => {
         try {
-            // Determine judge host
+            // Determine judge host — prefer cross-host pipelining, fall back to same-host
             let judgeHostUrl = hostUrl;
+            let effectiveJudgeSameHost = judgeSameHost;
             if (!judgeSameHost) {
                 judgeHostUrl = HOSTS.primary;
                 if (hostUrl === HOSTS.primary) judgeHostUrl = HOSTS.secondary;
                 else if (hostUrl === HOSTS.secondary) judgeHostUrl = HOSTS.primary;
+
+                // If the resolved judge host is null/undefined or same as exec host,
+                // fall back to same-host judging (single-machine setups)
+                if (!judgeHostUrl || judgeHostUrl === hostUrl) {
+                    judgeHostUrl = hostUrl;
+                    effectiveJudgeSameHost = true;
+                    logger.info('No separate judge host available, using same-host judging', { host: hostUrl });
+                }
             }
 
-            // Warmup judge model on separate host BEFORE tests start (strict: failure aborts)
-            if (!judgeSameHost) {
+            // Warmup judge model on separate host BEFORE tests start
+            // Non-fatal: if cross-host warmup fails, fall back to same-host judging
+            if (!effectiveJudgeSameHost) {
                 const jModel = judgeConfig.model || JUDGE_CONFIG.model;
-                await warmupModel(judgeHostUrl, jModel, {
-                    timelinePrefix: 'judge_warmup',
-                    recordTimelineEvent: recordBatchTimelineEvent,
-                    strict: true
-                });
-                logger.info('Judge model ready', { host: judgeHostUrl, model: jModel });
+                try {
+                    await warmupModel(judgeHostUrl, jModel, {
+                        timelinePrefix: 'judge_warmup',
+                        recordTimelineEvent: recordBatchTimelineEvent,
+                        strict: true
+                    });
+                    logger.info('Judge model ready on separate host', { host: judgeHostUrl, model: jModel });
+                } catch (warmupErr) {
+                    logger.warn('Cross-host judge warmup failed, falling back to same-host judging', {
+                        judgeHost: judgeHostUrl, execHost: hostUrl,
+                        model: jModel, error: warmupErr.message
+                    });
+                    judgeHostUrl = hostUrl;
+                    effectiveJudgeSameHost = true;
+                    await recordBatchTimelineEvent('judge_warmup_fallback', {
+                        model: jModel, original_host: judgeHostUrl,
+                        fallback_host: hostUrl, error: warmupErr.message
+                    });
+                }
             }
 
             for (const model of hostModels) {
-                const modelWarmupData = await warmupModel(hostUrl, model, {
-                    timelinePrefix: 'model_warmup',
-                    recordTimelineEvent: recordBatchTimelineEvent
-                });
-
-                const hardwareSnapshot = await hardwareProfileService.detectHardware(hostUrl, model);
-
                 // Per-model execution config (registry defaults/overrides > batch config)
+                // Resolved BEFORE warmup so num_ctx matches what the real tests will use
                 const modelExecConfig = await getModelExecutionConfig(model, executionConfig);
                 if (modelExecConfig.num_ctx !== executionConfig.num_ctx) {
                     logger.info('Using per-model execution config', {
                         model, num_ctx: modelExecConfig.num_ctx, batch_num_ctx: executionConfig.num_ctx
                     });
                 }
+
+                const modelWarmupData = await warmupModel(hostUrl, model, {
+                    timelinePrefix: 'model_warmup',
+                    recordTimelineEvent: recordBatchTimelineEvent,
+                    num_ctx: modelExecConfig.num_ctx || null
+                });
+
+                const hardwareSnapshot = await hardwareProfileService.detectHardware(hostUrl, model);
 
                 let currentBatch;
                 try {
@@ -414,8 +439,9 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                             success: true,
                             batch_id: batchId,
                             timestamp: new Date(),
-                            quality_score: null,
-                            scoring_method: 'pending',
+                            quality_score: hasEmptyResponse ? 0 : null,
+                            quality_explanation: hasEmptyResponse ? 'Model produced empty response' : null,
+                            scoring_method: hasEmptyResponse ? 'empty_response' : 'pending',
                             judge_model: judgeConfig.model || JUDGE_CONFIG.model,
                             hardware_snapshot: hardwareSnapshot,
                             truncation: {
@@ -475,7 +501,7 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                         logger.info('Batch test completed', { batchId, model, prompt: prompt.name, latency });
 
                         // Pipeline: judge on separate machine while next test runs
-                        if (judgeQueue) {
+                        if (judgeQueue && !hasEmptyResponse) {
                             const { judgeResult } = require('./judging');
                             const capturedResultId = resultId.toString();
                             const capturedJudgeConfig = { ...judgeConfig, host: judgeHostUrl };
@@ -492,15 +518,44 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                                     logger.warn('Pipelined judging failed', {
                                         batchId, model, prompt: prompt.name, error: scoreErr.message
                                     });
+
+                                    const classifiedJudgeErr = classifyBenchmarkError(scoreErr);
+                                    await BenchmarkResult.updateOne(
+                                        { _id: capturedResultId },
+                                        {
+                                            $set: {
+                                                scoring_method: 'llm_failed',
+                                                quality_explanation: scoreErr.message,
+                                                error: scoreErr.message,
+                                                infra_error: classifiedJudgeErr.infra,
+                                                error_type: classifiedJudgeErr.type,
+                                                error_http_status: classifiedJudgeErr.httpStatus,
+                                                judge_model: capturedJudgeConfig.model || JUDGE_CONFIG.model,
+                                                judge_host: capturedJudgeConfig.host || null
+                                            }
+                                        }
+                                    ).catch((persistErr) => {
+                                        logger.warn('Failed to persist pipelined judge failure result', {
+                                            batchId,
+                                            resultId: capturedResultId,
+                                            error: persistErr.message
+                                        });
+                                    });
+
                                     await BenchmarkBatch.updateOne(
                                         { _id: batchId },
                                         { $inc: { judge_completed: 1, judge_failed: 1 } }
                                     );
                                 }
-                            }).catch(enqueueErr => {
+                            }).catch(async (enqueueErr) => {
                                 logger.error('Failed to enqueue judge task', {
                                     batchId, model, prompt: prompt.name, error: enqueueErr.message
                                 });
+                                // Count the lost task so counters stay consistent
+                                await BenchmarkBatch.updateOne(
+                                    { _id: batchId },
+                                    { $inc: { judge_completed: 1, judge_failed: 1 } }
+                                ).catch(() => {});
                             });
                         }
 
@@ -583,7 +638,11 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
 
     // Drain pipelined judge queue
     if (judgeQueue) {
-        const judgeableCount = await BenchmarkResult.countDocuments({ batch_id: batchId, success: true });
+        const judgeableCount = await BenchmarkResult.countDocuments({
+            batch_id: batchId,
+            success: true,
+            response: { $type: 'string', $nin: ['', null] }
+        });
         await BenchmarkBatch.updateOne(
             { _id: batchId },
             { $set: { generated_at: new Date(), judge_total: judgeableCount, judge_status: 'running' } }
@@ -597,14 +656,51 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
             onProgress: (status) => logger.debug('Judge queue progress', { batchId, ...status })
         });
 
+        // Final authoritative reconciliation — all $inc operations are done, safe to $set.
+        const [finalJudgeableCount, finalJudgeCompleted, finalJudgeFailed] = await Promise.all([
+            BenchmarkResult.countDocuments({
+                batch_id: batchId,
+                success: true,
+                response: { $type: 'string', $nin: ['', null] }
+            }),
+            BenchmarkResult.countDocuments({
+                batch_id: batchId,
+                success: true,
+                response: { $type: 'string', $nin: ['', null] },
+                scoring_method: { $ne: 'pending' }
+            }),
+            BenchmarkResult.countDocuments({
+                batch_id: batchId,
+                success: true,
+                response: { $type: 'string', $nin: ['', null] },
+                scoring_method: 'llm_failed'
+            })
+        ]);
+
+        const finalJudgeStatus = drainResult.timedOut ? 'failed' : 'completed';
+
         if (drainResult.timedOut) {
             logger.error('Judge queue drain timed out', { batchId, reason: drainResult.reason });
-            await BenchmarkBatch.updateOne({ _id: batchId }, { $set: { judge_status: 'failed' } });
-        } else {
-            await BenchmarkBatch.updateOne({ _id: batchId }, { $set: { judge_status: 'completed' } });
         }
 
-        logger.info('Judge queue drained', { batchId, completed: drainResult.completed, failed: drainResult.failed });
+        await BenchmarkBatch.updateOne(
+            { _id: batchId },
+            {
+                $set: {
+                    judge_status: finalJudgeStatus,
+                    judge_total: finalJudgeableCount,
+                    judge_completed: finalJudgeCompleted,
+                    judge_failed: finalJudgeFailed
+                }
+            }
+        );
+
+        logger.info('Judge queue drained', {
+            batchId,
+            completed: drainResult.completed,
+            failed: drainResult.failed,
+            authoritative: { total: finalJudgeableCount, completed: finalJudgeCompleted, failed: finalJudgeFailed }
+        });
     }
 
     // Check if stopped during execution/judging

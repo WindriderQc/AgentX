@@ -122,6 +122,18 @@ describe('isRetryableError', () => {
         it('should retry on ETIMEDOUT', () => {
             expect(isRetryableError('connect ETIMEDOUT 192.168.1.100:11434')).toBe(true);
         });
+
+        it('should retry on aborted request (timeout-triggered)', () => {
+            expect(isRetryableError('The user aborted a request.')).toBe(true);
+        });
+
+        it('should retry on AbortError', () => {
+            expect(isRetryableError('AbortError: The operation was aborted')).toBe(true);
+        });
+
+        it('should retry on ECONNREFUSED', () => {
+            expect(isRetryableError('connect ECONNREFUSED 127.0.0.1:11434')).toBe(true);
+        });
     });
 
     describe('HTTP 5xx errors (should retry)', () => {

@@ -24,8 +24,17 @@ const JUDGE_CONFIG = {
 let judgeFailureCount = 0;
 
 // Initialize host from env
+function normalizeJudgeHost(rawValue) {
+    if (!rawValue) return null;
+    const trimmed = String(rawValue).trim();
+    if (!trimmed) return null;
+    if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    return `http://${trimmed}`;
+}
+
+// Initialize host from env
 if (process.env.OLLAMA_HOST) {
-    JUDGE_CONFIG.host = process.env.OLLAMA_HOST;
+    JUDGE_CONFIG.host = normalizeJudgeHost(process.env.OLLAMA_HOST);
 }
 
 function getJudgeFailureCount() {
@@ -135,13 +144,17 @@ function extractBalancedJson(text) {
 
 /**
  * Check if a judge error message is retryable.
- * Retries on: network errors, HTTP 5xx, and JSON parse/extraction failures.
+ * Retries on: network errors, HTTP 5xx, aborted requests (timeout-triggered),
+ * and JSON parse/extraction failures.
  * @param {string} message - Error message
  * @returns {boolean}
  */
 function isRetryableError(message) {
     return message.includes('timeout') ||
+           message.includes('aborted') ||
+           message.includes('AbortError') ||
            message.includes('ECONNRESET') ||
+           message.includes('ECONNREFUSED') ||
            message.includes('ETIMEDOUT') ||
            message.startsWith('Judge HTTP 5') ||
            message.includes('No JSON found') ||
@@ -155,10 +168,14 @@ function isRetryableError(message) {
  */
 async function callJudge(evalPrompt, config = {}, retryCount = 0) {
     const judgeConfig = { ...JUDGE_CONFIG, ...config };
+    judgeConfig.host = normalizeJudgeHost(judgeConfig.host);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), judgeConfig.timeout);
 
     try {
+        if (!judgeConfig.host) {
+            throw new Error('Judge host is not configured');
+        }
         const url = `${judgeConfig.host}/api/generate`;
         const fetchOptions = getFetchOptions(url, {
             method: 'POST',
@@ -317,5 +334,6 @@ module.exports = {
     extractBalancedJson,
     isRetryableError,
     getJudgeFailureCount,
-    incrementJudgeFailureCount
+    incrementJudgeFailureCount,
+    normalizeJudgeHost
 };

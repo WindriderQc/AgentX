@@ -146,6 +146,28 @@ async function runConsistencyTest(options = {}) {
     const avgStdDev = results.length > 0 ? totalVariance / results.length : 0;
     const consistencyScore = Math.max(0, 100 - (avgStdDev * 20)); // 0.5 stdDev = 90 score
 
+    if (results.length === 0) {
+        return {
+            success: false,
+            error: 'Consistency test produced no successful re-judged samples',
+            summary: {
+                samples_tested: 0,
+                repeats_per_sample: repeats,
+                avg_std_dev: null,
+                max_std_dev: null,
+                consistency_score: null,
+                pass: false
+            },
+            details: [],
+            thresholds: {
+                target_std_dev: 0.5,
+                excellent: 0.3,
+                acceptable: 0.5,
+                poor: 1.0
+            }
+        };
+    }
+
     return {
         success: true,
         summary: {
@@ -649,6 +671,10 @@ async function runHealthCheck(options = {}) {
     const issues = [];
 
     if (consistency.success && consistency.summary) {
+        if ((consistency.summary.samples_tested || 0) < 1) {
+            healthScore -= 20;
+            issues.push('Consistency validation has zero successful samples');
+        }
         if (consistency.summary.avg_std_dev > 0.5) {
             healthScore -= 20;
             issues.push('High score variance (inconsistent judging)');

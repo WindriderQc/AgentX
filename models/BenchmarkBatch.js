@@ -331,8 +331,13 @@ BenchmarkBatchSchema.statics.cleanupStale = async function(inactivityThresholdSe
 
     for (const batch of staleBatches) {
         try {
-            // Count actual results to fix judge_total mismatch
+            // Count actual execution and judgeable result totals separately
             const actualResultCount = await BenchmarkResult.countDocuments({ batch_id: batch._id });
+            const actualJudgeableCount = await BenchmarkResult.countDocuments({
+                batch_id: batch._id,
+                success: true,
+                response: { $type: 'string', $nin: ['', null] }
+            });
 
             // Determine appropriate status based on completion
             let newStatus = 'interrupted';
@@ -340,9 +345,9 @@ BenchmarkBatchSchema.statics.cleanupStale = async function(inactivityThresholdSe
                 // All tests completed, check if judging was done
                 const judgedCount = await BenchmarkResult.countDocuments({
                     batch_id: batch._id,
-                    scoring_method: { $nin: [null, 'pending', 'skipped'] }
+                    scoring_method: { $nin: [null, 'pending', 'skipped', 'empty_response', 'exec_failed'] }
                 });
-                if (judgedCount >= actualResultCount) {
+                if (actualJudgeableCount > 0 && judgedCount >= actualJudgeableCount) {
                     newStatus = 'completed';
                 }
             }
@@ -353,8 +358,8 @@ BenchmarkBatchSchema.statics.cleanupStale = async function(inactivityThresholdSe
                     $set: {
                         status: newStatus,
                         completed_at: new Date(),
-                        // Fix judge_total to match actual executed tests
-                        judge_total: actualResultCount,
+                        // Fix judge_total to match actual judgeable tests
+                        judge_total: actualJudgeableCount,
                         // Update completed counter if it's wrong
                         completed: actualResultCount
                     }
