@@ -848,3 +848,38 @@
         padding: 16px;
     }
 }
+
+/* Context Probe Stats */
+.probe-stat {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 8px;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 4px;
+}
+
+.probe-label {
+    color: var(--muted);
+    font-size: 0.75rem;
+}
+
+.probe-value {
+    color: var(--text);
+    font-weight: 600;
+    font-size: 0.8rem;
+}
+
+.probe-step {
+    padding: 3px 6px;
+    border-left: 2px solid var(--muted);
+    margin-bottom: 2px;
+}
+
+.probe-step.pass {
+    border-color: var(--success, #4ade80);
+}
+
+.probe-step.fail {
+    border-color: var(--danger, #f87171);
+}

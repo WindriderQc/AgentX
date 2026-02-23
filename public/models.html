@@ -255,6 +255,54 @@
                     <button id="execConfigSave" class="btn-primary" style="flex:1;">Save Override</button>
                     <button id="execConfigReset" class="btn-secondary" style="flex:1;">Reset to Auto</button>
                 </div>
+
+                <!-- Context Probe Section -->
+                <div style="border-top:1px solid rgba(255,255,255,0.06); margin-top:20px; padding-top:16px;">
+                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+                        <h3 style="margin:0; font-size:0.95rem; color:var(--text);">
+                            <i class="fas fa-microscope" style="color:#7cf0ff;"></i> Context Probe
+                        </h3>
+                        <button id="contextProbeRunBtn" class="btn-secondary" style="font-size:0.8rem; padding:4px 12px;">
+                            <i class="fas fa-play"></i> Run Test
+                        </button>
+                    </div>
+                    <div id="contextProbeStatus" class="text-sm" style="color:var(--muted);">No test results yet.</div>
+                    <div id="contextProbeDetails" style="display:none; margin-top:10px;">
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+                            <div class="probe-stat">
+                                <span class="probe-label">Tested Limit</span>
+                                <span id="probeTestedCtx" class="probe-value">—</span>
+                            </div>
+                            <div class="probe-stat">
+                                <span class="probe-label">Theoretical Max</span>
+                                <span id="probeTheoMax" class="probe-value">—</span>
+                            </div>
+                            <div class="probe-stat">
+                                <span class="probe-label">Baseline Speed</span>
+                                <span id="probeBaseline" class="probe-value">—</span>
+                            </div>
+                            <div class="probe-stat">
+                                <span class="probe-label">At Limit Speed</span>
+                                <span id="probeAtLimit" class="probe-value">—</span>
+                            </div>
+                            <div class="probe-stat">
+                                <span class="probe-label">Degradation</span>
+                                <span id="probeDegradation" class="probe-value">—</span>
+                            </div>
+                            <div class="probe-stat">
+                                <span class="probe-label">VRAM at Limit</span>
+                                <span id="probeVram" class="probe-value">—</span>
+                            </div>
+                        </div>
+                        <div id="probeStepsToggle" style="margin-top:8px;">
+                            <button id="probeShowSteps" class="btn-text" style="font-size:0.75rem; color:var(--muted); cursor:pointer; background:none; border:none; padding:0;">
+                                <i class="fas fa-chevron-down"></i> Show probe steps
+                            </button>
+                            <div id="probeStepsList" style="display:none; margin-top:6px; max-height:200px; overflow-y:auto; font-size:0.75rem; font-family:monospace;"></div>
+                        </div>
+                        <div id="probeTestedAt" class="text-sm" style="color:var(--muted); margin-top:6px; font-size:0.7rem;"></div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
