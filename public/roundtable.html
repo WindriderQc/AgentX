@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AgentX • Roundtable</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="/css/roundtable.css">
+</head>
+<body>
+  <!-- Navigation -->
+  <div id="nav-container"></div>
+  <script src="/js/components/nav.js"></script>
+  <script src="/js/workspace.js"></script>
+  <script>injectNav('roundtable');</script>
+
+  <!-- Background Grid -->
+  <div class="bg-grid"></div>
+
+  <!-- Main Content -->
+  <div class="rt-container">
+
+    <!-- Header -->
+    <div class="rt-header">
+      <div class="rt-eyebrow">Multi-Agent Discussion</div>
+      <h1><i class="fas fa-users-rectangle"></i> Roundtable</h1>
+      <p class="rt-subtitle">Pose a question and watch three AI agents debate it from different angles</p>
+    </div>
+
+    <!-- Input Card -->
+    <div class="rt-input-card" id="rtInputCard">
+      <div class="rt-input-row">
+        <div class="rt-input-group">
+          <label for="rtQuestionInput">Question</label>
+          <textarea id="rtQuestionInput" class="rt-question-input" placeholder="What should we discuss?" rows="3" maxlength="5000"></textarea>
+        </div>
+        <div class="rt-input-side">
+          <div class="rt-input-group">
+            <label for="rtRoundsSelect">Rounds</label>
+            <select id="rtRoundsSelect" class="rt-rounds-select">
+              <option value="1">1 round</option>
+              <option value="2" selected>2 rounds</option>
+              <option value="3">3 rounds</option>
+            </select>
+          </div>
+          <button id="rtStartBtn" class="rt-start-btn">
+            <i class="fas fa-play"></i> Start Discussion
+          </button>
+        </div>
+      </div>
+      <!-- Panel Configuration (collapsible) -->
+      <details id="rtPanelConfig" class="rt-panel-config">
+        <summary><i class="fas fa-sliders"></i> Panel Configuration</summary>
+        <div class="rt-panel-grid">
+          <div class="rt-panel-agent" data-agent="devils-advocate">
+            <div class="rt-panel-agent-header">
+              <span class="rt-agent-dot" style="background:#f87171"></span>
+              <span>Devil's Advocate</span>
+            </div>
+            <select id="rtHostDA" class="rt-host-select" data-agent="devils-advocate"><option value="">All hosts</option></select>
+            <select id="rtModelDA" class="rt-model-select" data-agent="devils-advocate"><option value="">Loading...</option></select>
+          </div>
+          <div class="rt-panel-agent" data-agent="pragmatist">
+            <div class="rt-panel-agent-header">
+              <span class="rt-agent-dot" style="background:#fbbf24"></span>
+              <span>Pragmatist</span>
+            </div>
+            <select id="rtHostPrag" class="rt-host-select" data-agent="pragmatist"><option value="">All hosts</option></select>
+            <select id="rtModelPrag" class="rt-model-select" data-agent="pragmatist"><option value="">Loading...</option></select>
+          </div>
+          <div class="rt-panel-agent" data-agent="visionary">
+            <div class="rt-panel-agent-header">
+              <span class="rt-agent-dot" style="background:#7cf0ff"></span>
+              <span>Visionary</span>
+            </div>
+            <select id="rtHostVis" class="rt-host-select" data-agent="visionary"><option value="">All hosts</option></select>
+            <select id="rtModelVis" class="rt-model-select" data-agent="visionary"><option value="">Loading...</option></select>
+          </div>
+          <div class="rt-panel-agent" data-agent="synthesizer">
+            <div class="rt-panel-agent-header">
+              <span class="rt-agent-dot" style="background:var(--accent-2)"></span>
+              <span>Synthesizer</span>
+            </div>
+            <select id="rtHostSynth" class="rt-host-select" data-agent="synthesizer"><option value="">All hosts</option></select>
+            <select id="rtModelSynth" class="rt-model-select" data-agent="synthesizer"><option value="">Loading...</option></select>
+          </div>
+        </div>
+      </details>
+
+      <div id="rtInputStatus" class="rt-input-status"></div>
+    </div>
+
+    <!-- Stats Row (hidden initially) -->
+    <div id="rtStatsRow" class="rt-stats-row" style="display:none;">
+      <div class="rt-stat-card">
+        <div class="rt-stat-value" id="rtStatDuration">—</div>
+        <div class="rt-stat-label">Duration</div>
+      </div>
+      <div class="rt-stat-card">
+        <div class="rt-stat-value" id="rtStatTurns">—</div>
+        <div class="rt-stat-label">Turns</div>
+      </div>
+      <div class="rt-stat-card">
+        <div class="rt-stat-value" id="rtStatAvgTps">—</div>
+        <div class="rt-stat-label">Avg Tokens/s</div>
+      </div>
+      <div class="rt-stat-card">
+        <div class="rt-stat-value" id="rtStatStatus">—</div>
+        <div class="rt-stat-label">Status</div>
+      </div>
+    </div>
+
+    <!-- Discussion Panel (hidden initially) -->
+    <div id="rtDiscussionPanel" class="rt-discussion-panel" style="display:none;">
+      <div class="rt-discussion-header">
+        <h2 id="rtDiscussionTitle"></h2>
+        <div id="rtDiscussionMeta" class="rt-discussion-meta"></div>
+      </div>
+      <div id="rtTurnsContainer" class="rt-turns-container"></div>
+      <div id="rtSynthesisContainer"></div>
+      <div id="rtTranscriptActions" class="rt-transcript-actions" style="display:none;">
+        <button id="rtDownloadTranscript" class="btn-secondary"><i class="fas fa-download"></i> Download Transcript</button>
+        <button id="rtNewDiscussion" class="btn-secondary"><i class="fas fa-plus"></i> New Discussion</button>
+      </div>
+    </div>
+
+    <!-- History Section -->
+    <div class="rt-history-section">
+      <div class="rt-section-header">
+        <h2><i class="fas fa-clock-rotate-left"></i> History</h2>
+        <button id="rtRefreshHistory" class="btn-icon" title="Refresh history"><i class="fas fa-rotate"></i></button>
+      </div>
+      <div id="rtHistoryList" class="rt-history-list">
+        <div class="rt-empty-state"><i class="fas fa-inbox"></i><p>No discussions yet</p></div>
+      </div>
+      <div id="rtPagination" class="rt-pagination"></div>
+    </div>
+
+  </div>
+
+  <!-- Toast Notifications -->
+  <script src="js/toast.js"></script>
+
+  <!-- Main Module -->
+  <script type="module" src="/js/roundtable/index.js"></script>
+</body>
+</html>

@@ -340,19 +340,30 @@ async function createRoundtable(options) {
     tags = []
   } = options;
 
+  // Merge partial panel overrides with defaults (e.g. model-only overrides from UI)
+  const defaultByAgent = {};
+  for (const d of DEFAULT_PANEL) { defaultByAgent[d.agentId] = d; }
+
+  const mergedPanel = panel.map(a => {
+    const dflt = defaultByAgent[a.agentId] || {};
+    return {
+      agentId: a.agentId,
+      role: a.role || dflt.role || a.agentId,
+      model: a.model || dflt.model,
+      systemPrompt: a.systemPrompt || dflt.systemPrompt || ''
+    };
+  });
+
+  const mergedSynthesizer = {
+    model: synthesizer.model || DEFAULT_SYNTHESIZER.model,
+    systemPrompt: synthesizer.systemPrompt || DEFAULT_SYNTHESIZER.systemPrompt
+  };
+
   const doc = await Roundtable.create({
     question,
     rounds: Math.min(Math.max(rounds, 1), 3),
-    panelConfig: panel.map(a => ({
-      agentId: a.agentId,
-      role: a.role,
-      model: a.model,
-      systemPrompt: a.systemPrompt
-    })),
-    synthesizerConfig: {
-      model: synthesizer.model,
-      systemPrompt: synthesizer.systemPrompt
-    },
+    panelConfig: mergedPanel,
+    synthesizerConfig: mergedSynthesizer,
     status: 'pending',
     workspaceId,
     userId,

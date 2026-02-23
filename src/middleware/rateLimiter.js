@@ -60,9 +60,10 @@ const baseApiLimiter = rateLimit({
   skip: (req) => (
     req.originalUrl.startsWith('/api/benchmark')
     || req.originalUrl.startsWith('/api/specialx')
+    || req.originalUrl.startsWith('/api/roundtable')
     || req.originalUrl === '/api/rag/watcher/status'
     || req.originalUrl === '/api/dashboard/rag-sync/status'
-  ), // Skip benchmark + specialx routes (handled by dedicated limiters) and dashboard polling endpoints
+  ), // Skip benchmark + specialx + roundtable routes (handled by dedicated limiters) and dashboard polling endpoints
   handler: (req, res) => {
     logger.warn('Rate limit exceeded', {
       ip: req.ip,
@@ -260,6 +261,7 @@ const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 5, // 5 attempts per window
   skipSuccessfulRequests: true, // Don't count successful logins
+  skip: (req) => req.path === '/me', // /api/auth/me is a session check, not a login attempt
   message: {
     status: 'error',
     message: 'Too many authentication attempts. Please try again later.'
@@ -278,9 +280,27 @@ const authLimiter = rateLimit({
   }
 });
 
+/**
+ * Roundtable rate limiter
+ * Moderate limits — roundtables are expensive (multi-agent, sequential)
+ * 200 requests per 15 minutes
+ */
+const roundtableLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  message: {
+    status: 'error',
+    message: 'Roundtable rate limit exceeded'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: getClientKey
+});
+
 module.exports = {
   apiLimiter,
   benchmarkLimiter,
+  roundtableLimiter,
   specialXLimiter,
   chatLimiter,
   strictLimiter,

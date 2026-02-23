@@ -7,7 +7,7 @@
  * 'chat', 'operations', 'self-healing', 'alerts', 'backup', 'models', 'benchmark', 'courthouse',
  * 'performance', 'analytics', 'features-inventory', 'features-telemetry',
  * 'features-adoption', 'features-admin', 'feature-alignment', 'workspaces', 'audit-logs', 'rag', 'personas', 'profile',
- * 'results-explorer', 'model-explorer', 'leaderboard', 'hardware-matrix', 'config-optimizer', 'docjanitor'
+ * 'results-explorer', 'model-explorer', 'leaderboard', 'hardware-matrix', 'config-optimizer', 'docjanitor', 'roundtable'
  */
 
 // Global auth state — accessible by all pages via window.AgentXAuth
@@ -74,7 +74,8 @@ function injectNav(activePageId = '') {
                 { label: 'Model Explorer', href: 'model-explorer.html', icon: 'fa-microscope', id: 'model-explorer' },
                 { label: 'Results Explorer', href: 'results-explorer.html', icon: 'fa-magnifying-glass-chart', id: 'results-explorer' },
                 { label: 'Leaderboard', href: 'leaderboard.html', icon: 'fa-trophy', id: 'leaderboard' },
-                { label: 'Hardware Matrix', href: 'hardware-matrix.html', icon: 'fa-server', id: 'hardware-matrix' }
+                { label: 'Hardware Matrix', href: 'hardware-matrix.html', icon: 'fa-server', id: 'hardware-matrix' },
+                { label: 'Roundtable', href: 'roundtable.html', icon: 'fa-users-rectangle', id: 'roundtable' }
             ]
         },
         {

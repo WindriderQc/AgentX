@@ -194,7 +194,7 @@ app.use(performanceTracker.trackRequest);
 // ============================================
 
 // Apply rate limiters
-const { apiLimiter, benchmarkLimiter, specialXLimiter, chatLimiter, strictLimiter, authLimiter } = require('./middleware/rateLimiter');
+const { apiLimiter, benchmarkLimiter, roundtableLimiter, specialXLimiter, chatLimiter, strictLimiter, authLimiter } = require('./middleware/rateLimiter');
 
 // Apply general API rate limiter to all /api routes (except specific ones)
 app.use('/api/', apiLimiter);
@@ -302,6 +302,10 @@ app.use('/api/tools', toolRoutes);
 // Benchmark routes (LLM performance testing)
 const benchmarkRoutes = require('../routes/benchmark');
 app.use('/api/benchmark', benchmarkLimiter, benchmarkRoutes);
+
+// Roundtable routes (multi-agent discussion)
+const roundtableRoutes = require('../routes/roundtable');
+app.use('/api/roundtable', roundtableLimiter, roundtableRoutes);
 
 // Ollama hosts routes (configuration and models)
 const ollamaHostsRoutes = require('../routes/ollama-hosts');
