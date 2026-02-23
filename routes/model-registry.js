@@ -18,6 +18,8 @@
  *   GET    /api/models/registry/:name/execution-config  - Get per-model execution config
  *   POST   /api/models/registry/:name/execution-config  - Set user config overrides
  *   DELETE /api/models/registry/:name/execution-config  - Clear user overrides
+ *   POST   /api/models/registry/:name/context-test      - Run empirical context probe
+ *   GET    /api/models/registry/:name/context-test       - Get context probe results
  *
  * @see /models/ModelRegistry.js
  */
@@ -27,6 +29,7 @@ const router = express.Router();
 const logger = require('../config/logger');
 const ModelRegistry = require('../models/ModelRegistry');
 const { requireAuth } = require('../src/middleware/auth');
+const { probeModelContext, getProbeStatus } = require('../src/services/contextProbe/contextProbeService');
 
 /**
  * GET /api/models/registry
@@ -555,12 +558,19 @@ router.get('/:name/execution-config', async (req, res) => {
       return res.status(404).json({ status: 'error', message: `Model not found: ${req.params.name}` });
     }
     const effective = model.getEffectiveConfig();
+    const ct = model.contextTest || {};
     res.json({
       status: 'success',
       data: {
         effective,
         defaults: model.executionDefaults || {},
-        overrides: model.executionOverrides || {}
+        overrides: model.executionOverrides || {},
+        contextTest: ct.status ? {
+          testedNumCtx: ct.testedNumCtx || null,
+          status: ct.status,
+          testedAt: ct.testedAt || null,
+          degradationPct: ct.degradationPct ?? null
+        } : null
       }
     });
   } catch (err) {
@@ -636,6 +646,64 @@ router.delete('/:name/execution-config', requireAuth, async (req, res) => {
   } catch (err) {
     logger.error('Failed to clear execution config', { name: req.params.name, error: err.message });
     res.status(500).json({ status: 'error', message: 'Failed to clear config', error: err.message });
+  }
+});
+
+/**
+ * POST /api/models/registry/:name/context-test
+ *
+ * Trigger an empirical context window probe for a model.
+ * Binary-searches num_ctx values measuring tokens/sec degradation.
+ * Body: { degradationPct?: number, force?: boolean }
+ */
+router.post('/:name/context-test', requireAuth, async (req, res) => {
+  try {
+    const model = await ModelRegistry.findOne({ modelName: req.params.name });
+    if (!model) {
+      return res.status(404).json({ status: 'error', message: `Model not found: ${req.params.name}` });
+    }
+
+    if (model.contextTest?.status === 'running' && !req.body.force) {
+      return res.status(409).json({ status: 'error', message: 'Context probe already running for this model' });
+    }
+
+    const options = {};
+    if (req.body.degradationPct != null) {
+      const pct = Number(req.body.degradationPct);
+      if (!Number.isFinite(pct) || pct < 5 || pct > 95) {
+        return res.status(400).json({ status: 'error', message: 'degradationPct must be between 5 and 95' });
+      }
+      options.degradationPct = pct;
+    }
+    if (req.body.force) options.force = true;
+
+    // Fire-and-forget — the probe runs in the background
+    probeModelContext(req.params.name, options).catch(err => {
+      logger.error('Context probe failed (async)', { name: req.params.name, error: err.message });
+    });
+
+    res.json({ status: 'success', message: `Context probe started for ${req.params.name}`, data: { status: 'running' } });
+  } catch (err) {
+    logger.error('Failed to start context probe', { name: req.params.name, error: err.message });
+    res.status(500).json({ status: 'error', message: 'Failed to start probe', error: err.message });
+  }
+});
+
+/**
+ * GET /api/models/registry/:name/context-test
+ *
+ * Get the latest context probe results for a model.
+ */
+router.get('/:name/context-test', async (req, res) => {
+  try {
+    const result = await getProbeStatus(req.params.name);
+    if (!result || !result.status) {
+      return res.status(404).json({ status: 'error', message: `No context test found for: ${req.params.name}` });
+    }
+    res.json({ status: 'success', data: result });
+  } catch (err) {
+    logger.error('Failed to get context test results', { name: req.params.name, error: err.message });
+    res.status(500).json({ status: 'error', message: 'Failed to get results', error: err.message });
   }
 });
 
