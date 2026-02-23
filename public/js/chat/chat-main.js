@@ -6,7 +6,7 @@ import { DEFAULTS } from './chat-constants.js';
 import {
   loadSettings, hydrateForm, persistSettings as _persistSettings,
   updateRangeDisplays, updateConfigSummary, toggleRagOptions,
-  checkRagAvailability, loadServerConfig, targetHost
+  checkRagAvailability, loadServerConfig, loadOllamaHosts, targetHost
 } from './chat-config.js';
 import {
   renderMessage, appendMessage as _appendMessage, renderLogList as _renderLogList,
@@ -36,7 +36,6 @@ document.addEventListener('DOMContentLoaded', () => {
     clearBtn: document.getElementById('clearBtn'),
     analyzeQualityBtn: document.getElementById('analyzeQualityBtn'),
     hostInput: document.getElementById('hostInput'),
-    portInput: document.getElementById('portInput'),
     modelSelect: document.getElementById('modelSelect'),
     systemPrompt: document.getElementById('systemPrompt'),
     temperature: document.getElementById('temperature'),
@@ -456,7 +455,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (elements.ragCompress) elements.ragCompress.addEventListener('change', () => helpers.persistSettings());
 
     elements.hostInput.addEventListener('change', () => { helpers.persistSettings(); _fetchModels({ elements, state, defaults, helpers }, false); });
-    elements.portInput.addEventListener('change', () => { helpers.persistSettings(); _fetchModels({ elements, state, defaults, helpers }, false); });
 
     elements.quickActions.forEach((btn) => btn.addEventListener('click', () => {
       elements.messageInput.value = btn.dataset.quick;
@@ -492,6 +490,7 @@ document.addEventListener('DOMContentLoaded', () => {
     _loadProfile(elements);
     loadActivePrompt();
     loadPromptSelector();
+    await loadOllamaHosts(elements, state);
     await _fetchModels({ elements, state, defaults, helpers });
 
     checkRagAvailability(elements);

@@ -183,14 +183,15 @@ export async function renderBatchEventTimeline(timelineVisual, timelineEmptyStat
 
         // Event definitions
         const renderableEvents = new Set([
-            'prep_start', 'judge_warmup_start', 'judge_warmup_complete', 'tests_start',
-            'model_warmup_complete', 'test_complete', 'judge_complete', 'error'
+            'prep_start', 'judge_warmup_start', 'judge_warmup_complete', 'judge_warmup_fallback',
+            'tests_start', 'model_warmup_complete', 'test_complete', 'judge_complete', 'error'
         ]);
 
         const eventVisuals = {
             prep_start: { icon: 'fa-plug', class: 'segment-warmup-judge', label: 'LLM Load' },
             judge_warmup_start: { icon: 'fa-gavel', class: 'segment-warmup-judge', label: 'Judge Warmup' },
             judge_warmup_complete: { icon: 'fa-check-circle', class: 'segment-warmup-judge', label: 'Judge Warmup Stabilized' },
+            judge_warmup_fallback: { icon: 'fa-exchange-alt', class: 'segment-error', label: 'Judge Warmup Fallback' },
             tests_start: { icon: 'fa-rocket', class: 'segment-running', label: 'Launching Tests' },
             model_warmup_complete: { icon: 'fa-bolt', class: 'segment-warmup', label: 'Model Warmup' },
             test_complete: { icon: 'fa-robot', class: 'segment-success', label: 'Test Complete' },
@@ -259,7 +260,7 @@ export async function renderBatchEventTimeline(timelineVisual, timelineEmptyStat
  */
 function getLaneKey(event) {
     const prepEvents = new Set(['prep_start', 'tests_start']);
-    const judgePrepEvents = new Set(['judge_warmup_start', 'judge_warmup_complete']);
+    const judgePrepEvents = new Set(['judge_warmup_start', 'judge_warmup_complete', 'judge_warmup_fallback']);
 
     if (prepEvents.has(event.event)) return 'Prep';
     if (judgePrepEvents.has(event.event)) return 'Judge Prep';
@@ -636,6 +637,7 @@ export async function loadRecentTestsTimeline() {
             prep_start: { icon: 'fa-plug', class: 'segment-warmup-judge', label: 'Prep Started' },
             judge_warmup_start: { icon: 'fa-gavel', class: 'segment-warmup-judge', label: 'Judge Warmup' },
             judge_warmup_complete: { icon: 'fa-check-circle', class: 'segment-warmup-judge', label: 'Judge Warmup Stabilized' },
+            judge_warmup_fallback: { icon: 'fa-exchange-alt', class: 'segment-error', label: 'Judge Warmup Fallback' },
             tests_start: { icon: 'fa-rocket', class: 'segment-running', label: 'Launching Tests' }
         };
 

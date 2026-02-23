@@ -147,7 +147,10 @@ router.post('/batch', optionalWorkspaceContext, async (req, res) => {
         const judgeSameHost = !!(judge_config && judge_config.judge_same_host);
         const judgeModel = (judge_config && judge_config.model) || JUDGE_CONFIG.model;
         let actualJudgeHost;
-        if (judgeSameHost) {
+        if (judge_config && judge_config.host) {
+            // Explicit judge host override from UI
+            actualJudgeHost = judge_config.host;
+        } else if (judgeSameHost) {
             actualJudgeHost = host;
         } else {
             actualJudgeHost = HOSTS.primary;

@@ -8,9 +8,15 @@ export function loadSettings(defaults) {
     const raw = localStorage.getItem(STORAGE_KEYS.SETTINGS);
     if (!raw) return { ...defaults };
     const parsed = JSON.parse(raw);
-    if (parsed.host === 'localhost' && defaults.host !== 'localhost') {
-      parsed.host = defaults.host;
-      parsed.port = defaults.port;
+    // Migrate legacy host+port settings to hostUrl
+    if (parsed.host && !parsed.hostUrl) {
+      const port = parsed.port || defaults.port || '11434';
+      const h = parsed.host;
+      if (/^https?:\/\//i.test(h)) {
+        parsed.hostUrl = h;
+      } else {
+        parsed.hostUrl = `http://${h}:${port}`;
+      }
     }
     return {
       ...defaults,
@@ -41,8 +47,7 @@ export function readOptions(elements) {
 
 export function persistSettings(elements, state, defaults, refreshMessages, setFeedback) {
   const payload = {
-    host: elements.hostInput.value.trim() || defaults.host,
-    port: elements.portInput.value.trim() || defaults.port,
+    hostUrl: elements.hostInput.value || '',
     model: elements.modelSelect.value,
     stream: elements.streamToggle.checked,
     tts: elements.ttsToggle.checked,
@@ -73,8 +78,8 @@ export function hydrateForm(elements, state, defaults) {
   const cfg = state.settings;
   state.showStats = cfg.showStats !== undefined ? cfg.showStats : true;
 
-  elements.hostInput.value = cfg.host || defaults.host;
-  elements.portInput.value = cfg.port || defaults.port;
+  // Host URL is restored after loadOllamaHosts populates the dropdown
+  // (see loadOllamaHosts which reads state.settings.hostUrl)
   elements.modelSelect.value = cfg.model;
   elements.systemPrompt.value = cfg.system;
   elements.streamToggle.checked = cfg.stream;
@@ -195,21 +200,7 @@ export async function loadServerConfig(defaults) {
     const res = await fetch('/api/config');
     if (res.ok) {
       const config = await res.json();
-      if (config.ollama) {
-        const hostSelect = document.getElementById('hostInput');
-        const existingOptions = Array.from(hostSelect.options).map(opt => opt.value);
-        if (config.ollama.host && !existingOptions.includes(config.ollama.host)) {
-          const option = document.createElement('option');
-          option.value = config.ollama.host;
-          option.textContent = config.ollama.host;
-          hostSelect.insertBefore(option, hostSelect.firstChild);
-        }
-        if (config.ollama.host) {
-          defaults.host = config.ollama.host;
-          defaults.port = config.ollama.port;
-        }
-        return config;
-      }
+      return config;
     }
   } catch (err) {
     console.warn('Could not load server config:', err);
@@ -217,12 +208,66 @@ export async function loadServerConfig(defaults) {
   return null;
 }
 
+/**
+ * Load Ollama hosts from /api/ollama-hosts (same pattern as benchmark, compare-insights)
+ */
+export async function loadOllamaHosts(elements, state) {
+  const hostSelect = elements.hostInput;
+  try {
+    const fetchOpts = {};
+    if (window.WorkspaceManager) WorkspaceManager.addWorkspaceHeader(fetchOpts);
+    const res = await fetch('/api/ollama-hosts', fetchOpts);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    const data = json.data || json;
+    const hosts = data.hosts || [];
+
+    // Store hosts in state for reference
+    state.ollamaHosts = hosts;
+
+    hostSelect.innerHTML = '';
+    if (hosts.length === 0) {
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = 'No hosts configured';
+      hostSelect.appendChild(opt);
+      return;
+    }
+
+    hosts.forEach(h => {
+      const opt = document.createElement('option');
+      opt.value = h.url;
+      const status = h.available ? '\u2713' : '\u2717';
+      const modelCount = h.models ? ` [${h.models.length} models]` : '';
+      opt.textContent = `${status} ${h.name} (${h.url})${modelCount}`;
+      if (!h.available) opt.style.color = 'var(--muted, #888)';
+      hostSelect.appendChild(opt);
+    });
+
+    // Select saved host URL, or first available host
+    const savedUrl = state.settings?.hostUrl;
+    const savedExists = savedUrl && Array.from(hostSelect.options).some(o => o.value === savedUrl);
+    if (savedExists) {
+      hostSelect.value = savedUrl;
+    } else {
+      const firstAvailable = hosts.find(h => h.available);
+      if (firstAvailable) hostSelect.value = firstAvailable.url;
+    }
+  } catch (err) {
+    console.warn('Failed to load Ollama hosts:', err);
+    hostSelect.innerHTML = '';
+    const opt = document.createElement('option');
+    opt.value = '';
+    opt.textContent = '\u26a0\ufe0f Failed to load hosts';
+    hostSelect.appendChild(opt);
+  }
+}
+
 export function targetHost(elements, defaults) {
-  const rawHost = elements.hostInput.value.trim() || defaults.host;
-  const port = elements.portInput.value.trim() || defaults.port;
-  if (/^https?:\/\//i.test(rawHost)) return rawHost.replace(/\/+$/, '');
-  if (rawHost.includes(':')) return rawHost;
-  return `${rawHost}:${port}`;
+  const hostUrl = elements.hostInput.value;
+  if (hostUrl) return hostUrl.replace(/\/+$/, '');
+  // Fallback to defaults
+  return defaults.host || '';
 }
 
 export function readProfileInputs(elements) {

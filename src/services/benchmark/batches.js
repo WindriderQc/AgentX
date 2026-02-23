@@ -203,6 +203,7 @@ async function getBatch(batchId, {
     const warmupFallbackCount = timelineEvents.filter(
         e => e.event === 'judge_warmup_fallback'
     ).length;
+    const judgeSameHostFallback = warmupFallbackCount > 0;
 
     const judgeStats = {
         avg_time_ms: Math.round(avgJudgeTime),

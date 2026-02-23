@@ -228,12 +228,6 @@ export async function runBatch() {
             resetBatchUI();
             return;
         } else if (res.status === 409) {
-            btn.disabled = false;
-            btn.textContent = 'Start Batch Test';
-            stopBtn.style.display = 'none';
-            execProgressBar.classList.remove('active');
-            judgeProgressBar.classList.remove('active');
-
             const activeBatch = json.active_batch;
             const message = json.message || 'Another batch is already running';
 
@@ -241,9 +235,26 @@ export async function runBatch() {
                 if (confirm(`${message}\n\nWould you like to recover the stuck batch and try again?`)) {
                     await recoverBatch(activeBatch.id);
                     setTimeout(() => document.getElementById('runBatchBtn').click(), 1000);
+                } else {
+                    resetBatchUI();
                 }
+            } else if (activeBatch && activeBatch.id) {
+                // Show stop button and resume monitoring the active batch
+                state.setCurrentBatchId(activeBatch.id);
+                localStorage.setItem('currentBatchId', activeBatch.id);
+                btn.disabled = true;
+                btn.textContent = `Running (${activeBatch.progress || 0}%)...`;
+                stopBtn.style.display = 'inline-block';
+                execProgressBar.classList.add('active');
+                judgeProgressBar.classList.add('active');
+
+                // Start polling so user sees live progress
+                pollBatchProgress();
+                const interval = setInterval(pollBatchProgress, 2000);
+                state.setBatchPollInterval(interval);
             } else {
                 alert(message);
+                resetBatchUI();
             }
         } else {
             throw new Error(json.error || 'Failed to start batch');
@@ -333,7 +344,7 @@ export async function pollBatchProgress() {
 
         // Update results table
         if (results.length > 0) {
-            updateResultsTable(results, batch.results_meta);
+            updateResultsTable(results, batch.results_meta, batch);
         }
 
         // Update hyper details if enabled
@@ -473,6 +484,9 @@ function updateJudgeHealthStats(batch, results) {
         healthText = 'Busy';
     }
 
+    const warmupFallbackCount = stats.warmup_fallback_count || 0;
+    const isSameHostFallback = stats.judge_same_host_fallback || false;
+
     judgeHealthContainer.style.display = 'block';
     judgeHealthContainer.innerHTML = `
         <div class="judge-health-main">
@@ -499,6 +513,13 @@ function updateJudgeHealthStats(batch, results) {
                 <span style="color: var(--muted);">Avg Time:</span>
                 <span style="font-weight: 600;">${avgTime}</span>
             </div>
+            ${isSameHostFallback ? `
+            <div class="vr" style="background: rgba(255,255,255,0.1); width: 1px; height: 14px;"></div>
+            <div title="Cross-host judge warmup failed; judging on same host as execution (may affect latency)">
+                <span style="color: #e67e22; font-weight: 600;">
+                    <i class="fas fa-exchange-alt"></i> Same-Host Fallback
+                </span>
+            </div>` : ''}
         </div>
     `;
 }
@@ -819,7 +840,7 @@ function updatePerModelProgress(batch, results, showHyper) {
 /**
  * Update results table
  */
-function updateResultsTable(results, resultsMeta) {
+function updateResultsTable(results, resultsMeta, batch) {
     const container = document.getElementById('batchResultsContainer');
     const tbody = document.getElementById('batchResultsBody');
     container.style.display = 'block';
@@ -878,7 +899,9 @@ function updateResultsTable(results, resultsMeta) {
             : '';
 
         const hostInfo = r.host ? `<div style="font-size: 0.75em; color: var(--muted); margin-top: 2px;">Exec: ${formatHostLabel(r.host)}</div>` : '';
-        const judgeInfo = r.judge_host ? `<div style="font-size: 0.75em; color: var(--muted);">Judge: ${formatHostLabel(r.judge_host)}</div>` : '';
+        const isJudgeSameHostFallback = r.host && r.judge_host && r.host === r.judge_host && batch && batch.judge_same_host_fallback;
+        const judgeHostLabel = r.judge_host ? formatHostLabel(r.judge_host) : '';
+        const judgeInfo = r.judge_host ? `<div style="font-size: 0.75em; color: ${isJudgeSameHostFallback ? '#e67e22' : 'var(--muted)'};">Judge: ${judgeHostLabel}${isJudgeSameHostFallback ? ' <i class="fas fa-exchange-alt" title="Fallback: judging on same host due to cross-host warmup failure"></i>' : ''}</div>` : '';
 
         const rowStyle = isFailed
             ? 'border-bottom: 1px solid rgba(231, 76, 60, 0.3); background: rgba(231, 76, 60, 0.05);'
@@ -964,7 +987,8 @@ function handleBatchComplete(batch) {
 
     if (batch.status === 'completed') {
         status.className = 'status success';
-        status.textContent = `Batch completed! ${batch.completed} tests run (${batch.success_rate} success)`;
+        const fallbackNote = batch.judge_same_host_fallback ? ' [Judge: same-host fallback]' : '';
+        status.textContent = `Batch completed! ${batch.completed} tests run (${batch.success_rate} success)${fallbackNote}`;
     } else if (batch.status === 'stopped') {
         status.className = 'status warning';
         status.textContent = `Batch stopped by user (${batch.completed}/${batch.total_tests} tests completed)`;

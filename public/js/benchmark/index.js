@@ -165,9 +165,25 @@ function populateJudgeModelSelect() {
     }
 }
 
+function populateJudgeHostSelect() {
+    const select = document.getElementById('judgeHost');
+    if (!select) return;
+    const currentValue = select.value || state.currentJudgeConfig.host || '';
+    let options = '<option value="">(auto \u2014 opposite of exec host)</option>';
+    if (Array.isArray(state.ollamaHosts)) {
+        state.ollamaHosts.forEach(h => {
+            const status = h.available ? '\u2713' : '\u2717';
+            options += `<option value="${h.url}">${status} ${h.name} (${h.url})</option>`;
+        });
+    }
+    select.innerHTML = options;
+    if (currentValue) select.value = currentValue;
+}
+
 function applyJudgeConfigToForm(config) {
     if (!config) return;
     const judgeModel = document.getElementById('judgeModel');
+    const judgeHost = document.getElementById('judgeHost');
     const judgeTemp = document.getElementById('judgeTemp');
     const judgeTempVal = document.getElementById('judgeTempVal');
     const judgeTimeout = document.getElementById('judgeTimeout');
@@ -176,6 +192,7 @@ function applyJudgeConfigToForm(config) {
     const judgeConcurrencyVal = document.getElementById('judgeConcurrencyVal');
     const judgeSameHost = document.getElementById('judgeSameHost');
 
+    if (judgeHost) judgeHost.value = config.host || '';
     if (judgeModel && config.model) judgeModel.value = config.model;
     if (judgeTemp && config.temperature !== undefined && config.temperature !== null) {
         judgeTemp.value = String(config.temperature);
@@ -199,12 +216,14 @@ function applyJudgeConfigToForm(config) {
 function getJudgeConfigOverridesFromForm() {
     const overrides = {};
     const judgeModel = document.getElementById('judgeModel');
+    const judgeHostEl = document.getElementById('judgeHost');
     const judgeTemp = document.getElementById('judgeTemp');
     const judgeTimeout = document.getElementById('judgeTimeout');
     const judgeMaxTokens = document.getElementById('judgeMaxTokens');
     const judgeConcurrency = document.getElementById('judgeConcurrency');
     const judgeSameHost = document.getElementById('judgeSameHost');
 
+    if (judgeHostEl && judgeHostEl.value) overrides.host = judgeHostEl.value;
     if (judgeModel && judgeModel.value) overrides.model = judgeModel.value;
     if (judgeTemp && judgeTemp.value !== '') overrides.temperature = coerceNumber(judgeTemp.value, 0.1);
     if (judgeTimeout && judgeTimeout.value !== '') overrides.timeout = coerceNumber(judgeTimeout.value, 120000);
@@ -227,6 +246,7 @@ function bindJudgeSettingsUI() {
     const settingsModal = document.getElementById('settingsModal');
     if (settingsBtn && settingsModal) {
         settingsBtn.addEventListener('click', () => {
+            populateJudgeHostSelect();
             populateJudgeModelSelect();
             applyJudgeConfigToForm(state.currentJudgeConfig);
             settingsModal.style.display = 'block';
@@ -251,7 +271,7 @@ function bindJudgeSettingsUI() {
         });
     }
 
-    ['judgeModel', 'judgeTimeout', 'judgeMaxTokens', 'judgeSameHost'].forEach(id => {
+    ['judgeHost', 'judgeModel', 'judgeTimeout', 'judgeMaxTokens', 'judgeSameHost'].forEach(id => {
         const el = document.getElementById(id);
         if (!el) return;
         el.addEventListener('change', () => {
@@ -345,9 +365,9 @@ async function loadJudgeConfig() {
         const executionConfig = data.execution_config || data.executionConfig || {};
         const storedJudgeConfig = readStoredJudgeConfig();
 
-        // Server is authoritative for model and host.
-        // localStorage only persists UI preferences (temperature, concurrency, timeout, num_predict).
-        const uiOnlyKeys = ['temperature', 'timeout', 'num_predict', 'concurrency', 'judge_same_host'];
+        // Server is authoritative for model.
+        // localStorage persists UI preferences (host, temperature, concurrency, timeout, num_predict).
+        const uiOnlyKeys = ['host', 'temperature', 'timeout', 'num_predict', 'concurrency', 'judge_same_host'];
         const storedUiPrefs = {};
         if (storedJudgeConfig) {
             for (const key of uiOnlyKeys) {

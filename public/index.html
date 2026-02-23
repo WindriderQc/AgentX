@@ -297,16 +297,13 @@
       </div>
 
       <div class="field">
-        <label>Target host</label>
+        <label>Ollama Host</label>
         <div class="input-row">
           <select id="hostInput" style="flex: 1;">
-            <option value="localhost">localhost</option>
-            <option value="127.0.0.1">127.0.0.1</option>
-            <option value="192.168.2.12">192.168.2.12</option>
-            <option value="192.168.2.99">192.168.2.99</option>
+            <option value="">Loading hosts&hellip;</option>
           </select>
-          <input type="text" id="portInput" class="w-96" value="11434">
         </div>
+        <div class="hint">Hosts are loaded from server configuration.</div>
       </div>
 
       <div class="field">

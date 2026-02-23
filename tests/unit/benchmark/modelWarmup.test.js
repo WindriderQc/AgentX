@@ -27,7 +27,7 @@ describe('modelWarmup', () => {
         const result = await warmupModel('http://localhost:11434', 'qwen2.5:14b-instruct-q5_K_M', { _fetch });
 
         expect(result.success).toBe(false);
-        expect(result.error).toContain('Warmup timed out after 30s');
+        expect(result.error).toContain('Warmup timed out after 90s');
         expect(result.error).not.toContain('user aborted');
     });
 
@@ -41,6 +41,6 @@ describe('modelWarmup', () => {
 
         await expect(
             warmupModel('http://localhost:11434', 'qwen2.5:14b-instruct-q5_K_M', { _fetch, strict: true })
-        ).rejects.toThrow('Warmup timed out after 30s');
+        ).rejects.toThrow('Warmup timed out after 90s');
     });
 });

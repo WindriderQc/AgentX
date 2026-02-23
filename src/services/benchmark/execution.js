@@ -237,10 +237,15 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
     const STOP_CHECK_MIN_INTERVAL_MS = 2000;
     const hostTasks = Object.entries(modelsByHost).map(([hostUrl, hostModels]) => async () => {
         try {
-            // Determine judge host — prefer cross-host pipelining, fall back to same-host
+            // Determine judge host — prefer explicit override, then cross-host pipelining, fall back to same-host
             let judgeHostUrl = hostUrl;
             let effectiveJudgeSameHost = judgeSameHost;
-            if (!judgeSameHost) {
+            if (judgeConfig.host) {
+                // Explicit judge host override from UI/API
+                judgeHostUrl = judgeConfig.host;
+                effectiveJudgeSameHost = (judgeHostUrl === hostUrl);
+                logger.info('Using explicit judge host override', { judgeHost: judgeHostUrl, execHost: hostUrl });
+            } else if (!judgeSameHost) {
                 judgeHostUrl = HOSTS.primary;
                 if (hostUrl === HOSTS.primary) judgeHostUrl = HOSTS.secondary;
                 else if (hostUrl === HOSTS.secondary) judgeHostUrl = HOSTS.primary;

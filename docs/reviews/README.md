@@ -1,7 +1,0 @@
-# Reviews
-
-Peer reviews and technical assessments of system components.
-
-- [BENCHMARK_PEER_REVIEW](./BENCHMARK_PEER_REVIEW.md)
-- [BENCHMARK_PEER_REVIEW.v2](./BENCHMARK_PEER_REVIEW.v2.md)
-- [MODEL_CATEGORIZATION_PEER_REVIEW](./MODEL_CATEGORIZATION_PEER_REVIEW.md)

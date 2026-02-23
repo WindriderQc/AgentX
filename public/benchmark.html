@@ -584,6 +584,13 @@
                     <div id="calibrationResult" style="display:none; margin-top: 8px; padding: 10px; border-radius: 6px; font-size: 0.85em;"></div>
                 </div>
                 <div class="form-group">
+                    <label for="judgeHost"><i class="fas fa-server"></i> Judge Host</label>
+                    <select id="judgeHost" class="form-control">
+                        <option value="">(auto — opposite of exec host)</option>
+                    </select>
+                    <small class="form-text text-muted">Which Ollama host runs the judge model. Default auto-picks the opposite host from execution. Override when a host is down or you want a specific GPU for judging.</small>
+                </div>
+                <div class="form-group">
                     <label for="judgeTemp">Judge Temperature: <span id="judgeTempVal">0.1</span></label>
                     <input type="range" id="judgeTemp" min="0" max="1" step="0.1" value="0.1">
                     <small class="form-text text-muted">Lower temperature (0.1) ensures consistent and deterministic

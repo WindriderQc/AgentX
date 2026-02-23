@@ -111,6 +111,7 @@ export function renderEventList(batchTimeline) {
         'prep_start': { icon: 'fa-plug', color: '#3498db', label: 'Prep Started' },
         'judge_warmup_start': { icon: 'fa-gavel', color: '#9b59b6', label: 'Judge Warmup' },
         'judge_warmup_complete': { icon: 'fa-check-circle', color: '#9b59b6', label: 'Judge Ready' },
+        'judge_warmup_fallback': { icon: 'fa-exchange-alt', color: '#e67e22', label: 'Judge Fallback (Same-Host)' },
         'tests_start': { icon: 'fa-rocket', color: '#2ecc71', label: 'Tests Started' },
         'model_warmup_complete': { icon: 'fa-bolt', color: '#f39c12', label: 'Model Warmed' },
         'test_complete': { icon: 'fa-robot', color: '#2ecc71', label: 'Test Complete' },

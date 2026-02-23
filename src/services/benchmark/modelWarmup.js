@@ -82,7 +82,7 @@ async function warmupModel(hostUrl, model, options = {}) {
 
         warmupData.already_loaded = modelAlreadyLoaded;
 
-        timeoutMs = modelAlreadyLoaded ? 30000 : 180000;
+        timeoutMs = modelAlreadyLoaded ? 90000 : 180000;
         logger.info('Warming up model', { host: hostUrl, model, alreadyLoaded: modelAlreadyLoaded, timeoutMs });
 
         const url = `${hostUrl}/api/generate`;
