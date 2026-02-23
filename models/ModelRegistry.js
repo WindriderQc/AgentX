@@ -133,6 +133,34 @@ const ExecutionOverridesSchema = new mongoose.Schema({
   _overriddenAt: { type: Date, default: null }
 }, { _id: false });
 
+const ContextTestStepSchema = new mongoose.Schema({
+  numCtx: Number,
+  tokensPerSec: Number,
+  promptTokens: Number,
+  completionTokens: Number,
+  vramUsedMiB: Number,
+  vramTotalMiB: Number,
+  latencyMs: Number,
+  passed: Boolean,
+  reason: String
+}, { _id: false });
+
+const ContextTestSchema = new mongoose.Schema({
+  testedNumCtx: { type: Number, default: null },
+  baselineTokensPerSec: { type: Number, default: null },
+  atLimitTokensPerSec: { type: Number, default: null },
+  degradationPct: { type: Number, default: null },
+  vramAtLimitMiB: { type: Number, default: null },
+  modelTheoreticalMax: { type: Number, default: null },
+  degradationThreshold: { type: Number, default: null },
+  testedAt: { type: Date, default: null },
+  testDurationMs: { type: Number, default: null },
+  hostUrl: { type: String, default: null },
+  status: { type: String, enum: ['pending', 'running', 'completed', 'failed'], default: null },
+  error: { type: String, default: null },
+  steps: [ContextTestStepSchema]
+}, { _id: false });
+
 const ModelRegistrySchema = new mongoose.Schema({
   // Identity
   modelName: {
@@ -221,6 +249,11 @@ const ModelRegistrySchema = new mongoose.Schema({
   // User overrides (separate so original defaults always visible)
   executionOverrides: {
     type: ExecutionOverridesSchema,
+    default: () => ({})
+  },
+  // Empirical context window test results
+  contextTest: {
+    type: ContextTestSchema,
     default: () => ({})
   },
 
@@ -646,11 +679,14 @@ ModelRegistrySchema.methods.getEffectiveConfig = function() {
   const SYSTEM_DEFAULTS = { num_ctx: 8192, temperature: 0.7 };
   const defaults = this.executionDefaults || {};
   const overrides = this.executionOverrides || {};
+  const contextTest = this.contextTest || {};
 
   const result = {};
   for (const key of ['num_ctx', 'temperature']) {
     if (overrides[key] != null) {
       result[key] = { value: overrides[key], source: 'user' };
+    } else if (key === 'num_ctx' && contextTest.testedNumCtx != null && contextTest.status === 'completed') {
+      result[key] = { value: contextTest.testedNumCtx, source: 'tested' };
     } else if (defaults[key] != null) {
       result[key] = { value: defaults[key], source: defaults._source || 'auto' };
     } else {

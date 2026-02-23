@@ -20,6 +20,7 @@ const {
   inferVendor,
   generateDisplayName
 } = require('./parameterDetection');
+const { probeModelContext, getConfig: getProbeConfig } = require('../contextProbe/contextProbeService');
 
 /**
  * Get list of configured Ollama hosts from env
@@ -254,6 +255,23 @@ async function syncAllHosts() {
   } catch (err) {
     logger.error('Failed to retire missing models', { error: err.message });
     stats.errors.push(`retire: ${err.message}`);
+  }
+
+  // Auto-probe newly created models if enabled (fire-and-forget)
+  if (stats.created > 0 && getProbeConfig().autoProbeOnSync) {
+    const newModels = await ModelRegistry.find({
+      sourceType: 'ollama',
+      status: 'active',
+      'contextTest.status': null,
+      createdBy: 'auto-sync'
+    }).select('modelName').lean();
+
+    for (const m of newModels) {
+      logger.info('Auto-probe queued for newly synced model', { modelName: m.modelName });
+      probeModelContext(m.modelName).catch(err => {
+        logger.warn('Auto-probe failed for model', { modelName: m.modelName, error: err.message });
+      });
+    }
   }
 
   logger.info('Model registry sync complete', stats);
