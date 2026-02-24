@@ -32,6 +32,11 @@ const CapabilitiesSchema = new mongoose.Schema({
     type: Number,
     default: null
   },
+  avgTokensPerSec: {
+    type: Number,
+    default: null,
+    min: 0
+  },
   targetUseCase: {
     type: String,
     default: ''
@@ -131,6 +136,23 @@ const ExecutionOverridesSchema = new mongoose.Schema({
   num_ctx: { type: Number, default: null, min: 512, max: 131072 },
   temperature: { type: Number, default: null, min: 0, max: 2 },
   _overriddenAt: { type: Date, default: null }
+}, { _id: false });
+
+const HostPerformanceStepSchema = new mongoose.Schema({
+  hostUrl: { type: String, required: true },
+  hostId: { type: String },
+  tokensPerSec: { type: Number, required: true },
+  promptEvalTokensPerSec: { type: Number, default: null },
+  latencyMs: { type: Number, required: true },
+  timeToFirstTokenMs: { type: Number, default: null },
+  promptTokens: { type: Number, default: null },
+  completionTokens: { type: Number, default: null },
+  vramUsedMiB: { type: Number, default: null },
+  vramTotalMiB: { type: Number, default: null },
+  numCtx: { type: Number, default: null },
+  testedAt: { type: Date, default: Date.now },
+  status: { type: String, enum: ['pass', 'fail', 'timeout', 'error'], default: 'pass' },
+  error: { type: String, default: null }
 }, { _id: false });
 
 const ContextTestStepSchema = new mongoose.Schema({
@@ -255,6 +277,12 @@ const ModelRegistrySchema = new mongoose.Schema({
   contextTest: {
     type: ContextTestSchema,
     default: () => ({})
+  },
+
+  // Per-host performance test snapshots (capped at 50, pruned on write)
+  hostPerformance: {
+    type: [HostPerformanceStepSchema],
+    default: []
   },
 
   isActive: {
@@ -482,6 +510,44 @@ ModelRegistrySchema.statics.getCategoryStats = async function() {
   });
 
   return stats;
+};
+
+/**
+ * Persist a host performance snapshot and recalculate capabilities.
+ * Keeps max 50 snapshots (latest per host, FIFO for old entries).
+ * Recalculates: avgTokensPerSec, avgLatencyMs, p95LatencyMs from stored snapshots.
+ *
+ * @param {string} modelName
+ * @param {object} snapshot - HostPerformanceStepSchema-compatible object
+ * @returns {Promise<Model>} Updated model
+ */
+ModelRegistrySchema.statics.updateHostPerformance = async function(modelName, snapshot) {
+  const model = await this.findOne({ modelName });
+  if (!model) return null;
+
+  model.hostPerformance.push(snapshot);
+
+  // Prune: keep max 50, prefer latest
+  if (model.hostPerformance.length > 50) {
+    model.hostPerformance.sort((a, b) => (b.testedAt || 0) - (a.testedAt || 0));
+    model.hostPerformance = model.hostPerformance.slice(0, 50);
+  }
+
+  // Recalculate capabilities from passing snapshots
+  const passing = model.hostPerformance.filter(s => s.status === 'pass');
+  if (passing.length > 0) {
+    const avgTps = passing.reduce((sum, s) => sum + s.tokensPerSec, 0) / passing.length;
+    const avgLat = passing.reduce((sum, s) => sum + s.latencyMs, 0) / passing.length;
+    const sortedLat = passing.map(s => s.latencyMs).sort((a, b) => a - b);
+    const p95Idx = Math.min(Math.ceil(sortedLat.length * 0.95) - 1, sortedLat.length - 1);
+
+    model.capabilities.avgTokensPerSec = Number(avgTps.toFixed(2));
+    model.capabilities.avgLatencyMs = Math.round(avgLat);
+    model.capabilities.p95LatencyMs = Math.round(sortedLat[p95Idx]);
+  }
+
+  model.lastUpdated = new Date();
+  return model.save();
 };
 
 /**
