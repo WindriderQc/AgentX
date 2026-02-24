@@ -109,6 +109,7 @@ document.addEventListener('DOMContentLoaded', () => {
   renderModule = initRendering({ $, AGENT_CONFIG, AGENT_SELECTS, escapeHtml, formatDuration });
   populatePresetSelect();
   restoreRolesAndPrompts();
+  loadDefaultPrompts();
   restoreWebSearchToggles();
   notifyModule.restoreNotifyConfig();
 
@@ -186,6 +187,22 @@ const AGENT_SELECTS = {
   'visionary':       { host: 'rtHostVis',   model: 'rtModelVis',   role: 'rtRoleVis',   prompt: 'rtPromptVis',   webSearch: 'rtWebSearchVis' },
   'synthesizer':     { host: 'rtHostSynth', model: 'rtModelSynth', role: 'rtRoleSynth', prompt: 'rtPromptSynth' }
 };
+
+async function loadDefaultPrompts() {
+  try {
+    const res = await apiClient.get('roundtable/defaults');
+    const prompts = res.data;
+    if (!prompts) return;
+    for (const [agentId, ids] of Object.entries(AGENT_SELECTS)) {
+      const textarea = $[ids.prompt];
+      if (textarea && prompts[agentId]) {
+        textarea.placeholder = prompts[agentId];
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to load default prompts:', err);
+  }
+}
 
 async function loadAvailableModels() {
   try {

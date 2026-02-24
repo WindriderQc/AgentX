@@ -4,6 +4,7 @@
  *
  * POST /           — Create + fire-and-forget execution
  * GET  /           — List roundtables (paginated)
+ * GET  /defaults   — Default panel system prompts
  * GET  /:id        — Get full roundtable document
  * GET  /:id/stream — SSE stream for live token updates
  * GET  /:id/transcript — Markdown transcript
@@ -82,6 +83,19 @@ router.get('/', optionalAuth, optionalWorkspaceContext, async (req, res) => {
     logger.error('GET /api/roundtable failed', { error: err.message });
     res.status(500).json({ status: 'error', message: err.message });
   }
+});
+
+/**
+ * GET /defaults — Return default panel system prompts for UI preview
+ */
+router.get('/defaults', (req, res) => {
+  const { DEFAULT_PANEL, DEFAULT_SYNTHESIZER } = require('../src/services/roundtable/defaults');
+  const prompts = {};
+  for (const agent of DEFAULT_PANEL) {
+    prompts[agent.agentId] = agent.systemPrompt;
+  }
+  prompts['synthesizer'] = DEFAULT_SYNTHESIZER.systemPrompt;
+  res.json({ status: 'ok', data: prompts });
 });
 
 /**
