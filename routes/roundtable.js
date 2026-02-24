@@ -5,6 +5,7 @@
  * POST /           — Create + fire-and-forget execution
  * GET  /           — List roundtables (paginated)
  * GET  /:id        — Get full roundtable document
+ * GET  /:id/stream — SSE stream for live token updates
  * GET  /:id/transcript — Markdown transcript
  */
 
@@ -29,7 +30,7 @@ try {
  */
 router.post('/', optionalAuth, optionalWorkspaceContext, async (req, res) => {
   try {
-    const { question, rounds, panel, synthesizer, tags, source } = req.body;
+    const { question, rounds, panel, synthesizer, tags, source, notify, enableScoring } = req.body;
 
     if (!question || typeof question !== 'string' || question.trim().length === 0) {
       return res.status(400).json({ status: 'error', message: 'question is required' });
@@ -47,7 +48,9 @@ router.post('/', optionalAuth, optionalWorkspaceContext, async (req, res) => {
       workspaceId: req.workspaceId || null,
       userId: req.session?.userId || null,
       source: source || 'api',
-      tags: tags || []
+      tags: tags || [],
+      notify: notify || null,
+      enableScoring: enableScoring !== false
     });
 
     res.status(201).json({
@@ -92,6 +95,78 @@ router.get('/:id', async (req, res) => {
   } catch (err) {
     logger.error('GET /api/roundtable/:id failed', { error: err.message });
     res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
+/**
+ * GET /:id/stream — SSE stream for live token updates
+ * Events: turn-start, turn-chunk, turn-done, synthesis-start, synthesis-chunk, synthesis-done, done
+ */
+router.get('/:id/stream', async (req, res) => {
+  try {
+    const doc = await roundtableService.getRoundtable(req.params.id);
+    if (!doc) return res.status(404).json({ status: 'error', message: 'Not found' });
+
+    // If already completed, send final event immediately
+    if (['completed', 'failed', 'timeout'].includes(doc.status)) {
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no'
+      });
+      res.write(`event: done\ndata: ${JSON.stringify({ status: doc.status, totalDurationMs: doc.totalDurationMs })}\n\n`);
+      res.end();
+      return;
+    }
+
+    const emitter = roundtableService.getEmitter(req.params.id);
+    if (!emitter) {
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no'
+      });
+      res.write(`event: done\ndata: ${JSON.stringify({ status: 'no-stream', message: 'No active stream for this roundtable' })}\n\n`);
+      res.end();
+      return;
+    }
+
+    // Set up SSE headers
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no'
+    });
+
+    // Heartbeat to keep connection alive
+    const heartbeat = setInterval(() => {
+      res.write(': heartbeat\n\n');
+    }, 15000);
+
+    const onChunk = (data) => {
+      try {
+        res.write(`event: ${data.type}\ndata: ${JSON.stringify(data)}\n\n`);
+        if (data.type === 'done') cleanup();
+      } catch { cleanup(); }
+    };
+
+    const cleanup = () => {
+      clearInterval(heartbeat);
+      emitter.removeListener('chunk', onChunk);
+      if (!res.writableEnded) res.end();
+    };
+
+    emitter.on('chunk', onChunk);
+    req.on('close', cleanup);
+
+  } catch (err) {
+    logger.error('GET /api/roundtable/:id/stream failed', { error: err.message });
+    if (!res.headersSent) {
+      res.status(500).json({ status: 'error', message: err.message });
+    }
   }
 });
 

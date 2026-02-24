@@ -81,6 +81,9 @@ const RoundtableSchema = new mongoose.Schema({
   totalDurationMs: { type: Number, default: null },
   error: { type: String, default: null },
 
+  // Quality scoring (LLM-as-Judge)
+  qualityScores: { type: mongoose.Schema.Types.Mixed, default: null },
+
   // Context
   workspaceId: { type: String, default: null },
   userId: { type: String, default: null },

@@ -9,12 +9,16 @@
  */
 
 const fetch = require('node-fetch');
+const { EventEmitter } = require('events');
 const logger = require('../../../config/logger');
 const Roundtable = require('../../../models/Roundtable');
-const { buildOllamaPayload, extractResponse } = require('../../helpers/ollamaResponseHandler');
+const { buildOllamaPayload, extractResponse, isThinkingModel } = require('../../helpers/ollamaResponseHandler');
 const { getTargetForModel } = require('../modelRouter');
 const { getFetchOptions } = require('../../helpers/httpAgent');
 const { DEFAULT_PANEL, DEFAULT_SYNTHESIZER, REBUTTAL_PREAMBLE, DEFAULT_TIMEOUT_MS, DEFAULT_TOTAL_TIMEOUT_MS } = require('./defaults');
+
+// Shared emitter registry: roundtableId → EventEmitter
+const emitterRegistry = new Map();
 
 /**
  * Resolve host name from target URL (for audit trail)
@@ -114,15 +118,141 @@ async function callAgent(agent, messages, timeoutMs = DEFAULT_TIMEOUT_MS) {
 }
 
 /**
+ * Call a single agent with streaming (pipes chunks to EventEmitter)
+ * Falls back to non-streaming callAgent if no emitter provided.
+ */
+async function callAgentStreaming(agent, messages, timeoutMs, emitter, eventPrefix) {
+  if (!emitter) return callAgent(agent, messages, timeoutMs);
+
+  const startedAt = new Date();
+  const target = getTargetForModel(agent.model);
+  const hostName = resolveHostName(target);
+
+  if (!target) {
+    return {
+      response: '', thinking: null,
+      stats: { tokensPerSecond: null, latencyMs: null },
+      error: `No host found for model ${agent.model}`,
+      target: null, hostName: 'unknown', startedAt, completedAt: new Date()
+    };
+  }
+
+  const url = `${target}/api/chat`;
+  const payload = buildOllamaPayload({
+    model: agent.model,
+    messages,
+    streamEnabled: true,
+    options: { num_predict: -1 }
+  });
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const fetchOpts = getFetchOptions(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+
+    const res = await fetch(url, fetchOpts);
+    clearTimeout(timer);
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`Ollama ${res.status}: ${body.substring(0, 200)}`);
+    }
+
+    // Process NDJSON stream
+    let fullContent = '';
+    let thinkingContent = '';
+    let inThinking = false;
+    let finalData = null;
+
+    const reader = res.body;
+    let buffer = '';
+
+    await new Promise((resolve, reject) => {
+      reader.on('data', (chunk) => {
+        buffer += chunk.toString();
+        const lines = buffer.split('\n');
+        buffer = lines.pop(); // Keep incomplete line in buffer
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const obj = JSON.parse(line);
+
+            if (obj.done) {
+              finalData = obj;
+              continue;
+            }
+
+            const token = obj.message?.content || '';
+            if (!token) continue;
+
+            // Handle thinking model tokens
+            if (isThinkingModel(agent.model)) {
+              if (token.includes('<think>')) { inThinking = true; continue; }
+              if (token.includes('</think>')) { inThinking = false; continue; }
+              if (inThinking) { thinkingContent += token; continue; }
+            }
+
+            fullContent += token;
+            emitter.emit('chunk', { type: `${eventPrefix}-chunk`, agentId: agent.agentId, round: agent._round, content: token });
+          } catch { /* skip malformed lines */ }
+        }
+      });
+
+      reader.on('end', resolve);
+      reader.on('error', reject);
+    });
+
+    const completedAt = new Date();
+    const latencyMs = completedAt - startedAt;
+
+    // Extract stats from final done message
+    const evalDuration = finalData?.eval_duration || 0;
+    const evalCount = finalData?.eval_count || 0;
+    const promptTokens = finalData?.prompt_eval_count || null;
+    const tokensPerSecond = evalDuration > 0 ? (evalCount / (evalDuration / 1e9)) : null;
+
+    return {
+      response: fullContent,
+      thinking: thinkingContent || null,
+      stats: { tokensPerSecond, latencyMs, promptTokens, completionTokens: evalCount || null },
+      error: null, target, hostName, startedAt, completedAt
+    };
+  } catch (err) {
+    clearTimeout(timer);
+    const completedAt = new Date();
+    const isTimeout = err.name === 'AbortError';
+    const errorMsg = isTimeout ? `Timeout after ${timeoutMs}ms` : err.message;
+
+    logger.error('Roundtable streaming callAgent failed', {
+      agentId: agent.agentId, model: agent.model, target, error: errorMsg
+    });
+
+    return {
+      response: '', thinking: null,
+      stats: { tokensPerSecond: null, latencyMs: completedAt - startedAt },
+      error: errorMsg, target, hostName, startedAt, completedAt
+    };
+  }
+}
+
+/**
  * Execute one round of the roundtable (all agents sequentially)
  * @param {Object} roundtableDoc - Mongoose document
  * @param {number} roundNum - Round number (1-based)
  * @param {Array} agents - Panel agent configs
  * @param {Function} buildMessages - (agent) => messages array
  * @param {number} timeoutMs - Per-agent timeout
+ * @param {EventEmitter} [emitter] - Optional emitter for streaming
  * @returns {Object} results map { agentId: { response, ... } }
  */
-async function executeRound(roundtableDoc, roundNum, agents, buildMessages, timeoutMs) {
+async function executeRound(roundtableDoc, roundNum, agents, buildMessages, timeoutMs, emitter) {
   const results = {};
 
   // Sequential iteration — preserves GPU-aware ordering
@@ -136,7 +266,17 @@ async function executeRound(roundtableDoc, roundNum, agents, buildMessages, time
       model: agent.model
     });
 
-    const result = await callAgent(agent, messages, timeoutMs);
+    if (emitter) {
+      emitter.emit('chunk', { type: 'turn-start', agentId: agent.agentId, round: roundNum, role: agent.role, model: agent.model });
+    }
+
+    // Tag agent with round number for streaming context
+    const agentWithRound = { ...agent, _round: roundNum };
+    const result = await callAgentStreaming(agentWithRound, messages, timeoutMs, emitter, 'turn');
+
+    if (emitter) {
+      emitter.emit('chunk', { type: 'turn-done', agentId: agent.agentId, round: roundNum, stats: result.stats, error: result.error });
+    }
 
     // Persist turn immediately (crash recovery)
     const turn = {
@@ -185,8 +325,9 @@ async function executeRound(roundtableDoc, roundNum, agents, buildMessages, time
 /**
  * Run the full roundtable discussion
  * @param {string} roundtableId - Mongoose document ID
+ * @param {EventEmitter} [emitter] - Optional emitter for streaming events
  */
-async function runRoundtable(roundtableId) {
+async function runRoundtable(roundtableId, emitter) {
   const startTime = Date.now();
   let doc = await Roundtable.findById(roundtableId);
 
@@ -199,7 +340,7 @@ async function runRoundtable(roundtableId) {
     doc.status = 'running';
     await doc.save();
 
-    const agents = doc.panelConfig;
+    const agents = doc.panelConfig.map(a => a.toObject());
     const timeoutMs = DEFAULT_TIMEOUT_MS;
     const totalTimeoutMs = DEFAULT_TOTAL_TIMEOUT_MS;
 
@@ -216,7 +357,7 @@ async function runRoundtable(roundtableId) {
     const r1Results = await executeRound(doc, 1, agents, (agent) => [
       { role: 'system', content: agent.systemPrompt },
       { role: 'user', content: doc.question }
-    ], timeoutMs);
+    ], timeoutMs, emitter);
 
     // --- Round 2+: Rebuttals (if configured) ---
     if (doc.rounds >= 2) {
@@ -240,7 +381,7 @@ async function runRoundtable(roundtableId) {
             { role: 'assistant', content: r1Results[agent.agentId]?.response || '' },
             { role: 'user', content: REBUTTAL_PREAMBLE + otherResponses + '\n\n---\nNow provide your rebuttal.' }
           ];
-        }, timeoutMs);
+        }, timeoutMs, emitter);
 
         // Reload for next round
         doc = await Roundtable.findById(roundtableId);
@@ -257,17 +398,22 @@ async function runRoundtable(roundtableId) {
       .map(t => `[Round ${t.round}] ${t.role} (${t.model}):\n${t.response || t.error || 'No response'}`)
       .join('\n\n---\n\n');
 
-    const synthesizer = doc.synthesizerConfig;
+    const synthesizer = doc.synthesizerConfig.toObject ? doc.synthesizerConfig.toObject() : doc.synthesizerConfig;
     const synthMessages = [
       { role: 'system', content: synthesizer.systemPrompt },
       { role: 'user', content: `Original question: ${doc.question}\n\n---\n\nPanel Discussion:\n\n${transcriptForSynthesis}\n\n---\n\nNow synthesize a final verdict.` }
     ];
 
-    const synthResult = await callAgent(
-      { agentId: 'synthesizer', role: 'Synthesizer', model: synthesizer.model, systemPrompt: synthesizer.systemPrompt },
-      synthMessages,
-      timeoutMs
-    );
+    if (emitter) {
+      emitter.emit('chunk', { type: 'synthesis-start', model: synthesizer.model });
+    }
+
+    const synthAgent = { agentId: 'synthesizer', role: 'Synthesizer', model: synthesizer.model, systemPrompt: synthesizer.systemPrompt, _round: 0 };
+    const synthResult = await callAgentStreaming(synthAgent, synthMessages, timeoutMs, emitter, 'synthesis');
+
+    if (emitter) {
+      emitter.emit('chunk', { type: 'synthesis-done', stats: synthResult.stats, error: synthResult.error });
+    }
 
     clearTimeout(totalTimer);
 
@@ -300,6 +446,7 @@ async function runRoundtable(roundtableId) {
     );
 
     logger.info('Roundtable completed', { roundtableId, totalDurationMs, turns: allTurns.length });
+    if (emitter) emitter.emit('chunk', { type: 'done', status: 'completed', totalDurationMs });
 
   } catch (err) {
     logger.error('Roundtable failed', { roundtableId, error: err.message, stack: err.stack });
@@ -312,6 +459,10 @@ async function runRoundtable(roundtableId) {
         completedAt: new Date()
       }}
     ).catch(() => {});
+    if (emitter) emitter.emit('chunk', { type: 'done', status: 'failed', error: err.message });
+  } finally {
+    // Clean up emitter from registry
+    emitterRegistry.delete(roundtableId);
   }
 }
 
@@ -396,9 +547,11 @@ async function listRoundtables({ workspaceId, limit = 20, skip = 0 } = {}) {
 
 module.exports = {
   callAgent,
+  callAgentStreaming,
   executeRound,
   runRoundtable,
   createRoundtable,
   getRoundtable,
-  listRoundtables
+  listRoundtables,
+  emitterRegistry
 };

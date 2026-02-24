@@ -7,6 +7,9 @@
 
 import { apiClient } from '../utils/api-client.js';
 import { PollingController } from '../utils/polling-controller.js';
+import { initCompareView } from './compareView.js';
+import { initQualityScores } from './qualityScores.js';
+import { initNotifications } from './notifications.js';
 
 // ── Constants ────────────────────────────────────────────────────────
 
@@ -36,6 +39,38 @@ const DEFAULT_MODELS = {
 };
 
 const PANEL_CONFIG_STORAGE_KEY = 'roundtablePanelConfig';
+const PRESETS_STORAGE_KEY = 'roundtablePresets';
+
+// Built-in presets (not editable, not deletable)
+const BUILTIN_PRESETS = {
+  default: {
+    label: 'Default',
+    agents: {
+      'devils-advocate': { role: "Devil's Advocate", systemPrompt: '' },
+      'pragmatist': { role: 'Pragmatist', systemPrompt: '' },
+      'visionary': { role: 'Visionary', systemPrompt: '' },
+      'synthesizer': { role: 'Synthesizer', systemPrompt: '' }
+    }
+  },
+  technical: {
+    label: 'Technical Review',
+    agents: {
+      'devils-advocate': { role: 'Security Auditor', systemPrompt: 'You are a Security Auditor in a roundtable discussion. Your job is to identify vulnerabilities, attack vectors, and security risks.\n\nRules:\n- Focus on OWASP top 10, supply chain risks, and data exposure\n- Assess both technical and operational security\n- Suggest concrete mitigations\n- Keep your response under 400 words' },
+      'pragmatist': { role: 'Senior Engineer', systemPrompt: 'You are a Senior Engineer in a roundtable discussion. Your job is to evaluate technical feasibility, maintainability, and engineering trade-offs.\n\nRules:\n- Focus on complexity, scalability, and tech debt\n- Consider team capacity and existing infrastructure\n- Suggest concrete implementation approaches\n- Keep your response under 400 words' },
+      'visionary': { role: 'Architect', systemPrompt: 'You are a Software Architect in a roundtable discussion. Your job is to evaluate system design, patterns, and long-term technical strategy.\n\nRules:\n- Consider extensibility, modularity, and integration points\n- Identify architectural anti-patterns\n- Propose clean, composable designs\n- Keep your response under 400 words' },
+      'synthesizer': { role: 'Synthesizer', systemPrompt: '' }
+    }
+  },
+  business: {
+    label: 'Business Analysis',
+    agents: {
+      'devils-advocate': { role: 'Risk Analyst', systemPrompt: 'You are a Risk Analyst in a roundtable discussion. Your job is to identify business risks, market threats, and potential failures.\n\nRules:\n- Assess financial, operational, and reputational risks\n- Consider competitive dynamics and market timing\n- Quantify impact where possible\n- Keep your response under 400 words' },
+      'pragmatist': { role: 'Operations Lead', systemPrompt: 'You are an Operations Lead in a roundtable discussion. Your job is to evaluate execution feasibility, resource requirements, and operational constraints.\n\nRules:\n- Focus on timelines, budgets, and team capacity\n- Consider dependencies and bottlenecks\n- Suggest phased rollout approaches\n- Keep your response under 400 words' },
+      'visionary': { role: 'Strategist', systemPrompt: 'You are a Business Strategist in a roundtable discussion. Your job is to see market opportunities, competitive advantages, and long-term value.\n\nRules:\n- Consider market trends and positioning\n- Identify strategic leverage points\n- Think about network effects and moats\n- Keep your response under 400 words' },
+      'synthesizer': { role: 'Synthesizer', systemPrompt: '' }
+    }
+  }
+};
 
 // ── State ────────────────────────────────────────────────────────────
 
@@ -47,6 +82,14 @@ let historyTotal = 0;
 let isStarting = false;
 let poller = null;
 let availableModels = [];
+let eventSource = null;
+let streamingBuffers = {}; // agentId-round → accumulated content
+let notificationSent = false; // Guard against repeated browser notifications
+let qualityPollingStarted = false; // Guard against restarting quality poll
+// Feature modules (initialized after DOM ready)
+let compareView = null;
+let qualityModule = null;
+let notifyModule = null;
 
 // ── DOM Refs (populated in init) ─────────────────────────────────────
 
@@ -58,6 +101,12 @@ document.addEventListener('DOMContentLoaded', () => {
   cacheDOM();
   wireEvents();
   loadAvailableModels();
+  compareView = initCompareView({ $, AGENT_CONFIG, escapeHtml });
+  qualityModule = initQualityScores({ $ });
+  notifyModule = initNotifications({ $ });
+  populatePresetSelect();
+  restoreRolesAndPrompts();
+  notifyModule.restoreNotifyConfig();
 
   // Deep link: ?id=abc123
   const params = new URLSearchParams(window.location.search);
@@ -74,9 +123,13 @@ function cacheDOM() {
     'rtQuestionInput', 'rtRoundsSelect', 'rtStartBtn', 'rtInputStatus',
     'rtHostDA', 'rtHostPrag', 'rtHostVis', 'rtHostSynth',
     'rtModelDA', 'rtModelPrag', 'rtModelVis', 'rtModelSynth',
+    'rtRoleDA', 'rtRolePrag', 'rtRoleVis', 'rtRoleSynth',
+    'rtPromptDA', 'rtPromptPrag', 'rtPromptVis', 'rtPromptSynth',
+    'rtPresetSelect', 'rtSavePreset', 'rtDeletePreset',
     'rtStatsRow', 'rtStatDuration', 'rtStatTurns', 'rtStatAvgTps', 'rtStatStatus',
     'rtDiscussionPanel', 'rtDiscussionTitle', 'rtDiscussionMeta',
-    'rtTurnsContainer', 'rtSynthesisContainer', 'rtTranscriptActions',
+    'rtNotifyBrowser', 'rtNotifySlack', 'rtNotifyWebhook',
+    'rtViewToggle', 'rtTurnsContainer', 'rtCompareContainer', 'rtSynthesisContainer', 'rtTranscriptActions',
     'rtDownloadTranscript', 'rtNewDiscussion',
     'rtHistoryList', 'rtPagination', 'rtRefreshHistory'
   ];
@@ -90,6 +143,21 @@ function wireEvents() {
   $.rtDownloadTranscript.addEventListener('click', handleDownloadTranscript);
   $.rtNewDiscussion.addEventListener('click', handleNewDiscussion);
   $.rtRefreshHistory.addEventListener('click', () => loadHistory());
+
+  // Preset events
+  $.rtPresetSelect.addEventListener('change', handlePresetChange);
+  $.rtSavePreset.addEventListener('click', handleSavePreset);
+  $.rtDeletePreset.addEventListener('click', handleDeletePreset);
+
+  // View toggle
+  for (const btn of document.querySelectorAll('.rt-view-btn')) {
+    btn.addEventListener('click', () => compareView?.handleViewToggle(btn.dataset.view));
+  }
+
+  // Auto-save role/prompt changes
+  for (const el of document.querySelectorAll('.rt-role-input, .rt-prompt-input')) {
+    el.addEventListener('change', savePanelConfig);
+  }
 
   // Enter to start (only when not shift+enter)
   $.rtQuestionInput.addEventListener('keydown', (e) => {
@@ -105,10 +173,10 @@ function wireEvents() {
 let hostsData = []; // [{ id, name, url, available, models: [] }]
 
 const AGENT_SELECTS = {
-  'devils-advocate': { host: 'rtHostDA',    model: 'rtModelDA' },
-  'pragmatist':      { host: 'rtHostPrag',  model: 'rtModelPrag' },
-  'visionary':       { host: 'rtHostVis',   model: 'rtModelVis' },
-  'synthesizer':     { host: 'rtHostSynth', model: 'rtModelSynth' }
+  'devils-advocate': { host: 'rtHostDA',    model: 'rtModelDA',    role: 'rtRoleDA',    prompt: 'rtPromptDA' },
+  'pragmatist':      { host: 'rtHostPrag',  model: 'rtModelPrag',  role: 'rtRolePrag',  prompt: 'rtPromptPrag' },
+  'visionary':       { host: 'rtHostVis',   model: 'rtModelVis',   role: 'rtRoleVis',   prompt: 'rtPromptVis' },
+  'synthesizer':     { host: 'rtHostSynth', model: 'rtModelSynth', role: 'rtRoleSynth', prompt: 'rtPromptSynth' }
 };
 
 async function loadAvailableModels() {
@@ -201,9 +269,11 @@ function getSelectedPanelConfig() {
 function savePanelConfig() {
   try {
     const config = getSelectedPanelConfig();
-    // Also store host selections
+    // Also store host, role, prompt selections
     for (const [agentId, ids] of Object.entries(AGENT_SELECTS)) {
       config[agentId + '_host'] = $[ids.host]?.value || '';
+      config[agentId + '_role'] = $[ids.role]?.value || '';
+      config[agentId + '_prompt'] = $[ids.prompt]?.value || '';
     }
     localStorage.setItem(PANEL_CONFIG_STORAGE_KEY, JSON.stringify(config));
   } catch { /* ignore */ }
@@ -214,6 +284,123 @@ function loadStoredPanelConfig() {
     const raw = localStorage.getItem(PANEL_CONFIG_STORAGE_KEY);
     return raw ? JSON.parse(raw) : {};
   } catch { return {}; }
+}
+
+// ── Presets ───────────────────────────────────────────────────────────
+
+function getCustomPresets() {
+  try {
+    const raw = localStorage.getItem(PRESETS_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch { return {}; }
+}
+
+function saveCustomPresets(presets) {
+  localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(presets));
+}
+
+function populatePresetSelect() {
+  const custom = getCustomPresets();
+  const sel = $.rtPresetSelect;
+  sel.innerHTML = '';
+  // Built-in presets
+  for (const [key, preset] of Object.entries(BUILTIN_PRESETS)) {
+    sel.innerHTML += `<option value="${key}">${escapeHtml(preset.label)}</option>`;
+  }
+  // Custom presets
+  for (const [key, preset] of Object.entries(custom)) {
+    sel.innerHTML += `<option value="custom:${escapeHtml(key)}">${escapeHtml(preset.label)}</option>`;
+  }
+  // Restore last selected
+  const stored = loadStoredPanelConfig();
+  if (stored._preset) sel.value = stored._preset;
+  updateDeleteBtnVisibility();
+}
+
+function handlePresetChange() {
+  const key = $.rtPresetSelect.value;
+  let preset;
+
+  if (key.startsWith('custom:')) {
+    const customKey = key.slice(7);
+    preset = getCustomPresets()[customKey];
+  } else {
+    preset = BUILTIN_PRESETS[key];
+  }
+
+  if (!preset) return;
+
+  // Apply preset to role names and prompts
+  for (const [agentId, ids] of Object.entries(AGENT_SELECTS)) {
+    const agentPreset = preset.agents?.[agentId];
+    if (agentPreset) {
+      if ($[ids.role]) $[ids.role].value = agentPreset.role || '';
+      if ($[ids.prompt]) $[ids.prompt].value = agentPreset.systemPrompt || '';
+    }
+  }
+
+  savePanelConfig();
+  // Persist selected preset key
+  try {
+    const config = JSON.parse(localStorage.getItem(PANEL_CONFIG_STORAGE_KEY) || '{}');
+    config._preset = key;
+    localStorage.setItem(PANEL_CONFIG_STORAGE_KEY, JSON.stringify(config));
+  } catch { /* ignore */ }
+
+  updateDeleteBtnVisibility();
+}
+
+function handleSavePreset() {
+  const name = prompt('Preset name:');
+  if (!name || !name.trim()) return;
+
+  const key = name.trim().toLowerCase().replace(/[^a-z0-9-_]/g, '-');
+  const presets = getCustomPresets();
+  presets[key] = {
+    label: name.trim(),
+    agents: {}
+  };
+
+  for (const [agentId, ids] of Object.entries(AGENT_SELECTS)) {
+    presets[key].agents[agentId] = {
+      role: $[ids.role]?.value || '',
+      systemPrompt: $[ids.prompt]?.value || ''
+    };
+  }
+
+  saveCustomPresets(presets);
+  populatePresetSelect();
+  $.rtPresetSelect.value = `custom:${key}`;
+  updateDeleteBtnVisibility();
+}
+
+function handleDeletePreset() {
+  const key = $.rtPresetSelect.value;
+  if (!key.startsWith('custom:')) return;
+
+  const customKey = key.slice(7);
+  const presets = getCustomPresets();
+  delete presets[customKey];
+  saveCustomPresets(presets);
+  populatePresetSelect();
+  $.rtPresetSelect.value = 'default';
+  handlePresetChange();
+}
+
+function updateDeleteBtnVisibility() {
+  $.rtDeletePreset.style.display = $.rtPresetSelect.value.startsWith('custom:') ? '' : 'none';
+}
+
+function restoreRolesAndPrompts() {
+  const stored = loadStoredPanelConfig();
+  for (const [agentId, ids] of Object.entries(AGENT_SELECTS)) {
+    if ($[ids.role] && stored[agentId + '_role']) {
+      $[ids.role].value = stored[agentId + '_role'];
+    }
+    if ($[ids.prompt] && stored[agentId + '_prompt']) {
+      $[ids.prompt].value = stored[agentId + '_prompt'];
+    }
+  }
 }
 
 // ── Start Discussion ─────────────────────────────────────────────────
@@ -241,26 +428,43 @@ async function handleStart() {
 
     const body = { question, rounds, source: 'dashboard' };
 
-    // Only send panel/synthesizer overrides if user changed models from defaults
-    const hasCustomModels = Object.entries(models).some(([k, v]) => v !== DEFAULT_MODELS[k]);
-    if (hasCustomModels) {
-      body.panel = [
-        { agentId: 'devils-advocate', role: "Devil's Advocate", model: models['devils-advocate'] },
-        { agentId: 'pragmatist', role: 'Pragmatist', model: models['pragmatist'] },
-        { agentId: 'visionary', role: 'Visionary', model: models['visionary'] }
-      ];
-      body.synthesizer = { model: models['synthesizer'] };
+    // Gather custom roles and prompts
+    const roles = {};
+    const prompts = {};
+    for (const [agentId, ids] of Object.entries(AGENT_SELECTS)) {
+      roles[agentId] = $[ids.role]?.value?.trim() || '';
+      prompts[agentId] = $[ids.prompt]?.value?.trim() || '';
     }
+
+    // Always send panel config — may have custom roles/prompts even with default models
+    body.panel = [
+      { agentId: 'devils-advocate', role: roles['devils-advocate'] || "Devil's Advocate", model: models['devils-advocate'], ...(prompts['devils-advocate'] ? { systemPrompt: prompts['devils-advocate'] } : {}) },
+      { agentId: 'pragmatist', role: roles['pragmatist'] || 'Pragmatist', model: models['pragmatist'], ...(prompts['pragmatist'] ? { systemPrompt: prompts['pragmatist'] } : {}) },
+      { agentId: 'visionary', role: roles['visionary'] || 'Visionary', model: models['visionary'], ...(prompts['visionary'] ? { systemPrompt: prompts['visionary'] } : {}) }
+    ];
+    body.synthesizer = {
+      model: models['synthesizer'],
+      ...(prompts['synthesizer'] ? { systemPrompt: prompts['synthesizer'] } : {})
+    };
+
+    // Add webhook notification config
+    const notifyPayload = notifyModule?.getNotifyPayload();
+    if (notifyPayload) body.notify = notifyPayload;
+
+    // Request browser notification permission on first use
+    notifyModule?.requestBrowserNotificationPermission();
 
     const result = await apiClient.post('roundtable', body);
 
     activeRoundtableId = result._id;
     previousTurnCount = 0;
     activeRoundtable = null;
+    notificationSent = false;
+    qualityPollingStarted = false;
 
     setInputStatus('');
     renderDiscussionStart({ _id: result._id, question, rounds, status: 'pending' });
-    startPolling();
+    startStreaming(); // SSE first, falls back to polling on error
 
     // Update URL without reload
     const url = new URL(window.location);
@@ -280,7 +484,126 @@ function setInputStatus(msg, isError = false) {
   $.rtInputStatus.className = 'rt-input-status' + (isError ? ' error' : '');
 }
 
-// ── Polling ──────────────────────────────────────────────────────────
+// ── Streaming (SSE) + Polling Fallback ───────────────────────────────
+
+function startStreaming() {
+  stopStreaming();
+  if (!activeRoundtableId) return;
+
+  streamingBuffers = {};
+  eventSource = new EventSource(`/api/roundtable/${activeRoundtableId}/stream`);
+
+  eventSource.addEventListener('turn-start', (e) => {
+    const data = JSON.parse(e.data);
+    const key = `${data.agentId}-${data.round}`;
+    streamingBuffers[key] = '';
+
+    // Ensure round divider + waiting cards exist
+    const maxRendered = getMaxRenderedRound();
+    if (data.round > maxRendered) {
+      renderRoundDivider(data.round);
+      for (const agentId of Object.keys(AGENT_CONFIG)) {
+        renderWaitingCard(agentId, data.round);
+      }
+    }
+
+    // Mark the card as thinking with streaming content area
+    const waitingCard = $.rtTurnsContainer.querySelector(
+      `.rt-turn-card[data-agent="${data.agentId}"][data-round="${data.round}"]`
+    );
+    if (waitingCard) {
+      waitingCard.classList.remove('waiting');
+      waitingCard.classList.add('thinking', 'streaming');
+      const cfg = AGENT_CONFIG[data.agentId] || { icon: 'fa-robot', label: data.agentId };
+      const displayLabel = data.role || cfg.label;
+      waitingCard.innerHTML = `
+        <div class="rt-turn-header">
+          <div class="rt-agent-icon ${data.agentId}"><i class="fas ${cfg.icon}"></i></div>
+          <div>
+            <div class="rt-turn-agent">${escapeHtml(displayLabel)}</div>
+            ${data.model ? `<div class="rt-turn-model">${escapeHtml(data.model)}</div>` : ''}
+          </div>
+          <div class="rt-turn-stats"><span class="rt-streaming-indicator"><i class="fas fa-circle" style="color:#4ade80;font-size:8px"></i> Streaming</span></div>
+        </div>
+        <div class="rt-turn-body rt-stream-body"></div>
+      `;
+    }
+  });
+
+  eventSource.addEventListener('turn-chunk', (e) => {
+    const data = JSON.parse(e.data);
+    const key = `${data.agentId}-${data.round}`;
+    streamingBuffers[key] = (streamingBuffers[key] || '') + data.content;
+
+    const card = $.rtTurnsContainer.querySelector(
+      `.rt-turn-card.streaming[data-agent="${data.agentId}"][data-round="${data.round}"]`
+    );
+    if (card) {
+      const body = card.querySelector('.rt-stream-body');
+      if (body) body.textContent = streamingBuffers[key];
+    }
+  });
+
+  eventSource.addEventListener('turn-done', (e) => {
+    // Don't increment previousTurnCount here — let pollRoundtable handle it
+    // so renderTurnCard replaces the streaming card with the final card
+    pollRoundtable().catch(() => {});
+  });
+
+  eventSource.addEventListener('synthesis-start', (e) => {
+    const data = JSON.parse(e.data);
+    streamingBuffers['synthesis'] = '';
+    // Create a streaming synthesis card
+    $.rtSynthesisContainer.innerHTML = '';
+    const card = document.createElement('div');
+    card.className = 'rt-synthesis-card streaming';
+    card.innerHTML = `
+      <div class="rt-turn-header">
+        <div class="rt-agent-icon synthesizer"><i class="fas fa-gavel"></i></div>
+        <div>
+          <div class="rt-turn-agent">Synthesis</div>
+          ${data.model ? `<div class="rt-turn-model">${escapeHtml(data.model)}</div>` : ''}
+        </div>
+        <div class="rt-turn-stats"><span class="rt-streaming-indicator"><i class="fas fa-circle" style="color:#4ade80;font-size:8px"></i> Streaming</span></div>
+      </div>
+      <div class="rt-turn-body rt-stream-body"></div>
+    `;
+    $.rtSynthesisContainer.appendChild(card);
+  });
+
+  eventSource.addEventListener('synthesis-chunk', (e) => {
+    const data = JSON.parse(e.data);
+    streamingBuffers['synthesis'] = (streamingBuffers['synthesis'] || '') + data.content;
+    const body = $.rtSynthesisContainer.querySelector('.rt-stream-body');
+    if (body) body.textContent = streamingBuffers['synthesis'];
+  });
+
+  eventSource.addEventListener('synthesis-done', () => {
+    // Refresh to get final persisted synthesis
+    pollRoundtable().catch(() => {});
+  });
+
+  eventSource.addEventListener('done', (e) => {
+    const data = JSON.parse(e.data);
+    stopStreaming();
+    // Final poll to render completed state
+    pollRoundtable().catch(() => {});
+  });
+
+  eventSource.onerror = () => {
+    // SSE disconnected — fall back to polling
+    stopStreaming();
+    startPolling();
+  };
+}
+
+function stopStreaming() {
+  if (eventSource) {
+    eventSource.close();
+    eventSource = null;
+  }
+  streamingBuffers = {};
+}
 
 function startPolling() {
   stopPolling();
@@ -309,6 +632,7 @@ async function pollRoundtable() {
   const doc = res.data || res;
   if (!doc || !doc._id) return;
   activeRoundtable = doc;
+  compareView?.setActiveRoundtable(doc);
 
   // Render new turns incrementally
   const turns = doc.turns || [];
@@ -331,9 +655,25 @@ async function pollRoundtable() {
     renderSynthesis(doc.synthesis);
   }
 
+  // Quality scores (may arrive after completion)
+  if (doc.qualityScores) {
+    qualityModule?.renderQualityScores(doc);
+  }
+
   // Completed / failed / timeout
   if (['completed', 'failed', 'timeout'].includes(doc.status)) {
-    stopPolling();
+    if (doc.qualityScores) {
+      // Scores are in — stop polling entirely
+      stopPolling();
+      qualityPollingStarted = false;
+    } else if (!qualityPollingStarted) {
+      // Keep polling for quality scores to arrive (switch to slower interval)
+      qualityPollingStarted = true;
+      stopPolling();
+      poller = new PollingController({ onError: (err) => console.error('Quality poll error:', err) });
+      poller.addTask('roundtable', pollRoundtable, 5000, { runOnStart: false, runOnResume: true, skipIfHidden: true });
+      poller.start();
+    }
     renderCompleted(doc);
   }
 }
@@ -382,6 +722,10 @@ function renderRoundDivider(roundNum) {
 
 function renderWaitingCard(agentId, round) {
   const cfg = AGENT_CONFIG[agentId] || { icon: 'fa-robot', label: agentId, color: '#888' };
+  // Use custom role name from input if available
+  const ids = AGENT_SELECTS[agentId];
+  const customRole = ids && $[ids.role] ? $[ids.role].value.trim() : '';
+  const displayLabel = customRole || cfg.label;
   const card = document.createElement('div');
   card.className = 'rt-turn-card waiting';
   card.dataset.role = agentId;
@@ -391,7 +735,7 @@ function renderWaitingCard(agentId, round) {
     <div class="rt-turn-header">
       <div class="rt-agent-icon ${agentId}"><i class="fas ${cfg.icon}"></i></div>
       <div>
-        <div class="rt-turn-agent">${escapeHtml(cfg.label)}</div>
+        <div class="rt-turn-agent">${escapeHtml(displayLabel)}</div>
       </div>
     </div>
     <div class="rt-turn-body">
@@ -404,9 +748,9 @@ function renderWaitingCard(agentId, round) {
 // ── Render: Turn Card (completed) ────────────────────────────────────
 
 function renderTurnCard(turn, animate) {
-  // Find and replace existing waiting card for this agent+round
+  // Find and replace existing card for this agent+round (waiting, streaming, or thinking)
   const existing = $.rtTurnsContainer.querySelector(
-    `.rt-turn-card.waiting[data-agent="${turn.agentId}"][data-round="${turn.round}"]`
+    `.rt-turn-card[data-agent="${turn.agentId}"][data-round="${turn.round}"]`
   );
 
   // If this turn's round > current max rendered round, add round divider + waiting cards
@@ -419,6 +763,7 @@ function renderTurnCard(turn, animate) {
   }
 
   const cfg = AGENT_CONFIG[turn.agentId] || { icon: 'fa-robot', label: turn.agentId, color: '#888' };
+  const displayLabel = turn.role || cfg.label;
   const hasError = !!turn.error;
   const cardClass = hasError ? 'error' : (animate ? 'done' : '');
 
@@ -448,7 +793,7 @@ function renderTurnCard(turn, animate) {
     <div class="rt-turn-header">
       <div class="rt-agent-icon ${turn.agentId}"><i class="fas ${cfg.icon}"></i></div>
       <div>
-        <div class="rt-turn-agent">${escapeHtml(cfg.label)}</div>
+        <div class="rt-turn-agent">${escapeHtml(displayLabel)}</div>
         ${turn.model ? `<div class="rt-turn-model">${escapeHtml(turn.model)}</div>` : ''}
       </div>
       <div class="rt-turn-stats">
@@ -491,7 +836,6 @@ function updateWaitingStates(doc) {
   if (doc.status !== 'running') return;
 
   const turns = doc.turns || [];
-  const completedSet = new Set(turns.map(t => `${t.agentId}-${t.round}`));
   const agentIds = Object.keys(AGENT_CONFIG);
 
   // Determine current round from turns
@@ -585,6 +929,18 @@ function renderStats(doc) {
 function renderCompleted(doc) {
   $.rtTranscriptActions.style.display = '';
   $.rtStartBtn.disabled = false;
+  // Show view toggle when we have completed turns
+  if ((doc.turns || []).length > 0) {
+    $.rtViewToggle.style.display = '';
+  }
+  // Update compare view if active
+  if (compareView?.getCurrentView() === 'compare') compareView.renderCompareView();
+
+  // Browser notification (only once per discussion)
+  if (!notificationSent) {
+    notificationSent = true;
+    notifyModule?.sendBrowserNotification(doc);
+  }
 
   // Remove any remaining waiting/thinking cards
   const remaining = $.rtTurnsContainer.querySelectorAll('.rt-turn-card.waiting, .rt-turn-card.thinking');
@@ -606,6 +962,7 @@ async function loadRoundtable(id) {
     if (!doc || !doc._id) throw new Error('Roundtable not found');
     activeRoundtableId = doc._id;
     activeRoundtable = doc;
+    compareView?.setActiveRoundtable(doc);
     previousTurnCount = 0;
 
     // Show panels
@@ -648,6 +1005,8 @@ async function loadRoundtable(id) {
       startPolling();
     } else {
       renderCompleted(doc);
+      // Render quality scores if available
+      if (doc.qualityScores) qualityModule?.renderQualityScores(doc);
     }
 
     // Pre-fill question for reference
@@ -764,18 +1123,27 @@ async function handleDownloadTranscript() {
 // ── New Discussion ───────────────────────────────────────────────────
 
 function handleNewDiscussion() {
+  stopStreaming();
   stopPolling();
   activeRoundtableId = null;
   activeRoundtable = null;
   previousTurnCount = 0;
+  notificationSent = false;
+  qualityPollingStarted = false;
 
   $.rtStatsRow.style.display = 'none';
   $.rtDiscussionPanel.style.display = 'none';
   $.rtTranscriptActions.style.display = 'none';
+  $.rtViewToggle.style.display = 'none';
   $.rtTurnsContainer.innerHTML = '';
+  $.rtCompareContainer.innerHTML = '';
+  $.rtCompareContainer.style.display = 'none';
   $.rtSynthesisContainer.innerHTML = '';
   $.rtQuestionInput.value = '';
   setInputStatus('');
+
+  // Reset compare view to timeline mode
+  if (compareView) compareView.handleViewToggle('timeline');
 
   // Clear URL param
   const url = new URL(window.location);

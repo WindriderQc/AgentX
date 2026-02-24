@@ -786,6 +786,29 @@ AgentX development is organized across **eight development tracks**, each focusi
 
 ---
 
+## Roundtable — Multi-Agent Discussion System ✅ COMPLETE
+
+**Added:** 2026-02-23
+
+Multi-agent roundtable discussion feature: pose a question, watch 3 AI agents debate it, get a synthesized verdict.
+
+**Implemented Features:**
+- **Custom Agent Personas** ✅ — Editable role names + system prompts, preset system (Default, Technical Review, Business Analysis), custom preset CRUD via localStorage
+- **Streaming SSE** ✅ — Real-time token streaming via EventSource, automatic polling fallback for tab-resume/reconnection
+- **Comparison View** ✅ — 3-column side-by-side layout for comparing agent responses across rounds, round tabs
+- **Completion Notifications** ✅ — Browser Notification API, Slack webhook, generic webhook with structured payload
+- **Quality Scoring (LLM-as-Judge)** ✅ — Scores agents on clarity/evidence/coherence, synthesis on coverage/fairness/actionability, agreement index
+
+**Files:**
+- Backend: `src/services/roundtable/` (orchestrator, qualityAnalyzer, notifier, formatters, defaults, index)
+- Routes: `routes/roundtable.js` (5 endpoints including SSE stream)
+- Model: `models/Roundtable.js`
+- Frontend: `public/js/roundtable/` (index, compareView, qualityScores, notifications)
+- Styles: `public/css/roundtable.css`
+- Tests: `tests/unit/roundtable/`
+
+---
+
 ## Scope Notes
 
 This roadmap covers:

@@ -137,6 +137,7 @@ Routes (validation) → Services (orchestration) → Models (data) → MongoDB/O
 - `toolService.js` - Slash command parser for /dataapi tools
 - `dataapiClient.js` - Proxy client for DataAPI integration
 - `customModelService.js` - Manages custom model registration and deployment
+- `roundtable/` - Multi-agent discussion system (orchestrator, quality analyzer, notifier, formatters)
 
 → [Backend Overview](docs/architecture/backend-overview.md)
 
@@ -147,6 +148,7 @@ Routes (validation) → Services (orchestration) → Models (data) → MongoDB/O
 - `PromptConfig.js` - Versioned system prompts with A/B testing
 - `Workspace.js` - Team workspaces with settings and feature toggles
 - `WorkspaceMember.js` - RBAC with 4 tiers: Owner, Admin, Member, Viewer
+- `Roundtable.js` - Multi-agent discussion documents with turns, synthesis, quality scores
 
 → [Multi-Tenancy](docs/architecture/MULTI_TENANCY.md)
 
@@ -206,6 +208,55 @@ try {
 ```
 
 → [Critical Conventions](docs/patterns/CRITICAL_CONVENTIONS.md) for all patterns.
+
+---
+
+## Roundtable — Multi-Agent Discussion System
+
+Multi-agent discussion service where three AI agents debate a question from different perspectives, then a synthesizer delivers a verdict.
+
+### Architecture
+
+**Execution Flow:**
+```
+POST /api/roundtable → createRoundtable() → fire-and-forget runRoundtable()
+  → Round 1 (blind): Devils Advocate → Pragmatist → Visionary
+  → Round 2+ (rebuttal): each agent sees others' prior responses
+  → Synthesis: aggregates all perspectives into verdict
+  → Quality scoring: LLM-as-Judge scores each agent + synthesis
+  → Notifications: browser, Slack webhook, generic webhook
+```
+
+**Backend** (`src/services/roundtable/`):
+- `orchestrator.js` — Core execution: `callAgentStreaming()` for NDJSON streaming from Ollama, `executeRound()`, `runRoundtable()`
+- `index.js` — Facade: `startRoundtable()` creates emitter, runs in background, chains quality analysis + notifications
+- `defaults.js` — Default panel config (3 agents + synthesizer), system prompts, timeouts
+- `qualityAnalyzer.js` — LLM-as-Judge scoring: clarity/evidence/coherence per agent, coverage/fairness/actionability for synthesis
+- `notifier.js` — Slack webhook + generic webhook notifications on completion
+- `formatters.js` — Markdown transcript + Telegram summary formatting
+
+**API** (`routes/roundtable.js`):
+- `POST /` — Start discussion (accepts panel, synthesizer, notify, enableScoring)
+- `GET /` — List roundtables (paginated)
+- `GET /:id` — Get full document
+- `GET /:id/stream` — SSE stream (turn-start, turn-chunk, turn-done, synthesis-start/chunk/done, done)
+- `GET /:id/transcript` — Markdown transcript download
+
+**Model** (`models/Roundtable.js`):
+- Stores question, rounds, panel config, turns, synthesis, quality scores
+- `qualityScores` field: `{ agents: {...}, synthesis: {...}, agreementIndex, analyzedAt }`
+
+**Frontend** (`public/js/roundtable/`):
+- `index.js` — Main module: SSE streaming with polling fallback, preset system, custom personas
+- `compareView.js` — 3-column side-by-side agent comparison with round tabs
+- `qualityScores.js` — Quality badge rendering on turn cards + summary bar
+- `notifications.js` — Browser Notification API + webhook config persistence
+
+**Key Design Decisions:**
+- Agent iteration order is deliberate for GPU optimization (Visionary/qwen32b runs last → stays hot for Synthesizer)
+- SSE streaming with automatic polling fallback for tab-resume/reconnection
+- Quality scoring is opt-out (enabled by default), runs after synthesis completes
+- Custom presets stored in localStorage with built-in presets (Default, Technical Review, Business Analysis)
 
 ---
 
@@ -397,7 +448,7 @@ const result = await service.scan('/path/to/repo', workspaceId);
 ## Current Implementation Status
 
 **Quick Stats:**
-- 39 services, 40 route files, 38 data models
+- 40+ services, 41 route files, 39 data models
 - All 8 development tracks complete and production-ready
 - Full UI dashboards, n8n workflows (N1-N6), comprehensive test coverage
 

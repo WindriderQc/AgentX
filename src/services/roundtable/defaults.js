@@ -73,7 +73,7 @@ const REBUTTAL_PREAMBLE = `The following are the initial responses from the othe
 OTHER AGENTS' RESPONSES:
 `;
 
-const DEFAULT_TIMEOUT_MS = 120000; // 2 minutes per agent call
+const DEFAULT_TIMEOUT_MS = 300000; // 5 minutes per agent call (covers cold-load of large models)
 const DEFAULT_TOTAL_TIMEOUT_MS = 900000; // 15 minutes total
 
 module.exports = {

@@ -27,6 +27,9 @@ Last Updated: 2026-02-09
 - **[Multi-Tenancy & Workspaces](architecture/MULTI_TENANCY.md)** - Team collaboration, RBAC, and data isolation
 - **[RAG System](architecture/RAG_SYSTEM.md)** - Vector store, retrieval, and contextual compression
 
+### Multi-Agent Systems
+- **Roundtable Discussion System** — 3-agent debate with synthesis, SSE streaming, custom personas, quality scoring. See [AGENTS.md Roundtable section](../AGENTS.md#roundtable--multi-agent-discussion-system)
+
 ---
 
 ## Development Patterns

@@ -55,38 +55,73 @@
       <!-- Panel Configuration (collapsible) -->
       <details id="rtPanelConfig" class="rt-panel-config">
         <summary><i class="fas fa-sliders"></i> Panel Configuration</summary>
+        <!-- Preset Selector -->
+        <div class="rt-preset-row">
+          <span class="rt-preset-label">Preset</span>
+          <select id="rtPresetSelect" class="rt-preset-select">
+            <option value="default">Default</option>
+            <option value="technical">Technical Review</option>
+            <option value="business">Business Analysis</option>
+          </select>
+          <button id="rtSavePreset" class="rt-preset-btn" title="Save as custom preset"><i class="fas fa-floppy-disk"></i></button>
+          <button id="rtDeletePreset" class="rt-preset-btn rt-preset-btn-danger" title="Delete custom preset" style="display:none"><i class="fas fa-trash"></i></button>
+        </div>
         <div class="rt-panel-grid">
           <div class="rt-panel-agent" data-agent="devils-advocate">
             <div class="rt-panel-agent-header">
               <span class="rt-agent-dot" style="background:#f87171"></span>
-              <span>Devil's Advocate</span>
+              <input id="rtRoleDA" class="rt-role-input" value="Devil's Advocate" data-agent="devils-advocate" placeholder="Role name">
             </div>
             <select id="rtHostDA" class="rt-host-select" data-agent="devils-advocate"><option value="">All hosts</option></select>
             <select id="rtModelDA" class="rt-model-select" data-agent="devils-advocate"><option value="">Loading...</option></select>
+            <details class="rt-prompt-details"><summary class="rt-prompt-toggle">System Prompt</summary><textarea id="rtPromptDA" class="rt-prompt-input" data-agent="devils-advocate" rows="4" placeholder="Custom system prompt..."></textarea></details>
           </div>
           <div class="rt-panel-agent" data-agent="pragmatist">
             <div class="rt-panel-agent-header">
               <span class="rt-agent-dot" style="background:#fbbf24"></span>
-              <span>Pragmatist</span>
+              <input id="rtRolePrag" class="rt-role-input" value="Pragmatist" data-agent="pragmatist" placeholder="Role name">
             </div>
             <select id="rtHostPrag" class="rt-host-select" data-agent="pragmatist"><option value="">All hosts</option></select>
             <select id="rtModelPrag" class="rt-model-select" data-agent="pragmatist"><option value="">Loading...</option></select>
+            <details class="rt-prompt-details"><summary class="rt-prompt-toggle">System Prompt</summary><textarea id="rtPromptPrag" class="rt-prompt-input" data-agent="pragmatist" rows="4" placeholder="Custom system prompt..."></textarea></details>
           </div>
           <div class="rt-panel-agent" data-agent="visionary">
             <div class="rt-panel-agent-header">
               <span class="rt-agent-dot" style="background:#7cf0ff"></span>
-              <span>Visionary</span>
+              <input id="rtRoleVis" class="rt-role-input" value="Visionary" data-agent="visionary" placeholder="Role name">
             </div>
             <select id="rtHostVis" class="rt-host-select" data-agent="visionary"><option value="">All hosts</option></select>
             <select id="rtModelVis" class="rt-model-select" data-agent="visionary"><option value="">Loading...</option></select>
+            <details class="rt-prompt-details"><summary class="rt-prompt-toggle">System Prompt</summary><textarea id="rtPromptVis" class="rt-prompt-input" data-agent="visionary" rows="4" placeholder="Custom system prompt..."></textarea></details>
           </div>
           <div class="rt-panel-agent" data-agent="synthesizer">
             <div class="rt-panel-agent-header">
               <span class="rt-agent-dot" style="background:var(--accent-2)"></span>
-              <span>Synthesizer</span>
+              <input id="rtRoleSynth" class="rt-role-input" value="Synthesizer" data-agent="synthesizer" placeholder="Role name">
             </div>
             <select id="rtHostSynth" class="rt-host-select" data-agent="synthesizer"><option value="">All hosts</option></select>
             <select id="rtModelSynth" class="rt-model-select" data-agent="synthesizer"><option value="">Loading...</option></select>
+            <details class="rt-prompt-details"><summary class="rt-prompt-toggle">System Prompt</summary><textarea id="rtPromptSynth" class="rt-prompt-input" data-agent="synthesizer" rows="4" placeholder="Custom system prompt..."></textarea></details>
+          </div>
+        </div>
+      </details>
+
+      <!-- Notification Configuration (collapsible) -->
+      <details id="rtNotifyConfig" class="rt-notify-config">
+        <summary><i class="fas fa-bell"></i> Notifications</summary>
+        <p class="rt-notify-hint">Get notified when discussions complete — especially useful for long multi-round sessions.</p>
+        <div class="rt-notify-grid">
+          <label class="rt-notify-option">
+            <input type="checkbox" id="rtNotifyBrowser" checked>
+            <span>Browser notification on completion</span>
+          </label>
+          <div class="rt-notify-webhook-row">
+            <label for="rtNotifySlack">Slack Webhook</label>
+            <input type="url" id="rtNotifySlack" class="rt-notify-input" placeholder="https://hooks.slack.com/services/...">
+          </div>
+          <div class="rt-notify-webhook-row">
+            <label for="rtNotifyWebhook">Generic Webhook</label>
+            <input type="url" id="rtNotifyWebhook" class="rt-notify-input" placeholder="https://your-server.com/webhook">
           </div>
         </div>
       </details>
@@ -118,9 +153,16 @@
     <div id="rtDiscussionPanel" class="rt-discussion-panel" style="display:none;">
       <div class="rt-discussion-header">
         <h2 id="rtDiscussionTitle"></h2>
-        <div id="rtDiscussionMeta" class="rt-discussion-meta"></div>
+        <div class="rt-discussion-header-row">
+          <div id="rtDiscussionMeta" class="rt-discussion-meta"></div>
+          <div id="rtViewToggle" class="rt-view-toggle" style="display:none;">
+            <button class="rt-view-btn active" data-view="timeline"><i class="fas fa-list"></i> Timeline</button>
+            <button class="rt-view-btn" data-view="compare"><i class="fas fa-columns"></i> Compare</button>
+          </div>
+        </div>
       </div>
       <div id="rtTurnsContainer" class="rt-turns-container"></div>
+      <div id="rtCompareContainer" class="rt-compare-container" style="display:none;"></div>
       <div id="rtSynthesisContainer"></div>
       <div id="rtTranscriptActions" class="rt-transcript-actions" style="display:none;">
         <button id="rtDownloadTranscript" class="btn-secondary"><i class="fas fa-download"></i> Download Transcript</button>
