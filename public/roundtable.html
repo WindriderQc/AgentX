@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link rel="stylesheet" href="/css/roundtable.css">
+  <link rel="stylesheet" href="/css/roundtable-compare.css">
 </head>
 <body>
   <!-- Navigation -->
@@ -74,6 +75,7 @@
             </div>
             <select id="rtHostDA" class="rt-host-select" data-agent="devils-advocate"><option value="">All hosts</option></select>
             <select id="rtModelDA" class="rt-model-select" data-agent="devils-advocate"><option value="">Loading...</option></select>
+            <label class="rt-websearch-toggle"><input type="checkbox" id="rtWebSearchDA" class="rt-websearch-checkbox"><i class="fas fa-globe"></i> Web Search</label>
             <details class="rt-prompt-details"><summary class="rt-prompt-toggle">System Prompt</summary><textarea id="rtPromptDA" class="rt-prompt-input" data-agent="devils-advocate" rows="4" placeholder="Custom system prompt..."></textarea></details>
           </div>
           <div class="rt-panel-agent" data-agent="pragmatist">
@@ -83,6 +85,7 @@
             </div>
             <select id="rtHostPrag" class="rt-host-select" data-agent="pragmatist"><option value="">All hosts</option></select>
             <select id="rtModelPrag" class="rt-model-select" data-agent="pragmatist"><option value="">Loading...</option></select>
+            <label class="rt-websearch-toggle"><input type="checkbox" id="rtWebSearchPrag" class="rt-websearch-checkbox"><i class="fas fa-globe"></i> Web Search</label>
             <details class="rt-prompt-details"><summary class="rt-prompt-toggle">System Prompt</summary><textarea id="rtPromptPrag" class="rt-prompt-input" data-agent="pragmatist" rows="4" placeholder="Custom system prompt..."></textarea></details>
           </div>
           <div class="rt-panel-agent" data-agent="visionary">
@@ -92,6 +95,7 @@
             </div>
             <select id="rtHostVis" class="rt-host-select" data-agent="visionary"><option value="">All hosts</option></select>
             <select id="rtModelVis" class="rt-model-select" data-agent="visionary"><option value="">Loading...</option></select>
+            <label class="rt-websearch-toggle"><input type="checkbox" id="rtWebSearchVis" class="rt-websearch-checkbox"><i class="fas fa-globe"></i> Web Search</label>
             <details class="rt-prompt-details"><summary class="rt-prompt-toggle">System Prompt</summary><textarea id="rtPromptVis" class="rt-prompt-input" data-agent="visionary" rows="4" placeholder="Custom system prompt..."></textarea></details>
           </div>
           <div class="rt-panel-agent" data-agent="synthesizer">

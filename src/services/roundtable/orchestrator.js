@@ -16,6 +16,7 @@ const { buildOllamaPayload, extractResponse, isThinkingModel } = require('../../
 const { getTargetForModel } = require('../modelRouter');
 const { getFetchOptions } = require('../../helpers/httpAgent');
 const { DEFAULT_PANEL, DEFAULT_SYNTHESIZER, REBUTTAL_PREAMBLE, DEFAULT_TIMEOUT_MS, DEFAULT_TOTAL_TIMEOUT_MS } = require('./defaults');
+const { searchWeb, formatSearchContext } = require('../webSearch');
 
 // Shared emitter registry: roundtableId → EventEmitter
 const emitterRegistry = new Map();
@@ -259,6 +260,33 @@ async function executeRound(roundtableDoc, roundNum, agents, buildMessages, time
   for (const agent of agents) {
     const messages = buildMessages(agent);
 
+    // Web search: if enabled for this agent, query SearXNG and inject context
+    let webSearchResults = [];
+    if (agent.enableWebSearch) {
+      if (emitter) {
+        emitter.emit('chunk', { type: 'web-search-start', agentId: agent.agentId, round: roundNum });
+      }
+
+      const searchResult = await searchWeb(roundtableDoc.question);
+      webSearchResults = searchResult.results || [];
+
+      if (searchResult.formatted) {
+        // Inject search context as a user message before the final question
+        const searchMsg = { role: 'user', content: `Use these web search results as additional context for your analysis:\n\n${searchResult.formatted}` };
+        // Insert before the last message (the question or rebuttal prompt)
+        messages.splice(messages.length - 1, 0, searchMsg);
+      }
+
+      if (emitter) {
+        emitter.emit('chunk', { type: 'web-search-done', agentId: agent.agentId, round: roundNum, resultCount: webSearchResults.length });
+      }
+
+      logger.info('Web search completed for agent', {
+        roundtableId: roundtableDoc._id, agentId: agent.agentId,
+        resultCount: webSearchResults.length, error: searchResult.error
+      });
+    }
+
     logger.info('Roundtable agent starting', {
       roundtableId: roundtableDoc._id,
       round: roundNum,
@@ -289,6 +317,7 @@ async function executeRound(roundtableDoc, roundNum, agents, buildMessages, time
       response: result.response,
       thinking: result.thinking,
       error: result.error,
+      webSearchResults: webSearchResults.length > 0 ? webSearchResults : undefined,
       stats: result.stats,
       startedAt: result.startedAt,
       completedAt: result.completedAt
@@ -501,7 +530,8 @@ async function createRoundtable(options) {
       agentId: a.agentId,
       role: a.role || dflt.role || a.agentId,
       model: a.model || dflt.model,
-      systemPrompt: a.systemPrompt || dflt.systemPrompt || ''
+      systemPrompt: a.systemPrompt || dflt.systemPrompt || '',
+      enableWebSearch: a.enableWebSearch ?? dflt.enableWebSearch ?? false
     };
   });
 

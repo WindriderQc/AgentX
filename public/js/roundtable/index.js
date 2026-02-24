@@ -10,6 +10,7 @@ import { PollingController } from '../utils/polling-controller.js';
 import { initCompareView } from './compareView.js';
 import { initQualityScores } from './qualityScores.js';
 import { initNotifications } from './notifications.js';
+import { initRendering } from './rendering.js';
 
 // ── Constants ────────────────────────────────────────────────────────
 
@@ -90,6 +91,7 @@ let qualityPollingStarted = false; // Guard against restarting quality poll
 let compareView = null;
 let qualityModule = null;
 let notifyModule = null;
+let renderModule = null;
 
 // ── DOM Refs (populated in init) ─────────────────────────────────────
 
@@ -104,8 +106,10 @@ document.addEventListener('DOMContentLoaded', () => {
   compareView = initCompareView({ $, AGENT_CONFIG, escapeHtml });
   qualityModule = initQualityScores({ $ });
   notifyModule = initNotifications({ $ });
+  renderModule = initRendering({ $, AGENT_CONFIG, AGENT_SELECTS, escapeHtml, formatDuration });
   populatePresetSelect();
   restoreRolesAndPrompts();
+  restoreWebSearchToggles();
   notifyModule.restoreNotifyConfig();
 
   // Deep link: ?id=abc123
@@ -125,6 +129,7 @@ function cacheDOM() {
     'rtModelDA', 'rtModelPrag', 'rtModelVis', 'rtModelSynth',
     'rtRoleDA', 'rtRolePrag', 'rtRoleVis', 'rtRoleSynth',
     'rtPromptDA', 'rtPromptPrag', 'rtPromptVis', 'rtPromptSynth',
+    'rtWebSearchDA', 'rtWebSearchPrag', 'rtWebSearchVis',
     'rtPresetSelect', 'rtSavePreset', 'rtDeletePreset',
     'rtStatsRow', 'rtStatDuration', 'rtStatTurns', 'rtStatAvgTps', 'rtStatStatus',
     'rtDiscussionPanel', 'rtDiscussionTitle', 'rtDiscussionMeta',
@@ -154,8 +159,11 @@ function wireEvents() {
     btn.addEventListener('click', () => compareView?.handleViewToggle(btn.dataset.view));
   }
 
-  // Auto-save role/prompt changes
+  // Auto-save role/prompt/web-search changes
   for (const el of document.querySelectorAll('.rt-role-input, .rt-prompt-input')) {
+    el.addEventListener('change', savePanelConfig);
+  }
+  for (const el of document.querySelectorAll('.rt-websearch-checkbox')) {
     el.addEventListener('change', savePanelConfig);
   }
 
@@ -173,9 +181,9 @@ function wireEvents() {
 let hostsData = []; // [{ id, name, url, available, models: [] }]
 
 const AGENT_SELECTS = {
-  'devils-advocate': { host: 'rtHostDA',    model: 'rtModelDA',    role: 'rtRoleDA',    prompt: 'rtPromptDA' },
-  'pragmatist':      { host: 'rtHostPrag',  model: 'rtModelPrag',  role: 'rtRolePrag',  prompt: 'rtPromptPrag' },
-  'visionary':       { host: 'rtHostVis',   model: 'rtModelVis',   role: 'rtRoleVis',   prompt: 'rtPromptVis' },
+  'devils-advocate': { host: 'rtHostDA',    model: 'rtModelDA',    role: 'rtRoleDA',    prompt: 'rtPromptDA',    webSearch: 'rtWebSearchDA' },
+  'pragmatist':      { host: 'rtHostPrag',  model: 'rtModelPrag',  role: 'rtRolePrag',  prompt: 'rtPromptPrag',  webSearch: 'rtWebSearchPrag' },
+  'visionary':       { host: 'rtHostVis',   model: 'rtModelVis',   role: 'rtRoleVis',   prompt: 'rtPromptVis',   webSearch: 'rtWebSearchVis' },
   'synthesizer':     { host: 'rtHostSynth', model: 'rtModelSynth', role: 'rtRoleSynth', prompt: 'rtPromptSynth' }
 };
 
@@ -269,11 +277,12 @@ function getSelectedPanelConfig() {
 function savePanelConfig() {
   try {
     const config = getSelectedPanelConfig();
-    // Also store host, role, prompt selections
+    // Also store host, role, prompt, web search selections
     for (const [agentId, ids] of Object.entries(AGENT_SELECTS)) {
       config[agentId + '_host'] = $[ids.host]?.value || '';
       config[agentId + '_role'] = $[ids.role]?.value || '';
       config[agentId + '_prompt'] = $[ids.prompt]?.value || '';
+      if (ids.webSearch) config[agentId + '_webSearch'] = $[ids.webSearch]?.checked || false;
     }
     localStorage.setItem(PANEL_CONFIG_STORAGE_KEY, JSON.stringify(config));
   } catch { /* ignore */ }
@@ -330,12 +339,13 @@ function handlePresetChange() {
 
   if (!preset) return;
 
-  // Apply preset to role names and prompts
+  // Apply preset to role names, prompts, and web search
   for (const [agentId, ids] of Object.entries(AGENT_SELECTS)) {
     const agentPreset = preset.agents?.[agentId];
     if (agentPreset) {
       if ($[ids.role]) $[ids.role].value = agentPreset.role || '';
       if ($[ids.prompt]) $[ids.prompt].value = agentPreset.systemPrompt || '';
+      if (ids.webSearch && $[ids.webSearch]) $[ids.webSearch].checked = agentPreset.enableWebSearch || false;
     }
   }
 
@@ -364,7 +374,8 @@ function handleSavePreset() {
   for (const [agentId, ids] of Object.entries(AGENT_SELECTS)) {
     presets[key].agents[agentId] = {
       role: $[ids.role]?.value || '',
-      systemPrompt: $[ids.prompt]?.value || ''
+      systemPrompt: $[ids.prompt]?.value || '',
+      ...(ids.webSearch ? { enableWebSearch: $[ids.webSearch]?.checked || false } : {})
     };
   }
 
@@ -399,6 +410,15 @@ function restoreRolesAndPrompts() {
     }
     if ($[ids.prompt] && stored[agentId + '_prompt']) {
       $[ids.prompt].value = stored[agentId + '_prompt'];
+    }
+  }
+}
+
+function restoreWebSearchToggles() {
+  const stored = loadStoredPanelConfig();
+  for (const [agentId, ids] of Object.entries(AGENT_SELECTS)) {
+    if (ids.webSearch && $[ids.webSearch]) {
+      $[ids.webSearch].checked = stored[agentId + '_webSearch'] || false;
     }
   }
 }
@@ -438,9 +458,9 @@ async function handleStart() {
 
     // Always send panel config — may have custom roles/prompts even with default models
     body.panel = [
-      { agentId: 'devils-advocate', role: roles['devils-advocate'] || "Devil's Advocate", model: models['devils-advocate'], ...(prompts['devils-advocate'] ? { systemPrompt: prompts['devils-advocate'] } : {}) },
-      { agentId: 'pragmatist', role: roles['pragmatist'] || 'Pragmatist', model: models['pragmatist'], ...(prompts['pragmatist'] ? { systemPrompt: prompts['pragmatist'] } : {}) },
-      { agentId: 'visionary', role: roles['visionary'] || 'Visionary', model: models['visionary'], ...(prompts['visionary'] ? { systemPrompt: prompts['visionary'] } : {}) }
+      { agentId: 'devils-advocate', role: roles['devils-advocate'] || "Devil's Advocate", model: models['devils-advocate'], enableWebSearch: $.rtWebSearchDA?.checked || false, ...(prompts['devils-advocate'] ? { systemPrompt: prompts['devils-advocate'] } : {}) },
+      { agentId: 'pragmatist', role: roles['pragmatist'] || 'Pragmatist', model: models['pragmatist'], enableWebSearch: $.rtWebSearchPrag?.checked || false, ...(prompts['pragmatist'] ? { systemPrompt: prompts['pragmatist'] } : {}) },
+      { agentId: 'visionary', role: roles['visionary'] || 'Visionary', model: models['visionary'], enableWebSearch: $.rtWebSearchVis?.checked || false, ...(prompts['visionary'] ? { systemPrompt: prompts['visionary'] } : {}) }
     ];
     body.synthesizer = {
       model: models['synthesizer'],
@@ -492,6 +512,30 @@ function startStreaming() {
 
   streamingBuffers = {};
   eventSource = new EventSource(`/api/roundtable/${activeRoundtableId}/stream`);
+
+  eventSource.addEventListener('web-search-start', (e) => {
+    const data = JSON.parse(e.data);
+    // Show "Searching web..." on the waiting card
+    const waitingCard = $.rtTurnsContainer.querySelector(
+      `.rt-turn-card.waiting[data-agent="${data.agentId}"][data-round="${data.round}"],
+       .rt-turn-card.thinking[data-agent="${data.agentId}"][data-round="${data.round}"]`
+    );
+    if (waitingCard) {
+      const waitText = waitingCard.querySelector('.rt-turn-waiting-text');
+      if (waitText) waitText.innerHTML = '<i class="fas fa-globe" style="margin-right:4px"></i> Searching web...';
+    }
+  });
+
+  eventSource.addEventListener('web-search-done', (e) => {
+    const data = JSON.parse(e.data);
+    const waitingCard = $.rtTurnsContainer.querySelector(
+      `.rt-turn-card[data-agent="${data.agentId}"][data-round="${data.round}"]`
+    );
+    if (waitingCard) {
+      const waitText = waitingCard.querySelector('.rt-turn-waiting-text');
+      if (waitText) waitText.textContent = data.resultCount > 0 ? `Found ${data.resultCount} results. Thinking...` : 'Thinking...';
+    }
+  });
 
   eventSource.addEventListener('turn-start', (e) => {
     const data = JSON.parse(e.data);
@@ -678,156 +722,29 @@ async function pollRoundtable() {
   }
 }
 
-// ── Render: Discussion Start ─────────────────────────────────────────
+// ── Render: Delegated to rendering.js ────────────────────────────────
+// renderDiscussionStart, renderRoundDivider, renderWaitingCard,
+// renderTurnCard, renderSynthesisCard, getMaxRenderedRound
+// are all provided by the rendering module.
 
 function renderDiscussionStart(doc) {
-  // Show panels
-  $.rtStatsRow.style.display = '';
-  $.rtDiscussionPanel.style.display = '';
-  $.rtTranscriptActions.style.display = 'none';
-
-  // Title & meta
-  $.rtDiscussionTitle.textContent = doc.question;
-  $.rtDiscussionMeta.innerHTML = `
-    <span><i class="fas fa-hashtag"></i> ${escapeHtml(doc._id)}</span>
-    <span><i class="fas fa-layer-group"></i> ${doc.rounds} round${doc.rounds > 1 ? 's' : ''}</span>
-  `;
-
-  // Clear previous content
-  $.rtTurnsContainer.innerHTML = '';
-  $.rtSynthesisContainer.innerHTML = '';
-
-  // Render Round 1 divider + waiting cards
-  renderRoundDivider(1);
-  const agentIds = Object.keys(AGENT_CONFIG);
-  for (const agentId of agentIds) {
-    renderWaitingCard(agentId, 1);
-  }
-
-  // Initial stats
-  renderStats({ status: 'running', turns: [], totalDurationMs: null });
-
-  // Scroll to discussion
-  $.rtDiscussionPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  renderModule.renderDiscussionStart(doc, renderStats);
 }
 
 function renderRoundDivider(roundNum) {
-  const div = document.createElement('div');
-  div.className = 'rt-round-divider';
-  div.dataset.round = roundNum;
-  const label = roundNum === 1 ? 'Round 1 — Initial Analysis' : `Round ${roundNum} — Rebuttal`;
-  div.innerHTML = `<span class="rt-round-label">${label}</span>`;
-  $.rtTurnsContainer.appendChild(div);
+  renderModule.renderRoundDivider(roundNum);
 }
 
 function renderWaitingCard(agentId, round) {
-  const cfg = AGENT_CONFIG[agentId] || { icon: 'fa-robot', label: agentId, color: '#888' };
-  // Use custom role name from input if available
-  const ids = AGENT_SELECTS[agentId];
-  const customRole = ids && $[ids.role] ? $[ids.role].value.trim() : '';
-  const displayLabel = customRole || cfg.label;
-  const card = document.createElement('div');
-  card.className = 'rt-turn-card waiting';
-  card.dataset.role = agentId;
-  card.dataset.round = round;
-  card.dataset.agent = agentId;
-  card.innerHTML = `
-    <div class="rt-turn-header">
-      <div class="rt-agent-icon ${agentId}"><i class="fas ${cfg.icon}"></i></div>
-      <div>
-        <div class="rt-turn-agent">${escapeHtml(displayLabel)}</div>
-      </div>
-    </div>
-    <div class="rt-turn-body">
-      <span class="rt-turn-waiting-text">Waiting...</span>
-    </div>
-  `;
-  $.rtTurnsContainer.appendChild(card);
+  renderModule.renderWaitingCard(agentId, round);
 }
 
-// ── Render: Turn Card (completed) ────────────────────────────────────
-
 function renderTurnCard(turn, animate) {
-  // Find and replace existing card for this agent+round (waiting, streaming, or thinking)
-  const existing = $.rtTurnsContainer.querySelector(
-    `.rt-turn-card[data-agent="${turn.agentId}"][data-round="${turn.round}"]`
-  );
-
-  // If this turn's round > current max rendered round, add round divider + waiting cards
-  const maxRenderedRound = getMaxRenderedRound();
-  if (turn.round > maxRenderedRound) {
-    renderRoundDivider(turn.round);
-    for (const agentId of Object.keys(AGENT_CONFIG)) {
-      renderWaitingCard(agentId, turn.round);
-    }
-  }
-
-  const cfg = AGENT_CONFIG[turn.agentId] || { icon: 'fa-robot', label: turn.agentId, color: '#888' };
-  const displayLabel = turn.role || cfg.label;
-  const hasError = !!turn.error;
-  const cardClass = hasError ? 'error' : (animate ? 'done' : '');
-
-  const card = document.createElement('div');
-  card.className = `rt-turn-card ${cardClass}`;
-  card.dataset.role = turn.agentId;
-  card.dataset.round = turn.round;
-  card.dataset.agent = turn.agentId;
-
-  const stats = turn.stats || {};
-  const tps = stats.tokensPerSecond ? stats.tokensPerSecond.toFixed(1) : '—';
-  const latency = stats.latencyMs ? formatDuration(stats.latencyMs) : '—';
-
-  let thinkingHtml = '';
-  if (turn.thinking) {
-    thinkingHtml = `
-      <div class="rt-turn-thinking">
-        <div class="rt-turn-thinking-toggle" onclick="this.parentElement.classList.toggle('open')">
-          <i class="fas fa-chevron-right"></i> Thinking
-        </div>
-        <div class="rt-turn-thinking-content">${escapeHtml(turn.thinking)}</div>
-      </div>
-    `;
-  }
-
-  card.innerHTML = `
-    <div class="rt-turn-header">
-      <div class="rt-agent-icon ${turn.agentId}"><i class="fas ${cfg.icon}"></i></div>
-      <div>
-        <div class="rt-turn-agent">${escapeHtml(displayLabel)}</div>
-        ${turn.model ? `<div class="rt-turn-model">${escapeHtml(turn.model)}</div>` : ''}
-      </div>
-      <div class="rt-turn-stats">
-        <span><i class="fas fa-gauge-high"></i> ${tps} t/s</span>
-        <span><i class="fas fa-clock"></i> ${latency}</span>
-      </div>
-    </div>
-    <div class="rt-turn-body">${hasError ? `<span style="color:var(--danger)">${escapeHtml(turn.error)}</span>` : escapeHtml(turn.response || '')}</div>
-    ${thinkingHtml}
-  `;
-
-  if (existing) {
-    existing.replaceWith(card);
-  } else {
-    // Find the right waiting card (may have been created by round expansion)
-    const waitingCard = $.rtTurnsContainer.querySelector(
-      `.rt-turn-card.waiting[data-agent="${turn.agentId}"][data-round="${turn.round}"]`
-    );
-    if (waitingCard) {
-      waitingCard.replaceWith(card);
-    } else {
-      $.rtTurnsContainer.appendChild(card);
-    }
-  }
+  renderModule.renderTurnCard(turn, animate);
 }
 
 function getMaxRenderedRound() {
-  const dividers = $.rtTurnsContainer.querySelectorAll('.rt-round-divider');
-  let max = 0;
-  for (const d of dividers) {
-    const r = parseInt(d.dataset.round);
-    if (r > max) max = r;
-  }
-  return max;
+  return renderModule.getMaxRenderedRound();
 }
 
 // ── Render: Waiting / Thinking States ────────────────────────────────
@@ -868,42 +785,7 @@ function updateWaitingStates(doc) {
 // ── Render: Synthesis ────────────────────────────────────────────────
 
 function renderSynthesis(synthesis) {
-  if ($.rtSynthesisContainer.querySelector('.rt-synthesis-card')) return;
-
-  const stats = synthesis.stats || {};
-  const tps = stats.tokensPerSecond ? stats.tokensPerSecond.toFixed(1) : '—';
-  const latency = stats.latencyMs ? formatDuration(stats.latencyMs) : '—';
-
-  let thinkingHtml = '';
-  if (synthesis.thinking) {
-    thinkingHtml = `
-      <div class="rt-turn-thinking">
-        <div class="rt-turn-thinking-toggle" onclick="this.parentElement.classList.toggle('open')">
-          <i class="fas fa-chevron-right"></i> Thinking
-        </div>
-        <div class="rt-turn-thinking-content">${escapeHtml(synthesis.thinking)}</div>
-      </div>
-    `;
-  }
-
-  const card = document.createElement('div');
-  card.className = 'rt-synthesis-card done';
-  card.innerHTML = `
-    <div class="rt-turn-header">
-      <div class="rt-agent-icon synthesizer"><i class="fas fa-gavel"></i></div>
-      <div>
-        <div class="rt-turn-agent">Synthesis</div>
-        ${synthesis.model ? `<div class="rt-turn-model">${escapeHtml(synthesis.model)}</div>` : ''}
-      </div>
-      <div class="rt-turn-stats">
-        <span><i class="fas fa-gauge-high"></i> ${tps} t/s</span>
-        <span><i class="fas fa-clock"></i> ${latency}</span>
-      </div>
-    </div>
-    <div class="rt-turn-body">${escapeHtml(synthesis.response || '')}</div>
-    ${thinkingHtml}
-  `;
-  $.rtSynthesisContainer.appendChild(card);
+  renderModule.renderSynthesisCard(synthesis);
 }
 
 // ── Render: Stats ────────────────────────────────────────────────────

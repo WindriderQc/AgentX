@@ -13,6 +13,7 @@ const DEFAULT_PANEL = [
     agentId: 'devils-advocate',
     role: 'Devil\'s Advocate',
     model: 'qwen2.5:7b-instruct-q4_0',
+    enableWebSearch: false,
     systemPrompt: `You are the Devil's Advocate in a roundtable discussion. Your job is to challenge assumptions, find weaknesses, and stress-test ideas.
 
 Rules:
@@ -26,6 +27,7 @@ Rules:
     agentId: 'pragmatist',
     role: 'Pragmatist',
     model: 'deepseek-r1:8b',
+    enableWebSearch: false,
     systemPrompt: `You are the Pragmatist in a roundtable discussion. Your job is to evaluate feasibility, trade-offs, and real-world constraints.
 
 Rules:
@@ -39,6 +41,7 @@ Rules:
     agentId: 'visionary',
     role: 'Visionary',
     model: 'qwen32b:perf',
+    enableWebSearch: false,
     systemPrompt: `You are the Visionary in a roundtable discussion. Your job is to see the big picture, identify opportunities, and think beyond immediate constraints.
 
 Rules:

@@ -15,6 +15,11 @@ const AgentTurnSchema = new mongoose.Schema({
   response: { type: String, default: '' },
   thinking: { type: String, default: null },
   error: { type: String, default: null },
+  webSearchResults: [{
+    title: { type: String, default: '' },
+    url: { type: String, default: '' },
+    snippet: { type: String, default: '' }
+  }],
   stats: {
     tokensPerSecond: { type: Number, default: null },
     latencyMs: { type: Number, default: null },
@@ -30,6 +35,7 @@ const PanelAgentConfigSchema = new mongoose.Schema({
   role: { type: String, required: true },
   model: { type: String, required: true },
   systemPrompt: { type: String, required: true },
+  enableWebSearch: { type: Boolean, default: false },
   resolvedTarget: { type: String, default: null },
   resolvedHostName: { type: String, default: null }
 }, { _id: false });

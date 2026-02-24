@@ -57,6 +57,14 @@ function formatTranscript(doc) {
       } else {
         lines.push(turn.response || '*No response*');
       }
+      // Web search sources
+      if (turn.webSearchResults && turn.webSearchResults.length > 0) {
+        lines.push('');
+        lines.push('**Web Sources:**');
+        for (const src of turn.webSearchResults) {
+          lines.push(`- [${src.title}](${src.url})`);
+        }
+      }
       lines.push('');
     }
   }
