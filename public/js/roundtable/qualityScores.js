@@ -45,9 +45,9 @@ export function initQualityScores(deps) {
             const breakdown = document.createElement('div');
             breakdown.className = 'rt-quality-breakdown';
             breakdown.innerHTML = `
-              <span>Clarity: ${formatScore(agentScore.clarity)}</span>
-              <span>Evidence: ${formatScore(agentScore.evidence_quality)}</span>
-              <span>Coherence: ${formatScore(agentScore.logical_coherence)}</span>
+              <span title="How clear and well-structured the response is">Clarity: ${formatScore(agentScore.clarity)}</span>
+              <span title="Quality of reasoning, examples, and supporting arguments">Evidence: ${formatScore(agentScore.evidence_quality)}</span>
+              <span title="Logical consistency and flow of the argument">Coherence: ${formatScore(agentScore.logical_coherence)}</span>
             `;
             body.after(breakdown);
           }
@@ -68,9 +68,9 @@ export function initQualityScores(deps) {
           const breakdown = document.createElement('div');
           breakdown.className = 'rt-quality-breakdown';
           breakdown.innerHTML = `
-            <span>Coverage: ${formatScore(scores.synthesis.coverage)}</span>
-            <span>Fairness: ${formatScore(scores.synthesis.fairness)}</span>
-            <span>Actionability: ${formatScore(scores.synthesis.actionability)}</span>
+            <span title="How well the synthesis covers all panel perspectives">Coverage: ${formatScore(scores.synthesis.coverage)}</span>
+            <span title="Balance in representing each agent's viewpoint">Fairness: ${formatScore(scores.synthesis.fairness)}</span>
+            <span title="How concrete and actionable the recommendation is">Actionability: ${formatScore(scores.synthesis.actionability)}</span>
           `;
           body.after(breakdown);
         }
@@ -86,10 +86,10 @@ export function initQualityScores(deps) {
 
       const summary = document.createElement('div');
       summary.className = 'rt-quality-summary';
-      let inner = '<span class="rt-quality-label"><i class="fas fa-star"></i> Quality Scores</span>';
+      let inner = '<span class="rt-quality-label" title="LLM-as-Judge — an AI evaluates response quality after completion"><i class="fas fa-star"></i> Quality Scores</span>';
       if (avgAgent !== null) inner += `<span>Avg Agent: ${createQualityBadge(avgAgent).outerHTML}</span>`;
       if (typeof synthOverall === 'number') inner += `<span>Synthesis: ${createQualityBadge(synthOverall).outerHTML}</span>`;
-      if (typeof agreement === 'number') inner += `<span>Agreement: ${(agreement * 100).toFixed(0)}%</span>`;
+      if (typeof agreement === 'number') inner += `<span title="How much the panel agents converged on key points">Agreement: ${(agreement * 100).toFixed(0)}%</span>`;
       summary.innerHTML = inner;
       $.rtSynthesisContainer.appendChild(summary);
     }
