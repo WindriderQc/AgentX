@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgentX • Host Full Test</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <style>
+        .host-test-container { max-width: 1400px; margin: 0 auto; padding: 24px; }
+
+        /* Header */
+        .ht-header { margin-bottom: 32px; display: flex; justify-content: space-between; align-items: flex-start; }
+        .ht-header h1 { font-size: 28px; font-weight: 700; color: #fff; margin: 8px 0; }
+        .ht-header h1 i { color: #7cf0ff; margin-right: 10px; }
+        .ht-header p { color: var(--muted); font-size: 14px; }
+
+        /* Host Cards Row */
+        .host-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 24px; }
+        .host-card {
+            background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 12px;
+            padding: 20px; cursor: pointer; transition: all 0.2s;
+        }
+        .host-card:hover { border-color: rgba(124, 240, 255, 0.3); transform: translateY(-2px); }
+        .host-card.selected { border-color: #7cf0ff; box-shadow: 0 0 20px rgba(124, 240, 255, 0.1); }
+        .host-card.offline { opacity: 0.5; pointer-events: none; }
+        .host-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .host-card-name { font-size: 16px; font-weight: 600; color: #fff; }
+        .host-status-dot { width: 10px; height: 10px; border-radius: 50%; }
+        .host-status-dot.online { background: #22c55e; box-shadow: 0 0 8px rgba(34, 197, 94, 0.5); }
+        .host-status-dot.offline { background: #ef4444; }
+        .host-card-url { font-size: 12px; color: var(--muted); margin-bottom: 8px; font-family: monospace; }
+        .host-card-stats { display: flex; gap: 16px; font-size: 13px; color: var(--muted); }
+        .host-card-stats span { display: flex; align-items: center; gap: 4px; }
+
+        /* Action Bar */
+        .action-bar {
+            background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 12px;
+            padding: 20px; margin-bottom: 24px; display: none;
+        }
+        .action-bar.visible { display: block; }
+        .action-bar-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+        .action-bar select {
+            background: rgba(255,255,255,0.05); border: 1px solid var(--panel-border);
+            color: #fff; padding: 8px 12px; border-radius: 8px; font-size: 13px; min-width: 220px;
+        }
+        .action-bar select option { background: #1e293b; color: #fff; }
+
+        /* Progress Bar */
+        .progress-container { margin-top: 16px; display: none; }
+        .progress-container.visible { display: block; }
+        .progress-bar-bg {
+            height: 8px; background: rgba(255,255,255,0.05); border-radius: 4px; overflow: hidden;
+        }
+        .progress-bar-fill {
+            height: 100%; background: linear-gradient(90deg, #7cf0ff, #a78bfa);
+            border-radius: 4px; transition: width 0.3s; width: 0%;
+        }
+        .progress-label { font-size: 12px; color: var(--muted); margin-top: 6px; }
+
+        /* Grid */
+        .ht-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+        @media (max-width: 1100px) { .ht-grid { grid-template-columns: 1fr; } }
+
+        /* Section Cards */
+        .ht-section {
+            background: var(--panel-bg); border: 1px solid var(--panel-border);
+            border-radius: 12px; padding: 0; overflow: hidden;
+        }
+        .ht-section-header {
+            padding: 16px 20px; border-bottom: 1px solid var(--panel-border);
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .ht-section-header h2 { font-size: 15px; font-weight: 600; color: #fff; margin: 0; }
+        .ht-section-body { padding: 16px 20px; }
+
+        /* Results Table */
+        .ht-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .ht-table th {
+            text-align: left; padding: 10px 8px; color: var(--muted); font-weight: 500;
+            font-size: 11px; text-transform: uppercase; border-bottom: 1px solid var(--panel-border);
+            cursor: pointer; user-select: none;
+        }
+        .ht-table th:hover { color: #7cf0ff; }
+        .ht-table td { padding: 10px 8px; border-bottom: 1px solid rgba(255,255,255,0.03); color: #e2e8f0; }
+        .ht-table tr:hover { background: rgba(255,255,255,0.02); }
+
+        /* Badges */
+        .badge-pass { background: rgba(34,197,94,0.15); color: #22c55e; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+        .badge-fail, .badge-error { background: rgba(239,68,68,0.15); color: #ef4444; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+        .badge-timeout { background: rgba(234,179,8,0.15); color: #eab308; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+
+        /* TPS color coding */
+        .tps-high { color: #22c55e; font-weight: 600; }
+        .tps-mid { color: #eab308; font-weight: 600; }
+        .tps-low { color: #ef4444; font-weight: 600; }
+
+        /* Buttons */
+        .btn-primary {
+            background: linear-gradient(135deg, #7cf0ff 0%, #a78bfa 100%); color: #0d1117;
+            padding: 8px 16px; border: none; border-radius: 8px; font-size: 13px;
+            font-weight: 600; cursor: pointer; transition: all 0.2s;
+        }
+        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(124,240,255,0.3); }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .btn-secondary {
+            background: rgba(255,255,255,0.05); border: 1px solid var(--panel-border);
+            color: #e2e8f0; padding: 8px 16px; border-radius: 8px; font-size: 13px;
+            cursor: pointer; transition: all 0.2s;
+        }
+        .btn-secondary:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2); }
+
+        /* Toast */
+        .toast {
+            position: fixed; bottom: 24px; right: 24px; background: #1e293b;
+            border: 1px solid var(--panel-border); border-radius: 8px; padding: 12px 20px;
+            color: #e2e8f0; font-size: 13px; z-index: 10000; transform: translateY(100px);
+            opacity: 0; transition: all 0.3s;
+        }
+        .toast.visible { transform: translateY(0); opacity: 1; }
+        .toast.error { border-color: rgba(239,68,68,0.5); }
+        .toast.success { border-color: rgba(34,197,94,0.5); }
+
+        /* Chart containers */
+        .chart-wrap { height: 280px; position: relative; }
+
+        /* Results Full Width */
+        .ht-full-width { grid-column: 1 / -1; }
+
+        /* Empty state */
+        .empty-state { text-align: center; padding: 40px 20px; color: var(--muted); }
+        .empty-state i { font-size: 32px; margin-bottom: 12px; opacity: 0.3; }
+        .empty-state p { font-size: 14px; }
+
+        /* Spinner */
+        .spin { animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div id="nav-container"></div>
+    <script src="/js/components/nav.js"></script>
+    <script src="/js/workspace.js"></script>
+    <script>injectNav('host-test');</script>
+    <div class="bg-grid"></div>
+
+    <div class="host-test-container">
+        <!-- Header -->
+        <div class="ht-header">
+            <div>
+                <div class="eyebrow">AgentX • Infrastructure</div>
+                <h1><i class="fas fa-flask"></i>Host Full Test</h1>
+                <p>Test model performance across all Ollama hosts — results feed the Model Registry</p>
+            </div>
+            <div style="display: flex; gap: 10px; margin-top: 10px;">
+                <button id="refreshBtn" class="btn-secondary"><i class="fas fa-sync-alt"></i> Refresh</button>
+            </div>
+        </div>
+
+        <!-- Host Cards -->
+        <div class="host-cards" id="hostCards">
+            <div class="empty-state"><i class="fas fa-spinner spin"></i><p>Loading hosts...</p></div>
+        </div>
+
+        <!-- Action Bar -->
+        <div class="action-bar" id="actionBar">
+            <div class="action-bar-row">
+                <select id="modelSelect"><option value="">-- Select Model --</option></select>
+                <button id="testOneBtn" class="btn-primary" disabled><i class="fas fa-play"></i> Test Selected</button>
+                <button id="testAllBtn" class="btn-primary"><i class="fas fa-rocket"></i> Test All Models</button>
+                <span id="selectedHostLabel" style="color: var(--muted); font-size: 13px; margin-left: auto;"></span>
+            </div>
+            <div class="progress-container" id="progressContainer">
+                <div class="progress-bar-bg"><div class="progress-bar-fill" id="progressFill"></div></div>
+                <div class="progress-label" id="progressLabel"></div>
+            </div>
+        </div>
+
+        <!-- Grid: Table + Charts -->
+        <div class="ht-grid">
+            <!-- Results Table -->
+            <div class="ht-section ht-full-width" id="resultsSection">
+                <div class="ht-section-header">
+                    <h2><i class="fas fa-table" style="margin-right:8px; color:#7cf0ff;"></i>Test Results</h2>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <select id="filterHost" class="action-bar select" style="background:rgba(255,255,255,0.05);border:1px solid var(--panel-border);color:#fff;padding:6px 10px;border-radius:6px;font-size:12px;">
+                            <option value="">All Hosts</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="ht-section-body" style="padding:0; overflow-x:auto;">
+                    <table class="ht-table">
+                        <thead>
+                            <tr>
+                                <th data-sort="modelName">Model</th>
+                                <th data-sort="hostId">Host</th>
+                                <th data-sort="tokensPerSec">Tokens/s</th>
+                                <th data-sort="latencyMs">Latency</th>
+                                <th data-sort="timeToFirstTokenMs">TTFT</th>
+                                <th data-sort="vramUsedMiB">VRAM</th>
+                                <th data-sort="status">Status</th>
+                                <th data-sort="testedAt">Tested</th>
+                            </tr>
+                        </thead>
+                        <tbody id="resultsBody">
+                            <tr><td colspan="8" class="empty-state"><p>No results yet. Select a host and run tests.</p></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TPS Chart -->
+            <div class="ht-section">
+                <div class="ht-section-header">
+                    <h2><i class="fas fa-tachometer-alt" style="margin-right:8px; color:#7cf0ff;"></i>Tokens/sec by Model</h2>
+                </div>
+                <div class="ht-section-body">
+                    <div class="chart-wrap"><canvas id="tpsChart"></canvas></div>
+                </div>
+            </div>
+
+            <!-- Latency Chart -->
+            <div class="ht-section">
+                <div class="ht-section-header">
+                    <h2><i class="fas fa-clock" style="margin-right:8px; color:#a78bfa;"></i>Latency Breakdown</h2>
+                </div>
+                <div class="ht-section-body">
+                    <div class="chart-wrap"><canvas id="latencyChart"></canvas></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script src="/js/host-test.js"></script>
+</body>
+</html>

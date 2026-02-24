@@ -315,6 +315,10 @@ app.use('/api/ollama-hosts', ollamaHostsRoutes);
 const ollamaVramRoutes = require('../routes/ollama-vram');
 app.use('/api/ollama-vram', ollamaVramRoutes);
 
+// Host performance testing routes
+const hostTestRoutes = require('../routes/host-test');
+app.use('/api/host-test', hostTestRoutes);
+
 // Workflow Generator routes (N6.1)
 const workflowGeneratorRoutes = require('../routes/workflowGenerator');
 app.use('/api/workflow', workflowGeneratorRoutes);

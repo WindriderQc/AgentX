@@ -86,6 +86,7 @@ function injectNav(activePageId = '') {
                 { label: 'Self-Healing', href: 'self-healing.html', icon: 'fa-heart-pulse', id: 'self-healing' },
                 { label: 'Alerts', href: 'alerts.html', icon: 'fa-bell', id: 'alerts' },
                 { label: 'Performance', href: 'performance.html', icon: 'fa-gauge-high', id: 'performance' },
+                { label: 'Host Test', href: 'host-test.html', icon: 'fa-flask', id: 'host-test' },
                 { label: 'Analytics', href: 'analytics.html', icon: 'fa-chart-line', id: 'analytics' },
                 { label: 'Cost', href: 'cost-tracking.html', icon: 'fa-dollar-sign', id: 'cost-tracking' }
             ]
