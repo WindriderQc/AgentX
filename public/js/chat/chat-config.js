@@ -58,6 +58,7 @@ export function persistSettings(elements, state, defaults, refreshMessages, setF
     whisperModel: elements.whisperModelSelect?.value || '',
     voiceAutoSend: elements.voiceAutoSend?.checked || false,
     useRag: elements.ragToggle.checked,
+    webSearch: elements.webSearchToggle?.checked || false,
     showStats: elements.statsToggle.checked,
     ragExpand: elements.ragExpandQuery?.checked || false,
     ragHybrid: elements.ragHybridSearch?.checked || false,
@@ -97,6 +98,7 @@ export function hydrateForm(elements, state, defaults) {
   if (elements.ttsVoiceSelect) elements.ttsVoiceSelect.value = cfg.ttsVoice || 'alloy';
 
   elements.ragToggle.checked = cfg.useRag !== undefined ? cfg.useRag : true;
+  if (elements.webSearchToggle) elements.webSearchToggle.checked = cfg.webSearch || false;
   elements.statsToggle.checked = state.showStats;
 
   if (elements.ragExpandQuery) elements.ragExpandQuery.checked = cfg.ragExpand || false;
@@ -182,14 +184,18 @@ export function updateConfigSummary(elements) {
   const summaryStreamEl = document.getElementById('summaryStream');
   if (summaryStreamEl) summaryStreamEl.textContent = elements.streamToggle.checked ? 'On' : 'Off';
 
+  const summaryWebEl = document.getElementById('summaryWeb');
+  if (summaryWebEl) summaryWebEl.textContent = elements.webSearchToggle?.checked ? 'On' : 'Off';
+
   const summaryTempEl = document.getElementById('summaryTemp');
   if (summaryTempEl) summaryTempEl.textContent = elements.temperature.value;
 
   const chatConfigEl = document.getElementById('chatConfigSummary');
   if (chatConfigEl) {
     const ragStatus = elements.ragToggle.checked ? '+RAG' : '';
+    const webStatus = elements.webSearchToggle?.checked ? '+Web' : '';
     const streamStatus = elements.streamToggle.checked ? '' : 'No-Stream';
-    const extras = [ragStatus, streamStatus].filter(s => s).join(', ');
+    const extras = [ragStatus, webStatus, streamStatus].filter(s => s).join(', ');
     const summary = extras ? `${shortModel} (${extras})` : shortModel;
     chatConfigEl.textContent = summary;
   }

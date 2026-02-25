@@ -712,7 +712,7 @@ async function pollRoundtable() {
   renderStats(doc);
 
   // Synthesis
-  if (doc.synthesis && doc.synthesis.response) {
+  if (doc.synthesis && (doc.synthesis.response || doc.synthesis.error)) {
     renderSynthesis(doc.synthesis);
   }
 
@@ -892,7 +892,7 @@ async function loadRoundtable(id) {
     previousTurnCount = turns.length;
 
     // Synthesis
-    if (doc.synthesis && doc.synthesis.response) {
+    if (doc.synthesis && (doc.synthesis.response || doc.synthesis.error)) {
       renderSynthesis(doc.synthesis);
     }
 

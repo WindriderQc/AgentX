@@ -291,6 +291,50 @@ export function renderMessage(message, state, elements) {
     bubble.appendChild(citationsDiv);
   }
 
+  // Web Search Sources Display
+  const webResults = (role === 'assistant') && (message.webSearchResults || message.metadata?.webSearchResults);
+  if (webResults && Array.isArray(webResults) && webResults.length > 0) {
+    const webSourcesDiv = document.createElement('details');
+    webSourcesDiv.className = 'message-web-sources';
+
+    const webTitle = document.createElement('summary');
+    webTitle.className = 'web-sources-title';
+    webTitle.style.cursor = 'pointer';
+    webTitle.style.listStyle = 'none';
+    webTitle.innerHTML = `<i class="fas fa-chevron-right" style="font-size: 0.8em; margin-right: 6px; transition: transform 0.2s;"></i><i class="fas fa-globe"></i><span>Web Sources (${webResults.length})</span>`;
+    webSourcesDiv.appendChild(webTitle);
+
+    webSourcesDiv.addEventListener('toggle', () => {
+      const icon = webTitle.querySelector('.fa-chevron-right');
+      if (icon) icon.style.transform = webSourcesDiv.open ? 'rotate(90deg)' : 'rotate(0deg)';
+    });
+
+    webResults.forEach((result, idx) => {
+      const item = document.createElement('div');
+      item.className = 'web-source-item';
+
+      const link = document.createElement('a');
+      link.href = result.url || '#';
+      link.target = '_blank';
+      link.rel = 'noopener';
+      link.className = 'web-source-link';
+      link.textContent = result.title || `Source ${idx + 1}`;
+
+      item.appendChild(link);
+
+      if (result.snippet) {
+        const snippet = document.createElement('div');
+        snippet.className = 'web-source-snippet';
+        snippet.textContent = result.snippet;
+        item.appendChild(snippet);
+      }
+
+      webSourcesDiv.appendChild(item);
+    });
+
+    bubble.appendChild(webSourcesDiv);
+  }
+
   // Stats Footer + Cost Display
   if (state.showStats && role === 'assistant' && (message.stats || message.cost)) {
     const statsDiv = document.createElement('div');
@@ -458,6 +502,7 @@ function buildPayload(elements, state, defaults, message) {
     },
     useRag: ragOpts.useRag,
     ragTopK: ragOpts.ragTopK,
+    enableWebSearch: elements.webSearchToggle?.checked || false,
     threadId: state.threadId,
     agentId: state.agentId,
     message,
@@ -530,6 +575,18 @@ export async function sendMessageStreamFetch(ctx, msgInput, modelInput) {
       elements.chatWindow.scrollTop = elements.chatWindow.scrollHeight;
       return;
     }
+    if (eventName === 'web-search-start') {
+      contentDiv.innerHTML = '<span style="color:var(--accent);font-size:0.9em;"><i class="fas fa-globe" style="margin-right:4px"></i> Searching web\u2026</span>';
+      elements.chatWindow.scrollTop = elements.chatWindow.scrollHeight;
+      return;
+    }
+    if (eventName === 'web-search-done') {
+      const data = typeof rawData === 'string' ? safeParseJson(rawData, {}) : rawData;
+      const count = data.resultCount || 0;
+      contentDiv.innerHTML = `<span style="color:var(--accent);font-size:0.9em;"><i class="fas fa-globe" style="margin-right:4px"></i> Found ${count} result${count !== 1 ? 's' : ''}. Thinking\u2026</span>`;
+      elements.chatWindow.scrollTop = elements.chatWindow.scrollHeight;
+      return;
+    }
     if (eventName === 'done') {
       const finalData = typeof rawData === 'string' ? safeParseJson(rawData, {}) : rawData;
       state.conversationId = finalData.conversationId || state.conversationId;
@@ -538,7 +595,8 @@ export async function sendMessageStreamFetch(ctx, msgInput, modelInput) {
         createdAt: new Date().toISOString(),
         id: finalData.messageId || null,
         stats: finalData.stats || null,
-        thinking: thinkingContent || null
+        thinking: thinkingContent || null,
+        webSearchResults: finalData.webSearchResults || null
       };
       if (elements.chatWindow.contains(assistantMessageDiv)) elements.chatWindow.removeChild(assistantMessageDiv);
       helpers.appendMessage(assistantMessage);
@@ -682,7 +740,8 @@ export async function sendMessage(ctx) {
       role: 'assistant', content: responseText,
       createdAt: new Date().toISOString(),
       id: data.data?.messageId || null,
-      stats: data.data?.stats || null
+      stats: data.data?.stats || null,
+      webSearchResults: data.data?.webSearchResults || null
     };
     helpers.appendMessage(assistantMessage);
     helpers.speakText(responseText);

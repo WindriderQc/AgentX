@@ -39,7 +39,8 @@ const handleChatRequest = async ({
     autoRoute = false,
     taskType = null,
     workspaceId = null,
-    agentId = null
+    agentId = null,
+    enableWebSearch = false
 }) => {
     let personaName = persona || options.persona || 'default_chat';
 
@@ -210,12 +211,37 @@ const handleChatRequest = async ({
         ragContext = ragResult.ragContext;
     }
 
+    // Web Search Logic
+    let webSearchResults = [];
+    let webSearchContext = null;
+
+    if (enableWebSearch && message) {
+        try {
+            const { searchWeb } = require('./webSearch');
+            const searchResult = await searchWeb(message);
+            webSearchResults = searchResult.results || [];
+            if (searchResult.formatted) {
+                webSearchContext = searchResult.formatted;
+            }
+        } catch (err) {
+            logger.warn('Web search failed', { error: err.message });
+        }
+    }
+
     const effectiveSystemPrompt = buildSystemPrompt(activePrompt.systemPrompt, userProfile, ragContext);
 
     const formattedMessages = [
         { role: 'system', content: effectiveSystemPrompt },
         ...messages.map(m => ({ role: m.role, content: m.content }))
     ];
+
+    // Inject web search context before the last user message
+    if (webSearchContext && formattedMessages.length > 1) {
+        formattedMessages.splice(formattedMessages.length - 1, 0, {
+            role: 'user',
+            content: `Use these web search results as additional context for your analysis:\n\n${webSearchContext}`
+        });
+    }
 
     // Model call
     let assistantMessageContent, thinking, warning, stats;
@@ -372,7 +398,7 @@ const handleChatRequest = async ({
         userId, workspaceId, conversationId, model: effectiveModel,
         effectiveSystemPrompt, message, assistantContent: finalContent,
         activePrompt,
-        metadata: { thinking, toolExecution: toolExecutionResult, agent, options },
+        metadata: { thinking, toolExecution: toolExecutionResult, agent, options, webSearchResults },
         stats, ragUsed, useRag, ragSources
     });
 
@@ -386,6 +412,7 @@ const handleChatRequest = async ({
         stats: stats || null,
         ragUsed,
         ragSources,
+        webSearchResults: webSearchResults.length > 0 ? webSearchResults : undefined,
         warning: isThinkingModel(effectiveModel) ? 'This model has thinking capabilities. Enable streaming for better response quality.' : undefined
     };
 };
@@ -407,8 +434,11 @@ const handleChatRequestStream = async ({
     ragStore,
     autoRoute = false,
     taskType = null,
+    enableWebSearch = false,
     workspaceId = null,
     abortSignal,
+    onWebSearchStart,
+    onWebSearchDone,
     onToken,
     onThinking,
     onComplete,
@@ -477,12 +507,40 @@ const handleChatRequestStream = async ({
             ragContext = ragResult.ragContext;
         }
 
+        // Web Search Logic
+        let webSearchResults = [];
+        let webSearchContext = null;
+
+        if (enableWebSearch && message) {
+            try {
+                if (onWebSearchStart) onWebSearchStart();
+                const { searchWeb } = require('./webSearch');
+                const searchResult = await searchWeb(message);
+                webSearchResults = searchResult.results || [];
+                if (searchResult.formatted) {
+                    webSearchContext = searchResult.formatted;
+                }
+                if (onWebSearchDone) onWebSearchDone(webSearchResults.length);
+            } catch (err) {
+                logger.warn('Web search failed (streaming)', { error: err.message });
+                if (onWebSearchDone) onWebSearchDone(0);
+            }
+        }
+
         const effectiveSystemPrompt = buildSystemPrompt(activePrompt.systemPrompt, userProfile, ragContext);
 
         const formattedMessages = [
             { role: 'system', content: effectiveSystemPrompt },
             ...messages.map(m => ({ role: m.role, content: m.content }))
         ];
+
+        // Inject web search context before the last user message
+        if (webSearchContext && formattedMessages.length > 1) {
+            formattedMessages.splice(formattedMessages.length - 1, 0, {
+                role: 'user',
+                content: `Use these web search results as additional context for your analysis:\n\n${webSearchContext}`
+            });
+        }
 
         // Check if model is n8n LLM source
         const N8nLLMSource = require('../../models/N8nLLMSource');
@@ -521,7 +579,7 @@ const handleChatRequestStream = async ({
                 userId, workspaceId, conversationId, model: effectiveModel,
                 effectiveSystemPrompt, message, assistantContent: n8nResponse.content,
                 activePrompt,
-                metadata: { options },
+                metadata: { options, webSearchResults },
                 stats, ragUsed, useRag, ragSources
             });
 
@@ -531,7 +589,8 @@ const handleChatRequestStream = async ({
                     conversationId: n8nConv?._id || conversationId || null,
                     messageId: n8nMsgId,
                     model: effectiveModel, target: effectiveTarget,
-                    stats, ragUsed, ragSources
+                    stats, ragUsed, ragSources,
+                    webSearchResults: webSearchResults.length > 0 ? webSearchResults : undefined
                 });
             }
 
@@ -633,7 +692,7 @@ const handleChatRequestStream = async ({
                 userId, workspaceId, conversationId, model: effectiveModel,
                 effectiveSystemPrompt, message, assistantContent: fullContent,
                 activePrompt,
-                metadata: { thinking: thinkingContent || null, options },
+                metadata: { thinking: thinkingContent || null, options, webSearchResults },
                 stats, ragUsed, useRag, ragSources
             });
 
@@ -647,6 +706,7 @@ const handleChatRequestStream = async ({
                     routing: routingInfo ? { taskType: routingInfo.taskType, routed: routingInfo.routed } : null,
                     stats: stats || null,
                     ragUsed, ragSources,
+                    webSearchResults: webSearchResults.length > 0 ? webSearchResults : undefined,
                     thinking: thinkingContent || null,
                     warning: isThinkingModel(effectiveModel) ? 'Streaming enabled for thinking model.' : undefined
                 });

@@ -265,6 +265,7 @@
           <span class="summary-item"><strong>Model:</strong> <span id="summaryModel">&mdash;</span></span>
           <span class="summary-item"><strong>RAG:</strong> <span id="summaryRag">Off</span></span>
           <span class="summary-item"><strong>Stream:</strong> <span id="summaryStream">On</span></span>
+          <span class="summary-item"><strong>Web:</strong> <span id="summaryWeb">Off</span></span>
           <span class="summary-item"><strong>Temp:</strong> <span id="summaryTemp">0.7</span></span>
         </div>
         <div class="summary-items" id="agentConfigSummary" style="display: none;">
@@ -346,6 +347,15 @@
           <span class="slider"></span>
         </label>
         <div class="hint">Retrieve context from vector store.</div>
+      </div>
+
+      <div class="field inline-toggle">
+        <label>Web Search</label>
+        <label class="switch">
+          <input type="checkbox" id="webSearchToggle">
+          <span class="slider"></span>
+        </label>
+        <div class="hint">Search the web via SearXNG before responding.</div>
       </div>
 
       <!-- RAG Advanced Options Panel -->

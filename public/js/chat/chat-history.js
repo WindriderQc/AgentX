@@ -277,7 +277,8 @@ export async function loadConversation(id, state, elements, helpers, preserveMod
         feedback: msg.feedback,
         stats: msg.stats,
         cost: msg.cost,
-        ragSources: msg.ragSources
+        ragSources: msg.ragSources,
+        webSearchResults: msg.metadata?.webSearchResults || null
       }, { persist: true, count: true });
     });
 

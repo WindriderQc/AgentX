@@ -87,6 +87,11 @@ async function persistConversation(params) {
                 assistantMsg.metadata.toolExecution = metadata.toolExecution;
             }
 
+            if (metadata.webSearchResults && Array.isArray(metadata.webSearchResults) && metadata.webSearchResults.length > 0) {
+                assistantMsg.metadata = assistantMsg.metadata || {};
+                assistantMsg.metadata.webSearchResults = metadata.webSearchResults;
+            }
+
             if (ragUsed === true && Array.isArray(ragSources) && ragSources.length > 0) {
                 assistantMsg.ragSources = buildRagSourceEntries(ragSources);
             }

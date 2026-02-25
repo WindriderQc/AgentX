@@ -489,3 +489,70 @@
   color: var(--text);
   font-weight: 600;
 }
+
+/* ==========================================
+   Web Search Sources (Phase — Web Search)
+   ========================================== */
+.message-web-sources {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.message-web-sources > summary {
+  list-style: none;
+}
+
+.message-web-sources > summary::-webkit-details-marker {
+  display: none;
+}
+
+.message-web-sources .web-sources-title {
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text);
+}
+
+.message-web-sources .web-source-item {
+  margin-bottom: 0.5rem;
+  padding: 0.75rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.message-web-sources .web-source-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(100, 200, 255, 0.3);
+  transform: translateX(2px);
+}
+
+.message-web-sources .web-source-item:last-child {
+  margin-bottom: 0;
+}
+
+.message-web-sources .web-source-link {
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 0.8rem;
+}
+
+.message-web-sources .web-source-link:hover {
+  text-decoration: underline;
+}
+
+.message-web-sources .web-source-snippet {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-top: 0.35rem;
+  line-height: 1.4;
+  border-left: 2px solid rgba(100, 200, 255, 0.4);
+  padding-left: 0.5rem;
+}

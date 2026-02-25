@@ -179,12 +179,12 @@ function renderTurnCard(turn, animate) {
 
 function renderSynthesisCard(synthesis) {
   const { $, escapeHtml, formatDuration } = ctx;
-
-  if ($.rtSynthesisContainer.querySelector('.rt-synthesis-card')) return;
+  const existing = $.rtSynthesisContainer.querySelector('.rt-synthesis-card');
 
   const stats = synthesis.stats || {};
   const tps = stats.tokensPerSecond ? stats.tokensPerSecond.toFixed(1) : '—';
   const latency = stats.latencyMs ? formatDuration(stats.latencyMs) : '—';
+  const hasError = !!synthesis.error;
 
   let thinkingHtml = '';
   if (synthesis.thinking) {
@@ -199,7 +199,7 @@ function renderSynthesisCard(synthesis) {
   }
 
   const card = document.createElement('div');
-  card.className = 'rt-synthesis-card done';
+  card.className = `rt-synthesis-card ${hasError ? 'error' : 'done'}`;
   card.innerHTML = `
     <div class="rt-turn-header">
       <div class="rt-agent-icon synthesizer"><i class="fas fa-gavel"></i></div>
@@ -212,10 +212,14 @@ function renderSynthesisCard(synthesis) {
         <span><i class="fas fa-clock"></i> ${latency}</span>
       </div>
     </div>
-    <div class="rt-turn-body">${escapeHtml(synthesis.response || '')}</div>
+    <div class="rt-turn-body">${hasError ? `<span style="color:var(--danger)">${escapeHtml(synthesis.error)}</span>` : escapeHtml(synthesis.response || '')}</div>
     ${thinkingHtml}
   `;
-  $.rtSynthesisContainer.appendChild(card);
+  if (existing) {
+    existing.replaceWith(card);
+  } else {
+    $.rtSynthesisContainer.appendChild(card);
+  }
 }
 
 function getMaxRenderedRound() {

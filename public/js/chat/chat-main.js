@@ -57,6 +57,7 @@ document.addEventListener('DOMContentLoaded', () => {
     quickActions: document.querySelectorAll('[data-quick]'),
     streamToggle: document.getElementById('streamToggle'),
     ragToggle: document.getElementById('ragToggle'),
+    webSearchToggle: document.getElementById('webSearchToggle'),
     ragOptionsPanel: document.getElementById('ragOptionsPanel'),
     ragOptionsContent: document.getElementById('ragOptionsContent'),
     ragPanelHeader: document.getElementById('ragPanelHeader'),
@@ -447,6 +448,7 @@ document.addEventListener('DOMContentLoaded', () => {
       updateConfigSummary(elements);
       if (window.checkSetupProgress && elements.ragToggle.checked) setTimeout(() => window.checkSetupProgress(), 500);
     });
+    if (elements.webSearchToggle) elements.webSearchToggle.addEventListener('change', () => { helpers.persistSettings(); updateConfigSummary(elements); });
     if (elements.statsToggle) elements.statsToggle.addEventListener('change', () => helpers.persistSettings());
 
     if (elements.ragExpandQuery) elements.ragExpandQuery.addEventListener('change', () => helpers.persistSettings());

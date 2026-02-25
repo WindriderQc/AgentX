@@ -201,7 +201,8 @@ router.post('/chat', optionalAuth, attachWorkspace, async (req, res) => {
     ragCompress,
     autoRoute = false,  // Enable smart model routing
     taskType = null,    // Override task classification (code_generation, deep_reasoning, etc.)
-    agentId = null      // AgentX: Unified agent context
+    agentId = null,     // AgentX: Unified agent context
+    enableWebSearch = false
   } = req.body;
 
   // Defensive fix for workspace context
@@ -245,7 +246,8 @@ router.post('/chat', optionalAuth, attachWorkspace, async (req, res) => {
         autoRoute,
         taskType,
         workspaceId: req.workspace ? req.workspace._id : null,
-        agentId  // AgentX: Pass agent context
+        agentId,  // AgentX: Pass agent context
+        enableWebSearch
     });
 
     res.json({
@@ -302,7 +304,8 @@ const handleChatStreamRequest = async (req, res, payload) => {
     ragFilters,
     ragCompress,
     autoRoute = false,
-    taskType = null
+    taskType = null,
+    enableWebSearch = false
   } = payload || {};
 
   // Debug log for context
@@ -381,8 +384,15 @@ const handleChatStreamRequest = async (req, res, payload) => {
       ragStore,
       autoRoute,
       taskType,
+      enableWebSearch,
       workspaceId: workspaceId,
       abortSignal: abortController.signal,
+      onWebSearchStart: () => {
+        sendEvent('web-search-start', {});
+      },
+      onWebSearchDone: (resultCount) => {
+        sendEvent('web-search-done', { resultCount });
+      },
       onToken: (token) => {
         sendEvent('token', { content: token });
       },
