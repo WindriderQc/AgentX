@@ -7,7 +7,6 @@ const express = require('express');
 const router = express.Router();
 const logger = require('../../config/logger');
 const benchmarkService = require('../../src/services/benchmark');
-const { JUDGE_CONFIG, ENHANCED_SCORING_CONFIGS } = require('../../src/services/qualityScorer');
 
 /**
  * GET /api/benchmark/summary

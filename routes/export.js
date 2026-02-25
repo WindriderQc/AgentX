@@ -34,7 +34,7 @@ router.post('/md-docs', async (req, res) => {
 
     logger.info('Starting MD docs export', { scope, sourceDir, zipPath });
 
-    const { stdout, stderr } = await execFileAsync('python3', [scriptPath, sourceDir, zipPath], { timeout: 30000 }); // 30 second timeout
+    const { stderr } = await execFileAsync('python3', [scriptPath, sourceDir, zipPath], { timeout: 30000 }); // 30 second timeout
 
     if (stderr) {
       logger.warn('MD docs export warnings', { stderr });

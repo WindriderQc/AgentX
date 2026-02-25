@@ -91,7 +91,7 @@ router.get('/health', async (req, res) => {
     };
 
     // Check both Ollama hosts in parallel
-    const ollamaChecks = await Promise.allSettled([
+    await Promise.allSettled([
         (async () => {
             try {
                 const tagsResponse = await checkUrl(`${OLLAMA_HOST}/api/tags`);

@@ -13,7 +13,6 @@ const router = express.Router();
 const mongoose = require('mongoose');
 const logger = require('../config/logger');
 const ActivityLog = require('../models/ActivityLog');
-const { systemHealth } = require('../src/app');
 const { exec } = require('child_process');
 const util = require('util');
 const fetch = require('node-fetch');
