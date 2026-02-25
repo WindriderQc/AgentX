@@ -446,7 +446,8 @@ describe('Self-Healing Engine - Remediation Actions', () => {
 
   describe('Rule Loading', () => {
     test('should load rules from configuration file', async () => {
-      const configPath = '/home/yb/codes/AgentX/config/self-healing-rules.json';
+      const path = require('path');
+      const configPath = path.join(__dirname, '../../config/self-healing-rules.json');
 
       const ruleCount = await SelfHealingEngine.loadRules(configPath);
 
