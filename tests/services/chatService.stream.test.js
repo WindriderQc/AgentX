@@ -605,8 +605,10 @@ describe('chatService - handleChatRequestStream', () => {
             });
 
             expect(calculateMessageCost).toHaveBeenCalledWith('llama2', expect.objectContaining({
-                eval_count: 50,
-                prompt_eval_count: 100
+                usage: expect.objectContaining({
+                    completionTokens: 50,
+                    promptTokens: 100
+                })
             }));
         });
     });

@@ -48,6 +48,11 @@ async function startServer() {
   process.env.NODE_ENV = 'test_e2e';
   process.env.MONGODB_URI = uri;
 
+  // Ensure OLLAMA_HOST is set for EmbeddingsService during tests
+  if (!process.env.OLLAMA_HOST) {
+    process.env.OLLAMA_HOST = 'http://localhost:11434';
+  }
+
   // Require app NOW so it sees the environment variables
   const { app, systemHealth } = require('../src/app');
 
@@ -65,7 +70,7 @@ async function startServer() {
 
   // FIX: We will not require app at top. We will require it after setting env.
 
-  const server = require('../src/app').app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log(`\n✅ Test Server running on http://${HOST}:${PORT}`);
     console.log(`   Health: http://${HOST}:${PORT}/health`);
   });
