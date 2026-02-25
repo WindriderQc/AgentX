@@ -410,6 +410,7 @@ app.get('/health', (_req, res) => {
   res.status(isHealthy ? 200 : 503).json({
     status: isHealthy ? 'ok' : 'degraded',
     port: process.env.PORT || 3080,
+    deployTest: '2026-02-25T-canary-mAPqc',
     details: {
       mongodb: systemHealth.mongodb.status,
       ollama: systemHealth.ollama.status
