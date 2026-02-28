@@ -5,7 +5,7 @@ const Conversation = require('../../models/Conversation');
 const PromptConfig = require('../../models/PromptConfig');
 const { getOrCreateProfile } = require('../../src/helpers/userHelpers');
 const { extractResponse, buildOllamaPayload } = require('../../src/helpers/ollamaResponseHandler');
-const { sanitizeOptions, resolveTarget } = require('../../src/utils');
+const { sanitizeOptions, resolveTarget, resolveModelNumCtx } = require('../../src/utils');
 const { tryHandleToolCommand } = require('../../src/services/toolService');
 const { executeTool, parseToolCalls } = require('../../src/services/toolExecutor');
 const { routeRequest, getTargetForModel } = require('../../src/services/modelRouter');
@@ -118,6 +118,10 @@ describe('chatService', () => {
             stats: mockStats 
         });
         
+        // Utils defaults
+        sanitizeOptions.mockReturnValue({});
+        resolveModelNumCtx.mockResolvedValue(8192);
+
         // Routing defaults
         routeRequest.mockResolvedValue({ routed: false, model: 'llama2', target: 'local' });
         getTargetForModel.mockReturnValue('local');

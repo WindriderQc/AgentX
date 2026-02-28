@@ -36,7 +36,32 @@ function resolveTarget(target) {
     return `http://${trimmed.replace(/\/+$/, '')}`;
 }
 
+/**
+ * Resolve num_ctx for a model from ModelRegistry.
+ * Priority: user override > auto-detected default > fallback (8192).
+ * Non-blocking: returns fallback on any error.
+ * @param {string} modelName
+ * @param {number} [fallback=8192]
+ * @returns {Promise<number>}
+ */
+async function resolveModelNumCtx(modelName, fallback = 8192) {
+  if (!modelName) return fallback;
+  try {
+    const ModelRegistry = require('../models/ModelRegistry');
+    const entry = await ModelRegistry.findOne({ modelName: modelName.replace(/:latest$/, '') })
+      .select('executionOverrides executionDefaults')
+      .lean();
+    if (!entry) return fallback;
+    const overrides = entry.executionOverrides || {};
+    const defaults = entry.executionDefaults || {};
+    return overrides.num_ctx ?? defaults.num_ctx ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 module.exports = {
   sanitizeOptions,
-  resolveTarget
+  resolveTarget,
+  resolveModelNumCtx
 };

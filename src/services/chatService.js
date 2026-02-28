@@ -2,7 +2,7 @@ const Conversation = require('../../models/Conversation');
 const AgentX = require('../../models/AgentX');
 const { getOrCreateProfile } = require('../helpers/userHelpers');
 const { extractResponse, buildOllamaPayload } = require('../helpers/ollamaResponseHandler');
-const { sanitizeOptions, resolveTarget } = require('../utils');
+const { sanitizeOptions, resolveTarget, resolveModelNumCtx } = require('../utils');
 const { tryHandleToolCommand } = require('./toolService');
 const { executeTool, parseToolCalls } = require('./toolExecutor');
 const { routeRequest, getTargetForModel } = require('./modelRouter');
@@ -278,10 +278,16 @@ const handleChatRequest = async ({
             await n8nModel.recordUsage();
 
         } else {
+            // Resolve per-model num_ctx from registry (unless client explicitly set one)
+            const sanitized = sanitizeOptions(options);
+            if (!sanitized.num_ctx) {
+                sanitized.num_ctx = await resolveModelNumCtx(effectiveModel);
+            }
+
             const ollamaPayload = buildOllamaPayload({
                 model: effectiveModel,
                 messages: formattedMessages,
-                options: sanitizeOptions(options),
+                options: sanitized,
                 streamEnabled: false,
                 tools: agentTools
             });
@@ -595,11 +601,16 @@ const handleChatRequestStream = async ({
             }
 
         } else {
-            // Ollama Streaming
+            // Ollama Streaming — resolve per-model num_ctx from registry
+            const streamSanitized = sanitizeOptions(options);
+            if (!streamSanitized.num_ctx) {
+                streamSanitized.num_ctx = await resolveModelNumCtx(effectiveModel);
+            }
+
             const ollamaPayload = buildOllamaPayload({
                 model: effectiveModel,
                 messages: formattedMessages,
-                options: sanitizeOptions(options),
+                options: streamSanitized,
                 streamEnabled: true
             });
 
