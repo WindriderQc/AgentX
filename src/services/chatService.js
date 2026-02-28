@@ -278,10 +278,10 @@ const handleChatRequest = async ({
             await n8nModel.recordUsage();
 
         } else {
-            // Resolve per-model num_ctx from registry (unless client explicitly set one)
+            // Resolve per-model num_ctx from registry, aware of target host VRAM
             const sanitized = sanitizeOptions(options);
             if (!sanitized.num_ctx) {
-                sanitized.num_ctx = await resolveModelNumCtx(effectiveModel);
+                sanitized.num_ctx = await resolveModelNumCtx(effectiveModel, { targetHost: resolveTarget(effectiveTarget) });
             }
 
             const ollamaPayload = buildOllamaPayload({
@@ -601,10 +601,10 @@ const handleChatRequestStream = async ({
             }
 
         } else {
-            // Ollama Streaming — resolve per-model num_ctx from registry
+            // Ollama Streaming — resolve per-model num_ctx from registry, aware of target host VRAM
             const streamSanitized = sanitizeOptions(options);
             if (!streamSanitized.num_ctx) {
-                streamSanitized.num_ctx = await resolveModelNumCtx(effectiveModel);
+                streamSanitized.num_ctx = await resolveModelNumCtx(effectiveModel, { targetHost: resolveTarget(effectiveTarget) });
             }
 
             const ollamaPayload = buildOllamaPayload({

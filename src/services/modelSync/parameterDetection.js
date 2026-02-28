@@ -63,8 +63,9 @@ function bytesPerParam(quant) {
 /**
  * Estimate KV cache size in bytes for a given context window
  * Empirical calibration from real measurements:
- *   qwen2.5:32b-Q4_K_M at 32K ctx: ~11GB KV cache (~11 MB per 1K ctx per 1B params)
- *   Smaller models use GQA more efficiently, so we scale down for <10B
+ *   deepseek-r1:8b Q4_K_M at 65K ctx: 45GB total (GPU 28% ≈ 12.6GB, KV ~8GB GPU-side)
+ *   qwen2.5:32b-Q4_K_M at 32K ctx: ~11GB KV cache
+ *   Includes Ollama runtime overhead (graph buffers, scratch space, CUDA fragmentation)
  * @param {number} paramBillions - Parameter count in billions
  * @param {number} numCtx - Context window size
  * @returns {number} Estimated KV cache bytes
@@ -72,10 +73,9 @@ function bytesPerParam(quant) {
 function estimateKvCacheBytes(paramBillions, numCtx) {
   if (!Number.isFinite(paramBillions) || paramBillions <= 0) return 0;
   if (!Number.isFinite(numCtx) || numCtx <= 0) return 0;
-  // Empirical: ~10 MB per 1K context per 1B params for larger models
-  // Scale down for small models (GQA is more effective)
-  // 70B+ models use larger KV head dimensions
-  const mbPerKCtxPerB = paramBillions >= 70 ? 15 : paramBillions >= 30 ? 10 : paramBillions >= 10 ? 6 : 3;
+  // Conservative estimates to prevent CPU/GPU split (offload to CPU = terrible perf).
+  // Calibrated from real ollama ps measurements. Intentionally high to keep models fully in GPU.
+  const mbPerKCtxPerB = paramBillions >= 70 ? 20 : paramBillions >= 30 ? 12 : 15;
   return paramBillions * (numCtx / 1024) * mbPerKCtxPerB * 1024 * 1024;
 }
 
