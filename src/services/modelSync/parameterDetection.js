@@ -127,19 +127,21 @@ function detectOptimalNumCtx({ parameterSize, quantization, modelSizeBytes, host
     };
   }
 
-  // Fallback: lookup table based on parameter count alone
+  // Fallback: conservative lookup table when VRAM is unknown
+  // These are intentionally low to avoid CPU/GPU split on underpowered hosts.
+  // Set OLLAMA_HOST_VRAM_MAP or configure in VRAM panel for better results.
   if (paramB) {
     const table = [
-      { maxB: 3,   ctx: 32768 },
-      { maxB: 10,  ctx: 16384 },
-      { maxB: 30,  ctx: 8192 },
-      { maxB: 70,  ctx: 4096 },
+      { maxB: 3,   ctx: 8192 },
+      { maxB: 10,  ctx: 8192 },
+      { maxB: 30,  ctx: 4096 },
+      { maxB: 70,  ctx: 2048 },
       { maxB: Infinity, ctx: 2048 }
     ];
     const entry = table.find(t => paramB <= t.maxB);
     return {
       num_ctx: entry.ctx,
-      reason: `${paramB}B model → ${entry.ctx} ctx (lookup table, VRAM unknown)`
+      reason: `${paramB}B model → ${entry.ctx} ctx (conservative, VRAM unknown — set OLLAMA_HOST_VRAM_MAP or configure in VRAM panel for better results)`
     };
   }
 

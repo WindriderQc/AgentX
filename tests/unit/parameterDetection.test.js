@@ -94,16 +94,16 @@ describe('detectOptimalNumCtx', () => {
     expect(result.reason).toContain('32');
   });
 
-  it('should use lookup table when VRAM unknown', () => {
+  it('should use conservative lookup table when VRAM unknown', () => {
     const small = detectOptimalNumCtx({ parameterSize: '7B', quantization: null, modelSizeBytes: null, hostVramMiB: null });
-    expect(small.num_ctx).toBe(16384);
-    expect(small.reason).toContain('lookup table');
+    expect(small.num_ctx).toBe(8192);
+    expect(small.reason).toContain('conservative');
 
     const large = detectOptimalNumCtx({ parameterSize: '70B', quantization: null, modelSizeBytes: null, hostVramMiB: null });
-    expect(large.num_ctx).toBe(4096);
+    expect(large.num_ctx).toBe(2048);
 
     const tiny = detectOptimalNumCtx({ parameterSize: '1.7B', quantization: null, modelSizeBytes: null, hostVramMiB: null });
-    expect(tiny.num_ctx).toBe(32768);
+    expect(tiny.num_ctx).toBe(8192);
   });
 
   it('should use model size bytes as last resort', () => {

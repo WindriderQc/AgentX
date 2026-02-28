@@ -60,11 +60,18 @@ async function fetchHostModels(hostUrl) {
 async function getHostVramMiB(hostUrl) {
   try {
     const result = await ollamaVramService.getHostVram(hostUrl);
+    const source = result._source || (result.ok ? 'ssh-nvidia-smi' : 'unknown');
+
     if (result.ok && result.memoryTotalMiBTotal > 0) {
+      logger.info('VRAM detected for host', { hostUrl, vramMiB: result.memoryTotalMiBTotal, source });
       return result.memoryTotalMiBTotal;
     }
+
+    logger.warn('VRAM unknown for host — models will use conservative context defaults. Set OLLAMA_HOST_VRAM_MAP or configure in VRAM panel.', {
+      hostUrl, source, error: result.error || 'no VRAM data'
+    });
   } catch (err) {
-    logger.info('VRAM detection unavailable for host (using lookup table)', { hostUrl, error: err.message });
+    logger.warn('VRAM detection failed for host — models will use conservative context defaults', { hostUrl, error: err.message });
   }
   return null;
 }

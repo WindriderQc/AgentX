@@ -82,12 +82,35 @@ class ModelExecutionConfig {
             if (this.tempInput) this.tempInput.placeholder = String(tempEff.value);
         }
 
-        // Reason
+        // Reason + conservative warning
         const reason = effective?._reason || defaults?._reason;
         if (this.reasonEl) {
-            this.reasonEl.innerHTML = reason
-                ? `<i class="fas fa-info-circle"></i> ${this.escapeHtml(reason)}`
-                : '';
+            const isConservative = reason && (reason.includes('conservative') || reason.includes('VRAM unknown'));
+            if (isConservative) {
+                this.reasonEl.innerHTML = `
+                    <div style="background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.4); border-radius:6px; padding:0.5rem 0.75rem; margin-top:0.25rem;">
+                        <div style="color:#fbbf24; font-size:0.85rem;">
+                            <i class="fas fa-exclamation-triangle"></i> This model uses conservative defaults because host VRAM is unknown.
+                        </div>
+                        <div style="margin-top:0.25rem;">
+                            <a href="#" class="vram-configure-link" style="color:#60a5fa; font-size:0.8rem; text-decoration:underline;">Configure VRAM →</a>
+                        </div>
+                    </div>`;
+                // Wire up link to open VRAM modal
+                const link = this.reasonEl.querySelector('.vram-configure-link');
+                if (link) {
+                    link.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        this.close();
+                        const card = document.getElementById('statVramCard');
+                        if (card) card.click();
+                    });
+                }
+            } else {
+                this.reasonEl.innerHTML = reason
+                    ? `<i class="fas fa-info-circle"></i> ${this.escapeHtml(reason)}`
+                    : '';
+            }
         }
     }
 

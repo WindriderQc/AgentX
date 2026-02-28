@@ -380,17 +380,70 @@ class UnifiedModels {
         const rows = hosts.map(h => {
             const hostName = this.escapeHtml(h?.name || h?.id || 'Host');
             const hostUrl = this.escapeHtml(h?.url || '');
+            const sshHost = this.escapeHtml(h?.sshHost || '');
             const ok = !!h?.ok;
-            const status = ok ? '✓' : '✗';
-            const statusStyle = ok ? 'color:#22c55e;' : 'color:#ef4444;';
+            const source = h?._source || 'none';
+            const actionRequired = !!h?.actionRequired;
+
             const used = ok ? fmtGiB(h?.memoryUsedMiBTotal || 0) : '—';
             const total = ok ? fmtGiB(h?.memoryTotalMiBTotal || 0) : '—';
+            const collectedAt = this.escapeHtml(fmtTs(h?.collectedAt));
+
+            // Source badge
+            let sourceBadge = '';
+            if (ok && source === 'ssh-nvidia-smi') {
+                sourceBadge = `<span style="display:inline-flex; align-items:center; gap:4px; font-size:0.8rem; color:#22c55e;"><i class="fas fa-check-circle"></i> Live detection via SSH</span>`;
+            } else if (ok && (source === 'db-override' || source === 'static-config')) {
+                const label = source === 'db-override' ? 'Manual override' : 'Env config';
+                sourceBadge = `<span style="display:inline-flex; align-items:center; gap:4px; font-size:0.8rem; color:#60a5fa;"><i class="fas fa-pen"></i> VRAM: ${label} (${fmtGiB(h?.memoryTotalMiBTotal || 0)})</span>`;
+            }
+
+            // Warning banner for failed detection with no override
+            let warningBanner = '';
+            if (!ok && actionRequired) {
+                warningBanner = `
+                    <div style="background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.4); border-radius:6px; padding:0.6rem 0.75rem; margin-top:0.5rem;">
+                        <div style="color:#fbbf24; font-size:0.85rem; font-weight:600; margin-bottom:0.35rem;">
+                            <i class="fas fa-exclamation-triangle"></i> VRAM detection failed
+                        </div>
+                        <div style="color:#d4d4d8; font-size:0.8rem; margin-bottom:0.5rem;">
+                            Models on this host use conservative context defaults. Set VRAM manually to optimize performance.
+                        </div>
+                        <div style="display:flex; align-items:center; gap:0.5rem;">
+                            <input type="number" class="vram-override-input" data-host="${sshHost}" placeholder="e.g. 14336" min="1024" step="1024"
+                                style="width:120px; padding:4px 8px; border-radius:4px; border:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.3); color:#fff; font-size:0.85rem;" />
+                            <span style="color:var(--muted); font-size:0.8rem;">MiB</span>
+                            <button class="btn-primary-sm vram-override-save" data-host="${sshHost}" style="font-size:0.8rem; padding:4px 10px;">Save</button>
+                        </div>
+                        <div style="color:var(--muted); font-size:0.75rem; margin-top:0.3rem;">
+                            Enter effective VRAM in MiB (total GPU minus ~2GB for Windows desktop)
+                        </div>
+                    </div>`;
+            }
+
+            // Edit/clear controls for existing overrides
+            let overrideControls = '';
+            if (ok && source === 'db-override') {
+                overrideControls = `
+                    <div style="display:flex; align-items:center; gap:0.5rem; margin-top:0.5rem;">
+                        <input type="number" class="vram-override-input" data-host="${sshHost}" value="${h?.memoryTotalMiBTotal || ''}" min="1024" step="1024"
+                            style="width:120px; padding:4px 8px; border-radius:4px; border:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.3); color:#fff; font-size:0.85rem;" />
+                        <span style="color:var(--muted); font-size:0.8rem;">MiB</span>
+                        <button class="btn-primary-sm vram-override-save" data-host="${sshHost}" style="font-size:0.8rem; padding:4px 10px;">Update</button>
+                        <button class="btn-icon vram-override-clear" data-host="${sshHost}" title="Clear override" style="font-size:0.8rem; color:#ef4444;">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>`;
+            }
+
             const rawErr = String(h?.error || '').trim();
             const displayErr = rawErr.includes('OLLAMA_SSH_DISABLED_HOSTS')
                 ? 'VRAM telemetry unavailable for this host (Windows/disabled)'
                 : (rawErr || 'Unavailable');
             const err = !ok ? this.escapeHtml(displayErr) : '';
-            const collectedAt = this.escapeHtml(fmtTs(h?.collectedAt));
+
+            const status = ok ? '✓' : '✗';
+            const statusStyle = ok ? 'color:#22c55e;' : 'color:#ef4444;';
 
             const gpus = Array.isArray(h?.gpus) ? h.gpus : [];
             const gpuLines = gpus.length
@@ -409,6 +462,7 @@ class UnifiedModels {
                         <div>
                             <div style="font-weight: 700;">${hostName}</div>
                             <div style="color: var(--muted); font-size: 0.85rem;">${hostUrl}</div>
+                            ${sourceBadge ? `<div style="margin-top: 0.25rem;">${sourceBadge}</div>` : ''}
                             <div style="color: var(--muted); font-size: 0.8rem; margin-top: 0.25rem;">Collected: ${collectedAt}</div>
                         </div>
                         <div style="text-align: right;">
@@ -420,11 +474,62 @@ class UnifiedModels {
                     <div style="margin-top: 0.75rem; display:flex; flex-direction: column; gap: 0.35rem;">
                         ${gpuLines}
                     </div>
+                    ${warningBanner}
+                    ${overrideControls}
                 </div>
             `;
         }).join('');
 
         body.innerHTML = rows;
+
+        // Wire up VRAM override save buttons
+        body.querySelectorAll('.vram-override-save').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const hostIp = btn.dataset.host;
+                const input = body.querySelector(`.vram-override-input[data-host="${hostIp}"]`);
+                const vramMiB = parseInt(input?.value, 10);
+                if (!vramMiB || vramMiB <= 0) { alert('Enter a valid VRAM value in MiB'); return; }
+
+                btn.disabled = true;
+                btn.textContent = 'Saving...';
+                try {
+                    const resp = await fetch('/api/ollama-vram/override', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include',
+                        body: JSON.stringify({ hostIp, vramMiB })
+                    });
+                    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                    // Refresh modal
+                    const freshData = await this.fetchVramMetrics({ force: true });
+                    this.renderVramModal(freshData);
+                } catch (err) {
+                    alert(`Failed to save override: ${err.message}`);
+                    btn.disabled = false;
+                    btn.textContent = 'Save';
+                }
+            });
+        });
+
+        // Wire up VRAM override clear buttons
+        body.querySelectorAll('.vram-override-clear').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const hostIp = btn.dataset.host;
+                if (!confirm(`Clear VRAM override for ${hostIp}?`)) return;
+
+                try {
+                    const resp = await fetch(`/api/ollama-vram/override/${encodeURIComponent(hostIp)}`, {
+                        method: 'DELETE',
+                        credentials: 'include'
+                    });
+                    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                    const freshData = await this.fetchVramMetrics({ force: true });
+                    this.renderVramModal(freshData);
+                } catch (err) {
+                    alert(`Failed to clear override: ${err.message}`);
+                }
+            });
+        });
     }
 
     renderVramModalError(err) {

@@ -1,6 +1,7 @@
 const { execFile } = require('child_process');
 const { promisify } = require('util');
 const logger = require('../../config/logger');
+const HostVramOverride = require('../../models/HostVramOverride');
 
 const execFileAsync = promisify(execFile);
 
@@ -92,6 +93,74 @@ function resolveSshUserForHost(sshHost) {
   return process.env.OLLAMA_SSH_USER || null;
 }
 
+/**
+ * Parse OLLAMA_HOST_VRAM_MAP env var.
+ * Format: "host=vramMiB,host2=vramMiB2" (same pattern as OLLAMA_SSH_USER_MAP)
+ * @returns {Map<string, number>} hostIp → vramMiB
+ */
+function parseHostVramMap() {
+  const raw = String(process.env.OLLAMA_HOST_VRAM_MAP || '').trim();
+  const map = new Map();
+  if (!raw) return map;
+
+  for (const entry of raw.split(',')) {
+    const trimmed = String(entry || '').trim();
+    if (!trimmed) continue;
+    const idx = trimmed.indexOf('=');
+    if (idx <= 0) continue;
+    const host = trimmed.slice(0, idx).trim().toLowerCase();
+    const vram = Number.parseInt(trimmed.slice(idx + 1).trim(), 10);
+    if (!host || !Number.isFinite(vram) || vram <= 0) continue;
+    map.set(host, vram);
+  }
+
+  return map;
+}
+
+/**
+ * Get static VRAM for a host from DB override or env var.
+ * @param {string} sshHost - hostname/IP
+ * @returns {Promise<{ok: boolean, _source: string, memoryTotalMiBTotal?: number}|null>}
+ */
+async function getStaticVram(sshHost) {
+  const hostKey = String(sshHost || '').trim().toLowerCase();
+  if (!hostKey) return null;
+
+  // Priority 1: DB override (set via UI)
+  try {
+    const override = await HostVramOverride.findOne({ hostIp: hostKey });
+    if (override && override.vramMiB > 0) {
+      return {
+        ok: true,
+        _source: 'db-override',
+        sshHost: hostKey,
+        memoryTotalMiBTotal: override.vramMiB,
+        gpus: [],
+        memoryUsedMiBTotal: 0,
+        collectedAt: override.updatedAt?.toISOString() || new Date().toISOString()
+      };
+    }
+  } catch (err) {
+    logger.warn('Failed to check HostVramOverride', { sshHost: hostKey, error: err.message });
+  }
+
+  // Priority 2: Env var OLLAMA_HOST_VRAM_MAP
+  const vramMap = parseHostVramMap();
+  if (vramMap.has(hostKey)) {
+    return {
+      ok: true,
+      _source: 'static-config',
+      sshHost: hostKey,
+      memoryTotalMiBTotal: vramMap.get(hostKey),
+      gpus: [],
+      memoryUsedMiBTotal: 0,
+      collectedAt: new Date().toISOString()
+    };
+  }
+
+  return null;
+}
+
 function parseNvidiaSmiCsv(output) {
   const lines = String(output || '')
     .split('\n')
@@ -175,7 +244,13 @@ class OllamaVramService {
 
     const disabledHosts = parseDisabledHosts();
     if (disabledHosts.has(String(sshHost).toLowerCase())) {
-      return { ok: false, sshHost, error: 'VRAM telemetry disabled for this host (OLLAMA_SSH_DISABLED_HOSTS). Common case: Ollama running on Windows without SSH/nvidia-smi compatibility.' };
+      // SSH disabled — try static VRAM before giving up
+      const staticResult = await getStaticVram(sshHost);
+      if (staticResult) {
+        this.cache.set(sshHost, { ts: Date.now(), value: staticResult });
+        return staticResult;
+      }
+      return { ok: false, sshHost, _source: 'none', error: 'VRAM telemetry disabled for this host (OLLAMA_SSH_DISABLED_HOSTS). Set OLLAMA_HOST_VRAM_MAP or configure in VRAM panel.', actionRequired: true };
     }
 
     const cacheMs = Number.parseInt(process.env.OLLAMA_VRAM_CACHE_MS || '', 10) || DEFAULT_CACHE_MS;
@@ -193,7 +268,13 @@ class OllamaVramService {
     const timeoutMs = Number.parseInt(process.env.OLLAMA_SSH_TIMEOUT_MS || '', 10) || DEFAULT_TIMEOUT_MS;
 
     if (!sshUser && !process.env.OLLAMA_SSH_ALLOW_NO_USER) {
-      const value = { ok: false, error: 'OLLAMA_SSH_USER not configured' };
+      // No SSH user — try static VRAM before giving up
+      const staticResult = await getStaticVram(sshHost);
+      if (staticResult) {
+        this.cache.set(cacheKey, { ts: now, value: staticResult });
+        return staticResult;
+      }
+      const value = { ok: false, _source: 'none', error: 'OLLAMA_SSH_USER not configured', actionRequired: true };
       this.cache.set(cacheKey, { ts: now, value });
       return value;
     }
@@ -209,6 +290,7 @@ class OllamaVramService {
       const parsed = parseNvidiaSmiCsv(stdout);
       const value = {
         ok: true,
+        _source: 'ssh-nvidia-smi',
         sshHost,
         ...parsed,
         collectedAt: new Date().toISOString()
@@ -220,7 +302,14 @@ class OllamaVramService {
       const msg = formatSshError(err, timeoutMs);
       logger.warn('Failed to fetch VRAM via SSH', { sshHost, error: msg });
 
-      const value = { ok: false, sshHost, error: msg };
+      // Fallback: try static VRAM (DB override or env var)
+      const staticResult = await getStaticVram(sshHost);
+      if (staticResult) {
+        this.cache.set(cacheKey, { ts: now, value: staticResult });
+        return staticResult;
+      }
+
+      const value = { ok: false, sshHost, _source: 'none', error: msg, actionRequired: true };
       this.cache.set(cacheKey, { ts: now, value });
       return value;
     }
@@ -234,11 +323,13 @@ class OllamaVramService {
           ...host,
           sshHost: result.sshHost || parseHostFromUrl(host.url),
           ok: !!result.ok,
+          _source: result._source || (result.ok ? 'ssh-nvidia-smi' : 'none'),
           gpus: result.gpus || [],
           memoryUsedMiBTotal: result.memoryUsedMiBTotal || 0,
           memoryTotalMiBTotal: result.memoryTotalMiBTotal || 0,
           collectedAt: result.collectedAt || null,
-          error: result.ok ? null : result.error
+          error: result.ok ? null : result.error,
+          actionRequired: result.actionRequired || false
         };
       })
     );
@@ -248,4 +339,4 @@ class OllamaVramService {
 }
 
 module.exports = new OllamaVramService();
-module.exports._internal = { parseHostFromUrl, parseNvidiaSmiCsv, buildSshArgs, parseDisabledHosts, parseSshUserMap, resolveSshUserForHost };
+module.exports._internal = { parseHostFromUrl, parseNvidiaSmiCsv, buildSshArgs, parseDisabledHosts, parseSshUserMap, resolveSshUserForHost, parseHostVramMap, getStaticVram };
