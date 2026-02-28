@@ -333,6 +333,15 @@ async function startServer() {
     logger.warn('SpecialX runner failed to start', { error: err.message });
   }
 
+  // Start Host Monitor service (stale-host detection)
+  try {
+    const hostMonitorService = require('./src/services/hostMonitorService');
+    hostMonitorService.start();
+    console.log(`   ✓ Host Monitor: Active`);
+  } catch (err) {
+    console.log(`   ⚠ Host Monitor: ${err.message}`);
+  }
+
   // Start Express server
   app.listen(PORT, () => {
     console.log(`\n${'─'.repeat(58)}`);
