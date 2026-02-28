@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgentX • Host Monitoring</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <style>
+        .hm-container { max-width: 1500px; margin: 0 auto; padding: 24px; }
+
+        /* Header */
+        .hm-header { margin-bottom: 28px; display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px; }
+        .hm-header h1 { font-size: 28px; font-weight: 700; color: #fff; margin: 8px 0; }
+        .hm-header h1 i { color: #7cf0ff; margin-right: 10px; }
+        .hm-header p { color: var(--muted); font-size: 14px; }
+        .hm-header-actions { display: flex; gap: 8px; align-items: center; }
+        .hm-header-actions select {
+            background: rgba(255,255,255,0.05); border: 1px solid var(--panel-border);
+            color: #fff; padding: 6px 10px; border-radius: 8px; font-size: 13px;
+        }
+        .hm-header-actions select option { background: #1e293b; }
+
+        /* Summary strip */
+        .hm-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 24px; }
+        .hm-stat {
+            background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 10px;
+            padding: 16px; text-align: center;
+        }
+        .hm-stat-value { font-size: 28px; font-weight: 700; color: #fff; }
+        .hm-stat-label { font-size: 12px; color: var(--muted); margin-top: 4px; text-transform: uppercase; }
+
+        /* Host cards grid */
+        .hm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; margin-bottom: 24px; }
+        .hm-card {
+            background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 12px;
+            padding: 20px; cursor: pointer; transition: all 0.2s;
+        }
+        .hm-card:hover { border-color: rgba(124, 240, 255, 0.3); transform: translateY(-2px); }
+        .hm-card.selected { border-color: #7cf0ff; box-shadow: 0 0 20px rgba(124, 240, 255, 0.1); }
+        .hm-card.offline { opacity: 0.55; }
+        .hm-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .hm-card-hostname { font-size: 16px; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 8px; }
+        .hm-card-os { font-size: 14px; opacity: 0.6; }
+        .hm-status-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+        .hm-status-dot.online { background: #22c55e; box-shadow: 0 0 8px rgba(34, 197, 94, 0.5); }
+        .hm-status-dot.degraded { background: #f59e0b; box-shadow: 0 0 8px rgba(245, 158, 11, 0.4); }
+        .hm-status-dot.offline { background: #ef4444; }
+        .hm-card-meta { font-size: 12px; color: var(--muted); margin-bottom: 12px; display: flex; gap: 12px; }
+        .hm-card-meta span { display: flex; align-items: center; gap: 4px; }
+
+        /* Mini metric bars */
+        .hm-bars { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .hm-bar-item { }
+        .hm-bar-label { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-bottom: 3px; }
+        .hm-bar-track { height: 6px; background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden; }
+        .hm-bar-fill { height: 100%; border-radius: 3px; transition: width 0.5s ease; }
+        .hm-bar-fill.green { background: #22c55e; }
+        .hm-bar-fill.yellow { background: #f59e0b; }
+        .hm-bar-fill.red { background: #ef4444; }
+
+        /* Tags */
+        .hm-tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 10px; }
+        .hm-tag { font-size: 10px; padding: 2px 6px; border-radius: 4px; background: rgba(124,240,255,0.1); color: #7cf0ff; }
+
+        /* Detail panel */
+        .hm-detail { display: none; background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 12px; padding: 24px; margin-bottom: 24px; }
+        .hm-detail.visible { display: block; }
+        .hm-detail-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .hm-detail-title { font-size: 22px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 10px; }
+        .hm-detail-close { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 20px; padding: 4px 8px; }
+        .hm-detail-close:hover { color: #fff; }
+
+        /* Detail sections */
+        .hm-detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+        .hm-detail-section {
+            background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05);
+            border-radius: 10px; padding: 16px;
+        }
+        .hm-detail-section h3 { font-size: 14px; font-weight: 600; color: #7cf0ff; margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
+
+        /* Gauges */
+        .hm-gauge { text-align: center; margin-bottom: 8px; }
+        .hm-gauge-value { font-size: 36px; font-weight: 700; color: #fff; }
+        .hm-gauge-label { font-size: 12px; color: var(--muted); }
+
+        /* Info rows */
+        .hm-info-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+        .hm-info-row:last-child { border-bottom: none; }
+        .hm-info-key { color: var(--muted); }
+        .hm-info-val { color: #fff; font-weight: 500; }
+
+        /* GPU cards */
+        .hm-gpu-card { background: rgba(255,255,255,0.03); border-radius: 8px; padding: 12px; margin-bottom: 8px; }
+        .hm-gpu-card:last-child { margin-bottom: 0; }
+        .hm-gpu-name { font-size: 13px; font-weight: 600; color: #fff; margin-bottom: 6px; }
+
+        /* Disk rows */
+        .hm-disk-row { margin-bottom: 8px; }
+        .hm-disk-row:last-child { margin-bottom: 0; }
+        .hm-disk-mount { font-size: 12px; color: var(--muted); font-family: monospace; margin-bottom: 2px; }
+
+        /* Process table */
+        .hm-proc-table { width: 100%; font-size: 12px; border-collapse: collapse; }
+        .hm-proc-table th { text-align: left; color: var(--muted); padding: 4px 8px; font-weight: 500; border-bottom: 1px solid rgba(255,255,255,0.06); }
+        .hm-proc-table td { padding: 4px 8px; color: #ccc; }
+
+        /* Charts area */
+        .hm-charts { margin-top: 20px; }
+        .hm-chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .hm-chart-header h3 { font-size: 14px; font-weight: 600; color: #7cf0ff; margin: 0; }
+        .hm-chart-range { display: flex; gap: 4px; }
+        .hm-chart-range button {
+            background: rgba(255,255,255,0.05); border: 1px solid var(--panel-border);
+            color: var(--muted); padding: 4px 10px; border-radius: 6px; font-size: 11px; cursor: pointer;
+        }
+        .hm-chart-range button.active { background: rgba(124,240,255,0.15); color: #7cf0ff; border-color: rgba(124,240,255,0.3); }
+        .hm-chart-wrap { height: 200px; position: relative; }
+
+        /* Empty state */
+        .hm-empty {
+            text-align: center; padding: 60px 20px; color: var(--muted);
+            background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 12px;
+        }
+        .hm-empty i { font-size: 48px; margin-bottom: 16px; opacity: 0.3; }
+        .hm-empty h3 { color: #fff; margin-bottom: 8px; }
+        .hm-empty code { background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+
+        /* Last seen */
+        .hm-lastseen { font-size: 11px; color: var(--muted); margin-top: 8px; }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .hm-grid { grid-template-columns: 1fr; }
+            .hm-detail-grid { grid-template-columns: 1fr; }
+            .hm-bars { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div id="nav-placeholder"></div>
+    <div class="main-content">
+        <div class="hm-container">
+            <!-- Header -->
+            <div class="hm-header">
+                <div>
+                    <h1><i class="fas fa-server"></i>Host Monitoring</h1>
+                    <p>Real-time system metrics across all monitored hosts</p>
+                </div>
+                <div class="hm-header-actions">
+                    <select id="statusFilter">
+                        <option value="">All Hosts</option>
+                        <option value="online">Online</option>
+                        <option value="degraded">Degraded</option>
+                        <option value="offline">Offline</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Summary strip -->
+            <div class="hm-summary" id="summaryStrip">
+                <div class="hm-stat"><div class="hm-stat-value" id="statTotal">-</div><div class="hm-stat-label">Total Hosts</div></div>
+                <div class="hm-stat"><div class="hm-stat-value" id="statOnline" style="color:#22c55e">-</div><div class="hm-stat-label">Online</div></div>
+                <div class="hm-stat"><div class="hm-stat-value" id="statDegraded" style="color:#f59e0b">-</div><div class="hm-stat-label">Degraded</div></div>
+                <div class="hm-stat"><div class="hm-stat-value" id="statOffline" style="color:#ef4444">-</div><div class="hm-stat-label">Offline</div></div>
+                <div class="hm-stat"><div class="hm-stat-value" id="statAvgCpu">-</div><div class="hm-stat-label">Avg CPU %</div></div>
+                <div class="hm-stat"><div class="hm-stat-value" id="statAvgMem">-</div><div class="hm-stat-label">Avg RAM %</div></div>
+                <div class="hm-stat"><div class="hm-stat-value" id="statGpus">-</div><div class="hm-stat-label">Total GPUs</div></div>
+                <div class="hm-stat"><div class="hm-stat-value" id="statVram">-</div><div class="hm-stat-label">Total VRAM</div></div>
+            </div>
+
+            <!-- Detail panel (hidden by default) -->
+            <div class="hm-detail" id="detailPanel">
+                <div class="hm-detail-header">
+                    <div class="hm-detail-title" id="detailTitle">
+                        <i class="fas fa-server"></i>
+                        <span id="detailHostname">-</span>
+                        <span class="hm-status-dot" id="detailStatusDot"></span>
+                    </div>
+                    <button class="hm-detail-close" id="detailClose"><i class="fas fa-times"></i></button>
+                </div>
+
+                <div class="hm-detail-grid">
+                    <!-- CPU -->
+                    <div class="hm-detail-section">
+                        <h3><i class="fas fa-microchip"></i> CPU</h3>
+                        <div class="hm-gauge"><div class="hm-gauge-value" id="detailCpuUsage">-</div><div class="hm-gauge-label">Usage %</div></div>
+                        <div id="detailCpuInfo"></div>
+                    </div>
+
+                    <!-- Memory -->
+                    <div class="hm-detail-section">
+                        <h3><i class="fas fa-memory"></i> Memory</h3>
+                        <div class="hm-gauge"><div class="hm-gauge-value" id="detailMemUsage">-</div><div class="hm-gauge-label">Usage %</div></div>
+                        <div id="detailMemInfo"></div>
+                    </div>
+
+                    <!-- GPUs -->
+                    <div class="hm-detail-section" id="detailGpuSection">
+                        <h3><i class="fas fa-bolt"></i> GPUs</h3>
+                        <div id="detailGpuList"></div>
+                    </div>
+
+                    <!-- System Info -->
+                    <div class="hm-detail-section">
+                        <h3><i class="fas fa-info-circle"></i> System</h3>
+                        <div id="detailSysInfo"></div>
+                    </div>
+
+                    <!-- Disks -->
+                    <div class="hm-detail-section">
+                        <h3><i class="fas fa-hdd"></i> Disks</h3>
+                        <div id="detailDiskList"></div>
+                    </div>
+
+                    <!-- Top Processes -->
+                    <div class="hm-detail-section">
+                        <h3><i class="fas fa-list-ol"></i> Top Processes (CPU)</h3>
+                        <div id="detailProcesses"></div>
+                    </div>
+                </div>
+
+                <!-- History charts -->
+                <div class="hm-charts">
+                    <div class="hm-chart-header">
+                        <h3><i class="fas fa-chart-area" style="margin-right:6px;"></i> History</h3>
+                        <div class="hm-chart-range" id="chartRange">
+                            <button data-range="1h" class="active">1H</button>
+                            <button data-range="6h">6H</button>
+                            <button data-range="24h">24H</button>
+                            <button data-range="7d">7D</button>
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                        <div class="hm-chart-wrap"><canvas id="cpuChart"></canvas></div>
+                        <div class="hm-chart-wrap"><canvas id="memChart"></canvas></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Host cards grid -->
+            <div class="hm-grid" id="hostsGrid"></div>
+
+            <!-- Empty state -->
+            <div class="hm-empty" id="emptyState" style="display:none;">
+                <i class="fas fa-server"></i>
+                <h3>No Hosts Reporting</h3>
+                <p>Install the AgentX Host Agent on your machines to start monitoring.</p>
+                <p style="margin-top:12px;">
+                    <code>AGENTX_SERVER=http://this-server:3000 node tools/host-agent/agent.js</code>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script src="/js/components/nav.js"></script>
+    <script src="/js/host-monitor.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            if (typeof injectNav === 'function') injectNav('hosts');
+            if (typeof HostMonitor !== 'undefined') HostMonitor.init();
+        });
+    </script>
+</body>
+</html>

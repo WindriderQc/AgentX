@@ -1,0 +1,12 @@
+{
+  "name": "agentx-host-agent",
+  "version": "1.0.0",
+  "description": "Lightweight host monitoring agent for AgentX. Collects system metrics and reports to AgentX server.",
+  "main": "agent.js",
+  "scripts": {
+    "start": "node agent.js"
+  },
+  "dependencies": {
+    "systeminformation": "^5.22.0"
+  }
+}

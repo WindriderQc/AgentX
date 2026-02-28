@@ -319,6 +319,10 @@ app.use('/api/ollama-vram', ollamaVramRoutes);
 const hostTestRoutes = require('../routes/host-test');
 app.use('/api/host-test', hostTestRoutes);
 
+// Host monitoring (agent heartbeats + dashboard)
+const hostMonitorRoutes = require('../routes/host-monitor');
+app.use('/api/hosts', hostMonitorRoutes);
+
 // Workflow Generator routes (N6.1)
 const workflowGeneratorRoutes = require('../routes/workflowGenerator');
 app.use('/api/workflow', workflowGeneratorRoutes);
