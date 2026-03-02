@@ -17,6 +17,7 @@ const { normalizeExecutionConfig, applyLengthHint } = require('./config');
 const { seedPrompts } = require('./init');
 const { classifyBenchmarkError } = require('./errorClassifier');
 const { extractThinkingBlocks } = require('../../helpers/ollamaResponseHandler');
+const { resolveModelNumCtx } = require('../../utils');
 
 // Extracted modules
 const { samplePromptsByDepth } = require('./promptSampling');
@@ -46,24 +47,22 @@ function clearActiveBatch() {
 }
 
 /**
- * Get per-model execution config by merging batch config with registry defaults/overrides
+ * Get per-model execution config by merging batch config with registry defaults/overrides.
+ * Host-aware: recalculates num_ctx for the actual target host's VRAM.
  * @param {string} modelName
  * @param {object} batchConfig - Batch-level execution config
+ * @param {string} [targetHost] - Ollama host URL the model will run on
  * @returns {Promise<object>} Merged execution config
  */
-async function getModelExecutionConfig(modelName, batchConfig) {
+async function getModelExecutionConfig(modelName, batchConfig, targetHost) {
     try {
-        const entry = await ModelRegistry.findOne({ modelName }).lean();
-        if (!entry) return batchConfig;
-
-        const overrides = entry.executionOverrides || {};
-        const defaults = entry.executionDefaults || {};
-
-        // Priority: user override > auto-detected default > batch config
-        const numCtx = overrides.num_ctx ?? defaults.num_ctx ?? batchConfig.num_ctx;
+        const numCtx = await resolveModelNumCtx(modelName, {
+            targetHost,
+            fallback: batchConfig.num_ctx || 8192
+        });
         return { ...batchConfig, num_ctx: numCtx };
     } catch (err) {
-        logger.debug('Failed to lookup model execution config, using batch config', { modelName, error: err.message });
+        logger.debug('Failed to resolve model execution config, using batch config', { modelName, error: err.message });
         return batchConfig;
     }
 }
@@ -287,7 +286,7 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
             for (const model of hostModels) {
                 // Per-model execution config (registry defaults/overrides > batch config)
                 // Resolved BEFORE warmup so num_ctx matches what the real tests will use
-                const modelExecConfig = await getModelExecutionConfig(model, executionConfig);
+                const modelExecConfig = await getModelExecutionConfig(model, executionConfig, hostUrl);
                 if (modelExecConfig.num_ctx !== executionConfig.num_ctx) {
                     logger.info('Using per-model execution config', {
                         model, num_ctx: modelExecConfig.num_ctx, batch_num_ctx: executionConfig.num_ctx

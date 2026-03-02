@@ -61,21 +61,26 @@ function bytesPerParam(quant) {
 }
 
 /**
- * Estimate KV cache size in bytes for a given context window
- * Empirical calibration from real measurements:
- *   deepseek-r1:8b Q4_K_M at 65K ctx: 45GB total (GPU 28% ≈ 12.6GB, KV ~8GB GPU-side)
- *   qwen2.5:32b-Q4_K_M at 32K ctx: ~11GB KV cache
- *   Includes Ollama runtime overhead (graph buffers, scratch space, CUDA fragmentation)
+ * Estimate KV cache + compute buffer size in bytes for a given context window.
+ *
+ * Calibrated from real `ollama ps` measurements (total allocation, not just GPU-resident):
+ *   deepseek-r1:8b Q4_K_M — 32K ctx: 25 GB total, 65K ctx: 45 GB total
+ *   Slope: ~0.625 GB per 1K ctx for 8.2B → 78 MiB/B/1K
+ *
+ * Ollama allocates KV cache + attention scratch + graph buffers + CUDA context.
+ * The total grows roughly linearly with context and model size.  Previous factor
+ * of 15 MiB/B/1K was 5× too low — caused CPU offload on 16 GB hosts.
+ *
  * @param {number} paramBillions - Parameter count in billions
  * @param {number} numCtx - Context window size
- * @returns {number} Estimated KV cache bytes
+ * @returns {number} Estimated bytes (KV + compute buffers)
  */
 function estimateKvCacheBytes(paramBillions, numCtx) {
   if (!Number.isFinite(paramBillions) || paramBillions <= 0) return 0;
   if (!Number.isFinite(numCtx) || numCtx <= 0) return 0;
-  // Conservative estimates to prevent CPU/GPU split (offload to CPU = terrible perf).
-  // Calibrated from real ollama ps measurements. Intentionally high to keep models fully in GPU.
-  const mbPerKCtxPerB = paramBillions >= 70 ? 20 : paramBillions >= 30 ? 12 : 15;
+  // Empirical factors from ollama ps measurements.
+  // Larger models have more efficient KV-to-param ratio (GQA, deeper FFN).
+  const mbPerKCtxPerB = paramBillions >= 70 ? 45 : paramBillions >= 30 ? 35 : 55;
   return paramBillions * (numCtx / 1024) * mbPerKCtxPerB * 1024 * 1024;
 }
 
@@ -90,8 +95,12 @@ function estimateTotalVram(paramBillions, quantization, numCtx) {
   if (!Number.isFinite(paramBillions) || paramBillions <= 0) return Infinity;
   const weightBytes = paramBillions * 1e9 * bytesPerParam(quantization);
   const kvBytes = estimateKvCacheBytes(paramBillions, numCtx);
-  // Add ~10% overhead for runtime buffers
-  return (weightBytes + kvBytes) * 1.1;
+  // Overhead scales with context: attention scratch buffers, CUDA graph allocations,
+  // and Ollama runtime grow significantly at high context windows.
+  // Calibrated from real measurements: deepseek-r1:8b at 65K shows 45GB total
+  // but naive model+KV estimate is only ~13GB. The gap is compute overhead.
+  const overheadPct = numCtx >= 32768 ? 0.30 : numCtx >= 16384 ? 0.20 : 0.10;
+  return (weightBytes + kvBytes) * (1 + overheadPct);
 }
 
 /**

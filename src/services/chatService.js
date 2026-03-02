@@ -339,7 +339,7 @@ const handleChatRequest = async ({
                 const followUpPayload = buildOllamaPayload({
                     model: effectiveModel,
                     messages: followUpMessages,
-                    options: sanitizeOptions(options),
+                    options: sanitized,
                     streamEnabled: false
                 });
 

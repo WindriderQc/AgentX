@@ -227,10 +227,12 @@ const HostMonitor = (() => {
     memEl.textContent = `${memPct}%`;
     memEl.style.color = gaugeColor(memPct);
 
+    const hasAvail = h.memory?.available > 0;
     setHTML('detailMemInfo', `
       ${infoRow('Total', formatBytes(h.memory?.total))}
-      ${infoRow('Used', formatBytes(h.memory?.used))}
-      ${infoRow('Free', formatBytes(h.memory?.free))}
+      ${hasAvail ? infoRow('Actual Used', formatBytes((h.memory?.total || 0) - (h.memory?.available || 0))) : ''}
+      ${hasAvail ? infoRow('Buffers/Cache', formatBytes(h.memory?.buffcache || 0)) : ''}
+      ${infoRow(hasAvail ? 'Available' : 'Free', formatBytes(hasAvail ? h.memory.available : h.memory?.free))}
     `);
 
     // GPUs

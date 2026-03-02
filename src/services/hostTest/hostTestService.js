@@ -19,6 +19,7 @@ const ModelRegistry = require('../../../models/ModelRegistry');
 const ollamaVramService = require('../ollamaVramService');
 const { getFetchOptions } = require('../../helpers/httpAgent');
 const { generateFillPrompt } = require('../contextProbe/contextProbePayload');
+const { resolveModelNumCtx } = require('../../utils');
 const logger = require('../../../config/logger');
 
 // ── Configuration ──────────────────────────────────────────────────────────────
@@ -102,24 +103,6 @@ async function snapshotVram(hostUrl) {
   return { usedMiB: null, totalMiB: null };
 }
 
-/**
- * Get the effective num_ctx for a model from the registry.
- */
-async function getEffectiveNumCtx(modelName) {
-  try {
-    const entry = await ModelRegistry.findOne({ modelName }).lean();
-    if (entry) {
-      const overrides = entry.executionOverrides || {};
-      const defaults = entry.executionDefaults || {};
-      const ct = entry.contextTest || {};
-      if (overrides.num_ctx != null) return overrides.num_ctx;
-      if (ct.testedNumCtx != null && ct.status === 'completed') return ct.testedNumCtx;
-      if (defaults.num_ctx != null) return defaults.num_ctx;
-    }
-  } catch (_) { /* fallback */ }
-  return 8192;
-}
-
 // ── Core Test Functions ────────────────────────────────────────────────────────
 
 /**
@@ -151,7 +134,7 @@ async function testModelOnHost(modelName, hostUrl, options = {}) {
   }
 
   // 3. Probe
-  const numCtx = await getEffectiveNumCtx(modelName);
+  const numCtx = await resolveModelNumCtx(modelName, { targetHost: hostUrl });
   const targetPromptTokens = Math.floor(numCtx * (cfg.contextFillPct / 100));
   const { prompt } = generateFillPrompt(targetPromptTokens);
 

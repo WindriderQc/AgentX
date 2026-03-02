@@ -76,13 +76,17 @@ async function collectMetrics() {
     loadAvg: os.loadavg().map(v => Math.round(v * 100) / 100)
   };
 
-  // Memory
+  // Memory — use "available" (excludes reclaimable cache) for accurate usage on Linux
+  const available = memData.available || memData.free || 0;
+  const actualUsed = (memData.total || 0) - available;
   const memory = {
     total: memData.total || 0,
     used: memData.used || 0,
+    available,
+    buffcache: (memData.buffcache != null) ? memData.buffcache : ((memData.used || 0) - actualUsed),
     free: memData.free || 0,
     usagePercent: memData.total > 0
-      ? Math.round((memData.used / memData.total) * 1000) / 10
+      ? Math.round((actualUsed / memData.total) * 1000) / 10
       : 0
   };
 

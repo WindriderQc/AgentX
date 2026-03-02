@@ -58,7 +58,7 @@ async function callAgent(agent, messages, timeoutMs = DEFAULT_TIMEOUT_MS) {
   }
 
   const url = `${target}/api/chat`;
-  const payload = buildOllamaPayload({ model: agent.model, messages });
+  const payload = buildOllamaPayload({ model: agent.model, messages, options: { num_ctx: 8192 } });
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -143,7 +143,7 @@ async function callAgentStreaming(agent, messages, timeoutMs, emitter, eventPref
     model: agent.model,
     messages,
     streamEnabled: true,
-    options: { num_predict: -1 }
+    options: { num_ctx: 8192, num_predict: -1 }
   });
 
   const controller = new AbortController();

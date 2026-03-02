@@ -271,14 +271,14 @@ describe('Ollama Response Handler', () => {
       expect(payload.options.num_predict).toBe(256);
     });
 
-    it('should set larger context for thinking models', () => {
+    it('should not inject default num_ctx (callers resolve it)', () => {
       const params = {
         model: 'qwen2.5:7b',
         messages: [{ role: 'user', content: 'Hello' }],
         streamEnabled: false
       };
       const payload = buildOllamaPayload(params);
-      expect(payload.options.num_ctx).toBe(8192);
+      expect(payload.options.num_ctx).toBeUndefined();
     });
 
     it('should merge custom options', () => {

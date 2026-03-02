@@ -121,14 +121,37 @@
         .hm-chart-range button.active { background: rgba(124,240,255,0.15); color: #7cf0ff; border-color: rgba(124,240,255,0.3); }
         .hm-chart-wrap { height: 200px; position: relative; }
 
-        /* Empty state */
+        /* Empty / Setup state */
         .hm-empty {
-            text-align: center; padding: 60px 20px; color: var(--muted);
+            padding: 40px 24px; color: var(--muted);
             background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 12px;
         }
-        .hm-empty i { font-size: 48px; margin-bottom: 16px; opacity: 0.3; }
-        .hm-empty h3 { color: #fff; margin-bottom: 8px; }
-        .hm-empty code { background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+        .hm-empty-header { text-align: center; margin-bottom: 28px; }
+        .hm-empty-header i { font-size: 48px; margin-bottom: 16px; opacity: 0.3; display: block; }
+        .hm-empty-header h3 { color: #fff; margin-bottom: 6px; }
+        .hm-empty-header p { font-size: 14px; }
+        .hm-setup-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-bottom: 20px; }
+        .hm-setup-card {
+            background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 10px; padding: 20px;
+        }
+        .hm-setup-card h4 { color: #7cf0ff; font-size: 14px; font-weight: 600; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+        .hm-setup-card ol, .hm-setup-card ul { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.8; }
+        .hm-setup-card li { margin-bottom: 2px; }
+        .hm-code-block {
+            position: relative; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 8px; padding: 12px 40px 12px 14px; margin: 8px 0;
+            font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; color: #e2e8f0;
+            white-space: pre-wrap; word-break: break-all; line-height: 1.6;
+        }
+        .hm-copy-btn {
+            position: absolute; top: 6px; right: 6px; background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.1); border-radius: 5px; color: var(--muted);
+            padding: 3px 7px; cursor: pointer; font-size: 12px; transition: all 0.2s;
+        }
+        .hm-copy-btn:hover { background: rgba(124,240,255,0.15); color: #7cf0ff; }
+        .hm-setup-note { font-size: 12px; color: var(--muted); margin-top: 4px; }
+        .hm-setup-footer { text-align: center; font-size: 13px; margin-top: 8px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.06); }
 
         /* Last seen */
         .hm-lastseen { font-size: 11px; color: var(--muted); margin-top: 8px; }
@@ -142,7 +165,7 @@
     </style>
 </head>
 <body>
-    <div id="nav-placeholder"></div>
+    <div id="nav-container"></div>
     <div class="main-content">
         <div class="hm-container">
             <!-- Header -->
@@ -245,14 +268,79 @@
             <!-- Host cards grid -->
             <div class="hm-grid" id="hostsGrid"></div>
 
-            <!-- Empty state -->
+            <!-- Empty / Setup state -->
             <div class="hm-empty" id="emptyState" style="display:none;">
-                <i class="fas fa-server"></i>
-                <h3>No Hosts Reporting</h3>
-                <p>Install the AgentX Host Agent on your machines to start monitoring.</p>
-                <p style="margin-top:12px;">
-                    <code>AGENTX_SERVER=http://this-server:3000 node tools/host-agent/agent.js</code>
-                </p>
+                <div class="hm-empty-header">
+                    <i class="fas fa-server"></i>
+                    <h3>No Hosts Reporting</h3>
+                    <p>Install the AgentX Host Agent on each machine you want to monitor.<br>
+                       It collects CPU, RAM, GPU, disk &amp; network metrics and reports every 30 seconds.</p>
+                </div>
+
+                <div class="hm-setup-grid">
+                    <!-- Quick test -->
+                    <div class="hm-setup-card">
+                        <h4><i class="fas fa-play-circle"></i> Quick Test</h4>
+                        <p style="font-size:13px; margin-bottom:8px;">Run the agent once to verify connectivity:</p>
+                        <ol>
+                            <li>On the target host, clone or copy the <code>tools/host-agent/</code> folder</li>
+                            <li>Install the dependency:</li>
+                        </ol>
+                        <div class="hm-code-block" id="cmdNpmInstall">cd tools/host-agent &amp;&amp; npm install<button class="hm-copy-btn" onclick="copyCmd('cmdNpmInstall')"><i class="fas fa-copy"></i></button></div>
+                        <ol start="3">
+                            <li>Run the agent (replace the URL if needed):</li>
+                        </ol>
+                        <div class="hm-code-block" id="cmdQuickTest">AGENTX_SERVER=<span class="hm-server-url"></span> node agent.js<button class="hm-copy-btn" onclick="copyCmd('cmdQuickTest')"><i class="fas fa-copy"></i></button></div>
+                        <p class="hm-setup-note">Requires <strong>Node.js 18+</strong>. The host should appear above within seconds.</p>
+                    </div>
+
+                    <!-- Linux service -->
+                    <div class="hm-setup-card">
+                        <h4><i class="fab fa-linux"></i> Linux — Persistent Service</h4>
+                        <p style="font-size:13px; margin-bottom:8px;">Install as a systemd service that starts on boot:</p>
+                        <div class="hm-code-block" id="cmdLinux">sudo bash install.sh <span class="hm-server-url"></span><button class="hm-copy-btn" onclick="copyCmd('cmdLinux')"><i class="fas fa-copy"></i></button></div>
+                        <p class="hm-setup-note">Run from inside the <code>tools/host-agent/</code> directory.<br>
+                        Installs to <code>/opt/agentx-host-agent</code> and enables the <code>agentx-host-agent</code> systemd unit.</p>
+                        <ul style="margin-top:8px;">
+                            <li>Status: <code>systemctl status agentx-host-agent</code></li>
+                            <li>Logs: <code>journalctl -u agentx-host-agent -f</code></li>
+                            <li>Stop: <code>systemctl stop agentx-host-agent</code></li>
+                        </ul>
+                    </div>
+
+                    <!-- Windows -->
+                    <div class="hm-setup-card">
+                        <h4><i class="fab fa-windows"></i> Windows — Scheduled Task</h4>
+                        <p style="font-size:13px; margin-bottom:8px;">Install as a scheduled task that runs at startup:</p>
+                        <div class="hm-code-block" id="cmdWindows">powershell -ExecutionPolicy Bypass -File install.ps1 -Server "<span class="hm-server-url"></span>"<button class="hm-copy-btn" onclick="copyCmd('cmdWindows')"><i class="fas fa-copy"></i></button></div>
+                        <p class="hm-setup-note">Run as Administrator from the <code>tools\host-agent\</code> directory.<br>
+                        Installs to <code>C:\AgentX-Host-Agent</code>.</p>
+                        <ul style="margin-top:8px;">
+                            <li>Status: <code>Get-ScheduledTask AgentXHostAgent</code></li>
+                            <li>Stop: <code>Stop-ScheduledTask AgentXHostAgent</code></li>
+                        </ul>
+                    </div>
+
+                    <!-- Config / options -->
+                    <div class="hm-setup-card">
+                        <h4><i class="fas fa-cog"></i> Configuration</h4>
+                        <p style="font-size:13px; margin-bottom:8px;">Environment variables accepted by the agent:</p>
+                        <ul>
+                            <li><code>AGENTX_SERVER</code> — server URL <em>(required)</em></li>
+                            <li><code>AGENT_TOKEN</code> — auth token, must match server's <code>HOST_AGENT_TOKEN</code></li>
+                            <li><code>AGENT_INTERVAL_MS</code> — report interval, default <strong>30 000 ms</strong></li>
+                            <li><code>AGENT_HOST_ID</code> — custom host ID, default auto-generated from hostname</li>
+                        </ul>
+                        <p class="hm-setup-note" style="margin-top:10px;">
+                            The agent has a single dependency (<code>systeminformation</code>) and works on Linux, Windows &amp; macOS.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="hm-setup-footer">
+                    Already have Ollama hosts? They appear on the <a href="/host-test.html" style="color:#7cf0ff;">Host Test</a> page.
+                    Install the agent on those machines to add live system monitoring.
+                </div>
             </div>
         </div>
     </div>
@@ -262,7 +350,21 @@
     <script src="/js/components/nav.js"></script>
     <script src="/js/host-monitor.js"></script>
     <script>
+        function copyCmd(id) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            const text = el.textContent.replace(/\n/g, '').trim();
+            navigator.clipboard.writeText(text).then(() => {
+                const btn = el.querySelector('.hm-copy-btn');
+                if (btn) { btn.innerHTML = '<i class="fas fa-check"></i>'; setTimeout(() => { btn.innerHTML = '<i class="fas fa-copy"></i>'; }, 1500); }
+            });
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
+            // Populate server URL in setup instructions
+            const serverUrl = window.location.origin;
+            document.querySelectorAll('.hm-server-url').forEach(el => { el.textContent = serverUrl; });
+
             if (typeof injectNav === 'function') injectNav('hosts');
             if (typeof HostMonitor !== 'undefined') HostMonitor.init();
         });

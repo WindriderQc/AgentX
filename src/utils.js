@@ -63,7 +63,7 @@ async function resolveModelNumCtx(modelName, opts = {}) {
   try {
     const ModelRegistry = require('../models/ModelRegistry');
     const entry = await ModelRegistry.findOne({ modelName: modelName.replace(/:latest$/, '') })
-      .select('executionOverrides executionDefaults parameterSize quantization modelSizeBytes sourceHost')
+      .select('executionOverrides executionDefaults parameterSize quantization modelSizeBytes sourceHost contextTest')
       .lean();
     if (!entry) return fallback;
 
@@ -72,6 +72,10 @@ async function resolveModelNumCtx(modelName, opts = {}) {
     if (overrides.num_ctx != null) return overrides.num_ctx;
 
     const defaults = entry.executionDefaults || {};
+    const ct = entry.contextTest || {};
+
+    // Verified context test result (host-agnostic proven value)
+    const testedCtx = (ct.testedNumCtx != null && ct.status === 'completed') ? ct.testedNumCtx : null;
 
     // If target host differs from source host, recalculate for target VRAM
     if (targetHost && entry.sourceHost && targetHost !== entry.sourceHost) {
@@ -91,7 +95,7 @@ async function resolveModelNumCtx(modelName, opts = {}) {
       } catch { /* fall through to registry default */ }
     }
 
-    return defaults.num_ctx ?? fallback;
+    return testedCtx ?? defaults.num_ctx ?? fallback;
   } catch {
     return fallback;
   }

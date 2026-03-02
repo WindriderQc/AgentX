@@ -60,9 +60,11 @@ const HostSchema = new mongoose.Schema({
   // Memory
   memory: {
     total: { type: Number, default: 0 },        // bytes
-    used: { type: Number, default: 0 },
+    used: { type: Number, default: 0 },          // includes buffers/cache
+    available: { type: Number, default: 0 },     // actual available (excl. reclaimable cache)
+    buffcache: { type: Number, default: 0 },     // buffer/cache bytes
     free: { type: Number, default: 0 },
-    usagePercent: { type: Number, default: 0 }
+    usagePercent: { type: Number, default: 0 }   // based on available, not raw used
   },
 
   // GPUs

@@ -10,22 +10,7 @@ const BenchmarkPrompt = require('../../../models/BenchmarkPrompt');
 const BenchmarkResult = require('../../../models/BenchmarkResult');
 const { classifyBenchmarkError } = require('./errorClassifier');
 const { DEFAULT_EXECUTION_CONFIG } = require('./config');
-const ModelRegistry = require('../../../models/ModelRegistry');
-
-/**
- * Get effective num_ctx for a model from registry, falling back to system default
- */
-async function getEffectiveNumCtx(modelName) {
-    try {
-        const entry = await ModelRegistry.findOne({ modelName }).lean();
-        if (entry) {
-            const overrides = entry.executionOverrides || {};
-            const defaults = entry.executionDefaults || {};
-            return overrides.num_ctx ?? defaults.num_ctx ?? DEFAULT_EXECUTION_CONFIG.num_ctx;
-        }
-    } catch (_) { /* registry unavailable — use default */ }
-    return DEFAULT_EXECUTION_CONFIG.num_ctx;
-}
+const { resolveModelNumCtx } = require('../../utils');
 
 /**
  * Run a single benchmark test
@@ -36,7 +21,7 @@ async function runTest({ model, host, prompt }) {
     }
 
     const start = Date.now();
-    const numCtx = await getEffectiveNumCtx(model);
+    const numCtx = await resolveModelNumCtx(model, { targetHost: host, fallback: DEFAULT_EXECUTION_CONFIG.num_ctx });
 
     try {
         const url = `${host}/api/generate`;
