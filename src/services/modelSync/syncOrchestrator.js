@@ -13,6 +13,7 @@ const ModelRegistry = require('../../../models/ModelRegistry');
 const ollamaVramService = require('../ollamaVramService');
 const logger = require('../../../config/logger');
 const { getFetchOptions } = require('../../helpers/httpAgent');
+const { getHostUrls } = require('../../helpers/ollamaHostConfig');
 const {
   parseParameterCount,
   parseQuantization,
@@ -22,17 +23,8 @@ const {
 } = require('./parameterDetection');
 const { probeModelContext, getConfig: getProbeConfig } = require('../contextProbe/contextProbeService');
 
-/**
- * Get list of configured Ollama hosts from env
- * @returns {string[]}
- */
-function getOllamaHosts() {
-  return [
-    process.env.OLLAMA_HOST,
-    process.env.OLLAMA_HOST_SECONDARY || process.env.OLLAMA_HOST_2,
-    process.env.OLLAMA_HOST_TERTIARY || process.env.OLLAMA_HOST_3
-  ].filter(Boolean);
-}
+/** @type {boolean} Guard against concurrent syncAllHosts calls */
+let _syncing = false;
 
 /**
  * Fetch model list from a single Ollama host
@@ -94,11 +86,16 @@ async function syncModel(ollamaModel, hostUrl, hostVramMiB) {
   const existing = await ModelRegistry.findOne({ modelName });
 
   if (existing) {
-    // Update source metadata
     let changed = false;
     const updates = {};
 
-    if (existing.sourceHost !== hostUrl) { updates.sourceHost = hostUrl; changed = true; }
+    // Only update sourceHost if this host has more VRAM (better for num_ctx calc),
+    // or if the current sourceHost is no longer reachable (will be caught by retirement).
+    const existingVram = existing.executionDefaults?._hostVramMiB || 0;
+    if (existing.sourceHost !== hostUrl && (hostVramMiB || 0) >= existingVram) {
+      updates.sourceHost = hostUrl;
+      changed = true;
+    }
     if (existing.ollamaDigest !== ollamaModel.digest) { updates.ollamaDigest = ollamaModel.digest; changed = true; }
     if (existing.modelSizeBytes !== ollamaModel.size) { updates.modelSizeBytes = ollamaModel.size; changed = true; }
     if (existing.parameterSize !== parameterSize) { updates.parameterSize = parameterSize; changed = true; }
@@ -116,15 +113,17 @@ async function syncModel(ollamaModel, hostUrl, hostVramMiB) {
       changed = true;
     }
 
-    // Re-detect execution defaults if not user-overridden
+    // Re-detect execution defaults if not user-overridden.
+    // Use the best VRAM available (current host vs stored host VRAM).
     const hasUserOverride = existing.executionOverrides?.num_ctx != null;
     const currentSource = existing.executionDefaults?._source;
+    const bestVram = Math.max(hostVramMiB || 0, existingVram) || null;
     if (!hasUserOverride && currentSource !== 'user') {
       const detection = detectOptimalNumCtx({
         parameterSize,
         quantization,
         modelSizeBytes: ollamaModel.size,
-        hostVramMiB
+        hostVramMiB: bestVram
       });
       const currentCtx = existing.executionDefaults?.num_ctx;
       if (currentCtx !== detection.num_ctx) {
@@ -132,6 +131,7 @@ async function syncModel(ollamaModel, hostUrl, hostVramMiB) {
         updates['executionDefaults._source'] = 'auto';
         updates['executionDefaults._reason'] = detection.reason;
         updates['executionDefaults._detectedAt'] = new Date();
+        updates['executionDefaults._hostVramMiB'] = bestVram;
         changed = true;
       }
     }
@@ -181,7 +181,8 @@ async function syncModel(ollamaModel, hostUrl, hostVramMiB) {
       num_ctx: detection.num_ctx,
       _source: 'auto',
       _reason: detection.reason,
-      _detectedAt: new Date()
+      _detectedAt: new Date(),
+      _hostVramMiB: hostVramMiB || null
     },
     status: 'active',
     isActive: true,
@@ -196,99 +197,129 @@ async function syncModel(ollamaModel, hostUrl, hostVramMiB) {
  * @returns {Promise<{created: number, updated: number, retired: number, unchanged: number, errors: string[]}>}
  */
 async function syncAllHosts() {
-  const hosts = getOllamaHosts();
+  if (_syncing) {
+    logger.warn('syncAllHosts already in progress, skipping');
+    return { created: 0, updated: 0, retired: 0, unchanged: 0, errors: ['Sync already in progress'] };
+  }
+
+  const hosts = getHostUrls();
   if (hosts.length === 0) {
     logger.warn('No Ollama hosts configured, skipping registry sync');
     return { created: 0, updated: 0, retired: 0, unchanged: 0, errors: ['No Ollama hosts configured'] };
   }
 
+  _syncing = true;
   const stats = { created: 0, updated: 0, retired: 0, unchanged: 0, errors: [] };
   const allSeenModels = new Set();
+  const successfulHosts = new Set();
 
-  for (const hostUrl of hosts) {
+  try {
+    for (const hostUrl of hosts) {
+      try {
+        logger.info('Syncing models from Ollama host', { hostUrl });
+
+        const [models, hostVramMiB] = await Promise.all([
+          fetchHostModels(hostUrl),
+          getHostVramMiB(hostUrl)
+        ]);
+
+        successfulHosts.add(hostUrl);
+
+        logger.info('Discovered models on host', {
+          hostUrl,
+          count: models.length,
+          hostVramMiB: hostVramMiB || 'unknown'
+        });
+
+        for (const model of models) {
+          try {
+            allSeenModels.add(model.name.replace(/:latest$/, ''));
+            const result = await syncModel(model, hostUrl, hostVramMiB);
+            stats[result]++;
+          } catch (err) {
+            logger.error('Failed to sync model', { model: model.name, hostUrl, error: err.message });
+            stats.errors.push(`${model.name}@${hostUrl}: ${err.message}`);
+          }
+        }
+      } catch (err) {
+        logger.error('Failed to fetch models from host', { hostUrl, error: err.message });
+        stats.errors.push(`${hostUrl}: ${err.message}`);
+      }
+    }
+
+    // Retire Ollama-sourced models not seen on any reachable host.
+    // Only retire models whose sourceHost was successfully queried —
+    // if a host is unreachable, its models are left untouched.
     try {
-      logger.info('Syncing models from Ollama host', { hostUrl });
+      if (successfulHosts.size === 0) {
+        logger.warn('No hosts responded — skipping retirement to avoid false retirements');
+      } else {
+        const retireQuery = {
+          sourceType: 'ollama',
+          status: { $ne: 'retired' },
+          modelName: { $nin: Array.from(allSeenModels) },
+          sourceHost: { $in: Array.from(successfulHosts) }
+        };
 
-      const [models, hostVramMiB] = await Promise.all([
-        fetchHostModels(hostUrl),
-        getHostVramMiB(hostUrl)
-      ]);
+        const toRetire = await ModelRegistry.find(retireQuery);
 
-      logger.info('Discovered models on host', {
-        hostUrl,
-        count: models.length,
-        hostVramMiB: hostVramMiB || 'unknown'
-      });
-
-      for (const model of models) {
-        try {
-          allSeenModels.add(model.name.replace(/:latest$/, ''));
-          const result = await syncModel(model, hostUrl, hostVramMiB);
-          stats[result]++;
-        } catch (err) {
-          logger.error('Failed to sync model', { model: model.name, hostUrl, error: err.message });
-          stats.errors.push(`${model.name}@${hostUrl}: ${err.message}`);
+        for (const model of toRetire) {
+          await ModelRegistry.updateOne(
+            { _id: model._id },
+            {
+              $set: {
+                status: 'retired',
+                isActive: false,
+                lastUpdated: new Date(),
+                notes: (model.notes || '') + `\nRetired by auto-sync: ${new Date().toISOString()} — not found on host ${model.sourceHost}`
+              }
+            }
+          );
+          stats.retired++;
+          logger.info('Retired model not found on its source host', { modelName: model.modelName, sourceHost: model.sourceHost });
         }
       }
     } catch (err) {
-      logger.error('Failed to fetch models from host', { hostUrl, error: err.message });
-      stats.errors.push(`${hostUrl}: ${err.message}`);
+      logger.error('Failed to retire missing models', { error: err.message });
+      stats.errors.push(`retire: ${err.message}`);
     }
-  }
 
-  // Retire Ollama-sourced models not seen on any host
-  try {
-    const toRetire = await ModelRegistry.find({
-      sourceType: 'ollama',
-      status: { $ne: 'retired' },
-      modelName: { $nin: Array.from(allSeenModels) }
-    });
+    // Auto-probe newly created models if enabled (sequential, fire-and-forget)
+    if (stats.created > 0 && getProbeConfig().autoProbeOnSync) {
+      const newModels = await ModelRegistry.find({
+        sourceType: 'ollama',
+        status: 'active',
+        'contextTest.status': null,
+        createdBy: 'auto-sync'
+      }).select('modelName').lean();
 
-    for (const model of toRetire) {
-      await ModelRegistry.updateOne(
-        { _id: model._id },
-        {
-          $set: {
-            status: 'retired',
-            isActive: false,
-            lastUpdated: new Date(),
-            notes: (model.notes || '') + `\nRetired by auto-sync: ${new Date().toISOString()} — not found on any host`
+      if (newModels.length > 0) {
+        logger.info('Auto-probe queued for newly synced models', { count: newModels.length });
+        // Run probes sequentially in background to avoid GPU saturation
+        (async () => {
+          for (const m of newModels) {
+            try {
+              logger.info('Auto-probing model', { modelName: m.modelName });
+              await probeModelContext(m.modelName);
+            } catch (err) {
+              logger.warn('Auto-probe failed for model', { modelName: m.modelName, error: err.message });
+            }
           }
-        }
-      );
-      stats.retired++;
-      logger.info('Retired model not found on any host', { modelName: model.modelName });
+          logger.info('Auto-probe batch complete', { count: newModels.length });
+        })().catch(() => {});
+      }
     }
-  } catch (err) {
-    logger.error('Failed to retire missing models', { error: err.message });
-    stats.errors.push(`retire: ${err.message}`);
+
+    logger.info('Model registry sync complete', stats);
+    return stats;
+  } finally {
+    _syncing = false;
   }
-
-  // Auto-probe newly created models if enabled (fire-and-forget)
-  if (stats.created > 0 && getProbeConfig().autoProbeOnSync) {
-    const newModels = await ModelRegistry.find({
-      sourceType: 'ollama',
-      status: 'active',
-      'contextTest.status': null,
-      createdBy: 'auto-sync'
-    }).select('modelName').lean();
-
-    for (const m of newModels) {
-      logger.info('Auto-probe queued for newly synced model', { modelName: m.modelName });
-      probeModelContext(m.modelName).catch(err => {
-        logger.warn('Auto-probe failed for model', { modelName: m.modelName, error: err.message });
-      });
-    }
-  }
-
-  logger.info('Model registry sync complete', stats);
-  return stats;
 }
 
 module.exports = {
   syncAllHosts,
   syncModel,
   fetchHostModels,
-  getOllamaHosts,
   getHostVramMiB
 };

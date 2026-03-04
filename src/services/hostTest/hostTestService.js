@@ -58,7 +58,7 @@ async function checkHost(hostUrl) {
         if (name.includes('diagnostic')) return false;
         return true;
       })
-      .map(m => m.name);
+      .map(m => m.name.replace(/:latest$/, ''));
     return { available: true, models, latency: Date.now() - start };
   } catch (err) {
     return { available: false, models: [], latency: Date.now() - start, error: err.message };
@@ -116,15 +116,17 @@ async function snapshotVram(hostUrl) {
  */
 async function testModelOnHost(modelName, hostUrl, options = {}) {
   const cfg = getConfig();
-  const { hostId } = options;
+  const { hostId, _skipHostCheck } = options;
 
-  // 1. Validate host
-  const hostCheck = await checkHost(hostUrl);
-  if (!hostCheck.available) {
-    throw new Error(`Host unreachable: ${hostUrl} (${hostCheck.error})`);
-  }
-  if (!hostCheck.models.includes(modelName)) {
-    throw new Error(`Model "${modelName}" not found on host ${hostUrl}`);
+  // 1. Validate host (skip if caller already verified, e.g. testAllModelsOnHost)
+  if (!_skipHostCheck) {
+    const hostCheck = await checkHost(hostUrl);
+    if (!hostCheck.available) {
+      throw new Error(`Host unreachable: ${hostUrl} (${hostCheck.error})`);
+    }
+    if (!hostCheck.models.includes(modelName)) {
+      throw new Error(`Model "${modelName}" not found on host ${hostUrl}`);
+    }
   }
 
   // 2. Warm-up
@@ -255,7 +257,7 @@ async function testAllModelsOnHost(hostUrl, options = {}) {
     const modelName = models[i];
     let result;
     try {
-      result = await testModelOnHost(modelName, hostUrl, { hostId });
+      result = await testModelOnHost(modelName, hostUrl, { hostId, _skipHostCheck: true });
     } catch (err) {
       result = {
         hostUrl, hostId, tokensPerSec: 0, latencyMs: 0,

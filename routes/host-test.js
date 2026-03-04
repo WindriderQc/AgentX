@@ -20,38 +20,7 @@ const logger = require('../config/logger');
 const ModelRegistry = require('../models/ModelRegistry');
 const { testModelOnHost, testAllModelsOnHost, checkHost } = require('../src/services/hostTest/hostTestService');
 const { requireAuth } = require('../src/middleware/auth');
-
-// ── Host Discovery (same logic as ollama-hosts.js) ─────────────────────────────
-
-function normalizeHostUrl(raw) {
-  if (!raw) return null;
-  const trimmed = String(raw).trim();
-  if (!trimmed) return null;
-  if (/^https?:\/\//i.test(trimmed)) return trimmed;
-  return `http://${trimmed}`;
-}
-
-function getConfiguredHosts() {
-  const hosts = [];
-  const envFirst = (...keys) => {
-    for (const key of keys) {
-      const v = process.env[key];
-      if (v && String(v).trim()) return String(v).trim();
-    }
-    return null;
-  };
-
-  const primary = normalizeHostUrl(envFirst('OLLAMA_HOST', 'OLLAMA_HOST_1', 'OLLAMA_HOST_PRIMARY'));
-  if (primary) hosts.push({ id: 'primary', name: 'Primary', url: primary, priority: 1 });
-
-  const secondary = normalizeHostUrl(envFirst('OLLAMA_HOST_2', 'OLLAMA_HOST_HEAVY', 'OLLAMA_HOST_SECONDARY'));
-  if (secondary) hosts.push({ id: 'secondary', name: 'Secondary', url: secondary, priority: 2 });
-
-  const tertiary = normalizeHostUrl(envFirst('OLLAMA_HOST_3', 'OLLAMA_HOST_TERTIARY'));
-  if (tertiary) hosts.push({ id: 'tertiary', name: 'Tertiary', url: tertiary, priority: 3 });
-
-  return hosts;
-}
+const { getConfiguredHosts } = require('../src/helpers/ollamaHostConfig');
 
 // ── In-Memory Progress Tracker ─────────────────────────────────────────────────
 

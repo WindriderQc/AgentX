@@ -48,7 +48,16 @@ router.get('/', async (req, res) => {
   try {
     const { category, tag, vendor, status } = req.query;
 
-    let query = { isActive: true };
+    let query = {};
+
+    // When querying retired/deprecated models explicitly, don't filter by isActive.
+    // Default: only active models.
+    if (status && status !== 'active') {
+      query.status = status;
+    } else {
+      query.isActive = true;
+      if (status) query.status = status;
+    }
 
     if (category) {
       query.categories = category;
@@ -58,9 +67,6 @@ router.get('/', async (req, res) => {
     }
     if (vendor) {
       query.vendor = vendor;
-    }
-    if (status) {
-      query.status = status;
     }
 
     const models = await ModelRegistry.find(query)
@@ -282,6 +288,10 @@ router.post('/', requireAuth, async (req, res) => {
   try {
     const modelData = req.body;
 
+    if (!modelData.modelName || typeof modelData.modelName !== 'string' || !modelData.modelName.trim()) {
+      return res.status(400).json({ status: 'error', message: 'modelName is required' });
+    }
+
     // Check if model already exists
     const existing = await ModelRegistry.findOne({ modelName: modelData.modelName });
     if (existing) {
@@ -324,10 +334,16 @@ router.post('/', requireAuth, async (req, res) => {
 router.patch('/:name', requireAuth, async (req, res) => {
   try {
     const { name } = req.params;
-    const updates = req.body;
 
-    // Prevent updating modelName directly
-    delete updates.modelName;
+    // Allowlist: only user-editable fields can be set via PATCH
+    const ALLOWED_FIELDS = [
+      'displayName', 'description', 'vendor', 'categories', 'tags',
+      'status', 'isActive', 'notes', 'userNote', 'capabilities'
+    ];
+    const updates = {};
+    for (const key of ALLOWED_FIELDS) {
+      if (req.body[key] !== undefined) updates[key] = req.body[key];
+    }
 
     updates.lastUpdated = new Date();
 
@@ -412,7 +428,7 @@ router.delete('/:name', requireAuth, async (req, res) => {
  *
  * Returns: Updated model object
  */
-router.post('/:name/sync', async (req, res) => {
+router.post('/:name/sync', requireAuth, async (req, res) => {
   try {
     const { name } = req.params;
 

@@ -15,6 +15,7 @@ const ModelRegistry = require('../../models/ModelRegistry');
 const N8nLLMSource = require('../../models/N8nLLMSource');
 const BenchmarkResult = require('../../models/BenchmarkResult');
 const logger = require('../../config/logger');
+const { getHostUrls } = require('../helpers/ollamaHostConfig');
 
 // Cache for aggregated models (5 min TTL)
 let modelCache = null;
@@ -42,8 +43,10 @@ async function getAllModels(options = {}) {
     useCache = true
   } = options;
 
-  // Check cache
-  if (useCache && modelCache && cacheTimestamp && (Date.now() - cacheTimestamp < CACHE_TTL_MS)) {
+  // Cache only applies when all sources are included (default case).
+  // Partial-source requests bypass cache to avoid stale cross-caller pollution.
+  const allSourcesIncluded = includeOllama && includeN8n && includeCustom && includeRegistry;
+  if (useCache && allSourcesIncluded && modelCache && cacheTimestamp && (Date.now() - cacheTimestamp < CACHE_TTL_MS)) {
     logger.debug('Returning cached models', { count: modelCache.length, age: Date.now() - cacheTimestamp });
     return applyFilters(modelCache, filters);
   }
@@ -61,12 +64,17 @@ async function getAllModels(options = {}) {
     fetchBenchmarkData()
   ]);
 
-  // Merge Ollama models
+  // Merge Ollama models (deduplicate across hosts — first host wins, which is primary)
+  const seenOllamaModels = new Set();
   for (const ollamaModel of ollamaModels) {
+    // Normalize: strip ":latest" to match registry convention (syncOrchestrator strips it on save)
+    const normalizedName = ollamaModel.name.replace(/:latest$/, '');
+    if (seenOllamaModels.has(normalizedName)) continue;
+    seenOllamaModels.add(normalizedName);
     const unified = {
-      id: `ollama:${ollamaModel.host}:${ollamaModel.name}`,
-      name: ollamaModel.name,
-      displayName: ollamaModel.name,
+      id: `ollama:${ollamaModel.host}:${normalizedName}`,
+      name: normalizedName,
+      displayName: normalizedName,
       provider: 'ollama',
       size: ollamaModel.size,
       details: ollamaModel.details,
@@ -82,7 +90,7 @@ async function getAllModels(options = {}) {
       capabilities: {
         maxContext: ollamaModel.details?.context_length || 4096,
         supportsStreaming: true,
-        supportsThinking: ollamaModel.name.includes('qwen') || ollamaModel.name.includes('deepseek'),
+        supportsThinking: normalizedName.includes('qwen') || normalizedName.includes('deepseek'),
         avgLatencyMs: null // Will be enriched from benchmarks
       },
       deployment: {
@@ -97,7 +105,7 @@ async function getAllModels(options = {}) {
     };
 
     // Enrich with registry metadata (auto-populated by modelSync on startup)
-    const registryMatch = registryData.find(r => r.modelName === ollamaModel.name);
+    const registryMatch = registryData.find(r => r.modelName === normalizedName);
     if (registryMatch) {
       unified.categories = registryMatch.categories || [];
       unified.tags = registryMatch.tags || [];
@@ -119,7 +127,7 @@ async function getAllModels(options = {}) {
     }
 
     // Enrich with benchmark data
-    const benchmarkMatch = benchmarkData.find(b => b.model === ollamaModel.name);
+    const benchmarkMatch = benchmarkData.find(b => b.model === normalizedName);
     if (benchmarkMatch) {
       unified.capabilities.avgLatencyMs = benchmarkMatch.avgLatency;
       if (!unified.benchmarkStats) {
@@ -208,9 +216,11 @@ async function getAllModels(options = {}) {
     models.push(unified);
   }
 
-  // Update cache
-  modelCache = models;
-  cacheTimestamp = Date.now();
+  // Only cache full-source results to avoid stale data for partial callers
+  if (allSourcesIncluded) {
+    modelCache = models;
+    cacheTimestamp = Date.now();
+  }
 
   logger.info('Model aggregation complete', {
     total: models.length,
@@ -229,11 +239,7 @@ async function fetchOllamaModels() {
   const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
   const models = [];
 
-  const hosts = [
-    process.env.OLLAMA_HOST,
-    process.env.OLLAMA_HOST_SECONDARY || process.env.OLLAMA_HOST_2,
-    process.env.OLLAMA_HOST_TERTIARY || process.env.OLLAMA_HOST_3
-  ].filter(Boolean);
+  const hosts = getHostUrls();
 
   logger.debug('Fetching models from Ollama hosts', { hosts });
 
@@ -362,7 +368,7 @@ function applyFilters(models, filters) {
  * Get model sources summary
  */
 async function getModelSources() {
-  const models = await getAllModels({ useCache: false });
+  const models = await getAllModels({ useCache: true });
 
   const sources = {
     ollama: {
@@ -435,10 +441,12 @@ async function refreshModelCache() {
   cacheTimestamp = null;
 
   const models = await getAllModels({ useCache: false });
+  // Use the freshly-populated cache instead of re-fetching everything
+  const sources = await getModelSources();
 
   return {
     modelsFound: models.length,
-    sources: await getModelSources(),
+    sources,
     timestamp: new Date()
   };
 }

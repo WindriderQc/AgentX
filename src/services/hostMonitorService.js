@@ -95,12 +95,13 @@ class HostMonitorService {
       .lean();
   }
 
-  /** Update host config fields (tags, ollamaUrl, hostname) */
+  /** Update host config fields (tags, ollamaUrl, hostname, ollamaHostKey) */
   async updateHost(hostId, fields) {
     const allowed = {};
     if (fields.tags !== undefined) allowed.tags = fields.tags;
     if (fields.ollamaUrl !== undefined) allowed.ollamaUrl = fields.ollamaUrl;
     if (fields.hostname !== undefined) allowed.hostname = fields.hostname;
+    if (fields.ollamaHostKey !== undefined) allowed.ollamaHostKey = fields.ollamaHostKey;
 
     if (Object.keys(allowed).length === 0) return null;
     return Host.findOneAndUpdate({ hostId }, { $set: allowed }, { new: true }).lean();

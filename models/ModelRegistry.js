@@ -522,32 +522,41 @@ ModelRegistrySchema.statics.getCategoryStats = async function() {
  * @returns {Promise<Model>} Updated model
  */
 ModelRegistrySchema.statics.updateHostPerformance = async function(modelName, snapshot) {
-  const model = await this.findOne({ modelName });
-  if (!model) return null;
-
-  model.hostPerformance.push(snapshot);
-
-  // Prune: keep max 50, prefer latest
-  if (model.hostPerformance.length > 50) {
-    model.hostPerformance.sort((a, b) => (b.testedAt || 0) - (a.testedAt || 0));
-    model.hostPerformance = model.hostPerformance.slice(0, 50);
-  }
+  // Atomic push + prune: avoids read-modify-write race when concurrent tests finish
+  const pushResult = await this.findOneAndUpdate(
+    { modelName },
+    {
+      $push: {
+        hostPerformance: {
+          $each: [snapshot],
+          $sort: { testedAt: -1 },
+          $slice: 50
+        }
+      },
+      $set: { lastUpdated: new Date() }
+    },
+    { new: true }
+  );
+  if (!pushResult) return null;
 
   // Recalculate capabilities from passing snapshots
-  const passing = model.hostPerformance.filter(s => s.status === 'pass');
+  const passing = pushResult.hostPerformance.filter(s => s.status === 'pass');
   if (passing.length > 0) {
     const avgTps = passing.reduce((sum, s) => sum + s.tokensPerSec, 0) / passing.length;
     const avgLat = passing.reduce((sum, s) => sum + s.latencyMs, 0) / passing.length;
     const sortedLat = passing.map(s => s.latencyMs).sort((a, b) => a - b);
     const p95Idx = Math.min(Math.ceil(sortedLat.length * 0.95) - 1, sortedLat.length - 1);
 
-    model.capabilities.avgTokensPerSec = Number(avgTps.toFixed(2));
-    model.capabilities.avgLatencyMs = Math.round(avgLat);
-    model.capabilities.p95LatencyMs = Math.round(sortedLat[p95Idx]);
+    await this.updateOne({ modelName }, {
+      $set: {
+        'capabilities.avgTokensPerSec': Number(avgTps.toFixed(2)),
+        'capabilities.avgLatencyMs': Math.round(avgLat),
+        'capabilities.p95LatencyMs': Math.round(sortedLat[p95Idx])
+      }
+    });
   }
 
-  model.lastUpdated = new Date();
-  return model.save();
+  return this.findOne({ modelName });
 };
 
 /**

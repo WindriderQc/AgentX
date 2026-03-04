@@ -153,6 +153,18 @@
         .hm-setup-note { font-size: 12px; color: var(--muted); margin-top: 4px; }
         .hm-setup-footer { text-align: center; font-size: 13px; margin-top: 8px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.06); }
 
+        /* Ollama indicator on card */
+        .hm-ollama-indicator { display: flex; align-items: center; gap: 4px; font-size: 11px; margin-top: 6px; }
+        .hm-ollama-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+        .hm-ollama-dot.online { background: #a78bfa; box-shadow: 0 0 6px rgba(167, 139, 250, 0.5); }
+        .hm-ollama-dot.offline { background: #6b7280; }
+        .hm-model-badge { font-size: 10px; padding: 1px 5px; border-radius: 3px; background: rgba(167,139,250,0.15); color: #a78bfa; margin-left: 4px; }
+        .hm-model-chip { display: inline-block; font-size: 10px; padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.05); color: var(--muted); margin: 2px; }
+        .hm-running-model { background: rgba(167,139,250,0.08); border: 1px solid rgba(167,139,250,0.15); border-radius: 6px; padding: 8px; margin-bottom: 6px; }
+        .hm-running-model:last-child { margin-bottom: 0; }
+        .hm-running-model-name { font-size: 12px; font-weight: 600; color: #a78bfa; }
+        .hm-running-model-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
         /* Last seen */
         .hm-lastseen { font-size: 11px; color: var(--muted); margin-top: 8px; }
 
@@ -194,6 +206,8 @@
                 <div class="hm-stat"><div class="hm-stat-value" id="statAvgMem">-</div><div class="hm-stat-label">Avg RAM %</div></div>
                 <div class="hm-stat"><div class="hm-stat-value" id="statGpus">-</div><div class="hm-stat-label">Total GPUs</div></div>
                 <div class="hm-stat"><div class="hm-stat-value" id="statVram">-</div><div class="hm-stat-label">Total VRAM</div></div>
+                <div class="hm-stat"><div class="hm-stat-value" id="statOllamaOnline" style="color:#a78bfa">-</div><div class="hm-stat-label">Ollama Online</div></div>
+                <div class="hm-stat"><div class="hm-stat-value" id="statAiModels" style="color:#a78bfa">-</div><div class="hm-stat-label">AI Models</div></div>
             </div>
 
             <!-- Detail panel (hidden by default) -->
@@ -232,6 +246,16 @@
                     <div class="hm-detail-section">
                         <h3><i class="fas fa-info-circle"></i> System</h3>
                         <div id="detailSysInfo"></div>
+                    </div>
+
+                    <!-- Ollama / AI Services -->
+                    <div class="hm-detail-section" id="detailOllamaSection" style="display:none;">
+                        <h3><i class="fas fa-robot"></i> Ollama</h3>
+                        <div id="detailOllamaInfo"></div>
+                        <div id="detailOllamaRunning" style="margin-top:10px;"></div>
+                        <div id="detailOllamaModels" style="margin-top:10px;"></div>
+                        <div id="detailOllamaVram" style="margin-top:10px;"></div>
+                        <div id="detailOllamaLink" style="margin-top:10px;"></div>
                     </div>
 
                     <!-- Disks -->

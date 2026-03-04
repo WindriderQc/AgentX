@@ -7,66 +7,7 @@ const express = require('express');
 const router = express.Router();
 const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
 const logger = require('../config/logger');
-
-// Get configured Ollama hosts from environment
-function getConfiguredHosts() {
-    const hosts = [];
-
-    const normalizeHostUrl = (raw) => {
-        if (!raw) return null;
-        const trimmed = String(raw).trim();
-        if (!trimmed) return null;
-        // Allow env to be set as "192.168.2.99:11434" (no scheme)
-        if (/^https?:\/\//i.test(trimmed)) return trimmed;
-        return `http://${trimmed}`;
-    };
-
-    const envFirst = (...keys) => {
-        for (const key of keys) {
-            const v = process.env[key];
-            if (v && String(v).trim()) return String(v).trim();
-        }
-        return null;
-    };
-
-    // Primary host
-    const primaryRaw = envFirst('OLLAMA_HOST', 'OLLAMA_HOST_1', 'OLLAMA_HOST_PRIMARY');
-    const primaryUrl = normalizeHostUrl(primaryRaw);
-    if (primaryUrl) {
-        hosts.push({
-            id: 'primary',
-            name: 'Primary',
-            url: primaryUrl,
-            priority: 1
-        });
-    }
-
-    // Secondary host
-    const secondaryRaw = envFirst('OLLAMA_HOST_2', 'OLLAMA_HOST_HEAVY', 'OLLAMA_HOST_SECONDARY');
-    const secondaryUrl = normalizeHostUrl(secondaryRaw);
-    if (secondaryUrl) {
-        hosts.push({
-            id: 'secondary',
-            name: 'Secondary',
-            url: secondaryUrl,
-            priority: 2
-        });
-    }
-
-    // Tertiary host
-    const tertiaryRaw = envFirst('OLLAMA_HOST_3', 'OLLAMA_HOST_TERTIARY');
-    const tertiaryUrl = normalizeHostUrl(tertiaryRaw);
-    if (tertiaryUrl) {
-        hosts.push({
-            id: 'tertiary',
-            name: 'Tertiary',
-            url: tertiaryUrl,
-            priority: 3
-        });
-    }
-
-    return hosts;
-}
+const { getConfiguredHosts } = require('../src/helpers/ollamaHostConfig');
 
 // Fetch models from a specific Ollama host
 async function fetchModels(hostUrl) {

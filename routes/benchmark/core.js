@@ -16,6 +16,7 @@ const { validateJudgeModel } = require('../../src/services/benchmark/judgeModelV
 const { HOSTS } = require('../../src/services/modelRouter');
 const { callJudge } = require('../../src/services/scoring/judgeCall');
 const judgeTierResolver = require('../../src/services/scoring/judgeTierResolver');
+const { validateExecutionHost } = require('../../src/services/benchmark/executionHostValidator');
 
 function isDuplicateKeyError(err) {
     return !!(err && (err.code === 11000 || String(err.message || '').includes('E11000')));
@@ -132,6 +133,16 @@ router.post('/batch', optionalWorkspaceContext, async (req, res) => {
         return res.status(400).json({
             status: 'error',
             error: 'host, models (array), and levels (array) are required'
+        });
+    }
+
+    // Verify execution host is an Ollama endpoint and requested models exist
+    const hostCheck = await validateExecutionHost(host, models);
+    if (!hostCheck.valid) {
+        return res.status(422).json({
+            status: 'error',
+            error: hostCheck.error,
+            ...(hostCheck.available_models && { available_models: hostCheck.available_models })
         });
     }
 

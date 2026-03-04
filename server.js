@@ -342,6 +342,15 @@ async function startServer() {
     console.log(`   ⚠ Host Monitor: ${err.message}`);
   }
 
+  // Start Ollama Enrichment service (polls Ollama hosts for AI ops data)
+  try {
+    const ollamaEnrichmentService = require('./src/services/ollamaEnrichmentService');
+    ollamaEnrichmentService.start();
+    console.log(`   ✓ Ollama Enrichment: Active`);
+  } catch (err) {
+    console.log(`   ⚠ Ollama Enrichment: ${err.message}`);
+  }
+
   // Start Express server
   app.listen(PORT, () => {
     console.log(`\n${'─'.repeat(58)}`);

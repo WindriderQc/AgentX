@@ -10,46 +10,7 @@ const logger = require('../config/logger');
 const { requireAuth } = require('../src/middleware/auth');
 const ollamaVramService = require('../src/services/ollamaVramService');
 const HostVramOverride = require('../models/HostVramOverride');
-
-function getConfiguredHosts() {
-  const hosts = [];
-
-  const normalizeHostUrl = (raw) => {
-    if (!raw) return null;
-    const trimmed = String(raw).trim();
-    if (!trimmed) return null;
-    if (/^https?:\/\//i.test(trimmed)) return trimmed;
-    return `http://${trimmed}`;
-  };
-
-  const envFirst = (...keys) => {
-    for (const key of keys) {
-      const v = process.env[key];
-      if (v && String(v).trim()) return String(v).trim();
-    }
-    return null;
-  };
-
-  const primaryRaw = envFirst('OLLAMA_HOST', 'OLLAMA_HOST_1', 'OLLAMA_HOST_PRIMARY');
-  const primaryUrl = normalizeHostUrl(primaryRaw);
-  if (primaryUrl) {
-    hosts.push({ id: 'primary', name: 'Primary', url: primaryUrl, priority: 1 });
-  }
-
-  const secondaryRaw = envFirst('OLLAMA_HOST_2', 'OLLAMA_HOST_HEAVY', 'OLLAMA_HOST_SECONDARY');
-  const secondaryUrl = normalizeHostUrl(secondaryRaw);
-  if (secondaryUrl) {
-    hosts.push({ id: 'secondary', name: 'Secondary', url: secondaryUrl, priority: 2 });
-  }
-
-  const tertiaryRaw = envFirst('OLLAMA_HOST_3', 'OLLAMA_HOST_TERTIARY');
-  const tertiaryUrl = normalizeHostUrl(tertiaryRaw);
-  if (tertiaryUrl) {
-    hosts.push({ id: 'tertiary', name: 'Tertiary', url: tertiaryUrl, priority: 3 });
-  }
-
-  return hosts;
-}
+const { getConfiguredHosts } = require('../src/helpers/ollamaHostConfig');
 
 /**
  * GET /api/ollama-vram

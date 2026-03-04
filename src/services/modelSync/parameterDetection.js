@@ -22,8 +22,9 @@ function parseParameterCount(raw) {
   // Embedded in model name: "qwen2.5:32b-instruct-q4_K_M"
   const embedded = s.match(/[:\-_](\d+(?:\.\d+)?)b(?:[:\-_]|$)/);
   if (embedded) return parseFloat(embedded[1]);
-  // Looser: just find NNb pattern anywhere
-  const loose = s.match(/(\d+(?:\.\d+)?)b/);
+  // Looser: find NNb pattern, but require a non-alphanumeric/non-dot prefix (or start)
+  // to avoid false positives like "v1.5b" in "nomic-embed-text:v1.5b"
+  const loose = s.match(/(?:^|[^a-z0-9.])(\d+(?:\.\d+)?)b(?:[^a-z]|$)/);
   if (loose) return parseFloat(loose[1]);
   return null;
 }

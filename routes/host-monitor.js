@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const hostMonitorService = require('../src/services/hostMonitorService');
+const ollamaEnrichmentService = require('../src/services/ollamaEnrichmentService');
+const { getConfiguredHosts } = require('../src/helpers/ollamaHostConfig');
 const { optionalAuth } = require('../src/middleware/auth');
 const logger = require('../config/logger');
 
@@ -56,6 +58,56 @@ router.get('/', optionalAuth, async (req, res) => {
   }
 });
 
+// ─── Ollama enrichment endpoints (before /:hostId catch-all) ──
+
+/** GET /api/hosts/ollama-status — enriched Ollama data for all hosts */
+router.get('/ollama-status', optionalAuth, async (_req, res) => {
+  try {
+    const hosts = await hostMonitorService.getAllHosts();
+    const ollamaState = ollamaEnrichmentService.getOllamaState();
+    const configuredHosts = getConfiguredHosts();
+
+    const enriched = hosts.map(h => ({
+      hostId: h.hostId,
+      hostname: h.hostname,
+      ip: h.ip,
+      ollamaHostKey: h.ollamaHostKey || '',
+      ollamaStatus: h.ollamaStatus || 'unknown',
+      ollamaUrl: h.ollamaUrl || '',
+      ollamaVersion: h.ollamaVersion || '',
+      ollamaLatencyMs: h.ollamaLatencyMs,
+      ollamaModelCount: h.ollamaModelCount || 0,
+      ollamaModels: h.ollamaModels || [],
+      ollamaRunningModels: h.ollamaRunningModels || [],
+      ollamaVram: h.ollamaVram || {},
+      ollamaLastChecked: h.ollamaLastChecked
+    }));
+
+    return res.json({
+      status: 'success',
+      data: {
+        hosts: enriched,
+        configuredHosts: configuredHosts.map(c => ({ id: c.id, name: c.name, url: c.url })),
+        inMemoryState: ollamaState
+      }
+    });
+  } catch (err) {
+    logger.error('Ollama status failed', { error: err.message });
+    return res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
+/** POST /api/hosts/ollama-refresh — trigger immediate re-poll */
+router.post('/ollama-refresh', optionalAuth, async (_req, res) => {
+  try {
+    await ollamaEnrichmentService.refresh();
+    return res.json({ status: 'success', message: 'Ollama poll complete' });
+  } catch (err) {
+    logger.error('Ollama refresh failed', { error: err.message });
+    return res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
 router.get('/:hostId', optionalAuth, async (req, res) => {
   try {
     const host = await hostMonitorService.getHost(req.params.hostId);
@@ -99,6 +151,23 @@ router.delete('/:hostId', optionalAuth, async (req, res) => {
     return res.json({ status: 'success', message: 'Host removed' });
   } catch (err) {
     logger.error('Remove host failed', { error: err.message });
+    return res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
+/** PUT /api/hosts/:hostId/link-ollama — link host to Ollama host key */
+router.put('/:hostId/link-ollama', optionalAuth, async (req, res) => {
+  try {
+    const { ollamaHostKey } = req.body || {};
+    if (ollamaHostKey === undefined) {
+      return res.status(400).json({ status: 'error', message: 'ollamaHostKey is required' });
+    }
+
+    const host = await hostMonitorService.updateHost(req.params.hostId, { ollamaHostKey });
+    if (!host) return res.status(404).json({ status: 'error', message: 'Host not found' });
+    return res.json({ status: 'success', data: host });
+  } catch (err) {
+    logger.error('Link Ollama failed', { error: err.message });
     return res.status(500).json({ status: 'error', message: err.message });
   }
 });

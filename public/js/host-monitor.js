@@ -76,6 +76,30 @@ const HostMonitor = (() => {
     return '#22c55e';
   }
 
+  // ─── Ollama state cache ────────────────────────────────
+
+  let ollamaHostData = {}; // hostId → ollama enrichment data
+
+  async function loadOllamaStatus() {
+    try {
+      const data = await fetchJSON('/api/hosts/ollama-status');
+      ollamaHostData = {};
+      for (const h of (data.hosts || [])) {
+        ollamaHostData[h.hostId] = h;
+      }
+      // Store configured hosts for link dropdown
+      ollamaHostData._configuredHosts = data.configuredHosts || [];
+
+      // Update summary stats
+      const ollamaOnline = (data.hosts || []).filter(h => h.ollamaStatus === 'online').length;
+      const totalModels = (data.hosts || []).reduce((s, h) => s + (h.ollamaModelCount || 0), 0);
+      setText('statOllamaOnline', ollamaOnline);
+      setText('statAiModels', totalModels);
+    } catch (err) {
+      console.error('Ollama status load failed:', err);
+    }
+  }
+
   // ─── Summary ────────────────────────────────────────────
 
   async function loadSummary() {
@@ -133,6 +157,10 @@ const HostMonitor = (() => {
     const gpuVramPct = computeGpuPct(h.gpus);
     const selClass = h.hostId === selectedHostId ? ' selected' : '';
     const statusClass = h.status || 'offline';
+    const ol = ollamaHostData[h.hostId];
+    const olStatus = ol?.ollamaStatus || h.ollamaStatus || '';
+    const olModels = ol?.ollamaModelCount || h.ollamaModelCount || 0;
+    const olRunning = (ol?.ollamaRunningModels || h.ollamaRunningModels || []).length;
 
     return `
       <div class="hm-card ${statusClass}${selClass}" data-host-id="${h.hostId}">
@@ -141,7 +169,10 @@ const HostMonitor = (() => {
             <i class="${osIcon(h.platform)} hm-card-os"></i>
             ${esc(h.hostname || h.hostId)}
           </div>
-          <div class="hm-status-dot ${statusClass}" title="${statusClass}"></div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            ${olStatus ? `<div class="hm-ollama-dot ${olStatus}" title="Ollama ${olStatus}"></div>` : ''}
+            <div class="hm-status-dot ${statusClass}" title="${statusClass}"></div>
+          </div>
         </div>
         <div class="hm-card-meta">
           <span><i class="fas fa-network-wired"></i> ${esc(h.ip || '-')}</span>
@@ -154,6 +185,15 @@ const HostMonitor = (() => {
           ${miniBar('Disk', maxDisk)}
           ${h.gpus?.length ? miniBar('GPU', gpuVramPct) : miniBar('GPU', 0)}
         </div>
+        ${olStatus === 'online' ? `<div class="hm-ollama-indicator">
+          <i class="fas fa-robot" style="color:#a78bfa;font-size:12px;"></i>
+          <span style="color:#a78bfa;">Ollama</span>
+          <span class="hm-model-badge">${olModels} model${olModels !== 1 ? 's' : ''}</span>
+          ${olRunning > 0 ? `<span class="hm-model-badge" style="background:rgba(34,197,94,0.15);color:#22c55e;">${olRunning} loaded</span>` : ''}
+        </div>` : olStatus === 'offline' ? `<div class="hm-ollama-indicator">
+          <i class="fas fa-robot" style="color:#6b7280;font-size:12px;"></i>
+          <span style="color:#6b7280;">Ollama offline</span>
+        </div>` : ''}
         ${renderTags(h.tags)}
         <div class="hm-lastseen">Last seen: ${timeAgo(h.lastSeen)}</div>
       </div>`;
@@ -255,11 +295,121 @@ const HostMonitor = (() => {
       ${infoRow('Agent Version', h.agentVersion || '-')}
     `);
 
+    // Ollama section
+    renderOllamaSection(h);
+
     // Disks
     setHTML('detailDiskList', (h.disks || []).map(renderDiskRow).join('') || '<span style="color:var(--muted)">No disk data</span>');
 
     // Processes
     setHTML('detailProcesses', renderProcessTable(h.topProcessesCpu || []));
+  }
+
+  function renderOllamaSection(h) {
+    const ol = ollamaHostData[h.hostId] || {};
+    const status = ol.ollamaStatus || h.ollamaStatus || '';
+    const section = document.getElementById('detailOllamaSection');
+
+    if (!status) {
+      section.style.display = 'none';
+      return;
+    }
+    section.style.display = '';
+
+    const statusColor = status === 'online' ? '#22c55e' : '#ef4444';
+    setHTML('detailOllamaInfo', `
+      ${infoRow('Status', `<span style="color:${statusColor};font-weight:600;">${status.toUpperCase()}</span>`)}
+      ${ol.ollamaVersion ? infoRow('Version', ol.ollamaVersion) : ''}
+      ${ol.ollamaLatencyMs != null ? infoRow('Latency', `${ol.ollamaLatencyMs}ms`) : ''}
+      ${infoRow('Models', ol.ollamaModelCount || 0)}
+      ${ol.ollamaLastChecked ? infoRow('Last Checked', timeAgo(ol.ollamaLastChecked)) : ''}
+    `);
+
+    // Running models
+    const running = ol.ollamaRunningModels || h.ollamaRunningModels || [];
+    if (running.length > 0) {
+      setHTML('detailOllamaRunning', `
+        <div style="font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:600;">Loaded Models</div>
+        ${running.map(m => {
+          const vramMiB = m.size_vram ? Math.round(m.size_vram / (1024 * 1024)) : 0;
+          return `<div class="hm-running-model">
+            <div class="hm-running-model-name">${esc(m.name)}</div>
+            <div class="hm-running-model-meta">${vramMiB ? `VRAM: ${formatMiB(vramMiB)}` : ''}${m.expires_at ? ` | Expires: ${timeAgo(m.expires_at)}` : ''}</div>
+          </div>`;
+        }).join('')}
+      `);
+    } else {
+      setHTML('detailOllamaRunning', '');
+    }
+
+    // Available models as chips
+    const models = ol.ollamaModels || h.ollamaModels || [];
+    if (models.length > 0) {
+      setHTML('detailOllamaModels', `
+        <div style="font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:600;">Available Models</div>
+        <div style="display:flex;flex-wrap:wrap;gap:2px;">${models.map(m => `<span class="hm-model-chip">${esc(m)}</span>`).join('')}</div>
+      `);
+    } else {
+      setHTML('detailOllamaModels', '');
+    }
+
+    // VRAM breakdown
+    const vram = ol.ollamaVram || h.ollamaVram || {};
+    if (vram.totalMiB > 0) {
+      const usedPct = Math.round((vram.modelVramMiB / vram.totalMiB) * 100);
+      setHTML('detailOllamaVram', `
+        <div style="font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:600;">Model VRAM</div>
+        ${miniBar('Models', usedPct)}
+        <div style="font-size:11px;color:var(--muted);margin-top:4px;">
+          ${formatMiB(vram.modelVramMiB)} / ${formatMiB(vram.totalMiB)}
+          ${vram.source ? ` (${vram.source})` : ''}
+        </div>
+      `);
+    } else if (vram.modelVramMiB > 0) {
+      setHTML('detailOllamaVram', `
+        <div style="font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:600;">Model VRAM</div>
+        <div style="font-size:11px;color:var(--muted);">Models using: ${formatMiB(vram.modelVramMiB)}</div>
+      `);
+    } else {
+      setHTML('detailOllamaVram', '');
+    }
+
+    // Link dropdown for unlinked hosts
+    const configuredHosts = ollamaHostData._configuredHosts || [];
+    const currentKey = ol.ollamaHostKey || h.ollamaHostKey || '';
+    if (configuredHosts.length > 0) {
+      setHTML('detailOllamaLink', `
+        <div style="font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:600;">Ollama Host Link</div>
+        <select id="ollamaLinkSelect" style="background:rgba(255,255,255,0.05);border:1px solid var(--panel-border);color:#fff;padding:4px 8px;border-radius:6px;font-size:12px;width:100%;">
+          <option value=""${!currentKey ? ' selected' : ''}>Not linked</option>
+          ${configuredHosts.map(c => `<option value="${c.id}"${currentKey === c.id ? ' selected' : ''}>${c.name} (${c.url})</option>`).join('')}
+        </select>
+      `);
+      document.getElementById('ollamaLinkSelect')?.addEventListener('change', (e) => {
+        linkHostToOllama(h.hostId, e.target.value);
+      });
+    } else {
+      setHTML('detailOllamaLink', '');
+    }
+  }
+
+  async function linkHostToOllama(hostId, ollamaHostKey) {
+    try {
+      await fetch(`/api/hosts/${hostId}/link-ollama`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ollamaHostKey })
+      });
+      // Re-poll and refresh
+      await fetch('/api/hosts/ollama-refresh', { method: 'POST' });
+      await loadOllamaStatus();
+      if (selectedHostId === hostId) {
+        const host = await fetchJSON(`/api/hosts/${hostId}`);
+        renderDetail(host);
+      }
+    } catch (err) {
+      console.error('Link Ollama failed:', err);
+    }
   }
 
   function renderGpuCard(g) {
@@ -389,7 +539,8 @@ const HostMonitor = (() => {
   // ─── Refresh loop ───────────────────────────────────────
 
   async function refresh() {
-    await Promise.all([loadSummary(), loadHosts()]);
+    await Promise.all([loadSummary(), loadOllamaStatus()]);
+    await loadHosts();
     // If a host is selected, refresh its detail too
     if (selectedHostId) {
       try {

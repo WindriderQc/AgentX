@@ -54,6 +54,11 @@ jest.mock('../../src/services/benchmark/judgeModelValidator', () => ({
     validateJudgeModel: jest.fn(async () => ({ valid: true, latency_ms: 10 }))
 }));
 
+// Mock execution host validation to bypass network calls in tests
+jest.mock('../../src/services/benchmark/executionHostValidator', () => ({
+    validateExecutionHost: jest.fn(async () => ({ valid: true, available_models: [] }))
+}));
+
 const { app } = require('../../src/app');
 
 const BenchmarkPrompt = require('../../models/BenchmarkPrompt');

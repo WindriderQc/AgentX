@@ -30,7 +30,8 @@ jest.mock('../../src/helpers/httpAgent', () => ({
 }));
 
 // We'll test syncModel and detection logic, but not fetchHostModels (requires network)
-const { syncModel, getOllamaHosts } = require('../../src/services/modelSync/syncOrchestrator');
+const { syncModel } = require('../../src/services/modelSync/syncOrchestrator');
+const { getHostUrls } = require('../../src/helpers/ollamaHostConfig');
 
 describe('syncModel', () => {
     beforeEach(() => {
@@ -141,7 +142,7 @@ describe('syncModel', () => {
     });
 });
 
-describe('getOllamaHosts', () => {
+describe('getHostUrls (via ollamaHostConfig)', () => {
     const origEnv = process.env;
 
     beforeEach(() => {
@@ -157,7 +158,7 @@ describe('getOllamaHosts', () => {
         process.env.OLLAMA_HOST_2 = 'http://host2:11434';
         process.env.OLLAMA_HOST_3 = 'http://host3:11434';
 
-        const hosts = getOllamaHosts();
+        const hosts = getHostUrls();
         expect(hosts).toHaveLength(3);
     });
 
@@ -168,7 +169,7 @@ describe('getOllamaHosts', () => {
         delete process.env.OLLAMA_HOST_3;
         delete process.env.OLLAMA_HOST_TERTIARY;
 
-        const hosts = getOllamaHosts();
+        const hosts = getHostUrls();
         expect(hosts).toHaveLength(1);
     });
 });

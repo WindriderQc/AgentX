@@ -89,6 +89,18 @@ const HostSchema = new mongoose.Schema({
   ollamaUrl: { type: String, default: '' },
   ollamaStatus: { type: String, enum: ['online', 'offline', 'unknown', ''], default: '' },
   ollamaModels: { type: [String], default: [] },
+  ollamaRunningModels: { type: [mongoose.Schema.Types.Mixed], default: [] },
+  ollamaModelCount: { type: Number, default: 0 },
+  ollamaVersion: { type: String, default: '' },
+  ollamaLatencyMs: { type: Number, default: null },
+  ollamaLastChecked: { type: Date, default: null },
+  ollamaHostKey: { type: String, default: '', index: true },
+  ollamaVram: {
+    totalMiB: { type: Number, default: 0 },
+    usedMiB: { type: Number, default: 0 },
+    modelVramMiB: { type: Number, default: 0 },
+    source: { type: String, default: '' }
+  },
 
   // User-defined tags
   tags: { type: [String], default: [] }
