@@ -27,11 +27,11 @@ Ollama Hosts                                        │
 | File | Lines | Purpose |
 |------|-------|---------|
 | `models/ClusterScheduleEntry.js` | 39 | Mongoose schema — source, schedule, host, model, taskType |
-| `src/services/clusterScheduleService.js` | 243 | CRUD, cron→timeline resolution, sync upsert |
-| `src/services/clusterLiveService.js` | 81 | Real-time Ollama /api/ps polling per host |
+| `src/services/clusterScheduleService.js` | 245 | CRUD, cron→timeline resolution, sync upsert |
+| `src/services/clusterLiveService.js` | 80 | Real-time Ollama /api/ps polling per host (node-fetch) |
 | `routes/cluster-schedule.js` | 103 | 5 API endpoints mounted at `/api/cluster` |
 | `scripts/seed-cluster-schedule.js` | ~320 | Baseline data: 12 OpenClaw + 7 n8n + 5 AgentX + 3 GPU |
-| `scripts/sync-openclaw-schedule.js` | 151 | Reads OpenClaw jobs.json → POSTs to sync API |
+| `scripts/sync-openclaw-schedule.js` | 150 | Reads OpenClaw jobs.json → POSTs to sync API (zero deps) |
 | `public/cluster.html` | 191 | Dashboard: live bar, 24h heatmap, next up |
 | `public/js/cluster-schedule.js` | 300 | Frontend logic: fetch, render, countdown |
 | `tests/unit/clusterScheduleService.test.js` | 285 | 19 tests covering all service methods |
@@ -56,25 +56,34 @@ The sync script reads OpenClaw's `~/.openclaw/cron/jobs.json` directly and POSTs
 
 ### Real jobs.json schema (OpenClaw)
 
-```json
+```jsonc
+// "every" kind (infra-health-check)
 {
   "id": "d15704a8-...",
   "agentId": "main",
   "name": "infra-health-check",
   "enabled": true,
-  "schedule": {
-    "kind": "cron",
-    "expr": "0 */2 * * *",
-    "tz": "America/Toronto"
-  },
-  "payload": { "model": "local" },
-  "delivery": "none",
+  "schedule": { "kind": "every", "everyMs": 7200000, "anchorMs": 1771558409376 },
+  "payload": { "kind": "agentTurn", "model": "local", "thinking": "off" },
+  "delivery": { "mode": "none", "channel": "last" },
   "state": {
-    "lastRunAtMs": 1741...,
-    "lastDurationMs": 45000,
-    "lastStatus": "error",
-    "consecutiveErrors": 3,
-    "nextRunAtMs": 1741...
+    "lastRunAtMs": 1772667457001, "lastDurationMs": 681916,
+    "lastStatus": "error", "consecutiveErrors": 1, "nextRunAtMs": 1772674657001
+  }
+}
+
+// "cron" kind (morning-briefing)
+{
+  "id": "c95e6849-...",
+  "agentId": "main",
+  "name": "morning-briefing",
+  "enabled": true,
+  "schedule": { "kind": "cron", "expr": "0 8 * * 1-5", "tz": "America/Toronto" },
+  "payload": { "kind": "agentTurn", "thinking": "minimal" },
+  "delivery": { "mode": "announce", "channel": "telegram", "to": "8272389726" },
+  "state": {
+    "lastRunAtMs": 1772629200018, "lastDurationMs": 30072,
+    "lastStatus": "ok", "consecutiveErrors": 0, "nextRunAtMs": 1772715600000
   }
 }
 ```
@@ -118,6 +127,34 @@ ssh clawdx 'node ~/sync-openclaw-schedule.js'
 | UGFrank | primary | 192.168.2.99 | RTX 3080 Ti 12GB | 3-8B models, embeddings |
 | UGBrutal | secondary | 192.168.2.12 | RTX 5070 Ti 16GB | 14B reasoning/coding |
 | UGClawdX | tertiary | 192.168.2.66 | RTX 3090 24GB | 32B+ models, OpenClaw runtime |
+
+## Repository Layout
+
+| Path | Role | Branch |
+|------|------|--------|
+| `~/.openclaw/workspace-clawdx-coder/AgentX/` | Dev — OpenClaw's agent works here | any |
+| `~/codes/AgentX/` | Prod — what runs on .33 | main only |
+
+## OpenClaw Jobs (12 total)
+
+All jobs from `~/.openclaw/cron/jobs.json`, synced every 15 min to AgentX.
+
+| Job | Agent | Schedule | Model | Host | Delivery |
+|-----|-------|----------|-------|------|----------|
+| infra-health-check | main | every 2h | local | secondary | none |
+| morning-briefing | main | `0 8 * * 1-5` | (agent default) | tertiary | telegram |
+| memory-maintenance | main | `0 22 * * 0,3` | local | secondary | none |
+| healthcheck:security-audit | main | `0 6 * * 1` | local | secondary | none |
+| agentx:daily-analytics | main | `0 18 * * *` | local | secondary | telegram |
+| agentx:weekly-benchmark | clawdx-coder | `0 14 * * 6` | local | secondary | telegram |
+| agentx:rag-maintenance | clawdx-coder | `0 3 * * 3` | local | secondary | none |
+| self-improve:weekly-report | main | `0 9 * * 1` | local | secondary | telegram |
+| self-improve:model-quality-watch | thinker | `0 20 * * *` | local | secondary | telegram |
+| leantime:daily-status | main | `30 8 * * *` | local | secondary | telegram |
+| roadmap-driver:work-cycle | roadmap-driver | `0 2 * * 1-5` | big | tertiary | none |
+| roadmap-driver:bisync | roadmap-driver | `0 7 * * 1-5` | local | secondary | telegram |
+
+All cron expressions are America/Toronto timezone.
 
 ## Known Limitations (v1)
 
