@@ -8,6 +8,8 @@ let audioChunks = [];
 let isRecording = false;
 let recordingStartTime = null;
 let recordingTimer = null;
+let claudeSessionId = null;
+let claudeSessionId = null;
 
 export function updateVoiceFieldVisibility(elements) {
   const sttProv = elements.sttProviderSelect?.value || 'auto';
@@ -127,26 +129,48 @@ async function startServerVoiceInput(elements, state, helpers) {
       formData.append('audio', blob, 'recording.webm');
 
       try {
-        const params = new URLSearchParams();
-        const sttProv = elements.sttProviderSelect?.value || state.settings?.sttProvider || 'auto';
-        params.set('provider', (sttProv === 'openai') ? 'openai' : 'local');
-        const lang = elements.sttLanguageSelect?.value || 'en';
-        if (lang) params.set('language', lang);
-        const model = elements.whisperModelSelect?.value || '';
-        if (model) params.set('model', model);
-        const res = await fetch(`/api/voice/transcribe?${params}`, { method: 'POST', body: formData });
-        if (!res.ok) throw new Error(`Transcription failed: ${res.status}`);
-        const { data } = await res.json();
-        if (data?.text) {
-          elements.messageInput.value = data.text;
-          helpers.setFeedback(`Transcribed (${data.provider}, ${data.duration}ms)`, 'success');
-          if (state.settings?.voiceAutoSend) helpers.sendMessage();
+        // Claude Code mode: send audio directly to /api/voice/claude
+        if (elements.claudeCodeToggle?.checked) {
+          showVoiceStatus('Sending to Claude Code...');
+          helpers.setStatus('Sending to Claude Code...', 'success');
+          formData.append('language', elements.sttLanguageSelect?.value || 'en');
+          if (claudeSessionId) formData.append('continueSession', 'true');
+          const res = await fetch('/api/voice/claude', { method: 'POST', body: formData });
+          if (!res.ok) throw new Error(`Claude Code failed: ${res.status}`);
+          const { data } = await res.json();
+          if (data?.transcription) {
+            elements.messageInput.value = data.transcription;
+            helpers.appendMessage('user', data.transcription);
+            helpers.appendMessage('assistant', '**Claude Code** (' + (data.claudeDuration/1000).toFixed(1) + 's):\n\n' + (typeof data.claudeResponse === 'string' ? data.claudeResponse : JSON.stringify(data.claudeResponse, null, 2)));
+            if (data.claudeSessionId) claudeSessionId = data.claudeSessionId;
+            if (data.claudeSessionId) claudeSessionId = data.claudeSessionId;
+            helpers.setFeedback(`Claude Code done (STT: ${data.sttProvider} ${data.sttDuration}ms, Claude: ${data.claudeDuration}ms)`, 'success');
+          } else {
+            helpers.setFeedback('No speech detected. Try again.', 'error');
+          }
         } else {
-          helpers.setFeedback('No speech detected. Try again.', 'error');
+          // Normal mode: transcribe only, fill input
+          const params = new URLSearchParams();
+          const sttProv = elements.sttProviderSelect?.value || state.settings?.sttProvider || 'auto';
+          params.set('provider', (sttProv === 'openai') ? 'openai' : 'local');
+          const lang = elements.sttLanguageSelect?.value || 'en';
+          if (lang) params.set('language', lang);
+          const model = elements.whisperModelSelect?.value || '';
+          if (model) params.set('model', model);
+          const res = await fetch(`/api/voice/transcribe?${params}`, { method: 'POST', body: formData });
+          if (!res.ok) throw new Error(`Transcription failed: ${res.status}`);
+          const { data } = await res.json();
+          if (data?.text) {
+            elements.messageInput.value = data.text;
+            helpers.setFeedback(`Transcribed (${data.provider}, ${data.duration}ms)`, 'success');
+            if (state.settings?.voiceAutoSend) helpers.sendMessage();
+          } else {
+            helpers.setFeedback('No speech detected. Try again.', 'error');
+          }
         }
       } catch (err) {
-        console.error('Server transcription error:', err);
-        helpers.setFeedback(`Transcription error: ${err.message}`, 'error');
+        console.error('Server voice error:', err);
+        helpers.setFeedback(`Voice error: ${err.message}`, 'error');
       }
       cleanupVoiceInput(elements);
     };

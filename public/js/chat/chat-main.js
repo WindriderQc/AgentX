@@ -86,6 +86,7 @@ document.addEventListener('DOMContentLoaded', () => {
     whisperModelSelect: document.getElementById('whisperModelSelect'),
     whisperModelField: document.getElementById('whisperModelField'),
     voiceAutoSend: document.getElementById('voiceAutoSend'),
+    claudeCodeToggle: document.getElementById('claudeCodeToggle'),
     ttsVoiceSelect: document.getElementById('ttsVoiceSelect'),
     ttsVoiceField: document.getElementById('ttsVoiceField'),
     testVoiceBtn: document.getElementById('testVoiceBtn'),
@@ -388,6 +389,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (elements.sttLanguageSelect) elements.sttLanguageSelect.addEventListener('change', () => helpers.persistSettings());
     if (elements.whisperModelSelect) elements.whisperModelSelect.addEventListener('change', () => helpers.persistSettings());
     if (elements.voiceAutoSend) elements.voiceAutoSend.addEventListener('change', () => helpers.persistSettings());
+    if (elements.claudeCodeToggle) elements.claudeCodeToggle.addEventListener('change', () => helpers.persistSettings());
     if (elements.ttsVoiceSelect) elements.ttsVoiceSelect.addEventListener('change', () => helpers.persistSettings());
     if (elements.testVoiceBtn) elements.testVoiceBtn.addEventListener('click', () => _speakText(state, 'Hello, this is your voice assistant.'));
 

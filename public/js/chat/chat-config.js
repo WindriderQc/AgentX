@@ -57,6 +57,7 @@ export function persistSettings(elements, state, defaults, refreshMessages, setF
     sttLanguage: elements.sttLanguageSelect?.value || 'en',
     whisperModel: elements.whisperModelSelect?.value || '',
     voiceAutoSend: elements.voiceAutoSend?.checked || false,
+    claudeCodeEnabled: elements.claudeCodeToggle?.checked || false,
     useRag: elements.ragToggle.checked,
     webSearch: elements.webSearchToggle?.checked || false,
     showStats: elements.statsToggle.checked,
@@ -95,6 +96,7 @@ export function hydrateForm(elements, state, defaults) {
   if (elements.sttLanguageSelect) elements.sttLanguageSelect.value = cfg.sttLanguage || 'en';
   if (elements.whisperModelSelect) elements.whisperModelSelect.value = cfg.whisperModel || '';
   if (elements.voiceAutoSend) elements.voiceAutoSend.checked = cfg.voiceAutoSend || false;
+  if (elements.claudeCodeToggle) elements.claudeCodeToggle.checked = cfg.claudeCodeEnabled || false;
   if (elements.ttsVoiceSelect) elements.ttsVoiceSelect.value = cfg.ttsVoice || 'alloy';
 
   elements.ragToggle.checked = cfg.useRag !== undefined ? cfg.useRag : true;

@@ -323,6 +323,10 @@ app.use('/api/host-test', hostTestRoutes);
 const hostMonitorRoutes = require('../routes/host-monitor');
 app.use('/api/hosts', hostMonitorRoutes);
 
+// Cluster schedule (unified cross-host task schedule + live state)
+const clusterScheduleRoutes = require('../routes/cluster-schedule');
+app.use('/api/cluster', clusterScheduleRoutes);
+
 // Workflow Generator routes (N6.1)
 const workflowGeneratorRoutes = require('../routes/workflowGenerator');
 app.use('/api/workflow', workflowGeneratorRoutes);

@@ -12,6 +12,7 @@ const { transcribe, synthesize, checkHealth } = require('../src/services/voiceSe
 const { handleChatRequest } = require('../src/services/chatService');
 const { getRagStore } = require('../src/services/ragStore');
 const logger = require('../config/logger');
+const { executePrompt: claudeExecute, checkHealth: claudeHealth } = require('../src/services/claudeCodeService');
 
 // Configure multer for audio uploads (in memory)
 const upload = multer({
@@ -262,4 +263,143 @@ router.post('/chat', optionalAuth, upload.single('audio'), async (req, res) => {
     }
 });
 
+
+/**
+ * GET /api/voice/claude/health
+ * Check if Claude Code CLI is available
+ */
+router.get('/claude/health', async (req, res) => {
+    try {
+        const health = await claudeHealth();
+        res.json({ status: 'success', data: health });
+    } catch (err) {
+        res.status(500).json({ status: 'error', message: err.message });
+    }
+});
+
+/**
+ * POST /api/voice/claude
+ * Voice-to-Claude-Code pipeline: transcribe audio → send to claude -p
+ * 
+ * Body: multipart/form-data
+ *   - audio: audio file (required)
+ *   - language: STT language (optional, default: 'en')
+ *   - cwd: working directory for Claude Code (optional)
+ *   - continueSession: resume last Claude session (optional, default: false)
+ *   - resumeId: resume specific session ID (optional)
+ *   - model: Claude model to use (optional)
+ *   - skipPermissions: bypass permission checks (optional, default: true)
+ */
+router.post('/claude', optionalAuth, upload.single('audio'), async (req, res) => {
+    if (!req.file) {
+        return res.status(400).json({
+            status: 'error',
+            message: 'No audio file provided. Use form field "audio".'
+        });
+    }
+
+    const {
+        language = 'en',
+        cwd,
+        continueSession = 'false',
+        resumeId,
+        model,
+        skipPermissions = 'true'
+    } = req.body;
+
+    try {
+        // Step 1: Transcribe audio
+        logger.info('Voice→Claude: transcribing...');
+        const transcription = await transcribe(req.file.buffer, { language });
+
+        if (!transcription.text || transcription.text.trim().length === 0) {
+            return res.json({
+                status: 'success',
+                data: {
+                    transcription: '',
+                    claudeResponse: null,
+                    message: 'No speech detected. Please try again.'
+                }
+            });
+        }
+
+        // Step 2: Send transcript directly to Claude Code
+        logger.info('Voice→Claude: dispatching to claude -p', {
+            text: transcription.text.substring(0, 80)
+        });
+
+        const claudeResult = await claudeExecute(transcription.text, {
+            cwd: cwd || undefined,
+            continueSession: continueSession === 'true',
+            resumeId: resumeId || undefined,
+            model: model || undefined,
+            skipPermissions: skipPermissions !== 'false'
+        });
+
+        res.json({
+            status: 'success',
+            data: {
+                transcription: transcription.text,
+                sttProvider: transcription.provider,
+                sttDuration: transcription.duration,
+                claudeResponse: claudeResult.result,
+                claudeSessionId: claudeResult.sessionId,
+                claudeDuration: claudeResult.duration
+            }
+        });
+
+    } catch (err) {
+        logger.error('Voice→Claude failed', { error: err.message, stack: err.stack });
+        res.status(500).json({
+            status: 'error',
+            message: err.message
+        });
+    }
+});
+
+/**
+ * POST /api/voice/claude/text
+ * Text-to-Claude-Code (skip STT, useful for typed commands)
+ * 
+ * Body JSON:
+ *   - prompt: string (required)
+ *   - cwd: working directory (optional)
+ *   - continueSession: boolean (optional)
+ *   - resumeId: string (optional)
+ *   - model: string (optional)
+ */
+router.post('/claude/text', optionalAuth, express.json(), async (req, res) => {
+    const { prompt, cwd, continueSession, resumeId, model } = req.body;
+
+    if (!prompt || !prompt.trim()) {
+        return res.status(400).json({
+            status: 'error',
+            message: 'prompt is required'
+        });
+    }
+
+    try {
+        const result = await claudeExecute(prompt, {
+            cwd: cwd || undefined,
+            continueSession: !!continueSession,
+            resumeId: resumeId || undefined,
+            model: model || undefined,
+            skipPermissions: true
+        });
+
+        res.json({
+            status: 'success',
+            data: {
+                prompt,
+                claudeResponse: result.result,
+                claudeSessionId: result.sessionId,
+                claudeDuration: result.duration
+            }
+        });
+
+    } catch (err) {
+        logger.error('Claude Code text dispatch failed', { error: err.message });
+        res.status(500).json({ status: 'error', message: err.message });
+    }
+});
 module.exports = router;
