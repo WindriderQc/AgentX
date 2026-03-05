@@ -73,7 +73,7 @@
         .cs-hm-slot.backup { background: #f97316; }
         .cs-hm-slot.scanning { background: #14b8a6; }
         .cs-hm-slot.diagnostics { background: #a78bfa; }
-        .cs-hm-slot.continuous { background: repeating-linear-gradient(90deg, rgba(124,240,255,0.3) 0px, rgba(124,240,255,0.3) 4px, transparent 4px, transparent 8px); }
+        .cs-hm-slot.continuous { background-image: repeating-linear-gradient(90deg, rgba(255,255,255,0.15) 0px, rgba(255,255,255,0.15) 4px, transparent 4px, transparent 8px); }
 
         /* Legend */
         .cs-legend { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 12px; }
@@ -139,6 +139,7 @@
     </style>
 </head>
 <body>
+    <div id="nav-container"></div>
     <div class="cs-container">
         <div class="cs-header">
             <div>
@@ -182,6 +183,8 @@
         <div class="cs-tooltip-detail" id="tooltipDetail"></div>
     </div>
 
+    <script src="/js/components/nav.js"></script>
+    <script>injectNav('cluster');</script>
     <script src="/js/cluster-schedule.js"></script>
 </body>
 </html>

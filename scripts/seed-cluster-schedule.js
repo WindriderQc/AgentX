@@ -265,23 +265,11 @@ const entries = [
   }
 ];
 
-// Old entries to clean up from previous seed versions
+// Stale entries from earlier seed versions — idempotent cleanup
 const STALE_IDS = [
-  { source: 'openclaw', sourceId: 'openclaw-service' },
-  { source: 'openclaw', sourceId: 'oc-benchmark-nightly' },
-  { source: 'openclaw', sourceId: 'oc-model-sync' },
-  { source: 'openclaw', sourceId: 'oc-vram-snapshot' },
-  { source: 'openclaw', sourceId: 'oc-log-rotate' },
-  { source: 'openclaw', sourceId: 'oc-db-backup' },
-  { source: 'openclaw', sourceId: 'oc-rag-ingest' },
-  { source: 'openclaw', sourceId: 'oc-cleanup-sessions' },
-  { source: 'openclaw', sourceId: 'oc-cleanup-temp' },
-  { source: 'openclaw', sourceId: 'oc-benchmark-weekend' },
-  { source: 'openclaw', sourceId: 'oc-health-check' },
-  { source: 'openclaw', sourceId: 'oc-docjanitor' },
-  { source: 'agentx', sourceId: 'ax-model-warmup' },
   { source: 'ollama-persistent', sourceId: 'gpu-primary-resident' },
   { source: 'ollama-persistent', sourceId: 'gpu-secondary-resident' },
+  { source: 'agentx', sourceId: 'ax-model-warmup' },
 ];
 
 async function seed() {

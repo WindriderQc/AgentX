@@ -7,7 +7,7 @@
  * 'chat', 'operations', 'self-healing', 'alerts', 'backup', 'models', 'benchmark', 'courthouse',
  * 'performance', 'analytics', 'features-inventory', 'features-telemetry',
  * 'features-adoption', 'features-admin', 'feature-alignment', 'workspaces', 'audit-logs', 'rag', 'personas', 'profile',
- * 'results-explorer', 'model-explorer', 'leaderboard', 'hardware-matrix', 'config-optimizer', 'docjanitor', 'roundtable', 'hosts'
+ * 'results-explorer', 'model-explorer', 'leaderboard', 'hardware-matrix', 'config-optimizer', 'docjanitor', 'roundtable', 'hosts', 'cluster'
  */
 
 // Global auth state — accessible by all pages via window.AgentXAuth
@@ -87,6 +87,7 @@ function injectNav(activePageId = '') {
                 { label: 'Alerts', href: 'alerts.html', icon: 'fa-bell', id: 'alerts' },
                 { label: 'Performance', href: 'performance.html', icon: 'fa-gauge-high', id: 'performance' },
                 { label: 'Hosts', href: 'hosts.html', icon: 'fa-server', id: 'hosts' },
+                { label: 'Cluster Schedule', href: 'cluster.html', icon: 'fa-calendar-alt', id: 'cluster' },
                 { label: 'Host Test', href: 'host-test.html', icon: 'fa-flask', id: 'host-test' },
                 { label: 'Analytics', href: 'analytics.html', icon: 'fa-chart-line', id: 'analytics' },
                 { label: 'Cost', href: 'cost-tracking.html', icon: 'fa-dollar-sign', id: 'cost-tracking' }

@@ -9,7 +9,6 @@ let isRecording = false;
 let recordingStartTime = null;
 let recordingTimer = null;
 let claudeSessionId = null;
-let claudeSessionId = null;
 
 export function updateVoiceFieldVisibility(elements) {
   const sttProv = elements.sttProviderSelect?.value || 'auto';
@@ -134,7 +133,9 @@ async function startServerVoiceInput(elements, state, helpers) {
           showVoiceStatus('Sending to Claude Code...');
           helpers.setStatus('Sending to Claude Code...', 'success');
           formData.append('language', elements.sttLanguageSelect?.value || 'en');
-          if (claudeSessionId) formData.append('continueSession', 'true');
+          if (claudeSessionId) {
+            formData.append('resumeId', claudeSessionId);
+          }
           const res = await fetch('/api/voice/claude', { method: 'POST', body: formData });
           if (!res.ok) throw new Error(`Claude Code failed: ${res.status}`);
           const { data } = await res.json();
@@ -142,7 +143,6 @@ async function startServerVoiceInput(elements, state, helpers) {
             elements.messageInput.value = data.transcription;
             helpers.appendMessage('user', data.transcription);
             helpers.appendMessage('assistant', '**Claude Code** (' + (data.claudeDuration/1000).toFixed(1) + 's):\n\n' + (typeof data.claudeResponse === 'string' ? data.claudeResponse : JSON.stringify(data.claudeResponse, null, 2)));
-            if (data.claudeSessionId) claudeSessionId = data.claudeSessionId;
             if (data.claudeSessionId) claudeSessionId = data.claudeSessionId;
             helpers.setFeedback(`Claude Code done (STT: ${data.sttProvider} ${data.sttDuration}ms, Claude: ${data.claudeDuration}ms)`, 'success');
           } else {
@@ -287,4 +287,14 @@ export async function speakText(state, text) {
   } else {
     setVoice();
   }
+}
+
+/** Reset Claude Code session (call when starting a new conversation) */
+export function resetClaudeSession() {
+  claudeSessionId = null;
+}
+
+/** Get the current Claude Code session ID (null if none) */
+export function getClaudeSessionId() {
+  return claudeSessionId;
 }

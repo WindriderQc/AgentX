@@ -24,6 +24,9 @@ async function getAllEntries(filters = {}) {
 
 /**
  * Resolve all enabled entries into time slots for a given date.
+ * Note: day boundaries use UTC (00:00Z–23:59Z). Cron expressions are resolved
+ * in the requested timezone. Late-night local tasks may fall outside the UTC day
+ * window — a known limitation for v1.
  * @param {string} dateStr - ISO date string (YYYY-MM-DD)
  * @param {string} timezone - IANA timezone
  * @returns {Promise<Array>} - Array of { entry, slots: [{ start, end }] }

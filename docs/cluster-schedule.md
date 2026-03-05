@@ -1,0 +1,127 @@
+# Cluster Schedule
+
+Unified view of what's using the LLM/GPU hosts and when. Aggregates schedules from OpenClaw, AgentX, n8n, and persistent Ollama models into one timeline.
+
+## Architecture
+
+```
+Data Sources                          AgentX
+─────────────                         ──────
+OpenClaw (ClawdX .66)
+  └─ ~/.openclaw/cron/jobs.json  ──→  POST /api/cluster/schedule/sync
+       (via sync-openclaw-schedule.js)       │
+                                             ▼
+n8n (Ubundocker .199)                 ClusterScheduleEntry (MongoDB)
+  └─ seed script (static)                   │
+                                             ├─→ GET /schedule          (list + filter)
+AgentX (Docker Host .33)                    ├─→ GET /schedule/timeline  (24h heatmap)
+  └─ seed script (static)                  ├─→ GET /schedule/next      (countdown)
+                                             └─→ GET /schedule/live     (Ollama /api/ps)
+Ollama Hosts                                        │
+  └─ live polled via /api/ps                        ▼
+                                             cluster.html (dashboard)
+```
+
+## Files
+
+| File | Lines | Purpose |
+|------|-------|---------|
+| `models/ClusterScheduleEntry.js` | 39 | Mongoose schema — source, schedule, host, model, taskType |
+| `src/services/clusterScheduleService.js` | 243 | CRUD, cron→timeline resolution, sync upsert |
+| `src/services/clusterLiveService.js` | 81 | Real-time Ollama /api/ps polling per host |
+| `routes/cluster-schedule.js` | 103 | 5 API endpoints mounted at `/api/cluster` |
+| `scripts/seed-cluster-schedule.js` | ~320 | Baseline data: 12 OpenClaw + 7 n8n + 5 AgentX + 3 GPU |
+| `scripts/sync-openclaw-schedule.js` | 151 | Reads OpenClaw jobs.json → POSTs to sync API |
+| `public/cluster.html` | 191 | Dashboard: live bar, 24h heatmap, next up |
+| `public/js/cluster-schedule.js` | 300 | Frontend logic: fetch, render, countdown |
+| `tests/unit/clusterScheduleService.test.js` | 285 | 19 tests covering all service methods |
+
+## API Endpoints
+
+All mounted at `/api/cluster`, use `optionalAuth` middleware.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/schedule` | List entries. Filters: `?host=&taskType=&source=&enabled=` |
+| GET | `/schedule/timeline` | 24h time slots. `?date=YYYY-MM-DD&timezone=America/Toronto` |
+| GET | `/schedule/live` | Real-time host status + loaded models from Ollama |
+| GET | `/schedule/next` | Next N upcoming tasks. `?count=5` (max 50) |
+| POST | `/schedule/sync` | Upsert entries by source+sourceId. Body: `{ entries: [...] }` |
+
+Response format: `{ status: 'success', data: {...} }`
+
+## OpenClaw Sync
+
+The sync script reads OpenClaw's `~/.openclaw/cron/jobs.json` directly and POSTs to AgentX. Zero OpenClaw code changes. Zero npm dependencies (uses Node 18+ built-in fetch).
+
+### Real jobs.json schema (OpenClaw)
+
+```json
+{
+  "id": "d15704a8-...",
+  "agentId": "main",
+  "name": "infra-health-check",
+  "enabled": true,
+  "schedule": {
+    "kind": "cron",
+    "expr": "0 */2 * * *",
+    "tz": "America/Toronto"
+  },
+  "payload": { "model": "local" },
+  "delivery": "none",
+  "state": {
+    "lastRunAtMs": 1741...,
+    "lastDurationMs": 45000,
+    "lastStatus": "error",
+    "consecutiveErrors": 3,
+    "nextRunAtMs": 1741...
+  }
+}
+```
+
+Key mappings in the sync script:
+- `job.schedule.kind` → "cron" uses `expr`, "every" uses `everyMs`
+- `job.agentId` (NOT `job.agent`)
+- `job.state.*` for runtime stats (NOT flat fields)
+- `job.delivery` is a sibling of `payload` (NOT `payload.delivery`)
+- `job.payload.model` → resolved via MODEL_ALIASES to full model name + host
+
+### Model aliases
+
+| Alias | Model | Host |
+|-------|-------|------|
+| local | qwen2.5:14b-instruct-q5_K_M | secondary (UGBrutal) |
+| fast | qwen3:14b | tertiary (UGClawdX) |
+| big | qwen32b:perf | tertiary (UGClawdX) |
+| think | deepseek-r1:14b | secondary (UGBrutal) |
+| coder | deepcoder:14b-preview-q4_K_M | secondary (UGBrutal) |
+| oss | openclaw-oss-20b | secondary (UGBrutal) |
+| mistral | Mistral-Small3.1-24B | secondary (UGBrutal) |
+
+### Deploy to ClawdX
+
+```bash
+# Copy script (one file, zero deps)
+scp scripts/sync-openclaw-schedule.js clawdx:~/sync-openclaw-schedule.js
+
+# Add 15-min cron
+ssh clawdx '(crontab -l 2>/dev/null; echo "*/15 * * * * node ~/sync-openclaw-schedule.js >> /tmp/openclaw-sync.log 2>&1") | crontab -'
+
+# Verify
+ssh clawdx 'node ~/sync-openclaw-schedule.js'
+```
+
+## GPU Hosts
+
+| Host | ID | IP | GPU | Role |
+|------|----|----|-----|------|
+| UGFrank | primary | 192.168.2.99 | RTX 3080 Ti 12GB | 3-8B models, embeddings |
+| UGBrutal | secondary | 192.168.2.12 | RTX 5070 Ti 16GB | 14B reasoning/coding |
+| UGClawdX | tertiary | 192.168.2.66 | RTX 3090 24GB | 32B+ models, OpenClaw runtime |
+
+## Known Limitations (v1)
+
+- **Timezone boundary**: Timeline uses UTC day boundaries (00:00Z–23:59Z). Late-night local tasks (e.g., 23:00 Toronto = 04:00Z next day) may fall outside the window.
+- **n8n data is static**: Seeded once, not live-synced. n8n webhook integration deferred.
+- **No conflict detection**: The dashboard shows overlaps visually but doesn't warn about VRAM conflicts.
+- **Seed data for OpenClaw is baseline**: Once sync cron is deployed, real data from jobs.json overrides the seed.
