@@ -52,6 +52,40 @@ router.get('/schedule/timeline', optionalAuth, async (req, res) => {
 });
 
 /**
+ * GET /schedule/timeline-by-host
+ * Pivot timeline by host — rows are GPU hosts, each with their tasks.
+ * Query params: date (YYYY-MM-DD, defaults to today), timezone
+ */
+router.get('/schedule/timeline-by-host', optionalAuth, async (req, res) => {
+  try {
+    const date = req.query.date || new Date().toISOString().slice(0, 10);
+    const timezone = req.query.timezone || 'America/Toronto';
+    const hosts = await clusterScheduleService.getTimelineByHost(date, timezone);
+    res.json({ status: 'success', data: { date, timezone, hosts } });
+  } catch (err) {
+    logger.error('Failed to get host timeline', { error: err.message });
+    res.status(500).json({ status: 'error', error: err.message });
+  }
+});
+
+/**
+ * GET /schedule/conflicts
+ * Detect overlapping tasks on the same host for a given date.
+ * Query params: date (YYYY-MM-DD, defaults to today), timezone
+ */
+router.get('/schedule/conflicts', optionalAuth, async (req, res) => {
+  try {
+    const date = req.query.date || new Date().toISOString().slice(0, 10);
+    const timezone = req.query.timezone || 'America/Toronto';
+    const conflicts = await clusterScheduleService.getConflicts(date, timezone);
+    res.json({ status: 'success', data: { date, timezone, conflicts, count: conflicts.length } });
+  } catch (err) {
+    logger.error('Failed to get schedule conflicts', { error: err.message });
+    res.status(500).json({ status: 'error', error: err.message });
+  }
+});
+
+/**
  * GET /schedule/live
  * Real-time state of all Ollama hosts (loaded models, status).
  */

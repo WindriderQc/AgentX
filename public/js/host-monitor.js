@@ -332,9 +332,13 @@ const HostMonitor = (() => {
         <div style="font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:600;">Loaded Models</div>
         ${running.map(m => {
           const vramMiB = m.size_vram ? Math.round(m.size_vram / (1024 * 1024)) : 0;
+          const totalMiB = m.size ? Math.round(m.size / (1024 * 1024)) : 0;
+          const gpuPct = (m.size && m.size_vram) ? Math.round((m.size_vram / m.size) * 100) : null;
+          const gpuColor = gpuPct === 100 ? '#22c55e' : gpuPct != null ? '#ef4444' : '';
+          const gpuLabel = gpuPct != null ? ` | GPU: <span style="color:${gpuColor};font-weight:600;">${gpuPct}%</span>` : '';
           return `<div class="hm-running-model">
             <div class="hm-running-model-name">${esc(m.name)}</div>
-            <div class="hm-running-model-meta">${vramMiB ? `VRAM: ${formatMiB(vramMiB)}` : ''}${m.expires_at ? ` | Expires: ${timeAgo(m.expires_at)}` : ''}</div>
+            <div class="hm-running-model-meta">${vramMiB ? `VRAM: ${formatMiB(vramMiB)}` : ''}${gpuLabel}${m.expires_at ? ` | Expires: ${timeAgo(m.expires_at)}` : ''}</div>
           </div>`;
         }).join('')}
       `);

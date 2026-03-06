@@ -363,7 +363,8 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                         const hintText = hintApplied ? promptText.slice(prompt.prompt.length).trim() : null;
 
                         const testController = new AbortController();
-                        const testTimeoutId = setTimeout(() => testController.abort(), 180000);
+                        const testTimeoutMs = modelExecConfig.per_test_timeout_ms || 600000;
+                        const testTimeoutId = setTimeout(() => testController.abort(), testTimeoutMs);
 
                         const ollamaOptions = { num_predict: numPredict };
                         if (modelExecConfig.num_ctx) {

@@ -148,6 +148,47 @@ async function snapshotVram(hostUrl) {
   return { usedMiB: null, totalMiB: null };
 }
 
+/**
+ * Check GPU offload percentage via Ollama /api/ps.
+ * Returns the ratio of size_vram / size for the target model.
+ * A ratio < 1.0 means some layers are on CPU (spill).
+ *
+ * @param {string} hostUrl
+ * @param {string} modelName
+ * @returns {Promise<{ gpuPercent: number|null, sizeTotal: number|null, sizeVram: number|null, contextLength: number|null }>}
+ */
+async function snapshotGpuOffload(hostUrl, modelName) {
+  try {
+    const fetch = (...args) => import('node-fetch').then(({ default: f }) => f(...args));
+    const res = await fetch(`${hostUrl}/api/ps`, {
+      method: 'GET',
+      timeout: 5000,
+      ...getFetchOptions(hostUrl)
+    });
+    if (!res.ok) return { gpuPercent: null, sizeTotal: null, sizeVram: null, contextLength: null };
+
+    const data = await res.json();
+    const model = (data.models || []).find(m =>
+      m.name === modelName || m.model === modelName ||
+      m.name.split(':')[0] === modelName.split(':')[0]
+    );
+    if (!model) return { gpuPercent: null, sizeTotal: null, sizeVram: null, contextLength: null };
+
+    const sizeTotal = model.size || 0;
+    const sizeVram = model.size_vram || 0;
+    const gpuPercent = sizeTotal > 0 ? Number(((sizeVram / sizeTotal) * 100).toFixed(1)) : null;
+
+    return {
+      gpuPercent,
+      sizeTotal,
+      sizeVram,
+      contextLength: model.context_length || null
+    };
+  } catch (_) {
+    return { gpuPercent: null, sizeTotal: null, sizeVram: null, contextLength: null };
+  }
+}
+
 // ── Core probe logic ───────────────────────────────────────────────────────────
 
 /**
@@ -159,9 +200,13 @@ async function runStep(hostUrl, modelName, numCtx, timeoutMs) {
   const targetPromptTokens = Math.floor(numCtx * 0.8);
   const { prompt } = generateFillPrompt(targetPromptTokens);
 
-  const [probeResult, vram] = await Promise.all([
-    sendProbeRequest(hostUrl, modelName, prompt, numCtx, timeoutMs),
-    snapshotVram(hostUrl)
+  // Run generation first (this loads the model at the target num_ctx)
+  const probeResult = await sendProbeRequest(hostUrl, modelName, prompt, numCtx, timeoutMs);
+
+  // Snapshot VRAM and GPU offload after generation (model is loaded at target ctx)
+  const [vram, offload] = await Promise.all([
+    snapshotVram(hostUrl),
+    snapshotGpuOffload(hostUrl, modelName)
   ]);
 
   return {
@@ -171,6 +216,10 @@ async function runStep(hostUrl, modelName, numCtx, timeoutMs) {
     completionTokens: probeResult.completionTokens,
     vramUsedMiB: vram.usedMiB,
     vramTotalMiB: vram.totalMiB,
+    gpuPercent: offload.gpuPercent,
+    gpuSizeTotal: offload.sizeTotal,
+    gpuSizeVram: offload.sizeVram,
+    ollamaContextLength: offload.contextLength,
     latencyMs: probeResult.latencyMs,
     passed: probeResult.ok,
     reason: probeResult.ok ? null : probeResult.error
@@ -263,17 +312,25 @@ async function probeModelContext(modelName, options = {}) {
 
       const step = await runStep(hostUrl, modelName, testCtx, timeoutMs);
 
-      // Determine pass/fail
-      if (step.passed && step.tokensPerSec >= speedThreshold) {
+      // Determine pass/fail — check both speed degradation AND GPU spill
+      const hasGpuSpill = step.gpuPercent !== null && step.gpuPercent < 100;
+      const speedOk = step.passed && step.tokensPerSec >= speedThreshold;
+
+      if (speedOk && !hasGpuSpill) {
         const drop = ((1 - step.tokensPerSec / baselineSpeed) * 100).toFixed(1);
         step.passed = true;
-        step.reason = `${step.tokensPerSec} tok/s (${drop}% drop, threshold ${degradationPct}%)`;
+        step.reason = `${step.tokensPerSec} tok/s (${drop}% drop) GPU=${step.gpuPercent ?? '?'}%`;
         bestPassingIdx = mid;
         low = mid + 1;
       } else {
-        const failReason = !step.passed
-          ? step.reason || 'Request failed'
-          : `${step.tokensPerSec} tok/s < threshold ${speedThreshold.toFixed(1)} tok/s`;
+        let failReason;
+        if (hasGpuSpill) {
+          failReason = `GPU spill: ${step.gpuPercent}% on GPU (${step.tokensPerSec} tok/s)`;
+        } else if (!step.passed) {
+          failReason = step.reason || 'Request failed';
+        } else {
+          failReason = `${step.tokensPerSec} tok/s < threshold ${speedThreshold.toFixed(1)} tok/s`;
+        }
         step.passed = false;
         step.reason = failReason;
         high = mid - 1;
@@ -295,6 +352,7 @@ async function probeModelContext(modelName, options = {}) {
       atLimitTokensPerSec: bestStep?.tokensPerSec ?? baselineSpeed,
       degradationPct: degradation,
       vramAtLimitMiB: bestStep?.vramUsedMiB ?? null,
+      gpuPercentAtLimit: bestStep?.gpuPercent ?? null,
       modelTheoreticalMax: theoreticalMax,
       degradationThreshold: degradationPct,
       testedAt: new Date(),
@@ -377,5 +435,5 @@ module.exports = {
   getAvailableContext,
   getConfig,
   // Exported for testing
-  _internal: { fetchModelTheoreticalMax, sendProbeRequest, snapshotVram, runStep }
+  _internal: { fetchModelTheoreticalMax, sendProbeRequest, snapshotVram, snapshotGpuOffload, runStep }
 };

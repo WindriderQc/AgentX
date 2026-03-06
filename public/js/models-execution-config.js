@@ -82,6 +82,42 @@ class ModelExecutionConfig {
             if (this.tempInput) this.tempInput.placeholder = String(tempEff.value);
         }
 
+        // Context test results
+        const ct = this.currentConfig.contextTest;
+        const ctSection = document.getElementById('execConfigContextTest');
+        if (ctSection && ct && ct.status) {
+            const gpuColor = ct.gpuPercentAtLimit === 100 ? '#22c55e' : ct.gpuPercentAtLimit != null ? '#ef4444' : 'var(--muted)';
+            const gpuLabel = ct.gpuPercentAtLimit != null ? `${ct.gpuPercentAtLimit}%` : '—';
+            const speedLabel = ct.atLimitTokensPerSec != null ? `${ct.atLimitTokensPerSec} tok/s` : '—';
+            const vramLabel = ct.vramAtLimitMiB != null ? `${(ct.vramAtLimitMiB / 1024).toFixed(1)} GB` : '—';
+            const statusIcon = ct.status === 'completed' ? '<i class="fas fa-check-circle" style="color:#22c55e;"></i>' :
+                ct.status === 'running' ? '<i class="fas fa-spinner fa-spin" style="color:#7cf0ff;"></i>' :
+                '<i class="fas fa-times-circle" style="color:#ef4444;"></i>';
+            const testedAt = ct.testedAt ? new Date(ct.testedAt).toLocaleString() : '—';
+
+            ctSection.innerHTML = `
+                <div style="background:rgba(255,255,255,0.03); border:1px solid var(--panel-border); border-radius:6px; padding:0.6rem 0.75rem; margin-top:0.5rem;">
+                    <div style="font-size:0.85rem; font-weight:600; margin-bottom:0.4rem;">
+                        ${statusIcon} Context Probe Results
+                    </div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.3rem 1rem; font-size:0.8rem;">
+                        <div style="color:var(--muted);">Max 100% GPU ctx</div>
+                        <div><strong>${ct.testedNumCtx != null ? ct.testedNumCtx.toLocaleString() : '—'}</strong></div>
+                        <div style="color:var(--muted);">GPU at limit</div>
+                        <div style="color:${gpuColor}; font-weight:600;">${gpuLabel}</div>
+                        <div style="color:var(--muted);">Speed at limit</div>
+                        <div>${speedLabel}</div>
+                        <div style="color:var(--muted);">VRAM at limit</div>
+                        <div>${vramLabel}</div>
+                        <div style="color:var(--muted);">Tested</div>
+                        <div>${testedAt}</div>
+                    </div>
+                </div>`;
+            ctSection.style.display = '';
+        } else if (ctSection) {
+            ctSection.style.display = 'none';
+        }
+
         // Reason + conservative warning
         const reason = effective?._reason || defaults?._reason;
         if (this.reasonEl) {
@@ -117,6 +153,7 @@ class ModelExecutionConfig {
     sourceLabel(source) {
         const icons = {
             auto: '<i class="fas fa-cog" style="color:#7cf0ff;" title="Auto-detected"></i>',
+            tested: '<i class="fas fa-flask" style="color:#22c55e;" title="Empirically tested"></i>',
             user: '<i class="fas fa-pen" style="color:#fbbf24;" title="User override"></i>',
             system: '<i class="fas fa-minus" style="color:var(--muted);" title="System default"></i>'
         };

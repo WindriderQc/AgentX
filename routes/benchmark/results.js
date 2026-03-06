@@ -247,7 +247,7 @@ router.get('/results/needs-review', async (req, res) => {
 router.post('/results/:id/human-review', async (req, res) => {
     try {
         const BenchmarkResult = require('../../models/BenchmarkResult');
-        const { human_score, reviewer } = req.body;
+        const { human_score, reviewer, notes } = req.body;
 
         if (!validateObjectId(req.params.id, res, 'Result ID')) return;
 
@@ -258,15 +258,16 @@ router.post('/results/:id/human-review', async (req, res) => {
             });
         }
 
+        const updateFields = {
+            human_score: parseFloat(human_score),
+            human_reviewed_at: new Date(),
+            human_reviewer: reviewer || 'anonymous'
+        };
+        if (notes) updateFields.human_notes = String(notes).slice(0, 2000);
+
         const result = await BenchmarkResult.findByIdAndUpdate(
             req.params.id,
-            {
-                $set: {
-                    human_score: parseFloat(human_score),
-                    human_reviewed_at: new Date(),
-                    human_reviewer: reviewer || 'anonymous'
-                }
-            },
+            { $set: updateFields },
             { new: true }
         );
 
@@ -282,6 +283,7 @@ router.post('/results/:id/human-review', async (req, res) => {
             data: {
                 id: result._id,
                 human_score: result.human_score,
+                human_notes: result.human_notes,
                 human_reviewed_at: result.human_reviewed_at,
                 quality_score: result.quality_score,
                 judge_confidence: result.judge_confidence

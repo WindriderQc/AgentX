@@ -164,6 +164,96 @@ describe('clusterScheduleService', () => {
     });
   });
 
+  // ── getTimelineByHost ──────────────────────────────────────
+
+  describe('getTimelineByHost', () => {
+    beforeEach(() => {
+      process.env.OLLAMA_HOST = 'http://127.0.0.1:11434';
+      process.env.OLLAMA_HOST_2 = 'http://127.0.0.1:11435';
+    });
+
+    it('groups tasks by host', async () => {
+      await ClusterScheduleEntry.create([
+        { source: 'n8n', sourceId: 'h1', name: 'Primary Task', taskType: 'benchmark', host: 'primary', enabled: true,
+          schedule: { type: 'cron', cron: '0 2 * * *', timezone: 'UTC' }, estimatedDurationMs: 300000 },
+        { source: 'n8n', sourceId: 'h2', name: 'Secondary Task', taskType: 'sync', host: 'secondary', enabled: true,
+          schedule: { type: 'cron', cron: '0 3 * * *', timezone: 'UTC' }, estimatedDurationMs: 300000 }
+      ]);
+
+      const hosts = await clusterScheduleService.getTimelineByHost('2026-03-04', 'UTC');
+      const primary = hosts.find(h => h.hostId === 'primary');
+      const secondary = hosts.find(h => h.hostId === 'secondary');
+      expect(primary.tasks).toHaveLength(1);
+      expect(primary.tasks[0].name).toBe('Primary Task');
+      expect(secondary.tasks).toHaveLength(1);
+      expect(secondary.tasks[0].name).toBe('Secondary Task');
+    });
+
+    it('includes VRAM capacity from host config', async () => {
+      await ClusterScheduleEntry.create({
+        source: 'n8n', sourceId: 'v1', name: 'T', taskType: 'benchmark', host: 'primary', enabled: true,
+        schedule: { type: 'cron', cron: '0 2 * * *', timezone: 'UTC' }, estimatedDurationMs: 300000
+      });
+
+      const hosts = await clusterScheduleService.getTimelineByHost('2026-03-04', 'UTC');
+      const primary = hosts.find(h => h.hostId === 'primary');
+      expect(primary.vramCapacityMb).toBe(12288);
+    });
+
+    it('puts null-host tasks into unassigned', async () => {
+      await ClusterScheduleEntry.create({
+        source: 'n8n', sourceId: 'u1', name: 'No Host', taskType: 'monitoring', enabled: true,
+        schedule: { type: 'cron', cron: '0 * * * *', timezone: 'UTC' }, estimatedDurationMs: 60000
+      });
+
+      const hosts = await clusterScheduleService.getTimelineByHost('2026-03-04', 'UTC');
+      const unassigned = hosts.find(h => h.hostId === 'unassigned');
+      expect(unassigned).toBeDefined();
+      expect(unassigned.tasks).toHaveLength(1);
+    });
+  });
+
+  // ── getConflicts ──────────────────────────────────────────────
+
+  describe('getConflicts', () => {
+    it('detects overlapping tasks on the same host', async () => {
+      await ClusterScheduleEntry.create([
+        { source: 'n8n', sourceId: 'c1', name: 'Task A', taskType: 'benchmark', host: 'primary', enabled: true,
+          schedule: { type: 'cron', cron: '0 2 * * *', timezone: 'UTC' }, estimatedDurationMs: 7200000 },
+        { source: 'n8n', sourceId: 'c2', name: 'Task B', taskType: 'sync', host: 'primary', enabled: true,
+          schedule: { type: 'cron', cron: '0 3 * * *', timezone: 'UTC' }, estimatedDurationMs: 3600000 }
+      ]);
+
+      const conflicts = await clusterScheduleService.getConflicts('2026-03-04', 'UTC');
+      expect(conflicts.length).toBeGreaterThanOrEqual(1);
+      expect(conflicts[0].hostId).toBe('primary');
+    });
+
+    it('returns no conflicts for non-overlapping tasks', async () => {
+      await ClusterScheduleEntry.create([
+        { source: 'n8n', sourceId: 'nc1', name: 'Morning', taskType: 'benchmark', host: 'primary', enabled: true,
+          schedule: { type: 'cron', cron: '0 2 * * *', timezone: 'UTC' }, estimatedDurationMs: 300000 },
+        { source: 'n8n', sourceId: 'nc2', name: 'Afternoon', taskType: 'sync', host: 'primary', enabled: true,
+          schedule: { type: 'cron', cron: '0 14 * * *', timezone: 'UTC' }, estimatedDurationMs: 300000 }
+      ]);
+
+      const conflicts = await clusterScheduleService.getConflicts('2026-03-04', 'UTC');
+      expect(conflicts).toHaveLength(0);
+    });
+
+    it('ignores continuous tasks in conflict detection', async () => {
+      await ClusterScheduleEntry.create([
+        { source: 'ollama-persistent', sourceId: 'pc1', name: 'Resident Model', taskType: 'inference', host: 'primary', enabled: true,
+          schedule: { type: 'continuous' } },
+        { source: 'n8n', sourceId: 'pc2', name: 'Cron Task', taskType: 'benchmark', host: 'primary', enabled: true,
+          schedule: { type: 'cron', cron: '0 2 * * *', timezone: 'UTC' }, estimatedDurationMs: 300000 }
+      ]);
+
+      const conflicts = await clusterScheduleService.getConflicts('2026-03-04', 'UTC');
+      expect(conflicts).toHaveLength(0);
+    });
+  });
+
   // ── syncEntries ─────────────────────────────────────────────
 
   describe('syncEntries', () => {

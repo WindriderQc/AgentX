@@ -253,7 +253,77 @@
         </div>
     </div>
 
+    <!-- Human Review & Judge Calibration -->
+    <style>
+        .jc-section { max-width: 1400px; margin: 2rem auto; padding: 0 1rem; }
+        .jc-panel { background: var(--card-bg, #1e1e2e); border: 1px solid var(--border, #2d2d3d); border-radius: 12px; padding: 1.25rem; margin-bottom: 1.5rem; }
+        .jc-panel h3 { margin: 0 0 1rem; font-size: 1.1rem; color: #e2e8f0; display: flex; align-items: center; gap: 0.5rem; }
+        .jc-panel h3 i { color: #7cf0ff; }
+        .jc-panel .jc-meta { font-size: 0.75rem; color: #64748b; margin-left: auto; }
+        .jc-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+        .jc-table th { text-align: left; padding: 0.5rem 0.75rem; color: #94a3b8; font-weight: 500; border-bottom: 1px solid #2d2d3d; font-size: 0.75rem; }
+        .jc-table td { padding: 0.5rem 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.04); color: #cbd5e1; }
+        .jc-table tr.reviewed { opacity: 0.5; }
+        .truncate { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .review-score-input { width: 60px; padding: 4px 6px; background: #0f0f1a; border: 1px solid #3d3d5c; border-radius: 4px; color: #fff; font-size: 0.8rem; }
+        .review-notes-input { width: 120px; padding: 4px 6px; background: #0f0f1a; border: 1px solid #3d3d5c; border-radius: 4px; color: #fff; font-size: 0.75rem; margin-right: 4px; }
+        .btn-sm { padding: 3px 10px; font-size: 0.75rem; border-radius: 4px; cursor: pointer; border: none; }
+        .btn-sm.btn-primary { background: #6366f1; color: #fff; }
+        .btn-sm.btn-primary:hover { background: #4f46e5; }
+        .human-score-display { font-weight: 600; color: #a78bfa; }
+        .review-done { color: #22c55e; }
+        .delta-ok { color: #22c55e; }
+        .delta-warn { color: #f59e0b; }
+        .delta-bad { color: #ef4444; font-weight: 600; }
+        .jc-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+        @media (max-width: 900px) { .jc-two-col { grid-template-columns: 1fr; } }
+    </style>
+
+    <div class="jc-section">
+        <div class="jc-panel">
+            <h3><i class="fas fa-user-check"></i> Human Review Queue <span class="jc-meta" id="reviewStats">loading...</span></h3>
+            <div style="overflow-x:auto">
+                <table class="jc-table">
+                    <thead>
+                        <tr>
+                            <th>Prompt</th>
+                            <th>Model</th>
+                            <th>Category</th>
+                            <th>Judge Score</th>
+                            <th>Human Score</th>
+                            <th>Delta</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="reviewQueueBody">
+                        <tr><td colspan="7" class="loading-cell"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="jc-panel">
+            <h3><i class="fas fa-balance-scale-right"></i> Judge Calibration <span class="jc-meta" id="calibrationTotal">loading...</span></h3>
+            <p style="font-size:0.75rem;color:#64748b;margin:-0.5rem 0 1rem">How accurately each judge model scores compared to human reviewers. Submit reviews above to build calibration data.</p>
+            <table class="jc-table">
+                <thead>
+                    <tr>
+                        <th>Judge Model</th>
+                        <th>Reviews</th>
+                        <th>Agreement (±1pt)</th>
+                        <th>Mean Abs Error</th>
+                        <th>Bias</th>
+                    </tr>
+                </thead>
+                <tbody id="calibrationBody">
+                    <tr><td colspan="5" class="loading-cell"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="/js/leaderboard.js"></script>
+    <script src="/js/judge-calibration.js"></script>
 </body>
 </html>

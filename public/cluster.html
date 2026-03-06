@@ -17,7 +17,7 @@
         .cs-header h1 { font-size: 28px; font-weight: 700; color: #fff; margin: 8px 0; }
         .cs-header h1 i { color: #7cf0ff; margin-right: 10px; }
         .cs-header p { color: var(--muted); font-size: 14px; }
-        .cs-header-actions { display: flex; gap: 8px; align-items: center; }
+        .cs-header-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 
         /* Live State Bar */
         .cs-live-bar { display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
@@ -119,6 +119,42 @@
         .cs-task-badge.scanning { background: rgba(20,184,166,0.2); color: #14b8a6; }
         .cs-task-badge.diagnostics { background: rgba(167,139,250,0.2); color: #a78bfa; }
 
+        /* Date nav */
+        .cs-date-nav { display: flex; align-items: center; gap: 8px; }
+        .cs-date-nav button {
+            background: rgba(124,240,255,0.1); border: 1px solid rgba(124,240,255,0.3);
+            color: #7cf0ff; width: 32px; height: 32px; border-radius: 6px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center; font-size: 12px; transition: all 0.2s;
+        }
+        .cs-date-nav button:hover { background: rgba(124,240,255,0.2); }
+        .cs-date-label { font-size: 14px; color: #fff; font-weight: 500; min-width: 120px; text-align: center; }
+
+        /* View toggle */
+        .cs-view-toggle { display: flex; border: 1px solid rgba(124,240,255,0.3); border-radius: 8px; overflow: hidden; }
+        .cs-view-toggle button {
+            background: transparent; border: none; color: var(--muted); padding: 6px 14px;
+            font-size: 12px; cursor: pointer; transition: all 0.2s;
+        }
+        .cs-view-toggle button.active { background: rgba(124,240,255,0.2); color: #7cf0ff; }
+        .cs-view-toggle button:hover:not(.active) { color: #fff; }
+
+        /* Host Gantt row */
+        .cs-host-row-label {
+            font-size: 13px; color: #fff; padding: 6px 8px; display: flex; align-items: center;
+            gap: 6px; font-weight: 600; border-left: 3px solid #7cf0ff;
+        }
+        .cs-host-row-label .cs-vram-info { font-size: 10px; color: var(--muted); font-weight: 400; }
+        .cs-hm-cell.conflict { outline: 2px solid #ef4444; outline-offset: -1px; }
+
+        /* Conflict banner */
+        .cs-conflict-banner {
+            background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); border-radius: 8px;
+            padding: 10px 16px; margin-bottom: 16px; display: flex; align-items: center; gap: 10px;
+            font-size: 13px; color: #fca5a5;
+        }
+        .cs-conflict-banner i { color: #ef4444; }
+        .cs-conflict-banner.hidden { display: none; }
+
         /* Empty / Loading states */
         .cs-loading { text-align: center; padding: 40px; color: var(--muted); }
         .cs-empty { text-align: center; padding: 30px; color: var(--muted); font-size: 14px; }
@@ -147,6 +183,16 @@
                 <p>Unified view of scheduled tasks across all GPU hosts</p>
             </div>
             <div class="cs-header-actions">
+                <div class="cs-date-nav">
+                    <button onclick="shiftDate(-1)" title="Previous day"><i class="fas fa-chevron-left"></i></button>
+                    <span class="cs-date-label" id="dateLabel"></span>
+                    <button onclick="shiftDate(1)" title="Next day"><i class="fas fa-chevron-right"></i></button>
+                    <button onclick="goToday()" title="Today" style="width:auto;padding:0 10px;font-size:11px;">Today</button>
+                </div>
+                <div class="cs-view-toggle">
+                    <button id="viewTask" class="active" onclick="setViewMode('task')">By Task</button>
+                    <button id="viewHost" onclick="setViewMode('host')">By Host</button>
+                </div>
                 <button class="cs-btn" id="refreshBtn" onclick="refreshAll()">
                     <i class="fas fa-sync-alt"></i> Refresh
                 </button>
@@ -156,6 +202,11 @@
         <!-- Live State Bar -->
         <div class="cs-live-bar" id="liveBar">
             <div class="cs-loading"><i class="fas fa-spinner fa-spin"></i> Loading host status...</div>
+        </div>
+
+        <div class="cs-conflict-banner hidden" id="conflictBanner">
+            <i class="fas fa-exclamation-triangle"></i>
+            <span id="conflictText"></span>
         </div>
 
         <div class="cs-grid-2">

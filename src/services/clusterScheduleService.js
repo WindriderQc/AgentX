@@ -242,4 +242,69 @@ function hasChanges(existing, incoming) {
   return false;
 }
 
-module.exports = { getAllEntries, getTimeline, getNextTasks, syncEntries };
+/**
+ * Pivot timeline data by host — rows are hosts, each containing their tasks.
+ * Includes unassigned tasks (host=null) in a separate bucket.
+ */
+async function getTimelineByHost(dateStr, timezone = 'America/Toronto') {
+  const { getConfiguredHosts } = require('../helpers/ollamaHostConfig');
+  const timeline = await getTimeline(dateStr, timezone);
+  const hosts = getConfiguredHosts();
+
+  const hostMap = {};
+  for (const h of hosts) {
+    hostMap[h.id] = { hostId: h.id, hostName: h.name, vramCapacityMb: h.vramMb || null, tasks: [] };
+  }
+  hostMap['unassigned'] = { hostId: 'unassigned', hostName: 'Unassigned', vramCapacityMb: null, tasks: [] };
+
+  for (const entry of timeline) {
+    const key = entry.host && hostMap[entry.host] ? entry.host : 'unassigned';
+    hostMap[key].tasks.push(entry);
+  }
+
+  // Only return hosts that have tasks or are configured
+  return Object.values(hostMap).filter(h => h.tasks.length > 0 || hosts.some(c => c.id === h.hostId));
+}
+
+/**
+ * Detect scheduling conflicts: overlapping time slots on the same host.
+ */
+async function getConflicts(dateStr, timezone = 'America/Toronto') {
+  const timeline = await getTimeline(dateStr, timezone);
+  const byHost = {};
+
+  for (const entry of timeline) {
+    const h = entry.host || 'unassigned';
+    if (!byHost[h]) byHost[h] = [];
+    byHost[h].push(entry);
+  }
+
+  const conflicts = [];
+  for (const [hostId, entries] of Object.entries(byHost)) {
+    // Flatten all slots with their parent entry info
+    const allSlots = [];
+    for (const entry of entries) {
+      for (const slot of entry.slots) {
+        if (slot.continuous) continue; // continuous tasks always overlap, skip
+        allSlots.push({ start: new Date(slot.start), end: new Date(slot.end), entryId: entry.id, name: entry.name, taskType: entry.taskType });
+      }
+    }
+    for (let i = 0; i < allSlots.length; i++) {
+      for (let j = i + 1; j < allSlots.length; j++) {
+        const a = allSlots[i];
+        const b = allSlots[j];
+        if (a.start < b.end && b.start < a.end) {
+          conflicts.push({
+            hostId,
+            taskA: { id: a.entryId, name: a.name, taskType: a.taskType, start: a.start.toISOString(), end: a.end.toISOString() },
+            taskB: { id: b.entryId, name: b.name, taskType: b.taskType, start: b.start.toISOString(), end: b.end.toISOString() }
+          });
+        }
+      }
+    }
+  }
+
+  return conflicts;
+}
+
+module.exports = { getAllEntries, getTimeline, getTimelineByHost, getConflicts, getNextTasks, syncEntries };

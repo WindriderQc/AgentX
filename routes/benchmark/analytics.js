@@ -303,4 +303,97 @@ router.get('/presets', (req, res) => {
     }
 });
 
+/**
+ * GET /api/benchmark/judge-calibration
+ * Judge accuracy vs human reviewers — per judge model:
+ * - agreement rate (within ±1 point)
+ * - mean absolute error
+ * - systematic bias (positive = judge scores higher than human)
+ * - per-category breakdown
+ */
+router.get('/judge-calibration', async (req, res) => {
+    try {
+        const BenchmarkResult = require('../../models/BenchmarkResult');
+
+        // Find all results that have both judge and human scores
+        const reviewed = await BenchmarkResult.find({
+            human_score: { $ne: null },
+            quality_score: { $ne: null },
+            judge_model: { $ne: null }
+        }).select({
+            judge_model: 1, quality_score: 1, human_score: 1,
+            prompt_category: 1, human_notes: 1
+        }).lean();
+
+        if (reviewed.length === 0) {
+            return res.json({
+                status: 'success',
+                data: { judges: [], totalReviews: 0, message: 'No human reviews yet' }
+            });
+        }
+
+        // Group by judge model
+        const byJudge = {};
+        for (const r of reviewed) {
+            const jm = r.judge_model;
+            if (!byJudge[jm]) byJudge[jm] = [];
+            byJudge[jm].push(r);
+        }
+
+        const judges = [];
+        for (const [judgeModel, results] of Object.entries(byJudge)) {
+            let totalError = 0;
+            let totalBias = 0;
+            let agreements = 0;
+            const byCategory = {};
+
+            for (const r of results) {
+                const diff = r.quality_score - r.human_score;
+                const absDiff = Math.abs(diff);
+                totalError += absDiff;
+                totalBias += diff;
+                if (absDiff <= 1) agreements++;
+
+                // Per-category stats
+                const cat = r.prompt_category || 'unknown';
+                if (!byCategory[cat]) byCategory[cat] = { count: 0, totalError: 0, totalBias: 0, agreements: 0 };
+                byCategory[cat].count++;
+                byCategory[cat].totalError += absDiff;
+                byCategory[cat].totalBias += diff;
+                if (absDiff <= 1) byCategory[cat].agreements++;
+            }
+
+            const n = results.length;
+            const categoryBreakdown = {};
+            for (const [cat, stats] of Object.entries(byCategory)) {
+                categoryBreakdown[cat] = {
+                    reviews: stats.count,
+                    meanAbsoluteError: Math.round((stats.totalError / stats.count) * 100) / 100,
+                    bias: Math.round((stats.totalBias / stats.count) * 100) / 100,
+                    agreementRate: Math.round((stats.agreements / stats.count) * 100)
+                };
+            }
+
+            judges.push({
+                judgeModel,
+                reviews: n,
+                meanAbsoluteError: Math.round((totalError / n) * 100) / 100,
+                bias: Math.round((totalBias / n) * 100) / 100,
+                agreementRate: Math.round((agreements / n) * 100),
+                categoryBreakdown
+            });
+        }
+
+        judges.sort((a, b) => a.meanAbsoluteError - b.meanAbsoluteError);
+
+        res.json({
+            status: 'success',
+            data: { judges, totalReviews: reviewed.length }
+        });
+    } catch (err) {
+        logger.error('Failed to fetch judge calibration', { error: err.message });
+        res.status(500).json({ status: 'error', error: err.message });
+    }
+});
+
 module.exports = router;

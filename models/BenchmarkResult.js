@@ -330,6 +330,11 @@ const BenchmarkResultSchema = new mongoose.Schema({
         default: null,
         description: 'Who performed the human review'
     },
+    human_notes: {
+        type: String,
+        default: null,
+        description: 'Why the human disagrees with judge score (too harsh, too lenient, wrong criteria, etc.)'
+    },
     timestamp: {
         type: Date,
         default: Date.now,

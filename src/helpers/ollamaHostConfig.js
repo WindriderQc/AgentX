@@ -27,13 +27,13 @@ function getConfiguredHosts() {
   const hosts = [];
 
   const primaryUrl = normalizeHostUrl(envFirst('OLLAMA_HOST', 'OLLAMA_HOST_1', 'OLLAMA_HOST_PRIMARY'));
-  if (primaryUrl) hosts.push({ id: 'primary', name: 'Primary', url: primaryUrl, priority: 1 });
+  if (primaryUrl) hosts.push({ id: 'primary', name: 'UGFrank', url: primaryUrl, priority: 1, vramMb: 12288 });
 
   const secondaryUrl = normalizeHostUrl(envFirst('OLLAMA_HOST_2', 'OLLAMA_HOST_HEAVY', 'OLLAMA_HOST_SECONDARY'));
-  if (secondaryUrl) hosts.push({ id: 'secondary', name: 'Secondary', url: secondaryUrl, priority: 2 });
+  if (secondaryUrl) hosts.push({ id: 'secondary', name: 'UGBrutal', url: secondaryUrl, priority: 2, vramMb: 16384 });
 
   const tertiaryUrl = normalizeHostUrl(envFirst('OLLAMA_HOST_3', 'OLLAMA_HOST_TERTIARY'));
-  if (tertiaryUrl) hosts.push({ id: 'tertiary', name: 'Tertiary', url: tertiaryUrl, priority: 3 });
+  if (tertiaryUrl) hosts.push({ id: 'tertiary', name: 'UGClawdX', url: tertiaryUrl, priority: 3, vramMb: 24576 });
 
   return hosts;
 }

@@ -36,7 +36,7 @@ async function runTest({ model, host, prompt }) {
                     num_ctx: numCtx
                 }
             }),
-            timeout: 120000
+            timeout: 600000
         });
         const response = await fetch(url, fetchOptions);
 

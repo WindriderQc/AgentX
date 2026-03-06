@@ -12,6 +12,8 @@ const DEFAULT_EXECUTION_CONFIG = {
     // Per-model values are auto-detected by modelSync/parameterDetection.js based on
     // model size and host VRAM, and stored in ModelRegistry.executionDefaults.
     num_ctx: 8192,
+    // Per-test abort timeout in ms. 180s was too short for large models (27B+).
+    per_test_timeout_ms: 600000,
     // Length hints can constrain models - disabled by default
     include_length_hint: false,
     length_hint_template: 'Keep your response under {max} tokens.',
@@ -61,6 +63,12 @@ function normalizeExecutionConfig(config = {}) {
         DEFAULT_EXECUTION_CONFIG.num_ctx,
         512,
         131072
+    ));
+    merged.per_test_timeout_ms = Math.round(toNumber(
+        merged.per_test_timeout_ms,
+        DEFAULT_EXECUTION_CONFIG.per_test_timeout_ms,
+        30000,
+        3600000
     ));
     merged.include_length_hint = !!merged.include_length_hint;
     if (typeof merged.length_hint_template !== 'string' || !merged.length_hint_template.trim()) {

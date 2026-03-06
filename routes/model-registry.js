@@ -585,7 +585,11 @@ router.get('/:name/execution-config', async (req, res) => {
           testedNumCtx: ct.testedNumCtx || null,
           status: ct.status,
           testedAt: ct.testedAt || null,
-          degradationPct: ct.degradationPct ?? null
+          degradationPct: ct.degradationPct ?? null,
+          gpuPercentAtLimit: ct.gpuPercentAtLimit ?? null,
+          baselineTokensPerSec: ct.baselineTokensPerSec ?? null,
+          atLimitTokensPerSec: ct.atLimitTokensPerSec ?? null,
+          vramAtLimitMiB: ct.vramAtLimitMiB ?? null
         } : null
       }
     });
