@@ -198,6 +198,14 @@ function calculateGeneralistScoreFromCategories(categoryScores, categoryWeights 
     // Normalize by covered weight so missing categories don't automatically depress quality
     const normalizedQuality = weightsCovered > 0 ? (weightedSum / weightsCovered) : 0;
 
+    // Quality gate: consistency bonus only applies to models with meaningful output.
+    // Models scoring < 10/100 weighted quality (e.g., all-zero from empty responses)
+    // should not earn a bonus for being "consistently" non-functional.
+    const MIN_QUALITY_FOR_BONUS = 10;
+    if (normalizedQuality < MIN_QUALITY_FOR_BONUS) {
+        consistencyBonus = 0;
+    }
+
     const generalistScore = Math.max(0, normalizedQuality - coveragePenalty + consistencyBonus);
 
     return {
@@ -322,16 +330,80 @@ async function getCategoryScoresByModel(matchQuery = { success: true }) {
 }
 
 /**
+ * Get empty response rates per model+host.
+ * Returns Map of "model@@host" -> { emptyCount, totalCount, emptyRate }
+ */
+async function getEmptyResponseRates(matchQuery = {}) {
+    const baseMatch = { ...(matchQuery || {}) };
+    delete baseMatch.success;
+
+    const stats = await BenchmarkResult.aggregate([
+        { $match: { ...baseMatch, success: true } },
+        {
+            $group: {
+                _id: { model: '$model', host: '$host' },
+                total: { $sum: 1 },
+                empty: {
+                    $sum: {
+                        $cond: [{ $eq: ['$scoring_method', 'empty_response'] }, 1, 0]
+                    }
+                }
+            }
+        }
+    ]);
+
+    const rates = new Map();
+    for (const s of stats) {
+        const key = `${s._id.model}@@${s._id.host}`;
+        rates.set(key, {
+            emptyCount: s.empty,
+            totalCount: s.total,
+            emptyRate: s.total > 0 ? s.empty / s.total : 0
+        });
+    }
+    return rates;
+}
+
+/** Threshold: models with more than 50% empty responses are filtered from leaderboard */
+const EMPTY_RESPONSE_FILTER_THRESHOLD = 0.5;
+
+/**
  * Calculate generalist scores for all models
  * @param {Object} matchQuery - MongoDB match query for filtering
- * @returns {Map} Model key -> generalist score data
+ * @returns {Map} Model key -> generalist score data (includes `filtered` flag for dead models)
  */
 async function calculateAllGeneralistScores(matchQuery = { success: true }, { categoryWeights = GENERALIST_CATEGORY_WEIGHTS } = {}) {
-    const categoryMap = await getCategoryScoresByModel(matchQuery);
+    const [categoryMap, emptyRates] = await Promise.all([
+        getCategoryScoresByModel(matchQuery),
+        getEmptyResponseRates(matchQuery)
+    ]);
+
     const generalistScores = new Map();
 
     for (const [key, categoryScores] of categoryMap) {
+        const emptyInfo = emptyRates.get(key);
+        const emptyRate = emptyInfo ? emptyInfo.emptyRate : 0;
+
+        if (emptyRate > EMPTY_RESPONSE_FILTER_THRESHOLD) {
+            generalistScores.set(key, {
+                generalistScore: 0,
+                weightedSum: 0,
+                coveragePenalty: 0,
+                consistencyBonus: 0,
+                avgWithinCategoryStdDev: 0,
+                coverage: 0,
+                categoryAverages: {},
+                testedCategories: 0,
+                filtered: true,
+                filterReason: 'excessive_empty_responses',
+                emptyRate: Math.round(emptyRate * 100)
+            });
+            continue;
+        }
+
         const scoreData = calculateGeneralistScoreFromCategories(categoryScores, categoryWeights);
+        scoreData.filtered = false;
+        scoreData.emptyRate = Math.round(emptyRate * 100);
         generalistScores.set(key, scoreData);
     }
 
@@ -343,10 +415,12 @@ module.exports = {
     COVERAGE_PENALTY_MAX,
     CONSISTENCY_BONUS,
     CONSISTENCY_STDDEV_THRESHOLD,
+    EMPTY_RESPONSE_FILTER_THRESHOLD,
     normalizeQualityTo100,
     normalizeCategoryKey,
     getActiveCategoryWeights,
     calculateGeneralistScoreFromCategories,
     getCategoryScoresByModel,
+    getEmptyResponseRates,
     calculateAllGeneralistScores
 };

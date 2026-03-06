@@ -79,12 +79,12 @@ async function validateJudgeModel(host, model, options = {}) {
         const timeoutId = setTimeout(() => controller.abort(), VALIDATION_TIMEOUT_MS);
 
         const testPrompt = 'Rate this response on a scale of 0-10. Respond ONLY with JSON: {"score": 5, "reason": "test"}';
-        const res = await _fetch(`${host}/api/generate`, {
+        const res = await _fetch(`${host}/api/chat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 model,
-                prompt: testPrompt,
+                messages: [{ role: 'user', content: testPrompt }],
                 stream: false,
                 options: { num_predict: 100, temperature: 0.1 }
             }),
@@ -102,7 +102,7 @@ async function validateJudgeModel(host, model, options = {}) {
         }
 
         const data = await res.json();
-        const text = (data.response || '').trim();
+        const text = (data.message?.content || '').trim();
 
         // Try to parse JSON from response
         const firstBrace = text.indexOf('{');

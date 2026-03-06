@@ -26,6 +26,11 @@ function calculateCompositeScore(metrics, profileOrCategory = 'interactive') {
 
     // Legacy profiles for backward compatibility
     const LEGACY_PROFILES = {
+        balanced: {
+            weights: { quality: 0.45, latency: 0.30, speed: 0.25 },
+            latencyCap: 45000,
+            description: "General-purpose balanced evaluation"
+        },
         interactive: {
             weights: { quality: 0.4, latency: 0.4, speed: 0.2 },
             latencyCap: 30000,
@@ -88,11 +93,10 @@ function calculateCompositeScore(metrics, profileOrCategory = 'interactive') {
     );
 
     // Quality floor: fast garbage is still garbage.
-    // When quality is zero, cap the composite so latency/speed alone
-    // cannot inflate the score above a trivial threshold.
-    const QUALITY_ZERO_CAP = 5.0;
+    // When quality is zero, composite is zero — no amount of speed
+    // should make a non-functional model appear on the leaderboard.
     if (qualityScore === 0) {
-        composite = Math.min(composite, QUALITY_ZERO_CAP);
+        composite = 0;
     }
 
     return {

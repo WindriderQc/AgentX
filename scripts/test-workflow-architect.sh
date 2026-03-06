@@ -5,7 +5,7 @@
 set -e
 
 WEBHOOK_URL="${N8N_URL:-http://localhost:5678}/webhook/sbqc-workflow-architect"
-AGENTX_API="http://192.168.2.33:3080/api/workflow"
+AGENTX_API="http://localhost:3080/api/workflow"
 
 # Colors
 GREEN='\033[0;32m'

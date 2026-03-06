@@ -53,7 +53,7 @@ Each node requires:
 - \`n8n-nodes-base.respondToWebhook\`: Send webhook response
 
 ### 5. SBQC Integration Points
-- **AgentX Chat**: POST http://192.168.2.33:3080/api/chat
+- **AgentX Chat**: POST http://192.168.2.66:3080/api/chat
   - Body: {message, model, useRag, persona, conversationId}
   - Timeout: 120000ms
   - Credentials: httpHeaderAuth (PIrrA2wpOppzVodi)

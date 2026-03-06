@@ -294,23 +294,11 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
             : rawQuality;
 
         // Calculate profiles using ADJUSTED quality (generalist score)
-        const interactive = calculateCompositeScore({
-            latency: avgLatency,
-            tokens_per_sec: avgTokens,
-            quality_score: adjustedQuality
-        }, 'interactive');
-
-        const reasoning = calculateCompositeScore({
-            latency: avgLatency,
-            tokens_per_sec: avgTokens,
-            quality_score: adjustedQuality
-        }, 'reasoning');
-
-        const coding = calculateCompositeScore({
-            latency: avgLatency,
-            tokens_per_sec: avgTokens,
-            quality_score: adjustedQuality
-        }, 'coding');
+        const metricsInput = { latency: avgLatency, tokens_per_sec: avgTokens, quality_score: adjustedQuality };
+        const balanced = calculateCompositeScore(metricsInput, 'balanced');
+        const interactive = calculateCompositeScore(metricsInput, 'interactive');
+        const reasoning = calculateCompositeScore(metricsInput, 'reasoning');
+        const coding = calculateCompositeScore(metricsInput, 'coding');
 
         const fail = failureByKey.get(key) || { failed: 0, infra_failed: 0, model_failed: 0 };
         const failedTests = fail.failed || 0;
@@ -340,12 +328,18 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
             } : null,
 
             // Dynamic scores (converted to 0-10 scale)
+            balanced_score: fmtScore(balanced.composite_score),
             interactive_score: fmtScore(interactive.composite_score),
             reasoning_score: fmtScore(reasoning.composite_score),
             coding_score: fmtScore(coding.composite_score),
 
+            // Normalized component scores for frontend (0-10 scale)
+            normalized_quality: balanced.normalized ? (balanced.normalized.quality / 10).toFixed(1) : null,
+            normalized_latency: balanced.normalized ? (balanced.normalized.latency / 10).toFixed(1) : null,
+            normalized_speed: balanced.normalized ? (balanced.normalized.speed / 10).toFixed(1) : null,
+
             // Legacy field for compat
-            avg_composite: fmtScore(interactive.composite_score),
+            avg_composite: fmtScore(balanced.composite_score),
 
             quality_tests: m.quality_tests || 0,
             level_stats: levelStatsByKey.get(key) || {},
@@ -354,7 +348,9 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
             infra_failed_tests: infraFailedTests,
             model_failed_tests: modelFailedTests,
             total_tests: successTests + failedTests,
-            failure_only: false
+            failure_only: false,
+            filtered: generalistData?.filtered || false,
+            emptyRate: generalistData?.emptyRate || 0
         };
     });
 
@@ -370,6 +366,7 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
             avg_tokens_per_sec: '0',
             avg_quality: null,
             avg_composite: null,
+            balanced_score: fmtScore(0),
             interactive_score: fmtScore(0),
             reasoning_score: fmtScore(0),
             coding_score: fmtScore(0),

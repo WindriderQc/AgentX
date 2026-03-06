@@ -13,52 +13,100 @@
         .cs-container { max-width: 1500px; margin: 0 auto; padding: 24px; }
 
         /* Header */
-        .cs-header { margin-bottom: 28px; display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px; }
+        .cs-header { margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px; }
         .cs-header h1 { font-size: 28px; font-weight: 700; color: #fff; margin: 8px 0; }
         .cs-header h1 i { color: #7cf0ff; margin-right: 10px; }
         .cs-header p { color: var(--muted); font-size: 14px; }
         .cs-header-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 
-        /* Live State Bar */
-        .cs-live-bar { display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
+        /* Live State Bar — enhanced */
+        .cs-live-bar { display: flex; gap: 14px; margin-bottom: 20px; flex-wrap: wrap; }
         .cs-host-card {
             background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 12px;
-            padding: 16px 20px; flex: 1; min-width: 260px; transition: border-color 0.2s;
+            padding: 14px 18px; flex: 1; min-width: 280px; transition: border-color 0.2s;
         }
         .cs-host-card:hover { border-color: rgba(124,240,255,0.3); }
-        .cs-host-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-        .cs-host-name { font-size: 16px; font-weight: 600; color: #fff; }
-        .cs-status-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-        .cs-status-dot.online { background: #22c55e; box-shadow: 0 0 8px rgba(34,197,94,0.5); }
+        .cs-host-card.degraded { border-color: rgba(245,158,11,0.4); }
+        .cs-host-card.down { border-color: rgba(239,68,68,0.4); }
+        .cs-host-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+        .cs-host-name { font-size: 15px; font-weight: 600; color: #fff; }
+        .cs-health-badge { font-size: 10px; padding: 1px 6px; border-radius: 3px; font-weight: 600; margin-left: auto; text-transform: uppercase; }
+        .cs-health-badge.ok { background: rgba(34,197,94,0.15); color: #22c55e; }
+        .cs-health-badge.idle { background: rgba(100,116,139,0.2); color: #94a3b8; }
+        .cs-health-badge.down { background: rgba(239,68,68,0.15); color: #ef4444; }
+        .cs-status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+        .cs-status-dot.online { background: #22c55e; box-shadow: 0 0 6px rgba(34,197,94,0.5); }
         .cs-status-dot.unreachable { background: #ef4444; }
-        .cs-host-models { font-size: 12px; color: var(--muted); }
+        .cs-host-models { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
         .cs-model-tag {
             display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 4px;
-            background: rgba(124,240,255,0.1); color: #7cf0ff; margin: 3px 4px 3px 0;
+            background: rgba(124,240,255,0.1); color: #7cf0ff; margin: 2px 4px 2px 0;
         }
-        .cs-host-vram { font-size: 11px; color: var(--muted); margin-top: 6px; }
+        .cs-vram-bar { height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; margin: 6px 0 4px; overflow: hidden; }
+        .cs-vram-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+        .cs-vram-fill.low { background: #22c55e; }
+        .cs-vram-fill.mid { background: #f59e0b; }
+        .cs-vram-fill.high { background: #ef4444; }
+        .cs-host-detail { font-size: 11px; color: var(--muted); display: flex; justify-content: space-between; }
+        .cs-host-next { font-size: 11px; color: #94a3b8; margin-top: 4px; }
+        .cs-host-next i { color: #7cf0ff; margin-right: 4px; }
+
+        /* Persistent Services Strip */
+        .cs-services-strip {
+            background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 12px;
+            padding: 14px 18px; margin-bottom: 20px;
+        }
+        .cs-services-title { font-size: 13px; font-weight: 600; color: #94a3b8; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; cursor: pointer; }
+        .cs-services-title i.toggle { transition: transform 0.2s; font-size: 10px; }
+        .cs-services-title i.toggle.collapsed { transform: rotate(-90deg); }
+        .cs-services-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+        .cs-services-grid.collapsed { display: none; }
+        .cs-service-chip {
+            display: flex; align-items: center; gap: 6px; font-size: 11px; color: #cbd5e1;
+            padding: 4px 10px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 6px;
+        }
+        .cs-service-dot { width: 6px; height: 6px; border-radius: 50%; }
+        .cs-service-dot.active { background: #22c55e; }
+        .cs-service-dot.stale { background: #f59e0b; }
 
         /* Timeline Heatmap */
         .cs-timeline-section {
             background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 12px;
-            padding: 20px; margin-bottom: 24px;
+            padding: 20px; margin-bottom: 20px;
         }
-        .cs-section-title { font-size: 18px; font-weight: 600; color: #fff; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+        .cs-section-title { font-size: 16px; font-weight: 600; color: #fff; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
         .cs-section-title i { color: #7cf0ff; }
 
-        .cs-heatmap { overflow-x: auto; }
+        .cs-heatmap { overflow-x: auto; position: relative; }
         .cs-heatmap-grid {
-            display: grid; grid-template-columns: 120px repeat(24, 1fr);
-            gap: 2px; min-width: 800px;
+            display: grid; grid-template-columns: 200px repeat(24, 1fr);
+            gap: 2px; min-width: 900px; position: relative;
         }
         .cs-hm-header { font-size: 10px; color: var(--muted); text-align: center; padding: 4px 0; }
-        .cs-hm-label { font-size: 12px; color: #fff; padding: 6px 8px; display: flex; align-items: center; font-weight: 500; }
+        .cs-hm-label {
+            font-size: 11px; color: #e2e8f0; padding: 5px 8px; display: flex; align-items: center; font-weight: 400;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .cs-hm-label .cs-cat-prefix { color: #64748b; font-size: 10px; font-weight: 600; margin-right: 5px; text-transform: uppercase; flex-shrink: 0; }
+        .cs-hm-label .cs-host-tag { font-size: 9px; color: #475569; margin-left: auto; flex-shrink: 0; padding-left: 4px; }
         .cs-hm-cell {
-            height: 32px; border-radius: 3px; background: rgba(255,255,255,0.03);
+            height: 28px; border-radius: 2px; background: rgba(255,255,255,0.03);
             position: relative; cursor: default; transition: background 0.15s;
         }
         .cs-hm-cell:hover { background: rgba(255,255,255,0.08); }
+        .cs-hm-cell.past { background: rgba(0,0,0,0.15); }
         .cs-hm-cell.current-hour { outline: 2px solid rgba(124,240,255,0.5); outline-offset: -1px; }
+
+        /* Now line */
+        .cs-now-line {
+            position: absolute; top: 0; bottom: 0; width: 2px; background: #ef4444;
+            z-index: 10; pointer-events: none;
+        }
+        .cs-now-label {
+            position: absolute; top: -2px; left: -12px; font-size: 9px; color: #ef4444;
+            font-weight: 700; background: var(--panel-bg); padding: 0 3px; border-radius: 2px;
+        }
 
         /* Task type colors */
         .cs-hm-slot { position: absolute; top: 2px; bottom: 2px; border-radius: 2px; min-width: 3px; opacity: 0.85; }
@@ -75,39 +123,58 @@
         .cs-hm-slot.diagnostics { background: #a78bfa; }
         .cs-hm-slot.continuous { background-image: repeating-linear-gradient(90deg, rgba(255,255,255,0.15) 0px, rgba(255,255,255,0.15) 4px, transparent 4px, transparent 8px); }
 
+        /* Group headers */
+        .cs-group-header {
+            grid-column: 1 / -1; font-size: 11px; font-weight: 600; color: #94a3b8;
+            padding: 6px 8px 2px; display: flex; align-items: center; gap: 6px; cursor: pointer;
+            border-top: 1px solid rgba(255,255,255,0.05); margin-top: 2px;
+        }
+        .cs-group-header:first-child { border-top: none; margin-top: 0; }
+        .cs-group-header i.toggle { font-size: 9px; transition: transform 0.2s; }
+        .cs-group-header i.toggle.collapsed { transform: rotate(-90deg); }
+        .cs-group-header .cs-group-count { font-size: 10px; color: #475569; font-weight: 400; }
+        .cs-group-hidden { display: none; }
+
         /* Legend */
-        .cs-legend { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 12px; }
-        .cs-legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); }
-        .cs-legend-color { width: 12px; height: 12px; border-radius: 2px; }
+        .cs-legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; }
+        .cs-legend-item { display: flex; align-items: center; gap: 4px; font-size: 10px; color: var(--muted); }
+        .cs-legend-color { width: 10px; height: 10px; border-radius: 2px; }
 
         /* Tooltip */
         .cs-tooltip {
             display: none; position: fixed; background: #1e293b; border: 1px solid var(--panel-border);
             border-radius: 8px; padding: 10px 14px; font-size: 12px; color: #fff; z-index: 1000;
-            pointer-events: none; max-width: 250px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+            pointer-events: none; max-width: 280px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);
         }
         .cs-tooltip.visible { display: block; }
         .cs-tooltip-name { font-weight: 600; margin-bottom: 4px; }
         .cs-tooltip-detail { color: var(--muted); }
 
-        /* Next Up */
-        .cs-next-section {
+        /* Right panel */
+        .cs-right-section {
             background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 12px;
-            padding: 20px; margin-bottom: 24px;
+            padding: 0; margin-bottom: 20px; overflow: hidden;
         }
-        .cs-next-list { display: flex; flex-direction: column; gap: 8px; }
+        .cs-tabs { display: flex; border-bottom: 1px solid var(--panel-border); }
+        .cs-tab {
+            flex: 1; padding: 10px 14px; font-size: 12px; font-weight: 600; color: var(--muted);
+            background: transparent; border: none; cursor: pointer; text-align: center; transition: all 0.2s;
+        }
+        .cs-tab.active { color: #7cf0ff; border-bottom: 2px solid #7cf0ff; }
+        .cs-tab:hover:not(.active) { color: #fff; }
+        .cs-tab-panel { display: none; padding: 14px; }
+        .cs-tab-panel.active { display: block; }
+        .cs-next-list { display: flex; flex-direction: column; gap: 6px; }
         .cs-next-item {
             display: flex; justify-content: space-between; align-items: center;
-            padding: 10px 14px; background: rgba(255,255,255,0.02); border-radius: 8px;
-            border: 1px solid rgba(255,255,255,0.05);
+            padding: 8px 12px; background: rgba(255,255,255,0.02); border-radius: 6px;
+            border: 1px solid rgba(255,255,255,0.04);
         }
         .cs-next-item:hover { border-color: rgba(124,240,255,0.2); }
-        .cs-next-name { font-size: 14px; color: #fff; font-weight: 500; }
-        .cs-next-meta { font-size: 12px; color: var(--muted); display: flex; gap: 12px; align-items: center; }
-        .cs-next-countdown { font-size: 14px; font-weight: 600; color: #7cf0ff; min-width: 80px; text-align: right; }
-        .cs-task-badge {
-            font-size: 10px; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; font-weight: 600;
-        }
+        .cs-next-name { font-size: 13px; color: #fff; font-weight: 500; }
+        .cs-next-meta { font-size: 11px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+        .cs-next-countdown { font-size: 13px; font-weight: 600; color: #7cf0ff; min-width: 70px; text-align: right; }
+        .cs-task-badge { font-size: 9px; padding: 1px 5px; border-radius: 3px; text-transform: uppercase; font-weight: 600; }
         .cs-task-badge.benchmark { background: rgba(245,158,11,0.2); color: #f59e0b; }
         .cs-task-badge.sync { background: rgba(59,130,246,0.2); color: #3b82f6; }
         .cs-task-badge.cleanup { background: rgba(139,92,246,0.2); color: #8b5cf6; }
@@ -119,58 +186,68 @@
         .cs-task-badge.scanning { background: rgba(20,184,166,0.2); color: #14b8a6; }
         .cs-task-badge.diagnostics { background: rgba(167,139,250,0.2); color: #a78bfa; }
 
+        /* Attention items */
+        .cs-attn-item {
+            padding: 8px 12px; background: rgba(239,68,68,0.05); border-radius: 6px;
+            border: 1px solid rgba(239,68,68,0.15); margin-bottom: 6px; font-size: 12px;
+        }
+        .cs-attn-item.warn { background: rgba(245,158,11,0.05); border-color: rgba(245,158,11,0.15); }
+        .cs-attn-icon { margin-right: 6px; }
+        .cs-attn-label { color: #fca5a5; font-weight: 500; }
+        .cs-attn-item.warn .cs-attn-label { color: #fcd34d; }
+        .cs-attn-detail { color: #64748b; font-size: 11px; margin-top: 2px; }
+
         /* Date nav */
-        .cs-date-nav { display: flex; align-items: center; gap: 8px; }
+        .cs-date-nav { display: flex; align-items: center; gap: 6px; }
         .cs-date-nav button {
             background: rgba(124,240,255,0.1); border: 1px solid rgba(124,240,255,0.3);
-            color: #7cf0ff; width: 32px; height: 32px; border-radius: 6px; cursor: pointer;
-            display: flex; align-items: center; justify-content: center; font-size: 12px; transition: all 0.2s;
+            color: #7cf0ff; width: 30px; height: 30px; border-radius: 6px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center; font-size: 11px; transition: all 0.2s;
         }
         .cs-date-nav button:hover { background: rgba(124,240,255,0.2); }
-        .cs-date-label { font-size: 14px; color: #fff; font-weight: 500; min-width: 120px; text-align: center; }
+        .cs-date-label { font-size: 13px; color: #fff; font-weight: 500; min-width: 110px; text-align: center; }
 
         /* View toggle */
         .cs-view-toggle { display: flex; border: 1px solid rgba(124,240,255,0.3); border-radius: 8px; overflow: hidden; }
         .cs-view-toggle button {
-            background: transparent; border: none; color: var(--muted); padding: 6px 14px;
-            font-size: 12px; cursor: pointer; transition: all 0.2s;
+            background: transparent; border: none; color: var(--muted); padding: 5px 12px;
+            font-size: 11px; cursor: pointer; transition: all 0.2s;
         }
         .cs-view-toggle button.active { background: rgba(124,240,255,0.2); color: #7cf0ff; }
         .cs-view-toggle button:hover:not(.active) { color: #fff; }
 
         /* Host Gantt row */
         .cs-host-row-label {
-            font-size: 13px; color: #fff; padding: 6px 8px; display: flex; align-items: center;
-            gap: 6px; font-weight: 600; border-left: 3px solid #7cf0ff;
+            font-size: 12px; color: #fff; padding: 5px 8px; display: flex; align-items: center;
+            gap: 5px; font-weight: 600; border-left: 3px solid #7cf0ff;
         }
         .cs-host-row-label .cs-vram-info { font-size: 10px; color: var(--muted); font-weight: 400; }
-        .cs-hm-cell.conflict { outline: 2px solid #ef4444; outline-offset: -1px; }
 
         /* Conflict banner */
         .cs-conflict-banner {
-            background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); border-radius: 8px;
-            padding: 10px 16px; margin-bottom: 16px; display: flex; align-items: center; gap: 10px;
-            font-size: 13px; color: #fca5a5;
+            background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.25); border-radius: 8px;
+            padding: 8px 14px; margin-bottom: 14px; display: flex; align-items: center; gap: 8px;
+            font-size: 12px; color: #fca5a5;
         }
         .cs-conflict-banner i { color: #ef4444; }
         .cs-conflict-banner.hidden { display: none; }
 
-        /* Empty / Loading states */
-        .cs-loading { text-align: center; padding: 40px; color: var(--muted); }
-        .cs-empty { text-align: center; padding: 30px; color: var(--muted); font-size: 14px; }
-
-        /* Refresh button */
+        /* Button */
         .cs-btn {
             background: rgba(124,240,255,0.1); border: 1px solid rgba(124,240,255,0.3);
-            color: #7cf0ff; padding: 6px 14px; border-radius: 8px; cursor: pointer;
-            font-size: 13px; display: flex; align-items: center; gap: 6px; transition: all 0.2s;
+            color: #7cf0ff; padding: 5px 12px; border-radius: 8px; cursor: pointer;
+            font-size: 12px; display: flex; align-items: center; gap: 5px; transition: all 0.2s;
         }
         .cs-btn:hover { background: rgba(124,240,255,0.2); }
         .cs-btn i.spinning { animation: spin 1s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        /* Two-column layout for timeline + next up */
-        .cs-grid-2 { display: grid; grid-template-columns: 1fr 380px; gap: 20px; }
+        /* Loading / Empty */
+        .cs-loading { text-align: center; padding: 30px; color: var(--muted); }
+        .cs-empty { text-align: center; padding: 20px; color: var(--muted); font-size: 13px; }
+
+        /* Two-column layout */
+        .cs-grid-2 { display: grid; grid-template-columns: 1fr 340px; gap: 16px; }
         @media (max-width: 1100px) { .cs-grid-2 { grid-template-columns: 1fr; } }
     </style>
 </head>
@@ -187,7 +264,7 @@
                     <button onclick="shiftDate(-1)" title="Previous day"><i class="fas fa-chevron-left"></i></button>
                     <span class="cs-date-label" id="dateLabel"></span>
                     <button onclick="shiftDate(1)" title="Next day"><i class="fas fa-chevron-right"></i></button>
-                    <button onclick="goToday()" title="Today" style="width:auto;padding:0 10px;font-size:11px;">Today</button>
+                    <button onclick="goToday()" title="Today" style="width:auto;padding:0 8px;font-size:10px;">Today</button>
                 </div>
                 <div class="cs-view-toggle">
                     <button id="viewTask" class="active" onclick="setViewMode('task')">By Task</button>
@@ -209,21 +286,41 @@
             <span id="conflictText"></span>
         </div>
 
+        <!-- Persistent Services Strip -->
+        <div class="cs-services-strip" id="servicesStrip" style="display:none">
+            <div class="cs-services-title" onclick="toggleServices()">
+                <i class="fas fa-caret-down toggle" id="servicesToggle"></i>
+                <i class="fas fa-heartbeat" style="color:#22c55e;font-size:11px"></i>
+                Background Services <span id="servicesCount" style="color:#475569;font-weight:400"></span>
+            </div>
+            <div class="cs-services-grid" id="servicesGrid"></div>
+        </div>
+
         <div class="cs-grid-2">
             <!-- Timeline Heatmap -->
             <div class="cs-timeline-section">
-                <div class="cs-section-title"><i class="fas fa-stream"></i> 24h Timeline</div>
+                <div class="cs-section-title"><i class="fas fa-stream"></i> Scheduled Jobs</div>
                 <div class="cs-heatmap" id="heatmapContainer">
                     <div class="cs-loading"><i class="fas fa-spinner fa-spin"></i> Loading timeline...</div>
                 </div>
                 <div class="cs-legend" id="legend"></div>
             </div>
 
-            <!-- Next Up -->
-            <div class="cs-next-section">
-                <div class="cs-section-title"><i class="fas fa-clock"></i> Next Up</div>
-                <div class="cs-next-list" id="nextList">
-                    <div class="cs-loading"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+            <!-- Right Panel: Tabs -->
+            <div class="cs-right-section">
+                <div class="cs-tabs">
+                    <button class="cs-tab active" onclick="switchTab('next')">Next Up</button>
+                    <button class="cs-tab" onclick="switchTab('attention')">Attention</button>
+                </div>
+                <div class="cs-tab-panel active" id="tabNext">
+                    <div class="cs-next-list" id="nextList">
+                        <div class="cs-loading"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+                    </div>
+                </div>
+                <div class="cs-tab-panel" id="tabAttention">
+                    <div id="attentionList">
+                        <div class="cs-loading"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+                    </div>
                 </div>
             </div>
         </div>

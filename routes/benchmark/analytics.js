@@ -8,6 +8,7 @@ const router = express.Router();
 const logger = require('../../config/logger');
 const benchmarkService = require('../../src/services/benchmark');
 const { JUDGE_CONFIG, ENHANCED_SCORING_CONFIGS } = require('../../src/services/qualityScorer');
+const { getConfiguredHosts } = require('../../src/helpers/ollamaHostConfig');
 
 /**
  * GET /api/benchmark/summary
@@ -165,6 +166,19 @@ router.get('/generalist-leaderboard', async (req, res) => {
         logger.error('Failed to fetch generalist leaderboard', { error: err.message });
         res.status(500).json({ status: 'error', error: err.message });
     }
+});
+
+/**
+ * GET /api/benchmark/host-names
+ * Returns URL-to-friendly-name mapping for Ollama hosts
+ */
+router.get('/host-names', (req, res) => {
+    const hosts = getConfiguredHosts();
+    const hostMap = {};
+    for (const h of hosts) {
+        hostMap[h.url] = h.name;
+    }
+    res.json({ status: 'success', data: hostMap });
 });
 
 /**

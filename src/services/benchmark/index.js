@@ -17,7 +17,7 @@ const { runTest, startBatch, executeBatch, stopBatch, getActiveBatchId, getActiv
 const { getResults, getSummary, getDashboard, compareModels, getQualityBreakdown, getModelTrends, compareBatches } = require('./results');
 const { getBatches, getBatch, getBatchStatsByTag, clearResults, clearFailedResults, getActiveStats } = require('./batches');
 const { getJudgeLeaderboard, getJudgeBreakdown, getJudgeActivity, getTruncationStats } = require('./judges');
-const { calculateAllGeneralistScores, getActiveCategoryWeights } = require('./generalistScore');
+const { calculateAllGeneralistScores, getActiveCategoryWeights, getCategoryScoresByModel } = require('./generalistScore');
 const { judgeResult, judgeBatch, stopJudging, getJudgingStatus, stopAllJudging } = require('./judging');
 
 // Graceful shutdown handler - mark batch as interrupted when PM2 restarts
@@ -134,15 +134,30 @@ class BenchmarkService {
     // Generalist Leaderboard
     async getGeneralistLeaderboard() {
         const categoryWeights = await getActiveCategoryWeights();
-        const generalistScores = await calculateAllGeneralistScores(
-            { success: true },
-            { categoryWeights }
-        );
+        const [generalistScores, categoryMap] = await Promise.all([
+            calculateAllGeneralistScores({ success: true }, { categoryWeights }),
+            getCategoryScoresByModel({ success: true })
+        ]);
+
+        // Look up recommended_category from ModelRegistry
+        const ModelRegistry = require('../../../models/ModelRegistry');
+        const allModelNames = new Set();
+        for (const key of generalistScores.keys()) {
+            allModelNames.add(key.split('@@')[0]);
+        }
+        const registryModels = await ModelRegistry.find({
+            modelName: { $in: [...allModelNames] }
+        }).lean();
+        const registryByName = new Map(registryModels.map(rm => [rm.modelName, rm]));
 
         // Convert Map to sorted array
         const leaderboard = [];
         for (const [key, data] of generalistScores) {
             const [model, host] = key.split('@@');
+            const catScores = categoryMap.get(key) || {};
+            const totalTests = Object.values(catScores).reduce((sum, c) => sum + (c.count || 0), 0);
+            const reg = registryByName.get(model);
+
             leaderboard.push({
                 model,
                 host: host || null,
@@ -153,7 +168,12 @@ class BenchmarkService {
                 avgWithinCategoryStdDev: data.avgWithinCategoryStdDev,
                 coverage: data.coverage,
                 testedCategories: data.testedCategories,
-                categoryAverages: data.categoryAverages
+                totalTests,
+                recommended_category: reg?.benchmarkStats?.bestCategory || null,
+                categoryAverages: data.categoryAverages,
+                filtered: data.filtered || false,
+                filterReason: data.filterReason || null,
+                emptyRate: data.emptyRate || 0
             });
         }
 

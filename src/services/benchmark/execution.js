@@ -355,7 +355,6 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                             { testNumber, promptLevel: prompt.level }
                         );
 
-                        const url = `${hostUrl}/api/generate`;
                         const numPredict = modelExecConfig.response_max_tokens || 32000;
                         const expectedTokens = prompt.expected_tokens || null;
                         const promptText = applyLengthHint(prompt.prompt, expectedTokens, numPredict, modelExecConfig);
@@ -371,15 +370,20 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                             ollamaOptions.num_ctx = modelExecConfig.num_ctx;
                         }
 
+                        // Use /api/chat (structured messages) instead of /api/generate (raw text).
+                        // Chat-tuned models (the vast majority) require proper message format
+                        // to apply their chat template. Raw /api/generate causes empty responses
+                        // on models like qwen2.5-coder, gemma3-it, llama3.1, deepseek-coder-v2-lite.
+                        const useChat = modelExecConfig.api_mode !== 'generate';
+                        const url = `${hostUrl}/api/${useChat ? 'chat' : 'generate'}`;
+                        const requestBody = useChat
+                            ? { model, messages: [{ role: 'user', content: promptText }], stream: false, options: ollamaOptions }
+                            : { model, prompt: promptText, stream: false, options: ollamaOptions };
+
                         const fetchOptions = getFetchOptions(url, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                model,
-                                prompt: promptText,
-                                stream: false,
-                                options: ollamaOptions
-                            }),
+                            body: JSON.stringify(requestBody),
                             signal: testController.signal
                         });
 
@@ -392,7 +396,13 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
 
                         const data = await response.json();
                         const latency = Date.now() - start;
-                        const tokens = data.eval_count || Math.ceil((data.response || '').length / 4);
+
+                        // Extract response text: /api/chat returns message.content, /api/generate returns response
+                        const responseText = useChat
+                            ? (data.message?.content || '')
+                            : (data.response || '');
+
+                        const tokens = data.eval_count || Math.ceil(responseText.length / 4);
                         const tokens_per_sec = (tokens > 0 && latency > 0)
                             ? Number((tokens / (latency / 1000)).toFixed(2))
                             : 0;
@@ -404,16 +414,17 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                             });
                         }
 
-                        const hasEmptyResponse = !data.response || data.response.trim().length === 0;
+                        const hasEmptyResponse = !responseText || responseText.trim().length === 0;
                         if (hasEmptyResponse) {
                             logger.warn('Model produced empty response', {
                                 model, prompt_name: prompt.name, prompt_level: prompt.level,
                                 prompt_category: prompt.category, done_reason: data.done_reason,
-                                eval_count: data.eval_count, latency_ms: latency, host: hostUrl
+                                eval_count: data.eval_count, latency_ms: latency, host: hostUrl,
+                                api_mode: useChat ? 'chat' : 'generate'
                             });
                         }
 
-                        const rawResponse = data.response || '';
+                        const rawResponse = responseText;
                         const thinkingExtraction = extractThinkingBlocks(rawResponse);
                         const cleanedResponse = thinkingExtraction.content;
                         const extractedThinking = thinkingExtraction.thinking;

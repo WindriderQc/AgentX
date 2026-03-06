@@ -287,6 +287,17 @@ const BenchmarkResultSchema = new mongoose.Schema({
         type: String,
         default: null
     },
+    // Multi-judge scores: when multiple judges evaluate the same result,
+    // each judge's score is stored here. Final quality_score = median.
+    judge_scores: [{
+        judge_model: String,
+        judge_host: String,
+        judge_tier: String,
+        quality_score: Number,
+        explanation: String,
+        scoring_time_ms: Number,
+        timestamp: { type: Date, default: Date.now }
+    }],
     // Judge confidence and review fields
     judge_confidence: {
         type: Number,

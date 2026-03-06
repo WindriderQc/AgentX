@@ -36,7 +36,7 @@ echo ""
 # 2. Health Endpoints
 echo "2. Health Endpoints:"
 echo -n "   AgentX: "
-AGENTX_HEALTH=$(curl -s -m 5 http://192.168.2.33:3080/health 2>/dev/null | jq -r '.status' 2>/dev/null)
+AGENTX_HEALTH=$(curl -s -m 5 http://localhost:3080/health 2>/dev/null | jq -r '.status' 2>/dev/null)
 if [ "$AGENTX_HEALTH" = "ok" ]; then
     echo -e "${GREEN}✓${NC} OK"
 else
@@ -62,7 +62,7 @@ echo ""
 
 # 3. Database
 echo "3. Database:"
-MONGO_PING=$(mongosh --quiet --eval "db.adminCommand('ping').ok" mongodb://localhost:27017/agentx 2>/dev/null)
+MONGO_PING=$(mongosh --quiet --eval "db.adminCommand('ping').ok" mongodb://192.168.2.33:27017/agentx 2>/dev/null)
 if [ "$MONGO_PING" = "1" ]; then
     echo -e "   MongoDB: ${GREEN}✓${NC} OK"
 else
@@ -72,7 +72,7 @@ echo ""
 
 # 4. AI Service
 echo "4. Ollama:"
-MODEL_COUNT=$(curl -s -m 5 http://localhost:11434/api/tags 2>/dev/null | jq -r '.models | length' 2>/dev/null)
+MODEL_COUNT=$(curl -s -m 5 http://192.168.2.66:11434/api/tags 2>/dev/null | jq -r '.models | length' 2>/dev/null)
 if [ -n "$MODEL_COUNT" ] && [ "$MODEL_COUNT" -gt 0 ]; then
     echo -e "   Models available: ${GREEN}$MODEL_COUNT${NC}"
 else

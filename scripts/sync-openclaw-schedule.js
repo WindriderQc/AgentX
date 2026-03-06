@@ -15,7 +15,7 @@
  *
  * Environment overrides:
  *   OPENCLAW_JOBS_FILE  (default: ~/.openclaw/cron/jobs.json)
- *   AGENTX_URL          (default: http://192.168.2.33:3080)
+ *   AGENTX_URL          (default: http://localhost:3080)
  */
 const fs = require('fs');
 const path = require('path');
@@ -23,7 +23,7 @@ const os = require('os');
 
 const JOBS_FILE = process.env.OPENCLAW_JOBS_FILE
   || path.join(os.homedir(), '.openclaw', 'cron', 'jobs.json');
-const AGENTX_URL = process.env.AGENTX_URL || 'http://192.168.2.33:3080';
+const AGENTX_URL = process.env.AGENTX_URL || 'http://localhost:3080';
 const SYNC_ENDPOINT = `${AGENTX_URL}/api/cluster/schedule/sync`;
 
 // OpenClaw model alias → { model, host }

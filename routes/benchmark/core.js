@@ -419,4 +419,144 @@ router.post('/judge/calibrate', async (req, res) => {
     }
 });
 
+/**
+ * POST /api/benchmark/judge/calibrate-accuracy
+ * Test judge accuracy against gold-standard scored responses.
+ * Returns Pearson correlation, MAE, and per-tier breakdown.
+ */
+router.post('/judge/calibrate-accuracy', async (req, res) => {
+    const { host, model } = req.body || {};
+    const judgeHost = host || JUDGE_CONFIG.host;
+    const judgeModel = model || JUDGE_CONFIG.model;
+
+    if (!judgeHost || !judgeModel) {
+        return res.status(400).json({
+            status: 'error',
+            error: 'host and model are required'
+        });
+    }
+
+    try {
+        const calibrationSet = require('../../data/judge-calibration-set.json');
+        const { scoreResponse } = require('../../src/services/qualityScorer');
+        const results = [];
+
+        for (const item of calibrationSet) {
+            const start = Date.now();
+            try {
+                const scores = await scoreResponse({
+                    response: item.response,
+                    prompt: {
+                        prompt: item.prompt,
+                        category: item.category,
+                        expected_answer: item.expected_answer
+                    },
+                    judgeConfig: { host: judgeHost, model: judgeModel }
+                });
+
+                results.push({
+                    id: item.id,
+                    category: item.category,
+                    tier: item.tier,
+                    gold_score: item.gold_score,
+                    judge_score: scores.quality_score,
+                    diff: Math.round((scores.quality_score - item.gold_score) * 10) / 10,
+                    abs_diff: Math.round(Math.abs(scores.quality_score - item.gold_score) * 10) / 10,
+                    latency_ms: Date.now() - start,
+                    success: true
+                });
+            } catch (err) {
+                results.push({
+                    id: item.id,
+                    category: item.category,
+                    tier: item.tier,
+                    gold_score: item.gold_score,
+                    judge_score: null,
+                    diff: null,
+                    abs_diff: null,
+                    latency_ms: Date.now() - start,
+                    success: false,
+                    error: err.message
+                });
+            }
+        }
+
+        const successful = results.filter(r => r.success && r.judge_score !== null);
+        const n = successful.length;
+
+        // Mean Absolute Error
+        const mae = n > 0
+            ? Math.round((successful.reduce((s, r) => s + r.abs_diff, 0) / n) * 100) / 100
+            : null;
+
+        // Bias (positive = judge scores higher than gold)
+        const bias = n > 0
+            ? Math.round((successful.reduce((s, r) => s + r.diff, 0) / n) * 100) / 100
+            : null;
+
+        // Agreement rate (within +/- 1 point)
+        const agreements = successful.filter(r => r.abs_diff <= 1).length;
+        const agreementRate = n > 0 ? Math.round((agreements / n) * 100) : 0;
+
+        // Pearson correlation
+        let correlation = null;
+        if (n >= 3) {
+            const goldScores = successful.map(r => r.gold_score);
+            const judgeScores = successful.map(r => r.judge_score);
+            const meanGold = goldScores.reduce((a, b) => a + b, 0) / n;
+            const meanJudge = judgeScores.reduce((a, b) => a + b, 0) / n;
+            let num = 0, denGold = 0, denJudge = 0;
+            for (let i = 0; i < n; i++) {
+                const dg = goldScores[i] - meanGold;
+                const dj = judgeScores[i] - meanJudge;
+                num += dg * dj;
+                denGold += dg * dg;
+                denJudge += dj * dj;
+            }
+            const den = Math.sqrt(denGold * denJudge);
+            correlation = den > 0 ? Math.round((num / den) * 1000) / 1000 : 0;
+        }
+
+        // Per-tier breakdown
+        const byTier = {};
+        for (const r of successful) {
+            if (!byTier[r.tier]) byTier[r.tier] = { count: 0, totalError: 0, totalBias: 0 };
+            byTier[r.tier].count++;
+            byTier[r.tier].totalError += r.abs_diff;
+            byTier[r.tier].totalBias += r.diff;
+        }
+        const tierBreakdown = {};
+        for (const [tier, stats] of Object.entries(byTier)) {
+            tierBreakdown[tier] = {
+                count: stats.count,
+                mae: Math.round((stats.totalError / stats.count) * 100) / 100,
+                bias: Math.round((stats.totalBias / stats.count) * 100) / 100
+            };
+        }
+
+        const valid = correlation !== null && correlation >= 0.8;
+
+        return res.json({
+            status: 'success',
+            data: {
+                host: judgeHost,
+                model: judgeModel,
+                valid,
+                correlation,
+                mae,
+                bias,
+                agreement_rate: agreementRate,
+                total: calibrationSet.length,
+                scored: n,
+                failed: calibrationSet.length - n,
+                tier_breakdown: tierBreakdown,
+                results
+            }
+        });
+    } catch (err) {
+        logger.error('Judge accuracy calibration failed', { error: err.message, host: judgeHost, model: judgeModel });
+        return res.status(500).json({ status: 'error', error: err.message });
+    }
+});
+
 module.exports = router;

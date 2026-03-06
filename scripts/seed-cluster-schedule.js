@@ -15,7 +15,7 @@
  *   UGBrutal   (secondary) — 192.168.2.12  — RTX 5070 Ti 16GB
  *   UGClawdX   (tertiary)  — 192.168.2.66  — RTX 3090 24GB + OpenClaw
  *   Ubundocker             — 192.168.2.199 — n8n automation
- *   Docker Host            — 192.168.2.33  — AgentX, DataAPI, MongoDB
+ *   Docker Host            — 192.168.2.33  — DataAPI, MongoDB
  *
  * Run: node scripts/seed-cluster-schedule.js
  */
@@ -196,7 +196,7 @@ const entries = [
     metadata: { webhook: 'sbqc-n5-1-feedback-analysis', runner: 'Ubundocker' }
   },
 
-  // ── AgentX Internal Timers (Docker Host 192.168.2.33) ─────────
+  // ── AgentX Internal Timers (UGClawdX 192.168.2.66) ─────────
   {
     source: 'agentx', sourceId: 'ax-runner-poll',
     name: 'SpecialX Runner Poll', taskType: 'monitoring',

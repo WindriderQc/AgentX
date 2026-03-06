@@ -73,6 +73,33 @@ const GENERALIST_CATEGORY_WEIGHTS = {
 };
 
 /**
+ * Minimum judge tier per benchmark category.
+ * Categories requiring deeper understanding need stronger judge models.
+ * Tiers: basic (2-3B), standard (7B), advanced (14B+), premium (70B+)
+ *
+ * A 7B judge reliably scores general/dialogue/creative but struggles with
+ * coding correctness, math proofs, and multi-step reasoning evaluation.
+ */
+const CATEGORY_MIN_JUDGE_TIER = {
+  'coding':                'standard',
+  'reasoning':             'standard',
+  'factual':               'standard',
+  'creative':              'basic',
+  'instruction-following': 'basic',
+  'math':                  'standard',
+  'summarization':         'basic',
+  'multi-turn-reasoning':  'advanced',
+  'context-retention':     'standard',
+  'translation':           'basic',
+  'edge-cases':            'advanced',
+  'general':               'basic',
+  'refactoring':           'advanced',
+  'debugging':             'advanced',
+  'explanation':           'basic',
+  'dialogue':              'basic'
+};
+
+/**
  * Leaderboard tab groups - maps benchmark categories into UI-friendly tab groups.
  * Each tab can match multiple benchmark categories.
  */
@@ -109,6 +136,7 @@ module.exports = {
   MANUAL_CATEGORIES,
   BENCHMARK_CATEGORIES,
   GENERALIST_CATEGORY_WEIGHTS,
+  CATEGORY_MIN_JUDGE_TIER,
   LEADERBOARD_TAB_GROUPS,
   TASK_CATEGORY_MAP
 };

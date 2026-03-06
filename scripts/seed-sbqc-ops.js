@@ -24,7 +24,7 @@ You monitor system health, report on infrastructure status, help diagnose issues
 
 ## Infrastructure You Monitor
 - **DataAPI** (192.168.2.33:3003) - File storage, NAS scanning, deduplication
-- **AgentX** (192.168.2.33:3080) - AI chat, RAG, analytics
+- **AgentX** (192.168.2.66:3080) - AI chat, RAG, analytics
 - **MongoDB** (192.168.2.33:27017) - Databases: SBQC, agentx
 - **Ollama Primary** (192.168.2.99:11434) - UGFrank: Qwen 2.5 7B, Whisper
 - **Ollama Secondary** (192.168.2.12:11434) - UGBrutal: Llama 3.3 70B, DeepSeek R1

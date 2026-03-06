@@ -298,11 +298,13 @@ router.post('/batch/:id/judge', async (req, res) => {
         const concurrency = parsePositiveInt(requestBody.concurrency, 2);
         const force = parseBoolean(requestBody.force, false);
         const judgeConfig = requestBody.judge_config || {};
+        const multiJudge = requestBody.multi_judge || null;
 
         const options = {
             judgeConfig,
             concurrency,
-            force
+            force,
+            multiJudge
         };
         const preflight = await preflightJudgeBatch(req.params.id, { force });
 

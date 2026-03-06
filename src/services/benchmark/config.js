@@ -14,6 +14,11 @@ const DEFAULT_EXECUTION_CONFIG = {
     num_ctx: 8192,
     // Per-test abort timeout in ms. 180s was too short for large models (27B+).
     per_test_timeout_ms: 600000,
+    // Ollama API mode: 'chat' (default) uses /api/chat with structured messages,
+    // 'generate' uses /api/generate with raw prompt text.
+    // Chat mode applies the model's chat template automatically — required for
+    // instruction-tuned models to avoid empty responses.
+    api_mode: 'chat',
     // Length hints can constrain models - disabled by default
     include_length_hint: false,
     length_hint_template: 'Keep your response under {max} tokens.',

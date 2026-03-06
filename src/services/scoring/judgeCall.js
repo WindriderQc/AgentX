@@ -176,13 +176,13 @@ async function callJudge(evalPrompt, config = {}, retryCount = 0) {
         if (!judgeConfig.host) {
             throw new Error('Judge host is not configured');
         }
-        const url = `${judgeConfig.host}/api/generate`;
+        const url = `${judgeConfig.host}/api/chat`;
         const fetchOptions = getFetchOptions(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 model: judgeConfig.model,
-                prompt: evalPrompt,
+                messages: [{ role: 'user', content: evalPrompt }],
                 stream: false,
                 options: {
                     temperature: judgeConfig.temperature,
@@ -201,7 +201,7 @@ async function callJudge(evalPrompt, config = {}, retryCount = 0) {
         }
 
         const data = await response.json();
-        const text = data.response || '';
+        const text = data.message?.content || data.response || '';
 
         const judgeTruncated = data.done_reason === 'length';
         const judgeTokens = data.eval_count || 0;

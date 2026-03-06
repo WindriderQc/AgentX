@@ -13,6 +13,7 @@ const { classifyBenchmarkError } = require('./errorClassifier');
 const hardwareProfileService = require('../hardwareProfileService');
 const BenchmarkPrompt = require('../../../models/BenchmarkPrompt');
 const ConcurrencyQueue = require('./ConcurrencyQueue');
+const { multiJudgeScore, shouldUseMultiJudge } = require('./multiJudge');
 
 // Track active judging jobs (batchId -> { queue, stopped })
 const activeJudgingJobs = new Map();
@@ -153,9 +154,12 @@ async function applyScoresToResult(resultId, scores, resultData) {
  *
  * @param {string} resultId - BenchmarkResult _id
  * @param {Object} judgeConfig - { host, model } overrides (merged with JUDGE_CONFIG defaults)
+ * @param {Object} _batchHardwareSnapshot - Pre-detected hardware snapshot
+ * @param {Object} [multiJudgeConfig] - Multi-judge settings:
+ *   { enabled, judges: [{ model, host, tier }], tiebreaker: { model, host, tier } }
  * @returns {Object} Result from applyScoresToResult
  */
-async function judgeResult(resultId, judgeConfig = {}, _batchHardwareSnapshot = null) {
+async function judgeResult(resultId, judgeConfig = {}, _batchHardwareSnapshot = null, multiJudgeConfig = null) {
     const result = await BenchmarkResult.findById(resultId);
     if (!result) {
         throw new Error(`Result not found: ${resultId}`);
@@ -196,6 +200,60 @@ async function judgeResult(resultId, judgeConfig = {}, _batchHardwareSnapshot = 
         host: judgeConfig.host || result.judge_host || JUDGE_CONFIG.host
     };
 
+    // Multi-judge path: use consensus scoring when enabled and category qualifies
+    const useMultiJudge = multiJudgeConfig?.enabled
+        && multiJudgeConfig.judges?.length >= 2
+        && shouldUseMultiJudge(result.prompt_category);
+
+    if (useMultiJudge) {
+        const mjResult = await multiJudgeScore({
+            response: result.response,
+            prompt: promptData,
+            judges: multiJudgeConfig.judges,
+            tiebreakerJudge: multiJudgeConfig.tiebreaker || null,
+            _batchHardwareSnapshot
+        });
+
+        // Store all individual judge scores
+        const judgeScoreRecords = mjResult.scores
+            .filter(s => s.success)
+            .map(s => ({
+                judge_model: s.judge_model,
+                judge_host: s.judge_host,
+                judge_tier: s.judge_tier,
+                quality_score: s.quality_score,
+                explanation: s.explanation,
+                scoring_time_ms: s.scoring_time_ms
+            }));
+
+        await BenchmarkResult.updateOne(
+            { _id: resultId },
+            { $set: { judge_scores: judgeScoreRecords } }
+        );
+
+        // Use the primary judge's full scores object for composite calculation,
+        // but override quality_score with the consensus median
+        const primaryJudge = mjResult.scores.find(s => s.success) || {};
+        const scores = await scoreResponse({
+            response: result.response,
+            prompt: promptData,
+            judgeConfig: mergedConfig,
+            _batchHardwareSnapshot
+        });
+
+        // Override with consensus score
+        scores.quality_score = mjResult.finalScore !== null ? mjResult.finalScore : scores.quality_score;
+        scores.explanation = `[Multi-judge consensus: ${mjResult.consensus}] ${scores.explanation || ''}`.trim();
+
+        return applyScoresToResult(resultId, scores, {
+            latency: result.latency,
+            tokens_per_sec: result.tokens_per_sec,
+            prompt_category: result.prompt_category,
+            scoring_type: result.scoring_type
+        });
+    }
+
+    // Standard single-judge path
     const scores = await scoreResponse({
         response: result.response,
         prompt: promptData,
@@ -223,7 +281,7 @@ async function judgeResult(resultId, judgeConfig = {}, _batchHardwareSnapshot = 
  * @returns {Object} { judged, failed, timedOut }
  */
 async function judgeBatch(batchId, options = {}) {
-    const { judgeConfig = {}, concurrency = 2, force = false } = options;
+    const { judgeConfig = {}, concurrency = 2, force = false, multiJudge = null } = options;
 
     if (activeJudgingJobs.has(batchId)) {
         throw new Error('Judging is already running for this batch');
@@ -311,7 +369,7 @@ async function judgeBatch(batchId, options = {}) {
                 if (job.stopped) return;
 
                 try {
-                    await judgeResult(result._id.toString(), judgeConfig, batchHardwareSnapshot);
+                    await judgeResult(result._id.toString(), judgeConfig, batchHardwareSnapshot, multiJudge);
                     judged++;
 
                     await BenchmarkBatch.updateOne(

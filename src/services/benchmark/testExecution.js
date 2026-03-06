@@ -24,13 +24,14 @@ async function runTest({ model, host, prompt }) {
     const numCtx = await resolveModelNumCtx(model, { targetHost: host, fallback: DEFAULT_EXECUTION_CONFIG.num_ctx });
 
     try {
-        const url = `${host}/api/generate`;
+        // Use /api/chat for proper chat template application on instruction-tuned models
+        const url = `${host}/api/chat`;
         const fetchOptions = getFetchOptions(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 model,
-                prompt,
+                messages: [{ role: 'user', content: prompt }],
                 stream: false,
                 options: {
                     num_ctx: numCtx
@@ -46,7 +47,8 @@ async function runTest({ model, host, prompt }) {
 
         const data = await response.json();
         const latency = Date.now() - start;
-        const tokens = data.eval_count || Math.ceil((data.response || '').length / 4);
+        const responseText = data.message?.content || '';
+        const tokens = data.eval_count || Math.ceil(responseText.length / 4);
 
         let promptMeta = {};
         try {
@@ -74,7 +76,7 @@ async function runTest({ model, host, prompt }) {
             latency,
             tokens,
             tokens_per_sec: tokensPerSec,
-            response: data.response || '',
+            response: responseText,
             success: true,
             timestamp: new Date()
         });

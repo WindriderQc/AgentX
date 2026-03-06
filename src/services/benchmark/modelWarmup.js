@@ -85,7 +85,7 @@ async function warmupModel(hostUrl, model, options = {}) {
         timeoutMs = modelAlreadyLoaded ? 90000 : 180000;
         logger.info('Warming up model', { host: hostUrl, model, alreadyLoaded: modelAlreadyLoaded, timeoutMs });
 
-        const url = `${hostUrl}/api/generate`;
+        const url = `${hostUrl}/api/chat`;
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -101,7 +101,7 @@ async function warmupModel(hostUrl, model, options = {}) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     model,
-                    prompt: warmupPrompt,
+                    messages: [{ role: 'user', content: warmupPrompt }],
                     stream: false,
                     options: warmupOptions
                 }),
@@ -116,7 +116,7 @@ async function warmupModel(hostUrl, model, options = {}) {
 
         if (response.ok) {
             const data = await response.json();
-            warmupData.response = data.response || '';
+            warmupData.response = data.message?.content || '';
             warmupData.success = true;
             logger.info('Model ready', { host: hostUrl, model, durationMs, wasLoaded: modelAlreadyLoaded });
             if (timelinePrefix && recordTimelineEvent) {
