@@ -17,7 +17,7 @@ const { runTest, startBatch, executeBatch, stopBatch, getActiveBatchId, getActiv
 const { getResults, getSummary, getDashboard, compareModels, getQualityBreakdown, getModelTrends, compareBatches } = require('./results');
 const { getBatches, getBatch, getBatchStatsByTag, clearResults, clearFailedResults, getActiveStats } = require('./batches');
 const { getJudgeLeaderboard, getJudgeBreakdown, getJudgeActivity, getTruncationStats } = require('./judges');
-const { calculateAllGeneralistScores, getActiveCategoryWeights, getCategoryScoresByModel } = require('./generalistScore');
+const { calculateAllGeneralistScores, getActiveCategoryWeights, getCategoryScoresByModel, confidenceMargin } = require('./generalistScore');
 const { judgeResult, judgeBatch, stopJudging, getJudgingStatus, stopAllJudging } = require('./judging');
 
 // Graceful shutdown handler - mark batch as interrupted when PM2 restarts
@@ -158,6 +158,11 @@ class BenchmarkService {
             const totalTests = Object.values(catScores).reduce((sum, c) => sum + (c.count || 0), 0);
             const reg = registryByName.get(model);
 
+            const margin = confidenceMargin(
+                data.avgWithinCategoryStdDev || 0,
+                totalTests
+            );
+
             leaderboard.push({
                 model,
                 host: host || null,
@@ -169,6 +174,7 @@ class BenchmarkService {
                 coverage: data.coverage,
                 testedCategories: data.testedCategories,
                 totalTests,
+                confidenceMargin: margin,
                 recommended_category: reg?.benchmarkStats?.bestCategory || null,
                 categoryAverages: data.categoryAverages,
                 filtered: data.filtered || false,

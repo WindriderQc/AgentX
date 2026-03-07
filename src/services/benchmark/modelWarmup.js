@@ -32,10 +32,10 @@ function normalizeWarmupError(err, timeoutMs) {
  * @returns {Object} Warmup data for validation/debugging
  */
 async function warmupModel(hostUrl, model, options = {}) {
-    const { timelinePrefix = null, recordTimelineEvent = null, strict = false, num_ctx = null, _fetch = fetch } = options;
+    const { timelinePrefix = null, recordTimelineEvent = null, strict = false, num_ctx = null, _fetch = fetch, timeoutOverride = null } = options;
     const warmupStart = Date.now();
     const warmupPrompt = 'Hi';
-    let timeoutMs = 180000;
+    let timeoutMs = timeoutOverride !== null ? timeoutOverride : 180000;
     const warmupData = {
         prompt: warmupPrompt,
         response: null,
@@ -82,8 +82,11 @@ async function warmupModel(hostUrl, model, options = {}) {
 
         warmupData.already_loaded = modelAlreadyLoaded;
 
-        timeoutMs = modelAlreadyLoaded ? 90000 : 180000;
-        logger.info('Warming up model', { host: hostUrl, model, alreadyLoaded: modelAlreadyLoaded, timeoutMs });
+        timeoutMs = timeoutOverride !== null ? timeoutOverride : (modelAlreadyLoaded ? 90000 : 180000);
+        logger.info('Warming up model', {
+            host: hostUrl, model, alreadyLoaded: modelAlreadyLoaded, timeoutMs,
+            timeoutSource: timeoutOverride !== null ? 'override' : 'auto'
+        });
 
         const url = `${hostUrl}/api/chat`;
         const controller = new AbortController();

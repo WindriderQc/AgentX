@@ -446,6 +446,20 @@ body {
 .weight-value { min-width: 30px; text-align: right; color: var(--text-muted); }
 
 /* ============================================================================
+   Heatmap Table
+   ============================================================================ */
+
+.heatmap-table { border-collapse: collapse; }
+.heatmap-table th, .heatmap-table td {
+    border: 1px solid rgba(255,255,255,0.06);
+}
+.heatmap-table th {
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+/* ============================================================================
    Responsive
    ============================================================================ */
 

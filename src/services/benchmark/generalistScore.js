@@ -410,6 +410,21 @@ async function calculateAllGeneralistScores(matchQuery = { success: true }, { ca
     return generalistScores;
 }
 
+/**
+ * Calculate 95% confidence interval half-width for a score.
+ * Uses t-distribution approximation for small samples.
+ * @param {number} stddev - Standard deviation (0-100 scale)
+ * @param {number} n - Sample size
+ * @returns {number} Margin of error (half-width of 95% CI)
+ */
+function confidenceMargin(stddev, n) {
+    if (!n || n < 2 || !Number.isFinite(stddev)) return null;
+    // t-value approximation for 95% CI with small samples
+    const tValues = { 2: 12.71, 3: 4.30, 4: 3.18, 5: 2.78, 6: 2.57, 7: 2.45, 8: 2.36, 9: 2.31, 10: 2.26 };
+    const t = n <= 10 ? (tValues[n] || 2.26) : (n <= 30 ? 2.04 : 1.96);
+    return Math.round((t * stddev / Math.sqrt(n)) * 10) / 10;
+}
+
 module.exports = {
     GENERALIST_CATEGORY_WEIGHTS,
     COVERAGE_PENALTY_MAX,
@@ -422,5 +437,6 @@ module.exports = {
     calculateGeneralistScoreFromCategories,
     getCategoryScoresByModel,
     getEmptyResponseRates,
-    calculateAllGeneralistScores
+    calculateAllGeneralistScores,
+    confidenceMargin
 };

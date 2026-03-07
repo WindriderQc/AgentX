@@ -262,11 +262,17 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
             // Non-fatal: if cross-host warmup fails, fall back to same-host judging
             if (!effectiveJudgeSameHost) {
                 const jModel = judgeConfig.model || JUDGE_CONFIG.model;
+                // Signal to the UI that we're in warmup phase
+                await BenchmarkBatch.findOneAndUpdate(
+                    { _id: batchId },
+                    { $set: { current_test: { model: jModel, stage: 'warmup', prompt_name: judgeHostUrl, started_at: new Date() } } }
+                );
                 try {
                     await warmupModel(judgeHostUrl, jModel, {
                         timelinePrefix: 'judge_warmup',
                         recordTimelineEvent: recordBatchTimelineEvent,
-                        strict: true
+                        strict: true,
+                        timeoutOverride: 90000  // 90s max — validator confirmed model exists
                     });
                     logger.info('Judge model ready on separate host', { host: judgeHostUrl, model: jModel });
                 } catch (warmupErr) {
@@ -274,13 +280,19 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                         judgeHost: judgeHostUrl, execHost: hostUrl,
                         model: jModel, error: warmupErr.message
                     });
+                    const originalJudgeHost = judgeHostUrl;
                     judgeHostUrl = hostUrl;
                     effectiveJudgeSameHost = true;
                     await recordBatchTimelineEvent('judge_warmup_fallback', {
-                        model: jModel, original_host: judgeHostUrl,
+                        model: jModel, original_host: originalJudgeHost,
                         fallback_host: hostUrl, error: warmupErr.message
                     });
                 }
+                // Clear warmup phase indicator
+                await BenchmarkBatch.findOneAndUpdate(
+                    { _id: batchId },
+                    { $set: { 'current_test.stage': 'idle' } }
+                );
             }
 
             for (const model of hostModels) {

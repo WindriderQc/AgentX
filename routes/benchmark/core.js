@@ -17,6 +17,7 @@ const { HOSTS } = require('../../src/services/modelRouter');
 const { callJudge } = require('../../src/services/scoring/judgeCall');
 const judgeTierResolver = require('../../src/services/scoring/judgeTierResolver');
 const { validateExecutionHost } = require('../../src/services/benchmark/executionHostValidator');
+const { runPreflight } = require('../../src/services/benchmark/preflight');
 
 function isDuplicateKeyError(err) {
     return !!(err && (err.code === 11000 || String(err.message || '').includes('E11000')));
@@ -556,6 +557,30 @@ router.post('/judge/calibrate-accuracy', async (req, res) => {
     } catch (err) {
         logger.error('Judge accuracy calibration failed', { error: err.message, host: judgeHost, model: judgeModel });
         return res.status(500).json({ status: 'error', error: err.message });
+    }
+});
+
+/**
+ * POST /api/benchmark/preflight
+ * Run pre-flight validation checks before starting a batch.
+ * Body: { targets: [{host, model}], judge_config: {host, model}, levels: [1,2,3,4,5] }
+ */
+router.post('/preflight', async (req, res) => {
+    try {
+        const { targets = [], judge_config = {}, levels } = req.body || {};
+        const result = await runPreflight({
+            targets,
+            judgeConfig: judge_config,
+            levels: Array.isArray(levels) ? levels : [1, 2, 3, 4, 5]
+        });
+
+        res.json({
+            status: 'success',
+            data: result
+        });
+    } catch (err) {
+        logger.error('Pre-flight check failed', { error: err.message });
+        res.status(500).json({ status: 'error', error: err.message });
     }
 });
 

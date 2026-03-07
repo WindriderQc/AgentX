@@ -228,5 +228,86 @@
     "expected_answer": "Implementation using two pointers (slow and fast). Slow moves 1 step, fast moves 2. If they meet, there is a cycle. Time O(n), Space O(1).",
     "judge_criteria": ["Correct implementation of two-pointer method", "Correctly identifies cycle condition", "Time complexity stated as O(n)", "Space complexity stated as O(1)"],
     "scoring_type": "code"
+  },
+  {
+    "level": 1,
+    "category": "creative",
+    "name": "Simple Metaphor",
+    "prompt": "Write a single metaphor comparing time to a river.",
+    "expected_tokens": 30,
+    "expected_answer": "A metaphor that compares time to a river in a creative and coherent way",
+    "judge_criteria": [
+      "Contains a metaphor (not a simile)",
+      "Relates time to a river",
+      "Creative or evocative phrasing"
+    ],
+    "scoring_type": "creative"
+  },
+  {
+    "level": 3,
+    "category": "creative",
+    "name": "Character Sketch",
+    "prompt": "Write a character description for a detective who has an unusual fear. Include their appearance, personality, and how the fear affects their work.",
+    "expected_tokens": 200,
+    "expected_answer": "A vivid character with physical description, personality traits, a specific unusual fear, and how it impacts their detective work",
+    "judge_criteria": [
+      "Physical appearance described",
+      "Personality traits included",
+      "Specific unusual fear mentioned",
+      "Fear's impact on detective work explained",
+      "Writing is engaging and coherent"
+    ],
+    "scoring_type": "creative"
+  },
+  {
+    "level": 5,
+    "category": "factual",
+    "name": "Comparative Analysis",
+    "prompt": "Compare and contrast the economic systems of capitalism and socialism. Cover ownership of production, resource allocation, incentive structures, and common criticisms of each.",
+    "expected_tokens": 400,
+    "expected_answer": "Capitalism: private ownership, market-driven allocation, profit incentive; criticized for inequality. Socialism: collective/state ownership, planned allocation, equality incentive; criticized for inefficiency. Mixed economies exist in practice.",
+    "judge_criteria": [
+      "Correctly describes private vs collective ownership",
+      "Explains market vs planned allocation",
+      "Discusses incentive structures for each",
+      "Mentions common criticisms of each system",
+      "Balanced and objective presentation",
+      "Acknowledges mixed economies or nuance"
+    ],
+    "scoring_type": "factual"
+  },
+  {
+    "level": 2,
+    "category": "math",
+    "name": "Percentage Calculation",
+    "prompt": "A shirt originally costs $80. It is on sale for 25% off. What is the sale price?",
+    "expected_tokens": 60,
+    "expected_answer": "$60. Discount = 80 * 0.25 = $20. Sale price = 80 - 20 = $60.",
+    "judge_criteria": [
+      "Final answer is $60",
+      "Shows discount calculation",
+      "Arithmetic is correct"
+    ],
+    "scoring_type": "math",
+    "deterministic_scoring": {
+      "type": "numeric",
+      "numeric_tolerance": 0.01
+    }
+  },
+  {
+    "level": 4,
+    "category": "math",
+    "name": "Probability Problem",
+    "prompt": "A bag contains 5 red balls, 3 blue balls, and 2 green balls. If you draw 2 balls without replacement, what is the probability that both are red?",
+    "expected_tokens": 150,
+    "expected_answer": "P(both red) = (5/10) * (4/9) = 20/90 = 2/9 ≈ 0.222",
+    "judge_criteria": [
+      "Correct answer: 2/9 or approximately 0.222",
+      "Uses without-replacement logic (conditional probability)",
+      "First draw: 5/10",
+      "Second draw: 4/9",
+      "Shows multiplication of probabilities"
+    ],
+    "scoring_type": "math"
   }
 ]

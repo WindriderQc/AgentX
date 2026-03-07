@@ -22,6 +22,11 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 process.on('uncaughtException', (error) => {
+  // EPIPE = closed pipe/socket, ECONNRESET = abrupt client disconnect — both harmless, do not crash.
+  if (error.code === 'EPIPE' || error.code === 'ECONNRESET') {
+    logger.debug(`${error.code} ignored (closed connection)`);
+    return;
+  }
   logger.error('Uncaught Exception', {
     message: error.message,
     stack: error.stack
@@ -29,6 +34,10 @@ process.on('uncaughtException', (error) => {
   // Give time for logs to flush, then exit
   setTimeout(() => process.exit(1), 1000);
 });
+
+// Prevent EPIPE on stdout/stderr from crashing the process (PM2 pipe issues)
+process.stdout.on('error', (err) => { if (err.code !== 'EPIPE') throw err; });
+process.stderr.on('error', (err) => { if (err.code !== 'EPIPE') throw err; });
 
 // Health Check Functions
 async function checkMongoHealth() {

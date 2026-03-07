@@ -9,6 +9,11 @@ const logger = require('../../config/logger');
 const benchmarkService = require('../../src/services/benchmark');
 const { JUDGE_CONFIG, ENHANCED_SCORING_CONFIGS } = require('../../src/services/qualityScorer');
 const { getConfiguredHosts } = require('../../src/helpers/ollamaHostConfig');
+const { getCategoryHeatmap, getDimensionBreakdown, calculateEliteScores, detectCeilingModels, CEILING_THRESHOLD } = require('../../src/services/benchmark/ceilingDetection');
+const { calculateAllGeneralistScores, getActiveCategoryWeights } = require('../../src/services/benchmark/generalistScore');
+const { compareBatchRegression, detectLatestRegression, generateChangelog } = require('../../src/services/benchmark/regressionDetector');
+const { archiveOldResults, pruneExcessBatches, purgeDeadModels, getRetentionStats } = require('../../src/services/benchmark/dataRetention');
+const { validateObjectId } = require('../../src/helpers/objectIdValidator');
 
 /**
  * GET /api/benchmark/summary
@@ -406,6 +411,216 @@ router.get('/judge-calibration', async (req, res) => {
         });
     } catch (err) {
         logger.error('Failed to fetch judge calibration', { error: err.message });
+        res.status(500).json({ status: 'error', error: err.message });
+    }
+});
+
+/**
+ * GET /api/benchmark/ceiling-analysis
+ * Detect ceiling models and suggest differentiation strategies
+ */
+router.get('/ceiling-analysis', async (req, res) => {
+    try {
+        const threshold = parseFloat(req.query.threshold) || CEILING_THRESHOLD;
+        const categoryWeights = await getActiveCategoryWeights();
+        const generalistScores = await calculateAllGeneralistScores({ success: true }, { categoryWeights });
+        const ceilingModels = detectCeilingModels(generalistScores, threshold);
+        const eliteScores = await calculateEliteScores({ success: true });
+
+        // Match elite scores to ceiling models
+        const enriched = ceilingModels.map(cm => {
+            const elite = eliteScores.find(e => e.model === cm.model && e.host === cm.host);
+            return {
+                ...cm,
+                eliteScore: elite?.eliteScore || null,
+                eliteCoverage: elite?.eliteCoverage || 0,
+                eliteCategoryScores: elite?.categoryScores || {}
+            };
+        });
+
+        res.json({
+            status: 'success',
+            data: {
+                threshold,
+                ceilingCount: enriched.length,
+                totalModels: [...generalistScores.values()].filter(d => !d.filtered).length,
+                ceilingModels: enriched
+            }
+        });
+    } catch (err) {
+        logger.error('Failed to fetch ceiling analysis', { error: err.message });
+        res.status(500).json({ status: 'error', error: err.message });
+    }
+});
+
+/**
+ * GET /api/benchmark/category-heatmap
+ * Model x category score matrix for heatmap visualization
+ */
+router.get('/category-heatmap', async (req, res) => {
+    try {
+        const data = await getCategoryHeatmap({ success: true });
+        res.json({ status: 'success', data });
+    } catch (err) {
+        logger.error('Failed to fetch category heatmap', { error: err.message });
+        res.status(500).json({ status: 'error', error: err.message });
+    }
+});
+
+/**
+ * GET /api/benchmark/dimension-breakdown
+ * Per-model scoring dimension averages from quality_breakdown
+ */
+router.get('/dimension-breakdown', async (req, res) => {
+    try {
+        const data = await getDimensionBreakdown({ success: true });
+        res.json({ status: 'success', data });
+    } catch (err) {
+        logger.error('Failed to fetch dimension breakdown', { error: err.message });
+        res.status(500).json({ status: 'error', error: err.message });
+    }
+});
+
+/**
+ * GET /api/benchmark/elite-scores
+ * Elite scores based on hard-mode categories (L4+ prompts only)
+ */
+router.get('/elite-scores', async (req, res) => {
+    try {
+        const data = await calculateEliteScores({ success: true });
+        res.json({ status: 'success', data });
+    } catch (err) {
+        logger.error('Failed to fetch elite scores', { error: err.message });
+        res.status(500).json({ status: 'error', error: err.message });
+    }
+});
+
+/**
+ * GET /api/benchmark/regression
+ * Auto-detect regressions between the two most recent completed batches
+ */
+router.get('/regression', async (req, res) => {
+    try {
+        const report = await detectLatestRegression();
+        if (!report) {
+            return res.json({
+                status: 'success',
+                data: null,
+                message: 'Need at least 2 completed batches to detect regressions'
+            });
+        }
+
+        res.json({
+            status: 'success',
+            data: {
+                ...report,
+                changelog: generateChangelog(report)
+            }
+        });
+    } catch (err) {
+        logger.error('Failed to detect regressions', { error: err.message });
+        res.status(500).json({ status: 'error', error: err.message });
+    }
+});
+
+/**
+ * POST /api/benchmark/regression/compare
+ * Compare two specific batches for regressions
+ * Body: { current_batch_id, previous_batch_id }
+ */
+router.post('/regression/compare', async (req, res) => {
+    try {
+        const { current_batch_id, previous_batch_id } = req.body || {};
+        if (!current_batch_id || !previous_batch_id) {
+            return res.status(400).json({
+                status: 'error',
+                error: 'current_batch_id and previous_batch_id are required'
+            });
+        }
+        if (!validateObjectId(current_batch_id, res, 'current_batch_id')) return;
+        if (!validateObjectId(previous_batch_id, res, 'previous_batch_id')) return;
+
+        const report = await compareBatchRegression(current_batch_id, previous_batch_id);
+
+        res.json({
+            status: 'success',
+            data: {
+                ...report,
+                changelog: generateChangelog(report)
+            }
+        });
+    } catch (err) {
+        logger.error('Failed to compare batches for regression', { error: err.message });
+        res.status(500).json({ status: 'error', error: err.message });
+    }
+});
+
+/**
+ * GET /api/benchmark/retention/stats
+ * Get data retention statistics (how much can be cleaned up)
+ */
+router.get('/retention/stats', async (req, res) => {
+    try {
+        const stats = await getRetentionStats();
+        res.json({ status: 'success', data: stats });
+    } catch (err) {
+        logger.error('Failed to get retention stats', { error: err.message });
+        res.status(500).json({ status: 'error', error: err.message });
+    }
+});
+
+/**
+ * POST /api/benchmark/retention/archive
+ * Archive old batch results beyond retention period
+ * Body: { retention_days, dry_run }
+ */
+router.post('/retention/archive', async (req, res) => {
+    try {
+        const { retention_days, dry_run } = req.body || {};
+        const days = parseInt(retention_days, 10) || 90;
+        const dryRun = dry_run !== false && dry_run !== 0;
+
+        const result = await archiveOldResults(days, dryRun);
+        res.json({ status: 'success', data: result });
+    } catch (err) {
+        logger.error('Failed to archive old results', { error: err.message });
+        res.status(500).json({ status: 'error', error: err.message });
+    }
+});
+
+/**
+ * POST /api/benchmark/retention/prune
+ * Prune excess batches per model (keep only latest N)
+ * Body: { keep_batches, dry_run }
+ */
+router.post('/retention/prune', async (req, res) => {
+    try {
+        const { keep_batches, dry_run } = req.body || {};
+        const keep = parseInt(keep_batches, 10) || 3;
+        const dryRun = dry_run !== false && dry_run !== 0;
+
+        const result = await pruneExcessBatches(keep, dryRun);
+        res.json({ status: 'success', data: result });
+    } catch (err) {
+        logger.error('Failed to prune excess batches', { error: err.message });
+        res.status(500).json({ status: 'error', error: err.message });
+    }
+});
+
+/**
+ * POST /api/benchmark/retention/purge-dead
+ * Purge results from dead models (95%+ empty responses)
+ * Body: { dry_run }
+ */
+router.post('/retention/purge-dead', async (req, res) => {
+    try {
+        const { dry_run } = req.body || {};
+        const dryRun = dry_run !== false && dry_run !== 0;
+
+        const result = await purgeDeadModels(dryRun);
+        res.json({ status: 'success', data: result });
+    } catch (err) {
+        logger.error('Failed to purge dead models', { error: err.message });
         res.status(500).json({ status: 'error', error: err.message });
     }
 });

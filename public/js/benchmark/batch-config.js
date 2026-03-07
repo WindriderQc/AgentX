@@ -299,14 +299,45 @@ export function renderBatchPlan(plan, fallbackHostUrl, _qualityScoringEnabled = 
 
     let html = '';
 
+    // Resolve judge host label for the plan header
+    const planJudgeHostRaw = (Array.isArray(plan.exec_hosts) && plan.exec_hosts[0])
+        ? plan.exec_hosts[0].judge_host : null;
+    const planJudgeHostLabel = planJudgeHostRaw
+        ? (() => {
+            const known = (state.ollamaHosts || []).find(h => h.url === planJudgeHostRaw);
+            return known ? known.name : planJudgeHostRaw.replace(/^https?:\/\//, '').replace(/:11434$/, '');
+          })()
+        : '(auto)';
+    const planAutoUpgrade = !!(state.currentJudgeConfig && state.currentJudgeConfig.judge_tier_auto_upgrade);
+    const planConcurrency = (state.currentJudgeConfig && state.currentJudgeConfig.concurrency) || 2;
+    const planTimeoutSec = Math.round(((state.currentJudgeConfig && state.currentJudgeConfig.timeout) || 120000) / 1000);
+    const planSameHost = !!(state.currentJudgeConfig && state.currentJudgeConfig.judge_same_host);
+    const upgradeLabel = planAutoUpgrade
+        ? `<span class="badge ms-1" style="background:rgba(231,76,60,0.15);color:#e74c3c;border:1px solid rgba(231,76,60,0.3);font-size:0.78em;">⚡ Auto-upgrade</span>`
+        : `<span class="badge ms-1" style="background:rgba(39,174,96,0.12);color:#27ae60;border:1px solid rgba(39,174,96,0.25);font-size:0.78em;">✓ Fixed model</span>`;
+
     html += `<div class="d-flex align-items-center mb-3 p-2 bg-light rounded border flex-wrap gap-1">`;
     html += `<i class="fas fa-gavel me-2 text-primary"></i>`;
     html += `<strong class="me-2">Judge Model:</strong>`;
     html += `<span class="badge bg-primary me-2">${judgeModel}</span>`;
+    html += upgradeLabel;
+    html += `<span class="text-muted mx-2">-</span>`;
+    html += `<span style="color:var(--muted,#888);font-size:0.85em;"><i class="fas fa-server me-1"></i>Judge Host:</span>`;
+    html += `<span class="badge bg-light text-dark border ms-1 me-2" style="font-size:0.82em;" title="${escapeHtml(planJudgeHostRaw || 'auto')}">${escapeHtml(planJudgeHostLabel)}</span>`;
     html += `<span class="text-muted me-2">-</span>`;
     html += `<span class="badge bg-${modeColor} text-dark">${modeIcon} ${modeLabel}</span>`;
     html += `<span class="text-muted mx-2">-</span>`;
     html += `<span class="badge bg-light text-dark border">Max: ${maxTokens} tokens</span>`;
+    html += `<span class="text-muted mx-2">-</span>`;
+    html += `<span class="badge bg-light text-dark border" title="Parallel judge requests">` +
+        `<i class="fas fa-layer-group me-1"></i>×${planConcurrency} concurrent</span>`;
+    html += `<span class="badge bg-light text-dark border" title="Judge timeout per request">` +
+        `<i class="fas fa-clock me-1"></i>${planTimeoutSec}s timeout</span>`;
+    if (planSameHost) {
+        html += `<span class="badge" style="background:rgba(230,126,34,0.15);color:#e67e22;` +
+            `border:1px solid rgba(230,126,34,0.35);" title="Judge runs on execution host (no cross-host pipelining)">` +
+            `<i class="fas fa-exchange-alt me-1"></i>Same-host</span>`;
+    }
     if (hasAnyHint) {
         html += `<span class="text-muted mx-2">-</span>`;
         html += `<span class="badge" style="background: rgba(155, 89, 182, 0.2); color: #9b59b6; border: 1px solid rgba(155, 89, 182, 0.4);">`;

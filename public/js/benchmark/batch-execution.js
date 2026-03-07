@@ -5,7 +5,7 @@ import { getWorkspaceHeaders } from './api.js';
 import { startBatchTest, stopBatchTest, fetchBatchProgress, fetchActiveBatches, recoverBatchApi, fetchBatchHistory, validateJudgeModelApi } from './api.js';
 import { renderBatchPlan, setAdvancedMode, setHyperMode, getAnomalyThresholds, hydrateThresholdInputs, bindThresholdInputs, getDepthConfig, getSelectedLevels } from './batch-config.js';
 import { escapeHtml, formatDuration, toFiniteNumber, summarizeNumbers, countBy, topCounts, formatHostLabel, findRowByAttr } from './utils.js';
-import { updateTimeline } from './timeline.js';
+import { updateTimeline, resetTimelineState } from './timeline.js';
 import { pickRepresentativeResultId, pickRepresentativeResultIdForModel } from './results-analysis.js';
 import { showJudgeDetails } from './judge-details.js';
 import { buildBatchScoringBar } from './results-table.js';
@@ -152,6 +152,11 @@ export async function runBatch() {
     state.setLastTimelineHash(null);
     state.setLastTimelineResultIds(new Set());
     if (batchInfo) batchInfo.innerHTML = '';
+
+    // Immediately blank the timeline so the previous batch doesn't show
+    const currentTestIndicator = document.getElementById('currentTestIndicator');
+    if (currentTestIndicator) currentTestIndicator.style.display = 'none';
+    resetTimelineState();
 
     // Reset error counter and truncation inspector state for new batch
     pollConsecutiveErrors = 0;
@@ -323,6 +328,7 @@ export async function pollBatchProgress() {
 
         // Update current test indicator
         updateCurrentTestIndicator(batch);
+        updateJudgeStatusPanel(batch);
 
         // Update judge health stats if advanced mode
         if (showAdvanced && batch.judge_stats) {
@@ -417,13 +423,94 @@ function updateProgressBars(batch) {
 }
 
 /**
+ * Update the persistent judge status panel shown during active batch execution
+ */
+function updateJudgeStatusPanel(batch) {
+    const panel = document.getElementById('judgeStatusPanel');
+    if (!panel) return;
+
+    const isActive = batch.status === 'running' || batch.status === 'judging';
+    if (!isActive) {
+        panel.style.display = 'none';
+        return;
+    }
+
+    panel.style.display = 'block';
+
+    const cfg = batch.judge_config || {};
+    const model = cfg.model || batch.plan?.judge_model || '(default)';
+    const hostRaw = cfg.host || null;
+    const autoUpgrade = !!cfg.judge_tier_auto_upgrade;
+    const concurrency = cfg.concurrency || 2;
+
+    // Resolve judge host label
+    let hostLabel = '(auto)';
+    if (cfg.judge_same_host) {
+        hostLabel = '(same host)';
+    } else if (hostRaw) {
+        // Try to get short name from known hosts
+        const knownHosts = (typeof state !== 'undefined' && state.ollamaHosts) || [];
+        const matched = knownHosts.find(h => h.url === hostRaw);
+        hostLabel = matched ? matched.name : hostRaw.replace(/^https?:\/\//, '').replace(/:11434$/, '');
+    }
+
+    const tierUpgrades = (batch.judge_stats && batch.judge_stats.tier_upgrades) || 0;
+
+    const modelEl = document.getElementById('judgeStatusModel');
+    const hostEl = document.getElementById('judgeStatusHost');
+    const upgradeEl = document.getElementById('judgeStatusUpgrade');
+    const concEl = document.getElementById('judgeStatusConcurrency');
+    const scoredEl = document.getElementById('judgeStatusScored');
+    const totalEl = document.getElementById('judgeStatusTotal');
+    const latEl = document.getElementById('judgeStatusAvgLatency');
+    const tierUpgradeEl = document.getElementById('judgeStatusTierUpgrades');
+
+    if (modelEl) modelEl.textContent = model;
+    if (hostEl) { hostEl.textContent = hostLabel; hostEl.title = hostRaw || 'auto'; }
+    if (upgradeEl) {
+        upgradeEl.innerHTML = autoUpgrade
+            ? `<span style="background:rgba(231,76,60,0.15);color:#e74c3c;border:1px solid rgba(231,76,60,0.3);border-radius:4px;padding:1px 6px;font-size:0.78em;">⚡ Auto-upgrade ON</span>`
+            : `<span style="background:rgba(39,174,96,0.12);color:#27ae60;border:1px solid rgba(39,174,96,0.25);border-radius:4px;padding:1px 6px;font-size:0.78em;">✓ Fixed model</span>`;
+    }
+    if (concEl) concEl.textContent = `×${concurrency} parallel`;
+    if (scoredEl) scoredEl.textContent = String(batch.judge_completed || 0);
+    if (totalEl) totalEl.textContent = String(batch.judge_total || 0);
+    if (tierUpgradeEl) {
+        if (autoUpgrade && tierUpgrades > 0) {
+            tierUpgradeEl.style.display = '';
+            tierUpgradeEl.innerHTML = `<span title="Number of prompts where a higher-tier judge was auto-selected" ` +
+                `style="color:#e74c3c;font-size:0.78em;margin-left:6px;">` +
+                `<i class="fas fa-arrow-up"></i> ${tierUpgrades} tier upgrade${tierUpgrades !== 1 ? 's' : ''}</span>`;
+        } else {
+            tierUpgradeEl.style.display = 'none';
+        }
+    }
+
+    // Show avg judge latency if available from batch stats
+    if (latEl && batch.avg_judge_latency_ms) {
+        latEl.textContent = `· avg ${(batch.avg_judge_latency_ms / 1000).toFixed(1)}s/score`;
+    } else if (latEl) {
+        latEl.textContent = '';
+    }
+}
+
+/**
  * Update current test indicator
  */
 function updateCurrentTestIndicator(batch) {
     const currentTestIndicator = document.getElementById('currentTestIndicator');
     const currentTest = batch.current_test;
 
-    if (currentTest && currentTest.model && currentTest.stage !== 'idle' && batch.status === 'running') {
+    if (currentTest && currentTest.stage === 'warmup' && batch.status === 'running') {
+        currentTestIndicator.style.display = 'block';
+        document.getElementById('currentTestStage').innerHTML = '<i class="fas fa-fire-alt"></i> Warming up judge model';
+        document.getElementById('currentTestModel').textContent = currentTest.model || '';
+        document.getElementById('currentTestPrompt').textContent = `Loading on ${currentTest.prompt_name || 'judge host'}…`;
+        if (currentTest.started_at) {
+            const duration = (Date.now() - new Date(currentTest.started_at).getTime()) / 1000;
+            document.getElementById('currentTestDuration').textContent = duration < 10 ? `${duration.toFixed(1)}s` : `${Math.floor(duration)}s`;
+        }
+    } else if (currentTest && currentTest.model && currentTest.stage !== 'idle' && batch.status === 'running') {
         currentTestIndicator.style.display = 'block';
 
         const stageIcon = currentTest.stage === 'judging' ? '<i class="fas fa-gavel"></i>' : '<i class="fas fa-cogs"></i>';

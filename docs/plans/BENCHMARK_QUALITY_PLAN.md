@@ -244,7 +244,7 @@ C. **Judge Agreement Metrics**:
 
 ---
 
-## Phase 5: Score Differentiation (Low-Medium Priority)
+## Phase 5: Score Differentiation (Low-Medium Priority) -- DONE
 
 ### 5.1 Ceiling Detection & Harder Prompts
 
@@ -279,7 +279,7 @@ Enable it more broadly:
 
 ---
 
-## Phase 6: Infrastructure & Automation (Ongoing)
+## Phase 6: Infrastructure & Automation (Ongoing) -- DONE
 
 ### 6.1 Benchmark CI Integration
 
@@ -380,6 +380,10 @@ After completing Phases 1-4:
 
 **New files**:
 - `src/services/benchmark/multiJudge.js` — multi-judge consensus logic
+- `src/services/benchmark/ceilingDetection.js` — ceiling model detection, elite scores, heatmap, dimensions
+- `src/services/benchmark/preflight.js` — pre-flight validation (hosts, prompts, orphaned batches)
+- `src/services/benchmark/regressionDetector.js` — batch comparison, regression/improvement detection, changelog
+- `src/services/benchmark/dataRetention.js` — archive old results, prune excess batches, purge dead models
 - `scripts/diagnose-empty-responses.js` — empty-response diagnostic
 - `scripts/audit-prompt-coverage.js` — prompt count auditor
 - `data/judge-calibration-set.json` — gold standard judge test set

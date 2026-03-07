@@ -188,6 +188,7 @@
                                 <th class="rank-col">#</th>
                                 <th class="sortable" data-sort="model" onclick="sortQualityBy('model')">Model <i class="fas fa-sort"></i></th>
                                 <th class="sortable active" data-sort="generalist" onclick="sortQualityBy('generalist')" title="Category-weighted quality score (0-100). Includes coverage penalty and consistency bonus. Click 'Methodology' for details.">Generalist <i class="fas fa-info-circle" style="opacity:0.5;font-size:0.7rem;margin-left:2px;"></i> <i class="fas fa-sort-down"></i></th>
+                                <th class="sortable" data-sort="elite" onclick="sortQualityBy('elite')" title="Elite score: hard-mode L4+ prompts, reasoning-heavy weights. Differentiates ceiling models.">Elite <i class="fas fa-sort"></i></th>
                                 <th class="sortable" data-sort="coverage" onclick="sortQualityBy('coverage')" title="% of the 12 task categories tested. Low coverage incurs a penalty.">Coverage <i class="fas fa-sort"></i></th>
                                 <th class="sortable" data-sort="consistency" onclick="sortQualityBy('consistency')" title="Score consistency across categories. Low variance (std dev < 15) earns a +5 bonus.">Consistency <i class="fas fa-sort"></i></th>
                                 <th title="The category where this model scored highest.">Top Category</th>
@@ -196,7 +197,7 @@
                             </tr>
                         </thead>
                         <tbody id="qualTableBody">
-                            <tr><td colspan="8" class="loading-cell"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>
+                            <tr><td colspan="9" class="loading-cell"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -205,6 +206,20 @@
                 <div class="category-weights" id="categoryWeights">
                     <h4>Category Weights</h4>
                     <div class="weights-grid" id="weightsGrid"></div>
+                </div>
+            </section>
+
+            <!-- Category Heatmap -->
+            <section class="board-section" id="heatmapBoard">
+                <div class="board-header">
+                    <h2><i class="fas fa-th"></i> Category Heatmap</h2>
+                    <p class="board-description">Model x Category score matrix (0-10 scale). Darker = higher score.</p>
+                </div>
+                <div class="board-table-container" style="overflow-x:auto">
+                    <table class="board-table heatmap-table" id="heatmapTable">
+                        <thead id="heatmapHead"><tr><td>Loading...</td></tr></thead>
+                        <tbody id="heatmapBody"></tbody>
+                    </table>
                 </div>
             </section>
 
@@ -251,6 +266,17 @@
                     <li><strong>Coverage Penalty:</strong> -20 points max for missing categories (proportional to weight)</li>
                     <li><strong>Consistency Bonus:</strong> +5 points if within-category std deviation &lt; 15</li>
                 </ul>
+
+                <h5>Elite Score (Ceiling Differentiation)</h5>
+                <p>Models scoring 95+ on the generalist scale are at the "ceiling" and hard to distinguish. The Elite score uses only L4+ (expert) prompts with reasoning-heavy category weights:</p>
+                <ul>
+                    <li><strong>Reasoning (20%):</strong> Complex analysis and logic</li>
+                    <li><strong>Coding (18%):</strong> Code correctness under hard prompts</li>
+                    <li><strong>Math (15%):</strong> Multi-step math problems</li>
+                    <li><strong>Multi-turn (12%):</strong> Multi-step reasoning chains</li>
+                    <li><strong>Debugging (10%), Edge Cases (10%), Refactoring (8%), Context (7%)</strong></li>
+                </ul>
+                <p>The elite score provides meaningful spread among top-tier models that would otherwise appear tied.</p>
 
                 <h5>Composite Score (Performance Board)</h5>
                 <p>Calculated server-side per profile. Quality input uses the generalist-adjusted score, not raw judge scores.</p>

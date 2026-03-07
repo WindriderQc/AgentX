@@ -47,6 +47,7 @@ if (typeof Chart !== 'undefined') {
 
 let performanceData = [];
 let qualityData = [];
+let eliteScoreMap = {};
 let charts = {};
 
 let currentCategoryFilter = '';
@@ -88,13 +89,15 @@ async function refreshAllData() {
         await Promise.all([
             loadPerformanceData(),
             loadQualityData(),
-            loadHostNames()
+            loadHostNames(),
+            loadEliteScores()
         ]);
         updateStats();
         updateBestOverallBanner(currentCategoryFilter);
         initCharts();
         renderPerformanceBoard();
         renderQualityBoard();
+        loadCategoryHeatmap();
         updateRefreshIndicator();
     } catch (err) {
         console.error('Failed to load data:', err);
@@ -289,6 +292,9 @@ async function loadQualityData() {
 
         const perfModel = performanceData.find(p => p.model === model.model && p.host === model.host);
 
+        const eliteKey = `${model.model}@@${model.host || ''}`;
+        const elite = eliteScoreMap[eliteKey];
+
         return {
             name: model.model,
             host: model.host,
@@ -305,7 +311,10 @@ async function loadQualityData() {
             totalTests: model.totalTests || perfModel?.total_tests || perfModel?.tests || 0,
             testsByLevel: perfModel?.level_stats || {},
             stdDev: Math.round(stdDev * 10) / 10,
-            emptyRate: model.emptyRate || 0
+            emptyRate: model.emptyRate || 0,
+            confidenceMargin: model.confidenceMargin || null,
+            atCeiling: model.generalistScore >= 95,
+            eliteScore: elite?.eliteScore || null
         };
     });
 }
@@ -316,6 +325,20 @@ async function loadHostNames() {
         if (response.ok) {
             const result = await response.json();
             HOST_NAMES = result.data || {};
+        }
+    } catch (_) { /* non-critical */ }
+}
+
+async function loadEliteScores() {
+    try {
+        const response = await fetch('/api/benchmark/elite-scores');
+        if (response.ok) {
+            const result = await response.json();
+            eliteScoreMap = {};
+            for (const entry of (result.data || [])) {
+                const key = `${entry.model}@@${entry.host || ''}`;
+                eliteScoreMap[key] = entry;
+            }
         }
     } catch (_) { /* non-critical */ }
 }
@@ -454,6 +477,7 @@ function renderQualityBoard() {
         let comparison = 0;
         switch (currentQualSort) {
             case 'generalist': comparison = b.generalistScore - a.generalistScore; break;
+            case 'elite': comparison = (b.eliteScore || 0) - (a.eliteScore || 0); break;
             case 'coverage': comparison = b.coverage - a.coverage; break;
             case 'consistency': comparison = b.consistencyScore - a.consistencyScore; break;
             case 'avgScore': comparison = b.avgScore - a.avgScore; break;
@@ -467,7 +491,7 @@ function renderQualityBoard() {
 
     const tbody = document.getElementById('qualTableBody');
     if (data.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" class="empty-cell">No data matches filters. <a href="/benchmark.html">Run benchmarks</a></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="empty-cell">No data matches filters. <a href="/benchmark.html">Run benchmarks</a></td></tr>';
         return;
     }
 
@@ -484,10 +508,14 @@ function renderQualityBoard() {
                     <span class="model-name">${escapeHtml(model.name)}</span>
                     ${hostName ? `<span class="model-host">${escapeHtml(hostName)}</span>` : ''}
                     ${model.consistencyBonus > 0 ? '<span class="badge badge-consistent" title="Low variance across categories">Consistent</span>' : ''}
+                    ${model.atCeiling ? '<span class="badge badge-ceiling" title="Scoring at ceiling (95+) - elite score differentiates">Ceiling</span>' : ''}
                 </td>
                 <td class="score-col">
-                    <div class="score-main">${model.generalistScore.toFixed(1)}</div>
+                    <div class="score-main">${model.generalistScore.toFixed(1)}${model.confidenceMargin !== null ? `<span class="confidence-margin" title="95% confidence interval: +/-${model.confidenceMargin}"> \u00b1${model.confidenceMargin}</span>` : ''}</div>
                     <div class="score-breakdown">${model.weightedSum.toFixed(1)} ${penaltyStr} ${bonusStr}</div>
+                </td>
+                <td class="elite-col ${model.eliteScore !== null ? getScoreClass(model.eliteScore / 10, 10) : ''}">
+                    ${model.eliteScore !== null ? model.eliteScore.toFixed(1) : '<span style="opacity:0.3">-</span>'}
                 </td>
                 <td class="coverage-col">
                     <div class="coverage-wrapper">
@@ -614,4 +642,57 @@ function renderCategoryWeights() {
             <span class="weight-value">${(weight * 100).toFixed(0)}%</span>
         </div>
     `).join('');
+}
+
+// ============================================================================
+// CATEGORY HEATMAP
+// ============================================================================
+
+async function loadCategoryHeatmap() {
+    try {
+        const response = await fetch('/api/benchmark/category-heatmap');
+        if (!response.ok) return;
+        const result = await response.json();
+        if (result.status !== 'success') return;
+        renderHeatmap(result.data);
+    } catch (_) { /* non-critical */ }
+}
+
+function heatmapColor(score) {
+    if (score === null || score === undefined) return 'rgba(255,255,255,0.03)';
+    const pct = Math.max(0, Math.min(10, score)) / 10;
+    if (pct >= 0.8) return `rgba(34, 197, 94, ${0.2 + pct * 0.5})`;
+    if (pct >= 0.6) return `rgba(59, 130, 246, ${0.2 + pct * 0.4})`;
+    if (pct >= 0.4) return `rgba(234, 179, 8, ${0.2 + pct * 0.3})`;
+    return `rgba(239, 68, 68, ${0.15 + pct * 0.3})`;
+}
+
+function renderHeatmap(data) {
+    const { models, categories, matrix } = data;
+    if (!models || models.length === 0) return;
+
+    const thead = document.getElementById('heatmapHead');
+    const tbody = document.getElementById('heatmapBody');
+    if (!thead || !tbody) return;
+
+    thead.innerHTML = `<tr>
+        <th style="min-width:160px;position:sticky;left:0;background:var(--bg-secondary);z-index:1">Model</th>
+        ${categories.map(c => `<th style="font-size:0.7rem;text-align:center;min-width:65px;writing-mode:vertical-rl;transform:rotate(180deg);padding:6px 2px">${formatCategory(c)}</th>`).join('')}
+    </tr>`;
+
+    tbody.innerHTML = models.map((m, mi) => {
+        const row = matrix[mi];
+        const modelName = escapeHtml(m.model);
+        const hostName = extractHostName(m.host);
+        return `<tr>
+            <td style="position:sticky;left:0;background:var(--bg-secondary);z-index:1;font-size:0.8rem">
+                ${modelName}${hostName ? ` <span style="opacity:0.4;font-size:0.7rem">${escapeHtml(hostName)}</span>` : ''}
+            </td>
+            ${row.map(score => {
+                const bg = heatmapColor(score);
+                const display = score !== null ? score.toFixed(1) : '';
+                return `<td style="text-align:center;font-size:0.75rem;background:${bg};color:#fff;padding:4px 2px">${display}</td>`;
+            }).join('')}
+        </tr>`;
+    }).join('');
 }

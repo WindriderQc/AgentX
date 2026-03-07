@@ -489,6 +489,28 @@
     color: var(--success);
 }
 
+.badge-ceiling {
+    margin-left: 4px;
+    vertical-align: middle;
+    background: linear-gradient(135deg, rgba(241, 196, 15, 0.3) 0%, rgba(243, 156, 18, 0.2) 100%);
+    border: 1.5px solid rgba(241, 196, 15, 0.6);
+    color: #f1c40f;
+    box-shadow: 0 2px 4px rgba(241, 196, 15, 0.2);
+}
+
+.elite-col {
+    text-align: center;
+    font-size: 0.85rem;
+    min-width: 60px;
+}
+
+.confidence-margin {
+    font-size: 0.65rem;
+    color: var(--text-muted, #64748b);
+    font-weight: 400;
+    margin-left: 2px;
+}
+
 /* ============================================================================
    Level Stars
    ============================================================================ */

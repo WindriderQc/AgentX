@@ -211,6 +211,10 @@ function applyJudgeConfigToForm(config) {
     if (judgeSameHost && typeof config.judge_same_host === 'boolean') {
         judgeSameHost.checked = config.judge_same_host;
     }
+    const judgeTierAutoUpgrade = document.getElementById('judgeTierAutoUpgrade');
+    if (judgeTierAutoUpgrade && typeof config.judge_tier_auto_upgrade === 'boolean') {
+        judgeTierAutoUpgrade.checked = config.judge_tier_auto_upgrade;
+    }
 }
 
 function getJudgeConfigOverridesFromForm() {
@@ -222,14 +226,17 @@ function getJudgeConfigOverridesFromForm() {
     const judgeMaxTokens = document.getElementById('judgeMaxTokens');
     const judgeConcurrency = document.getElementById('judgeConcurrency');
     const judgeSameHost = document.getElementById('judgeSameHost');
+    const judgeTierAutoUpgrade = document.getElementById('judgeTierAutoUpgrade');
 
-    if (judgeHostEl && judgeHostEl.value) overrides.host = judgeHostEl.value;
+    // Always set host — even null/empty — so switching back to "auto" clears any stale override
+    overrides.host = (judgeHostEl && judgeHostEl.value) ? judgeHostEl.value : null;
     if (judgeModel && judgeModel.value) overrides.model = judgeModel.value;
     if (judgeTemp && judgeTemp.value !== '') overrides.temperature = coerceNumber(judgeTemp.value, 0.1);
     if (judgeTimeout && judgeTimeout.value !== '') overrides.timeout = coerceNumber(judgeTimeout.value, 120000);
     if (judgeMaxTokens && judgeMaxTokens.value !== '') overrides.num_predict = coerceNumber(judgeMaxTokens.value, 200);
     if (judgeConcurrency && judgeConcurrency.value !== '') overrides.concurrency = coerceNumber(judgeConcurrency.value, 2);
     if (judgeSameHost) overrides.judge_same_host = !!judgeSameHost.checked;
+    if (judgeTierAutoUpgrade) overrides.judge_tier_auto_upgrade = !!judgeTierAutoUpgrade.checked;
 
     return overrides;
 }
@@ -237,8 +244,49 @@ function getJudgeConfigOverridesFromForm() {
 function updateJudgeConfigFromForm() {
     const overrides = getJudgeConfigOverridesFromForm();
     const next = { ...state.currentJudgeConfig, ...overrides };
+    // Remove host key when null/empty so backend uses auto-opposite logic
+    if (!next.host) delete next.host;
     state.setCurrentJudgeConfig(next);
     writeStoredJudgeConfig(next);
+    updateJudgeConfigPreview();
+}
+
+/**
+ * Update the always-visible judge config preview card in the main batch panel
+ */
+function updateJudgeConfigPreview() {
+    const el = document.getElementById('judgeConfigPreview');
+    if (!el) return;
+    const cfg = state.currentJudgeConfig || {};
+    const model = cfg.model || '(server default)';
+    const hostRaw = cfg.host || null;
+    const sameHost = !!cfg.judge_same_host;
+    const autoUpgrade = !!cfg.judge_tier_auto_upgrade;
+    const concurrency = cfg.concurrency || 2;
+    const timeout = cfg.timeout ? `${Math.round(cfg.timeout / 1000)}s` : '120s';
+
+    let hostLabel = '(auto — opposite of exec host)';
+    if (sameHost) {
+        hostLabel = '(same as exec host)';
+    } else if (hostRaw) {
+        const matched = (state.ollamaHosts || []).find(h => h.url === hostRaw);
+        hostLabel = matched ? `${matched.name} (${hostRaw})` : hostRaw;
+    }
+
+    const upgradeHtml = autoUpgrade
+        ? `<span class="badge" style="background:rgba(231,76,60,0.15);color:#e74c3c;border:1px solid rgba(231,76,60,0.35);font-size:0.75em;">⚡ Auto-upgrade ON</span>`
+        : `<span class="badge" style="background:rgba(39,174,96,0.12);color:#27ae60;border:1px solid rgba(39,174,96,0.3);font-size:0.75em;">✓ Fixed model</span>`;
+
+    el.innerHTML = `
+        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 12px;background:var(--panel-bg,#1a1a2e);border:1px solid var(--panel-border,#333);border-radius:8px;font-size:0.85em;">
+            <span style="color:var(--muted,#888);font-weight:600;margin-right:4px;"><i class="fas fa-gavel"></i> Judge:</span>
+            <span class="badge bg-primary" style="font-size:0.85em;">${escapeHtml(model)}</span>
+            <span style="color:var(--muted,#666);">on</span>
+            <span class="badge bg-light text-dark border" style="font-size:0.82em;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(hostLabel)}">${escapeHtml(hostLabel)}</span>
+            ${upgradeHtml}
+            <span class="badge bg-light text-dark border" style="font-size:0.78em;">×${concurrency} parallel</span>
+            <span class="badge bg-light text-dark border" style="font-size:0.78em;">${timeout} timeout</span>
+        </div>`;
 }
 
 function bindJudgeSettingsUI() {
@@ -366,8 +414,8 @@ async function loadJudgeConfig() {
         const storedJudgeConfig = readStoredJudgeConfig();
 
         // Server is authoritative for model.
-        // localStorage persists UI preferences (host, temperature, concurrency, timeout, num_predict).
-        const uiOnlyKeys = ['host', 'temperature', 'timeout', 'num_predict', 'concurrency', 'judge_same_host'];
+        // localStorage persists UI preferences (host, temperature, concurrency, timeout, num_predict, toggles).
+        const uiOnlyKeys = ['host', 'temperature', 'timeout', 'num_predict', 'concurrency', 'judge_same_host', 'judge_tier_auto_upgrade'];
         const storedUiPrefs = {};
         if (storedJudgeConfig) {
             for (const key of uiOnlyKeys) {
@@ -377,11 +425,14 @@ async function loadJudgeConfig() {
             }
         }
         const mergedJudgeConfig = { ...storedUiPrefs, ...judgeConfig };
+        // Strip stale empty host so backend uses auto-opposite logic on fresh load
+        if (!mergedJudgeConfig.host) delete mergedJudgeConfig.host;
 
         state.setCurrentJudgeConfig(mergedJudgeConfig);
         state.setCurrentExecutionConfig(executionConfig);
         populateJudgeModelSelect();
         applyJudgeConfigToForm(mergedJudgeConfig);
+        updateJudgeConfigPreview();
     } catch (err) {
         console.error('Failed to load judge config:', err);
     }

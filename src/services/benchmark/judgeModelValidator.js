@@ -30,7 +30,7 @@ async function validateJudgeModel(host, model, options = {}) {
         return { valid: false, error: 'host and model are required' };
     }
 
-    // Step 1: Check model exists in host's model list
+    // Step 1 (HARD): Check model exists in host's model list.
     let availableModels = [];
     try {
         const controller = new AbortController();
@@ -44,7 +44,7 @@ async function validateJudgeModel(host, model, options = {}) {
         if (!res.ok) {
             return {
                 valid: false,
-                error: `Failed to list models: HTTP ${res.status}`,
+                error: `Failed to list models on judge host: HTTP ${res.status}`,
                 latency_ms: Date.now() - start
             };
         }
@@ -57,7 +57,7 @@ async function validateJudgeModel(host, model, options = {}) {
         if (!found) {
             return {
                 valid: false,
-                error: `Judge model "${model}" not found on host`,
+                error: `Judge model "${model}" not found on judge host ${host}`,
                 available_models: availableModels,
                 latency_ms: Date.now() - start
             };
@@ -66,14 +66,15 @@ async function validateJudgeModel(host, model, options = {}) {
         const msg = err.name === 'AbortError' ? 'Host unreachable (timeout)' : err.message;
         return {
             valid: false,
-            error: `Cannot connect to judge host: ${msg}`,
+            error: `Cannot connect to judge host ${host}: ${msg}`,
             latency_ms: Date.now() - start
         };
     }
 
-    // Step 2: Verify model can produce structured JSON output (soft check)
-    // Timeout here is NOT a failure — cold-loading a model can take longer than
-    // the validation window. The benchmark warmup phase handles cold starts.
+    // Step 2 (SOFT): Verify model can produce a response. This is a connectivity
+    // smoke-test only — if the host is busy, VRAM-constrained, or the model is
+    // cold-loading, errors here should NOT block batch start. The benchmark warmup
+    // phase handles cold starts and actual capability verification.
     try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), VALIDATION_TIMEOUT_MS);
@@ -93,9 +94,14 @@ async function validateJudgeModel(host, model, options = {}) {
         clearTimeout(timeoutId);
 
         if (!res.ok) {
+            // HTTP error (e.g. 500 from VRAM pressure or model still loading) —
+            // model is registered on the host so treat as valid with a warning.
+            logger.warn('Judge model validation: generation returned HTTP error (host busy/VRAM), model is registered — treating as valid', {
+                host, model, status: res.status, latency_ms: Date.now() - start
+            });
             return {
-                valid: false,
-                error: `Judge model failed test generation: HTTP ${res.status}`,
+                valid: true,
+                warning: `Judge host returned HTTP ${res.status} during smoke-test (host may be busy). Warmup phase will verify capability.`,
                 available_models: availableModels,
                 latency_ms: Date.now() - start
             };
@@ -108,19 +114,32 @@ async function validateJudgeModel(host, model, options = {}) {
         const firstBrace = text.indexOf('{');
         const lastBrace = text.lastIndexOf('}');
         if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
-            logger.warn('Judge model validation: no JSON in output', { model, text: text.substring(0, 200) });
+            // Non-JSON response — model exists and responds, but didn't follow format.
+            // Treat as valid with warning; actual judging quality is assessed at warmup.
+            logger.warn('Judge model validation: response contains no JSON (model may need instruction tuning check)', {
+                model, host, text: text.substring(0, 200)
+            });
             return {
-                valid: false,
-                error: 'Judge model cannot produce structured JSON output',
+                valid: true,
+                warning: 'Judge model responded but output was not JSON. Warmup phase will verify scoring capability.',
                 available_models: availableModels,
                 latency_ms: Date.now() - start
             };
         }
 
-        const jsonStr = text.substring(firstBrace, lastBrace + 1);
-        JSON.parse(jsonStr); // throws if invalid
+        try {
+            const jsonStr = text.substring(firstBrace, lastBrace + 1);
+            JSON.parse(jsonStr); // throws if malformed
+        } catch (_parseErr) {
+            return {
+                valid: true,
+                warning: 'Judge model output contained malformed JSON. Warmup phase will verify scoring capability.',
+                available_models: availableModels,
+                latency_ms: Date.now() - start
+            };
+        }
 
-        logger.info('Judge model validated', { host, model, latency_ms: Date.now() - start });
+        logger.info('Judge model validated successfully', { host, model, latency_ms: Date.now() - start });
         return {
             valid: true,
             available_models: availableModels,
@@ -128,8 +147,8 @@ async function validateJudgeModel(host, model, options = {}) {
         };
     } catch (err) {
         if (err.name === 'AbortError') {
-            // Timeout = model is loading (cold start). Still valid — warmup handles this.
-            logger.info('Judge model validation: generation timed out (cold start), model exists — treating as valid', {
+            // Timeout = model is cold-loading. Still valid — warmup handles this.
+            logger.info('Judge model validation: generation timed out (cold start), model is registered — treating as valid', {
                 host, model, timeout_ms: VALIDATION_TIMEOUT_MS, latency_ms: Date.now() - start
             });
             return {
@@ -139,9 +158,13 @@ async function validateJudgeModel(host, model, options = {}) {
                 latency_ms: Date.now() - start
             };
         }
+        // Network or other error after step 1 passed — model is registered, treat as valid
+        logger.warn('Judge model validation: generation check failed (network/error), model is registered — treating as valid', {
+            host, model, error: err.message, latency_ms: Date.now() - start
+        });
         return {
-            valid: false,
-            error: `Judge output validation failed: ${err.message}`,
+            valid: true,
+            warning: `Judge smoke-test failed (${err.message}). Model is registered on host. Warmup phase will verify.`,
             available_models: availableModels,
             latency_ms: Date.now() - start
         };

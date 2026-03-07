@@ -11,6 +11,31 @@ let lastTimelineResultIds = new Set();
 let lastTimelineHash = null;
 
 /**
+ * Reset timeline to blank slate for a new batch.
+ * Called immediately when Start Batch is clicked so the old batch
+ * data doesn't linger until the server acknowledges the new batch.
+ */
+export function resetTimelineState() {
+    lastTimelineResultIds = new Set();
+    lastTimelineHash = null;
+
+    const timelineVisual = document.getElementById('timelineVisual');
+    const timelineEmptyState = document.getElementById('timelineEmptyState');
+    const timelineBatchInfo = document.getElementById('timelineBatchInfo');
+    const statsSummaryEl = document.getElementById('timelineStatsSummary');
+    const heatmapSectionEl = document.getElementById('performanceHeatmapSection');
+
+    if (timelineVisual) {
+        timelineVisual.innerHTML = '<div style="text-align:center; padding: 48px; color: var(--muted);"><i class="fas fa-spinner fa-spin" style="font-size:1.5em; margin-bottom:12px;"></i><p>Preparing batch…</p></div>';
+        timelineVisual.style.display = 'block';
+    }
+    if (timelineEmptyState) timelineEmptyState.style.display = 'none';
+    if (timelineBatchInfo) timelineBatchInfo.style.display = 'none';
+    if (statsSummaryEl) statsSummaryEl.style.display = 'none';
+    if (heatmapSectionEl) heatmapSectionEl.style.display = 'none';
+}
+
+/**
  * Get timeline mode from selector
  */
 export function getTimelineMode() {

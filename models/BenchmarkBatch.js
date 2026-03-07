@@ -182,7 +182,7 @@ const BenchmarkBatchSchema = new mongoose.Schema({
         prompt_id: { type: String, default: null },
         prompt_name: { type: String, default: null },
         prompt_level: { type: Number, default: null },
-        stage: { type: String, enum: ['executing', 'judging', 'idle'], default: 'idle' },
+        stage: { type: String, enum: ['executing', 'judging', 'idle', 'warmup'], default: 'idle' },
         started_at: { type: Date, default: null },
         test_number: { type: Number, default: null }  // Which test # out of total
     },

@@ -155,6 +155,13 @@ async function getBatch(batchId, {
         ? batch.judge_config.model
         : JUDGE_CONFIG.model;
 
+    // Count tier-upgraded results (only meaningful when auto-upgrade is enabled)
+    if (batch.judge_config && batch.judge_config.judge_tier_auto_upgrade) {
+        judgeStats.tier_upgrades = results.filter(r =>
+            r.judge_model && r.judge_model !== defaultJudgeModel
+        ).length;
+    }
+
     const judgeSameHost = !!(
         (batch && batch.judge_same_host) ||
         (batch && batch.judge_config && batch.judge_config.judge_same_host) ||
@@ -218,7 +225,8 @@ async function getBatch(batchId, {
         eta_worst_ms: etaWorstMs,
         concurrency: inferredConcurrency,
         warmup_fallback_count: warmupFallbackCount,
-        judge_same_host_fallback: judgeSameHostFallback
+        judge_same_host_fallback: judgeSameHostFallback,
+        tier_upgrades: 0  // populated below after defaultJudgeModel is resolved
     };
 
     const inferJudgeHost = (execHost) => {

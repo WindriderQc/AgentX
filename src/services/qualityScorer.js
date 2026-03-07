@@ -79,6 +79,8 @@ async function resolveJudgeConfigForPrompt(prompt, mergedJudgeConfig, rawJudgeCo
         || judgeTierResolver.getRequiredTier(promptLevel);
 
     const explicitModel = hasExplicitJudgeConfigValue(rawJudgeConfig, 'model');
+    // Auto-upgrade is opt-in (off by default) — respects explicit UI model selection
+    const autoUpgradeEnabled = rawJudgeConfig?.judge_tier_auto_upgrade === true;
 
     const defaultMeta = {
         tier: judgeTierResolver.inferJudgeTier(mergedJudgeConfig.model) || null,
@@ -86,7 +88,8 @@ async function resolveJudgeConfigForPrompt(prompt, mergedJudgeConfig, rawJudgeCo
         required_tier: requiredTier
     };
 
-    if (explicitModel) {
+    // Skip tier resolution when: explicit model is set OR auto-upgrade is disabled (default)
+    if (explicitModel || !autoUpgradeEnabled) {
         return { mergedJudgeConfig, judgeTierMeta: defaultMeta };
     }
 
@@ -652,5 +655,9 @@ module.exports = {
     decomposedJudge,
     referenceScorer,
     judgeConfidence,
-    judgeTierResolver
+    judgeTierResolver,
+    // Exported for testing
+    resolveJudgeConfigForPrompt,
+    hasExplicitJudgeConfigValue,
+    _clearJudgeCandidateCache: () => { judgeCandidateCache = { ts: 0, candidates: [] }; }
 };
