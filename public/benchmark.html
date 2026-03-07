@@ -152,18 +152,16 @@
                                 </div>
                             </div>
 
-                            <div
-                                style="margin-bottom: 24px; padding: 16px; background: rgba(46, 204, 113, 0.1); border: 1px solid rgba(46, 204, 113, 0.3); border-radius: 8px;">
-                                <div style="display: flex; justify-content: space-between; align-items: center;">
-                                    <span style="font-weight: 600;"><i class="fas fa-star" style="color: #2ecc71;"></i> Quality Scoring Enabled</span>
-                                    <button id="settingsBtn" class="btn-secondary btn-sm"><i class="fas fa-cog"></i> Configure
-                                        Judge</button>
-                                </div>
-                                <small style="color: #999; display: block; margin-top: 6px;">LLM-as-judge evaluates response quality on every batch</small>
-                            </div>
+                            <!-- Quality + Execution Mode / Prompt Hints — 2-card row -->
+                            <div style="display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-start; margin-bottom: 24px;">
 
-                            <!-- Execution Mode Selector -->
-                            <div style="margin-bottom: 24px; padding: 16px; background: rgba(52, 152, 219, 0.1); border: 1px solid rgba(52, 152, 219, 0.3); border-radius: 8px;">
+                              <!-- Quality Scoring + Execution Mode Card -->
+                              <div style="flex: 1; min-width: 260px; padding: 16px; background: rgba(52, 152, 219, 0.1); border: 1px solid rgba(52, 152, 219, 0.3); border-radius: 8px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; padding-bottom: 12px; border-bottom: 1px solid rgba(52, 152, 219, 0.2);">
+                                  <span style="font-weight: 600;"><i class="fas fa-star" style="color: #2ecc71;"></i> Quality Scoring Enabled</span>
+                                  <button id="settingsBtn" class="btn-secondary btn-sm"><i class="fas fa-cog"></i> Configure Judge</button>
+                                </div>
+                                <small style="color: #999; display: block; margin-bottom: 14px;">LLM-as-judge evaluates response quality on every batch</small>
                                 <div style="margin-bottom: 12px;">
                                     <label style="font-weight: 600; display: block; margin-bottom: 8px; color: var(--text);">
                                         <i class="fas fa-gauge-high" style="color: #3498db;"></i> Execution Mode
@@ -182,10 +180,10 @@
                                         <br><span style="color: #f39c12;">⚠️ Slower total execution time</span>
                                     </div>
                                 </div>
-                            </div>
+                              </div>
 
-                            <!-- Prompt Hints Section -->
-                            <div style="margin-top: 24px; padding: 16px; background: linear-gradient(135deg, rgba(155, 89, 182, 0.15) 0%, rgba(155, 89, 182, 0.05) 100%); border: 1px solid rgba(155, 89, 182, 0.3); border-radius: 8px;">
+                              <!-- Prompt Hints Card -->
+                              <div style="flex: 1.5; min-width: 280px; padding: 16px; background: linear-gradient(135deg, rgba(155, 89, 182, 0.15) 0%, rgba(155, 89, 182, 0.05) 100%); border: 1px solid rgba(155, 89, 182, 0.3); border-radius: 8px;">
                                 <h3 style="margin: 0 0 12px; display: flex; align-items: center; gap: 8px;">
                                     <i class="fas fa-magic" style="color: #9b59b6;"></i> Prompt Hints
                                 </h3>
@@ -222,7 +220,9 @@
                                         Free-form text appended to every prompt. Leave empty to disable.
                                     </small>
                                 </div>
-                            </div>
+                              </div>
+
+                            </div><!-- end cards row -->
 
                             <div style="margin-top: 24px;">
                                 <h3>Batch Metadata (Optional)</h3>
@@ -358,12 +358,17 @@
 
                             <!-- Batch History -->
                             <div class="batch-history-section" style="margin-top: 25px; border-top: 1px solid var(--panel-border); padding-top: 20px;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                                    <h3 style="margin: 0; font-size: 1.1em; color: var(--text);"><i class="fas fa-history text-muted me-2"></i> Recent Batches</h3>
-                                    <button id="refreshHistoryBtn" class="btn-icon" title="Refresh History"><i class="fas fa-sync-alt"></i></button>
+                                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 15px; flex-wrap: wrap;">
+                                    <div>
+                                        <h3 style="margin: 0; font-size: 1.1em; color: var(--text);"><i class="fas fa-history text-muted me-2"></i> Recent Batches</h3>
+                                        <div style="margin-top: 6px; color: var(--muted); font-size: 0.85em; line-height: 1.5;">This is a quick summary only. Review past runs and compare batch details from Compare Insights.</div>
+                                    </div>
+                                    <a href="/compare-insights.html" class="btn-secondary btn-sm" style="white-space: nowrap;">
+                                        <i class="fas fa-code-compare"></i> Open Compare Insights
+                                    </a>
                                 </div>
-                                <div id="batchHistoryList" style="max-height: 250px; overflow-y: auto; border: 1px solid var(--panel-border); border-radius: 6px; background: rgba(0,0,0,0.1);">
-                                    <div style="text-align: center; color: var(--muted); padding: 20px;">Loading history...</div>
+                                <div id="batchHistoryList" style="display: grid; gap: 10px;">
+                                    <div style="text-align: center; color: var(--muted); padding: 12px 0;">Loading recent batches...</div>
                                 </div>
                             </div>
 

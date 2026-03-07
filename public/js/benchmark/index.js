@@ -6,7 +6,7 @@ import { getWorkspaceHeaders, fetchBenchmarkConfig } from './api.js';
 import { initChartDefaults } from './charts.js';
 import { loadOllamaHosts, loadModelsForHost, loadBatchModels, filterModelList, selectAllVisibleModels, loadModelRegistry, renderCategoryTabs } from './models.js';
 import { updateBatchInfo, renderDepthMatrix, bindDepthMatrix, updateDepthSummary, setAllDepths, getDepthConfig, getSelectedLevels, setAdvancedMode, setHyperMode, hydrateThresholdInputs, bindThresholdInputs } from './batch-config.js';
-import { runBatch, stopBatch, pollBatchProgress, resetBatchUI, recoverBatch, loadBatchDetails, loadBatchHistory } from './batch-execution.js';
+import { runBatch, stopBatch, pollBatchProgress, resetBatchUI, recoverBatch, loadBatchHistory } from './batch-execution.js';
 import { showJudgeDetails, closeJudgeDetails } from './judge-details.js';
 import { pickRepresentativeResultId } from './results-analysis.js';
 import { loadRecentTestsTimeline, getTimelineMode, scheduleTimelineScrollSync, showTimelineTooltip } from './timeline.js';
@@ -706,10 +706,6 @@ async function initBenchmarkUI() {
 
     // Load history
     loadBatchHistory();
-    const refreshHistoryBtn = document.getElementById('refreshHistoryBtn');
-    if (refreshHistoryBtn) {
-        refreshHistoryBtn.addEventListener('click', loadBatchHistory);
-    }
 
     // Recent tests filters
     const recentTestsFailuresOnly = document.getElementById('recentTestsFailuresOnly');
@@ -886,7 +882,6 @@ window.switchCategoryTab = switchCategoryTab;
 window.showJudgeDetails = showJudgeDetails;
 window.closeJudgeDetails = closeJudgeDetails;
 window.recoverBatch = recoverBatch;
-window.loadBatchDetails = loadBatchDetails;
 window.showTimelineTooltip = showTimelineTooltip;
 
 // Initialize on DOM ready

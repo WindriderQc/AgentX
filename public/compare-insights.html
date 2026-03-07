@@ -149,9 +149,32 @@
                     <i class="fas fa-file-csv"></i> Export CSV
                 </button>
             </div>
+                        <div style="display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); gap: 16px; margin-top: 16px;">
+                <div class="chart-card" style="margin: 0; padding: 18px;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 12px; flex-wrap: wrap;">
+                        <div>
+                            <div style="font-weight: 700; color: var(--text);">Recent Batches</div>
+                            <div style="color: var(--muted); font-size: 0.9em; margin-top: 4px; line-height: 1.5;">Stage recent runs into Batch 1 or Batch 2, then review them here before comparing.</div>
+                        </div>
+                        <button id="refreshRecentBatchesBtn" class="btn-secondary btn-sm">
+                            <i class="fas fa-sync-alt"></i> Refresh
+                        </button>
+                    </div>
+                    <div id="compareRecentBatches" style="display: grid; gap: 10px;">
+                        <div class="chart-empty">Loading recent batches...</div>
+                    </div>
+                </div>
+                <div class="chart-card" style="margin: 0; padding: 18px;">
+                    <div style="font-weight: 700; color: var(--text); margin-bottom: 4px;">Batch Review</div>
+                    <div style="color: var(--muted); font-size: 0.9em; margin-bottom: 14px; line-height: 1.5;">Past batch review and run details live here now instead of the benchmark page.</div>
+                    <div id="compareBatchReviewEmpty" class="chart-empty">Select a recent batch or choose one from the selectors to inspect its details.</div>
+                    <div id="compareBatchReview" style="display: none;"></div>
+                </div>
+            </div>
             <div id="comparisonResults" style="display: none;">
                 <!-- Comparison results rendered here -->
             </div>
+
         </div>
     </div>
 
@@ -888,5 +911,315 @@
 	            document.getElementById('host')?.addEventListener('change', (e) => loadModels(e.target.value));
 	        });
 	    </script>
+<script>
+    // Compare Insights batch review transfer
+    (() => {
+        const BENCHMARK_API = '/api/benchmark';
+        let reviewedBatchId = '';
+
+        function getWorkspaceHeaders(extra = {}) {
+            const baseHeaders = { 'Content-Type': 'application/json', ...extra };
+            if (window.WorkspaceManager && typeof window.WorkspaceManager.addWorkspaceHeader === 'function') {
+                const withWorkspace = window.WorkspaceManager.addWorkspaceHeader({ headers: baseHeaders });
+                return withWorkspace.headers || baseHeaders;
+            }
+            return baseHeaders;
+        }
+
+        function escapeHtml(unsafe) {
+            if (unsafe === null || unsafe === undefined) return '';
+            return String(unsafe)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        function formatPercent(value) {
+            const n = parseFloat(value);
+            if (!Number.isFinite(n)) return 'N/A';
+            return `${n.toFixed(1)}%`;
+        }
+
+        function formatDateTime(value) {
+            if (!value) return 'N/A';
+            const date = new Date(value);
+            if (Number.isNaN(date.getTime())) return 'N/A';
+            return date.toLocaleString();
+        }
+
+        function formatDuration(ms) {
+            if (!ms) return 'N/A';
+            const seconds = Math.floor(ms / 1000);
+            const minutes = Math.floor(seconds / 60);
+            const hours = Math.floor(minutes / 60);
+            if (hours > 0) return `${hours}h ${minutes % 60}m`;
+            if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
+            return `${seconds}s`;
+        }
+
+        function getBatchStatusColor(status) {
+            if (status === 'completed') return '#00FF9F';
+            if (status === 'failed') return '#FF6B9D';
+            if (status === 'running' || status === 'judging') return '#7CF0FF';
+            return '#AAB3D1';
+        }
+
+        function populateBatchSelects(batches) {
+            ['compareBatch1', 'compareBatch2'].forEach((id) => {
+                const select = document.getElementById(id);
+                if (!select) return;
+                const currentValue = select.value;
+                select.innerHTML = '<option value="">Select batch...</option>' + batches.map((batch) => {
+                    const runName = batch.run_name || `Batch ${String(batch._id || '').slice(0, 8)}`;
+                    const started = batch.started_at ? ` (${new Date(batch.started_at).toLocaleString()})` : '';
+                    return `<option value="${escapeHtml(batch._id)}">${escapeHtml(runName)}${escapeHtml(started)}</option>`;
+                }).join('');
+                if (currentValue) {
+                    select.value = currentValue;
+                }
+            });
+        }
+
+        function pickBatch(selectId, batchId, review = true) {
+            const select = document.getElementById(selectId);
+            if (!select) return;
+            select.value = batchId;
+            if (review) {
+                reviewBatch(batchId);
+            }
+        }
+
+        function renderRecentBatchCards(batches) {
+            const container = document.getElementById('compareRecentBatches');
+            if (!container) return;
+
+            if (!Array.isArray(batches) || batches.length === 0) {
+                container.innerHTML = '<div class="chart-empty">No recent batches found.</div>';
+                return;
+            }
+
+            container.innerHTML = batches.slice(0, 8).map((batch) => {
+                const status = batch?.status || 'unknown';
+                const runName = batch?.run_name || `Batch ${String(batch?._id || '').slice(0, 8)}`;
+                const statusColor = getBatchStatusColor(status);
+                const modelCount = Array.isArray(batch?.models) ? batch.models.length : 0;
+                const testCount = Number(batch?.total_tests) || 0;
+                const successRate = batch?.success_rate !== undefined && batch?.success_rate !== null
+                    ? formatPercent(batch.success_rate)
+                    : 'N/A';
+
+                return `
+                    <div style="border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 12px; background: rgba(255,255,255,0.03);">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap;">
+                            <div>
+                                <div style="font-weight: 600; color: var(--text);">${escapeHtml(runName)}</div>
+                                <div style="margin-top: 4px; font-size: 0.85em; color: var(--muted);">${escapeHtml(formatDateTime(batch?.started_at || batch?.created_at))}</div>
+                            </div>
+                            <div style="font-size: 0.82em; color: ${statusColor}; text-transform: capitalize; white-space: nowrap;">${escapeHtml(status)}</div>
+                        </div>
+                        <div style="display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; color: var(--muted); font-size: 0.85em;">
+                            <span>${modelCount} models</span>
+                            <span>${testCount} tests</span>
+                            <span>Success ${escapeHtml(successRate)}</span>
+                        </div>
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px;">
+                            <button type="button" class="btn-secondary btn-sm" data-batch-action="review" data-batch-id="${escapeHtml(batch._id)}">Review</button>
+                            <button type="button" class="btn-secondary btn-sm" data-batch-action="select-1" data-batch-id="${escapeHtml(batch._id)}">Use as Batch 1</button>
+                            <button type="button" class="btn-secondary btn-sm" data-batch-action="select-2" data-batch-id="${escapeHtml(batch._id)}">Use as Batch 2</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function reviewBatch(batchId) {
+            if (!batchId) return;
+
+            const emptyState = document.getElementById('compareBatchReviewEmpty');
+            const panel = document.getElementById('compareBatchReview');
+            if (!emptyState || !panel) return;
+
+            reviewedBatchId = batchId;
+            emptyState.style.display = 'none';
+            panel.style.display = 'block';
+            panel.innerHTML = '<div class="chart-empty">Loading batch details...</div>';
+
+            try {
+                const response = await fetch(`${BENCHMARK_API}/batch/${encodeURIComponent(batchId)}?result_limit=8`, {
+                    headers: getWorkspaceHeaders()
+                });
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
+                const payload = await response.json();
+                const batch = payload?.data;
+                const status = batch?.status || 'unknown';
+                const statusColor = getBatchStatusColor(status);
+                const results = Array.isArray(batch?.results) ? batch.results : [];
+                const runName = batch?.run_name || `Batch ${String(batchId).slice(0, 8)}`;
+                const tags = Array.isArray(batch?.tags) && batch.tags.length > 0
+                    ? batch.tags.map((tag) => `<span style="padding: 4px 8px; border-radius: 999px; background: rgba(124,240,255,0.12); color: #7CF0FF; font-size: 0.8em;">${escapeHtml(tag)}</span>`).join('')
+                    : '<span style="color: var(--muted); font-size: 0.85em;">No tags</span>';
+                const resultTable = results.length > 0
+                    ? `
+                        <div style="margin-top: 16px; border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; overflow: hidden;">
+                            <table class="comparison-table" style="margin: 0;">
+                                <thead>
+                                    <tr>
+                                        <th>Model</th>
+                                        <th>Prompt</th>
+                                        <th>Status</th>
+                                        <th>Quality</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${results.map((result) => {
+                                        const promptLabel = result?.prompt_name || result?.prompt_category || result?.prompt_level || 'Prompt';
+                                        const quality = result?.quality_score !== null && result?.quality_score !== undefined
+                                            ? escapeHtml(Number(result.quality_score).toFixed(1))
+                                            : 'N/A';
+                                        const resultStatus = result?.success === false ? 'Failed' : 'Passed';
+                                        const resultColor = result?.success === false ? '#FF6B9D' : '#00FF9F';
+                                        return `
+                                            <tr>
+                                                <td>${escapeHtml(result?.model || 'Unknown')}</td>
+                                                <td>${escapeHtml(promptLabel)}</td>
+                                                <td style="color: ${resultColor};">${resultStatus}</td>
+                                                <td>${quality}</td>
+                                            </tr>
+                                        `;
+                                    }).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    `
+                    : '<div class="chart-empty" style="margin-top: 16px;">No batch results available for this run yet.</div>';
+                const truncatedNote = batch?.results_meta?.truncated
+                    ? `<div style="margin-top: 14px; color: var(--muted); font-size: 0.82em;">Showing ${escapeHtml(batch.results_meta.returned || results.length)} of ${escapeHtml(batch.results_meta.total || results.length)} results.</div>`
+                    : '';
+
+                panel.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap;">
+                        <div>
+                            <div style="font-size: 1.05em; font-weight: 700; color: var(--text);">${escapeHtml(runName)}</div>
+                            <div style="margin-top: 4px; color: var(--muted); font-size: 0.85em;">Started ${escapeHtml(formatDateTime(batch?.started_at || batch?.created_at))}</div>
+                        </div>
+                        <div style="font-size: 0.85em; color: ${statusColor}; text-transform: capitalize;">${escapeHtml(status)}</div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 14px;">
+                        <div style="padding: 10px; border-radius: 10px; background: rgba(255,255,255,0.03);">
+                            <div style="color: var(--muted); font-size: 0.8em;">Tests</div>
+                            <div style="margin-top: 4px; font-size: 1.05em; color: var(--text); font-weight: 600;">${escapeHtml(batch?.completed ?? 0)} / ${escapeHtml(batch?.total_tests ?? 0)}</div>
+                        </div>
+                        <div style="padding: 10px; border-radius: 10px; background: rgba(255,255,255,0.03);">
+                            <div style="color: var(--muted); font-size: 0.8em;">Success Rate</div>
+                            <div style="margin-top: 4px; font-size: 1.05em; color: var(--text); font-weight: 600;">${escapeHtml(formatPercent(batch?.success_rate))}</div>
+                        </div>
+                        <div style="padding: 10px; border-radius: 10px; background: rgba(255,255,255,0.03);">
+                            <div style="color: var(--muted); font-size: 0.8em;">Duration</div>
+                            <div style="margin-top: 4px; font-size: 1.05em; color: var(--text); font-weight: 600;">${escapeHtml(batch?.execution_metrics?.total_duration_ms ? formatDuration(batch.execution_metrics.total_duration_ms) : 'N/A')}</div>
+                        </div>
+                        <div style="padding: 10px; border-radius: 10px; background: rgba(255,255,255,0.03);">
+                            <div style="color: var(--muted); font-size: 0.8em;">Judge Progress</div>
+                            <div style="margin-top: 4px; font-size: 1.05em; color: var(--text); font-weight: 600;">${escapeHtml(batch?.judge_stats?.total ? `${batch.judge_stats.completed || 0}/${batch.judge_stats.total}` : 'N/A')}</div>
+                        </div>
+                    </div>
+                    <div style="margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap;">
+                        <button type="button" class="btn-secondary btn-sm" data-batch-action="select-1" data-batch-id="${escapeHtml(batchId)}">Use as Batch 1</button>
+                        <button type="button" class="btn-secondary btn-sm" data-batch-action="select-2" data-batch-id="${escapeHtml(batchId)}">Use as Batch 2</button>
+                    </div>
+                    <div style="margin-top: 14px;">
+                        <div style="color: var(--muted); font-size: 0.8em; margin-bottom: 8px;">Tags</div>
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">${tags}</div>
+                    </div>
+                    ${truncatedNote}
+                    ${resultTable}
+                `;
+            } catch (error) {
+                console.error('Failed to review batch:', error);
+                panel.innerHTML = '<div style="color: #FF6B9D;">Failed to load batch review.</div>';
+            }
+        }
+
+        async function loadBatchReviewHistory() {
+            const list = document.getElementById('compareRecentBatches');
+            if (!list) return;
+
+            try {
+                const response = await fetch(`${BENCHMARK_API}/batches?limit=50`, {
+                    headers: getWorkspaceHeaders()
+                });
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
+                const payload = await response.json();
+                const batches = Array.isArray(payload?.data?.batches) ? payload.data.batches : [];
+                populateBatchSelects(batches);
+                renderRecentBatchCards(batches);
+
+                if (reviewedBatchId && batches.some((batch) => batch?._id === reviewedBatchId)) {
+                    reviewBatch(reviewedBatchId);
+                } else if (batches[0]?._id) {
+                    reviewBatch(batches[0]._id);
+                }
+            } catch (error) {
+                console.error('Failed to load batch review history:', error);
+                list.innerHTML = '<div class="chart-empty">Failed to load recent batches.</div>';
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            const refreshBtn = document.getElementById('refreshRecentBatchesBtn');
+            const batch1 = document.getElementById('compareBatch1');
+            const batch2 = document.getElementById('compareBatch2');
+            const recentList = document.getElementById('compareRecentBatches');
+            const reviewPanel = document.getElementById('compareBatchReview');
+            if (!refreshBtn || !batch1 || !batch2 || !recentList || !reviewPanel) return;
+
+            refreshBtn.addEventListener('click', loadBatchReviewHistory);
+            batch1.addEventListener('change', (event) => reviewBatch(event.target.value));
+            batch2.addEventListener('change', (event) => reviewBatch(event.target.value));
+            recentList.addEventListener('click', (event) => {
+                const button = event.target.closest('[data-batch-action]');
+                if (!button) return;
+
+                const batchId = button.getAttribute('data-batch-id');
+                const action = button.getAttribute('data-batch-action');
+                if (!batchId || !action) return;
+
+                if (action === 'review') {
+                    reviewBatch(batchId);
+                    return;
+                }
+                if (action === 'select-1') {
+                    pickBatch('compareBatch1', batchId);
+                    return;
+                }
+                if (action === 'select-2') {
+                    pickBatch('compareBatch2', batchId);
+                }
+            });
+            reviewPanel.addEventListener('click', (event) => {
+                const button = event.target.closest('[data-batch-action]');
+                if (!button) return;
+
+                const batchId = button.getAttribute('data-batch-id');
+                const action = button.getAttribute('data-batch-action');
+                if (!batchId || !action) return;
+
+                if (action === 'select-1') {
+                    pickBatch('compareBatch1', batchId, false);
+                    return;
+                }
+                if (action === 'select-2') {
+                    pickBatch('compareBatch2', batchId, false);
+                }
+            });
+
+            loadBatchReviewHistory();
+        });
+    })();
+</script>
+
 </body>
 </html>
