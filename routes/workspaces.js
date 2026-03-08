@@ -18,9 +18,7 @@ const logger = require('../config/logger');
 const { requireAuth } = require('../src/middleware/auth');
 const {
   attachWorkspace,
-  requireWorkspaceAccess,
-  requireAdmin,
-  requireOwner
+  requireAdmin
 } = require('../src/middleware/workspace');
 
 // ============================================
@@ -914,8 +912,6 @@ router.get('/:slug/stats', requireAuth, async (req, res) => {
     const Conversation = require('../models/Conversation');
     const APIKey = require('../models/APIKey');
     const CustomModel = require('../models/CustomModel');
-    const Alert = require('../models/Alert');
-
     const [
       memberCount,
       conversationCount,

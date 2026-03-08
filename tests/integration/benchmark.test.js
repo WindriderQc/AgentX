@@ -59,6 +59,19 @@ jest.mock('../../src/services/benchmark/executionHostValidator', () => ({
     validateExecutionHost: jest.fn(async () => ({ valid: true, available_models: [] }))
 }));
 
+jest.mock('../../src/services/benchmark/preflight', () => ({
+    runPreflight: jest.fn(async () => ({
+        ready: true,
+        issues: [],
+        checks: {
+            hosts: [],
+            judge: { ok: true, warnings: [], blockers: [] },
+            prompts: { ok: true, warnings: [], blockers: [], totalPrompts: 2, categories: {} },
+            batches: { ok: true, activeBatches: 0, orphanedBatches: [] }
+        }
+    }))
+}));
+
 const { app } = require('../../src/app');
 
 const BenchmarkPrompt = require('../../models/BenchmarkPrompt');

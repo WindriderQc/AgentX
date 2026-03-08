@@ -13,11 +13,11 @@ const { stopJudging } = require('../../src/services/benchmark/judging');
 const BenchmarkBatch = require('../../models/BenchmarkBatch');
 const ModelRegistry = require('../../models/ModelRegistry');
 const { validateJudgeModel } = require('../../src/services/benchmark/judgeModelValidator');
-const { HOSTS } = require('../../src/services/modelRouter');
 const { callJudge } = require('../../src/services/scoring/judgeCall');
 const judgeTierResolver = require('../../src/services/scoring/judgeTierResolver');
 const { validateExecutionHost } = require('../../src/services/benchmark/executionHostValidator');
 const { runPreflight } = require('../../src/services/benchmark/preflight');
+const { resolveJudgeHost } = require('../../src/services/benchmark/judgeHostResolution');
 
 function isDuplicateKeyError(err) {
     return !!(err && (err.code === 11000 || String(err.message || '').includes('E11000')));
@@ -156,19 +156,8 @@ router.post('/batch', optionalWorkspaceContext, async (req, res) => {
         }
 
         // Validate judge model on the actual judge host (mirrors execution.js host resolution)
-        const judgeSameHost = !!(judge_config && judge_config.judge_same_host);
         const judgeModel = (judge_config && judge_config.model) || JUDGE_CONFIG.model;
-        let actualJudgeHost;
-        if (judge_config && judge_config.host) {
-            // Explicit judge host override from UI
-            actualJudgeHost = judge_config.host;
-        } else if (judgeSameHost) {
-            actualJudgeHost = host;
-        } else {
-            actualJudgeHost = HOSTS.primary;
-            if (host === HOSTS.primary) actualJudgeHost = HOSTS.secondary;
-            else if (host === HOSTS.secondary) actualJudgeHost = HOSTS.primary;
-        }
+        const { judgeHost: actualJudgeHost } = resolveJudgeHost(host, judge_config || {});
         if (actualJudgeHost && judgeModel) {
             const validation = await validateJudgeModel(actualJudgeHost, judgeModel);
             if (!validation.valid) {
@@ -179,6 +168,25 @@ router.post('/batch', optionalWorkspaceContext, async (req, res) => {
                     latency_ms: validation.latency_ms
                 });
             }
+        }
+
+        const preflight = await runPreflight({
+            targets: models.map((modelName) => ({ host, model: modelName })),
+            judgeConfig: {
+                ...judge_config,
+                host: actualJudgeHost,
+                model: judgeModel
+            },
+            levels
+        });
+
+        if (!preflight.ready) {
+            return res.status(422).json({
+                status: 'error',
+                error: 'Benchmark preflight failed',
+                issues: preflight.issues,
+                preflight
+            });
         }
 
         const data = await benchmarkService.startBatch({
@@ -199,6 +207,7 @@ router.post('/batch', optionalWorkspaceContext, async (req, res) => {
             status: 'success',
             data: {
                 ...data,
+                preflight,
                 message: 'Batch test started with quality scoring'
             }
         });

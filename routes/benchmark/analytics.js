@@ -7,13 +7,13 @@ const express = require('express');
 const router = express.Router();
 const logger = require('../../config/logger');
 const benchmarkService = require('../../src/services/benchmark');
-const { JUDGE_CONFIG, ENHANCED_SCORING_CONFIGS } = require('../../src/services/qualityScorer');
 const { getConfiguredHosts } = require('../../src/helpers/ollamaHostConfig');
 const { getCategoryHeatmap, getDimensionBreakdown, calculateEliteScores, detectCeilingModels, CEILING_THRESHOLD } = require('../../src/services/benchmark/ceilingDetection');
 const { calculateAllGeneralistScores, getActiveCategoryWeights } = require('../../src/services/benchmark/generalistScore');
 const { compareBatchRegression, detectLatestRegression, generateChangelog } = require('../../src/services/benchmark/regressionDetector');
 const { archiveOldResults, pruneExcessBatches, purgeDeadModels, getRetentionStats } = require('../../src/services/benchmark/dataRetention');
 const { validateObjectId } = require('../../src/helpers/objectIdValidator');
+const BenchmarkResult = require('../../models/BenchmarkResult');
 
 /**
  * GET /api/benchmark/summary
@@ -332,7 +332,6 @@ router.get('/presets', (req, res) => {
  */
 router.get('/judge-calibration', async (req, res) => {
     try {
-        const BenchmarkResult = require('../../models/BenchmarkResult');
 
         // Find all results that have both judge and human scores
         const reviewed = await BenchmarkResult.find({

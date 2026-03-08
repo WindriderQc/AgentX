@@ -71,13 +71,18 @@ async function archiveOldResults(retentionDays = DEFAULT_RETENTION_DAYS, dryRun 
     // Compact timelines on archived batches (keep only summary)
     await BenchmarkBatch.updateMany(
         { _id: { $in: staleBatches.map(b => b._id) } },
-        {
-            $set: {
-                timeline: [],
-                results: [],
-                description: (staleBatches[0]?.description || '') + ' [archived]'
+        [
+            {
+                $set: {
+                    timeline: [],
+                    results: [],
+                    // Append [archived] to each batch's own description (pipeline update)
+                    description: {
+                        $concat: [{ $ifNull: ['$description', ''] }, ' [archived]']
+                    }
+                }
             }
-        }
+        ]
     );
 
     logger.info('Archived old batch results', {

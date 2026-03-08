@@ -8,6 +8,7 @@
  */
 
 const logger = require('../../config/logger');
+const { jsonDeepEqual, tryParseJson } = require('./scoring/jsonUtils');
 
 /**
  * Normalize a string for comparison
@@ -167,72 +168,6 @@ function numericEval(response, expected, options = {}) {
             ? `Numeric match: ${respNum} = ${expNum} (within tolerance ${tolerance})`
             : `Numeric mismatch: expected ${expNum}, got ${respNum} (diff: ${diff.toFixed(6)})`
     };
-}
-
-/**
- * Compare two JSON values for equality
- * Arrays are compared with order sensitivity
- * Objects are compared with key-order insensitivity
- * @param {any} a - First value
- * @param {any} b - Second value
- * @returns {boolean} True if equal
- */
-function jsonDeepEqual(a, b) {
-    if (a === b) return true;
-    if (typeof a !== typeof b) return false;
-    if (a === null || b === null) return a === b;
-
-    if (Array.isArray(a) && Array.isArray(b)) {
-        if (a.length !== b.length) return false;
-        return a.every((val, idx) => jsonDeepEqual(val, b[idx]));
-    }
-
-    if (typeof a === 'object' && typeof b === 'object') {
-        const keysA = Object.keys(a).sort();
-        const keysB = Object.keys(b).sort();
-        if (keysA.length !== keysB.length) return false;
-        if (!keysA.every((k, i) => k === keysB[i])) return false;
-        return keysA.every(k => jsonDeepEqual(a[k], b[k]));
-    }
-
-    return false;
-}
-
-/**
- * Try to parse JSON from a response string
- * Handles various formats: raw JSON, markdown code blocks, etc.
- * @param {string} text - Response text
- * @returns {Object} { success: boolean, value: any, error: string|null }
- */
-function tryParseJson(text) {
-    if (!text || typeof text !== 'string') {
-        return { success: false, value: null, error: 'Empty or non-string input' };
-    }
-
-    // Strip markdown code fences
-    let cleaned = text.trim();
-    const codeBlockRegex = /^```(?:\w+)?\s*\n?([\s\S]*?)\n?```$/;
-    const match = cleaned.match(codeBlockRegex);
-    if (match) {
-        cleaned = match[1].trim();
-    }
-
-    try {
-        const value = JSON.parse(cleaned);
-        return { success: true, value, error: null };
-    } catch (e) {
-        // Try to extract JSON from surrounding text
-        const jsonMatch = cleaned.match(/(\[[\s\S]*\]|\{[\s\S]*\})/);
-        if (jsonMatch) {
-            try {
-                const value = JSON.parse(jsonMatch[1]);
-                return { success: true, value, error: null };
-            } catch (e2) {
-                return { success: false, value: null, error: e2.message };
-            }
-        }
-        return { success: false, value: null, error: e.message };
-    }
 }
 
 /**

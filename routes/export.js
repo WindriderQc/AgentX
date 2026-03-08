@@ -2,10 +2,12 @@ const express = require('express');
 const router = express.Router();
 const path = require('path');
 const fs = require('fs').promises;
-const { execFile, execFileSync } = require('child_process');
+const { execFile } = require('child_process');
 const util = require('util');
 const execFileAsync = util.promisify(execFile);
 const logger = require('../config/logger');
+const { getConfiguredRagDir } = require('../src/helpers/ragPaths');
+const { extractZipArchive } = require('../src/helpers/zip');
 
 // Import RAG routes to access watcher instance
 const ragRoutes = require('./rag');
@@ -34,7 +36,8 @@ router.post('/md-docs', async (req, res) => {
 
     logger.info('Starting MD docs export', { scope, sourceDir, zipPath });
 
-    const { stdout, stderr } = await execFileAsync('python3', [scriptPath, sourceDir, zipPath], { timeout: 30000 }); // 30 second timeout
+    const pythonCmd = process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
+    const { stdout, stderr } = await execFileAsync(pythonCmd, [scriptPath, sourceDir, zipPath], { timeout: 30000 }); // 30 second timeout
 
     if (stderr) {
       logger.warn('MD docs export warnings', { stderr });
@@ -58,7 +61,8 @@ router.post('/md-docs', async (req, res) => {
     logger.info('MD docs export completed', {
       zipPath,
       fileSize: stats.size,
-      fileSizeMB
+      fileSizeMB,
+      stdout: stdout ? stdout.slice(0, 200) : ''
     });
 
     res.json({
@@ -142,7 +146,7 @@ router.post('/copy-to-rag', async (req, res) => {
     console.log('COPY-TO-RAG: Route called');
 
     const exportsDir = path.join(__dirname, '..', 'exports');
-    const ragDir = '/mnt/datalake/RAG';
+    const ragDir = getConfiguredRagDir();
 
     console.log('COPY-TO-RAG: Checking exports dir:', exportsDir);
 
@@ -168,32 +172,24 @@ router.post('/copy-to-rag', async (req, res) => {
     await fs.mkdir(ragDir, { recursive: true });
 
     // Extract ZIP to RAG directory
-    // Using execFileSync with array args to prevent command injection
     console.log('COPY-TO-RAG: Extracting ZIP:', latestZip, 'to:', ragDir);
 
     let execResult = '';
-    let execError = null;
     try {
-      execResult = execFileSync('/usr/bin/unzip', ['-o', latestZip, '-d', ragDir], { timeout: 60000, encoding: 'utf8' });
+      const { stdout, stderr } = await extractZipArchive(latestZip, ragDir, { timeoutMs: 60000 });
+      execResult = [stdout, stderr].filter(Boolean).join('\n');
       console.log('COPY-TO-RAG: Sync exec result:', execResult.substring(0, 200));
     } catch (syncError) {
       console.error('COPY-TO-RAG: Sync exec failed:', syncError.message);
-      console.error('COPY-TO-RAG: Sync exec stderr:', syncError.stderr);
-      console.error('COPY-TO-RAG: Sync exec status:', syncError.status);
-      execError = syncError;
-    }
-
-    console.log('COPY-TO-RAG: Command execution completed');
-
-    // If exec failed, return error
-    if (execError) {
       return res.status(500).json({
         success: false,
         message: 'Failed to extract ZIP file',
-        error: execError.message,
-        stderr: execError.stderr
+        error: syncError.message,
+        stderr: syncError.stderr
       });
     }
+
+    console.log('COPY-TO-RAG: Command execution completed');
 
     // Check if files were actually extracted
     const extractedFiles = await fs.readdir(ragDir);

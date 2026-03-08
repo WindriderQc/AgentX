@@ -22,7 +22,7 @@ class EmbeddingsService {
     if (!this.ollamaHost) {
         throw new Error('OLLAMA_HOST environment variable is required for EmbeddingsService');
     }
-    this.model = config.embeddingModel || process.env.EMBEDDING_MODEL || 'nomic-embed-text';
+    this.model = config.embeddingModel || process.env.EMBEDDING_MODEL || 'nomic-embed-text:v1.5';
     this.dimension = 768; // nomic-embed-text default dimension
     this.batchSize = 10; // Process in batches to avoid memory issues
     this.cache = getCache({

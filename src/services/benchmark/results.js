@@ -8,6 +8,7 @@ const BenchmarkResult = require('../../../models/BenchmarkResult');
 const BenchmarkBatch = require('../../../models/BenchmarkBatch');
 const { calculateCompositeScore } = require('../qualityScorer');
 const { calculateAllGeneralistScores } = require('./generalistScore');
+const { INFRA_ERROR_REGEX } = require('./errorClassifier');
 
 /**
  * Get paginated test results
@@ -153,12 +154,7 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
                     avg_quality: {
                         $avg: {
                             $cond: [
-                                {
-                                    $and: [
-                                        { $ne: ['$quality_score', null] },
-                                        { $ne: [{ $type: '$quality_score' }, 'missing'] }
-                                    ]
-                                },
+                                { $ne: ['$quality_score', null] },
                                 '$quality_score',
                                 null
                             ]
@@ -167,12 +163,7 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
                     avg_composite: {
                         $avg: {
                             $cond: [
-                                {
-                                    $and: [
-                                        { $ne: ['$composite_score', null] },
-                                        { $ne: [{ $type: '$composite_score' }, 'missing'] }
-                                    ]
-                                },
+                                { $ne: ['$composite_score', null] },
                                 '$composite_score',
                                 null
                             ]
@@ -181,12 +172,7 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
                     quality_tests: {
                         $sum: {
                             $cond: [
-                                {
-                                    $and: [
-                                        { $ne: ['$quality_score', null] },
-                                        { $ne: [{ $type: '$quality_score' }, 'missing'] }
-                                    ]
-                                },
+                                { $ne: ['$quality_score', null] },
                                 1,
                                 0
                             ]
@@ -221,7 +207,7 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
                             {
                                 $regexMatch: {
                                     input: { $ifNull: ['$error', ''] },
-                                    regex: /(ECONNREFUSED|ECONNRESET|EPIPE|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|ESOCKETTIMEDOUT|socket hang up|fetch failed|timed\s*out|timeout|aborted|HTTP\s+(5\d\d|429|408)\s*:)/i
+                                    regex: INFRA_ERROR_REGEX
                                 }
                             }
                         ]

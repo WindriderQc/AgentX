@@ -24,7 +24,7 @@ class VectorStoreAdapter {
    * @param {Array<Object>} chunks - Array of {text, embedding, chunkIndex}
    * @returns {Promise<{documentId: string, chunkCount: number, status: string}>}
    */
-  async upsertDocument(documentId, metadata, chunks) {
+  async upsertDocument(_documentId, _metadata, _chunks) {
     throw new Error('upsertDocument() must be implemented by subclass');
   }
 
@@ -34,7 +34,7 @@ class VectorStoreAdapter {
    * @param {Object} options - {topK, minScore, filters: {source, tags}}
    * @returns {Promise<Array<{text: string, score: number, metadata: Object}>>}
    */
-  async searchSimilar(queryEmbedding, options = {}) {
+  async searchSimilar(_queryEmbedding, _options = {}) {
     throw new Error('searchSimilar() must be implemented by subclass');
   }
 
@@ -43,7 +43,7 @@ class VectorStoreAdapter {
    * @param {string} documentId - Document ID
    * @returns {Promise<Object|null>}
    */
-  async getDocument(documentId) {
+  async getDocument(_documentId) {
     throw new Error('getDocument() must be implemented by subclass');
   }
 
@@ -52,7 +52,7 @@ class VectorStoreAdapter {
    * @param {Object} filters - Optional filters {source, tags}
    * @returns {Promise<Array<Object>>}
    */
-  async listDocuments(filters = {}) {
+  async listDocuments(_filters = {}) {
     throw new Error('listDocuments() must be implemented by subclass');
   }
 
@@ -61,7 +61,7 @@ class VectorStoreAdapter {
    * @param {string} documentId - Document ID
    * @returns {Promise<Array<{text: string, chunkIndex: number}>>}
    */
-  async getDocumentChunks(documentId) {
+  async getDocumentChunks(_documentId) {
     throw new Error('getDocumentChunks() must be implemented by subclass');
   }
 
@@ -70,7 +70,7 @@ class VectorStoreAdapter {
    * @param {string} documentId - Document ID
    * @returns {Promise<boolean>} True if deleted
    */
-  async deleteDocument(documentId) {
+  async deleteDocument(_documentId) {
     throw new Error('deleteDocument() must be implemented by subclass');
   }
 

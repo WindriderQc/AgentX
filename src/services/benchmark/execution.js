@@ -3,14 +3,12 @@
  * Core batch management, orchestration, and progress tracking
  */
 
-const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
 const logger = require('../../../config/logger');
 const { getFetchOptions } = require('../../helpers/httpAgent');
 const BenchmarkPrompt = require('../../../models/BenchmarkPrompt');
 const BenchmarkResult = require('../../../models/BenchmarkResult');
 const BenchmarkBatch = require('../../../models/BenchmarkBatch');
 const { JUDGE_CONFIG } = require('../qualityScorer');
-const { HOSTS } = require('../modelRouter');
 const hardwareProfileService = require('../hardwareProfileService');
 const ConcurrencyQueue = require('./ConcurrencyQueue');
 const { normalizeExecutionConfig, applyLengthHint } = require('./config');
@@ -24,7 +22,9 @@ const { samplePromptsByDepth } = require('./promptSampling');
 const { runTest } = require('./testExecution');
 const { warmupModel } = require('./modelWarmup');
 const { buildExecutionPlan } = require('./batchPlanner');
-const ModelRegistry = require('../../../models/ModelRegistry');
+const { judgeResult } = require('./judging');
+const { benchmarkFetch: fetch } = require('./http');
+const { resolveJudgeHost } = require('./judgeHostResolution');
 
 // Track active batch for graceful shutdown
 let activeBatchId = null;
@@ -167,6 +167,7 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
 
     const executionConfig = normalizeExecutionConfig(options.execution_config || batch.execution_config || {});
     activeBatchId = batchId;
+    let heartbeatInterval = null;
 
     const recordBatchTimelineEvent = async (event, data = {}) => {
         try {
@@ -187,46 +188,47 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
         }
     };
 
-    await recordBatchTimelineEvent('prep_start', {
-        model: judgeConfig.model || JUDGE_CONFIG.model,
-        success: true
-    });
+    try {
+        await recordBatchTimelineEvent('prep_start', {
+            model: judgeConfig.model || JUDGE_CONFIG.model,
+            success: true
+        });
 
-    // Per-batch judge queue
-    const judgeConcurrency = executionMode === 'latency' ? 1 : (judgeConfig.concurrency || 2);
-    const judgeQueue = new ConcurrencyQueue(judgeConcurrency);
+        // Per-batch judge queue
+        const judgeConcurrency = executionMode === 'latency' ? 1 : (judgeConfig.concurrency || 2);
+        const judgeQueue = new ConcurrencyQueue(judgeConcurrency);
 
-    // Periodic heartbeat
-    const heartbeatInterval = setInterval(async () => {
-        try {
-            const heartbeatUpdate = await BenchmarkBatch.updateOne(
-                { _id: batchId, status: { $in: ['running', 'judging', 'completed'] } },
-                { $set: { last_activity_at: new Date() } }
-            );
-            if ((heartbeatUpdate && heartbeatUpdate.matchedCount) === 0) {
-                clearInterval(heartbeatInterval);
-                activeHeartbeatInterval = null;
+        // Periodic heartbeat
+        heartbeatInterval = setInterval(async () => {
+            try {
+                const heartbeatUpdate = await BenchmarkBatch.updateOne(
+                    { _id: batchId, status: { $in: ['running', 'judging', 'completed'] } },
+                    { $set: { last_activity_at: new Date() } }
+                );
+                if ((heartbeatUpdate && heartbeatUpdate.matchedCount) === 0) {
+                    clearInterval(heartbeatInterval);
+                    activeHeartbeatInterval = null;
+                }
+            } catch (err) {
+                logger.warn('Heartbeat failed', { batchId, error: err.message });
             }
-        } catch (err) {
-            logger.warn('Heartbeat failed', { batchId, error: err.message });
+        }, 10000);
+        activeHeartbeatInterval = heartbeatInterval;
+
+        // Sync total_tests to actual plan
+        const plannedTotalTests = models.length * prompts.length;
+        if (plannedTotalTests > 0) {
+            batch.total_tests = plannedTotalTests;
+            await batch.save();
         }
-    }, 10000);
-    activeHeartbeatInterval = heartbeatInterval;
 
-    // Sync total_tests to actual plan
-    const plannedTotalTests = models.length * prompts.length;
-    if (plannedTotalTests > 0) {
-        batch.total_tests = plannedTotalTests;
-        await batch.save();
-    }
-
-    // Group models by host
-    const modelsByHost = {};
-    for (const model of models) {
-        const targetHost = defaultHost;
-        if (!modelsByHost[targetHost]) modelsByHost[targetHost] = [];
-        modelsByHost[targetHost].push(model);
-    }
+        // Group models by host
+        const modelsByHost = {};
+        for (const model of models) {
+            const targetHost = defaultHost;
+            if (!modelsByHost[targetHost]) modelsByHost[targetHost] = [];
+            modelsByHost[targetHost].push(model);
+        }
 
     // Create execution task functions (thunks) for each host
     let testsStarted = false;
@@ -237,25 +239,16 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
     const hostTasks = Object.entries(modelsByHost).map(([hostUrl, hostModels]) => async () => {
         try {
             // Determine judge host — prefer explicit override, then cross-host pipelining, fall back to same-host
-            let judgeHostUrl = hostUrl;
-            let effectiveJudgeSameHost = judgeSameHost;
-            if (judgeConfig.host) {
-                // Explicit judge host override from UI/API
-                judgeHostUrl = judgeConfig.host;
-                effectiveJudgeSameHost = (judgeHostUrl === hostUrl);
-                logger.info('Using explicit judge host override', { judgeHost: judgeHostUrl, execHost: hostUrl });
-            } else if (!judgeSameHost) {
-                judgeHostUrl = HOSTS.primary;
-                if (hostUrl === HOSTS.primary) judgeHostUrl = HOSTS.secondary;
-                else if (hostUrl === HOSTS.secondary) judgeHostUrl = HOSTS.primary;
+            const {
+                judgeHost: judgeHostUrl,
+                effectiveJudgeSameHost,
+                resolution: judgeHostResolution
+            } = resolveJudgeHost(hostUrl, judgeConfig);
 
-                // If the resolved judge host is null/undefined or same as exec host,
-                // fall back to same-host judging (single-machine setups)
-                if (!judgeHostUrl || judgeHostUrl === hostUrl) {
-                    judgeHostUrl = hostUrl;
-                    effectiveJudgeSameHost = true;
-                    logger.info('No separate judge host available, using same-host judging', { host: hostUrl });
-                }
+            if (judgeHostResolution === 'explicit') {
+                logger.info('Using explicit judge host override', { judgeHost: judgeHostUrl, execHost: hostUrl });
+            } else if (judgeHostResolution === 'fallback_same_host') {
+                logger.info('No separate judge host available, using same-host judging', { host: hostUrl });
             }
 
             // Warmup judge model on separate host BEFORE tests start
@@ -519,18 +512,14 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                             }
                         );
 
-                        try {
-                            const refreshedBatch = await BenchmarkBatch.findById(batchId).select('completed status').lean();
-                            if (refreshedBatch) currentBatch.completed = refreshedBatch.completed;
-                        } catch (refreshErr) {
-                            logger.warn('Failed to refresh batch object', { batchId, model, error: refreshErr.message });
-                        }
+                        // Increment the in-memory counter so the next iteration's testNumber
+                        // is correct without an extra DB round-trip (we are the only writer here).
+                        currentBatch.completed = (currentBatch.completed || 0) + 1;
 
                         logger.info('Batch test completed', { batchId, model, prompt: prompt.name, latency });
 
                         // Pipeline: judge on separate machine while next test runs
                         if (judgeQueue && !hasEmptyResponse) {
-                            const { judgeResult } = require('./judging');
                             const capturedResultId = resultId.toString();
                             const capturedJudgeConfig = { ...judgeConfig, host: judgeHostUrl };
 
@@ -655,34 +644,34 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
         }
     });
 
-    // Execute serially (latency mode) or in parallel (throughput mode)
-    if (executionMode === 'latency') {
-        for (const task of hostTasks) {
-            await task();
+        // Execute serially (latency mode) or in parallel (throughput mode)
+        if (executionMode === 'latency') {
+            for (const task of hostTasks) {
+                await task();
+            }
+        } else {
+            await Promise.all(hostTasks.map(task => task()));
         }
-    } else {
-        await Promise.all(hostTasks.map(task => task()));
-    }
 
-    // Drain pipelined judge queue
-    if (judgeQueue) {
-        const judgeableCount = await BenchmarkResult.countDocuments({
-            batch_id: batchId,
-            success: true,
-            response: { $type: 'string', $nin: ['', null] }
-        });
-        await BenchmarkBatch.updateOne(
-            { _id: batchId },
-            { $set: { generated_at: new Date(), judge_total: judgeableCount, judge_status: 'running' } }
-        );
+        // Drain pipelined judge queue
+        if (judgeQueue) {
+            const judgeableCount = await BenchmarkResult.countDocuments({
+                batch_id: batchId,
+                success: true,
+                response: { $type: 'string', $nin: ['', null] }
+            });
+            await BenchmarkBatch.updateOne(
+                { _id: batchId },
+                { $set: { generated_at: new Date(), judge_total: judgeableCount, judge_status: 'running' } }
+            );
 
-        logger.info('Tests done, draining pipelined judge queue', { batchId, queueStatus: judgeQueue.getStatus() });
+            logger.info('Tests done, draining pipelined judge queue', { batchId, queueStatus: judgeQueue.getStatus() });
 
-        const drainResult = await judgeQueue.drain({
-            timeoutMs: 30 * 60 * 1000,
-            stallTimeoutMs: 2 * 60 * 1000,
-            onProgress: (status) => logger.debug('Judge queue progress', { batchId, ...status })
-        });
+            const drainResult = await judgeQueue.drain({
+                timeoutMs: 30 * 60 * 1000,
+                stallTimeoutMs: 2 * 60 * 1000,
+                onProgress: (status) => logger.debug('Judge queue progress', { batchId, ...status })
+            });
 
         // Final authoritative reconciliation — all $inc operations are done, safe to $set.
         const [finalJudgeableCount, finalJudgeCompleted, finalJudgeFailed] = await Promise.all([
@@ -705,86 +694,124 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
             })
         ]);
 
-        const finalJudgeStatus = drainResult.timedOut ? 'failed' : 'completed';
+            const finalJudgeStatus = drainResult.timedOut ? 'failed' : 'completed';
 
-        if (drainResult.timedOut) {
-            logger.error('Judge queue drain timed out', { batchId, reason: drainResult.reason });
+            if (drainResult.timedOut) {
+                logger.error('Judge queue drain timed out', { batchId, reason: drainResult.reason });
+            }
+
+            await BenchmarkBatch.updateOne(
+                { _id: batchId },
+                {
+                    $set: {
+                        judge_status: finalJudgeStatus,
+                        judge_total: finalJudgeableCount,
+                        judge_completed: finalJudgeCompleted,
+                        judge_failed: finalJudgeFailed
+                    }
+                }
+            );
+
+            logger.info('Judge queue drained', {
+                batchId,
+                completed: drainResult.completed,
+                failed: drainResult.failed,
+                authoritative: { total: finalJudgeableCount, completed: finalJudgeCompleted, failed: finalJudgeFailed }
+            });
         }
 
+        // Check if stopped during execution/judging
+        const postExecBatch = await BenchmarkBatch.findById(batchId).select('status').lean();
+        if (postExecBatch && postExecBatch.status === 'stopped') {
+            return;
+        }
+
+        // Mark batch as completed and calculate metrics
+        const finalBatch = await BenchmarkBatch.findById(batchId);
+        if (finalBatch) {
+            await finalBatch.clearCurrentTest();
+            await finalBatch.markAsCompleted();
+            await finalBatch.calculateMetrics();
+            logger.info('Batch completed with metrics', {
+                batchId,
+                total_duration: finalBatch.execution_metrics?.total_duration_ms,
+                tests_per_minute: finalBatch.execution_metrics?.tests_per_minute
+            });
+
+            // Update hardware profiles for all tested model+host combinations
+            try {
+                const uniqueCombos = await BenchmarkResult.distinct('model', { batch_id: batchId, success: true });
+
+                for (const model of uniqueCombos) {
+                    const hosts = await BenchmarkResult.distinct('host', {
+                        batch_id: batchId, model, success: true,
+                        'hardware_snapshot.backend': { $ne: null }
+                    });
+
+                    for (const host of hosts) {
+                        const sampleResult = await BenchmarkResult.findOne({
+                            batch_id: batchId, model, host,
+                            'hardware_snapshot.backend': { $ne: null }
+                        });
+
+                        if (sampleResult && sampleResult.hardware_snapshot) {
+                            await hardwareProfileService.updateProfile({
+                                host, model,
+                                hardwareSnapshot: sampleResult.hardware_snapshot,
+                                workspaceId: finalBatch.workspaceId
+                            });
+                        }
+                    }
+                }
+
+                logger.info('Hardware profiles updated', { batchId, models: uniqueCombos.length });
+            } catch (err) {
+                logger.warn('Failed to update hardware profiles', { batchId, error: err.message });
+            }
+        }
+    } catch (err) {
+        logger.error('Batch execution crashed', {
+            batchId,
+            error: err.message,
+            stack: err.stack
+        });
         await BenchmarkBatch.updateOne(
             { _id: batchId },
             {
                 $set: {
-                    judge_status: finalJudgeStatus,
-                    judge_total: finalJudgeableCount,
-                    judge_completed: finalJudgeCompleted,
-                    judge_failed: finalJudgeFailed
-                }
-            }
-        );
-
-        logger.info('Judge queue drained', {
-            batchId,
-            completed: drainResult.completed,
-            failed: drainResult.failed,
-            authoritative: { total: finalJudgeableCount, completed: finalJudgeCompleted, failed: finalJudgeFailed }
-        });
-    }
-
-    // Check if stopped during execution/judging
-    const postExecBatch = await BenchmarkBatch.findById(batchId).select('status').lean();
-    if (postExecBatch && postExecBatch.status === 'stopped') {
-        clearInterval(heartbeatInterval);
-        activeHeartbeatInterval = null;
-        activeBatchId = null;
-        return;
-    }
-
-    clearInterval(heartbeatInterval);
-    activeHeartbeatInterval = null;
-    activeBatchId = null;
-
-    // Mark batch as completed and calculate metrics
-    const finalBatch = await BenchmarkBatch.findById(batchId);
-    if (finalBatch) {
-        await finalBatch.clearCurrentTest();
-        await finalBatch.markAsCompleted();
-        await finalBatch.calculateMetrics();
-        logger.info('Batch completed with metrics', {
-            batchId,
-            total_duration: finalBatch.execution_metrics?.total_duration_ms,
-            tests_per_minute: finalBatch.execution_metrics?.tests_per_minute
-        });
-
-        // Update hardware profiles for all tested model+host combinations
-        try {
-            const uniqueCombos = await BenchmarkResult.distinct('model', { batch_id: batchId, success: true });
-
-            for (const model of uniqueCombos) {
-                const hosts = await BenchmarkResult.distinct('host', {
-                    batch_id: batchId, model, success: true,
-                    'hardware_snapshot.backend': { $ne: null }
-                });
-
-                for (const host of hosts) {
-                    const sampleResult = await BenchmarkResult.findOne({
-                        batch_id: batchId, model, host,
-                        'hardware_snapshot.backend': { $ne: null }
-                    });
-
-                    if (sampleResult && sampleResult.hardware_snapshot) {
-                        await hardwareProfileService.updateProfile({
-                            host, model,
-                            hardwareSnapshot: sampleResult.hardware_snapshot,
-                            workspaceId: finalBatch.workspaceId
-                        });
+                    status: 'failed',
+                    judge_status: 'failed',
+                    completed_at: new Date(),
+                    last_activity_at: new Date()
+                },
+                $push: {
+                    timeline: {
+                        $each: [{
+                            timestamp: new Date(),
+                            event: 'execution_crash',
+                            success: false,
+                            error: err.message
+                        }],
+                        $slice: -2500
                     }
                 }
             }
-
-            logger.info('Hardware profiles updated', { batchId, models: uniqueCombos.length });
-        } catch (err) {
-            logger.warn('Failed to update hardware profiles', { batchId, error: err.message });
+        ).catch((persistErr) => {
+            logger.error('Failed to persist batch crash state', {
+                batchId,
+                error: persistErr.message
+            });
+        });
+        throw err;
+    } finally {
+        if (heartbeatInterval) {
+            clearInterval(heartbeatInterval);
+        }
+        if (activeHeartbeatInterval === heartbeatInterval) {
+            activeHeartbeatInterval = null;
+        }
+        if (activeBatchId === batchId) {
+            activeBatchId = null;
         }
     }
 }

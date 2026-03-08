@@ -11,7 +11,8 @@ const MongoDBStore = require('connect-mongodb-session')(session);
 const logger = require('../config/logger');
 const { requestLogger, errorLogger } = require('./middleware/logging');
 const { attachUser } = require('./middleware/auth');
-const { createProxyMiddleware } = require('http-proxy-middleware');
+const systemHealth = require('./systemHealth');
+const { normalizeHostUrl } = require('./helpers/ollamaHostConfig');
 
 // Initialize app
 const app = express();
@@ -21,14 +22,6 @@ const IN_TEST = process.env.NODE_ENV === 'test';
 // EventEmitter for system events (SSE broadcasting)
 const EventEmitter = require('events');
 const systemEvents = new EventEmitter();
-
-// System Health State (exported for updates)
-const systemHealth = {
-  mongodb: { status: 'checking', lastCheck: null, error: null },
-  ollama: { status: 'checking', lastCheck: null, error: null },
-  qdrant: { status: 'checking', lastCheck: null, error: null },
-  startup: new Date().toISOString()
-};
 
 // Security Headers Configuration
 if (process.env.NODE_ENV === 'production') {
@@ -427,7 +420,7 @@ app.get('/health', (_req, res) => {
 
 // Config endpoint - expose server configuration
 app.get('/api/config', (_req, res) => {
-  const ollamaHost = process.env.OLLAMA_HOST;
+  const ollamaHost = normalizeHostUrl(process.env.OLLAMA_HOST);
   
   if (!ollamaHost) {
     return res.status(500).json({ 
@@ -446,7 +439,7 @@ app.get('/api/config', (_req, res) => {
       port,
       fullUrl: ollamaHost
     },
-    embeddingModel: process.env.EMBEDDING_MODEL || 'nomic-embed-text'
+    embeddingModel: process.env.EMBEDDING_MODEL || 'nomic-embed-text:v1.5'
   });
 });
 
@@ -495,7 +488,7 @@ app.get('/api/events/system', async (req, res) => {
 app.use(errorLogger);
 
 // Global error handler
-app.use((err, req, res, next) => {
+app.use((err, req, res, _next) => {
   // Handle PayloadTooLargeError specifically
   if (err.type === 'entity.too.large') {
     return res.status(413).json({

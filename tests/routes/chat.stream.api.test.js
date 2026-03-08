@@ -485,10 +485,13 @@ describe('POST /api/chat/stream - Streaming SSE Endpoint', () => {
     describe('7. Client Disconnect Handling', () => {
         it('should log when client disconnects', (done) => {
             let isDone = false;
-            const finish = () => {
+            const server = app.listen();
+            const finish = (err) => {
                 if (!isDone) {
                     isDone = true;
-                    done();
+                    server.close((closeErr) => {
+                        done(err || closeErr);
+                    });
                 }
             };
 
@@ -504,7 +507,7 @@ describe('POST /api/chat/stream - Streaming SSE Endpoint', () => {
                 }
             });
 
-            const req = request(app)
+            const req = request(server)
                 .post('/api/chat/stream')
                 .send({ model: 'llama2', message: 'Test' });
 
@@ -517,7 +520,7 @@ describe('POST /api/chat/stream - Streaming SSE Endpoint', () => {
 
             req.end((err) => {
                 // If it ends (error or success), finish
-                finish();
+                finish(err);
             });
         }, 10000);
     });

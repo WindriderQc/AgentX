@@ -486,7 +486,7 @@ class RepoWatcherService {
   /**
    * Detect architecture violations
    */
-  async detectArchitectureIssues(snapshot, repoPath) {
+  async detectArchitectureIssues(snapshot, _repoPath) {
     const findings = [];
 
     // Check for missing critical paths
@@ -540,7 +540,7 @@ class RepoWatcherService {
   /**
    * Detect missing documentation
    */
-  async detectMissingDocs(snapshot, repoPath) {
+  async detectMissingDocs(snapshot, _repoPath) {
     const findings = [];
 
     // Check for routes without documentation
@@ -721,10 +721,6 @@ class RepoWatcherService {
     const sourceFiles = snapshot.files.filter(f =>
       /\.(js|ts|jsx|tsx)$/.test(f.ext) &&
       (f.path.startsWith('src/') || f.path.startsWith('routes/') || f.path.startsWith('models/'))
-    );
-
-    const testFiles = snapshot.files.filter(f =>
-      this.testPatterns.some(pattern => pattern.test(f.path))
     );
 
     const docFiles = snapshot.files.filter(f =>

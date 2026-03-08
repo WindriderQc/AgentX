@@ -4,7 +4,11 @@
  * and all requested models are available.
  */
 
-const logger = require('../../../config/logger');
+const { benchmarkFetch: fetch } = require('./http');
+
+function normalizeModelName(modelName) {
+    return String(modelName || '').trim().replace(/:latest$/i, '');
+}
 
 /**
  * Validate that a host is a reachable Ollama endpoint with the requested models.
@@ -13,18 +17,30 @@ const logger = require('../../../config/logger');
  * @returns {Promise<{valid: boolean, error?: string, available_models?: string[]}>}
  */
 async function validateExecutionHost(host, models) {
-    const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
+    const normalizedHost = String(host || '').trim();
+    const normalizedModels = Array.isArray(models)
+        ? [...new Set(models.map(normalizeModelName).filter(Boolean))]
+        : [];
+
+    if (!/^https?:\/\//i.test(normalizedHost)) {
+        return { valid: false, error: 'Execution host must be a valid http(s) URL' };
+    }
+
+    if (normalizedModels.length === 0) {
+        return { valid: false, error: 'At least one execution model is required' };
+    }
+
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
 
     let tagsRes;
     try {
-        tagsRes = await fetch(`${host}/api/tags`, { method: 'GET', signal: controller.signal });
+        tagsRes = await fetch(`${normalizedHost}/api/tags`, { method: 'GET', signal: controller.signal });
         clearTimeout(timeoutId);
     } catch (err) {
         clearTimeout(timeoutId);
         const msg = err.name === 'AbortError' ? 'timeout' : err.message;
-        return { valid: false, error: `Cannot reach execution host ${host}: ${msg}` };
+        return { valid: false, error: `Cannot reach execution host ${normalizedHost}: ${msg}` };
     }
 
     if (!tagsRes.ok) {
@@ -38,8 +54,7 @@ async function validateExecutionHost(host, models) {
         return { valid: false, error: 'Execution host returned invalid JSON' };
     }
 
-    const available = (tagsData.models || []).map(m => m.name.replace(/:latest$/, ''));
-    const normalizedModels = models.map(m => m.replace(/:latest$/, ''));
+    const available = (tagsData.models || []).map((m) => normalizeModelName(m.name || m.model));
     const availableSet = new Set(available);
     const missing = normalizedModels.filter(m => !availableSet.has(m));
 

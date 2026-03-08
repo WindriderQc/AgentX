@@ -268,7 +268,11 @@ async function testAllModelsOnHost(hostUrl, options = {}) {
     }
     results.push({ modelName, ...result });
     if (onProgress) {
-      try { onProgress(modelName, result, i, models.length); } catch (_) {}
+      try {
+        onProgress(modelName, result, i, models.length);
+      } catch (_err) {
+        // Ignore progress callback failures; they should not abort host testing.
+      }
     }
   }
 

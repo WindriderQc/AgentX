@@ -14,19 +14,20 @@ let mongoServer;
  * Safe to call multiple times (no-op if already connected to test DB)
  */
 async function connectTestDb() {
-  // If already connected to MongoMemoryServer, return
-  if (mongoose.connection.readyState === 1 && mongoServer) {
+  if (mongoose.connection.readyState === 1) {
     return;
   }
 
-  // If connected to a different database, disconnect first
   if (mongoose.connection.readyState !== 0) {
     await mongoose.disconnect();
   }
 
   try {
-    mongoServer = await MongoMemoryServer.create();
-    const uri = mongoServer.getUri();
+    const sharedUri = process.env.MONGODB_URI;
+    const uri = sharedUri || await (async () => {
+      mongoServer = await MongoMemoryServer.create();
+      return mongoServer.getUri();
+    })();
 
     await mongoose.connect(uri, {
       serverSelectionTimeoutMS: 5000,

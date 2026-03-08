@@ -4,6 +4,7 @@
  */
 
 const mongoose = require('mongoose');
+const path = require('path');
 const { MongoMemoryServer } = require('mongodb-memory-server');
 const SelfHealingEngine = require('../../src/services/selfHealingEngine');
 const ModelRouter = require('../../src/services/modelRouter');
@@ -446,7 +447,7 @@ describe('Self-Healing Engine - Remediation Actions', () => {
 
   describe('Rule Loading', () => {
     test('should load rules from configuration file', async () => {
-      const configPath = '/home/yb/codes/AgentX/config/self-healing-rules.json';
+      const configPath = path.resolve(__dirname, '../../config/self-healing-rules.json');
 
       const ruleCount = await SelfHealingEngine.loadRules(configPath);
 

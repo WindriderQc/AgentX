@@ -6,8 +6,8 @@
 const express = require('express');
 const router = express.Router();
 const AgentX = require('../models/AgentX');
-const { requireAuth, optionalAuth } = require('../src/middleware/auth');
-const { attachWorkspace, optionalWorkspaceContext } = require('../src/middleware/workspace');
+const { optionalAuth } = require('../src/middleware/auth');
+const { optionalWorkspaceContext } = require('../src/middleware/workspace');
 const { triggerWebhook } = require('../src/utils/n8nWebhook');
 const logger = require('../config/logger');
 const { validateObjectId } = require('../src/helpers/objectIdValidator');

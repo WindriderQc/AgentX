@@ -214,6 +214,7 @@ const MODEL_ROUTING = {
 
     // Embeddings
     'nomic-embed-text': 'primary',
+    'nomic-embed-text:v1.5': 'primary',
     'nomic-embed-text:latest': 'primary'
 };
 
@@ -227,7 +228,7 @@ const TASK_MODELS = {
     analysis: { model: 'gemma3:12b-it-qat', host: 'secondary' },
     summarization: { model: 'gemma3:12b-it-qat', host: 'secondary' },
     translation: { model: 'qwen2.5:7b-instruct-q4_0', host: 'primary' },
-    embeddings: { model: 'nomic-embed-text:latest', host: 'primary' }
+    embeddings: { model: 'nomic-embed-text:v1.5', host: 'primary' }
 };
 
 // Classification prompt for front-door routing

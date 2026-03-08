@@ -1,10 +1,6 @@
 const mongoose = require('mongoose');
 const Conversation = require('../models/Conversation');
-const { getTokenCounter } = require('../src/services/tokenCounter');
 require('dotenv').config();
-
-// Ensure logger doesn't crash if config missing
-const logger = { info: console.log, error: console.error };
 
 async function backfillUsageStats() {
   console.log('Starting usage stats backfill...');
@@ -16,12 +12,9 @@ async function backfillUsageStats() {
 
   await mongoose.connect(process.env.MONGODB_URI);
 
-  const tokenCounter = getTokenCounter();
-
   const batchSize = 100;
   let processed = 0;
   let errors = 0;
-  let page = 0;
 
   while (true) {
     // Find conversations without usage stats or with 0 total tokens (optional re-run capability)

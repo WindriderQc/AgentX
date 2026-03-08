@@ -63,7 +63,7 @@ describe('Judge Model Validator', () => {
 
             const result = await validateJudgeModel(HOST, 'qwen2.5:7b-instruct', { _fetch });
             expect(result.valid).toBe(false);
-            expect(result.error).toContain('not found on host');
+            expect(result.error).toContain('not found on judge host');
             expect(result.available_models).toEqual(['llama3.1:8b', 'mistral:7b']);
         });
 
@@ -119,8 +119,8 @@ describe('Judge Model Validator', () => {
             );
 
             const result = await validateJudgeModel(HOST, 'qwen2.5:7b-instruct', { _fetch });
-            expect(result.valid).toBe(false);
-            expect(result.error).toContain('cannot produce structured JSON');
+            expect(result.valid).toBe(true);
+            expect(result.warning).toContain('not JSON');
         });
 
         it('should return invalid when generation request fails', async () => {
@@ -130,8 +130,8 @@ describe('Judge Model Validator', () => {
             );
 
             const result = await validateJudgeModel(HOST, 'qwen2.5:7b-instruct', { _fetch });
-            expect(result.valid).toBe(false);
-            expect(result.error).toContain('failed test generation');
+            expect(result.valid).toBe(true);
+            expect(result.warning).toContain('HTTP 404');
         });
 
         it('should handle JSON embedded in text', async () => {

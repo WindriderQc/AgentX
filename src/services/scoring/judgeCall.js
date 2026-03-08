@@ -23,7 +23,9 @@ const JUDGE_CONFIG = {
 // Track judge failures for observability
 let judgeFailureCount = 0;
 
-// Initialize host from env
+/**
+ * Normalize a raw host value to a full URL (adds http:// if missing).
+ */
 function normalizeJudgeHost(rawValue) {
     if (!rawValue) return null;
     const trimmed = String(rawValue).trim();
@@ -32,7 +34,7 @@ function normalizeJudgeHost(rawValue) {
     return `http://${trimmed}`;
 }
 
-// Initialize host from env
+// Initialize JUDGE_CONFIG.host from environment on module load
 if (process.env.OLLAMA_HOST) {
     JUDGE_CONFIG.host = normalizeJudgeHost(process.env.OLLAMA_HOST);
 }

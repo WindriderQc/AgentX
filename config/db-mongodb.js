@@ -27,13 +27,14 @@ const connectDB = async () => {
       : (process.env.MONGODB_URI || 'mongodb://localhost:27017/agentx');
 
     const conn = await mongoose.connect(mongoUri, {
-      serverSelectionTimeoutMS: 2000, // Fail fast if no DB
-      // Connection pooling optimization (Week 2 Performance)
-      maxPoolSize: 50,        // Maximum connections in pool (default: 100)
-      minPoolSize: 10,        // Minimum connections to maintain (default: 0)
-      maxIdleTimeMS: 30000,   // Close idle connections after 30s
-      socketTimeoutMS: 45000, // Close sockets after 45s inactivity
-      family: 4,              // Use IPv4, skip IPv6 resolution
+      serverSelectionTimeoutMS: isTest ? 1000 : 2000, // Fail fast if no DB
+      // Production can keep a deeper pool warm; tests mostly run single-request
+      // flows and benefit from cheaper setup/teardown.
+      maxPoolSize: isTest ? 10 : 50,
+      minPoolSize: isTest ? 0 : 10,
+      maxIdleTimeMS: 30000,
+      socketTimeoutMS: 45000,
+      family: 4,
       // In tests we create a time-series collection explicitly; prevent Mongoose
       // from eagerly creating regular collections/indexes for registered models.
       autoCreate: !isTest,

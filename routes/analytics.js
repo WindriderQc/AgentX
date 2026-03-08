@@ -1108,7 +1108,7 @@ router.get('/feedback/summary', optionalAuth, optionalWorkspaceContext, async (r
     });
 
     const abComparisons = Object.entries(promptGroups)
-      .filter(([name, versions]) => versions.length > 1)
+      .filter(([_name, versions]) => versions.length > 1)
       .map(([name, versions]) => {
         const sorted = versions.sort((a, b) => b.rate - a.rate);
 

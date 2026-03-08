@@ -10,6 +10,15 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+function getStartupDeadlineMs() {
+  const configured = Number(process.env.JEST_MONGO_START_TIMEOUT_MS);
+  if (Number.isFinite(configured) && configured > 0) {
+    return configured;
+  }
+
+  return process.platform === 'win32' ? 120000 : 30000;
+}
+
 module.exports = async () => {
   const useExternalMongo = process.env.TEST_USE_EXTERNAL_MONGO === 'true';
   if (useExternalMongo) return;
@@ -29,7 +38,7 @@ module.exports = async () => {
   child.unref();
 
   // Wait for the daemon to write connection info.
-  const deadline = Date.now() + 30000;
+  const deadline = Date.now() + getStartupDeadlineMs();
   while (Date.now() < deadline) {
     if (fs.existsSync(MONGO_JSON_FILE) && fs.existsSync(MONGO_URI_FILE)) {
       const raw = fs.readFileSync(MONGO_JSON_FILE, 'utf8');
@@ -43,5 +52,9 @@ module.exports = async () => {
     await sleep(100);
   }
 
-  throw new Error('MongoMemoryServer daemon did not become ready within 30s');
+  // Fall back to per-process MongoMemoryServer startup in setup-env.js.
+  // This is slower, but avoids hard-failing on Windows when the first
+  // binary download or extraction takes longer than expected.
+  // eslint-disable-next-line no-console
+  console.warn('Jest Mongo daemon did not become ready before the startup deadline; falling back to per-process startup.');
 };

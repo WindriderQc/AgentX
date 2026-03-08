@@ -9,7 +9,7 @@ const SnapshotGpuSchema = new mongoose.Schema({
 
 const HostMetricsSnapshotSchema = new mongoose.Schema({
   hostId: { type: String, required: true, index: true },
-  timestamp: { type: Date, default: Date.now, index: true },
+  timestamp: { type: Date, default: Date.now },
   cpu: {
     usage: { type: Number, default: 0 },
     temperature: { type: Number, default: null }

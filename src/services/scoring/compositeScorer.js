@@ -6,6 +6,31 @@
 const logger = require('../../../config/logger');
 const { CATEGORY_COMPOSITE_PROFILES } = require('./scoringConfigs');
 
+// Legacy profiles for backward compatibility — defined at module level to
+// avoid allocating a new object on every calculateCompositeScore() call.
+const LEGACY_PROFILES = {
+    balanced: {
+        weights: { quality: 0.45, latency: 0.30, speed: 0.25 },
+        latencyCap: 45000,
+        description: "General-purpose balanced evaluation"
+    },
+    interactive: {
+        weights: { quality: 0.4, latency: 0.4, speed: 0.2 },
+        latencyCap: 30000,
+        description: "Optimized for user-facing chat"
+    },
+    reasoning: {
+        weights: { quality: 0.8, latency: 0.1, speed: 0.1 },
+        latencyCap: 120000,
+        description: "Optimized for complex problem solving"
+    },
+    coding: {
+        weights: { quality: 0.7, latency: 0.2, speed: 0.1 },
+        latencyCap: 60000,
+        description: "Optimized for code generation accuracy"
+    }
+};
+
 /**
  * Calculate composite score combining speed and quality
  * @param {Object} metrics - Performance and quality metrics
@@ -23,30 +48,6 @@ function calculateCompositeScore(metrics, profileOrCategory = 'interactive') {
 
     quality_score = Number(quality_score);
     if (isNaN(quality_score)) quality_score = 0;
-
-    // Legacy profiles for backward compatibility
-    const LEGACY_PROFILES = {
-        balanced: {
-            weights: { quality: 0.45, latency: 0.30, speed: 0.25 },
-            latencyCap: 45000,
-            description: "General-purpose balanced evaluation"
-        },
-        interactive: {
-            weights: { quality: 0.4, latency: 0.4, speed: 0.2 },
-            latencyCap: 30000,
-            description: "Optimized for user-facing chat"
-        },
-        reasoning: {
-            weights: { quality: 0.8, latency: 0.1, speed: 0.1 },
-            latencyCap: 120000,
-            description: "Optimized for complex problem solving"
-        },
-        coding: {
-            weights: { quality: 0.7, latency: 0.2, speed: 0.1 },
-            latencyCap: 60000,
-            description: "Optimized for code generation accuracy"
-        }
-    };
 
     let config;
     let profileUsed;

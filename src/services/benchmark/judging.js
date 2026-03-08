@@ -18,6 +18,18 @@ const { multiJudgeScore, shouldUseMultiJudge } = require('./multiJudge');
 // Track active judging jobs (batchId -> { queue, stopped })
 const activeJudgingJobs = new Map();
 
+async function persistJudgeCounters(batchId, fields = {}) {
+    await BenchmarkBatch.updateOne(
+        { _id: batchId },
+        {
+            $set: {
+                ...fields,
+                last_activity_at: new Date()
+            }
+        }
+    );
+}
+
 /**
  * Validate whether judging can be started for a batch and count eligible results.
  * @param {string} batchId
@@ -231,9 +243,11 @@ async function judgeResult(resultId, judgeConfig = {}, _batchHardwareSnapshot = 
             { $set: { judge_scores: judgeScoreRecords } }
         );
 
-        // Use the primary judge's full scores object for composite calculation,
-        // but override quality_score with the consensus median
-        const primaryJudge = mjResult.scores.find(s => s.success) || {};
+        // Call primary judge again to obtain the full scores object (breakdown, explanation,
+        // judge_raw_response, etc.) needed by applyScoresToResult. The consensus
+        // quality_score from multiJudgeScore is then applied as an override so the
+        // stored quality_score always reflects the agreed consensus, while the
+        // full breakdown/audit fields come from the primary judge call.
         const scores = await scoreResponse({
             response: result.response,
             prompt: promptData,
@@ -241,7 +255,7 @@ async function judgeResult(resultId, judgeConfig = {}, _batchHardwareSnapshot = 
             _batchHardwareSnapshot
         });
 
-        // Override with consensus score
+        // Override quality_score with consensus median; annotate explanation
         scores.quality_score = mjResult.finalScore !== null ? mjResult.finalScore : scores.quality_score;
         scores.explanation = `[Multi-judge consensus: ${mjResult.consensus}] ${scores.explanation || ''}`.trim();
 
@@ -483,6 +497,33 @@ async function judgeBatch(batchId, options = {}) {
                 logger.warn('Failed to recalculate metrics after judging', { batchId, error: err.message });
             }
         }
+    } catch (err) {
+        finalStatus = activeJudgingJobs.get(batchId)?.stopped ? 'stopped' : 'failed';
+        logger.error('Standalone judging crashed', {
+            batchId,
+            error: err.message,
+            stack: err.stack
+        });
+
+        const authoritative = await getAuthoritativeJudgeCounters(batchId).catch(() => ({
+            judge_total: 0,
+            judge_completed: 0,
+            judge_failed: failed
+        }));
+
+        await persistJudgeCounters(batchId, {
+            judge_status: finalStatus,
+            judge_total: authoritative.judge_total,
+            judge_completed: authoritative.judge_completed,
+            judge_failed: authoritative.judge_failed
+        }).catch((persistErr) => {
+            logger.error('Failed to persist judge crash state', {
+                batchId,
+                error: persistErr.message
+            });
+        });
+
+        throw err;
     } finally {
         // Guarantee cleanup even on uncaught exceptions — prevents permanent lock
         activeJudgingJobs.delete(batchId);
@@ -505,6 +546,12 @@ function stopJudging(batchId) {
     if (!job) return false;
 
     job.stopped = true;
+    persistJudgeCounters(batchId, { judge_status: 'stopped' }).catch((err) => {
+        logger.warn('Failed to persist stop request for judging job', {
+            batchId,
+            error: err.message
+        });
+    });
     logger.info('Judging stop requested', { batchId });
     return true;
 }

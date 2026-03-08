@@ -11,9 +11,9 @@ const logger = require('../../../config/logger');
 const BenchmarkBatch = require('../../../models/BenchmarkBatch');
 
 // Import sub-modules
-const { DEFAULT_EXECUTION_CONFIG, normalizeExecutionConfig, applyLengthHint } = require('./config');
+const { DEFAULT_EXECUTION_CONFIG } = require('./config');
 const { seedPrompts, cleanupStaleBatches, getPrompts, getConfigPresets } = require('./init');
-const { runTest, startBatch, executeBatch, stopBatch, getActiveBatchId, getActiveHeartbeatInterval, clearActiveBatch } = require('./execution');
+const { runTest, startBatch, executeBatch, stopBatch, getActiveBatchId, getActiveHeartbeatInterval } = require('./execution');
 const { getResults, getSummary, getDashboard, compareModels, getQualityBreakdown, getModelTrends, compareBatches } = require('./results');
 const { getBatches, getBatch, getBatchStatsByTag, clearResults, clearFailedResults, getActiveStats } = require('./batches');
 const { getJudgeLeaderboard, getJudgeBreakdown, getJudgeActivity, getTruncationStats } = require('./judges');

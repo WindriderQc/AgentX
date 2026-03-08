@@ -1,6 +1,7 @@
 const Host = require('../../models/Host');
 const HostMetricsSnapshot = require('../../models/HostMetricsSnapshot');
 const logger = require('../../config/logger');
+const { getConfiguredHosts, parseHostIp } = require('../helpers/ollamaHostConfig');
 
 const OFFLINE_THRESHOLD_MS = 120000;      // 2 minutes without heartbeat → offline
 const SNAPSHOT_INTERVAL_MS = 60000;       // store one history snapshot per 60s
@@ -37,6 +38,7 @@ class HostMonitorService {
 
     const status = this._computeStatus(report);
     const now = new Date();
+    const inferredOllamaLink = this._inferOllamaLink(report);
 
     const update = {
       hostname: report.hostname || hostId,
@@ -55,7 +57,8 @@ class HostMonitorService {
       network: report.network || {},
       topProcessesCpu: report.topProcessesCpu || [],
       topProcessesMem: report.topProcessesMem || [],
-      uptime: report.uptime || 0
+      uptime: report.uptime || 0,
+      ...inferredOllamaLink
     };
 
     const host = await Host.findOneAndUpdate(
@@ -206,6 +209,34 @@ class HostMonitorService {
     } catch (err) {
       logger.warn('Failed to mark stale hosts', { error: err.message });
     }
+  }
+
+  _inferOllamaLink(report) {
+    const reportIp = String(report.ip || '').trim().toLowerCase();
+    const reportHostname = String(report.hostname || '').trim().toLowerCase();
+    const reportHostId = String(report.hostId || '').trim().toLowerCase();
+
+    for (const host of getConfiguredHosts()) {
+      const configuredIp = String(parseHostIp(host.url) || '').trim().toLowerCase();
+      const configuredName = String(host.name || '').trim().toLowerCase();
+      const configuredKey = String(host.id || '').trim().toLowerCase();
+
+      const matchesByIp = reportIp && configuredIp && reportIp === configuredIp;
+      const matchesByHostname = reportHostname && configuredName && reportHostname === configuredName;
+      const matchesByHostId = reportHostId && (
+        (configuredName && reportHostId === configuredName) ||
+        (configuredKey && reportHostId === configuredKey)
+      );
+
+      if (matchesByIp || matchesByHostname || matchesByHostId) {
+        return {
+          ollamaHostKey: host.id,
+          ollamaUrl: host.url
+        };
+      }
+    }
+
+    return {};
   }
 }
 

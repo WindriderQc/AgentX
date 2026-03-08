@@ -1,82 +1,152 @@
 /**
  * Test environment setup
- * Runs before each test file in the same environment context
+ * Runs before each test file in the same environment context.
  */
 
-const mongoose = require('mongoose');
-const connectDB = require('../config/db-mongodb');
-const { MongoMemoryServer } = require('mongodb-memory-server');
 const fs = require('fs');
 const path = require('path');
+const mongoose = require('mongoose');
+const { MongoMemoryServer } = require('mongodb-memory-server');
+const connectDB = require('../config/db-mongodb');
 
-let mongoServer;
 const mongoUriFile = path.join(__dirname, '.jest-mongo-uri');
+const TEST_DB_STATE_KEY = Symbol.for('agentx.testDbState');
+const DISCONNECT_IDLE_MS = Number(process.env.JEST_DB_IDLE_DISCONNECT_MS || 750);
 
-// Set test environment
+function getTestDbState() {
+  if (!process[TEST_DB_STATE_KEY]) {
+    process[TEST_DB_STATE_KEY] = {
+      connectPromise: null,
+      disconnectTimer: null,
+      mongoServer: null
+    };
+  }
+
+  return process[TEST_DB_STATE_KEY];
+}
+
+function clearPendingDisconnect(state) {
+  if (!state.disconnectTimer) return;
+
+  clearTimeout(state.disconnectTimer);
+  state.disconnectTimer = null;
+}
+
+function resolveWorkerMongoUri(state) {
+  if (process.env.TEST_USE_EXTERNAL_MONGO === 'true') {
+    return process.env.MONGODB_URI || null;
+  }
+
+  if (fs.existsSync(mongoUriFile)) {
+    const baseUri = fs.readFileSync(mongoUriFile, 'utf8').trim().replace(/\/+$/, '');
+    const workerId = process.env.JEST_WORKER_ID || '0';
+    const uri = `${baseUri}/agentx_test_${workerId}`;
+    process.env.MONGODB_URI = uri;
+    return uri;
+  }
+
+  if (state.mongoServer) {
+    const uri = state.mongoServer.getUri('agentx_test');
+    process.env.MONGODB_URI = uri;
+    return uri;
+  }
+
+  return null;
+}
+
+async function ensureMongoUri(state) {
+  const uri = resolveWorkerMongoUri(state);
+  if (uri || process.env.TEST_USE_EXTERNAL_MONGO === 'true') {
+    return uri;
+  }
+
+  state.mongoServer = await MongoMemoryServer.create({
+    instance: {
+      dbName: 'agentx_test',
+      launchTimeout: 30000
+    }
+  });
+
+  const fallbackUri = state.mongoServer.getUri('agentx_test');
+  process.env.MONGODB_URI = fallbackUri;
+  return fallbackUri;
+}
+
+async function disconnectTestResources(state) {
+  try {
+    if (mongoose.connection.readyState !== 0) {
+      await mongoose.connection.close(true);
+      // eslint-disable-next-line no-console
+      console.log('✅ Test environment: MongoDB disconnected');
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('⚠️ Warning: preventing test hang - Error closing MongoDB:', err.message);
+  }
+
+  try {
+    if (state.mongoServer) {
+      await state.mongoServer.stop({ doCleanup: true, force: true });
+      state.mongoServer = null;
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('⚠️ Warning: preventing test hang - Error stopping MongoMemoryServer:', err.message);
+  }
+}
+
+function scheduleDisconnect(state) {
+  clearPendingDisconnect(state);
+
+  state.disconnectTimer = setTimeout(() => {
+    state.disconnectTimer = null;
+    void disconnectTestResources(state);
+  }, DISCONNECT_IDLE_MS);
+
+  if (typeof state.disconnectTimer.unref === 'function') {
+    state.disconnectTimer.unref();
+  }
+}
+
 process.env.NODE_ENV = 'test';
 
-// Ensure deterministic ModelRouter host configuration for unit/integration tests.
-// These are only defaults for tests; production should set real hosts.
 if (!process.env.OLLAMA_HOST) process.env.OLLAMA_HOST = 'http://127.0.0.1:11434';
 if (!process.env.OLLAMA_HOST_SECONDARY && !process.env.OLLAMA_HOST_2) {
   process.env.OLLAMA_HOST_SECONDARY = 'http://127.0.0.1:11435';
 }
 
-// Connect to MongoDB before all tests
 beforeAll(async () => {
-  // Use in-memory MongoDB for deterministic, isolated tests.
-  // Opt out only if explicitly requested.
-  const useExternalMongo = process.env.TEST_USE_EXTERNAL_MONGO === 'true';
-  if (!useExternalMongo) {
-    // Prefer the shared MongoMemoryServer started by Jest globalSetup.
-    // Fallback to per-process server when running a single file outside Jest global setup.
-    if (fs.existsSync(mongoUriFile)) {
-      const baseUri = fs.readFileSync(mongoUriFile, 'utf8').trim().replace(/\/+$/, '');
-      const workerId = process.env.JEST_WORKER_ID || '0';
-      const dbName = `agentx_test_${workerId}`;
-      process.env.MONGODB_URI = `${baseUri}/${dbName}`;
-    } else {
-      mongoServer = await MongoMemoryServer.create({
-        instance: {
-          dbName: 'agentx_test',
-          launchTimeout: 30000
-        }
-      });
+  const state = getTestDbState();
+  clearPendingDisconnect(state);
 
-      process.env.MONGODB_URI = mongoServer.getUri('agentx_test');
-    }
+  if (!state.connectPromise) {
+    state.connectPromise = (async () => {
+      await ensureMongoUri(state);
+
+      if (mongoose.connection.readyState === 1) {
+        return;
+      }
+
+      if (mongoose.connection.readyState !== 0) {
+        await mongoose.disconnect();
+      }
+
+      await connectDB();
+
+      const { waitForConnection } = require('./helpers/dbHelper');
+      await waitForConnection();
+
+      // eslint-disable-next-line no-console
+      console.log('✅ Test environment: MongoDB connected and ready');
+    })().finally(() => {
+      state.connectPromise = null;
+    });
   }
 
-  // Only connect if not already connected
-  if (mongoose.connection.readyState === 0) {
-    await connectDB();
+  await state.connectPromise;
+}, 30000);
 
-    // Wait for connection to be fully ready
-    const { waitForConnection } = require('./helpers/dbHelper');
-    await waitForConnection();
-
-    console.log('✅ Test environment: MongoDB connected and ready');
-  }
-}, 30000); // 30 second timeout for setup
-
-// Close connection after all tests
-afterAll(async () => {
-  try {
-    if (mongoose.connection.readyState !== 0) {
-      // Force close to ensure no hanging connections
-      await mongoose.connection.close(true);
-      console.log('✅ Test environment: MongoDB disconnected');
-    }
-  } catch (err) {
-    console.warn('⚠️ Warning: preventing test hang - Error closing MongoDB:', err.message);
-  }
-
-  try {
-    if (mongoServer) {
-      await mongoServer.stop({ doCleanup: true, force: true });
-      mongoServer = null;
-    }
-  } catch (err) {
-    console.warn('⚠️ Warning: preventing test hang - Error stopping MongoMemoryServer:', err.message);
-  }
-}, 30000); // 30 second timeout for teardown
+afterAll(() => {
+  const state = getTestDbState();
+  scheduleDisconnect(state);
+});

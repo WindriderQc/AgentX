@@ -279,7 +279,7 @@ const handleChatRequest = async ({
 
         } else {
             // Resolve per-model num_ctx from registry, aware of target host VRAM
-            const sanitized = sanitizeOptions(options);
+            const sanitized = sanitizeOptions(options) || {};
             if (!sanitized.num_ctx) {
                 sanitized.num_ctx = await resolveModelNumCtx(effectiveModel, { targetHost: resolveTarget(effectiveTarget) });
             }
@@ -602,7 +602,7 @@ const handleChatRequestStream = async ({
 
         } else {
             // Ollama Streaming — resolve per-model num_ctx from registry, aware of target host VRAM
-            const streamSanitized = sanitizeOptions(options);
+            const streamSanitized = sanitizeOptions(options) || {};
             if (!streamSanitized.num_ctx) {
                 streamSanitized.num_ctx = await resolveModelNumCtx(effectiveModel, { targetHost: resolveTarget(effectiveTarget) });
             }

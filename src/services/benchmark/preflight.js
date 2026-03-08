@@ -11,15 +11,53 @@
  * Used by: batch start API, CI automation
  */
 
-const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
 const logger = require('../../../config/logger');
 const BenchmarkPrompt = require('../../../models/BenchmarkPrompt');
 const BenchmarkBatch = require('../../../models/BenchmarkBatch');
-const { GENERALIST_CATEGORY_WEIGHTS } = require('../../../config/categories');
+const ModelRegistry = require('../../../models/ModelRegistry');
+const { BENCHMARK_CATEGORIES, CATEGORY_MIN_JUDGE_TIER } = require('../../../config/categories');
+const judgeTierResolver = require('../scoring/judgeTierResolver');
+const { JUDGE_CONFIG } = require('../qualityScorer');
+const { benchmarkFetch: fetch } = require('./http');
 
 const MIN_PROMPTS_PER_CATEGORY = 3;
 const WARN_PROMPTS_PER_CATEGORY = 5;
 const HOST_CHECK_TIMEOUT_MS = 10000;
+
+function normalizeModelName(modelName) {
+    return String(modelName || '').trim().replace(/:latest$/i, '');
+}
+
+function normalizeHostUrl(hostUrl) {
+    const raw = String(hostUrl || '').trim();
+    if (!raw) return null;
+    if (/^https?:\/\//i.test(raw)) return raw;
+    return `http://${raw}`;
+}
+
+function compareTierRank(left, right) {
+    return (judgeTierResolver.TIER_RANK[left] || 0) - (judgeTierResolver.TIER_RANK[right] || 0);
+}
+
+function getStrongestRequiredTier(levels, categories) {
+    let strongest = 'basic';
+
+    for (const level of levels || []) {
+        const tier = judgeTierResolver.getRequiredTier(level);
+        if (compareTierRank(tier, strongest) > 0) {
+            strongest = tier;
+        }
+    }
+
+    for (const category of categories || []) {
+        const tier = CATEGORY_MIN_JUDGE_TIER[category];
+        if (tier && compareTierRank(tier, strongest) > 0) {
+            strongest = tier;
+        }
+    }
+
+    return strongest;
+}
 
 /**
  * Check if an Ollama host is responsive and a model is available.
@@ -28,12 +66,17 @@ const HOST_CHECK_TIMEOUT_MS = 10000;
  * @returns {Object} { ok, latency_ms, error, models_loaded }
  */
 async function checkHostModel(hostUrl, model = null) {
+    const normalizedHost = normalizeHostUrl(hostUrl);
+    if (!normalizedHost) {
+        return { ok: false, latency_ms: 0, error: 'Host URL is required' };
+    }
+
     const start = Date.now();
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), HOST_CHECK_TIMEOUT_MS);
 
     try {
-        const response = await fetch(`${hostUrl}/api/tags`, {
+        const response = await fetch(`${normalizedHost}/api/tags`, {
             method: 'GET',
             signal: controller.signal
         });
@@ -44,18 +87,17 @@ async function checkHostModel(hostUrl, model = null) {
         }
 
         const data = await response.json();
-        const availableModels = (data.models || []).map(m => m.name || m.model);
+        const availableModels = (data.models || []).map((m) => normalizeModelName(m.name || m.model));
         const latency = Date.now() - start;
 
         if (model) {
-            const found = availableModels.some(m =>
-                m === model || m.startsWith(model + ':') || model.startsWith(m)
-            );
+            const normalizedModel = normalizeModelName(model);
+            const found = availableModels.includes(normalizedModel);
             if (!found) {
                 return {
                     ok: false,
                     latency_ms: latency,
-                    error: `Model '${model}' not found on host`,
+                    error: `Model '${normalizedModel}' not found on host`,
                     models_loaded: availableModels.slice(0, 10)
                 };
             }
@@ -91,21 +133,99 @@ async function checkPromptCoverage(levels = [1, 2, 3, 4, 5]) {
     const blockers = [];
     const categories = {};
 
-    for (const [cat, weight] of Object.entries(GENERALIST_CATEGORY_WEIGHTS)) {
-        const count = countsByCategory[cat] || 0;
-        categories[cat] = { count, weight };
+    for (const [cat, count] of Object.entries(countsByCategory)) {
+        const categoryMeta = BENCHMARK_CATEGORIES[cat] || null;
+        categories[cat] = {
+            count,
+            label: categoryMeta?.label || cat
+        };
 
         if (count < MIN_PROMPTS_PER_CATEGORY) {
-            blockers.push(`${cat}: ${count} prompts (minimum ${MIN_PROMPTS_PER_CATEGORY})`);
+            warnings.push(`${cat}: ${count} prompt(s) at selected levels (recommended ${MIN_PROMPTS_PER_CATEGORY}+)`);
         } else if (count < WARN_PROMPTS_PER_CATEGORY) {
-            warnings.push(`${cat}: ${count} prompts (recommended ${WARN_PROMPTS_PER_CATEGORY}+)`);
+            warnings.push(`${cat}: ${count} prompt(s) at selected levels (recommended ${WARN_PROMPTS_PER_CATEGORY}+)`);
         }
+    }
+
+    if (prompts.length === 0) {
+        blockers.push(`No benchmark prompts found for selected levels: ${levels.join(', ')}`);
     }
 
     return {
         ok: blockers.length === 0,
         totalPrompts: prompts.reduce((sum, p) => sum + p.count, 0),
         categories,
+        warnings,
+        blockers
+    };
+}
+
+async function checkJudgeConfiguration(judgeConfig = {}, levels = [], promptCoverage = null) {
+    const host = normalizeHostUrl(judgeConfig.host || JUDGE_CONFIG.host);
+    const model = normalizeModelName(judgeConfig.model || JUDGE_CONFIG.model);
+
+    if (!host || !model) {
+        return {
+            ok: false,
+            host,
+            model,
+            warnings: [],
+            blockers: ['Judge host/model is not configured'],
+            required_tier: null,
+            resolved_tier: null,
+            reliability: null
+        };
+    }
+
+    const promptCategories = promptCoverage
+        ? Object.keys(promptCoverage.categories || {})
+        : [];
+    const requiredTier = getStrongestRequiredTier(levels, promptCategories);
+    const warnings = [];
+    const blockers = [];
+
+    let registryEntry = null;
+    try {
+        registryEntry = await ModelRegistry.findOne({
+            modelName: { $in: [model, `${model}:latest`] }
+        }).select('modelName capabilities host').lean();
+    } catch (err) {
+        warnings.push(`Judge registry lookup failed: ${err.message}`);
+    }
+
+    const resolvedTier = registryEntry?.capabilities?.judgeTier
+        || judgeTierResolver.inferJudgeTier(model)
+        || null;
+    const reliability = registryEntry?.capabilities?.judgeReliability ?? null;
+    const avgJudgeLatencyMs = registryEntry?.capabilities?.avgJudgeLatencyMs ?? null;
+    const meetsTier = resolvedTier
+        ? judgeTierResolver.tierMeetsRequirement(resolvedTier, requiredTier)
+        : null;
+
+    if (resolvedTier && meetsTier === false) {
+        blockers.push(`Judge tier '${resolvedTier}' is below required tier '${requiredTier}' for selected prompts`);
+    } else if (!resolvedTier) {
+        warnings.push('Judge tier metadata unavailable; exactitude risk cannot be fully assessed');
+    }
+
+    if (typeof reliability === 'number') {
+        if (reliability < 0.6) {
+            blockers.push(`Judge reliability ${reliability.toFixed(2)} is below minimum 0.60`);
+        } else if (reliability < 0.75) {
+            warnings.push(`Judge reliability ${reliability.toFixed(2)} is below recommended 0.75`);
+        }
+    } else {
+        warnings.push('Judge reliability metadata unavailable; calibration is recommended');
+    }
+
+    return {
+        ok: blockers.length === 0,
+        host,
+        model,
+        required_tier: requiredTier,
+        resolved_tier: resolvedTier,
+        reliability,
+        avgJudgeLatencyMs,
         warnings,
         blockers
     };
@@ -149,6 +269,15 @@ async function checkOrphanedBatches() {
  */
 async function runPreflight(options = {}) {
     const { targets = [], judgeConfig = {}, levels = [1, 2, 3, 4, 5] } = options;
+    const uniqueTargets = [...new Map(
+        (targets || [])
+            .map((target) => ({
+                host: normalizeHostUrl(target?.host),
+                model: normalizeModelName(target?.model)
+            }))
+            .filter((target) => target.host && target.model)
+            .map((target) => [`${target.host}@@${target.model}`, target])
+    ).values()];
 
     const checks = {
         hosts: [],
@@ -158,21 +287,17 @@ async function runPreflight(options = {}) {
     };
 
     // Run all checks in parallel
-    const hostChecks = targets.map(async (t) => {
+    const hostChecks = uniqueTargets.map(async (t) => {
         const result = await checkHostModel(t.host, t.model);
         return { ...t, ...result };
     });
 
-    const judgeCheck = judgeConfig.host
-        ? checkHostModel(judgeConfig.host, judgeConfig.model)
-        : Promise.resolve(null);
-
-    const [hostResults, judgeResult, promptResult, batchResult] = await Promise.all([
+    const [hostResults, promptResult, batchResult] = await Promise.all([
         Promise.all(hostChecks),
-        judgeCheck,
         checkPromptCoverage(levels),
         checkOrphanedBatches()
     ]);
+    const judgeResult = await checkJudgeConfiguration(judgeConfig, levels, promptResult);
 
     checks.hosts = hostResults;
     checks.judge = judgeResult;
@@ -180,7 +305,7 @@ async function runPreflight(options = {}) {
     checks.batches = batchResult;
 
     const allHostsOk = checks.hosts.every(h => h.ok);
-    const judgeOk = !judgeConfig.host || (checks.judge && checks.judge.ok);
+    const judgeOk = checks.judge && checks.judge.ok;
     const promptsOk = checks.prompts.ok;
     const batchesOk = checks.batches.ok;
 
@@ -191,8 +316,8 @@ async function runPreflight(options = {}) {
         const failed = checks.hosts.filter(h => !h.ok);
         issues.push(`${failed.length} host(s) unreachable or missing models`);
     }
-    if (!judgeOk) issues.push('Judge model not available');
-    if (!promptsOk) issues.push(`${checks.prompts.blockers.length} category(s) below minimum prompt count`);
+    if (!judgeOk) issues.push(...checks.judge.blockers);
+    if (!promptsOk) issues.push(...checks.prompts.blockers);
     if (!batchesOk) issues.push(`${checks.batches.orphanedBatches.length} orphaned batch(es) detected`);
 
     logger.info('Pre-flight check completed', { ready, issues });
@@ -209,6 +334,7 @@ module.exports = {
     WARN_PROMPTS_PER_CATEGORY,
     checkHostModel,
     checkPromptCoverage,
+    checkJudgeConfiguration,
     checkOrphanedBatches,
     runPreflight
 };

@@ -125,11 +125,12 @@ describe('PerformanceMetricsDashboard', () => {
   });
 
   describe('Number Formatting', () => {
-    it('should format numbers with commas', () => {
+    it('should format numbers with grouping separators', () => {
       const num = 1234567;
       const formatted = num.toLocaleString();
 
-      expect(formatted).toContain(',');
+      expect(formatted).toMatch(/[,\u00A0\u202F]/);
+      expect(formatted.replace(/[,\u00A0\u202F]/g, '')).toBe('1234567');
     });
 
     it('should handle null values', () => {
