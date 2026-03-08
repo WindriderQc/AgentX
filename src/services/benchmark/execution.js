@@ -187,6 +187,67 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
         }
     };
 
+    const progressFlushThreshold = executionMode === 'throughput' ? 8 : 4;
+    const progressFlushIntervalMs = 1500;
+    const pendingBatchProgress = {
+        completed: 0,
+        failed: 0,
+        results: [],
+        dirtySince: 0
+    };
+
+    function queueBatchProgress(resultSummary, { failed = false } = {}) {
+        pendingBatchProgress.completed += 1;
+        if (failed) {
+            pendingBatchProgress.failed += 1;
+        }
+        pendingBatchProgress.results.push(resultSummary);
+        if (!pendingBatchProgress.dirtySince) {
+            pendingBatchProgress.dirtySince = Date.now();
+        }
+    }
+
+    async function flushBatchProgress(force = false) {
+        if (pendingBatchProgress.completed === 0 && pendingBatchProgress.results.length === 0) {
+            return;
+        }
+
+        const ageMs = pendingBatchProgress.dirtySince
+            ? (Date.now() - pendingBatchProgress.dirtySince)
+            : 0;
+
+        if (!force && pendingBatchProgress.results.length < progressFlushThreshold && ageMs < progressFlushIntervalMs) {
+            return;
+        }
+
+        const results = pendingBatchProgress.results.slice();
+        const completed = pendingBatchProgress.completed;
+        const failed = pendingBatchProgress.failed;
+
+        const update = {
+            $inc: { completed },
+            $set: { last_activity_at: new Date() }
+        };
+        if (failed > 0) {
+            update.$inc.failed = failed;
+        }
+        if (results.length > 0) {
+            update.$push = {
+                results: {
+                    $each: results,
+                    $slice: -1000
+                }
+            };
+        }
+
+        await BenchmarkBatch.updateOne({ _id: batchId }, update);
+
+        pendingBatchProgress.completed = 0;
+        pendingBatchProgress.failed = 0;
+        pendingBatchProgress.results = [];
+        pendingBatchProgress.dirtySince = 0;
+    }
+
     try {
         await recordBatchTimelineEvent('prep_start', {
             model: judgeConfig.model || JUDGE_CONFIG.model,
@@ -233,8 +294,31 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
     let testsStarted = false;
     let stopCheckCounter = 0;
     let lastStopCheckAt = 0;
+    let currentTestWriteCount = 0;
+    let lastCurrentTestWriteAt = 0;
     const STOP_CHECK_EVERY_N = 5;
     const STOP_CHECK_MIN_INTERVAL_MS = 2000;
+    const CURRENT_TEST_WRITE_EVERY_N = executionMode === 'throughput' ? 3 : 1;
+    const CURRENT_TEST_WRITE_MIN_INTERVAL_MS = executionMode === 'throughput' ? 1500 : 0;
+
+    const shouldPersistCurrentTest = () => {
+        if (executionMode !== 'throughput') {
+            return true;
+        }
+
+        currentTestWriteCount += 1;
+        const now = Date.now();
+        const shouldWrite = currentTestWriteCount === 1
+            || (currentTestWriteCount % CURRENT_TEST_WRITE_EVERY_N === 0)
+            || ((now - lastCurrentTestWriteAt) >= CURRENT_TEST_WRITE_MIN_INTERVAL_MS);
+
+        if (shouldWrite) {
+            lastCurrentTestWriteAt = now;
+        }
+
+        return shouldWrite;
+    };
+
     const hostTasks = Object.entries(modelsByHost).map(([hostUrl, hostModels]) => async () => {
         try {
             // Determine judge host — prefer explicit override, then cross-host pipelining, fall back to same-host
@@ -332,6 +416,7 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                             const stopCheck = await BenchmarkBatch.findById(batchId).select('status').lean();
                             if (stopCheck && stopCheck.status === 'stopped') {
                                 logger.info('Batch execution stopped by user', { batchId });
+                                await flushBatchProgress(true);
                                 clearInterval(heartbeatInterval);
                                 activeHeartbeatInterval = null;
                                 activeBatchId = null;
@@ -351,13 +436,15 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                     const start = Date.now();
 
                     try {
-                        await currentBatch.updateCurrentTest(
-                            model,
-                            prompt._id ? prompt._id.toString() : null,
-                            prompt.name,
-                            'executing',
-                            { testNumber, promptLevel: prompt.level }
-                        );
+                        if (shouldPersistCurrentTest()) {
+                            await currentBatch.updateCurrentTest(
+                                model,
+                                prompt._id ? prompt._id.toString() : null,
+                                prompt.name,
+                                'executing',
+                                { testNumber, promptLevel: prompt.level }
+                            );
+                        }
 
                         const numPredict = modelExecConfig.response_max_tokens || 32000;
                         const expectedTokens = prompt.expected_tokens || null;
@@ -492,28 +579,19 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                             latency, true, null, prompt.level, hostUrl, tokens_per_sec
                         );
 
-                        await BenchmarkBatch.updateOne(
-                            { _id: batchId },
-                            {
-                                $inc: { completed: 1 },
-                                $push: {
-                                    results: {
-                                        $each: [{
-                                            model, host: hostUrl,
-                                            judge_host: judgeHostUrl,
-                                            prompt_name: prompt.name, success: true,
-                                            latency,
-                                            response_preview: (data.response || '').substring(0, 100) + '...'
-                                        }],
-                                        $slice: -1000
-                                    }
-                                }
-                            }
-                        );
-
                         // Increment the in-memory counter so the next iteration's testNumber
                         // is correct without an extra DB round-trip (we are the only writer here).
                         currentBatch.completed = (currentBatch.completed || 0) + 1;
+                        queueBatchProgress({
+                            model,
+                            host: hostUrl,
+                            judge_host: judgeHostUrl,
+                            prompt_name: prompt.name,
+                            success: true,
+                            latency,
+                            response_preview: cleanedResponse.substring(0, 100) + '...'
+                        });
+                        await flushBatchProgress();
 
                         logger.info('Batch test completed', { batchId, model, prompt: prompt.name, latency });
 
@@ -606,22 +684,12 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                                 prompt._id ? prompt._id.toString() : null,
                                 errorDuration, false, err, prompt.level, hostUrl, null
                             );
-
-                            await BenchmarkBatch.updateOne(
-                                { _id: batchId },
-                                {
-                                    $inc: { completed: 1, failed: 1 },
-                                    $push: {
-                                        results: {
-                                            $each: [{ model, prompt_name: prompt.name, success: false, error: err.message }],
-                                            $slice: -1000
-                                        }
-                                    }
-                                }
+                            currentBatch.completed = (currentBatch.completed || 0) + 1;
+                            queueBatchProgress(
+                                { model, prompt_name: prompt.name, success: false, error: err.message },
+                                { failed: true }
                             );
-
-                            const refreshedBatch = await BenchmarkBatch.findById(batchId).select('completed status').lean();
-                            if (refreshedBatch) currentBatch.completed = refreshedBatch.completed;
+                            await flushBatchProgress();
 
                             logger.error('Batch test failed', { batchId, model, prompt: prompt.name, error: err.message });
                         } catch (saveErr) {
@@ -651,6 +719,8 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
         } else {
             await Promise.all(hostTasks.map(task => task()));
         }
+
+        await flushBatchProgress(true);
 
         // Drain pipelined judge queue
         if (judgeQueue) {
@@ -769,6 +839,12 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
             }
         }
     } catch (err) {
+        await flushBatchProgress(true).catch((flushErr) => {
+            logger.warn('Failed to flush pending batch progress after crash', {
+                batchId,
+                error: flushErr.message
+            });
+        });
         logger.error('Batch execution crashed', {
             batchId,
             error: err.message,
@@ -803,6 +879,12 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
         });
         throw err;
     } finally {
+        await flushBatchProgress(true).catch((flushErr) => {
+            logger.warn('Failed to flush pending batch progress during cleanup', {
+                batchId,
+                error: flushErr.message
+            });
+        });
         if (heartbeatInterval) {
             clearInterval(heartbeatInterval);
         }

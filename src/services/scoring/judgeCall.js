@@ -3,9 +3,9 @@
  * HTTP call to LLM judge model with retry/timeout and response parsing
  */
 
-const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
 const logger = require('../../../config/logger');
 const { getFetchOptions } = require('../../helpers/httpAgent');
+const { benchmarkFetch: fetch } = require('../benchmark/http');
 
 // Judge model configuration
 // Default: 7B model — fits on most hosts without stealing context from the

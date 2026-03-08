@@ -232,12 +232,15 @@ router.post('/batch/:id/recover', async (req, res) => {
         // Stop any active judging
         stopJudging(req.params.id);
 
-        await batch.markAsStopped();
+        const reconciledBatch = await batch.markAsStopped({
+            timelineEvent: 'recover_requested',
+            timelineError: 'Batch manually recovered after being marked stuck'
+        });
 
         res.json({
             status: 'success',
             message: 'Batch marked as stopped',
-            data: batch
+            data: reconciledBatch
         });
     } catch (err) {
         logger.error('Failed to recover batch', { error: err.message, batchId: req.params.id });

@@ -16,7 +16,11 @@ jest.mock('../../../src/services/qualityScorer', () => ({
     JUDGE_CONFIG: { model: 'default-judge', host: 'http://localhost:11434' }
 }));
 
-const { multiJudgeScore, shouldUseMultiJudge } = require('../../../src/services/benchmark/multiJudge');
+const {
+    multiJudgeScore,
+    shouldUseMultiJudge,
+    shouldEscalateToMultiJudge
+} = require('../../../src/services/benchmark/multiJudge');
 const { scoreResponse } = require('../../../src/services/qualityScorer');
 
 function makePrompt(category = 'reasoning') {
@@ -112,6 +116,36 @@ describe('multiJudgeScore', () => {
         expect(result.finalScore).toBe(6);
     });
 
+    it('reuses a seeded primary judge result without rescoring the same judge', async () => {
+        scoreResponse.mockResolvedValueOnce({
+            quality_score: 8,
+            explanation: 'second judge',
+            scoring_method: 'llm_judge'
+        });
+
+        const result = await multiJudgeScore({
+            response: 'answer',
+            prompt: makePrompt(),
+            judges: [
+                { model: 'primary-judge', host: 'http://localhost:11434', tier: 'standard' },
+                { model: 'secondary-judge', host: 'http://localhost:11435', tier: 'standard' }
+            ],
+            seedJudgeResult: {
+                judge_model: 'primary-judge',
+                judge_host: 'http://localhost:11434',
+                judge_tier: 'standard',
+                quality_score: 7,
+                explanation: 'seeded primary',
+                scoring_time_ms: 10,
+                scoring_method: 'llm_judge',
+                success: true
+            }
+        });
+
+        expect(scoreResponse).toHaveBeenCalledTimes(1);
+        expect(result.finalScore).toBe(7.5);
+    });
+
     it('returns no_valid_scores when all judges fail', async () => {
         scoreResponse.mockRejectedValue(new Error('LLM error'));
 
@@ -139,5 +173,42 @@ describe('shouldUseMultiJudge', () => {
 
     it('returns boolean for unknown category', () => {
         expect(typeof shouldUseMultiJudge('unknown-cat-xyz')).toBe('boolean');
+    });
+});
+
+describe('shouldEscalateToMultiJudge', () => {
+    const enabledConfig = {
+        enabled: true,
+        judges: [{ model: 'a', host: 'h1' }, { model: 'b', host: 'h2' }]
+    };
+
+    it('escalates on low confidence', () => {
+        expect(shouldEscalateToMultiJudge({
+            category: 'reasoning',
+            scoringMethod: 'llm_judge',
+            judgeConfidence: 0.5,
+            needsReview: false,
+            multiJudgeConfig: enabledConfig
+        })).toBe(true);
+    });
+
+    it('escalates on judge failure', () => {
+        expect(shouldEscalateToMultiJudge({
+            category: 'reasoning',
+            scoringMethod: 'llm_failed',
+            judgeConfidence: null,
+            needsReview: false,
+            multiJudgeConfig: enabledConfig
+        })).toBe(true);
+    });
+
+    it('does not escalate when disabled', () => {
+        expect(shouldEscalateToMultiJudge({
+            category: 'reasoning',
+            scoringMethod: 'llm_judge',
+            judgeConfidence: 0.4,
+            needsReview: true,
+            multiJudgeConfig: { enabled: false, judges: [] }
+        })).toBe(false);
     });
 });

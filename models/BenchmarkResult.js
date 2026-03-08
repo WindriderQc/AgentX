@@ -298,6 +298,25 @@ const BenchmarkResultSchema = new mongoose.Schema({
         scoring_time_ms: Number,
         timestamp: { type: Date, default: Date.now }
     }],
+    judge_consensus: {
+        type: String,
+        enum: ['agreement', 'single_judge', 'tiebreaker_resolved', 'divergent_unresolved', 'no_valid_scores', null],
+        default: null
+    },
+    judge_divergence: {
+        type: Number,
+        min: 0,
+        max: 10,
+        default: null
+    },
+    judge_tiebreaker_used: {
+        type: Boolean,
+        default: false
+    },
+    judge_escalated: {
+        type: Boolean,
+        default: false
+    },
     // Judge confidence and review fields
     judge_confidence: {
         type: Number,

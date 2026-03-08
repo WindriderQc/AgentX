@@ -256,6 +256,61 @@ describe('judgeResult', () => {
             })
         );
     });
+
+    it('should escalate to multi-judge when confidence is low', async () => {
+        scoreResponse
+            .mockResolvedValueOnce({
+                quality_score: 8.8,
+                breakdown: { accuracy: 9, clarity: 9, overall: 8.8 },
+                explanation: 'Base judge was overly optimistic.',
+                scoring_method: 'llm_judge',
+                scoring_type: 'reasoning',
+                scoring_time_ms: 120,
+                judge_model: 'test-judge:latest',
+                judge_host: 'http://localhost:11434',
+                judge_confidence: 0.45,
+                needs_review: true,
+                review_reason: 'High complexity prompt with suspiciously high score'
+            })
+            .mockResolvedValueOnce({
+                quality_score: 6.0,
+                explanation: 'Secondary judge score',
+                scoring_method: 'llm_judge'
+            })
+            .mockResolvedValueOnce({
+                quality_score: 6.5,
+                explanation: 'Tiebreaker score',
+                scoring_method: 'llm_judge'
+            });
+
+        await judgeResult(
+            'result-123',
+            {},
+            null,
+            {
+                enabled: true,
+                judges: [
+                    { model: 'test-judge:latest', host: 'http://localhost:11434', tier: 'standard' },
+                    { model: 'backup-judge:latest', host: 'http://localhost:11435', tier: 'standard' }
+                ],
+                tiebreaker: { model: 'premium-judge:latest', host: 'http://localhost:11436', tier: 'advanced' }
+            }
+        );
+
+        expect(BenchmarkResult.updateOne).toHaveBeenCalledWith(
+            { _id: 'result-123' },
+            {
+                $set: expect.objectContaining({
+                    judge_scores: expect.any(Array)
+                })
+            }
+        );
+
+        const finalUpdate = BenchmarkResult.updateOne.mock.calls.at(-1)[1].$set;
+        expect(finalUpdate.judge_escalated).toBe(true);
+        expect(finalUpdate.judge_consensus).toBe('tiebreaker_resolved');
+        expect(finalUpdate.quality_score).toBe(6.5);
+    });
 });
 
 // ---- judgeBatch ----

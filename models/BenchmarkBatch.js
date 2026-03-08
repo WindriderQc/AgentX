@@ -5,6 +5,48 @@
 
 const mongoose = require('mongoose');
 
+function buildIdleCurrentTest() {
+    return {
+        model: null,
+        prompt_id: null,
+        prompt_name: null,
+        prompt_level: null,
+        stage: 'idle',
+        started_at: null,
+        test_number: null
+    };
+}
+
+function buildJudgeableFilter(batchId) {
+    return {
+        batch_id: String(batchId),
+        success: true,
+        response: { $type: 'string', $nin: ['', null] }
+    };
+}
+
+function deriveTerminalJudgeStatus(batch, counts, terminalStatus) {
+    if (counts.judge_total > 0 && counts.judge_completed >= counts.judge_total) {
+        return 'completed';
+    }
+
+    if (terminalStatus === 'stopped') {
+        if (batch.judge_status === 'running' || batch.status === 'judging' || counts.judge_completed > 0) {
+            return counts.judge_total > 0 ? 'stopped' : 'none';
+        }
+        return batch.judge_status === 'completed' ? 'completed' : 'none';
+    }
+
+    if (terminalStatus === 'interrupted') {
+        if (batch.judge_status === 'running' || batch.status === 'judging' || counts.judge_total > 0 || counts.judge_completed > 0) {
+            return 'failed';
+        }
+        return batch.judge_status === 'completed' ? 'completed' : 'none';
+    }
+
+    return batch.judge_status || 'none';
+}
+
 const BenchmarkBatchSchema = new mongoose.Schema({
     // Configuration
     run_name: {
@@ -300,22 +342,37 @@ BenchmarkBatchSchema.statics.getCompleted = function(limit = 20) {
         .limit(limit);
 };
 
+BenchmarkBatchSchema.statics.getAuthoritativeCounts = async function(batchId) {
+    const BenchmarkResult = require('./BenchmarkResult');
+    const judgeableFilter = buildJudgeableFilter(batchId);
+
+    const [completed, failed, judge_total, judge_completed, judge_failed] = await Promise.all([
+        BenchmarkResult.countDocuments({ batch_id: String(batchId) }),
+        BenchmarkResult.countDocuments({ batch_id: String(batchId), success: false }),
+        BenchmarkResult.countDocuments(judgeableFilter),
+        BenchmarkResult.countDocuments({
+            ...judgeableFilter,
+            scoring_method: { $ne: 'pending' }
+        }),
+        BenchmarkResult.countDocuments({
+            ...judgeableFilter,
+            scoring_method: 'llm_failed'
+        })
+    ]);
+
+    return {
+        completed,
+        failed,
+        judge_total,
+        judge_completed,
+        judge_failed
+    };
+};
+
 BenchmarkBatchSchema.statics.cleanupStale = async function(inactivityThresholdSeconds = 300) {
     // Only mark batches as stale if they've been inactive for the threshold period
     // This prevents killing active batches on server restart/reload
     const threshold = new Date(Date.now() - (inactivityThresholdSeconds * 1000));
-
-    // Also clean up stuck judge_status
-    await this.updateMany(
-        {
-            judge_status: 'running',
-            $or: [
-                { last_activity_at: { $lt: threshold } },
-                { last_activity_at: null }
-            ]
-        },
-        { $set: { judge_status: 'failed' } }
-    );
 
     // Find stale batches first so we can fix them properly
     const staleBatches = await this.find({
@@ -327,44 +384,24 @@ BenchmarkBatchSchema.statics.cleanupStale = async function(inactivityThresholdSe
     });
 
     let fixedCount = 0;
-    const BenchmarkResult = require('./BenchmarkResult');
 
     for (const batch of staleBatches) {
         try {
-            // Count actual execution and judgeable result totals separately
-            const actualResultCount = await BenchmarkResult.countDocuments({ batch_id: batch._id });
-            const actualJudgeableCount = await BenchmarkResult.countDocuments({
-                batch_id: batch._id,
-                success: true,
-                response: { $type: 'string', $nin: ['', null] }
+            const counts = await this.getAuthoritativeCounts(batch._id);
+            const allTestsFinished = Number(batch.total_tests || 0) > 0
+                && counts.completed >= Number(batch.total_tests || 0);
+            const judgingFinished = counts.judge_total === 0 || counts.judge_completed >= counts.judge_total;
+            const reconciledStatus = allTestsFinished && judgingFinished
+                ? 'completed'
+                : 'interrupted';
+
+            await batch.reconcileFromResults({
+                status: reconciledStatus,
+                judgeStatus: deriveTerminalJudgeStatus(batch, counts, reconciledStatus),
+                authoritativeCounts: counts,
+                timelineEvent: 'stale_cleanup',
+                timelineError: 'Batch reconciled after inactivity threshold was exceeded'
             });
-
-            // Determine appropriate status based on completion
-            let newStatus = 'interrupted';
-            if (actualResultCount > 0 && actualResultCount >= batch.total_tests) {
-                // All tests completed, check if judging was done
-                const judgedCount = await BenchmarkResult.countDocuments({
-                    batch_id: batch._id,
-                    scoring_method: { $nin: [null, 'pending', 'skipped', 'empty_response', 'exec_failed'] }
-                });
-                if (actualJudgeableCount > 0 && judgedCount >= actualJudgeableCount) {
-                    newStatus = 'completed';
-                }
-            }
-
-            await this.updateOne(
-                { _id: batch._id },
-                {
-                    $set: {
-                        status: newStatus,
-                        completed_at: new Date(),
-                        // Fix judge_total to match actual judgeable tests
-                        judge_total: actualJudgeableCount,
-                        // Update completed counter if it's wrong
-                        completed: actualResultCount
-                    }
-                }
-            );
             fixedCount++;
         } catch (err) {
             console.error('Failed to cleanup batch', batch._id, err.message);
@@ -414,12 +451,14 @@ BenchmarkBatchSchema.methods.markAsJudging = function() {
 BenchmarkBatchSchema.methods.markAsCompleted = function() {
     this.status = 'completed';
     this.completed_at = new Date();
+    this.active_slot = null;
     return this.save();
 };
 
 BenchmarkBatchSchema.methods.markAsFailed = function(error) {
     this.status = 'failed';
     this.completed_at = new Date();
+    this.active_slot = null;
     if (error && this.results) {
         this.results.push({
             error: error.message || error.toString(),
@@ -429,10 +468,58 @@ BenchmarkBatchSchema.methods.markAsFailed = function(error) {
     return this.save();
 };
 
-BenchmarkBatchSchema.methods.markAsStopped = function() {
-    this.status = 'stopped';
+BenchmarkBatchSchema.methods.reconcileFromResults = async function(options = {}) {
+    const BatchModel = mongoose.model('BenchmarkBatch');
+    const terminalStatus = options.status || this.status || 'stopped';
+    const counts = options.authoritativeCounts || await BatchModel.getAuthoritativeCounts(this._id);
+    const priorState = {
+        status: this.status,
+        judge_status: this.judge_status
+    };
+
+    this.status = terminalStatus;
+    this.completed = counts.completed;
+    this.failed = counts.failed;
+    this.judge_total = counts.judge_total;
+    this.judge_completed = counts.judge_completed;
+    this.judge_failed = counts.judge_failed;
+    this.judge_status = options.judgeStatus || deriveTerminalJudgeStatus(priorState, counts, terminalStatus);
     this.completed_at = new Date();
+    this.last_activity_at = new Date();
+    this.current_test = buildIdleCurrentTest();
+    this.active_slot = null;
+
+    if (options.timelineEvent) {
+        this.timeline.push({
+            timestamp: new Date(),
+            event: options.timelineEvent,
+            success: terminalStatus === 'completed',
+            error: options.timelineError || null
+        });
+        if (this.timeline.length > 2500) {
+            this.timeline = this.timeline.slice(-2500);
+        }
+    }
+
     return this.save();
+};
+
+BenchmarkBatchSchema.methods.markAsStopped = function(options = {}) {
+    return this.reconcileFromResults({
+        ...options,
+        status: 'stopped',
+        timelineEvent: options.timelineEvent || 'stop_requested',
+        timelineError: options.timelineError || null
+    });
+};
+
+BenchmarkBatchSchema.methods.markAsInterrupted = function(options = {}) {
+    return this.reconcileFromResults({
+        ...options,
+        status: 'interrupted',
+        timelineEvent: options.timelineEvent || 'interrupted',
+        timelineError: options.timelineError || null
+    });
 };
 
 BenchmarkBatchSchema.methods.markJudgingComplete = function() {
@@ -547,13 +634,7 @@ BenchmarkBatchSchema.methods.recordJudgeComplete = function(model, promptId, dur
 };
 
 BenchmarkBatchSchema.methods.clearCurrentTest = function() {
-    this.current_test = {
-        model: null,
-        prompt_id: null,
-        prompt_name: null,
-        stage: 'idle',
-        started_at: null
-    };
+    this.current_test = buildIdleCurrentTest();
     return this.save();
 };
 

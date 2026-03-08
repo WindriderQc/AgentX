@@ -458,7 +458,11 @@ export async function loadRecentTestsTimeline() {
                                   '<i class="fas fa-clock"></i>';
                 const resultCount = results.length;
                 const modelCount = targetBatch.models?.length || new Set(results.map(r => r.model)).size;
-                batchLabelEl.innerHTML = `${statusIcon} <strong>${escapeHtml(batchName)}</strong> &mdash; ${modelCount} model${modelCount !== 1 ? 's' : ''}, ${resultCount} test${resultCount !== 1 ? 's' : ''}`;
+                const totalTests = Number(targetBatch.total_tests) || 0;
+                const completionLabel = totalTests > 0
+                    ? `${resultCount}/${totalTests} completed`
+                    : `${resultCount} result${resultCount !== 1 ? 's' : ''}`;
+                batchLabelEl.innerHTML = `${statusIcon} <strong>${escapeHtml(batchName)}</strong> &mdash; ${modelCount} model${modelCount !== 1 ? 's' : ''}, ${completionLabel}`;
                 batchInfoEl.style.display = 'block';
             } else {
                 batchInfoEl.style.display = 'none';
@@ -573,10 +577,17 @@ export async function loadRecentTestsTimeline() {
             }
         });
 
-        // Ensure active model is in the map if it doesn't have results yet
-        if (activeBatch && activeBatch.status === 'running' && activeBatch.model) {
-            if (!resultsByModel.has(activeBatch.model)) {
-                resultsByModel.set(activeBatch.model, []);
+        const activeCurrentTest = activeBatch && activeBatch.current_test
+            ? activeBatch.current_test
+            : null;
+        const activeModel = activeCurrentTest && activeCurrentTest.model
+            ? activeCurrentTest.model
+            : null;
+
+        // Ensure the active model is in the map even before its result lands.
+        if (activeBatch && activeBatch.status === 'running' && activeModel) {
+            if (!resultsByModel.has(activeModel)) {
+                resultsByModel.set(activeModel, []);
             }
         }
         for (const model of modelWarmups.keys()) {
@@ -881,24 +892,21 @@ export async function loadRecentTestsTimeline() {
             }).join('');
 
             // Check for Active State - IMPROVED LOGIC
-            if (activeBatch && activeBatch.status === 'running' && activeBatch.model === model) {
-                const currentTest = activeBatch.current_test;
+            if (activeBatch && activeBatch.status === 'running' && activeModel === model) {
+                const currentTest = activeCurrentTest;
 
                 let activeStage = 'running';
                 let activeText = 'Running...';
-                let activeIcon = 'fa-cog fa-spin';
                 let bubbleText = 'Processing Test...';
 
                 if (currentTest) {
+                    const promptLabel = currentTest.prompt_name || currentTest.prompt_id || 'Prompt';
                     if (currentTest.stage === 'judging' || (activeBatch.current_phase === 'judging')) {
                         activeStage = 'judging';
                         activeText = 'Judging';
-                        activeIcon = 'fa-gavel';
-                        const promptSnippet = currentTest.prompt ? (currentTest.prompt.length > 20 ? currentTest.prompt.substring(0, 20) + '...' : currentTest.prompt) : 'Response';
-                        bubbleText = `Judging: ${escapeHtml(promptSnippet)}...`;
+                        bubbleText = `Judging: ${escapeHtml(promptLabel)}...`;
                     } else {
-                        const promptSnippet = currentTest.prompt ? (currentTest.prompt.length > 20 ? currentTest.prompt.substring(0, 20) + '...' : currentTest.prompt) : 'Prompt';
-                        bubbleText = `Running: ${escapeHtml(promptSnippet)}...`;
+                        bubbleText = `Running: ${escapeHtml(promptLabel)}...`;
                     }
                 }
 
@@ -917,11 +925,19 @@ export async function loadRecentTestsTimeline() {
             }
 
             const safeModelLabel = escapeHtml(model);
+            const rowBadges = [];
+            if (!modelResults.length && warmupEvent) {
+                rowBadges.push('<span class="prep-lane-badge">Warmup</span>');
+            }
+            if (activeModel === model && activeCurrentTest && activeCurrentTest.stage && activeCurrentTest.stage !== 'idle') {
+                rowBadges.push(`<span class="prep-lane-badge">${escapeHtml(activeCurrentTest.stage)}</span>`);
+            }
+            const rowBadgeHtml = rowBadges.length ? ` ${rowBadges.join(' ')}` : '';
 
             rowsHtml += `
             <div class="timeline-model-row">
                 <div class="timeline-model-label">
-                    ${safeModelLabel}
+                    ${safeModelLabel}${rowBadgeHtml}
                 </div>
                 <div class="timeline-track">
                     ${segmentsHtml}

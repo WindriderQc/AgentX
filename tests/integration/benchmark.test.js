@@ -998,24 +998,255 @@ describe('Benchmark System - Integration Tests', () => {
     });
 
     describe('POST /api/benchmark/batch/:id/recover', () => {
-        it('should recover a running batch by stopping it', async () => {
+        it('should recover a running batch by reconciling counters and clearing current state', async () => {
             const batch = await BenchmarkBatch.create({
                 host: 'http://localhost:11434',
                 models: ['recover-model'],
                 levels: [1],
                 run_name: 'Recover Me',
                 status: 'running',
-                total_tests: 3
+                judge_status: 'running',
+                total_tests: 3,
+                completed: 0,
+                failed: 0,
+                judge_total: 99,
+                judge_completed: 12,
+                judge_failed: 8,
+                active_slot: 'benchmark_singleton',
+                current_test: {
+                    model: 'recover-model',
+                    prompt_id: 'prompt-1',
+                    prompt_name: 'Recover Prompt',
+                    prompt_level: 1,
+                    stage: 'executing',
+                    started_at: new Date(),
+                    test_number: 2
+                }
             });
+
+            await BenchmarkResult.create([
+                {
+                    batch_id: batch._id.toString(),
+                    model: 'recover-model',
+                    host: 'http://localhost:11434',
+                    prompt: 'Prompt A',
+                    prompt_name: 'Recover Prompt A',
+                    prompt_level: 1,
+                    prompt_category: 'reasoning',
+                    response: 'Useful answer',
+                    latency: 120,
+                    tokens: 16,
+                    success: true,
+                    scoring_method: 'llm_judge'
+                },
+                {
+                    batch_id: batch._id.toString(),
+                    model: 'recover-model',
+                    host: 'http://localhost:11434',
+                    prompt: 'Prompt B',
+                    prompt_name: 'Recover Prompt B',
+                    prompt_level: 1,
+                    prompt_category: 'reasoning',
+                    error: 'Execution failed',
+                    latency: 95,
+                    tokens: 0,
+                    success: false,
+                    scoring_method: 'exec_failed'
+                },
+                {
+                    batch_id: batch._id.toString(),
+                    model: 'recover-model',
+                    host: 'http://localhost:11434',
+                    prompt: 'Prompt C',
+                    prompt_name: 'Recover Prompt C',
+                    prompt_level: 1,
+                    prompt_category: 'reasoning',
+                    response: 'Needs judging',
+                    latency: 140,
+                    tokens: 20,
+                    success: true,
+                    scoring_method: 'pending'
+                }
+            ]);
 
             const response = await request(app).post(`/api/benchmark/batch/${batch._id}/recover`);
 
             expect(response.status).toBe(200);
             expect(response.body.status).toBe('success');
             expect(response.body.message).toContain('stopped');
+            expect(response.body.data.completed).toBe(3);
+            expect(response.body.data.failed).toBe(1);
+            expect(response.body.data.judge_total).toBe(2);
+            expect(response.body.data.judge_completed).toBe(1);
+            expect(response.body.data.judge_status).toBe('stopped');
 
             const refreshed = await BenchmarkBatch.findById(batch._id).lean();
             expect(refreshed.status).toBe('stopped');
+            expect(refreshed.completed).toBe(3);
+            expect(refreshed.failed).toBe(1);
+            expect(refreshed.judge_total).toBe(2);
+            expect(refreshed.judge_completed).toBe(1);
+            expect(refreshed.judge_failed).toBe(0);
+            expect(refreshed.judge_status).toBe('stopped');
+            expect(refreshed.active_slot).toBeNull();
+            expect(refreshed.current_test).toMatchObject({
+                model: null,
+                prompt_id: null,
+                prompt_name: null,
+                prompt_level: null,
+                stage: 'idle',
+                started_at: null,
+                test_number: null
+            });
+        });
+    });
+
+    describe('BenchmarkBatch.cleanupStale', () => {
+        it('should reconcile stale interrupted batches from authoritative result counts', async () => {
+            const batch = await BenchmarkBatch.create({
+                host: 'http://localhost:11434',
+                models: ['stale-model'],
+                levels: [1],
+                run_name: 'Stale Batch',
+                status: 'running',
+                judge_status: 'running',
+                total_tests: 3,
+                completed: 0,
+                failed: 0,
+                judge_total: 50,
+                judge_completed: 4,
+                judge_failed: 2,
+                active_slot: 'benchmark_singleton',
+                current_test: {
+                    model: 'stale-model',
+                    prompt_id: 'prompt-stale',
+                    prompt_name: 'Stale Prompt',
+                    prompt_level: 1,
+                    stage: 'judging',
+                    started_at: new Date(),
+                    test_number: 3
+                },
+                last_activity_at: null
+            });
+
+            await BenchmarkResult.create([
+                {
+                    batch_id: batch._id.toString(),
+                    model: 'stale-model',
+                    host: 'http://localhost:11434',
+                    prompt: 'Prompt A',
+                    prompt_name: 'A',
+                    prompt_level: 1,
+                    prompt_category: 'reasoning',
+                    response: 'Scored',
+                    latency: 100,
+                    tokens: 10,
+                    success: true,
+                    scoring_method: 'llm_judge'
+                },
+                {
+                    batch_id: batch._id.toString(),
+                    model: 'stale-model',
+                    host: 'http://localhost:11434',
+                    prompt: 'Prompt B',
+                    prompt_name: 'B',
+                    prompt_level: 1,
+                    prompt_category: 'reasoning',
+                    response: 'Pending',
+                    latency: 120,
+                    tokens: 12,
+                    success: true,
+                    scoring_method: 'pending'
+                },
+                {
+                    batch_id: batch._id.toString(),
+                    model: 'stale-model',
+                    host: 'http://localhost:11434',
+                    prompt: 'Prompt C',
+                    prompt_name: 'C',
+                    prompt_level: 1,
+                    prompt_category: 'reasoning',
+                    error: 'boom',
+                    latency: 90,
+                    tokens: 0,
+                    success: false,
+                    scoring_method: 'exec_failed'
+                }
+            ]);
+
+            const cleaned = await BenchmarkBatch.cleanupStale(0);
+
+            expect(cleaned).toBe(1);
+
+            const refreshed = await BenchmarkBatch.findById(batch._id).lean();
+            expect(refreshed.status).toBe('interrupted');
+            expect(refreshed.judge_status).toBe('failed');
+            expect(refreshed.completed).toBe(3);
+            expect(refreshed.failed).toBe(1);
+            expect(refreshed.judge_total).toBe(2);
+            expect(refreshed.judge_completed).toBe(1);
+            expect(refreshed.judge_failed).toBe(0);
+            expect(refreshed.active_slot).toBeNull();
+            expect(refreshed.current_test.stage).toBe('idle');
+        });
+
+        it('should auto-complete stale batches that already finished execution and judging', async () => {
+            const batch = await BenchmarkBatch.create({
+                host: 'http://localhost:11434',
+                models: ['finished-model'],
+                levels: [1],
+                run_name: 'Finished But Stale',
+                status: 'running',
+                judge_status: 'running',
+                total_tests: 2,
+                active_slot: 'benchmark_singleton',
+                last_activity_at: null
+            });
+
+            await BenchmarkResult.create([
+                {
+                    batch_id: batch._id.toString(),
+                    model: 'finished-model',
+                    host: 'http://localhost:11434',
+                    prompt: 'Prompt A',
+                    prompt_name: 'A',
+                    prompt_level: 1,
+                    prompt_category: 'reasoning',
+                    response: 'Done',
+                    latency: 110,
+                    tokens: 14,
+                    success: true,
+                    scoring_method: 'llm_judge'
+                },
+                {
+                    batch_id: batch._id.toString(),
+                    model: 'finished-model',
+                    host: 'http://localhost:11434',
+                    prompt: 'Prompt B',
+                    prompt_name: 'B',
+                    prompt_level: 1,
+                    prompt_category: 'reasoning',
+                    response: 'Judge failed',
+                    latency: 150,
+                    tokens: 18,
+                    success: true,
+                    scoring_method: 'llm_failed'
+                }
+            ]);
+
+            const cleaned = await BenchmarkBatch.cleanupStale(0);
+
+            expect(cleaned).toBe(1);
+
+            const refreshed = await BenchmarkBatch.findById(batch._id).lean();
+            expect(refreshed.status).toBe('completed');
+            expect(refreshed.judge_status).toBe('completed');
+            expect(refreshed.completed).toBe(2);
+            expect(refreshed.failed).toBe(0);
+            expect(refreshed.judge_total).toBe(2);
+            expect(refreshed.judge_completed).toBe(2);
+            expect(refreshed.judge_failed).toBe(1);
+            expect(refreshed.active_slot).toBeNull();
         });
     });
 
