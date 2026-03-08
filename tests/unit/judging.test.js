@@ -348,6 +348,28 @@ describe('judgeBatch', () => {
         const findCall = BenchmarkResult.find.mock.calls[0][0];
         expect(findCall.scoring_method).toBeUndefined();
     });
+
+    it('should persist failed judge state when reconciliation crashes', async () => {
+        BenchmarkResult.countDocuments
+            .mockRejectedValueOnce(new Error('count failed'))
+            .mockResolvedValueOnce(0)
+            .mockResolvedValueOnce(0)
+            .mockResolvedValueOnce(0)
+            .mockResolvedValueOnce(0)
+            .mockResolvedValueOnce(0)
+            .mockResolvedValueOnce(0)
+            .mockResolvedValueOnce(0);
+
+        await expect(judgeBatch('batch-123')).rejects.toThrow('count failed');
+
+        const finalUpdate = BenchmarkBatch.updateOne.mock.calls.at(-1)[1];
+        expect(finalUpdate.$set).toEqual(expect.objectContaining({
+            judge_status: 'failed',
+            judge_total: 0,
+            judge_completed: 0,
+            judge_failed: 0
+        }));
+    });
 });
 
 // ---- stopJudging ----
@@ -390,5 +412,44 @@ describe('getJudgingStatus', () => {
         });
 
         await expect(getJudgingStatus('bad-batch')).rejects.toThrow('not found');
+    });
+
+    it('should reconcile drifted counters from authoritative result counts', async () => {
+        BenchmarkBatch.findById.mockReturnValue({
+            select: jest.fn().mockReturnValue({
+                lean: jest.fn().mockResolvedValue({
+                    status: 'completed',
+                    judge_status: 'completed',
+                    judge_total: 0,
+                    judge_completed: 0,
+                    judge_failed: 0
+                })
+            })
+        });
+        BenchmarkResult.countDocuments
+            .mockResolvedValueOnce(3)
+            .mockResolvedValueOnce(2)
+            .mockResolvedValueOnce(2)
+            .mockResolvedValueOnce(1);
+
+        const status = await getJudgingStatus('batch-123');
+
+        expect(BenchmarkBatch.updateOne).toHaveBeenCalledWith(
+            { _id: 'batch-123' },
+            {
+                $set: expect.objectContaining({
+                    judge_total: 2,
+                    judge_completed: 2,
+                    judge_failed: 1
+                })
+            }
+        );
+        expect(status).toEqual({
+            active: false,
+            judge_status: 'completed',
+            judge_total: 2,
+            judge_completed: 2,
+            judge_failed: 1
+        });
     });
 });

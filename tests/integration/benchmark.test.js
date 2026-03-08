@@ -73,6 +73,7 @@ jest.mock('../../src/services/benchmark/preflight', () => ({
 }));
 
 const { app } = require('../../src/app');
+const { runPreflight } = require('../../src/services/benchmark/preflight');
 
 const BenchmarkPrompt = require('../../models/BenchmarkPrompt');
 const BenchmarkResult = require('../../models/BenchmarkResult');
@@ -522,6 +523,35 @@ describe('Benchmark System - Integration Tests', () => {
             expect(batch).toBeTruthy();
             expect(batch.status).toBe('running');
             expect(batch.models).toEqual(['test-model']);
+        });
+
+        it('should reject batch start when preflight fails', async () => {
+            runPreflight.mockResolvedValueOnce({
+                ready: false,
+                issues: ['Judge reliability 0.52 is below minimum 0.60'],
+                checks: {
+                    hosts: [],
+                    judge: {
+                        ok: false,
+                        blockers: ['Judge reliability 0.52 is below minimum 0.60'],
+                        warnings: []
+                    },
+                    prompts: { ok: true, blockers: [], warnings: [] },
+                    batches: { ok: true, orphanedBatches: [] }
+                }
+            });
+
+            const response = await request(app)
+                .post('/api/benchmark/batch')
+                .send({
+                    host: 'http://localhost:11434',
+                    models: ['test-model'],
+                    levels: [1]
+                });
+
+            expect(response.status).toBe(422);
+            expect(response.body.error).toBe('Benchmark preflight failed');
+            expect(response.body.issues).toContain('Judge reliability 0.52 is below minimum 0.60');
         });
 
         it('should handle multiple models and levels', async () => {

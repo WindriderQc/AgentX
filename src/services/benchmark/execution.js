@@ -135,7 +135,6 @@ async function startBatch({ host, models, levels, run_name, judge_config = {}, e
  */
 async function executeBatch(batchId, defaultHost, models, prompts, options = {}) {
     const judgeConfig = options.judge_config || {};
-    const judgeSameHost = judgeConfig.judge_same_host !== undefined ? !!judgeConfig.judge_same_host : false;
     const executionMode = options.execution_mode || 'latency';
 
     // Prevent duplicate execution with atomic lock
@@ -239,7 +238,7 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
     const hostTasks = Object.entries(modelsByHost).map(([hostUrl, hostModels]) => async () => {
         try {
             // Determine judge host — prefer explicit override, then cross-host pipelining, fall back to same-host
-            const {
+            let {
                 judgeHost: judgeHostUrl,
                 effectiveJudgeSameHost,
                 resolution: judgeHostResolution
