@@ -2,6 +2,7 @@
 
 import * as state from './state.js';
 import { escapeHtml, formatHostLabel, inferOppositeHostUrl } from './utils.js';
+import { refreshJudgeTierUI } from './judge-mismatch.js';
 
 // ─── Depth Configuration ───────────────────────────────────────────
 
@@ -225,6 +226,10 @@ export function bindDepthMatrix() {
         }
 
         updateDepthSummary();
+
+        // Refresh judge tier indicators when levels change
+        const activeLevels = getSelectedLevels(getDepthConfig());
+        refreshJudgeTierUI(activeLevels);
     });
 }
 

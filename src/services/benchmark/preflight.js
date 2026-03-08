@@ -203,7 +203,21 @@ async function checkJudgeConfiguration(judgeConfig = {}, levels = [], promptCove
         : null;
 
     if (resolvedTier && meetsTier === false) {
-        blockers.push(`Judge tier '${resolvedTier}' is below required tier '${requiredTier}' for selected prompts`);
+        const affectedLevels = (levels || []).filter(l =>
+            !judgeTierResolver.tierMeetsRequirement(resolvedTier, judgeTierResolver.getRequiredTier(l))
+        );
+        const modelSizeHint =
+            requiredTier === 'premium'  ? '70B+ model (e.g. qwen2.5:72b, llama3:70b)' :
+            requiredTier === 'advanced' ? '14B+ model (e.g. qwen2.5:14b, mistral:22b)' :
+                                          '7B+ model';
+        blockers.push(
+            `Judge '${model}' is tagged '${resolvedTier}' tier — ` +
+            `level${affectedLevels.length > 1 ? 's' : ''} [${affectedLevels.join(', ')}] ` +
+            `require${affectedLevels.length === 1 ? 's' : ''} '${requiredTier}'. ` +
+            `Results for these levels would be unreliable with an under-tiered judge. ` +
+            `To fix: load a ${modelSizeHint} on the judge host, then in Courthouse → ` +
+            `Judge Roster, set its judgeTier to '${requiredTier}', and select it as judge.`
+        );
     } else if (!resolvedTier) {
         warnings.push('Judge tier metadata unavailable; exactitude risk cannot be fully assessed');
     }

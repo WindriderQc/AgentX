@@ -1,0 +1,5 @@
+{
+  "http://192.168.2.99:11434": "qwen2.5:7b-instruct-q5_K_M",
+  "http://192.168.2.12:11434": "qwen2.5:14b-instruct-q5_K_M",
+  "http://192.168.2.66:11434": "qwen2.5:14b-instruct-q4_K_M"
+}

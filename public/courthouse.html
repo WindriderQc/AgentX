@@ -392,8 +392,31 @@
             </div>
         </div>
 
+        <!-- ═══════════════════════════════════════════════════════════════════
+             PER-HOST JUDGE ROSTER  —  configure default judge per host
+             ═══════════════════════════════════════════════════════════════════ -->
+        <div class="section-card" id="judgeRosterContainer">
+            <div class="section-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px;">
+                <div>
+                    <h3 style="margin:0 0 4px;"><i class="fas fa-server"></i> Judge Roster by Host</h3>
+                    <p style="margin:0;font-size:0.88em;color:var(--muted);">
+                        All judge-capable models available on each Ollama host, with tier and reliability stats.
+                        Set a default judge per host — it will be pre-selected in the Benchmark panel.
+                    </p>
+                </div>
+                <button id="rosterRefreshBtn" class="btn-secondary btn-sm">
+                    <i class="fas fa-sync-alt"></i> Refresh
+                </button>
+            </div>
+            <div id="judgeRosterPanels" style="display:flex;flex-direction:column;gap:20px;">
+                <div style="text-align:center;padding:40px;color:var(--muted);">
+                    <i class="fas fa-spinner fa-spin" style="font-size:1.5em;margin-bottom:8px;"></i>
+                    <p>Loading judge roster...</p>
+                </div>
+            </div>
+        </div>
+
         <!-- Judge Breakdown (By Level / By Model) -->
-        <div class="section-card" id="judgeBreakdownContainer">
             <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px;">
                 <h3 style="margin: 0;"><i class="fas fa-chart-bar"></i> Judge Breakdown</h3>
                 <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
@@ -814,6 +837,8 @@
 
     <!-- Courthouse Analytics Module -->
     <script type="module" src="/js/courthouse-analytics.js"></script>
+    <!-- Judge Roster by Host -->
+    <script src="/js/courthouse-roster.js"></script>
     <script src="/js/courthouse/human-review.js"></script>
     <script src="/js/courthouse/ground-truth.js"></script>
     <script>
