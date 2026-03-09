@@ -764,7 +764,7 @@ AgentX development is organized across **eight development tracks**, each focusi
 ### Advanced Features
 
 **Lower Priority Enhancements:**
-- [ ] Streaming response support (SSE) for chat interface
+- [ ] Streaming response support (SSE) for chat interface <!-- LT:19 -->
 - [x] Multi-tenant support with workspace isolation ✅ COMPLETE (Week 4)
 - [x] Email invitations for workspace members ✅ COMPLETE (Post-Week 4, A1)
 - [x] Workspace activity audit logs ✅ COMPLETE (Post-Week 4, A2 - Full implementation with UI)
@@ -774,8 +774,14 @@ AgentX development is organized across **eight development tracks**, each focusi
 - [x] Cost tracking & usage analytics (dashboard, token counting, cost by model) ✅ COMPLETE (2026-01-08)
 - [x] RAG contextual compression (LLM extracts relevant sentences from chunks) ✅ COMPLETE (2026-01-08)
 - [x] Hybrid scoring: deterministic accuracy + LLM compliance blend ✅ COMPLETE (2026-02-14)
-- [ ] Custom dashboard builder for metrics visualization
-- [ ] Webhook retry logic with exponential backoff
+- [ ] Custom dashboard builder for metrics visualization <!-- LT:23 -->
+- [ ] Webhook retry logic with exponential backoff <!-- LT:25 -->
+- [ ] Update ROADMAP: webhook retry already complete <!-- LT:24 -->
+- [ ] RAG Phase 5: answer extraction <!-- LT:22 -->
+- [ ] RAG Phase 5: semantic caching <!-- LT:21 -->
+- [ ] RAG Phase 5: document metadata filters <!-- LT:20 -->
+- [x] Build OpenClaw-Leantime integration <!-- LT:17 -->
+- [ ] Implement RAG search improvements <!-- LT:16 -->
 
 **RAG Feature Pipeline Status (2026-01-08):**
 - **Phase 1: Basic RAG** ✅ COMPLETE - Vector search with Qdrant
