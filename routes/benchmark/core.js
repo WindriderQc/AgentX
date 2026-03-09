@@ -18,6 +18,7 @@ const judgeTierResolver = require('../../src/services/scoring/judgeTierResolver'
 const { validateExecutionHost } = require('../../src/services/benchmark/executionHostValidator');
 const { runPreflight } = require('../../src/services/benchmark/preflight');
 const { resolveJudgeHost } = require('../../src/services/benchmark/judgeHostResolution');
+const { CATEGORY_MIN_JUDGE_TIER } = require('../../config/categories');
 
 function isDuplicateKeyError(err) {
     return !!(err && (err.code === 11000 || String(err.message || '').includes('E11000')));
@@ -62,7 +63,9 @@ router.get('/config', (req, res) => {
             execution_config: benchmarkService.getExecutionConfigDefaults(),
             scoring_configs: ENHANCED_SCORING_CONFIGS,
             judge_presets: judgeTierResolver.JUDGE_PRESETS,
-            judge_tier_map: judgeTierResolver.LEVEL_TIER_MAP
+            judge_tier_map: judgeTierResolver.LEVEL_TIER_MAP,
+            category_tier_map: CATEGORY_MIN_JUDGE_TIER,
+            tier_rank: judgeTierResolver.TIER_RANK
         }
     });
 });

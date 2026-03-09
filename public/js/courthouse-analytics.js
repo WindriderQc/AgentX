@@ -39,6 +39,7 @@ const CourthouseAnalytics = (() => {
         setupEventListeners();
         setupJudgeCompareUI();
         setupValidationListeners();
+        loadTierCompatibility();
     }
 
     function restoreCompareSelections() {
@@ -1318,6 +1319,118 @@ const CourthouseAnalytics = (() => {
         const recList = document.getElementById('failuresRecommendationsList');
         if (recList && failuresData.recommendations) {
             recList.innerHTML = failuresData.recommendations.map(r => `<li>${escapeHtml(r)}</li>`).join('');
+        }
+    }
+
+    // ─── Tier Compatibility Matrix ─────────────────────────────────────
+
+    const TIER_META = {
+        basic:    { icon: '\u2714', color: '#27ae60', bg: 'rgba(39,174,96,0.15)',  border: 'rgba(39,174,96,0.35)', models: '2-3B (tinyllama, phi-2, gemma-2b)', desc: 'Small/fast models — trivial prompts with clear correct answers' },
+        standard: { icon: '\u2605', color: '#3498db', bg: 'rgba(52,152,219,0.15)', border: 'rgba(52,152,219,0.35)', models: '7-9B (qwen2.5:7b, mistral, llama3.1:8b)', desc: 'Mid-size models — the key differentiation zone for most benchmarks' },
+        advanced: { icon: '\u26A1', color: '#e67e22', bg: 'rgba(230,126,34,0.15)', border: 'rgba(230,126,34,0.35)', models: '14-32B (qwen2.5:14b, codellama:34b, command-r)', desc: 'Large models — nuanced evaluation of complex multi-step problems' },
+        premium:  { icon: '\uD83D\uDC8E', color: '#e74c3c', bg: 'rgba(231,76,60,0.15)',  border: 'rgba(231,76,60,0.35)', models: '70B+ (llama3.1:70b, qwen2.5:72b)', desc: 'Flagship models — complex multi-constraint problems requiring deep reasoning' }
+    };
+
+    const LEVEL_LABELS = {
+        1: 'Trivial', 2: 'Simple', 3: 'Easy', 4: 'Moderate', 5: 'Medium',
+        6: 'Challenging', 7: 'Hard', 8: 'Very Hard', 9: 'Extreme', 10: 'Master'
+    };
+
+    const LEVEL_EXPLANATIONS = {
+        basic:    'Clear right/wrong answers — small models can assess correctness',
+        standard: 'Requires understanding code logic and nuance — needs a 7B+ judge',
+        advanced: 'Multi-step reasoning and subtle quality differences — needs 14B+',
+        premium:  'Complex multi-constraint evaluation — flagship models needed'
+    };
+
+    const CATEGORY_EXPLANATIONS = {
+        coding:              'Verifying code correctness and logic — needs decent reasoning',
+        reasoning:           'Evaluating logical chains — needs solid inference capability',
+        factual:             'Checking factual accuracy — needs reliable knowledge base',
+        creative:            'Assessing creativity is subjective — small judges suffice',
+        'instruction-following': 'Binary compliance check — small models handle well',
+        math:                'Verifying mathematical correctness — needs calculation ability',
+        summarization:       'Checking coverage and conciseness — straightforward evaluation',
+        'multi-turn-reasoning': 'Tracking context across turns — needs strong working memory',
+        'context-retention': 'Measuring recall over long contexts — needs decent attention',
+        translation:         'Comparing translation quality — pattern matching suffices',
+        'edge-cases':        'Spotting subtle boundary conditions — needs careful analysis',
+        general:             'Broad general evaluation — basic models handle fine',
+        refactoring:         'Judging code improvement quality — needs code understanding',
+        debugging:           'Evaluating bug identification — needs code tracing ability',
+        explanation:         'Checking clarity of explanations — straightforward to judge',
+        dialogue:            'Assessing conversational quality — basic evaluation'
+    };
+
+    function tierBadge(tier) {
+        const m = TIER_META[tier] || TIER_META.basic;
+        return `<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:4px;font-size:0.82em;font-weight:600;background:${m.bg};color:${m.color};border:1px solid ${m.border};">${m.icon} ${tier}</span>`;
+    }
+
+    function qualifyingJudges(tier, tierRank) {
+        const rank = tierRank[tier] || 1;
+        return Object.keys(TIER_META)
+            .filter(t => (tierRank[t] || 1) >= rank)
+            .map(t => `<span style="font-size:0.82em;color:${TIER_META[t].color};" title="${TIER_META[t].models}">${TIER_META[t].icon} ${t} (${TIER_META[t].models.split('(')[0].trim()})</span>`)
+            .join(', ');
+    }
+
+    async function loadTierCompatibility() {
+        try {
+            const res = await fetch(`${BENCHMARK_API}/config`);
+            const json = await res.json();
+            const data = json.data || {};
+            const levelTierMap = data.judge_tier_map || {};
+            const categoryTierMap = data.category_tier_map || {};
+            const tierRank = data.tier_rank || { basic: 1, standard: 2, advanced: 3, premium: 4 };
+            const presets = data.judge_presets || {};
+
+            // Render tier legend
+            const legendEl = document.getElementById('tierLegend');
+            if (legendEl) {
+                legendEl.innerHTML = Object.entries(TIER_META).map(([tier, m]) =>
+                    `<div style="display:flex;align-items:center;gap:6px;padding:6px 12px;background:${m.bg};border:1px solid ${m.border};border-radius:6px;">
+                        ${tierBadge(tier)}
+                        <span style="font-size:0.82em;color:var(--muted);">${m.models}</span>
+                    </div>`
+                ).join('');
+            }
+
+            // Render level table
+            const levelBody = document.getElementById('tierLevelBody');
+            if (levelBody) {
+                let html = '';
+                for (let level = 1; level <= 10; level++) {
+                    const tier = levelTierMap[level] || 'basic';
+                    html += `<tr>
+                        <td style="font-weight:700;text-align:center;">${level}</td>
+                        <td>${LEVEL_LABELS[level] || ''}</td>
+                        <td style="text-align:center;">${tierBadge(tier)}</td>
+                        <td>${qualifyingJudges(tier, tierRank)}</td>
+                        <td style="font-size:0.82em;color:var(--muted);max-width:300px;">${LEVEL_EXPLANATIONS[tier] || ''}</td>
+                    </tr>`;
+                }
+                levelBody.innerHTML = html;
+            }
+
+            // Render category table — sort by tier rank descending (hardest first)
+            const catBody = document.getElementById('tierCategoryBody');
+            if (catBody) {
+                const cats = Object.entries(categoryTierMap)
+                    .sort((a, b) => (tierRank[b[1]] || 1) - (tierRank[a[1]] || 1));
+                let html = '';
+                for (const [cat, tier] of cats) {
+                    html += `<tr>
+                        <td><span class="badge bg-light text-dark border text-capitalize" style="font-size:0.88em;">${escapeHtml(cat)}</span></td>
+                        <td style="text-align:center;">${tierBadge(tier)}</td>
+                        <td>${qualifyingJudges(tier, tierRank)}</td>
+                        <td style="font-size:0.82em;color:var(--muted);max-width:300px;">${CATEGORY_EXPLANATIONS[cat] || ''}</td>
+                    </tr>`;
+                }
+                catBody.innerHTML = html;
+            }
+        } catch (err) {
+            console.error('Failed to load tier compatibility:', err);
         }
     }
 

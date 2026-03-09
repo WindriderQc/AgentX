@@ -21,6 +21,12 @@ export let lastRecentTests = [];
 export let showSuccessRateDetails = false;
 export let modelRegistryCache = {};
 
+// Tier configuration (loaded from /api/benchmark/config)
+export let judgeTierMap = {};       // level → tier
+export let categoryTierMap = {};    // category → tier
+export let tierRank = {};           // tier → numeric rank
+export let judgePresets = {};       // fast/balanced/precise/premium
+
 // Batch state
 export let currentBatchId = null;
 export let batchPollInterval = null;
@@ -56,6 +62,10 @@ export function setLastDashboardOverview(overview) { lastDashboardOverview = ove
 export function setLastRecentTests(tests) { lastRecentTests = tests; }
 export function setShowSuccessRateDetails(show) { showSuccessRateDetails = show; }
 export function setModelRegistryCache(cache) { modelRegistryCache = cache; }
+export function setJudgeTierMap(map) { judgeTierMap = map; }
+export function setCategoryTierMap(map) { categoryTierMap = map; }
+export function setTierRank(rank) { tierRank = rank; }
+export function setJudgePresets(presets) { judgePresets = presets; }
 
 export function setCurrentBatchId(id) { currentBatchId = id; }
 export function setBatchPollInterval(interval) { batchPollInterval = interval; }

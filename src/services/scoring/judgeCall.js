@@ -25,13 +25,22 @@ let judgeFailureCount = 0;
 
 /**
  * Normalize a raw host value to a full URL (adds http:// if missing).
+ * Wildcard bind addresses (0.0.0.0, ::) are remapped to 127.0.0.1.
  */
 function normalizeJudgeHost(rawValue) {
     if (!rawValue) return null;
     const trimmed = String(rawValue).trim();
     if (!trimmed) return null;
-    if (/^https?:\/\//i.test(trimmed)) return trimmed;
-    return `http://${trimmed}`;
+    const withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+    try {
+        const u = new URL(withScheme);
+        if (u.hostname === '0.0.0.0' || u.hostname === '::' || u.hostname === '[::]') {
+            u.hostname = '127.0.0.1';
+        }
+        return u.toString().replace(/\/$/, '');
+    } catch {
+        return withScheme;
+    }
 }
 
 // Initialize JUDGE_CONFIG.host from environment on module load

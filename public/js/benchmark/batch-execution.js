@@ -227,9 +227,17 @@ export async function runBatch() {
             const interval = setInterval(pollBatchProgress, 2000);
             state.setBatchPollInterval(interval);
         } else if (res.status === 422) {
-            // Judge model validation failed on server side
-            const availList = (json.available_models || []).slice(0, 10).join(', ') || 'none';
-            alert(`Judge model validation failed: ${json.error}\n\nAvailable models: ${availList}`);
+            // Server-side validation failure (judge model, preflight checks, etc.)
+            let msg = json.error || 'Batch start failed';
+            // Append preflight issues if present (these are the real blockers)
+            if (Array.isArray(json.issues) && json.issues.length > 0) {
+                msg += '\n\n' + json.issues.map(i => `• ${i}`).join('\n');
+            } else if (Array.isArray(json.available_models)) {
+                // Only show available models when it's genuinely a model-missing error
+                const availList = json.available_models.slice(0, 10).join(', ') || 'none';
+                msg += `\n\nAvailable models: ${availList}`;
+            }
+            alert(msg);
             resetBatchUI();
             return;
         } else if (res.status === 409) {

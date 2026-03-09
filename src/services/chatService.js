@@ -304,7 +304,11 @@ const handleChatRequest = async ({
                     body: JSON.stringify(ollamaPayload),
                     signal: controller.signal
                 });
-                if (!response.ok) throw new Error(`Ollama request failed: ${response.statusText}`);
+                if (!response.ok) {
+                    let errDetail = response.statusText;
+                    try { const errBody = await response.json(); errDetail = errBody.error || JSON.stringify(errBody) || errDetail; } catch {}
+                    throw new Error(`Ollama request failed: ${errDetail}`);
+                }
             } catch (err) {
                 if (err.name === 'AbortError') throw new Error('Ollama request timed out (2m limit).');
                 throw new Error(`Failed to connect to Ollama at ${url}: ${err.message}`);
@@ -628,7 +632,11 @@ const handleChatRequestStream = async ({
                     body: JSON.stringify(ollamaPayload),
                     signal: controller.signal
                 });
-                if (!response.ok) throw new Error(`Ollama request failed: ${response.statusText}`);
+                if (!response.ok) {
+                    let errDetail = response.statusText;
+                    try { const errBody = await response.json(); errDetail = errBody.error || JSON.stringify(errBody) || errDetail; } catch {}
+                    throw new Error(`Ollama request failed: ${errDetail}`);
+                }
             } catch (err) {
                 clearTimeout(timeout);
                 if (err.name === 'AbortError') {

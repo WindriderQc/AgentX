@@ -133,19 +133,44 @@ export function getSelectedLevels(config) {
 /**
  * Render the depth matrix table body
  */
+const TIER_COLORS = {
+    basic:    { bg: 'rgba(39,174,96,0.15)',  text: '#27ae60', border: 'rgba(39,174,96,0.35)' },
+    standard: { bg: 'rgba(52,152,219,0.15)', text: '#3498db', border: 'rgba(52,152,219,0.35)' },
+    advanced: { bg: 'rgba(230,126,34,0.15)', text: '#e67e22', border: 'rgba(230,126,34,0.35)' },
+    premium:  { bg: 'rgba(231,76,60,0.15)',  text: '#e74c3c', border: 'rgba(231,76,60,0.35)' }
+};
+
+const TIER_ICONS = { basic: '\u2714', standard: '\u2605', advanced: '\u26A1', premium: '\uD83D\uDC8E' };
+
+function getTierBadgeHtml(tier, judgeMeetsIt) {
+    const c = TIER_COLORS[tier] || TIER_COLORS.basic;
+    const icon = TIER_ICONS[tier] || '';
+    const warn = judgeMeetsIt ? '' : ' title="Current judge does not meet this tier" style="opacity:1"';
+    const warnIcon = judgeMeetsIt ? '' : ' <span style="color:#e74c3c;font-weight:700;">\u26A0</span>';
+    return `<span class="tier-badge" style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:4px;font-size:0.78em;font-weight:600;background:${c.bg};color:${c.text};border:1px solid ${c.border};"${warn}>${icon} ${tier}${warnIcon}</span>`;
+}
+
 export function renderDepthMatrix() {
     const tbody = document.getElementById('depthMatrixBody');
     if (!tbody) return;
 
     const config = getDepthConfig();
+    const tierMap = state.judgeTierMap || {};
+    const rankMap = state.tierRank || { basic: 1, standard: 2, advanced: 3, premium: 4 };
+    const judgeTier = inferCurrentJudgeTier();
+    const judgeRank = rankMap[judgeTier] || 0;
     let html = '';
 
     for (let level = 1; level <= 10; level++) {
         const currentDepth = config[level] || 'light';
         const est = calculatePromptCount(level, currentDepth);
         const label = LEVEL_LABELS[level] || '';
+        const requiredTier = tierMap[level] || 'basic';
+        const requiredRank = rankMap[requiredTier] || 1;
+        const meetsIt = judgeRank >= requiredRank;
+        const rowWarn = (!meetsIt && currentDepth !== 'off') ? ' style="background:rgba(231,76,60,0.06);"' : '';
 
-        html += `<tr data-level="${level}">`;
+        html += `<tr data-level="${level}"${rowWarn}>`;
         html += `<td class="level-col"><span class="depth-level-num">${level}</span><span class="depth-level-label">${label}</span></td>`;
 
         for (const opt of DEPTH_OPTIONS) {
@@ -158,10 +183,24 @@ export function renderDepthMatrix() {
         }
 
         html += `<td class="count-col"><span class="depth-est-count">${est}</span></td>`;
+        html += `<td style="text-align:center;">${getTierBadgeHtml(requiredTier, meetsIt)}</td>`;
         html += `</tr>`;
     }
 
     tbody.innerHTML = html;
+}
+
+/** Infer the current judge's tier from model name heuristic */
+function inferCurrentJudgeTier() {
+    const model = (state.currentJudgeConfig && state.currentJudgeConfig.model) || '';
+    if (!model) return 'basic';
+    const m = model.toLowerCase();
+    // Size-based heuristic matching judgeTierResolver.inferJudgeTier
+    if (/70b|72b|65b|command-r-plus/.test(m)) return 'premium';
+    if (/32b|33b|34b|27b|22b|14b|qwq/.test(m)) return 'advanced';
+    if (/7b|8b|9b|7b-instruct|mistral(?!.*large)/.test(m)) return 'standard';
+    if (/[0-3]b|tiny|small|phi-?2|gemma-?2b/.test(m)) return 'basic';
+    return 'standard'; // default guess
 }
 
 /**
@@ -180,7 +219,24 @@ export function updateDepthSummary() {
             summaryEl.textContent = 'All levels off — select at least one';
         } else {
             const levelsStr = selectedLevels.join(', ');
-            summaryEl.textContent = `~${totalPrompts} prompts across ${selectedLevels.length} levels (${levelsStr})`;
+            const tierMap = state.judgeTierMap || {};
+            const rankMap = state.tierRank || { basic: 1, standard: 2, advanced: 3, premium: 4 };
+            // Highest tier needed across selected levels
+            let maxTier = 'basic';
+            let maxRank = 1;
+            for (const lv of selectedLevels) {
+                const t = tierMap[lv] || 'basic';
+                const r = rankMap[t] || 1;
+                if (r > maxRank) { maxRank = r; maxTier = t; }
+            }
+            const judgeTier = inferCurrentJudgeTier();
+            const judgeRank = rankMap[judgeTier] || 0;
+            const meets = judgeRank >= maxRank;
+            const tierNote = meets
+                ? ` — judge tier OK (${judgeTier} ≥ ${maxTier})`
+                : ` — ⚠ judge tier ${judgeTier} < required ${maxTier}`;
+            summaryEl.innerHTML = `~${totalPrompts} prompts across ${selectedLevels.length} levels (${levelsStr})` +
+                `<span style="margin-left:8px;font-size:0.88em;color:${meets ? '#27ae60' : '#e74c3c'};">${tierNote}</span>`;
         }
     }
 
