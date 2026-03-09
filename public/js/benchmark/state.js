@@ -16,16 +16,16 @@ export let ollamaHosts = [];
 export let currentSortBy = 'composite';
 export let currentJudgeConfig = {};
 export let currentExecutionConfig = {};
+export let judgeTierMap = { 1:'basic',2:'basic',3:'basic',4:'standard',5:'standard',6:'standard',7:'advanced',8:'advanced',9:'premium',10:'premium' };
+export let tierRank = { basic:1, standard:2, advanced:3, premium:4 }; // also accessed as judgeTierRank
+export let judgeHostDefaults = {}; // hostUrl → defaultJudgeModel
+export let categoryTierMap = {};
+export let judgePresets = {};
+
 export let lastDashboardOverview = null;
 export let lastRecentTests = [];
 export let showSuccessRateDetails = false;
 export let modelRegistryCache = {};
-
-// Tier configuration (loaded from /api/benchmark/config)
-export let judgeTierMap = {};       // level → tier
-export let categoryTierMap = {};    // category → tier
-export let tierRank = {};           // tier → numeric rank
-export let judgePresets = {};       // fast/balanced/precise/premium
 
 // Batch state
 export let currentBatchId = null;
@@ -58,13 +58,15 @@ export function setOllamaHosts(hosts) { ollamaHosts = hosts; }
 export function setCurrentSortBy(sortBy) { currentSortBy = sortBy; }
 export function setCurrentJudgeConfig(config) { currentJudgeConfig = config; }
 export function setCurrentExecutionConfig(config) { currentExecutionConfig = config; }
+export function setJudgeTierMap(map) { judgeTierMap = map; }
+export function setJudgeTierRank(rank) { tierRank = rank; } // compat: judge_tier_rank API field
+export function setTierRank(rank) { tierRank = rank; }
+export function setJudgeHostDefaults(defaults) { judgeHostDefaults = defaults; }
 export function setLastDashboardOverview(overview) { lastDashboardOverview = overview; }
 export function setLastRecentTests(tests) { lastRecentTests = tests; }
 export function setShowSuccessRateDetails(show) { showSuccessRateDetails = show; }
 export function setModelRegistryCache(cache) { modelRegistryCache = cache; }
-export function setJudgeTierMap(map) { judgeTierMap = map; }
 export function setCategoryTierMap(map) { categoryTierMap = map; }
-export function setTierRank(rank) { tierRank = rank; }
 export function setJudgePresets(presets) { judgePresets = presets; }
 
 export function setCurrentBatchId(id) { currentBatchId = id; }

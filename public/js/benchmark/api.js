@@ -25,6 +25,40 @@ export async function fetchBenchmarkConfig() {
 }
 
 /**
+ * Fetch judge roster (all judges with metadata + per-host availability)
+ */
+export async function fetchJudgeRoster() {
+    const res = await fetch(`${BENCHMARK_API}/judge-roster`, {
+        headers: getWorkspaceHeaders()
+    });
+    return res.json();
+}
+
+/**
+ * Fetch per-host default judge config
+ */
+export async function fetchJudgeDefaults() {
+    const res = await fetch(`${BENCHMARK_API}/judge-defaults`, {
+        headers: getWorkspaceHeaders()
+    });
+    return res.json();
+}
+
+/**
+ * Save default judge for a host
+ * @param {string} hostUrl
+ * @param {string|null} judgeModel  — null to clear
+ */
+export async function saveJudgeDefault(hostUrl, judgeModel) {
+    const res = await fetch(`${BENCHMARK_API}/judge-defaults`, {
+        method: 'PUT',
+        headers: getWorkspaceHeaders(),
+        body: JSON.stringify({ hostUrl, judgeModel })
+    });
+    return res.json();
+}
+
+/**
  * Fetch Ollama hosts
  */
 export async function fetchOllamaHosts(timeoutMs = 8000) {

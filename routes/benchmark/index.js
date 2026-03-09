@@ -27,5 +27,6 @@ router.use('/', require('./batches'));
 router.use('/', require('./analytics'));
 router.use('/', require('./hardware'));
 router.use('/', require('./diagnostics'));
+router.use('/', require('./judgeDefaults'));
 
 module.exports = router;

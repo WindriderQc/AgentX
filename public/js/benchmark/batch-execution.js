@@ -4,6 +4,7 @@ import * as state from './state.js';
 import { getWorkspaceHeaders } from './api.js';
 import { startBatchTest, stopBatchTest, fetchBatchProgress, fetchActiveBatches, recoverBatchApi, fetchBatchHistory, validateJudgeModelApi } from './api.js';
 import { renderBatchPlan, setAdvancedMode, setHyperMode, getAnomalyThresholds, hydrateThresholdInputs, bindThresholdInputs, getDepthConfig, getSelectedLevels } from './batch-config.js';
+import { hasTierMismatch } from './judge-mismatch.js';
 import { escapeHtml, formatDuration, toFiniteNumber, summarizeNumbers, countBy, topCounts, formatHostLabel, findRowByAttr } from './utils.js';
 import { updateTimeline, resetTimelineState } from './timeline.js';
 import { pickRepresentativeResultId, pickRepresentativeResultIdForModel } from './results-analysis.js';
@@ -122,6 +123,20 @@ export async function runBatch() {
         return;
     }
 
+    // Hard block: if judge tier is below what selected levels require, refuse to start.
+    // The banner (judgeMismatchBanner) already explains what to fix — just ensure it’s
+    // visible and scroll to it so the user sees the guidance immediately.
+    if (hasTierMismatch(selectedLevels)) {
+        // Force-show the blocker banner (in case it was dismissed) and scroll to it.
+        // The banner content is already rendered by index.js on any judge/level change.
+        const banner = document.getElementById('judgeMismatchBanner');
+        if (banner) {
+            banner.style.display = 'flex';
+            banner.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        return; // do not start
+    }
+
     const btn = document.getElementById('runBatchBtn');
     const stopBtn = document.getElementById('stopBatchBtn');
     const status = document.getElementById('batchStatus');
@@ -227,17 +242,46 @@ export async function runBatch() {
             const interval = setInterval(pollBatchProgress, 2000);
             state.setBatchPollInterval(interval);
         } else if (res.status === 422) {
-            // Server-side validation failure (judge model, preflight checks, etc.)
-            let msg = json.error || 'Batch start failed';
-            // Append preflight issues if present (these are the real blockers)
-            if (Array.isArray(json.issues) && json.issues.length > 0) {
-                msg += '\n\n' + json.issues.map(i => `• ${i}`).join('\n');
-            } else if (Array.isArray(json.available_models)) {
-                // Only show available models when it's genuinely a model-missing error
-                const availList = json.available_models.slice(0, 10).join(', ') || 'none';
-                msg += `\n\nAvailable models: ${availList}`;
+            // Show inline error in batchInfo so user sees it with full context
+            const batchInfoEl = document.getElementById('batchInfo');
+            let errorHtml = '';
+            if (json.issues && json.issues.length > 0) {
+                const issueItems = json.issues
+                    .map(i => `<li style="margin:4px 0;">${escapeHtml(i)}</li>`)
+                    .join('');
+                errorHtml = `
+                    <div style="padding:16px 18px;background:rgba(220,53,69,0.1);border:1px solid rgba(220,53,69,0.5);
+                        border-radius:8px;margin-top:10px;">
+                        <div style="font-weight:700;color:#e74c3c;margin-bottom:8px;">
+                            <i class="fas fa-ban"></i> Batch blocked — preflight failed
+                        </div>
+                        <ul style="margin:0;padding-left:20px;font-size:0.9em;line-height:1.6;">${issueItems}</ul>
+                        <div style="margin-top:10px;font-size:0.85em;color:var(--muted);">
+                            Fix the issues above, then try again.
+                            <a href="/courthouse.html" target="_blank"
+                                style="color:var(--accent);text-decoration:underline;margin-left:6px;">
+                                Open Courthouse → Judge Roster
+                            </a>
+                        </div>
+                    </div>`;
+            } else if (json.error && json.error.includes('Judge model')) {
+                const availList = (json.available_models || []).slice(0, 8).join(', ') || 'none';
+                errorHtml = `<div style="padding:14px 16px;background:rgba(220,53,69,0.1);border:1px solid rgba(220,53,69,0.5);
+                    border-radius:8px;margin-top:10px;">
+                    <strong style="color:#e74c3c;"><i class="fas fa-ban"></i> Judge model not found</strong><br>
+                    <span style="font-size:0.9em;">${escapeHtml(json.error)}</span><br>
+                    <span style="font-size:0.85em;color:var(--muted);">Available on judge host: ${escapeHtml(availList)}</span>
+                </div>`;
+            } else {
+                const availList = (json.available_models || []).slice(0, 8).join(', ') || 'none';
+                errorHtml = `<div style="padding:14px 16px;background:rgba(220,53,69,0.1);border:1px solid rgba(220,53,69,0.5);
+                    border-radius:8px;margin-top:10px;">
+                    <strong style="color:#e74c3c;"><i class="fas fa-ban"></i> Execution host error</strong><br>
+                    <span style="font-size:0.9em;">${escapeHtml(json.error || 'Unknown error')}</span><br>
+                    <span style="font-size:0.85em;color:var(--muted);">Available models: ${escapeHtml(availList)}</span>
+                </div>`;
             }
-            alert(msg);
+            if (batchInfoEl) batchInfoEl.innerHTML = errorHtml;
             resetBatchUI();
             return;
         } else if (res.status === 409) {

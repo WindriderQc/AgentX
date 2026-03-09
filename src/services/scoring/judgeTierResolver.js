@@ -214,8 +214,17 @@ function inferJudgeTier(modelName) {
     if (!modelName) return null;
     const name = modelName.toLowerCase();
 
-    // Size extraction: look for patterns like :70b, :14b, :7b, :3b, :2b
-    const sizeMatch = name.match(/[:\-](\d+(?:\.\d+)?)b/);
+    // Known model families where size isn't encoded in the name
+    // DeepSeek Coder V2 Lite / V2 Lite Instruct = 16B = advanced
+    if (/deepseek[^/]*v2[^/]*lite|deepseek-coder[^/]*lite/.test(name)) return 'advanced';
+
+    // Size extraction — two passes:
+    // 1. Separator-prefixed size: :70b, -14b, _7b  (highest confidence)
+    // 2. Embedded size: qwen32b, gemma9b, phi3  (fallback, may false-match version nums)
+    const sizeMatch =
+        name.match(/[:\-_](\d+(?:\.\d+)?)b/) ||
+        name.match(/(\d+(?:\.\d+)?)b(?:[:\-_]|$)/);
+
     if (!sizeMatch) return null;
 
     const sizeB = parseFloat(sizeMatch[1]);

@@ -2,6 +2,7 @@
 
 import * as state from './state.js';
 import { escapeHtml, formatHostLabel, inferOppositeHostUrl } from './utils.js';
+import { refreshJudgeTierUI } from './judge-mismatch.js';
 
 // ─── Depth Configuration ───────────────────────────────────────────
 
@@ -132,24 +133,8 @@ export function getSelectedLevels(config) {
 
 /**
  * Render the depth matrix table body
+ * Note: tier badge cells are injected dynamically by judge-mismatch.js via refreshDepthMatrixTierCells()
  */
-const TIER_COLORS = {
-    basic:    { bg: 'rgba(39,174,96,0.15)',  text: '#27ae60', border: 'rgba(39,174,96,0.35)' },
-    standard: { bg: 'rgba(52,152,219,0.15)', text: '#3498db', border: 'rgba(52,152,219,0.35)' },
-    advanced: { bg: 'rgba(230,126,34,0.15)', text: '#e67e22', border: 'rgba(230,126,34,0.35)' },
-    premium:  { bg: 'rgba(231,76,60,0.15)',  text: '#e74c3c', border: 'rgba(231,76,60,0.35)' }
-};
-
-const TIER_ICONS = { basic: '\u2714', standard: '\u2605', advanced: '\u26A1', premium: '\uD83D\uDC8E' };
-
-function getTierBadgeHtml(tier, judgeMeetsIt) {
-    const c = TIER_COLORS[tier] || TIER_COLORS.basic;
-    const icon = TIER_ICONS[tier] || '';
-    const warn = judgeMeetsIt ? '' : ' title="Current judge does not meet this tier" style="opacity:1"';
-    const warnIcon = judgeMeetsIt ? '' : ' <span style="color:#e74c3c;font-weight:700;">\u26A0</span>';
-    return `<span class="tier-badge" style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:4px;font-size:0.78em;font-weight:600;background:${c.bg};color:${c.text};border:1px solid ${c.border};"${warn}>${icon} ${tier}${warnIcon}</span>`;
-}
-
 export function renderDepthMatrix() {
     const tbody = document.getElementById('depthMatrixBody');
     if (!tbody) return;
@@ -183,7 +168,6 @@ export function renderDepthMatrix() {
         }
 
         html += `<td class="count-col"><span class="depth-est-count">${est}</span></td>`;
-        html += `<td style="text-align:center;">${getTierBadgeHtml(requiredTier, meetsIt)}</td>`;
         html += `</tr>`;
     }
 
@@ -281,6 +265,10 @@ export function bindDepthMatrix() {
         }
 
         updateDepthSummary();
+
+        // Refresh judge tier indicators when levels change
+        const activeLevels = getSelectedLevels(getDepthConfig());
+        refreshJudgeTierUI(activeLevels);
     });
 }
 

@@ -19,6 +19,16 @@ const { validateExecutionHost } = require('../../src/services/benchmark/executio
 const { runPreflight } = require('../../src/services/benchmark/preflight');
 const { resolveJudgeHost } = require('../../src/services/benchmark/judgeHostResolution');
 const { CATEGORY_MIN_JUDGE_TIER } = require('../../config/categories');
+const path = require('path');
+const fs = require('fs');
+
+function readJudgeDefaults() {
+    try {
+        const p = path.join(process.cwd(), 'config', 'judge-host-defaults.json');
+        if (!fs.existsSync(p)) return {};
+        return JSON.parse(fs.readFileSync(p, 'utf8')) || {};
+    } catch { return {}; }
+}
 
 function isDuplicateKeyError(err) {
     return !!(err && (err.code === 11000 || String(err.message || '').includes('E11000')));
@@ -52,6 +62,7 @@ function buildActiveBatchConflict(active) {
  * Get benchmark configuration including judge settings
  */
 router.get('/config', (req, res) => {
+    const judgeDefaults = readJudgeDefaults();
     res.json({
         status: 'success',
         data: {
@@ -65,7 +76,9 @@ router.get('/config', (req, res) => {
             judge_presets: judgeTierResolver.JUDGE_PRESETS,
             judge_tier_map: judgeTierResolver.LEVEL_TIER_MAP,
             category_tier_map: CATEGORY_MIN_JUDGE_TIER,
-            tier_rank: judgeTierResolver.TIER_RANK
+            tier_rank: judgeTierResolver.TIER_RANK,
+            judge_tier_rank: judgeTierResolver.TIER_RANK,
+            judge_host_defaults: judgeDefaults
         }
     });
 });
