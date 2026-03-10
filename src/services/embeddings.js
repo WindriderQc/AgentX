@@ -170,6 +170,14 @@ class EmbeddingsService {
     this.cache.clear();
   }
 
+  destroy() {
+    if (this.cache && typeof this.cache.destroy === 'function') {
+      this.cache.destroy();
+    } else if (this.cache && typeof this.cache.clear === 'function') {
+      this.cache.clear();
+    }
+  }
+
   /**
    * Calculate cosine similarity between two embedding vectors
    * @param {number[]} vec1 - First embedding vector
@@ -214,7 +222,14 @@ function getEmbeddingsService(config = {}) {
   return embeddingsServiceInstance;
 }
 
+function resetEmbeddingsService() {
+  if (!embeddingsServiceInstance) return;
+  embeddingsServiceInstance.destroy();
+  embeddingsServiceInstance = null;
+}
+
 module.exports = {
   EmbeddingsService,
   getEmbeddingsService,
+  resetEmbeddingsService,
 };

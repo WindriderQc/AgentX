@@ -182,6 +182,7 @@ router.post('/chat', optionalAuth, upload.single('audio'), async (req, res) => {
         ttsProvider = 'browser',
         language = 'en'
     } = req.body;
+    const ttsEnabled = false;
     
     try {
         // Step 1: Transcribe audio
@@ -218,7 +219,7 @@ router.post('/chat', optionalAuth, upload.single('audio'), async (req, res) => {
         
         // Step 3: Optionally synthesize response
         let ttsResult = null;
-        if (tts === 'true' && ttsProvider !== 'browser') {
+        if (ttsEnabled && tts === 'true' && ttsProvider !== 'browser') {
             logger.info('Voice chat: synthesizing response...');
             ttsResult = await synthesize(chatResult.response, { 
                 provider: ttsProvider 

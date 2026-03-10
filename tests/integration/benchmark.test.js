@@ -78,6 +78,7 @@ const { runPreflight } = require('../../src/services/benchmark/preflight');
 const BenchmarkPrompt = require('../../models/BenchmarkPrompt');
 const BenchmarkResult = require('../../models/BenchmarkResult');
 const BenchmarkBatch = require('../../models/BenchmarkBatch');
+const ModelRegistry = require('../../models/ModelRegistry');
 const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 afterEach(async () => {
@@ -86,6 +87,7 @@ afterEach(async () => {
         await BenchmarkPrompt.deleteMany({});
         await BenchmarkResult.deleteMany({});
         await BenchmarkBatch.deleteMany({});
+        await ModelRegistry.deleteMany({});
     } catch (err) {
         // Ignore cleanup errors during tests
     }
@@ -323,6 +325,108 @@ describe('Benchmark System - Integration Tests', () => {
 
             const responseSpeed = await request(app).get('/api/benchmark/dashboard?sort=speed');
             expect(responseSpeed.body.data.model_stats[0].model).toBe('fast-model');
+        });
+
+        it('should enrich dashboard model stats with aligned host-test verification', async () => {
+            await BenchmarkResult.create({
+                model: 'aligned-model',
+                host: 'http://localhost:11434',
+                prompt: 'Test',
+                latency: 1000,
+                tokens: 100,
+                tokens_per_sec: 100,
+                success: true
+            });
+
+            await ModelRegistry.create({
+                modelName: 'aligned-model',
+                displayName: 'Aligned Model',
+                categories: ['generalist'],
+                benchmarkStats: { bestCategory: 'general' },
+                hostPerformance: [
+                    {
+                        hostUrl: 'http://localhost:11434',
+                        hostId: 'primary',
+                        tokensPerSec: 108,
+                        latencyMs: 950,
+                        timeToFirstTokenMs: 180,
+                        vramUsedMiB: 8192,
+                        vramTotalMiB: 24576,
+                        testedAt: new Date(),
+                        status: 'pass'
+                    }
+                ]
+            });
+
+            const response = await request(app).get('/api/benchmark/dashboard');
+            expect(response.status).toBe(200);
+
+            const row = response.body.data.model_stats.find((item) => item.model === 'aligned-model');
+            expect(row).toBeTruthy();
+            expect(row.host_test_verification).toBe('aligned');
+            expect(row.host_test_status).toBe('pass');
+            expect(row.host_test_freshness).toBe('fresh');
+            expect(row.host_test_tokens_per_sec).toBe(108);
+            expect(row.host_test_latency_ms).toBe(950);
+            expect(row.host_test_vram_used_mib).toBe(8192);
+            expect(row.recommended_category).toBe('general');
+            expect(row.manual_categories).toEqual(['generalist']);
+        });
+
+        it('should mark dashboard rows as drifted or unverified when host data is missing or diverges', async () => {
+            await BenchmarkResult.create([
+                {
+                    model: 'drift-model',
+                    host: 'http://localhost:11434',
+                    prompt: 'Test',
+                    latency: 1000,
+                    tokens: 100,
+                    tokens_per_sec: 100,
+                    success: true
+                },
+                {
+                    model: 'unverified-model',
+                    host: 'http://localhost:11434',
+                    prompt: 'Test',
+                    latency: 800,
+                    tokens: 100,
+                    tokens_per_sec: 90,
+                    success: true
+                }
+            ]);
+
+            await ModelRegistry.create({
+                modelName: 'drift-model',
+                displayName: 'Drift Model',
+                hostPerformance: [
+                    {
+                        hostUrl: 'http://localhost:11434',
+                        hostId: 'primary',
+                        tokensPerSec: 40,
+                        latencyMs: 1600,
+                        timeToFirstTokenMs: 320,
+                        testedAt: new Date(),
+                        status: 'pass'
+                    }
+                ]
+            });
+
+            const response = await request(app).get('/api/benchmark/dashboard');
+            expect(response.status).toBe(200);
+
+            const driftRow = response.body.data.model_stats.find((item) => item.model === 'drift-model');
+            const unverifiedRow = response.body.data.model_stats.find((item) => item.model === 'unverified-model');
+
+            expect(driftRow).toBeTruthy();
+            expect(driftRow.host_test_verification).toBe('drift');
+            expect(driftRow.host_test_latency_delta_pct).toBeLessThan(-20);
+            expect(driftRow.host_test_tokens_delta_pct).toBeGreaterThan(20);
+
+            expect(unverifiedRow).toBeTruthy();
+            expect(unverifiedRow.host_test_verification).toBe('unverified');
+            expect(unverifiedRow.host_test_freshness).toBe('missing');
+            expect(unverifiedRow.host_test_tokens_per_sec).toBeNull();
+            expect(unverifiedRow.host_test_latency_ms).toBeNull();
         });
     });
 

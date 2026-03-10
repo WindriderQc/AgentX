@@ -22,6 +22,11 @@ const { persistConversation } = require('./chat/conversationPersistence');
 const { handleImageGeneration } = require('./chat/imageGeneration');
 
 // Core Chat Service
+function resolveRequestedMaxTokens(value) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
 const handleChatRequest = async ({
     userId,
     model,
@@ -256,7 +261,7 @@ const handleChatRequest = async ({
             const n8nResponse = await n8nLLMProvider.chat(n8nModel.webhookUrl, formattedMessages, {
                 model: effectiveModel,
                 temperature: options?.temperature,
-                maxTokens: options?.num_predict || n8nModel.capabilities.maxContext,
+                maxTokens: resolveRequestedMaxTokens(options?.num_predict),
                 conversationId, userId
             });
 
@@ -563,7 +568,7 @@ const handleChatRequestStream = async ({
             const n8nResponse = await n8nLLMProvider.chat(n8nModel.webhookUrl, formattedMessages, {
                 model: effectiveModel,
                 temperature: options?.temperature,
-                maxTokens: options?.num_predict || n8nModel.capabilities.maxContext,
+                maxTokens: resolveRequestedMaxTokens(options?.num_predict),
                 conversationId, userId
             });
 

@@ -18,8 +18,9 @@ const router = express.Router();
 const crypto = require('crypto');
 const logger = require('../config/logger');
 const ModelRegistry = require('../models/ModelRegistry');
-const { testModelOnHost, testAllModelsOnHost, checkHost } = require('../src/services/hostTest/hostTestService');
+const { testModelOnHost, testAllModelsOnHost, testModelAcrossHosts, checkHost } = require('../src/services/hostTest/hostTestService');
 const { requireAuth } = require('../src/middleware/auth');
+const { hostTestLimiter } = require('../src/middleware/rateLimiter');
 const { getConfiguredHosts } = require('../src/helpers/ollamaHostConfig');
 
 // ── In-Memory Progress Tracker ─────────────────────────────────────────────────
@@ -76,7 +77,7 @@ router.get('/hosts-status', async (_req, res) => {
  * Run a single model performance test on a host.
  * Body: { modelName, hostUrl, hostId? }
  */
-router.post('/run', requireAuth, async (req, res) => {
+router.post('/run', requireAuth, hostTestLimiter, async (req, res) => {
   try {
     const { modelName, hostUrl, hostId } = req.body;
     if (!modelName || !hostUrl) {
@@ -98,7 +99,7 @@ router.post('/run', requireAuth, async (req, res) => {
  * Test all models on a host (background). Returns immediately with testId.
  * Body: { hostUrl, hostId? }
  */
-router.post('/run-all', requireAuth, async (req, res) => {
+router.post('/run-all', requireAuth, hostTestLimiter, async (req, res) => {
   try {
     const { hostUrl, hostId } = req.body;
     if (!hostUrl) {
@@ -119,7 +120,7 @@ router.post('/run-all', requireAuth, async (req, res) => {
       total: hostCheck.models.length,
       completed: 0,
       failed: 0,
-      currentModel: null,
+      currentModel: hostCheck.models[0] || null,
       results: [],
       startedAt: Date.now()
     };
@@ -151,6 +152,21 @@ router.post('/run-all', requireAuth, async (req, res) => {
     });
   } catch (err) {
     logger.error('Failed to start run-all', { error: err.message });
+    res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
+router.post('/compare', requireAuth, hostTestLimiter, async (req, res) => {
+  try {
+    const { modelName } = req.body;
+    if (!modelName) {
+      return res.status(400).json({ status: 'error', message: 'modelName is required' });
+    }
+
+    const data = await testModelAcrossHosts(modelName);
+    res.json({ status: 'success', data });
+  } catch (err) {
+    logger.error('Host test compare failed', { error: err.message, body: req.body });
     res.status(500).json({ status: 'error', message: err.message });
   }
 });

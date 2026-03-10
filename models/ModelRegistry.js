@@ -559,6 +559,51 @@ ModelRegistrySchema.statics.updateHostPerformance = async function(modelName, sn
   return this.findOne({ modelName });
 };
 
+ModelRegistrySchema.statics.summarizeHostPerformance = function(modelDoc) {
+  const snapshots = Array.isArray(modelDoc?.hostPerformance) ? modelDoc.hostPerformance : [];
+  const byHost = {};
+  let latestAny = null;
+  let latestPass = null;
+
+  for (const snapshot of snapshots) {
+    if (!latestAny) latestAny = snapshot;
+    if (!latestPass && snapshot?.status === 'pass') latestPass = snapshot;
+
+    const hostKey = snapshot?.hostUrl || snapshot?.hostId;
+    if (!hostKey) continue;
+
+    if (!byHost[hostKey]) {
+      byHost[hostKey] = {
+        latest: snapshot,
+        latestPass: snapshot?.status === 'pass' ? snapshot : null
+      };
+      continue;
+    }
+
+    if (!byHost[hostKey].latestPass && snapshot?.status === 'pass') {
+      byHost[hostKey].latestPass = snapshot;
+    }
+  }
+
+  return { latestAny, latestPass, byHost };
+};
+
+ModelRegistrySchema.statics.getLatestHostPerformanceForModels = async function(modelNames = []) {
+  if (!Array.isArray(modelNames) || modelNames.length === 0) {
+    return {};
+  }
+
+  const models = await this.find(
+    { modelName: { $in: modelNames } },
+    { modelName: 1, hostPerformance: 1 }
+  ).lean();
+
+  return models.reduce((acc, modelDoc) => {
+    acc[modelDoc.modelName] = this.summarizeHostPerformance(modelDoc);
+    return acc;
+  }, {});
+};
+
 /**
  * Sync benchmark statistics from BenchmarkResult collection
  *
