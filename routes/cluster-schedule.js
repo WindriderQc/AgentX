@@ -12,6 +12,8 @@ const logger = require('../config/logger');
 const { optionalAuth } = require('../src/middleware/auth');
 const clusterScheduleService = require('../src/services/clusterScheduleService');
 const clusterLiveService = require('../src/services/clusterLiveService');
+const HostUsageLedger = require('../models/HostUsageLedger');
+const { getUtilizationHeatmap } = require('../src/services/hostUsageAggregator');
 
 /**
  * GET /schedule
@@ -130,6 +132,103 @@ router.post('/schedule/sync', optionalAuth, async (req, res) => {
     res.json({ status: 'success', data: stats });
   } catch (err) {
     logger.error('Failed to sync cluster schedule', { error: err.message });
+    res.status(500).json({ status: 'error', error: err.message });
+  }
+});
+
+/**
+ * GET /schedule/actual
+ * Actual inference load per host from HostUsageLedger for a given date.
+ * Query params: date (YYYY-MM-DD, defaults today), hours (default 24)
+ */
+router.get('/schedule/actual', optionalAuth, async (req, res) => {
+  try {
+    const hours = Math.min(parseInt(req.query.hours || '24', 10), 168);
+    const since = new Date(Date.now() - hours * 3600 * 1000);
+
+    const records = await HostUsageLedger.find({ hour: { $gte: since } })
+      .sort({ hour: 1 }).lean();
+
+    // Group by host
+    const byHost = {};
+    for (const r of records) {
+      const label = r.hostLabel || r.hostKey || r.host;
+      if (!byHost[label]) byHost[label] = [];
+      byHost[label].push({
+        hour: r.hour,
+        totalCalls: r.totalCalls,
+        totalTokensOut: r.totalTokensOut,
+        totalDurationMs: r.totalDurationMs,
+        avgDurationMs: r.avgDurationMs,
+        utilizationPct: r.utilizationPct,
+        fallbackCalls: r.fallbackCalls,
+        uniqueModels: r.uniqueModels,
+        callerBreakdown: r.callerBreakdown
+      });
+    }
+
+    res.json({ status: 'success', data: { windowHours: hours, since, byHost } });
+  } catch (err) {
+    logger.error('Failed to get actual usage', { error: err.message });
+    res.status(500).json({ status: 'error', error: err.message });
+  }
+});
+
+/**
+ * GET /schedule/heatmap
+ * Utilization heatmap for the past N days (days × 24 hours per host).
+ * Query params: days (default 7, max 30)
+ */
+router.get('/schedule/heatmap', optionalAuth, async (req, res) => {
+  try {
+    const days = Math.min(parseInt(req.query.days || '7', 10), 30);
+    const data = await getUtilizationHeatmap(days);
+    res.json({ status: 'success', data });
+  } catch (err) {
+    logger.error('Failed to get utilization heatmap', { error: err.message });
+    res.status(500).json({ status: 'error', error: err.message });
+  }
+});
+
+/**
+ * GET /schedule/actual-vs-planned
+ * Overlay actual usage ledger on top of the planned schedule for a date.
+ * Query params: date (YYYY-MM-DD), timezone
+ */
+router.get('/schedule/actual-vs-planned', optionalAuth, async (req, res) => {
+  try {
+    const date = req.query.date || new Date().toISOString().slice(0, 10);
+    const timezone = req.query.timezone || 'America/Toronto';
+
+    // Get planned timeline
+    const planned = await clusterScheduleService.getTimelineByHost(date, timezone);
+
+    // Get actual for same day
+    const dayStart = new Date(`${date}T00:00:00Z`);
+    const dayEnd = new Date(dayStart.getTime() + 86400 * 1000);
+    const actual = await HostUsageLedger.find({
+      hour: { $gte: dayStart, $lt: dayEnd }
+    }).sort({ hour: 1 }).lean();
+
+    // Build actual by host
+    const actualByHost = {};
+    for (const r of actual) {
+      const label = r.hostLabel || r.hostKey || r.host;
+      if (!actualByHost[label]) actualByHost[label] = [];
+      actualByHost[label].push({
+        hour: r.hour.getUTCHours(),
+        utilizationPct: r.utilizationPct,
+        totalCalls: r.totalCalls,
+        avgDurationMs: r.avgDurationMs
+      });
+    }
+
+    res.json({
+      status: 'success',
+      data: { date, timezone, planned, actualByHost }
+    });
+  } catch (err) {
+    logger.error('Failed to get actual-vs-planned', { error: err.message });
     res.status(500).json({ status: 'error', error: err.message });
   }
 });

@@ -123,6 +123,11 @@ AgentX development is organized across **eight development tracks**, each focusi
 
 **Status:** Production-ready with comprehensive integration tests
 
+**2026-03 Sprint Refactor:** selfHealingEngine.js (1410 lines) split into three files:
+- `selfHealingEngine.js` — ~300-line slim orchestrator
+- `selfHealingHelpers.js` — pure utilities + metric fetching (~200 lines)
+- `selfHealingActions.js` — 5 standalone action handlers (~220 lines)
+
 **Documentation:** `/docs/planning/TRACK_4_COMPLETION_SUMMARY.md` (450 lines)
 
 ---
@@ -296,7 +301,7 @@ AgentX development is organized across **eight development tracks**, each focusi
 **Status:** Production-ready, accessible at http://localhost:3080/feature-alignment.html
 
 **Components:**
-- ✅ Feature scanner (`/src/services/featureAlignmentScanner.js` - 470 lines)
+- ✅ Feature scanner (`/src/services/featureAlignmentScanner.js` - ~230 lines, parsers split to `featureAlignmentParsers.js` ~250 lines)
   - Scans 179 features across frontend, backend, and documentation
   - Maps 254 backend endpoints
   - Identifies orphan endpoints and headless features
@@ -806,6 +811,120 @@ Multi-agent roundtable discussion feature: pose a question, watch 3 AI agents de
 - Frontend: `public/js/roundtable/` (index, compareView, qualityScores, notifications)
 - Styles: `public/css/roundtable.css`
 - Tests: `tests/unit/roundtable/`
+
+---
+
+---
+
+## Maintenance Mesh — OpenClaw Sprint Plan ✅ COMPLETE (2026-03-10)
+
+**Goal:** Observability, automated maintenance, and GPU utilization tracking across the cluster.
+
+### Sprint 1: Inference Telemetry ✅ COMPLETE
+- `models/InferenceLog.js` — per-request telemetry (model, host, latency, tokens, cost)
+- `models/HostUsageLedger.js` — hourly aggregated GPU utilization per host
+- `src/services/hostUsageAggregator.js` — aggregation service (InferenceLog → HostUsageLedger)
+- `routes/inference-telemetry.js` — REST API for telemetry + heatmap data
+- `public/inference-telemetry.html` + `public/js/inference-telemetry.js` — dashboard
+- `src/services/modelRouter.js` — instrumented with fire-and-forget InferenceLog.create()
+
+### Sprint 2: Maintenance Snapshot Service ✅ COMPLETE
+- `src/services/maintenanceSnapshotService.js` — orchestrates 4 scanners, upserts findings
+- `src/services/adapters/` — repoWatcher, docJanitor, featureAlignment, validationScanner adapters
+- `models/Finding.js` — normalized finding model with lifecycle (open/resolved/suppressed)
+- `routes/maintenance.js` — snapshot trigger + finding CRUD API
+- `config/repo-profiles.json` — agentx + dataapi repo definitions
+- `public/maintenance.html` + `public/js/maintenance.js` — maintenance dashboard
+
+### Sprint 3: Cluster Schedule + GPU Heatmap ✅ COMPLETE
+- `models/ClusterScheduleEntry.js` + `routes/cluster-schedule.js` — schedule CRUD
+- `src/services/clusterScheduleService.js` — cron resolution, timeline, conflict detection
+- `public/cluster.html` + `public/js/cluster-schedule.js` (771 lines) — Gantt + heatmap UI
+- **Heatmap additions:** actual utilization heatmap (days×24 grid) + vs-planned overlay view
+- `GET /api/cluster/schedule/actual-heatmap` and `GET /api/cluster/schedule/actual-vs-planned` — new endpoints
+- `src/services/clusterLiveStateService.js` — live GPU state polling
+
+### Sprint 4: Service Size Hygiene ✅ COMPLETE
+Three oversized services split into focused modules:
+
+| Original | Original Size | Split Into | New Sizes |
+|---|---|---|---|
+| `repoWatcherService.js` | 817 lines | + `repoWatcherDetectors.js` | ~190 + ~430 lines |
+| `featureAlignmentScanner.js` | 767 lines | + `featureAlignmentParsers.js` | ~230 + ~250 lines |
+| `selfHealingEngine.js` | 1410 lines | + `selfHealingHelpers.js` + `selfHealingActions.js` | ~300 + ~200 + ~220 lines |
+
+All within CLAUDE.md file size limits. Backward compatibility preserved via re-exports.
+
+### Sprint 5: SpecialX Maintenance Profiles + Scheduled Pipeline ✅ COMPLETE
+- `models/SpecialX.js` — added 4 new task types to enum + `ensureMaintenanceProfiles()` static
+- `scripts/seed-specialx-profiles.js` — idempotent seed for 3 system profiles:
+  - `specialx.maintenance-operator.v1` → drives `maintenance_snapshot` + `maintenance_digest`
+  - `specialx.telemetry-aggregator.v1` → drives `telemetry_aggregate` (hourly)
+  - `specialx.schedule-auditor.v1` → drives `daily_operations_digest` + `schedule_reconcile`
+- `src/services/maintenanceSchedulerService.js` — idempotent hourly/daily task enqueuer
+  - `telemetry_aggregate` every UTC hour (idempotency: `type:YYYY-MM-DDTHH`)
+  - `maintenance_snapshot` per repo daily (idempotency: `type:repoId:YYYY-MM-DD`)
+  - `maintenance_digest` daily (idempotency: `type:YYYY-MM-DD`)
+- `src/helpers/initDb.js` — calls `ensureMaintenanceProfiles()` on startup
+- `server.js` — starts `MaintenanceSchedulerService` after SpecialX runner
+- `scripts/seed-cluster-schedule.js` — 4 new AgentX maintenance entries for cluster Gantt
+
+**Execution chain:** `MaintenanceSchedulerService` → enqueues `AutomationTask` → `AutomationRunnerService.tick()` → `specialxTaskHandlers.runTaskByType()` → scanner/aggregator services
+
+### Sprint 6: Docs Update ✅ COMPLETE
+- `ROADMAP.md` updated with Maintenance Mesh section + correct line counts for split services
+- `MEMORY.md` updated to reflect completed state
+
+---
+
+## Codebase Hygiene Round 2 ✅ COMPLETE (2026-03-10)
+
+Additional file size enforcement pass on services, routes, and frontend JS. All files brought within CLAUDE.md limits.
+
+### Backend Splits
+
+| Original | Original Lines | Split Into | New Lines |
+|---|---|---|---|
+| `routes/analytics.js` | 1772 | + `analytics-prompt.js` + `analytics-v8.js` | 811 + 732 + 178 |
+| `src/services/modelRouter.js` | 721 | + `modelRouterConfig.js` | 584 + 179 |
+| `src/services/judgeValidation.js` | 891 | + `judgeValidationAnalysis.js` + `judgeValidationHelpers.js` | 503 + 264 + 170 |
+| `src/services/chatService.js` | 776 | + `chatServiceStream.js` | 456 + 358 |
+| `routes/workspaces.js` | 1179 | + `workspaces-members.js` + `workspaces-admin.js` | 392 + 436 + 408 |
+| `routes/alerts.js` | 1129 | + `alerts-ops.js` | 664 + 485 |
+| `src/services/decomposedJudge.js` | 717 | + `decomposedJudgeQuestions.js` | 394 + 337 |
+| `routes/performance.js` | 1059 | + `performance-data.js` + `performance-helpers.js` | 617 + 352 + 88 |
+
+### Bug Fix
+- `src/services/specialxTaskHandlers.js` — added missing `schedule_reconcile` handler (`runScheduleReconcileTask`)
+- `routes/maintenance.js` — added `GET /api/maintenance/scheduler/status` endpoint
+
+### Frontend Splits
+
+| Original | Original Lines | Action | Result |
+|---|---|---|---|
+| `public/js/analytics.js` | 1277 | Split + `analytics-cost.js` (ES module import) | 509 + 793 |
+| `public/js/results-explorer.js` | 2208 | Split + `*-charts.js` + `*-inspector.js` (regular scripts) | 589 + 861 + 764 |
+| `public/js/chat.v2.js` | 2879 | **Archived** → `public/js/legacy/chat.v2.js` (no HTML page served) | — |
+| `public/js/chat.js` | 2072 | **Archived** → `public/js/legacy/chat.js` (replaced by chat/chat-main.js) | — |
+| `public/js/prompts.js` | 1232 | **Archived** → `public/js/legacy/prompts.js` (replaced by agent-library.js) | — |
+
+### Round 2 — Service Splits (continuation, 2026-03-10)
+
+| Original | Original Lines | Split Into | New Lines |
+|---|---|---|---|
+| `src/services/ragStore.js` | 684 | + `ragStoreUtils.js` | 589 + 118 |
+| `src/services/notificationService.js` | 678 | + `notificationFormatters.js` | 438 + 364 |
+| `src/services/qualityScorer.js` | 663 | + `scoring/judgeConfigResolver.js` | 567 + 155 |
+| `src/services/ragFileWatcher.js` | 622 | + `ragFileWatcherUtils.js` | 599 + 83 |
+| `src/services/benchmark/judging.js` | 710 | + `benchmark/judgeMonitor.js` | 567 + 184 |
+| `src/services/benchmark/results.js` | 722 | + `benchmark/resultsAnalysis.js` | 498 + 244 |
+
+| `public/js/courthouse-analytics.js` | 1348 | + `courthouse-validation.js` | 847 + 533 |
+
+Technique: `courthouse-analytics.js` is `type="module"` — ES `import { makeValidation }` at top. Validation section extracted as `export function makeValidation({ showToast, BENCHMARK_API, escapeHtml })` factory. No HTML changes needed.
+
+### Deferred
+- `src/services/benchmark/execution.js` (929 lines, 329 over limit) — `executeBatch()` is a 763-line monolith with inner closures sharing outer scope; clean extraction requires converting all closed-over vars to explicit params — deferred to avoid risk to execution engine
 
 ---
 

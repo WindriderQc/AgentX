@@ -62,7 +62,11 @@ const SpecialXSchema = new mongoose.Schema({
       'ci_failure_triage',
       'model_health_digest',
       'daily_operations_digest',
-      'custom_prompt_analysis'
+      'custom_prompt_analysis',
+      'maintenance_snapshot',
+      'maintenance_digest',
+      'telemetry_aggregate',
+      'schedule_reconcile'
     ]
   }],
   schedule: {
@@ -151,6 +155,64 @@ SpecialXSchema.statics.ensureDefaultOperator = async function(workspaceId = null
     isActive: true,
     isSystem: true
   });
+};
+
+// ── Maintenance profiles (system-managed, workspaceId: null) ──
+
+const MAINTENANCE_PROFILES = [
+  {
+    name: 'specialx.maintenance-operator.v1',
+    displayName: 'Maintenance Operator',
+    purpose: 'Runs nightly repo scans and generates maintenance digests for all managed repos.',
+    description: 'System-managed profile: drives maintenance_snapshot and maintenance_digest tasks.',
+    promptProfile: {
+      persona: 'default_chat',
+      style: 'concise',
+      systemHint: 'Return structured, action-first findings. Focus on high-severity issues.'
+    },
+    toolPolicy: { rag: false, n8n: false, dataapi: false, repoWatcher: true, codeActions: false },
+    modelPolicy: { localFirst: true, allowCloudFallback: false, maxLocalAttempts: 2, preferredTaskType: 'analysis' },
+    taskTypes: ['maintenance_snapshot', 'maintenance_digest'],
+    schedule: { enabled: true, cron: '0 3 * * *', timezone: 'UTC' }
+  },
+  {
+    name: 'specialx.telemetry-aggregator.v1',
+    displayName: 'Telemetry Aggregator',
+    purpose: 'Hourly aggregation of InferenceLog records into HostUsageLedger.',
+    description: 'System-managed profile: drives telemetry_aggregate tasks every hour.',
+    promptProfile: { persona: 'default_chat', style: 'concise', systemHint: '' },
+    toolPolicy: { rag: false, n8n: false, dataapi: true, repoWatcher: false, codeActions: false },
+    modelPolicy: { localFirst: true, allowCloudFallback: false, maxLocalAttempts: 1, preferredTaskType: 'analysis' },
+    taskTypes: ['telemetry_aggregate'],
+    schedule: { enabled: true, cron: '0 * * * *', timezone: 'UTC' }
+  },
+  {
+    name: 'specialx.schedule-auditor.v1',
+    displayName: 'Schedule Auditor',
+    purpose: 'Daily ops digest and schedule reconciliation across all managed repos.',
+    description: 'System-managed profile: drives daily_operations_digest and schedule_reconcile tasks.',
+    promptProfile: {
+      persona: 'default_chat',
+      style: 'balanced',
+      systemHint: 'Return a compact Telegram-ready digest. Bullet points, no prose.'
+    },
+    toolPolicy: { rag: false, n8n: true, dataapi: true, repoWatcher: true, codeActions: false },
+    modelPolicy: { localFirst: true, allowCloudFallback: false, maxLocalAttempts: 2, preferredTaskType: 'analysis' },
+    taskTypes: ['daily_operations_digest', 'schedule_reconcile'],
+    schedule: { enabled: true, cron: '0 7 * * *', timezone: 'UTC' }
+  }
+];
+
+SpecialXSchema.statics.ensureMaintenanceProfiles = async function() {
+  const created = [];
+  for (const profile of MAINTENANCE_PROFILES) {
+    const existing = await this.findOne({ name: profile.name, workspaceId: null });
+    if (!existing) {
+      const doc = await this.create({ workspaceId: null, ...profile, isActive: true, isSystem: true });
+      created.push(doc.name);
+    }
+  }
+  return created;
 };
 
 module.exports = mongoose.model('SpecialX', SpecialXSchema);

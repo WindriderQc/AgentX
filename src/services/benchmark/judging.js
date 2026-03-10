@@ -15,20 +15,15 @@ const BenchmarkPrompt = require('../../../models/BenchmarkPrompt');
 const ConcurrencyQueue = require('./ConcurrencyQueue');
 const { multiJudgeScore, shouldEscalateToMultiJudge } = require('./multiJudge');
 
-// Track active judging jobs (batchId -> { queue, stopped })
-const activeJudgingJobs = new Map();
+// Active judging job state and helpers managed by judgeMonitor.js
+const {
+    activeJudgingJobs,
+    persistJudgeCounters,
+    stopJudging,
+    stopAllJudging,
+    getJudgingStatus
+} = require('./judgeMonitor');
 
-async function persistJudgeCounters(batchId, fields = {}) {
-    await BenchmarkBatch.updateOne(
-        { _id: batchId },
-        {
-            $set: {
-                ...fields,
-                last_activity_at: new Date()
-            }
-        }
-    );
-}
 
 /**
  * Validate whether judging can be started for a batch and count eligible results.
@@ -559,144 +554,6 @@ async function judgeBatch(batchId, options = {}) {
         failed,
         timedOut
     };
-}
-
-/**
- * Stop active judging for a batch.
- * @param {string} batchId
- * @returns {boolean} true if judging was active and stopped
- */
-function stopJudging(batchId) {
-    const job = activeJudgingJobs.get(batchId);
-    if (!job) return false;
-
-    job.stopped = true;
-    persistJudgeCounters(batchId, { judge_status: 'stopped' }).catch((err) => {
-        logger.warn('Failed to persist stop request for judging job', {
-            batchId,
-            error: err.message
-        });
-    });
-    logger.info('Judging stop requested', { batchId });
-    return true;
-}
-
-async function getAuthoritativeJudgeCounters(batchId) {
-    const [totalResults, judgeTotal, judgeCompleted, judgeFailed] = await Promise.all([
-        BenchmarkResult.countDocuments({ batch_id: batchId }),
-        BenchmarkResult.countDocuments({
-            batch_id: batchId,
-            success: true,
-            response: { $type: 'string', $nin: ['', null] }
-        }),
-        BenchmarkResult.countDocuments({
-            batch_id: batchId,
-            success: true,
-            response: { $type: 'string', $nin: ['', null] },
-            scoring_method: { $ne: 'pending' }
-        }),
-        BenchmarkResult.countDocuments({
-            batch_id: batchId,
-            success: true,
-            response: { $type: 'string', $nin: ['', null] },
-            scoring_method: 'llm_failed'
-        })
-    ]);
-
-    return {
-        hasResults: totalResults > 0,
-        judge_total: judgeTotal,
-        judge_completed: judgeCompleted,
-        judge_failed: judgeFailed
-    };
-}
-
-/**
- * Get judging status for a batch.
- * Returns live queue stats if active, else batch counters.
- * @param {string} batchId
- * @returns {Object}
- */
-async function getJudgingStatus(batchId) {
-    const job = activeJudgingJobs.get(batchId);
-    if (job) {
-        return {
-            active: true,
-            stopped: job.stopped,
-            ...job.queue.getStatus()
-        };
-    }
-
-    const batch = await BenchmarkBatch.findById(batchId)
-        .select('status judge_status judge_total judge_completed judge_failed')
-        .lean();
-
-    if (!batch) {
-        throw new Error(`Batch not found: ${batchId}`);
-    }
-
-    // While execution or judging is actively running, $inc operations are in flight.
-    // Self-healing $set would race with those and roll back progress.
-    const isActive = batch.status === 'running' || batch.judge_status === 'running';
-
-    if (isActive) {
-        return {
-            active: false,
-            judge_status: batch.judge_status || 'none',
-            judge_total: batch.judge_total,
-            judge_completed: batch.judge_completed,
-            judge_failed: batch.judge_failed
-        };
-    }
-
-    const authoritative = await getAuthoritativeJudgeCounters(batchId);
-
-    if (!authoritative.hasResults) {
-        return {
-            active: false,
-            judge_status: batch.judge_status || 'none',
-            judge_total: batch.judge_total,
-            judge_completed: batch.judge_completed,
-            judge_failed: batch.judge_failed
-        };
-    }
-
-    const countersDrifted =
-        Number(batch.judge_total || 0) !== authoritative.judge_total ||
-        Number(batch.judge_completed || 0) !== authoritative.judge_completed ||
-        Number(batch.judge_failed || 0) !== authoritative.judge_failed;
-
-    if (countersDrifted) {
-        await BenchmarkBatch.updateOne(
-            { _id: batchId },
-            {
-                $set: {
-                    judge_total: authoritative.judge_total,
-                    judge_completed: authoritative.judge_completed,
-                    judge_failed: authoritative.judge_failed,
-                    last_activity_at: new Date()
-                }
-            }
-        );
-    }
-
-    return {
-        active: false,
-        judge_status: batch.judge_status || 'none',
-        judge_total: authoritative.judge_total,
-        judge_completed: authoritative.judge_completed,
-        judge_failed: authoritative.judge_failed
-    };
-}
-
-/**
- * Stop all active judging jobs (for graceful shutdown).
- */
-function stopAllJudging() {
-    for (const [batchId, job] of activeJudgingJobs) {
-        job.stopped = true;
-        logger.info('Stopping judging on shutdown', { batchId });
-    }
 }
 
 module.exports = {

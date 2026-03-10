@@ -18,7 +18,7 @@ console.log('\n📁 Test 1: File Existence');
 const files = [
   'public/index.html',
   'public/js/components/ChatOnboardingWizard.js',
-  'public/js/chat.js'
+  'public/js/legacy/chat.js'  // archived legacy file — active chat is in public/js/chat/
 ];
 
 files.forEach(file => {
@@ -132,7 +132,7 @@ apiEndpoints.forEach(endpoint => {
 
 // Test 6: Integration Hooks in chat.js
 console.log('\n🪝 Test 6: Integration Hooks in chat.js');
-const chatJs = fs.readFileSync('public/js/chat.js', 'utf8');
+const chatJs = fs.readFileSync('public/js/legacy/chat.js', 'utf8');
 
 const hookChecks = [
   { name: 'Profile Save Hook', pattern: 'checkProfileSetup' },

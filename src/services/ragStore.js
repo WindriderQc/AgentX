@@ -7,11 +7,11 @@
  * Contract: V3_CONTRACT_SNAPSHOT.md § 1
  */
 
-const crypto = require('crypto');
 const path = require('path');
 const { getEmbeddingsService } = require('./embeddings');
 const { createVectorStore } = require('./vectorStore/factory');
 const logger = require(path.join(__dirname, '../../config/logger'));
+const { generateDocumentId, hashText, splitIntoChunks } = require('./ragStoreUtils');
 
 class RagStore {
   constructor(config = {}) {
@@ -52,11 +52,11 @@ class RagStore {
     }
 
     // Generate document ID from source + path
-    const documentId = this._generateDocumentId(metadata.source, metadata.path);
-    
+    const documentId = generateDocumentId(metadata.source, metadata.path);
+
     // Check for existing document with same hash
     const existingDoc = await this.vectorStore.getDocument(documentId);
-    const contentHash = metadata.hash || this._hashText(text);
+    const contentHash = metadata.hash || hashText(text);
     
     if (existingDoc && existingDoc.hash === contentHash) {
       return {
@@ -67,7 +67,7 @@ class RagStore {
     }
 
     // Split text into chunks
-    const chunks = this._splitIntoChunks(text);
+    const chunks = splitIntoChunks(text, this.chunkSize, this.chunkOverlap);
     
     if (chunks.length === 0) {
       throw new Error('Text produced no chunks (too short?)');
@@ -564,101 +564,6 @@ Score:`;
     return await this.vectorStore.healthCheck();
   }
 
-  // ========== PRIVATE METHODS ==========
-
-  /**
-   * Generate consistent document ID from source and path
-   * @private
-   */
-  _generateDocumentId(source, path) {
-    const combined = `${source}:${path}`;
-    return crypto.createHash('md5').update(combined).digest('hex');
-  }
-
-  /**
-   * Generate content hash
-   * @private
-   */
-  _hashText(text) {
-    return crypto.createHash('md5').update(text).digest('hex');
-  }
-
-  /**
-   * Split text into overlapping chunks
-   *
-   * CRITICAL BUG FIX (2026-01-21):
-   * - Added safety limit (MAX_CHUNKS = 10000) to prevent infinite loops
-   * - Added minimum advance guarantee: max(50, 10% of chunkSize)
-   * - Fixed edge case where chunkSize <= chunkOverlap would cause infinite loop
-   * - Ensures nextStart > start always (forced advance if needed)
-   *
-   * Edge cases handled:
-   * - chunkSize = chunkOverlap (e.g., 100 = 100): Forces 10-50 char advance
-   * - chunkOverlap > chunkSize (e.g., 200 > 100): Caps overlap to allow progress
-   * - Very small chunkSize (e.g., 10): Still guarantees minimum 1 char advance
-   *
-   * @private
-   */
-  _splitIntoChunks(text) {
-    const chunks = [];
-    let start = 0;
-    const MAX_CHUNKS = 10000; // Safety limit to prevent infinite loops
-
-    while (start < text.length) {
-      // Safety check: prevent infinite loop from bad configuration
-      if (chunks.length >= MAX_CHUNKS) {
-        logger.error('Chunking safety limit reached', {
-          chunkCount: chunks.length,
-          chunkSize: this.chunkSize,
-          chunkOverlap: this.chunkOverlap,
-          textLength: text.length
-        });
-        break;
-      }
-
-      // Find chunk end
-      let end = Math.min(start + this.chunkSize, text.length);
-
-      // Try to break at sentence boundary if possible
-      if (end < text.length) {
-        const breakPoint = text.lastIndexOf('. ', end);
-        if (breakPoint > start && breakPoint > start + this.chunkSize * 0.5) {
-          end = breakPoint + 1; // Include the period
-        }
-      }
-
-      const chunk = text.substring(start, end).trim();
-      if (chunk.length > 0) {
-        chunks.push(chunk);
-      }
-
-      // Move start forward with overlap, ensuring we ALWAYS advance
-      // Minimum advance: max(50, 10% of chunkSize) to guarantee progress
-      const minAdvance = Math.max(50, Math.floor(this.chunkSize * 0.1));
-      const overlap = Math.min(this.chunkOverlap, this.chunkSize - minAdvance);
-      const nextStart = end - overlap;
-
-      // Critical: Ensure nextStart is always greater than start
-      if (nextStart <= start) {
-        // Force advance by minimum amount
-        const oldStart = start;
-        start = oldStart + minAdvance;
-        logger.warn('Chunking forced advance', {
-          oldStart,
-          newStart: start,
-          chunkSize: this.chunkSize,
-          chunkOverlap: this.chunkOverlap,
-          minAdvance
-        });
-      } else {
-        start = nextStart;
-      }
-
-      if (start >= text.length) break;
-    }
-
-    return chunks;
-  }
 
 }
 

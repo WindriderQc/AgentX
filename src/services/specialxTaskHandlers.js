@@ -1,6 +1,7 @@
 const { getRepoWatcherService } = require('./repoWatcherService');
 const { handleChatRequest } = require('./chatService');
 const { routeRequest, getRoutingStatus, getFailoverStatus } = require('./modelRouter');
+const { runSnapshot, generateDigest, listRepos } = require('./maintenanceSnapshotService');
 
 const DEFAULT_REPO_PATH = process.env.REPO_WATCHER_PATH || process.cwd();
 const SPECIALX_SYSTEM_USER = process.env.SPECIALX_SYSTEM_USER || 'specialx-system';
@@ -239,6 +240,143 @@ async function runDailyOperationsDigestTask(task, getQueueMetrics) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Maintenance Snapshot — runs all scanners against one repo, upserts findings
+// ---------------------------------------------------------------------------
+async function runMaintenanceSnapshotTask(task) {
+  const repoId = task.input?.repoId;
+  const scanners = task.input?.scanners || undefined;
+  if (!repoId) throw new Error('maintenance_snapshot requires input.repoId');
+
+  const result = await runSnapshot(repoId, { scanners });
+  const s = result.summary;
+
+  return {
+    summary: `${repoId} scan: ${s.newThisScan} new · ${s.totalOpenFindings} open · high:${s.bySeverity?.high || 0} med:${s.bySeverity?.medium || 0}`,
+    output: result,
+    artifacts: [{ name: 'maintenance_snapshot', kind: 'json', content: result }],
+    metrics: { localCalls: 0, cloudCalls: 0 },
+    execution: { routed: false }
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Maintenance Digest — Telegram-formatted summary across all repos
+// ---------------------------------------------------------------------------
+async function runMaintenanceDigestTask() {
+  const repos = listRepos();
+  const digests = await Promise.all(repos.map(r => generateDigest(r.id)));
+  const text = digests.join('\n\n---\n\n');
+
+  return {
+    summary: `Maintenance digest for ${repos.map(r => r.id).join(', ')}`,
+    output: { text, repos: repos.map(r => r.id) },
+    artifacts: [{ name: 'maintenance_digest', kind: 'markdown', content: text }],
+    metrics: { localCalls: 0, cloudCalls: 0 },
+    execution: { routed: false }
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Schedule Reconcile — audit the maintenance pipeline for missed/failed tasks
+// ---------------------------------------------------------------------------
+async function runScheduleReconcileTask(task, getQueueMetrics) {
+  const AutomationTask = require('../../models/AutomationTask');
+
+  const windowHours = task.input?.windowHours || 25;
+  const since = new Date(Date.now() - windowHours * 60 * 60 * 1000);
+
+  // Tracked types driven by MaintenanceSchedulerService
+  const TRACKED_TYPES = ['telemetry_aggregate', 'maintenance_snapshot', 'maintenance_digest'];
+
+  // Load all scheduled tasks created within the window
+  const recentTasks = await AutomationTask.find({
+    source: 'schedule',
+    type: { $in: TRACKED_TYPES },
+    createdAt: { $gte: since }
+  }).select('type status idempotencyKey createdAt completedAt lastError').lean();
+
+  // Group by type
+  const byType = {};
+  for (const t of recentTasks) {
+    if (!byType[t.type]) byType[t.type] = [];
+    byType[t.type].push(t);
+  }
+
+  let okCount = 0, missedCount = 0, degradedCount = 0;
+  const report = {};
+
+  for (const type of TRACKED_TYPES) {
+    const tasks = byType[type] || [];
+    const completed = tasks.filter((t) => t.status === 'completed').length;
+    const failed    = tasks.filter((t) => ['failed', 'dead_letter'].includes(t.status)).length;
+    const queued    = tasks.filter((t) => ['queued', 'leased', 'running'].includes(t.status)).length;
+
+    let status;
+    if (tasks.length === 0)       { status = 'missed';   missedCount++; }
+    else if (failed > 0)           { status = 'degraded'; degradedCount++; }
+    else if (completed > 0)        { status = 'ok';       okCount++; }
+    else                           { status = 'pending';  okCount++; }
+
+    report[type] = { total: tasks.length, completed, failed, queued, status };
+  }
+
+  const queueStats = await getQueueMetrics();
+  const summary = `Schedule reconcile: ${okCount} ok · ${missedCount} missed · ${degradedCount} degraded (${windowHours}h window)`;
+
+  return {
+    summary,
+    output: {
+      windowHours,
+      since: since.toISOString(),
+      trackedTypes: TRACKED_TYPES,
+      report,
+      queue: {
+        queued: queueStats.queue?.queued || 0,
+        running: queueStats.queue?.running || 0,
+        failed: queueStats.queue?.failed || 0
+      }
+    },
+    artifacts: [{
+      name: 'schedule_reconcile',
+      kind: 'json',
+      content: {
+        generatedAt: new Date().toISOString(),
+        windowHours,
+        report,
+        queue: queueStats
+      }
+    }],
+    metrics: { localCalls: 0, cloudCalls: 0 },
+    execution: { routed: false }
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Telemetry Aggregate — aggregate InferenceLog → HostUsageLedger
+// ---------------------------------------------------------------------------
+async function runTelemetryAggregateTask() {
+  try {
+    const { aggregateHour } = require('./hostUsageAggregator');
+    const result = await aggregateHour();
+    return {
+      summary: `Telemetry aggregated: ${result.hoursProcessed} hour(s), ${result.recordsWritten} ledger records`,
+      output: result,
+      artifacts: [{ name: 'telemetry_aggregate', kind: 'json', content: result }],
+      metrics: { localCalls: 0, cloudCalls: 0 },
+      execution: { routed: false }
+    };
+  } catch (err) {
+    return {
+      summary: `Telemetry aggregate failed: ${err.message}`,
+      output: { error: err.message },
+      artifacts: [],
+      metrics: { localCalls: 0, cloudCalls: 0 },
+      execution: { routed: false }
+    };
+  }
+}
+
 async function runTaskByType(task, specialX, getQueueMetrics) {
   switch (task.type) {
   case 'repo_summary':
@@ -251,6 +389,14 @@ async function runTaskByType(task, specialX, getQueueMetrics) {
     return runDailyOperationsDigestTask(task, getQueueMetrics);
   case 'custom_prompt_analysis':
     return runCustomPromptAnalysisTask(task, specialX);
+  case 'maintenance_snapshot':
+    return runMaintenanceSnapshotTask(task);
+  case 'maintenance_digest':
+    return runMaintenanceDigestTask();
+  case 'telemetry_aggregate':
+    return runTelemetryAggregateTask();
+  case 'schedule_reconcile':
+    return runScheduleReconcileTask(task, getQueueMetrics);
   default:
     throw new Error(`Unsupported task type: ${task.type}`);
   }

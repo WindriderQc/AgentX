@@ -372,6 +372,14 @@ app.use('/api/docJanitor', docJanitorRoutes);
 const specialXRoutes = require('../routes/specialx');
 app.use('/api/specialx', specialXLimiter, specialXRoutes);
 
+// Inference Telemetry routes (Sprint 1: GPU usage observability)
+const inferenceTelemetryRoutes = require('../routes/inference-telemetry');
+app.use('/api/telemetry', inferenceTelemetryRoutes);
+
+// Maintenance routes (Sprint 2: unified repo health + finding lifecycle)
+const maintenanceRoutes = require('../routes/maintenance');
+app.use('/api/maintenance', maintenanceRoutes);
+
 // Legacy/Compatibility routes
 // Map /conversations -> history
 app.use('/api/conversations', historyRoutes);

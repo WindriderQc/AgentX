@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Inference Telemetry — AgentX</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    body { background: #0d1117; color: #e6edf3; font-family: 'Segoe UI', system-ui, sans-serif; }
+    .navbar { background: #161b22; border-bottom: 1px solid #30363d; }
+    .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; }
+    .card-header { background: #1c2128; border-bottom: 1px solid #30363d; font-weight: 600; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: #8b949e; }
+    .stat-card { border-radius: 10px; }
+    .stat-value { font-size: 2rem; font-weight: 700; line-height: 1; }
+    .stat-label { font-size: 0.78rem; color: #8b949e; margin-top: 4px; }
+    .stat-delta { font-size: 0.75rem; margin-top: 2px; }
+    .host-bar { height: 8px; border-radius: 4px; background: #21262d; overflow: hidden; }
+    .host-bar-fill { height: 100%; border-radius: 4px; transition: width 0.6s ease; }
+    .badge-caller { font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; }
+    .log-table { font-size: 0.8rem; }
+    .log-table td, .log-table th { vertical-align: middle; padding: 6px 10px; border-color: #21262d; }
+    .log-table tbody tr:hover { background: #1c2128; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+    .dot-success { background: #3fb950; }
+    .dot-error   { background: #f85149; }
+    .dot-timeout { background: #d29922; }
+    .host-ugclawdx { color: #58a6ff; }
+    .host-ugbrutal  { color: #bc8cff; }
+    .host-ugfrank   { color: #3fb950; }
+    .host-unknown   { color: #8b949e; }
+    .window-btn.active { background: #388bfd; border-color: #388bfd; color: #fff; }
+    .refresh-indicator { width: 8px; height: 8px; border-radius: 50%; background: #3fb950; display: inline-block; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+    .empty-state { color: #8b949e; font-size: 0.85rem; padding: 40px 0; text-align: center; }
+    .table-scroll { max-height: 400px; overflow-y: auto; }
+    .chart-container { position: relative; height: 220px; }
+    pre.error-text { font-size: 0.72rem; color: #f85149; background: #2d1b1b; padding: 4px 8px; border-radius: 4px; margin: 0; white-space: pre-wrap; word-break: break-all; }
+  </style>
+</head>
+<body>
+
+<!-- Navbar -->
+<nav class="navbar navbar-dark px-3 py-2">
+  <a class="navbar-brand fw-bold" href="/">
+    <i class="bi bi-cpu me-2 text-primary"></i>AgentX
+  </a>
+  <div class="d-flex align-items-center gap-3">
+    <span class="refresh-indicator" id="refreshDot"></span>
+    <span class="text-muted small" id="lastRefresh">—</span>
+    <a href="/cluster.html" class="btn btn-sm btn-outline-secondary">Cluster</a>
+    <a href="/specialx.html" class="btn btn-sm btn-outline-secondary">SpecialX</a>
+  </div>
+</nav>
+
+<div class="container-fluid px-4 py-3">
+
+  <!-- Header + window selector -->
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <div>
+      <h5 class="mb-0 fw-bold"><i class="bi bi-activity me-2 text-primary"></i>Inference Telemetry</h5>
+      <small class="text-muted">Live GPU inference across all Ollama hosts</small>
+    </div>
+    <div class="btn-group btn-group-sm" id="windowBtns">
+      <button class="btn btn-outline-secondary window-btn" data-hours="1">1h</button>
+      <button class="btn btn-outline-secondary window-btn active" data-hours="24">24h</button>
+      <button class="btn btn-outline-secondary window-btn" data-hours="72">3d</button>
+      <button class="btn btn-outline-secondary window-btn" data-hours="168">7d</button>
+    </div>
+  </div>
+
+  <!-- Stat cards row -->
+  <div class="row g-3 mb-3">
+    <div class="col-6 col-md-3">
+      <div class="card stat-card p-3">
+        <div class="stat-value text-primary" id="statTotalCalls">—</div>
+        <div class="stat-label"><i class="bi bi-lightning me-1"></i>Total Calls</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card stat-card p-3">
+        <div class="stat-value text-info" id="statTotalTokens">—</div>
+        <div class="stat-label"><i class="bi bi-type me-1"></i>Tokens Out</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card stat-card p-3">
+        <div class="stat-value text-warning" id="statAvgDuration">—</div>
+        <div class="stat-label"><i class="bi bi-stopwatch me-1"></i>Avg Duration</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card stat-card p-3">
+        <div class="stat-value" id="statErrorRate" style="color:#f85149">—</div>
+        <div class="stat-label"><i class="bi bi-exclamation-triangle me-1"></i>Error Rate</div>
+        <div class="stat-delta text-muted" id="statFallbacks"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Host cards + timeline row -->
+  <div class="row g-3 mb-3">
+
+    <!-- Host summary cards -->
+    <div class="col-12 col-lg-4">
+      <div class="card h-100">
+        <div class="card-header"><i class="bi bi-server me-1"></i>GPU Hosts</div>
+        <div class="card-body p-3" id="hostCards">
+          <div class="empty-state"><i class="bi bi-hourglass-split me-1"></i>Loading...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Timeline chart -->
+    <div class="col-12 col-lg-8">
+      <div class="card h-100">
+        <div class="card-header d-flex align-items-center justify-content-between">
+          <span><i class="bi bi-bar-chart me-1"></i>Inference Volume</span>
+          <select class="form-select form-select-sm w-auto bg-dark text-light border-secondary" id="timelineBucket">
+            <option value="hour">Hourly</option>
+            <option value="day">Daily</option>
+          </select>
+        </div>
+        <div class="card-body p-3">
+          <div class="chart-container">
+            <canvas id="timelineChart"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Model + Caller row -->
+  <div class="row g-3 mb-3">
+
+    <!-- Top models -->
+    <div class="col-12 col-md-6">
+      <div class="card">
+        <div class="card-header"><i class="bi bi-grid me-1"></i>Top Models</div>
+        <div class="card-body p-0">
+          <div class="table-scroll">
+            <table class="table table-dark table-hover log-table mb-0" id="modelTable">
+              <thead class="sticky-top" style="background:#1c2128">
+                <tr>
+                  <th>Model</th>
+                  <th>Host</th>
+                  <th class="text-end">Calls</th>
+                  <th class="text-end">Avg ms</th>
+                  <th class="text-end">Tokens</th>
+                </tr>
+              </thead>
+              <tbody id="modelTableBody">
+                <tr><td colspan="5" class="empty-state">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Caller breakdown -->
+    <div class="col-12 col-md-6">
+      <div class="card">
+        <div class="card-header"><i class="bi bi-person-badge me-1"></i>Callers</div>
+        <div class="card-body p-0">
+          <div class="table-scroll">
+            <table class="table table-dark table-hover log-table mb-0">
+              <thead class="sticky-top" style="background:#1c2128">
+                <tr>
+                  <th>Caller</th>
+                  <th>Detail</th>
+                  <th class="text-end">Calls</th>
+                  <th class="text-end">Tokens</th>
+                </tr>
+              </thead>
+              <tbody id="callerTableBody">
+                <tr><td colspan="4" class="empty-state">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Live feed -->
+  <div class="card">
+    <div class="card-header d-flex align-items-center justify-content-between">
+      <span><i class="bi bi-broadcast me-1"></i>Live Feed <span class="badge bg-secondary ms-1" id="feedCount">0</span></span>
+      <div class="d-flex gap-2 align-items-center">
+        <select class="form-select form-select-sm w-auto bg-dark text-light border-secondary" id="feedFilter">
+          <option value="">All callers</option>
+          <option value="chat">chat</option>
+          <option value="benchmark">benchmark</option>
+          <option value="automation">automation</option>
+          <option value="embedding">embedding</option>
+        </select>
+        <select class="form-select form-select-sm w-auto bg-dark text-light border-secondary" id="feedStatusFilter">
+          <option value="">All statuses</option>
+          <option value="success">success</option>
+          <option value="error">error</option>
+          <option value="timeout">timeout</option>
+        </select>
+      </div>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-scroll">
+        <table class="table table-dark table-hover log-table mb-0">
+          <thead class="sticky-top" style="background:#1c2128">
+            <tr>
+              <th style="width:130px">Time</th>
+              <th>Host</th>
+              <th>Model</th>
+              <th>Caller</th>
+              <th class="text-end">In</th>
+              <th class="text-end">Out</th>
+              <th class="text-end">ms</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="feedBody">
+            <tr><td colspan="8" class="empty-state">No inference calls recorded yet — waiting for data...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /container -->
+
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+// State
+// ─────────────────────────────────────────────────────────────────────────────
+let currentHours = 24;
+let timelineBucket = 'hour';
+let timelineChart = null;
+let autoRefreshTimer = null;
+const AUTO_REFRESH_MS = 15000;
+
+const HOST_COLORS = {
+  UGClawdX: '#58a6ff',
+  UGBrutal:  '#bc8cff',
+  UGFrank:   '#3fb950',
+};
+
+function hostColor(label) {
+  return HOST_COLORS[label] || '#8b949e';
+}
+
+function hostClass(label) {
+  return `host-${label.toLowerCase()}`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Utilities
+// ─────────────────────────────────────────────────────────────────────────────
+function fmt(n, decimals = 0) {
+  if (n == null || isNaN(n)) return '—';
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + 'k';
+  return Number(n).toFixed(decimals);
+}
+
+function fmtMs(ms) {
+  if (!ms || ms < 0) return '—';
+  if (ms >= 60000) return (ms / 60000).toFixed(1) + 'm';
+  if (ms >= 1000) return (ms / 1000).toFixed(1) + 's';
+  return Math.round(ms) + 'ms';
+}
+
+function fmtTime(ts) {
+  if (!ts) return '—';
+  const d = new Date(ts);
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function pct(v) {
+  return (v * 100).toFixed(1) + '%';
+}
+
+async function apiFetch(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  return res.json();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Stats cards
+// ─────────────────────────────────────────────────────────────────────────────
+async function loadStats() {
+  try {
+    const data = await apiFetch(`/api/telemetry/stats?hours=${currentHours}`);
+    document.getElementById('statTotalCalls').textContent = fmt(data.totalCalls);
+    document.getElementById('statTotalTokens').textContent = fmt(data.totalTokensOut);
+    document.getElementById('statAvgDuration').textContent = fmtMs(data.avgDurationMs);
+    document.getElementById('statErrorRate').textContent = pct(data.errorRate);
+    document.getElementById('statFallbacks').textContent =
+      `${data.fallbackCount} fallback${data.fallbackCount !== 1 ? 's' : ''}`;
+  } catch (e) {
+    console.warn('Stats load error', e);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Host cards
+// ─────────────────────────────────────────────────────────────────────────────
+async function loadHostSummary() {
+  const container = document.getElementById('hostCards');
+  try {
+    const data = await apiFetch(`/api/telemetry/host-summary?hours=${currentHours}`);
+    if (!data.hosts.length) {
+      container.innerHTML = '<div class="empty-state">No host data in this window</div>';
+      return;
+    }
+
+    const maxCalls = Math.max(...data.hosts.map(h => h.calls), 1);
+    container.innerHTML = data.hosts.map(h => {
+      const barWidth = Math.round((h.calls / maxCalls) * 100);
+      const color = hostColor(h.hostLabel);
+      const errBadge = h.errorCalls > 0
+        ? `<span class="badge bg-danger ms-1">${h.errorCalls} err</span>` : '';
+      const fbBadge = h.fallbacks > 0
+        ? `<span class="badge bg-warning text-dark ms-1">${h.fallbacks} fb</span>` : '';
+
+      return `
+        <div class="mb-3">
+          <div class="d-flex justify-content-between align-items-center mb-1">
+            <span class="fw-semibold" style="color:${color}">
+              <i class="bi bi-gpu-card me-1"></i>${h.hostLabel}
+              <span class="text-muted small">(${h.hostKey})</span>
+            </span>
+            <div>${errBadge}${fbBadge}</div>
+          </div>
+          <div class="d-flex justify-content-between small text-muted mb-1">
+            <span>${fmt(h.calls)} calls · ${fmtMs(h.avgDurationMs)} avg</span>
+            <span>${h.utilizationPct}% util</span>
+          </div>
+          <div class="host-bar">
+            <div class="host-bar-fill" style="width:${barWidth}%;background:${color}"></div>
+          </div>
+          <div class="small text-muted mt-1">
+            ${fmt(h.totalTokens)} tokens · ${h.models.slice(0,3).join(', ')}${h.models.length > 3 ? ' +' + (h.models.length-3) : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+  } catch (e) {
+    container.innerHTML = `<div class="empty-state text-danger">Error: ${e.message}</div>`;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Timeline chart
+// ─────────────────────────────────────────────────────────────────────────────
+async function loadTimeline() {
+  try {
+    const data = await apiFetch(`/api/telemetry/timeline?hours=${currentHours}&bucket=${timelineBucket}`);
+    const hostNames = Object.keys(data.series);
+
+    // Collect all unique bucket labels
+    const allBuckets = [...new Set(
+      hostNames.flatMap(h => data.series[h].map(p => p.bucket))
+    )].sort();
+
+    const datasets = hostNames.map(hostName => {
+      const pointMap = {};
+      for (const p of data.series[hostName]) pointMap[p.bucket] = p.calls;
+      return {
+        label: hostName,
+        data: allBuckets.map(b => pointMap[b] || 0),
+        backgroundColor: hostColor(hostName) + '88',
+        borderColor: hostColor(hostName),
+        borderWidth: 1,
+        fill: true,
+        tension: 0.3
+      };
+    });
+
+    if (timelineChart) {
+      timelineChart.data.labels = allBuckets;
+      timelineChart.data.datasets = datasets;
+      timelineChart.update();
+    } else {
+      const ctx = document.getElementById('timelineChart').getContext('2d');
+      timelineChart = new Chart(ctx, {
+        type: 'bar',
+        data: { labels: allBuckets, datasets },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { labels: { color: '#e6edf3', boxWidth: 12 } },
+            tooltip: {
+              backgroundColor: '#161b22',
+              borderColor: '#30363d',
+              borderWidth: 1,
+              titleColor: '#e6edf3',
+              bodyColor: '#8b949e'
+            }
+          },
+          scales: {
+            x: {
+              stacked: true,
+              ticks: { color: '#8b949e', maxTicksLimit: 12, maxRotation: 45 },
+              grid: { color: '#21262d' }
+            },
+            y: {
+              stacked: true,
+              ticks: { color: '#8b949e' },
+              grid: { color: '#21262d' }
+            }
+          }
+        }
+      });
+    }
+  } catch (e) {
+    console.warn('Timeline load error', e);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Model table
+// ─────────────────────────────────────────────────────────────────────────────
+async function loadModels() {
+  const tbody = document.getElementById('modelTableBody');
+  try {
+    const data = await apiFetch(`/api/telemetry/model-summary?hours=${currentHours}`);
+    if (!data.models.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No data</td></tr>';
+      return;
+    }
+    tbody.innerHTML = data.models.slice(0, 20).map(m => `
+      <tr>
+        <td class="text-truncate" style="max-width:180px" title="${m.model}">${m.model}</td>
+        <td class="${hostClass(m.hostLabel)}">${m.hostLabel}</td>
+        <td class="text-end">${fmt(m.calls)}</td>
+        <td class="text-end">${fmtMs(m.avgDurationMs)}</td>
+        <td class="text-end">${fmt(m.tokensOut)}</td>
+      </tr>
+    `).join('');
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="5" class="text-danger small p-2">${e.message}</td></tr>`;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Caller table
+// ─────────────────────────────────────────────────────────────────────────────
+async function loadCallers() {
+  const tbody = document.getElementById('callerTableBody');
+  try {
+    const data = await apiFetch(`/api/telemetry/caller-summary?hours=${currentHours}`);
+    if (!data.callers.length) {
+      tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No data</td></tr>';
+      return;
+    }
+    const callerColors = {
+      chat: 'primary', benchmark: 'info', automation: 'warning',
+      embedding: 'secondary', roundtable: 'success', classification: 'dark', unknown: 'secondary'
+    };
+    tbody.innerHTML = data.callers.slice(0, 20).map(c => {
+      const bColor = callerColors[c.caller] || 'secondary';
+      return `
+        <tr>
+          <td><span class="badge bg-${bColor} badge-caller">${c.caller}</span></td>
+          <td class="text-muted text-truncate" style="max-width:140px" title="${c.callerDetail || ''}">${c.callerDetail || '—'}</td>
+          <td class="text-end">${fmt(c.calls)}</td>
+          <td class="text-end">${fmt(c.tokensOut)}</td>
+        </tr>
+      `;
+    }).join('');
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="4" class="text-danger small p-2">${e.message}</td></tr>`;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Live feed
+// ─────────────────────────────────────────────────────────────────────────────
+async function loadFeed() {
+  const tbody = document.getElementById('feedBody');
+  const callerFilter = document.getElementById('feedFilter').value;
+  const statusFilter = document.getElementById('feedStatusFilter').value;
+
+  let url = `/api/telemetry/recent?hours=${currentHours}&limit=100`;
+  if (callerFilter) url += `&caller=${callerFilter}`;
+  if (statusFilter) url += `&status=${statusFilter}`;
+
+  try {
+    const data = await apiFetch(url);
+    document.getElementById('feedCount').textContent = data.count;
+
+    if (!data.logs.length) {
+      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No inference calls in this window</td></tr>';
+      return;
+    }
+
+    const statusDot = s => {
+      const cls = s === 'success' ? 'dot-success' : s === 'error' ? 'dot-error' : 'dot-timeout';
+      return `<span class="status-dot ${cls}"></span>`;
+    };
+
+    tbody.innerHTML = data.logs.map(l => {
+      const fbBadge = l.fallbackUsed ? `<span class="badge bg-warning text-dark ms-1" title="${l.fallbackReason || ''}">fb</span>` : '';
+      return `
+        <tr>
+          <td class="text-muted">${fmtTime(l.timestamp)}</td>
+          <td class="${hostClass(l.hostLabel)}">${l.hostLabel}</td>
+          <td class="text-truncate" style="max-width:160px" title="${l.model}">${l.model}</td>
+          <td>
+            <span class="text-muted">${l.caller}</span>
+            ${l.callerDetail ? `<br><small class="text-muted">${l.callerDetail}</small>` : ''}
+            ${fbBadge}
+          </td>
+          <td class="text-end">${fmt(l.tokensIn)}</td>
+          <td class="text-end">${fmt(l.tokensOut)}</td>
+          <td class="text-end">${fmtMs(l.durationMs)}</td>
+          <td>${statusDot(l.status)}${l.status}${l.error ? `<br><pre class="error-text">${l.error.substring(0,80)}</pre>` : ''}</td>
+        </tr>
+      `;
+    }).join('');
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="8" class="text-danger small p-2">${e.message}</td></tr>`;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Full refresh
+// ─────────────────────────────────────────────────────────────────────────────
+async function refreshAll() {
+  document.getElementById('refreshDot').style.background = '#d29922';
+  await Promise.allSettled([
+    loadStats(),
+    loadHostSummary(),
+    loadTimeline(),
+    loadModels(),
+    loadCallers(),
+    loadFeed()
+  ]);
+  document.getElementById('lastRefresh').textContent = 'Updated ' + new Date().toLocaleTimeString();
+  document.getElementById('refreshDot').style.background = '#3fb950';
+}
+
+function scheduleRefresh() {
+  clearTimeout(autoRefreshTimer);
+  autoRefreshTimer = setTimeout(() => { refreshAll(); scheduleRefresh(); }, AUTO_REFRESH_MS);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Event wiring
+// ─────────────────────────────────────────────────────────────────────────────
+document.getElementById('windowBtns').addEventListener('click', e => {
+  const btn = e.target.closest('[data-hours]');
+  if (!btn) return;
+  document.querySelectorAll('.window-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  currentHours = parseInt(btn.dataset.hours, 10);
+  refreshAll();
+  scheduleRefresh();
+});
+
+document.getElementById('timelineBucket').addEventListener('change', e => {
+  timelineBucket = e.target.value;
+  loadTimeline();
+});
+
+document.getElementById('feedFilter').addEventListener('change', loadFeed);
+document.getElementById('feedStatusFilter').addEventListener('change', loadFeed);
+
+// Boot
+refreshAll();
+scheduleRefresh();
+</script>
+</body>
+</html>

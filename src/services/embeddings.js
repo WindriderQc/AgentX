@@ -15,6 +15,7 @@
 const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
 const { getCache } = require('./embeddingCache');
 const logger = require('../../config/logger');
+const { recordInference } = require('./modelRouter');
 
 class EmbeddingsService {
   constructor(config = {}) {
@@ -103,6 +104,7 @@ class EmbeddingsService {
    * @private
    */
   async _generateEmbedding(text, ollamaHost) {
+    const start = Date.now();
     try {
       const response = await fetch(`${ollamaHost}/api/embeddings`, {
         method: 'POST',
@@ -117,15 +119,17 @@ class EmbeddingsService {
 
       if (!response.ok) {
         const errorText = await response.text();
+        recordInference({ host: ollamaHost, model: this.model, caller: 'embedding', durationMs: Date.now() - start, status: 'error', error: `HTTP ${response.status}` });
         throw new Error(`Ollama embeddings API error: ${response.status} - ${errorText}`);
       }
 
       const data = await response.json();
-      
+
       if (!data.embedding || !Array.isArray(data.embedding)) {
         throw new Error('Invalid response from Ollama embeddings API');
       }
 
+      recordInference({ host: ollamaHost, model: this.model, caller: 'embedding', tokensIn: text.length > 0 ? 1 : 0, durationMs: Date.now() - start, status: 'success' });
       return data.embedding;
     } catch (error) {
       logger.error('Error generating embedding', { error: error.message, stack: error.stack });

@@ -1,0 +1,46 @@
+{
+  "repos": [
+    {
+      "id": "agentx",
+      "name": "AgentX Platform",
+      "repoPath": "/home/yb/.openclaw/workspace-clawdx-coder/AgentX",
+      "description": "AI operations platform — chat, RAG, benchmarks, analytics, automation",
+      "criticalPaths": [
+        "src/services/chatService.js",
+        "src/services/modelRouter.js",
+        "src/services/automationRunnerService.js",
+        "routes/api.js",
+        "server.js"
+      ],
+      "protectedZones": [
+        "config/",
+        "models/",
+        "src/middleware/"
+      ],
+      "testCommand": "npm test",
+      "buildCommand": "npm run build",
+      "scanSchedule": "0 3 * * *",
+      "approvalLevel": "manual",
+      "allowedScanners": ["repo-watcher", "doc-janitor", "feature-alignment", "validation-scanner"]
+    },
+    {
+      "id": "dataapi",
+      "name": "DataAPI",
+      "repoPath": "/home/yb/.openclaw/workspace-clawdx-coder/DataAPI",
+      "description": "Companion headless tool server for file scanning, search, and exports",
+      "criticalPaths": [
+        "src/server.js",
+        "src/routes/api.routes.js"
+      ],
+      "protectedZones": [
+        "config/",
+        "models/"
+      ],
+      "testCommand": "npm test",
+      "buildCommand": null,
+      "scanSchedule": "0 4 * * *",
+      "approvalLevel": "manual",
+      "allowedScanners": ["repo-watcher", "doc-janitor", "validation-scanner"]
+    }
+  ]
+}

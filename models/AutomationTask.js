@@ -26,7 +26,11 @@ const AutomationTaskSchema = new mongoose.Schema({
       'ci_failure_triage',
       'model_health_digest',
       'daily_operations_digest',
-      'custom_prompt_analysis'
+      'custom_prompt_analysis',
+      'maintenance_snapshot',
+      'maintenance_digest',
+      'telemetry_aggregate',
+      'schedule_reconcile'
     ],
     required: true,
     index: true
