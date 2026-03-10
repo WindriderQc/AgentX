@@ -21,6 +21,7 @@ const { resolveTarget } = require('../src/utils');
 const logger = require('../config/logger');
 const n8nAuth = require('../src/middleware/n8nAuth');
 const RagManifest = require('../models/RagManifest');
+const { getConfiguredRagDir } = require('../src/helpers/ragPaths');
 
 // Legacy function for backward compatibility - no longer used
 function setRagWatcherInstance(watcher) {
@@ -833,7 +834,7 @@ router.get('/watcher/status', async (req, res) => {
     }
 
     const status = watcher.getStatus() || {};
-    const ragDir = status.ragDir || status.root || watcher.ragDir || '/mnt/datalake/RAG';
+    const ragDir = status.ragDir || status.root || watcher.ragDir || getConfiguredRagDir();
 
     let diskStats = null;
     try {

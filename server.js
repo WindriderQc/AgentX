@@ -1,15 +1,23 @@
 require('dotenv').config();
 const connectDB = require('./config/db-mongodb');
 const logger = require('./config/logger');
-const { app, systemHealth, setRagWatcherInstance } = require('./src/app');
+const { app, setRagWatcherInstance } = require('./src/app');
+const systemHealth = require('./src/systemHealth');
 const SelfHealingEngine = require('./src/services/selfHealingEngine');
 const { getAutomationRunnerService } = require('./src/services/automationRunnerService');
+const { normalizeHostUrl } = require('./src/helpers/ollamaHostConfig');
+const { getConfiguredRagDir } = require('./src/helpers/ragPaths');
 
 const PORT = process.env.PORT || 3080;
 const HOST = process.env.HOST || 'localhost';
-const OLLAMA_HOST = process.env.OLLAMA_HOST;
+const OLLAMA_HOST = normalizeHostUrl(process.env.OLLAMA_HOST);
 if (!OLLAMA_HOST) {
   logger.warn('OLLAMA_HOST not defined in environment variables. Some features may be disabled.');
+} else if (String(process.env.OLLAMA_HOST || '').includes('0.0.0.0')) {
+  logger.warn('OLLAMA_HOST used a wildcard bind address; normalized to loopback for client requests.', {
+    configured: process.env.OLLAMA_HOST,
+    effective: OLLAMA_HOST
+  });
 }
 
 // Global error handlers
@@ -190,6 +198,7 @@ app.get('/health/detailed', async (_req, res) => {
 // Startup initialization - perform health checks before starting server
 async function startServer() {
   const packageJson = require('./package.json');
+  const ragDir = getConfiguredRagDir();
   console.log(`\n╔════════════════════════════════════════════════════════╗`);
   console.log(`║           AgentX v${packageJson.version} - Production Ready             ║`);
   console.log(`╚════════════════════════════════════════════════════════╝\n`);
@@ -231,7 +240,7 @@ async function startServer() {
 
     // Cleanup orphaned benchmark batches after DB connection
     try {
-      const benchmarkService = require('./src/services/benchmarkService');
+      const benchmarkService = require('./src/services/benchmark');
       const cleanedCount = await benchmarkService.cleanupStaleBatches();
       if (cleanedCount > 0) {
         console.log(`   ✓ Benchmark: Recovered ${cleanedCount} orphaned batch(es)`);
@@ -307,7 +316,7 @@ async function startServer() {
   try {
     const RagFileWatcher = require('./src/services/ragFileWatcher');
     ragWatcher = new RagFileWatcher({
-      ragDir: '/mnt/datalake/RAG',
+      ragDir,
       source: 'rag-folder',
       vectorStoreType: process.env.VECTOR_STORE_TYPE,
       manifestUpdateInterval: 5 * 60 * 1000, // 5 minutes
@@ -321,7 +330,7 @@ async function startServer() {
       setRagWatcherInstance(ragWatcher);
     }
 
-    console.log(`   ✓ RAG Watcher: Monitoring /mnt/datalake/RAG`);
+    console.log(`   ✓ RAG Watcher: Monitoring ${ragDir}`);
     logger.info('RAG file watcher started');
   } catch (err) {
     console.log(`   ⚠ RAG Watcher: ${err.message}`);

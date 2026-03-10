@@ -363,7 +363,7 @@ function requireOwner(req, res, next) {
  */
 async function optionalWorkspace(req, res, next) {
   try {
-    await attachWorkspace(req, res, (err) => {
+    await attachWorkspace(req, res, (_err) => {
       // Ignore errors, continue without workspace
       next();
     });

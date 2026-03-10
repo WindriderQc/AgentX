@@ -8,7 +8,7 @@
  *
  * Deploy to ClawdX (one-time):
  *   scp scripts/sync-openclaw-schedule.js clawdx:~/sync-openclaw-schedule.js
- *   ssh clawdx 'crontab -l 2>/dev/null; echo "*/15 * * * * node ~/sync-openclaw-schedule.js >> /tmp/openclaw-sync.log 2>&1"' | ssh clawdx 'crontab -'
+ *   ssh clawdx 'crontab -l 2>/dev/null; echo "every 15 minutes: node ~/sync-openclaw-schedule.js >> /tmp/openclaw-sync.log 2>&1"' | ssh clawdx 'crontab -'
  *
  * Manual run:
  *   node sync-openclaw-schedule.js

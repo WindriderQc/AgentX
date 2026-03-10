@@ -1,4 +1,5 @@
 const { execFile } = require('child_process');
+const fs = require('fs');
 const { promisify } = require('util');
 const logger = require('../../config/logger');
 const HostVramOverride = require('../../models/HostVramOverride');
@@ -231,6 +232,14 @@ function buildSshArgs({ sshHost, sshUser, sshPort, sshKeyPath }) {
   return args;
 }
 
+function isLocalHost(host) {
+  const normalized = String(host || '').trim().toLowerCase();
+  return normalized === '127.0.0.1' ||
+    normalized === 'localhost' ||
+    normalized === '0.0.0.0' ||
+    normalized === '::1';
+}
+
 class OllamaVramService {
   constructor() {
     this.cache = new Map();
@@ -266,10 +275,27 @@ class OllamaVramService {
     const sshPort = process.env.OLLAMA_SSH_PORT || 22;
     const sshKeyPath = process.env.OLLAMA_SSH_KEY_PATH || null;
     const timeoutMs = Number.parseInt(process.env.OLLAMA_SSH_TIMEOUT_MS || '', 10) || DEFAULT_TIMEOUT_MS;
+    const staticResult = await getStaticVram(sshHost);
+
+    if (sshKeyPath && !fs.existsSync(sshKeyPath)) {
+      if (staticResult) {
+        this.cache.set(cacheKey, { ts: now, value: staticResult });
+        return staticResult;
+      }
+
+      const value = {
+        ok: false,
+        sshHost,
+        _source: 'none',
+        error: `OLLAMA_SSH_KEY_PATH does not exist: ${sshKeyPath}`,
+        actionRequired: !isLocalHost(sshHost)
+      };
+      this.cache.set(cacheKey, { ts: now, value });
+      return value;
+    }
 
     if (!sshUser && !process.env.OLLAMA_SSH_ALLOW_NO_USER) {
       // No SSH user — try static VRAM before giving up
-      const staticResult = await getStaticVram(sshHost);
       if (staticResult) {
         this.cache.set(cacheKey, { ts: now, value: staticResult });
         return staticResult;
@@ -303,7 +329,6 @@ class OllamaVramService {
       logger.warn('Failed to fetch VRAM via SSH', { sshHost, error: msg });
 
       // Fallback: try static VRAM (DB override or env var)
-      const staticResult = await getStaticVram(sshHost);
       if (staticResult) {
         this.cache.set(cacheKey, { ts: now, value: staticResult });
         return staticResult;

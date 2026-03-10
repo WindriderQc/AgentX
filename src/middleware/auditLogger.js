@@ -128,7 +128,7 @@ const auditApiKeyOps = {
 
   revoked: auditLog('api_key_revoked', 'warning', {
     resource: 'api_key',
-    customDetails: (req, res, data) => ({
+    customDetails: (req, _res, _data) => ({
       reason: req.body?.reason || 'Manual revocation'
     })
   }),
@@ -197,7 +197,7 @@ const auditModelOps = {
 const auditRagOps = {
   ingested: auditLog('rag_document_ingested', 'info', {
     resource: 'rag_document',
-    customDetails: (req, res, data) => ({
+    customDetails: (req, _res, _data) => ({
       title: req.body?.title,
       tags: req.body?.tags,
       source: req.body?.path || req.body?.url || 'text'
@@ -222,7 +222,7 @@ const auditRagOps = {
 const auditUserOps = {
   login: auditLog('user_login', 'info', {
     resource: 'user',
-    customDetails: (req, res, data) => ({
+    customDetails: (req, _res, _data) => ({
       loginMethod: req.body?.provider || 'password'
     })
   }),
@@ -252,7 +252,7 @@ const auditUserOps = {
 const auditSelfHealingOps = {
   triggered: auditLog('self_healing_triggered', 'critical', {
     resource: 'system',
-    customDetails: (req, res, data) => ({
+    customDetails: (req, _res, _data) => ({
       alertId: req.body?.alertId,
       strategy: req.body?.strategy,
       rule: req.body?.rule
@@ -261,7 +261,7 @@ const auditSelfHealingOps = {
 
   failover: auditLog('failover_executed', 'critical', {
     resource: 'system',
-    customDetails: (req, res, data) => ({
+    customDetails: (req, _res, _data) => ({
       fromHost: req.body?.fromHost,
       toHost: req.body?.toHost,
       reason: req.body?.reason
@@ -270,7 +270,7 @@ const auditSelfHealingOps = {
 
   restart: auditLog('service_restarted', 'warning', {
     resource: 'system',
-    customDetails: (req, res, data) => ({
+    customDetails: (req, _res, _data) => ({
       service: req.body?.service,
       reason: req.body?.reason
     })
@@ -288,7 +288,7 @@ const auditAdminOps = {
 
   backupCreated: auditLog('system_backup_created', 'info', {
     resource: 'system',
-    customDetails: (req, res, data) => ({
+    customDetails: (req, _res, data) => ({
       backupType: req.body?.type || 'full',
       backupSize: data?.data?.size
     })
@@ -296,7 +296,7 @@ const auditAdminOps = {
 
   backupRestored: auditLog('system_backup_restored', 'critical', {
     resource: 'system',
-    customDetails: (req, res, data) => ({
+    customDetails: (req, _res, _data) => ({
       backupId: req.body?.backupId,
       backupDate: req.body?.backupDate
     })
@@ -309,7 +309,7 @@ const auditAdminOps = {
 const auditSecurityOps = {
   unauthorized: auditLog('unauthorized_access_attempt', 'warning', {
     resource: 'system',
-    customDetails: (req, res, data) => ({
+    customDetails: (req, _res, _data) => ({
       attemptedPath: req.originalUrl,
       method: req.method
     })
@@ -317,7 +317,7 @@ const auditSecurityOps = {
 
   rateLimitExceeded: auditLog('rate_limit_exceeded', 'warning', {
     resource: 'system',
-    customDetails: (req, res, data) => ({
+    customDetails: (req, _res, data) => ({
       endpoint: req.originalUrl,
       limit: data?.limit
     })
@@ -325,7 +325,7 @@ const auditSecurityOps = {
 
   suspicious: auditLog('suspicious_activity_detected', 'critical', {
     resource: 'system',
-    customDetails: (req, res, data) => ({
+    customDetails: (_req, _res, data) => ({
       pattern: data?.pattern,
       confidence: data?.confidence
     })

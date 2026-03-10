@@ -11,7 +11,7 @@ const logger = require('../config/logger');
 const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
 
 // Import Service Logic
-const { getRoutingStatus, classifyQuery, HOSTS, MODEL_ROUTING, TASK_MODELS, getModelHealth, getAllModelsHealth } = require('../src/services/modelRouter');
+const { getRoutingStatus, classifyQuery, HOSTS, TASK_MODELS, getModelHealth, getAllModelsHealth } = require('../src/services/modelRouter');
 
 // V3: Import RAG Store
 const { getRagStore } = require('../src/services/ragStore');

@@ -19,6 +19,7 @@ const ModelRegistry = require('../../../models/ModelRegistry');
 const ollamaVramService = require('../ollamaVramService');
 const { getFetchOptions } = require('../../helpers/httpAgent');
 const { generateFillPrompt } = require('../contextProbe/contextProbePayload');
+const { getConfiguredHosts } = require('../../helpers/ollamaHostConfig');
 const { resolveModelNumCtx } = require('../../utils');
 const logger = require('../../../config/logger');
 
@@ -99,8 +100,23 @@ async function snapshotVram(hostUrl) {
     if (result.ok) {
       return { usedMiB: result.memoryUsedMiBTotal, totalMiB: result.memoryTotalMiBTotal };
     }
-  } catch (_) { /* VRAM monitoring is optional */ }
+  } catch (err) {
+    logger.warn('Host test VRAM snapshot unavailable', { hostUrl, error: err.message });
+  }
   return { usedMiB: null, totalMiB: null };
+}
+
+async function persistFailureSnapshot(modelName, snapshot) {
+  await ModelRegistry.updateHostPerformance(modelName, {
+    hostId: null,
+    tokensPerSec: 0,
+    latencyMs: 0,
+    numCtx: null,
+    testedAt: new Date(),
+    status: 'error',
+    error: null,
+    ...snapshot
+  });
 }
 
 // ── Core Test Functions ────────────────────────────────────────────────────────
@@ -132,7 +148,23 @@ async function testModelOnHost(modelName, hostUrl, options = {}) {
   // 2. Warm-up
   if (cfg.warmup) {
     logger.info('Host test: warming up model', { modelName, hostUrl });
-    await warmUp(hostUrl, modelName, cfg.timeoutMs);
+    const warmUpStartedAt = Date.now();
+    try {
+      await warmUp(hostUrl, modelName, cfg.timeoutMs);
+    } catch (err) {
+      const snapshot = {
+        hostUrl,
+        hostId: hostId || null,
+        tokensPerSec: 0,
+        latencyMs: Date.now() - warmUpStartedAt,
+        numCtx: null,
+        testedAt: new Date(),
+        status: 'error',
+        error: err.message
+      };
+      await persistFailureSnapshot(modelName, snapshot);
+      return snapshot;
+    }
   }
 
   // 3. Probe
@@ -170,7 +202,7 @@ async function testModelOnHost(modelName, hostUrl, options = {}) {
         testedAt: new Date(), status: 'error',
         error: `HTTP ${res.status}: ${body.slice(0, 200)}`
       };
-      await ModelRegistry.updateHostPerformance(modelName, snapshot);
+      await persistFailureSnapshot(modelName, snapshot);
       return snapshot;
     }
 
@@ -184,7 +216,7 @@ async function testModelOnHost(modelName, hostUrl, options = {}) {
       testedAt: new Date(), status: isTimeout ? 'timeout' : 'error',
       error: err.message
     };
-    await ModelRegistry.updateHostPerformance(modelName, snapshot);
+    await persistFailureSnapshot(modelName, snapshot);
     return snapshot;
   }
 
@@ -268,7 +300,11 @@ async function testAllModelsOnHost(hostUrl, options = {}) {
     }
     results.push({ modelName, ...result });
     if (onProgress) {
-      try { onProgress(modelName, result, i, models.length); } catch (_) {}
+      try {
+        onProgress(modelName, result, i, models.length);
+      } catch (_err) {
+        // Ignore progress callback failures; they should not abort host testing.
+      }
     }
   }
 
@@ -285,9 +321,31 @@ async function testAllModelsOnHost(hostUrl, options = {}) {
   return { host: hostUrl, results, summary };
 }
 
+async function testModelAcrossHosts(modelName, options = {}) {
+  const configuredHosts = getConfiguredHosts();
+  const hostResults = [];
+
+  for (const host of configuredHosts) {
+    const check = await checkHost(host.url);
+    if (!check.available || !check.models.includes(modelName)) {
+      continue;
+    }
+
+    const snapshot = await testModelOnHost(modelName, host.url, {
+      hostId: options.hostIdMap?.[host.url] || host.id || null,
+      _skipHostCheck: true
+    });
+
+    hostResults.push({ hostId: host.id, hostUrl: host.url, ...snapshot });
+  }
+
+  return { modelName, hostResults };
+}
+
 module.exports = {
   testModelOnHost,
   testAllModelsOnHost,
+  testModelAcrossHosts,
   checkHost,
   getConfig
 };

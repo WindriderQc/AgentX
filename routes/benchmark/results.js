@@ -9,6 +9,7 @@ const logger = require('../../config/logger');
 const benchmarkService = require('../../src/services/benchmark');
 const { judgeResult } = require('../../src/services/benchmark/judging');
 const { validateObjectId } = require('../../src/helpers/objectIdValidator');
+const BenchmarkResult = require('../../models/BenchmarkResult');
 
 const ADVANCED_RESULTS_MAX_LIMIT = 5000;
 const ADVANCED_RESULTS_DEFAULT_LIMIT = 1000;
@@ -50,7 +51,6 @@ router.get('/results', async (req, res) => {
  */
 router.get('/results/advanced', async (req, res) => {
     try {
-        const BenchmarkResult = require('../../models/BenchmarkResult');
 
         // Build query object
         const query = {};
@@ -181,7 +181,6 @@ router.get('/results/advanced', async (req, res) => {
  */
 router.get('/results/needs-review', async (req, res) => {
     try {
-        const BenchmarkResult = require('../../models/BenchmarkResult');
         const { limit = 50, batch_id, model, min_confidence, max_confidence } = req.query;
 
         const filter = { needs_review: true };
@@ -246,7 +245,6 @@ router.get('/results/needs-review', async (req, res) => {
  */
 router.post('/results/:id/human-review', async (req, res) => {
     try {
-        const BenchmarkResult = require('../../models/BenchmarkResult');
         const { human_score, reviewer, notes } = req.body;
 
         if (!validateObjectId(req.params.id, res, 'Result ID')) return;
@@ -301,7 +299,6 @@ router.post('/results/:id/human-review', async (req, res) => {
  */
 router.get('/results/:id', async (req, res) => {
     try {
-        const BenchmarkResult = require('../../models/BenchmarkResult');
 
         if (!validateObjectId(req.params.id, res, 'Result ID')) return;
 

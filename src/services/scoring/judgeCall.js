@@ -3,9 +3,9 @@
  * HTTP call to LLM judge model with retry/timeout and response parsing
  */
 
-const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
 const logger = require('../../../config/logger');
 const { getFetchOptions } = require('../../helpers/httpAgent');
+const { benchmarkFetch: fetch } = require('../benchmark/http');
 
 // Judge model configuration
 // Default: 7B model — fits on most hosts without stealing context from the
@@ -23,16 +23,27 @@ const JUDGE_CONFIG = {
 // Track judge failures for observability
 let judgeFailureCount = 0;
 
-// Initialize host from env
+/**
+ * Normalize a raw host value to a full URL (adds http:// if missing).
+ * Wildcard bind addresses (0.0.0.0, ::) are remapped to 127.0.0.1.
+ */
 function normalizeJudgeHost(rawValue) {
     if (!rawValue) return null;
     const trimmed = String(rawValue).trim();
     if (!trimmed) return null;
-    if (/^https?:\/\//i.test(trimmed)) return trimmed;
-    return `http://${trimmed}`;
+    const withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+    try {
+        const u = new URL(withScheme);
+        if (u.hostname === '0.0.0.0' || u.hostname === '::' || u.hostname === '[::]') {
+            u.hostname = '127.0.0.1';
+        }
+        return u.toString().replace(/\/$/, '');
+    } catch {
+        return withScheme;
+    }
 }
 
-// Initialize host from env
+// Initialize JUDGE_CONFIG.host from environment on module load
 if (process.env.OLLAMA_HOST) {
     JUDGE_CONFIG.host = normalizeJudgeHost(process.env.OLLAMA_HOST);
 }

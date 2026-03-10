@@ -57,8 +57,7 @@ describe('Enhanced Scoring System - Integration', () => {
         });
 
         it('should validate weight range (0-1)', async () => {
-            try {
-                await BenchmarkPrompt.create({
+            await expect(BenchmarkPrompt.create({
                     name: 'Invalid Weight',
                     prompt: 'Test',
                     level: 1,
@@ -70,11 +69,7 @@ describe('Enhanced Scoring System - Integration', () => {
                             description: 'Test dimension'
                         }
                     ]
-                });
-                fail('Should have thrown validation error');
-            } catch (err) {
-                expect(err.name).toBe('ValidationError');
-            }
+                })).rejects.toMatchObject({ name: 'ValidationError' });
         });
 
         it('should allow prompt without scoring_dimensions (backward compatible)', async () => {

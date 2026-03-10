@@ -21,6 +21,7 @@ const FETCH_TIMEOUT_MS = 5_000;
 
 let _interval = null;
 let _state = new Map(); // hostKey → last poll result (for API consumers)
+const _missingHostLogCache = new Set();
 
 const fetch = (...args) => import('node-fetch').then(({ default: f }) => f(...args));
 
@@ -61,22 +62,28 @@ async function fetchVersion(hostUrl) {
 // ── Host matching ─────────────────────────────────────────
 
 async function findMatchingHost(hostConfig) {
-  // 1. Explicit link via ollamaHostKey
-  let host = await Host.findOne({ ollamaHostKey: hostConfig.id });
-  if (host) return host;
-
-  // 2. URL match
-  host = await Host.findOne({ ollamaUrl: hostConfig.url });
-  if (host) return host;
-
-  // 3. IP match
   const hostIp = parseHostIp(hostConfig.url);
+  const configuredName = String(hostConfig.name || '').trim();
+  const matchers = [
+    { ollamaHostKey: hostConfig.id },
+    { ollamaUrl: hostConfig.url }
+  ];
+
   if (hostIp) {
-    host = await Host.findOne({ ip: hostIp });
-    if (host) return host;
+    matchers.push({ ip: hostIp });
   }
 
-  return null;
+  if (configuredName) {
+    const configuredNameRegex = new RegExp(`^${escapeRegex(configuredName)}$`, 'i');
+    matchers.push({ hostname: configuredNameRegex });
+    matchers.push({ hostId: configuredNameRegex });
+  }
+
+  return Host.findOne({ $or: matchers });
+}
+
+function escapeRegex(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 // ── VRAM from agent heartbeat ─────────────────────────────
@@ -172,9 +179,19 @@ async function pollHost(hostConfig) {
 async function writeToHost(hostConfig, pollResult) {
   const host = await findMatchingHost(hostConfig);
   if (!host) {
-    logger.debug('Ollama Enrichment: No matching Host doc for', { hostKey: hostConfig.id, url: hostConfig.url });
+    const cacheKey = `${hostConfig.id}:${hostConfig.url}`;
+    if (!_missingHostLogCache.has(cacheKey)) {
+      _missingHostLogCache.add(cacheKey);
+      logger.debug('Ollama Enrichment: No matching Host doc for configured host', {
+        hostKey: hostConfig.id,
+        name: hostConfig.name,
+        url: hostConfig.url
+      });
+    }
     return;
   }
+
+  _missingHostLogCache.delete(`${hostConfig.id}:${hostConfig.url}`);
 
   const update = {
     ollamaUrl: hostConfig.url,

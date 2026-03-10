@@ -28,6 +28,7 @@
 const BenchmarkResult = require('../../../models/BenchmarkResult');
 const BenchmarkPrompt = require('../../../models/BenchmarkPrompt');
 const { GENERALIST_CATEGORY_WEIGHTS } = require('../../../config/categories');
+const { INFRA_ERROR_REGEX } = require('./errorClassifier');
 
 // Explicit input quality scale for generalist normalization.
 // Use BENCHMARK_QUALITY_INPUT_SCALE=0-100 only if legacy data is still stored on 0-100.
@@ -237,7 +238,7 @@ async function getCategoryScoresByModel(matchQuery = { success: true }) {
         $or: [
             { infra_error: true },
             { error_type: 'infra' },
-            { error: { $regex: /(ECONNREFUSED|ECONNRESET|EPIPE|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|ESOCKETTIMEDOUT|socket hang up|fetch failed|timed\s*out|timeout|aborted|HTTP\s+(5\d\d|429|408)\s*:)/i } }
+            { error: { $regex: INFRA_ERROR_REGEX } }
         ]
     };
 
@@ -301,13 +302,23 @@ async function getCategoryScoresByModel(matchQuery = { success: true }) {
             modelCategoryMap.set(key, {});
         }
 
-        if (category && stat.avg_quality !== null) {
+        if (stat.avg_quality !== null) {
             modelCategoryMap.get(key)[category] = {
                 avg: stat.avg_quality,
                 stddev: stat.stddev_quality || 0,
                 count: stat.count,
                 attempted: true
             };
+        } else if (stat.count > 0) {
+            // Tests ran successfully in this category but ALL judge calls failed
+            // (avg_quality is null because every quality_score is null).
+            // Treat same as an infra-failed category: mark attempted to avoid
+            // coverage penalty, but contribute no quality score.
+            if (!modelCategoryMap.get(key)[category]) {
+                modelCategoryMap.get(key)[category] = { attempted: true, count: 0, judge_failed: true };
+            } else {
+                modelCategoryMap.get(key)[category].attempted = true;
+            }
         }
     }
 

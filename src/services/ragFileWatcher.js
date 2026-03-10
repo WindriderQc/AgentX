@@ -12,15 +12,16 @@ const fs = require('fs').promises;
 const path = require('path');
 const chokidar = require('chokidar');
 const crypto = require('crypto');
-const { spawn } = require('child_process');
 const { getRagStore } = require('../services/ragStore');
 const RagManifest = require('../../models/RagManifest');
 const logger = require('../../config/logger');
 const { systemEvents } = require('../app');
+const { getConfiguredRagDir } = require('../helpers/ragPaths');
+const { extractZipArchive } = require('../helpers/zip');
 
 class RagFileWatcher {
   constructor(config = {}) {
-    this.ragDir = config.ragDir || '/mnt/datalake/RAG';
+    this.ragDir = config.ragDir || getConfiguredRagDir();
     this.ragStore = getRagStore(config.ragStore);
     this.source = config.source || 'rag-folder';
     this.root = config.root || this.ragDir;
@@ -180,55 +181,27 @@ class RagFileWatcher {
   async extractZipFile(zipPath) {
     try {
       logger.info('Extracting ZIP file', { zipPath });
+      const { stdout, stderr } = await extractZipArchive(zipPath, this.ragDir);
 
-      // Use system unzip command
-      const unzip = spawn('unzip', ['-o', zipPath, '-d', this.ragDir], {
-        stdio: ['pipe', 'pipe', 'pipe']
+      logger.info('ZIP extraction completed successfully', {
+        zipPath,
+        stderr: stderr ? stderr.slice(0, 200) : ''
       });
 
-      return new Promise((resolve, reject) => {
-        let stdout = '';
-        let stderr = '';
-
-        unzip.stdout.on('data', (data) => {
-          stdout += data.toString();
-        });
-
-        unzip.stderr.on('data', (data) => {
-          stderr += data.toString();
-        });
-
-        unzip.on('close', async (code) => {
-          if (code === 0) {
-            logger.info('ZIP extraction completed successfully', { zipPath });
-
-            // Emit event for ZIP extraction
-            systemEvents.emit('zip-extracted', {
-              zipPath,
-              extractedTo: this.ragDir,
-              timestamp: new Date().toISOString()
-            });
-
-            // Clean up the ZIP file after successful extraction
-            try {
-              await fs.unlink(zipPath);
-              logger.info('ZIP file cleaned up after extraction', { zipPath });
-            } catch (cleanupError) {
-              logger.warn('Failed to cleanup ZIP file', { zipPath, error: cleanupError.message });
-            }
-
-            resolve(stdout);
-          } else {
-            logger.error('ZIP extraction failed', { zipPath, code, stderr });
-            reject(new Error(`unzip failed with code ${code}: ${stderr}`));
-          }
-        });
-
-        unzip.on('error', (error) => {
-          logger.error('ZIP extraction process error', { zipPath, error: error.message });
-          reject(error);
-        });
+      systemEvents.emit('zip-extracted', {
+        zipPath,
+        extractedTo: this.ragDir,
+        timestamp: new Date().toISOString()
       });
+
+      try {
+        await fs.unlink(zipPath);
+        logger.info('ZIP file cleaned up after extraction', { zipPath });
+      } catch (cleanupError) {
+        logger.warn('Failed to cleanup ZIP file', { zipPath, error: cleanupError.message });
+      }
+
+      return stdout;
     } catch (error) {
       logger.error('Failed to extract ZIP file', { zipPath, error: error.message });
       throw error;
@@ -296,7 +269,7 @@ class RagFileWatcher {
 
       // Generate metadata
       const stats = await fs.stat(filePath);
-      const relativePath = path.relative(this.ragDir, filePath);
+      const relativePath = this.normalizeRelativePath(path.relative(this.ragDir, filePath));
       const sha256 = await this.calculateSHA256(filePath);
       const documentId = this.buildDocumentId(this.source, relativePath);
 
@@ -380,7 +353,7 @@ class RagFileWatcher {
         return { deletedCount: 0, skipped: true };
       }
 
-      const relativePath = path.relative(this.ragDir, filePath);
+      const relativePath = this.normalizeRelativePath(path.relative(this.ragDir, filePath));
       const documentId = this.buildDocumentId(this.source, relativePath);
       const existingDoc = await this.ragStore.getDocument(documentId);
 
@@ -504,7 +477,9 @@ class RagFileWatcher {
   async cleanupObsoleteDocuments() {
     try {
       const docs = await this.ragStore.listDocuments({ source: this.source });
-      const currentFiles = new Set(await this.scanDirectory(this.ragDir));
+      const currentFiles = new Set(
+        (await this.scanDirectory(this.ragDir)).map(filePath => this.normalizePathForComparison(filePath))
+      );
 
       let cleanedCount = 0;
 
@@ -516,7 +491,9 @@ class RagFileWatcher {
           continue;
         }
 
-        const fullPath = path.join(this.ragDir, doc.path);
+        const fullPath = this.normalizePathForComparison(
+          path.join(this.ragDir, this.normalizeRelativePath(doc.path))
+        );
 
         if (!currentFiles.has(fullPath)) {
           await this.ragStore.deleteDocument(doc.documentId);
@@ -553,7 +530,15 @@ class RagFileWatcher {
    * Build deterministic document ID from source/path (must match RagStore)
    */
   buildDocumentId(source, relativePath) {
-    return crypto.createHash('md5').update(`${source}:${relativePath}`).digest('hex');
+    return crypto.createHash('md5').update(`${source}:${this.normalizeRelativePath(relativePath)}`).digest('hex');
+  }
+
+  normalizeRelativePath(filePath) {
+    return String(filePath || '').replace(/\\/g, '/');
+  }
+
+  normalizePathForComparison(filePath) {
+    return this.normalizeRelativePath(path.normalize(String(filePath || '')));
   }
 
   /**

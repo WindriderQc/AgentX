@@ -22,6 +22,11 @@ const { persistConversation } = require('./chat/conversationPersistence');
 const { handleImageGeneration } = require('./chat/imageGeneration');
 
 // Core Chat Service
+function resolveRequestedMaxTokens(value) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
 const handleChatRequest = async ({
     userId,
     model,
@@ -256,7 +261,7 @@ const handleChatRequest = async ({
             const n8nResponse = await n8nLLMProvider.chat(n8nModel.webhookUrl, formattedMessages, {
                 model: effectiveModel,
                 temperature: options?.temperature,
-                maxTokens: options?.num_predict || n8nModel.capabilities.maxContext,
+                maxTokens: resolveRequestedMaxTokens(options?.num_predict),
                 conversationId, userId
             });
 
@@ -279,7 +284,7 @@ const handleChatRequest = async ({
 
         } else {
             // Resolve per-model num_ctx from registry, aware of target host VRAM
-            const sanitized = sanitizeOptions(options);
+            const sanitized = sanitizeOptions(options) || {};
             if (!sanitized.num_ctx) {
                 sanitized.num_ctx = await resolveModelNumCtx(effectiveModel, { targetHost: resolveTarget(effectiveTarget) });
             }
@@ -304,7 +309,11 @@ const handleChatRequest = async ({
                     body: JSON.stringify(ollamaPayload),
                     signal: controller.signal
                 });
-                if (!response.ok) throw new Error(`Ollama request failed: ${response.statusText}`);
+                if (!response.ok) {
+                    let errDetail = response.statusText;
+                    try { const errBody = await response.json(); errDetail = errBody.error || JSON.stringify(errBody) || errDetail; } catch {}
+                    throw new Error(`Ollama request failed: ${errDetail}`);
+                }
             } catch (err) {
                 if (err.name === 'AbortError') throw new Error('Ollama request timed out (2m limit).');
                 throw new Error(`Failed to connect to Ollama at ${url}: ${err.message}`);
@@ -559,7 +568,7 @@ const handleChatRequestStream = async ({
             const n8nResponse = await n8nLLMProvider.chat(n8nModel.webhookUrl, formattedMessages, {
                 model: effectiveModel,
                 temperature: options?.temperature,
-                maxTokens: options?.num_predict || n8nModel.capabilities.maxContext,
+                maxTokens: resolveRequestedMaxTokens(options?.num_predict),
                 conversationId, userId
             });
 
@@ -602,7 +611,7 @@ const handleChatRequestStream = async ({
 
         } else {
             // Ollama Streaming — resolve per-model num_ctx from registry, aware of target host VRAM
-            const streamSanitized = sanitizeOptions(options);
+            const streamSanitized = sanitizeOptions(options) || {};
             if (!streamSanitized.num_ctx) {
                 streamSanitized.num_ctx = await resolveModelNumCtx(effectiveModel, { targetHost: resolveTarget(effectiveTarget) });
             }
@@ -628,7 +637,11 @@ const handleChatRequestStream = async ({
                     body: JSON.stringify(ollamaPayload),
                     signal: controller.signal
                 });
-                if (!response.ok) throw new Error(`Ollama request failed: ${response.statusText}`);
+                if (!response.ok) {
+                    let errDetail = response.statusText;
+                    try { const errBody = await response.json(); errDetail = errBody.error || JSON.stringify(errBody) || errDetail; } catch {}
+                    throw new Error(`Ollama request failed: ${errDetail}`);
+                }
             } catch (err) {
                 clearTimeout(timeout);
                 if (err.name === 'AbortError') {

@@ -128,15 +128,6 @@ ApiTelemetrySchema.statics.getUnusedEndpoints = async function(sinceDays = 30) {
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - sinceDays);
 
-  // Find endpoints that have been active recently
-  const activeEndpoints = await this.distinct('endpoint', {
-    'metrics.lastCalled': { $gte: cutoff }
-  });
-
-  // Find all known endpoints (from all history) that are NOT in activeEndpoints
-  // or define "unused" as "lastCalled < cutoff".
-  // A simple approach: find all endpoints where max(lastCalled) < cutoff
-  
   return this.aggregate([
     {
       $group: {

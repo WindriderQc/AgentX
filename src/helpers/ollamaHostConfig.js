@@ -6,20 +6,79 @@
  *          syncOrchestrator, ollamaEnrichmentService.
  */
 
+const fs = require('fs');
+const path = require('path');
+const dotenv = require('dotenv');
+
+const WILDCARD_HOSTNAMES = new Set(['0.0.0.0', '::', '[::]']);
+let parsedDotenvCache = null;
+
 function normalizeHostUrl(raw) {
   if (!raw) return null;
   const trimmed = String(raw).trim();
   if (!trimmed) return null;
-  if (/^https?:\/\//i.test(trimmed)) return trimmed;
-  return `http://${trimmed}`;
+  const withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+
+  try {
+    const parsed = new URL(withScheme);
+    if (WILDCARD_HOSTNAMES.has(parsed.hostname)) {
+      parsed.hostname = '127.0.0.1';
+    }
+    return parsed.toString().replace(/\/$/, '');
+  } catch {
+    return withScheme;
+  }
+}
+
+function isWildcardHostUrl(raw) {
+  if (!raw) return false;
+  const trimmed = String(raw).trim();
+  if (!trimmed) return false;
+  const withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+
+  try {
+    return WILDCARD_HOSTNAMES.has(new URL(withScheme).hostname);
+  } catch {
+    return false;
+  }
+}
+
+function getParsedDotenv() {
+  if (parsedDotenvCache !== null) return parsedDotenvCache;
+
+  try {
+    const envPath = path.join(process.cwd(), '.env');
+    if (!fs.existsSync(envPath)) {
+      parsedDotenvCache = {};
+      return parsedDotenvCache;
+    }
+    parsedDotenvCache = dotenv.parse(fs.readFileSync(envPath));
+    return parsedDotenvCache;
+  } catch {
+    parsedDotenvCache = {};
+    return parsedDotenvCache;
+  }
 }
 
 function envFirst(...keys) {
+  let wildcardFallback = null;
+
   for (const key of keys) {
     const v = process.env[key];
-    if (v && String(v).trim()) return String(v).trim();
+    if (!v || !String(v).trim()) continue;
+
+    const trimmed = String(v).trim();
+    if (!isWildcardHostUrl(trimmed)) return trimmed;
+
+    if (!wildcardFallback) wildcardFallback = trimmed;
+
+    const dotenvValue = getParsedDotenv()[key];
+    if (dotenvValue && String(dotenvValue).trim() && !isWildcardHostUrl(dotenvValue)) {
+      return String(dotenvValue).trim();
+    }
   }
-  return null;
+
+  return wildcardFallback;
 }
 
 /** Returns structured host objects: { id, name, url, priority } */

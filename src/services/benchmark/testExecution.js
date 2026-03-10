@@ -3,7 +3,6 @@
  * Single benchmark test runner against a model endpoint
  */
 
-const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
 const logger = require('../../../config/logger');
 const { getFetchOptions } = require('../../helpers/httpAgent');
 const BenchmarkPrompt = require('../../../models/BenchmarkPrompt');
@@ -11,6 +10,7 @@ const BenchmarkResult = require('../../../models/BenchmarkResult');
 const { classifyBenchmarkError } = require('./errorClassifier');
 const { DEFAULT_EXECUTION_CONFIG } = require('./config');
 const { resolveModelNumCtx } = require('../../utils');
+const { benchmarkFetch: fetch } = require('./http');
 
 /**
  * Run a single benchmark test

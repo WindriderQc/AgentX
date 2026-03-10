@@ -172,4 +172,16 @@ describe('getHostUrls (via ollamaHostConfig)', () => {
         const hosts = getHostUrls();
         expect(hosts).toHaveLength(1);
     });
+
+    it('should prefer a concrete host alias over a wildcard bind address', () => {
+        process.env.OLLAMA_HOST = '0.0.0.0:11434';
+        process.env.OLLAMA_HOST_PRIMARY = 'http://192.168.2.99:11434';
+        delete process.env.OLLAMA_HOST_2;
+        delete process.env.OLLAMA_HOST_SECONDARY;
+        delete process.env.OLLAMA_HOST_3;
+        delete process.env.OLLAMA_HOST_TERTIARY;
+
+        const hosts = getHostUrls();
+        expect(hosts).toEqual(['http://192.168.2.99:11434']);
+    });
 });

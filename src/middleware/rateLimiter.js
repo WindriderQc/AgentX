@@ -298,9 +298,31 @@ const roundtableLimiter = rateLimit({
   keyGenerator: getClientKey
 });
 
+const hostTestLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  message: {
+    status: 'error',
+    message: 'Host test rate limit exceeded'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    if (process.env.NODE_ENV === 'test') {
+      return getClientKey(req);
+    }
+    if (req.session?.userId) {
+      return `host-test:${req.session.userId}`;
+    }
+    return `host-test:${ipKeyGenerator(req.ip)}`;
+  },
+  validate: { ip: false }
+});
+
 module.exports = {
   apiLimiter,
   benchmarkLimiter,
+  hostTestLimiter,
   roundtableLimiter,
   specialXLimiter,
   chatLimiter,

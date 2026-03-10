@@ -12,6 +12,7 @@ export const STORAGE_KEYS = {
 };
 
 export const DEFAULTS = {
+  settingsVersion: 3,
   host: 'localhost',
   port: '11434',
   model: '',
@@ -28,7 +29,7 @@ export const DEFAULTS = {
     repeat_penalty: 1.05,
     presence_penalty: 0,
     frequency_penalty: 0,
-    num_predict: 256,
+    num_predict: '',
     seed: '',
     stop: '',
     keep_alive: '',

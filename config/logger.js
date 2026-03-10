@@ -29,8 +29,11 @@ winston.addColors(colors);
 // Determine log level based on environment
 const level = () => {
   const env = process.env.NODE_ENV || 'development';
-  const isDevelopment = env === 'development';
-  return isDevelopment ? 'debug' : 'info';
+  if (env === 'test') {
+    return process.env.TEST_LOG_LEVEL || 'error';
+  }
+
+  return env === 'development' ? 'debug' : 'info';
 };
 
 // Define log format
@@ -55,29 +58,31 @@ const consoleFormat = winston.format.combine(
 );
 
 // Define transports
+const isTestEnv = (process.env.NODE_ENV || 'development') === 'test';
+
 const transports = [
-  // Console output
   new winston.transports.Console({
     format: consoleFormat,
   }),
-  
-  // Error log file
-  new winston.transports.File({
-    filename: path.join(__dirname, '../logs/error.log'),
-    level: 'error',
-    format: format,
-    maxsize: 5242880, // 5MB
-    maxFiles: 5,
-  }),
-  
-  // Combined log file
-  new winston.transports.File({
-    filename: path.join(__dirname, '../logs/combined.log'),
-    format: format,
-    maxsize: 5242880, // 5MB
-    maxFiles: 5,
-  }),
 ];
+
+if (!isTestEnv) {
+  transports.push(
+    new winston.transports.File({
+      filename: path.join(__dirname, '../logs/error.log'),
+      level: 'error',
+      format: format,
+      maxsize: 5242880,
+      maxFiles: 5,
+    }),
+    new winston.transports.File({
+      filename: path.join(__dirname, '../logs/combined.log'),
+      format: format,
+      maxsize: 5242880,
+      maxFiles: 5,
+    })
+  );
+}
 
 // Create logger instance
 const logger = winston.createLogger({

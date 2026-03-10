@@ -77,8 +77,8 @@ const GENERALIST_CATEGORY_WEIGHTS = {
  * Categories requiring deeper understanding need stronger judge models.
  * Tiers: basic (2-3B), standard (7B), advanced (14B+), premium (70B+)
  *
- * A 7B judge reliably scores general/dialogue/creative but struggles with
- * coding correctness, math proofs, and multi-step reasoning evaluation.
+ * A 7B judge reliably scores all categories at levels 1-8; only premium
+ * categories (very high level math proofs, specialized deep reasoning) need 14B+.
  */
 const CATEGORY_MIN_JUDGE_TIER = {
   'coding':                'standard',
@@ -88,13 +88,13 @@ const CATEGORY_MIN_JUDGE_TIER = {
   'instruction-following': 'basic',
   'math':                  'standard',
   'summarization':         'basic',
-  'multi-turn-reasoning':  'advanced',
+  'multi-turn-reasoning':  'standard',
   'context-retention':     'standard',
   'translation':           'basic',
-  'edge-cases':            'advanced',
+  'edge-cases':            'standard',
   'general':               'basic',
-  'refactoring':           'advanced',
-  'debugging':             'advanced',
+  'refactoring':           'standard',
+  'debugging':             'standard',
   'explanation':           'basic',
   'dialogue':              'basic'
 };

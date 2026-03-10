@@ -234,14 +234,19 @@ function buildOllamaPayload(params) {
     tools = []  // AgentX: N8N tools as LLM function calls
   } = params;
 
+  const parsedNumPredict = Number(options.num_predict);
+  const streamNumPredict = Number.isFinite(parsedNumPredict) && parsedNumPredict > 0
+    ? parsedNumPredict
+    : -1;
+
   const payload = {
     model,
     messages,
     stream: streamEnabled,
     options: {
       ...options,
-      // For non-streaming: disable token limit to get complete responses
-      num_predict: streamEnabled ? (options.num_predict || 256) : -1
+      // Blank, zero, or negative values mean "don't cap the response".
+      num_predict: streamEnabled ? streamNumPredict : -1
     }
   };
 

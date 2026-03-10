@@ -8,6 +8,59 @@ const BenchmarkResult = require('../../../models/BenchmarkResult');
 const BenchmarkBatch = require('../../../models/BenchmarkBatch');
 const { calculateCompositeScore } = require('../qualityScorer');
 const { calculateAllGeneralistScores } = require('./generalistScore');
+const { INFRA_ERROR_REGEX } = require('./errorClassifier');
+
+function calculatePercentDelta(currentValue, referenceValue) {
+    const current = Number(currentValue);
+    const reference = Number(referenceValue);
+    if (!Number.isFinite(current) || !Number.isFinite(reference) || reference === 0) {
+        return null;
+    }
+    return Number((((current - reference) / reference) * 100).toFixed(1));
+}
+
+function getHostTestFreshness(ageHours) {
+    if (ageHours == null) return 'missing';
+    if (ageHours <= 24) return 'fresh';
+    if (ageHours <= 72) return 'aging';
+    return 'stale';
+}
+
+function buildHostTestVerification(snapshot, benchmarkLatency, benchmarkTokensPerSec) {
+    if (!snapshot) {
+        return {
+            host_test_verification: 'unverified',
+            host_test_freshness: 'missing',
+            host_test_age_hours: null,
+            host_test_latency_delta_pct: null,
+            host_test_tokens_delta_pct: null
+        };
+    }
+
+    const ageHours = Math.max(0, Number(((Date.now() - new Date(snapshot.testedAt).getTime()) / 3600000).toFixed(1)));
+    const freshness = getHostTestFreshness(ageHours);
+    const latencyDelta = calculatePercentDelta(benchmarkLatency, snapshot.latencyMs);
+    const tokensDelta = calculatePercentDelta(benchmarkTokensPerSec, snapshot.tokensPerSec);
+
+    let verification = 'unverified';
+    if (snapshot.status !== 'pass') {
+        verification = snapshot.status === 'timeout' ? 'timeout' : 'failed';
+    } else if (freshness === 'stale') {
+        verification = 'stale';
+    } else {
+        const latencyAligned = latencyDelta == null || Math.abs(latencyDelta) <= 20;
+        const tokensAligned = tokensDelta == null || Math.abs(tokensDelta) <= 20;
+        verification = latencyAligned && tokensAligned ? 'aligned' : 'drift';
+    }
+
+    return {
+        host_test_verification: verification,
+        host_test_freshness: freshness,
+        host_test_age_hours: ageHours,
+        host_test_latency_delta_pct: latencyDelta,
+        host_test_tokens_delta_pct: tokensDelta
+    };
+}
 
 /**
  * Get paginated test results
@@ -153,12 +206,7 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
                     avg_quality: {
                         $avg: {
                             $cond: [
-                                {
-                                    $and: [
-                                        { $ne: ['$quality_score', null] },
-                                        { $ne: [{ $type: '$quality_score' }, 'missing'] }
-                                    ]
-                                },
+                                { $ne: ['$quality_score', null] },
                                 '$quality_score',
                                 null
                             ]
@@ -167,12 +215,7 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
                     avg_composite: {
                         $avg: {
                             $cond: [
-                                {
-                                    $and: [
-                                        { $ne: ['$composite_score', null] },
-                                        { $ne: [{ $type: '$composite_score' }, 'missing'] }
-                                    ]
-                                },
+                                { $ne: ['$composite_score', null] },
                                 '$composite_score',
                                 null
                             ]
@@ -181,12 +224,7 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
                     quality_tests: {
                         $sum: {
                             $cond: [
-                                {
-                                    $and: [
-                                        { $ne: ['$quality_score', null] },
-                                        { $ne: [{ $type: '$quality_score' }, 'missing'] }
-                                    ]
-                                },
+                                { $ne: ['$quality_score', null] },
                                 1,
                                 0
                             ]
@@ -221,7 +259,7 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
                             {
                                 $regexMatch: {
                                     input: { $ifNull: ['$error', ''] },
-                                    regex: /(ECONNREFUSED|ECONNRESET|EPIPE|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|ESOCKETTIMEDOUT|socket hang up|fetch failed|timed\s*out|timeout|aborted|HTTP\s+(5\d\d|429|408)\s*:)/i
+                                    regex: INFRA_ERROR_REGEX
                                 }
                             }
                         ]
@@ -387,6 +425,7 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
     const registryModels = await ModelRegistry.find({
         modelName: { $in: uniqueModelNames }
     }).lean();
+    const hostPerformanceByModel = await ModelRegistry.getLatestHostPerformanceForModels(uniqueModelNames);
 
     const registryByName = new Map();
     registryModels.forEach(rm => {
@@ -395,10 +434,28 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
 
     sortedStats = sortedStats.map(stat => {
         const registryData = registryByName.get(stat.model);
+        const hostPerfSummary = hostPerformanceByModel[stat.model] || { latestAny: null, latestPass: null, byHost: {} };
+        const byExactHost = hostPerfSummary.byHost?.[stat.host];
+        const hostSnapshot = byExactHost?.latestPass || byExactHost?.latest || hostPerfSummary.latestPass || hostPerfSummary.latestAny;
+        const verification = buildHostTestVerification(
+            hostSnapshot,
+            stat.avg_latency,
+            parseFloat(stat.avg_tokens_per_sec)
+        );
+
         return {
             ...stat,
             recommended_category: registryData?.benchmarkStats?.bestCategory || null,
-            manual_categories: registryData?.categories || []
+            manual_categories: registryData?.categories || [],
+            host_test_status: hostSnapshot?.status || null,
+            host_test_tokens_per_sec: hostSnapshot?.tokensPerSec ?? null,
+            host_test_latency_ms: hostSnapshot?.latencyMs ?? null,
+            host_test_ttft_ms: hostSnapshot?.timeToFirstTokenMs ?? null,
+            host_test_vram_used_mib: hostSnapshot?.vramUsedMiB ?? null,
+            host_test_vram_total_mib: hostSnapshot?.vramTotalMiB ?? null,
+            host_test_tested_at: hostSnapshot?.testedAt || null,
+            host_test_error: hostSnapshot?.error || null,
+            ...verification
         };
     });
 

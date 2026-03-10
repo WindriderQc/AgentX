@@ -11,6 +11,7 @@ import { showJudgeDetails, closeJudgeDetails } from './judge-details.js';
 import { pickRepresentativeResultId } from './results-analysis.js';
 import { loadRecentTestsTimeline, getTimelineMode, scheduleTimelineScrollSync, showTimelineTooltip } from './timeline.js';
 import { rerenderRecentTests, toggleSuccessRateDetails } from './recent-tests.js';
+import { refreshJudgeTierUI } from './judge-mismatch.js';
 
 const JUDGE_CONFIG_STORAGE_KEY = 'benchmarkJudgeConfig';
 
@@ -249,6 +250,12 @@ function updateJudgeConfigFromForm() {
     state.setCurrentJudgeConfig(next);
     writeStoredJudgeConfig(next);
     updateJudgeConfigPreview();
+    // Re-render depth matrix and refresh tier indicators
+    renderDepthMatrix();
+    updateDepthSummary();
+    const depthCfg = getDepthConfig();
+    const activeLevels = getSelectedLevels(depthCfg);
+    refreshJudgeTierUI(activeLevels);
 }
 
 /**
@@ -323,8 +330,31 @@ function bindJudgeSettingsUI() {
         const el = document.getElementById(id);
         if (!el) return;
         el.addEventListener('change', () => {
+            // When judge host changes, auto-apply any stored per-host default model
+            if (id === 'judgeHost') {
+                const hostUrl = el.value;
+                const defaultModel = hostUrl && state.judgeHostDefaults && state.judgeHostDefaults[hostUrl];
+                if (defaultModel) {
+                    const judgeModelEl = document.getElementById('judgeModel');
+                    if (judgeModelEl) judgeModelEl.value = defaultModel;
+                }
+            }
             updateJudgeConfigFromForm();
         });
+    });
+
+    // Auto-suggest: judge-mismatch banner fires this when user clicks "Use <model>"
+    document.addEventListener('judgeAutoSuggest', (e) => {
+        const model = e.detail && e.detail.model;
+        if (!model) return;
+        const next = { ...state.currentJudgeConfig, model };
+        state.setCurrentJudgeConfig(next);
+        writeStoredJudgeConfig(next);
+        updateJudgeConfigPreview();
+        populateJudgeModelSelect();
+        applyJudgeConfigToForm(next);
+        const depthCfg = getDepthConfig();
+        refreshJudgeTierUI(getSelectedLevels(depthCfg));
     });
 }
 
@@ -413,6 +443,11 @@ async function loadJudgeConfig() {
         const executionConfig = data.execution_config || data.executionConfig || {};
         const storedJudgeConfig = readStoredJudgeConfig();
 
+        // Persist tier metadata to state so other modules can use it
+        if (data.judge_tier_map) state.setJudgeTierMap(data.judge_tier_map);
+        if (data.judge_tier_rank) state.setJudgeTierRank(data.judge_tier_rank);
+        if (data.judge_host_defaults) state.setJudgeHostDefaults(data.judge_host_defaults);
+
         // Server is authoritative for model.
         // localStorage persists UI preferences (host, temperature, concurrency, timeout, num_predict, toggles).
         const uiOnlyKeys = ['host', 'temperature', 'timeout', 'num_predict', 'concurrency', 'judge_same_host', 'judge_tier_auto_upgrade'];
@@ -425,14 +460,29 @@ async function loadJudgeConfig() {
             }
         }
         const mergedJudgeConfig = { ...storedUiPrefs, ...judgeConfig };
-        // Strip stale empty host so backend uses auto-opposite logic on fresh load
-        if (!mergedJudgeConfig.host) delete mergedJudgeConfig.host;
+        // Strip stale/empty/wildcard host so backend uses auto-opposite logic
+        const h = mergedJudgeConfig.host || '';
+        if (!h || h === 'http://0.0.0.0' || /\/\/0\.0\.0\.0(:\d+)?$/.test(h)) {
+            delete mergedJudgeConfig.host;
+        }
 
         state.setCurrentJudgeConfig(mergedJudgeConfig);
         state.setCurrentExecutionConfig(executionConfig);
+
+        // Store tier configuration for UI display
+        if (data.judge_tier_map) state.setJudgeTierMap(data.judge_tier_map);
+        if (data.category_tier_map) state.setCategoryTierMap(data.category_tier_map);
+        if (data.tier_rank) state.setTierRank(data.tier_rank);
+        if (data.judge_presets) state.setJudgePresets(data.judge_presets);
+
         populateJudgeModelSelect();
         applyJudgeConfigToForm(mergedJudgeConfig);
         updateJudgeConfigPreview();
+
+        // Refresh tier indicators after config loads
+        const depthCfg = getDepthConfig();
+        const activeLevels = getSelectedLevels(depthCfg);
+        refreshJudgeTierUI(activeLevels);
     } catch (err) {
         console.error('Failed to load judge config:', err);
     }

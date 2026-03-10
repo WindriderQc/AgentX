@@ -18,7 +18,6 @@ const { requireAuth } = require('../src/middleware/auth');
 const logger = require('../config/logger');
 
 const featureAlignmentScanner = require('../src/services/featureAlignmentScanner');
-const { calculatePriority } = require('../src/services/featureAlignmentPriority');
 
 // ========================================
 // Feature Inventory Endpoints

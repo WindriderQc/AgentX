@@ -6,7 +6,7 @@
 const express = require('express');
 const router = express.Router();
 const PromptConfig = require('../models/PromptConfig');
-const { requireAuth, optionalAuth } = require('../src/middleware/auth');
+const { optionalAuth } = require('../src/middleware/auth');
 const { attachWorkspace, optionalWorkspaceContext } = require('../src/middleware/workspace');
 const { logPromptAction } = require('../src/middleware/workspaceAudit');
 const logger = require('../config/logger');

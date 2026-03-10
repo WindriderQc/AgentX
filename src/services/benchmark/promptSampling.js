@@ -46,7 +46,8 @@ function samplePromptsByDepth(prompts, depthConfig) {
         }
 
         if (depth === 'single') {
-            sampled.push(randomPick(levelPrompts, 1)[0]);
+            const picked = randomPick(levelPrompts, 1)[0];
+            if (picked !== undefined) sampled.push(picked);
             continue;
         }
 

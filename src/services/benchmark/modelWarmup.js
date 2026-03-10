@@ -3,8 +3,8 @@
  * Pre-execution model warmup and VRAM readiness verification
  */
 
-const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
 const logger = require('../../../config/logger');
+const { benchmarkFetch: fetch } = require('./http');
 
 function normalizeWarmupError(err, timeoutMs) {
     const rawMessage = String(err?.message || '').trim();

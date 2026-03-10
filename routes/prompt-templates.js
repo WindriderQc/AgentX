@@ -7,8 +7,8 @@
 const express = require('express');
 const router = express.Router();
 const PromptTemplate = require('../models/PromptTemplate');
-const { requireAuth, optionalAuth } = require('../src/middleware/auth');
-const { attachWorkspace, optionalWorkspaceContext } = require('../src/middleware/workspace');
+const { requireAuth } = require('../src/middleware/auth');
+const { optionalWorkspaceContext } = require('../src/middleware/workspace');
 const logger = require('../config/logger');
 const { validateObjectId } = require('../src/helpers/objectIdValidator');
 

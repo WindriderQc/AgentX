@@ -13,10 +13,10 @@ const router = express.Router();
 const mongoose = require('mongoose');
 const logger = require('../config/logger');
 const ActivityLog = require('../models/ActivityLog');
-const { systemHealth } = require('../src/app');
 const { exec } = require('child_process');
 const util = require('util');
 const fetch = require('node-fetch');
+const { normalizeHostUrl } = require('../src/helpers/ollamaHostConfig');
 const execPromise = util.promisify(exec);
 
 // n8n configuration
@@ -277,7 +277,7 @@ router.get('/health', async (req, res) => {
 
     // 3. Ollama (primary host)
     try {
-      const ollamaHost = process.env.OLLAMA_HOST || 'http://localhost:11434';
+      const ollamaHost = normalizeHostUrl(process.env.OLLAMA_HOST) || 'http://localhost:11434';
       const response = await fetch(`${ollamaHost}/api/tags`, { timeout: 5000 });
 
       if (response.ok) {
@@ -292,11 +292,11 @@ router.get('/health', async (req, res) => {
         healthStatus.status = 'degraded';
       }
     } catch (error) {
-      healthStatus.services.ollama = {
-        status: 'error',
-        host: process.env.OLLAMA_HOST,
-        error: error.message
-      };
+        healthStatus.services.ollama = {
+          status: 'error',
+          host: normalizeHostUrl(process.env.OLLAMA_HOST) || process.env.OLLAMA_HOST,
+          error: error.message
+        };
       healthStatus.status = 'degraded';
     }
 

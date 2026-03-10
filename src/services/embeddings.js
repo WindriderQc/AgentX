@@ -22,7 +22,7 @@ class EmbeddingsService {
     if (!this.ollamaHost) {
         throw new Error('OLLAMA_HOST environment variable is required for EmbeddingsService');
     }
-    this.model = config.embeddingModel || process.env.EMBEDDING_MODEL || 'nomic-embed-text';
+    this.model = config.embeddingModel || process.env.EMBEDDING_MODEL || 'nomic-embed-text:v1.5';
     this.dimension = 768; // nomic-embed-text default dimension
     this.batchSize = 10; // Process in batches to avoid memory issues
     this.cache = getCache({
@@ -170,6 +170,14 @@ class EmbeddingsService {
     this.cache.clear();
   }
 
+  destroy() {
+    if (this.cache && typeof this.cache.destroy === 'function') {
+      this.cache.destroy();
+    } else if (this.cache && typeof this.cache.clear === 'function') {
+      this.cache.clear();
+    }
+  }
+
   /**
    * Calculate cosine similarity between two embedding vectors
    * @param {number[]} vec1 - First embedding vector
@@ -214,7 +222,14 @@ function getEmbeddingsService(config = {}) {
   return embeddingsServiceInstance;
 }
 
+function resetEmbeddingsService() {
+  if (!embeddingsServiceInstance) return;
+  embeddingsServiceInstance.destroy();
+  embeddingsServiceInstance = null;
+}
+
 module.exports = {
   EmbeddingsService,
   getEmbeddingsService,
+  resetEmbeddingsService,
 };

@@ -31,7 +31,6 @@ class N8nLLMProvider {
         messages,
         model: options.model || 'default',
         temperature: options.temperature || 0.7,
-        max_tokens: options.maxTokens || 2048,
         stream: options.stream || false,
         metadata: {
           source: 'agentx',
@@ -39,6 +38,10 @@ class N8nLLMProvider {
           userId: options.userId
         }
       };
+
+      if (Number.isFinite(Number(options.maxTokens)) && Number(options.maxTokens) > 0) {
+        payload.max_tokens = Number(options.maxTokens);
+      }
 
       const response = await fetch(webhookUrl, {
         method: 'POST',

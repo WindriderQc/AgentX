@@ -73,5 +73,8 @@ function classifyBenchmarkError(errorLike) {
 }
 
 module.exports = {
-    classifyBenchmarkError
+    classifyBenchmarkError,
+    // Shared regex for MongoDB $regexMatch / Mongoose $regex queries.
+    // Must stay in sync with the infraPatterns array + infraByWording/infraByHttp logic above.
+    INFRA_ERROR_REGEX: /(ECONNREFUSED|ECONNRESET|EPIPE|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|ESOCKETTIMEDOUT|socket hang up|fetch failed|timed\s*out|timeout|aborted|HTTP\s+(5\d\d|429|408)\s*:)/i
 };

@@ -3,8 +3,8 @@
  * Pre-batch validation: checks judge model availability and structured output capability
  */
 
-const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
 const logger = require('../../../config/logger');
+const { benchmarkFetch: fetch } = require('./http');
 
 const VALIDATION_TIMEOUT_MS = 30000;
 
@@ -35,11 +35,16 @@ async function validateJudgeModel(host, model, options = {}) {
     try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 10000);
-        const res = await _fetch(`${host}/api/tags`, {
-            method: 'GET',
-            signal: controller.signal
-        });
-        clearTimeout(timeoutId);
+        let res;
+
+        try {
+            res = await _fetch(`${host}/api/tags`, {
+                method: 'GET',
+                signal: controller.signal
+            });
+        } finally {
+            clearTimeout(timeoutId);
+        }
 
         if (!res.ok) {
             return {
@@ -78,20 +83,24 @@ async function validateJudgeModel(host, model, options = {}) {
     try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), VALIDATION_TIMEOUT_MS);
+        let res;
 
         const testPrompt = 'Rate this response on a scale of 0-10. Respond ONLY with JSON: {"score": 5, "reason": "test"}';
-        const res = await _fetch(`${host}/api/chat`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                model,
-                messages: [{ role: 'user', content: testPrompt }],
-                stream: false,
-                options: { num_predict: 100, temperature: 0.1 }
-            }),
-            signal: controller.signal
-        });
-        clearTimeout(timeoutId);
+        try {
+            res = await _fetch(`${host}/api/chat`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model,
+                    messages: [{ role: 'user', content: testPrompt }],
+                    stream: false,
+                    options: { num_predict: 100, temperature: 0.1 }
+                }),
+                signal: controller.signal
+            });
+        } finally {
+            clearTimeout(timeoutId);
+        }
 
         if (!res.ok) {
             // HTTP error (e.g. 500 from VRAM pressure or model still loading) —

@@ -91,7 +91,7 @@ function buildWorkflowPrompt(description, templates, context, workflowExamples) 
     prompt.push('# REFERENCE PATTERNS\n');
     prompt.push('Use these node types and patterns:\n');
     
-    workflowExamples.slice(0, 2).forEach((example, idx) => {
+    workflowExamples.slice(0, 2).forEach((example) => {
       prompt.push(`- ${example.name}: ${example.structure.nodes.map(n => n.type.split('.').pop()).join(', ')}\n`);
     });
     prompt.push('\n');

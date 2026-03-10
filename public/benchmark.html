@@ -129,7 +129,9 @@
                                 </div>
 
                                 <div class="depth-matrix-container">
-                                    <table class="depth-matrix">
+                                    <!-- Judge tier mismatch banner — populated by judge-mismatch.js -->
+                                    <div id="judgeMismatchBanner" style="display:none;margin-bottom:10px;"></div>
+                                    <table id="depthMatrix" class="depth-matrix">
                                         <thead>
                                             <tr>
                                                 <th class="level-col">Level</th>
@@ -139,6 +141,7 @@
                                                 <th>Half</th>
                                                 <th>Full</th>
                                                 <th class="count-col">Est.</th>
+                                                <!-- Judge tier column injected by judge-mismatch.js -->
                                             </tr>
                                         </thead>
                                         <tbody id="depthMatrixBody">
@@ -367,7 +370,7 @@
                                         <i class="fas fa-code-compare"></i> Open Compare Insights
                                     </a>
                                 </div>
-                                <div id="batchHistoryList" style="display: grid; gap: 10px;">
+                                <div id="batchHistoryList" style="max-height: 180px; overflow-y: auto;">
                                     <div style="text-align: center; color: var(--muted); padding: 12px 0;">Loading recent batches...</div>
                                 </div>
                             </div>

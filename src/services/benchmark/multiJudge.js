@@ -16,12 +16,13 @@
  */
 
 const logger = require('../../../config/logger');
-const { scoreResponse, JUDGE_CONFIG } = require('../qualityScorer');
+const { scoreResponse } = require('../qualityScorer');
 const { CATEGORY_MIN_JUDGE_TIER } = require('../../../config/categories');
-const { TIER_RANK, tierMeetsRequirement } = require('../scoring/judgeTierResolver');
+const { tierMeetsRequirement } = require('../scoring/judgeTierResolver');
 
 /** Max score difference (0-10 scale) before escalation to tiebreaker */
 const DIVERGENCE_THRESHOLD = 2.0;
+const LOW_CONFIDENCE_THRESHOLD = 0.7;
 
 /**
  * Compute median of a numeric array.
@@ -46,15 +47,44 @@ function median(values) {
  * @param {Object} [params._batchHardwareSnapshot] - Hardware snapshot for judge host
  * @returns {Object} { finalScore, scores[], divergent, tiebreakerUsed, consensus }
  */
-async function multiJudgeScore({ response, prompt, judges, tiebreakerJudge = null, _batchHardwareSnapshot = null }) {
+async function multiJudgeScore({
+    response,
+    prompt,
+    judges,
+    tiebreakerJudge = null,
+    _batchHardwareSnapshot = null,
+    seedJudgeResult = null
+}) {
     if (!judges || judges.length === 0) {
         throw new Error('At least one judge config is required');
     }
 
     const results = [];
+    const effectiveJudges = [...judges];
+
+    if (seedJudgeResult) {
+        results.push({
+            judge_model: seedJudgeResult.judge_model,
+            judge_host: seedJudgeResult.judge_host,
+            judge_tier: seedJudgeResult.judge_tier || 'unknown',
+            quality_score: seedJudgeResult.quality_score,
+            explanation: seedJudgeResult.explanation,
+            scoring_time_ms: seedJudgeResult.scoring_time_ms || 0,
+            scoring_method: seedJudgeResult.scoring_method || 'llm_judge',
+            success: !!seedJudgeResult.success
+        });
+
+        const duplicateJudgeIndex = effectiveJudges.findIndex((judgeConfig) =>
+            judgeConfig.model === seedJudgeResult.judge_model
+            && judgeConfig.host === seedJudgeResult.judge_host
+        );
+        if (duplicateJudgeIndex >= 0) {
+            effectiveJudges.splice(duplicateJudgeIndex, 1);
+        }
+    }
 
     // Score with all primary judges in parallel
-    const judgePromises = judges.map(async (judgeConfig, idx) => {
+    const judgePromises = effectiveJudges.map(async (judgeConfig, idx) => {
         const start = Date.now();
         try {
             const scores = await scoreResponse({
@@ -220,6 +250,31 @@ function shouldUseMultiJudge(category) {
     return tierMeetsRequirement(minTier, 'standard');
 }
 
+function shouldEscalateToMultiJudge({
+    category,
+    scoringMethod,
+    judgeConfidence,
+    needsReview,
+    multiJudgeConfig = {}
+}) {
+    if (!multiJudgeConfig?.enabled || !Array.isArray(multiJudgeConfig.judges) || multiJudgeConfig.judges.length < 2) {
+        return false;
+    }
+
+    const confidenceThreshold = Number.isFinite(Number(multiJudgeConfig.confidenceThreshold))
+        ? Number(multiJudgeConfig.confidenceThreshold)
+        : LOW_CONFIDENCE_THRESHOLD;
+
+    const judgeFailed = multiJudgeConfig.escalateOnJudgeFailure !== false && scoringMethod === 'llm_failed';
+    const reviewTriggered = multiJudgeConfig.escalateOnReview !== false && !!needsReview;
+    const lowConfidence = multiJudgeConfig.escalateOnLowConfidence !== false
+        && typeof judgeConfidence === 'number'
+        && judgeConfidence < confidenceThreshold;
+    const categoryTriggered = multiJudgeConfig.escalateForCategories === true && shouldUseMultiJudge(category);
+
+    return judgeFailed || reviewTriggered || lowConfidence || categoryTriggered;
+}
+
 /**
  * Calculate inter-judge agreement statistics from an array of multi-judge results.
  *
@@ -252,8 +307,10 @@ function calculateJudgeAgreement(multiJudgeResults) {
 
 module.exports = {
     DIVERGENCE_THRESHOLD,
+    LOW_CONFIDENCE_THRESHOLD,
     multiJudgeScore,
     shouldUseMultiJudge,
+    shouldEscalateToMultiJudge,
     calculateJudgeAgreement,
     median
 };

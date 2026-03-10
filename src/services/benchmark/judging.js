@@ -13,10 +13,22 @@ const { classifyBenchmarkError } = require('./errorClassifier');
 const hardwareProfileService = require('../hardwareProfileService');
 const BenchmarkPrompt = require('../../../models/BenchmarkPrompt');
 const ConcurrencyQueue = require('./ConcurrencyQueue');
-const { multiJudgeScore, shouldUseMultiJudge } = require('./multiJudge');
+const { multiJudgeScore, shouldEscalateToMultiJudge } = require('./multiJudge');
 
 // Track active judging jobs (batchId -> { queue, stopped })
 const activeJudgingJobs = new Map();
+
+async function persistJudgeCounters(batchId, fields = {}) {
+    await BenchmarkBatch.updateOne(
+        { _id: batchId },
+        {
+            $set: {
+                ...fields,
+                last_activity_at: new Date()
+            }
+        }
+    );
+}
 
 /**
  * Validate whether judging can be started for a batch and count eligible results.
@@ -118,6 +130,10 @@ async function applyScoresToResult(resultId, scores, resultData) {
                 judge_hardware_snapshot: scores.judge_hardware_snapshot || null,
                 judge_tier: scores.judge_tier || null,
                 judge_tier_downgraded: scores.judge_tier_downgraded || false,
+                judge_consensus: scores.judge_consensus || null,
+                judge_divergence: scores.judge_divergence !== undefined ? scores.judge_divergence : null,
+                judge_tiebreaker_used: !!scores.judge_tiebreaker_used,
+                judge_escalated: !!scores.judge_escalated,
                 scoring_method: scores.scoring_method,
                 scoring_type: scores.scoring_type || resultData.scoring_type || 'reasoning',
                 scoring_time_ms: scores.scoring_time_ms,
@@ -200,10 +216,20 @@ async function judgeResult(resultId, judgeConfig = {}, _batchHardwareSnapshot = 
         host: judgeConfig.host || result.judge_host || JUDGE_CONFIG.host
     };
 
-    // Multi-judge path: use consensus scoring when enabled and category qualifies
-    const useMultiJudge = multiJudgeConfig?.enabled
-        && multiJudgeConfig.judges?.length >= 2
-        && shouldUseMultiJudge(result.prompt_category);
+    const baseScores = await scoreResponse({
+        response: result.response,
+        prompt: promptData,
+        judgeConfig: mergedConfig,
+        _batchHardwareSnapshot
+    });
+
+    const useMultiJudge = shouldEscalateToMultiJudge({
+        category: result.prompt_category,
+        scoringMethod: baseScores.scoring_method,
+        judgeConfidence: baseScores.judge_confidence,
+        needsReview: baseScores.needs_review,
+        multiJudgeConfig
+    });
 
     if (useMultiJudge) {
         const mjResult = await multiJudgeScore({
@@ -211,7 +237,17 @@ async function judgeResult(resultId, judgeConfig = {}, _batchHardwareSnapshot = 
             prompt: promptData,
             judges: multiJudgeConfig.judges,
             tiebreakerJudge: multiJudgeConfig.tiebreaker || null,
-            _batchHardwareSnapshot
+            _batchHardwareSnapshot,
+            seedJudgeResult: {
+                judge_model: baseScores.judge_model || mergedConfig.model,
+                judge_host: baseScores.judge_host || mergedConfig.host,
+                judge_tier: baseScores.judge_tier || 'unknown',
+                quality_score: baseScores.quality_score,
+                explanation: baseScores.explanation,
+                scoring_time_ms: baseScores.scoring_time_ms,
+                scoring_method: baseScores.scoring_method,
+                success: baseScores.quality_score !== null && baseScores.quality_score !== undefined
+            }
         });
 
         // Store all individual judge scores
@@ -231,21 +267,32 @@ async function judgeResult(resultId, judgeConfig = {}, _batchHardwareSnapshot = 
             { $set: { judge_scores: judgeScoreRecords } }
         );
 
-        // Use the primary judge's full scores object for composite calculation,
-        // but override quality_score with the consensus median
-        const primaryJudge = mjResult.scores.find(s => s.success) || {};
-        const scores = await scoreResponse({
-            response: result.response,
-            prompt: promptData,
-            judgeConfig: mergedConfig,
-            _batchHardwareSnapshot
-        });
+        const consensusConfidence = mjResult.consensus === 'agreement'
+            ? Math.max(baseScores.judge_confidence || 0, 0.9)
+            : mjResult.consensus === 'tiebreaker_resolved'
+                ? Math.max(baseScores.judge_confidence || 0, 0.85)
+                : Math.min(baseScores.judge_confidence ?? 0.6, 0.6);
+        const consensusNeedsReview = mjResult.consensus === 'divergent_unresolved';
+        const consensusReviewReason = [
+            baseScores.review_reason || null,
+            mjResult.divergent ? `Multi-judge divergence ${mjResult.divergence}` : null,
+            mjResult.tiebreakerUsed ? 'Escalated to tiebreaker judge' : null
+        ].filter(Boolean).join('; ');
 
-        // Override with consensus score
-        scores.quality_score = mjResult.finalScore !== null ? mjResult.finalScore : scores.quality_score;
-        scores.explanation = `[Multi-judge consensus: ${mjResult.consensus}] ${scores.explanation || ''}`.trim();
-
-        return applyScoresToResult(resultId, scores, {
+        return applyScoresToResult(resultId, {
+            ...baseScores,
+            quality_score: mjResult.finalScore !== null ? mjResult.finalScore : baseScores.quality_score,
+            explanation: `[Multi-judge consensus: ${mjResult.consensus}] ${baseScores.explanation || ''}`.trim(),
+            judge_confidence: Math.round(consensusConfidence * 100) / 100,
+            needs_review: consensusNeedsReview,
+            review_reason: consensusNeedsReview
+                ? (consensusReviewReason || 'Multi-judge disagreement requires review')
+                : (consensusReviewReason || baseScores.review_reason || null),
+            judge_consensus: mjResult.consensus,
+            judge_divergence: mjResult.divergence ?? null,
+            judge_tiebreaker_used: !!mjResult.tiebreakerUsed,
+            judge_escalated: true
+        }, {
             latency: result.latency,
             tokens_per_sec: result.tokens_per_sec,
             prompt_category: result.prompt_category,
@@ -253,15 +300,7 @@ async function judgeResult(resultId, judgeConfig = {}, _batchHardwareSnapshot = 
         });
     }
 
-    // Standard single-judge path
-    const scores = await scoreResponse({
-        response: result.response,
-        prompt: promptData,
-        judgeConfig: mergedConfig,
-        _batchHardwareSnapshot
-    });
-
-    return applyScoresToResult(resultId, scores, {
+    return applyScoresToResult(resultId, baseScores, {
         latency: result.latency,
         tokens_per_sec: result.tokens_per_sec,
         prompt_category: result.prompt_category,
@@ -483,6 +522,33 @@ async function judgeBatch(batchId, options = {}) {
                 logger.warn('Failed to recalculate metrics after judging', { batchId, error: err.message });
             }
         }
+    } catch (err) {
+        finalStatus = activeJudgingJobs.get(batchId)?.stopped ? 'stopped' : 'failed';
+        logger.error('Standalone judging crashed', {
+            batchId,
+            error: err.message,
+            stack: err.stack
+        });
+
+        const authoritative = await getAuthoritativeJudgeCounters(batchId).catch(() => ({
+            judge_total: 0,
+            judge_completed: 0,
+            judge_failed: failed
+        }));
+
+        await persistJudgeCounters(batchId, {
+            judge_status: finalStatus,
+            judge_total: authoritative.judge_total,
+            judge_completed: authoritative.judge_completed,
+            judge_failed: authoritative.judge_failed
+        }).catch((persistErr) => {
+            logger.error('Failed to persist judge crash state', {
+                batchId,
+                error: persistErr.message
+            });
+        });
+
+        throw err;
     } finally {
         // Guarantee cleanup even on uncaught exceptions — prevents permanent lock
         activeJudgingJobs.delete(batchId);
@@ -505,6 +571,12 @@ function stopJudging(batchId) {
     if (!job) return false;
 
     job.stopped = true;
+    persistJudgeCounters(batchId, { judge_status: 'stopped' }).catch((err) => {
+        logger.warn('Failed to persist stop request for judging job', {
+            batchId,
+            error: err.message
+        });
+    });
     logger.info('Judging stop requested', { batchId });
     return true;
 }
