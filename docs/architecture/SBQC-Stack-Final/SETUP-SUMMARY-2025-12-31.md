@@ -65,7 +65,7 @@ const brutal = $input.all()[1]?.json || {};
    - Configure environment variables
    - Troubleshooting guide
 
-2. **`AgentC/README.md`**
+2. **`docs/integrations/N8N_WORKFLOWS.md`**
    - Workflow development guide
    - Common patterns and anti-patterns
    - Troubleshooting section
@@ -176,7 +176,7 @@ The script uses these endpoints:
 1. **Set Up Git Hooks**
    - Pre-commit: Validate JSON
    - Post-merge: Auto-deploy changes
-   - See: `AgentC/README.md`
+   - See: `docs/integrations/N8N_WORKFLOWS.md`
 
 2. **Integrate with CI/CD**
    - GitHub Actions example in `04-N8N-WORKFLOWS.md`
@@ -198,7 +198,7 @@ The script uses these endpoints:
 
 1. `scripts/deploy-n8n-workflows.sh` - Deployment script
 2. `docs/architecture/SBQC-Stack-Final/N8N-API-SETUP.md` - API setup guide
-3. `AgentC/README.md` - Workflow development guide
+3. `docs/integrations/N8N_WORKFLOWS.md` - Workflow development guide
 4. `docs/architecture/SBQC-Stack-Final/SETUP-SUMMARY-2025-12-31.md` - This file
 
 ### Modified Files 📝
@@ -229,7 +229,7 @@ From [VALIDATION-REPORT-2025-12-31-1622.md](VALIDATION-REPORT-2025-12-31-1622.md
 |----------|---------|
 | [04-N8N-WORKFLOWS.md](04-N8N-WORKFLOWS.md) | Complete workflow specs + deployment |
 | [N8N-API-SETUP.md](N8N-API-SETUP.md) | API configuration guide |
-| [AgentC/README.md](../../../AgentC/README.md) | Workflow development |
+| [docs/integrations/N8N_WORKFLOWS.md](../../integrations/N8N_WORKFLOWS.md) | Workflow development |
 | [05-DEPLOYMENT.md](05-DEPLOYMENT.md) | System deployment |
 | [VALIDATION-REPORT-2025-12-31-1622.md](VALIDATION-REPORT-2025-12-31-1622.md) | Validation results |
 

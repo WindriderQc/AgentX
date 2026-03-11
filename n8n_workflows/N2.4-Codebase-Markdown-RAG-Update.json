@@ -1,0 +1,351 @@
+{
+  "name": "N2.4 Codebase Markdown RAG Update",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 2 * * 1"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule (Mon 2AM)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [0, 150]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "sbqc-n2-4-codebase-rag",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook (Manual)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 400],
+      "webhookId": "sbqc-n2-4-codebase-rag"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Determine which trigger fired and extract optional params.\n// Webhook payloads carry a .body object; schedule items do not.\nconst item = $input.first();\nconst isWebhook = !!(item.json.body !== undefined);\nconst triggerSource = isWebhook ? 'n8n-webhook' : 'n8n-cron';\n\nconst dryRun   = isWebhook && item.json.body?.dryRun   === true;\nconst docsOnly = isWebhook && item.json.body?.docsOnly === true;\n\nconst args = ['--json'];\nif (dryRun)   args.push('--dry-run');\nif (docsOnly) args.push('--docs-only');\n\nconst projectRoot = $env.AGENTX_PROJECT_ROOT || '/home/yb/codes/AgentX';\n\nreturn [{\n  json: {\n    triggerSource,\n    dryRun,\n    docsOnly,\n    projectRoot,\n    command: `cd ${projectRoot} && RAG_CODEBASE_SYNC_TRIGGER=${triggerSource} ./scripts/archive-and-ingest-all.sh ${args.join(' ')}`\n  }\n}];"
+      },
+      "id": "prepare-args",
+      "name": "Prepare Args",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [280, 260]
+    },
+    {
+      "parameters": {
+        "command": "={{ $json.command }}"
+      },
+      "id": "execute-script",
+      "name": "Execute Script",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [540, 260]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse JSON output from archive-and-ingest-all.sh --json.\n// On success the script writes one JSON line to stdout.\n// On script error, stderr may have context; stdout may still be partial JSON.\nconst item = $input.first();\nconst raw  = (item.json.stdout || '').trim();\n\nlet parsed;\ntry {\n  // Grab the last non-empty line in case the script emitted extra output.\n  const lines = raw.split('\\n').filter(l => l.trim().startsWith('{'));\n  parsed = JSON.parse(lines[lines.length - 1]);\n} catch (e) {\n  parsed = {\n    status: 'error',\n    message: 'Failed to parse script stdout as JSON',\n    parseError: e.message,\n    stdout: raw.substring(0, 1000),\n    stderr: (item.json.stderr || '').substring(0, 500)\n  };\n}\n\n// Attach execution context from previous node.\nparsed._trigger  = $('Prepare Args').first().json.triggerSource;\nparsed._dryRun   = $('Prepare Args').first().json.dryRun;\nparsed._docsOnly = $('Prepare Args').first().json.docsOnly;\n\nreturn [{ json: parsed }];"
+      },
+      "id": "parse-output",
+      "name": "Parse Script Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [800, 260]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-status",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "success",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-success",
+      "name": "IF Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1060, 260]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build DataAPI server-log payload summarising the completed sync run.\nconst r = $input.first().json;\n\nconst archived  = r.archive?.files  ?? r.archive?.count ?? 0;\nconst ingested  = r.ingest?.ingested ?? 0;\nconst failed    = r.ingest?.failed   ?? 0;\nconst skipped   = r.ingest?.skipped  ?? 0;\nconst durationMs = r.ingest?.durationMs ?? null;\n\nreturn [{\n  json: {\n    source: 'n8n-N2.4',\n    level: 'info',\n    event: 'rag-codebase-sync-complete',\n    trigger: r._trigger,\n    dryRun: r._dryRun,\n    docsOnly: r._docsOnly,\n    startedAt: r.startedAt,\n    finishedAt: r.finishedAt,\n    archived,\n    ingested,\n    failed,\n    skipped,\n    durationMs,\n    summary: `N2.4 sync complete: archived=${archived}, ingested=${ingested}, failed=${failed}, skipped=${skipped}`\n  }\n}];"
+      },
+      "id": "build-log-payload",
+      "name": "Build Log Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, 140]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DATAAPI_BASE_URL }}/logs/server",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.DATAAPI_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 10000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "log-to-dataapi",
+      "name": "Log to DataAPI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1580, 140]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"status\": \"success\",\n  \"message\": \"RAG codebase sync completed\",\n  \"data\": {\n    \"trigger\": \"{{ $('Parse Script Output').first().json._trigger }}\",\n    \"dryRun\": {{ $('Parse Script Output').first().json._dryRun }},\n    \"startedAt\": \"{{ $('Parse Script Output').first().json.startedAt }}\",\n    \"finishedAt\": \"{{ $('Parse Script Output').first().json.finishedAt }}\",\n    \"archived\": {{ $('Build Log Payload').first().json.archived }},\n    \"ingested\": {{ $('Build Log Payload').first().json.ingested }},\n    \"failed\": {{ $('Build Log Payload').first().json.failed }},\n    \"skipped\": {{ $('Build Log Payload').first().json.skipped }}\n  }\n}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "respond-success",
+      "name": "Respond Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1840, 140]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build DataAPI server-log payload for a failed sync run.\nconst r = $input.first().json;\n\nreturn [{\n  json: {\n    source: 'n8n-N2.4',\n    level: 'error',\n    event: 'rag-codebase-sync-error',\n    trigger: r._trigger,\n    dryRun: r._dryRun,\n    docsOnly: r._docsOnly,\n    startedAt: r.startedAt,\n    finishedAt: r.finishedAt,\n    message: r.message || 'Archive or ingest step failed',\n    exitCode: r.exitCode,\n    parseError: r.parseError,\n    stdout: r.stdout,\n    stderr: r.stderr,\n    summary: `N2.4 sync FAILED: ${r.message || r.parseError || 'unknown error'}`\n  }\n}];"
+      },
+      "id": "build-error-payload",
+      "name": "Build Error Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, 380]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DATAAPI_BASE_URL }}/logs/server",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.DATAAPI_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 10000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "log-error-to-dataapi",
+      "name": "Log Error to DataAPI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1580, 380]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"status\": \"error\",\n  \"message\": \"{{ $('Parse Script Output').first().json.message || 'RAG codebase sync failed' }}\",\n  \"data\": {\n    \"trigger\": \"{{ $('Parse Script Output').first().json._trigger }}\",\n    \"exitCode\": {{ $('Parse Script Output').first().json.exitCode ?? 'null' }}\n  }\n}",
+        "options": {
+          "responseCode": 500
+        }
+      },
+      "id": "respond-error",
+      "name": "Respond Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1840, 380]
+    }
+  ],
+  "connections": {
+    "Schedule (Mon 2AM)": {
+      "main": [
+        [
+          {
+            "node": "Prepare Args",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook (Manual)": {
+      "main": [
+        [
+          {
+            "node": "Prepare Args",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Args": {
+      "main": [
+        [
+          {
+            "node": "Execute Script",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Script": {
+      "main": [
+        [
+          {
+            "node": "Parse Script Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Script Output": {
+      "main": [
+        [
+          {
+            "node": "IF Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Success": {
+      "main": [
+        [
+          {
+            "node": "Build Log Payload",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Error Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Log Payload": {
+      "main": [
+        [
+          {
+            "node": "Log to DataAPI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to DataAPI": {
+      "main": [
+        [
+          {
+            "node": "Respond Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Error Payload": {
+      "main": [
+        [
+          {
+            "node": "Log Error to DataAPI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Error to DataAPI": {
+      "main": [
+        [
+          {
+            "node": "Respond Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": [
+    {
+      "createdAt": "2026-03-10T00:00:00.000Z",
+      "updatedAt": "2026-03-10T00:00:00.000Z",
+      "id": "n2-rag-ingestion",
+      "name": "rag-ingestion"
+    }
+  ],
+  "pinData": {}
+}

@@ -1,5 +1,7 @@
 # Automation & SpecialX Service
 
+**Full Documentation:** [docs/architecture/SPECIALX.md](../../architecture/SPECIALX.md)
+
 **Agent:** SpecialXAgent
 **Status:** Active
 

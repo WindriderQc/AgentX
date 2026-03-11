@@ -468,8 +468,8 @@ await page.waitForTimeout(2000);
 - [E2E Tests README](./README.md) - General E2E testing guide
 - [Setup Guide](./SETUP.md) - Installation and configuration
 - [Playwright Config](../../playwright.config.js) - Test configuration
-- [Component Source](/public/js/components/PerformanceMetricsDashboard.js) - Component being tested
-- [Analytics API](/routes/analytics.js) - Backend API
+- [Component Source](../../public/js/components/PerformanceMetricsDashboard.js) - Component being tested
+- [Analytics API](../../routes/analytics.js) - Backend API
 
 ## Contributing
 

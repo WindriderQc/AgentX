@@ -141,7 +141,7 @@ Limits by file type:
 
 Backend logic (services, helpers, models):
 - 300–400 lines ideal
-- 600 lines max
+- 700 lines max
 - Split signal: multiple unrelated responsibilities
 
 Routes (API endpoint files):

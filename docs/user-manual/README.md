@@ -283,7 +283,7 @@ DATAAPI_API_KEY=change-me-long-random
 
 DataAPI must be configured with a matching API key and may require `x-api-key` on tool endpoints.
 
-DataAPI canonical docs index lives in the DataAPI repo at: [../DataAPI/docs/INDEX.md](../../DataAPI/docs/INDEX.md).
+DataAPI canonical docs index lives in the sibling DataAPI repo at: [../../../DataAPI/docs/INDEX.md](../../../DataAPI/docs/INDEX.md).
 
 ### 6.3 n8n
 There are two main UI surfaces:
@@ -305,8 +305,8 @@ AgentX includes analytics/metrics and can support continuous improvement loops.
 Use reports for “what happened” and keep them immutable once published.
 
 See:
-- Reports folder: [reports/](../reports/)
-- Latest validation report: see [reports/](../reports/)
+- Reports folder: [../../reports/](../../reports/)
+- Latest validation actions: [../../reports/comprehensive-validation-actions.md](../../reports/comprehensive-validation-actions.md)
 
 ---
 
@@ -393,4 +393,4 @@ curl http://localhost:11434/api/tags
 
 ### Docs entrypoints
 - AgentX docs index: [docs/INDEX.md](../INDEX.md)
-- DataAPI docs index: [../DataAPI/docs/INDEX.md](../../DataAPI/docs/INDEX.md)
+- DataAPI docs index: [../../../DataAPI/docs/INDEX.md](../../../DataAPI/docs/INDEX.md)

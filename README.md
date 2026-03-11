@@ -102,18 +102,19 @@ AgentX/
 ├── server.js                # Express entry point
 ├── src/
 │   ├── app.js              # Express app setup
-│   ├── services/ (46)      # Business logic (chatService, ragStore, modelRouter, benchmark, ...)
+│   ├── services/           # Business logic (chatService, ragStore, modelRouter, benchmark, ...)
 │   ├── helpers/            # Pure utilities (response parsing, template cleaning)
 │   └── middleware/         # Auth, workspace, performance tracking
-├── routes/ (42)            # API endpoints (thin HTTP layer)
-├── models/ (43)            # Mongoose schemas
+├── routes/                 # API endpoints (thin HTTP layer)
+├── models/                 # Mongoose schemas
 ├── config/                 # DB connection, categories, self-healing rules
-├── public/ (38 pages)      # Frontend (HTML/JS/CSS, Bootstrap, Chart.js)
+├── public/                 # Frontend (HTML/JS/CSS, Bootstrap, Chart.js)
 ├── scripts/                # Seeding, backups, migrations
 ├── tests/                  # Jest unit/integration, Playwright E2E, Artillery load
+├── n8n_workflows/          # Versioned n8n workflow exports
 ├── personas/               # Chat persona configurations
 ├── docs/                   # Documentation
-└── AgentC/                 # n8n workflow templates
+└── reports/                # Generated validation and analysis artifacts
 ```
 
 ---

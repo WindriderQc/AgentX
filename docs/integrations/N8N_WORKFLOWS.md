@@ -2,7 +2,7 @@
 
 > **Navigation:** [CLAUDE.md](../../CLAUDE.md) → [Documentation Index](../INDEX.md) → n8n Workflows
 
-> **Context:** Automated workflows for document ingestion and prompt optimization. For detailed n8n documentation, see reports in `/docs/reports/`.
+> **Context:** Automated workflows for document ingestion and prompt optimization. For the canonical workflow specification, see [SBQC Stack n8n Workflows](../architecture/SBQC-Stack-Final/04-N8N-WORKFLOWS.md).
 
 ## Overview
 
@@ -28,7 +28,7 @@ Both cron and n8n should call this same command to avoid drift.
 
 ## Document Ingestion Workflows
 
-**Documentation:** `/docs/reports/n8n-ingestion.md`
+**Documentation:** [SBQC Stack n8n Workflows](../architecture/SBQC-Stack-Final/04-N8N-WORKFLOWS.md)
 
 ### Workflow 1: Scheduled Docs Folder → RAG
 
@@ -51,7 +51,7 @@ Both cron and n8n should call this same command to avoid drift.
 
 ### N2.3: NAS RAG Document Ingestion
 
-- **File:** `AgentC/N2.3.json`
+- **Repo status:** The historical N2.3 workflow export is not currently tracked in this repo. Current checked-in workflow exports live under [`n8n_workflows/`](../../n8n_workflows/).
 - **Trigger:** Weekly (Sun 3AM) + Manual webhook (`POST /webhook/sbqc-n2-3-rag-ingest`)
 - **Scope:** `/mnt/datalake/RAG` only — NAS-hosted documents
 - **Limitation:** Only files modified in last 7 days, max 100 per pattern
@@ -59,7 +59,7 @@ Both cron and n8n should call this same command to avoid drift.
 
 ### N2.4: Codebase Markdown RAG Update
 
-- **File:** `AgentC/N2.4-codebase-md-rag-update.json`
+- **Repo status:** Workflow export is tracked at [`n8n_workflows/N2.4-Codebase-Markdown-RAG-Update.json`](../../n8n_workflows/N2.4-Codebase-Markdown-RAG-Update.json). Import via n8n UI → Workflows → Import from file.
 - **Trigger:** Weekly (Mon 2AM) + Manual webhook (`POST /webhook/sbqc-n2-4-codebase-rag`)
 - **Scope:** Entire AgentX codebase — all `.md` files (234+ files)
 - **No limits:** No date filter, no file count cap
@@ -125,7 +125,7 @@ UI/monitoring is still possible in AgentX:
 
 ## Prompt Improvement Workflows (V4)
 
-**Documentation:** `/docs/reports/n8n-prompt-improvement-v4.md`
+**Documentation:** [SBQC Stack n8n Workflows](../architecture/SBQC-Stack-Final/04-N8N-WORKFLOWS.md)
 
 ### Four Automated Workflows
 
@@ -188,8 +188,8 @@ curl -H "x-api-key: ${AGENTX_API_KEY}" http://localhost:3080/api/rag/ingest
 
 ## Related Documentation
 
-- [n8n Ingestion Report](../reports/n8n-ingestion.md) - Detailed workflow documentation
-- [n8n Prompt Improvement](../reports/n8n-prompt-improvement-v4.md) - V4 optimization loops
+- [SBQC Stack n8n Workflows](../architecture/SBQC-Stack-Final/04-N8N-WORKFLOWS.md) - Canonical workflow specification
+- [ROADMAP.md](../../ROADMAP.md) - Current project status and track summary
 - [RAG System](../architecture/RAG_SYSTEM.md) - Document ingestion architecture
 - [Authentication](../operations/AUTHENTICATION.md) - API key setup
 

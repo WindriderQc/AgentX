@@ -934,6 +934,35 @@ Technique: `courthouse-analytics.js` is `type="module"` — ES `import { makeVal
 
 ---
 
+## Benchmark Judging — Phase 2 ✅ COMPLETE (2026-03-10)
+
+**Purpose:** Enhanced judge coordination, calibration, roster management, and multi-judge mismatch detection.
+
+**Components Shipped (last 5 commits):**
+
+1. **Judge Calibration**
+   - Gold-set config: `config/benchmark-judge-calibration-goldset.json`
+   - Service: `src/services/benchmark/judgeCalibration.js` (~91 lines) — gold-set runner + drift detection
+   - CI workflow added for automated calibration checks
+
+2. **Courthouse Roster Management**
+   - Frontend: `public/js/courthouse-roster.js` (349 lines) — judge roster UI
+   - Route: `routes/benchmark/judgeDefaults.js` (320 lines) — judge defaults CRUD
+
+3. **Judge Tier Resolution**
+   - `src/services/scoring/judgeTierResolver.js` updated — resolves judge tier from model metadata
+
+4. **Multi-Judge + Mismatch Detection**
+   - Frontend: `public/js/benchmark/judge-mismatch.js` (286 lines) — mismatch visualization
+   - Service: `src/services/benchmark/multiJudge.js` updated — parallel judge execution + disagreement flagging
+
+5. **Compare Insights Page**
+   - `public/compare-insights.html` — side-by-side benchmark comparison with derived insights
+
+**Status:** Production-ready — all 5 items shipped in last 5 commits
+
+---
+
 ## Scope Notes
 
 This roadmap covers:

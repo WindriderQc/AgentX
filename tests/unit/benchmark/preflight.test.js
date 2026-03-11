@@ -89,7 +89,7 @@ describe('benchmark preflight', () => {
         expect(result.ok).toBe(false);
         expect(result.required_tier).toBe('advanced');
         expect(result.resolved_tier).toBe('standard');
-        expect(result.blockers).toContain("Judge tier 'standard' is below required tier 'advanced' for selected prompts");
+        expect(result.blockers[0]).toMatch(/Judge 'judge-model.*' is tagged 'standard' tier/);
     });
 
     it('blocks judge configurations with poor reliability metadata', async () => {
@@ -148,7 +148,7 @@ describe('benchmark preflight', () => {
         expect(result.ready).toBe(false);
         expect(result.issues).toEqual(expect.arrayContaining([
             '1 host(s) unreachable or missing models',
-            "Judge tier 'standard' is below required tier 'advanced' for selected prompts",
+            expect.stringMatching(/Judge 'judge-model.*' is tagged 'standard' tier/),
             '1 orphaned batch(es) detected'
         ]));
         expect(benchmarkFetch).toHaveBeenCalledTimes(1);

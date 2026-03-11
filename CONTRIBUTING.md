@@ -110,6 +110,11 @@ npm run test:load            # Load tests
 - Changing architecture patterns
 - New npm scripts or environment variables
 
+**Documentation maintenance checks:**
+- Update [docs/INDEX.md](docs/INDEX.md) when you add or remove canonical entry-point docs.
+- Keep [docs/guides/README.md](docs/guides/README.md) and [docs/testing/README.md](docs/testing/README.md) in sync with new troubleshooting or testing docs.
+- Verify relative markdown links in any documentation files you touch.
+
 **API Reference:** Update `docs/architecture/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md` for new/changed endpoints.
 
 **Changelog:** Use conventional commit messages — git history serves as the changelog.

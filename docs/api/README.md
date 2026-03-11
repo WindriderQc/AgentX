@@ -2,7 +2,8 @@
 
 Endpoints, contracts, and examples for integrating with AgentX.
 
-- [API Reference](./reference.md): Current endpoints with request/response examples.
+- [API Reference](./reference.md): Compatibility landing page that points to the maintained endpoint references.
+- [Canonical AgentX Endpoint Reference](../architecture/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md): Current endpoint documentation.
 - Contract snapshots: [V3](./contracts/v3-snapshot.md) and [V4](./contracts/v4-contract.md).
 
 ## Specialized API Guides
