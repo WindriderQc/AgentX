@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
-const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
+const fetch = require('node-fetch');
 const logger = require('../config/logger');
 const { getEmbeddingsService } = require('../src/services/embeddings');
 const { getRagCodebaseSyncService } = require('../src/services/ragCodebaseSyncService');
@@ -15,7 +15,7 @@ try {
 // Environment variables
 const OLLAMA_HOST = process.env.OLLAMA_HOST;
 const OLLAMA_HOST_2 = process.env.OLLAMA_HOST_2;
-const DATAAPI_BASE_URL = process.env.DATAAPI_BASE_URL || 'http://192.168.2.33:3003';
+const DATAAPI_BASE_URL = process.env.DATAAPI_BASE_URL || 'http://127.0.0.1:3003';
 const DATAAPI_API_KEY = process.env.DATAAPI_API_KEY;
 
 function formatUptime(seconds) {

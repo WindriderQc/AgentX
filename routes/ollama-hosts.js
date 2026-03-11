@@ -5,7 +5,7 @@
 
 const express = require('express');
 const router = express.Router();
-const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
+const fetch = require('node-fetch');
 const logger = require('../config/logger');
 const { getConfiguredHosts } = require('../src/helpers/ollamaHostConfig');
 

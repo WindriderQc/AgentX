@@ -406,25 +406,7 @@ async function loadScans() {
     if (!container) return;
 
     try {
-        // Fetch scans from DataAPI via AgentX proxy or direct if configured
-        // Assuming AgentX has a proxy route or we use the direct DataAPI URL if accessible
-        // For now, let's assume AgentX proxies /api/v1/storage/scans -> DataAPI
-        // If not, we might need to hit DataAPI directly (http://192.168.2.33:3003)
-        // But CORS might be an issue. Let's try the proxy route first.
-        
-        // NOTE: AgentX needs a route to proxy this. If it doesn't exist, we might need to add it.
-        // Checking routes/api.js... it seems we don't have a direct proxy for storage scans yet.
-        // However, we can try to fetch from DataAPI directly if the browser allows it (CORS).
-        // Or better, we add a proxy endpoint in AgentX.
-        
-        // Let's try fetching from DataAPI directly for now, assuming CORS is permissive or same-origin if proxied.
-        // Actually, looking at the user's request, they want buttons.
-        // Let's assume we can hit the DataAPI.
-        
-        // Use DataAPI host from environment or default to relative URL (assumes proxy)
-        const dataApiHost = window.DATA_API_HOST || '/api/proxy/data-api';
-        const response = await fetch(`${dataApiHost}/v1/storage/scans?limit=5`);
-        const result = await response.json();
+        const result = await API.get('/api/dashboard/scans?limit=5');
         
         if (result.status !== 'success' || !result.data.scans || result.data.scans.length === 0) {
             container.innerHTML = '<div class="scan-item"><span style="color: var(--muted);">No recent scans</span></div>';
@@ -460,8 +442,7 @@ async function loadScans() {
 window.stopScan = async (scanId) => {
     if (!confirm('Are you sure you want to stop this scan?')) return;
     try {
-        const res = await fetch(`http://192.168.2.33:3003/api/v1/storage/stop/${scanId}`, { method: 'POST' });
-        const data = await res.json();
+        const data = await API.post(`/api/dashboard/scans/${scanId}/stop`);
         if (data.status === 'success') {
             alert('Scan stop requested');
             loadScans();
@@ -475,8 +456,7 @@ window.stopScan = async (scanId) => {
 
 window.viewScanReport = async (scanId) => {
     try {
-        const res = await fetch(`http://192.168.2.33:3003/api/v1/storage/status/${scanId}`);
-        const data = await res.json();
+        const data = await API.get(`/api/dashboard/scans/${scanId}/report`);
         
         const modal = document.getElementById('scanReportModal');
         const content = document.getElementById('scanReportContent');
@@ -575,15 +555,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     ]
                 };
 
-                // Use the generic webhook trigger endpoint if available, or construct URL
-                // Since we don't have a direct backend proxy for arbitrary webhooks, we'll try to hit n8n directly
-                // OR use the existing handleWebhookTrigger logic if we can reuse it.
-                // Let's reuse the logic by calling the same endpoint.
-                
-                // We need to know the n8n URL. In handleWebhookTrigger it uses /integrations/n8n/webhook/:id
-                // Let's assume AgentX has this route.
-                
-                const res = await API.post('/integrations/n8n/webhook/sbqc-n2-3-rag-ingest', payload);
+                await API.post('/api/n8n/trigger/sbqc-n2-3-rag-ingest', payload);
                 
                 resultEl.style.display = 'block';
                 resultEl.style.color = '#4ade80';

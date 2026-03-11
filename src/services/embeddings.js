@@ -12,7 +12,7 @@
  * Contract: V3_CONTRACT_SNAPSHOT.md § 4
  */
 
-const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
+const fetch = require('node-fetch');
 const { getCache } = require('./embeddingCache');
 const logger = require('../../config/logger');
 const { recordInference } = require('./modelRouter');

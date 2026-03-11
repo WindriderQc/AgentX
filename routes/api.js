@@ -8,7 +8,7 @@ const { optionalAuth } = require('../src/middleware/auth');
 const { attachWorkspace } = require('../src/middleware/workspace');
 const { getUserId } = require('../src/helpers/userHelpers');
 const logger = require('../config/logger');
-const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
+const fetch = require('node-fetch');
 
 // Import Service Logic
 const { getRoutingStatus, classifyQuery, HOSTS, TASK_MODELS, getModelHealth, getAllModelsHealth } = require('../src/services/modelRouter');

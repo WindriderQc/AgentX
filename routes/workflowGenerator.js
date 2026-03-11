@@ -14,20 +14,45 @@ const deployer = require('../src/utils/workflowDeployer');
 const { handleChatRequest } = require('../src/services/chatService');
 
 /**
- * Loads existing workflows from AgentC directory for RAG context
+ * Loads existing workflows from the local workflow examples directory for RAG context
  * @returns {Promise<Array>} Array of workflow objects with metadata
  */
+const WORKFLOW_CONTEXT_DIRS = [
+  path.join(__dirname, '../n8n_workflows'),
+  path.join(__dirname, '../AgentC')
+];
+
+async function resolveWorkflowContextDir() {
+  for (const candidate of WORKFLOW_CONTEXT_DIRS) {
+    try {
+      await fs.access(candidate);
+      return candidate;
+    } catch (_err) {
+      // Try the next candidate.
+    }
+  }
+
+  logger.warn('No workflow context directory found', {
+    candidates: WORKFLOW_CONTEXT_DIRS
+  });
+  return null;
+}
+
 async function loadWorkflowContext() {
-  const agentCDir = path.join(__dirname, '../AgentC');
+  const workflowDir = await resolveWorkflowContextDir();
   const workflowFiles = [];
 
+  if (!workflowDir) {
+    return workflowFiles;
+  }
+
   try {
-    const files = await fs.readdir(agentCDir);
+    const files = await fs.readdir(workflowDir);
     
     for (const file of files) {
       if (file.endsWith('.json') && file.startsWith('N')) {
         try {
-          const filePath = path.join(agentCDir, file);
+          const filePath = path.join(workflowDir, file);
           const content = await fs.readFile(filePath, 'utf8');
           const workflow = JSON.parse(content);
           
@@ -51,11 +76,17 @@ async function loadWorkflowContext() {
       }
     }
 
-    logger.info('Loaded workflow context for RAG', { count: workflowFiles.length });
+    logger.info('Loaded workflow context for RAG', {
+      count: workflowFiles.length,
+      directory: workflowDir
+    });
     return workflowFiles;
 
   } catch (err) {
-    logger.error('Failed to load workflow context', { error: err.message });
+    logger.error('Failed to load workflow context', {
+      directory: workflowDir,
+      error: err.message
+    });
     return [];
   }
 }
@@ -65,7 +96,7 @@ async function loadWorkflowContext() {
  * @param {string} description - Natural language description of desired workflow
  * @param {Array} templates - Optional array of template workflows
  * @param {Object} context - Additional context (existing workflows, constraints, etc.)
- * @param {Array} workflowExamples - Loaded workflow examples from AgentC
+ * @param {Array} workflowExamples - Loaded workflow examples from the local workflow directory
  * @returns {string} Formatted prompt for the AI
  */
 function buildWorkflowPrompt(description, templates, context, workflowExamples) {
@@ -488,7 +519,7 @@ router.post('/deploy', async (req, res) => {
 
 /**
  * GET /api/workflow/examples
- * Returns example workflows from AgentC directory
+ * Returns example workflows from the local workflow directory
  */
 router.get('/examples', async (req, res) => {
   try {

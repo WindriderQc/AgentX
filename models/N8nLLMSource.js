@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const fetch = require('node-fetch');
 
 /**
  * N8nLLMSource Model
@@ -169,8 +170,6 @@ N8nLLMSourceSchema.statics.getUserSources = async function(userId, activeOnly = 
 
 // Instance method: Test webhook connection
 N8nLLMSourceSchema.methods.testConnection = async function(testPrompt = 'Test') {
-  const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
-
   try {
     const startTime = Date.now();
 
