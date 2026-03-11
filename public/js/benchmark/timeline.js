@@ -899,14 +899,24 @@ export async function loadRecentTestsTimeline() {
                 let activeText = 'Running...';
                 let bubbleText = 'Processing Test...';
 
+                const perModelCounters = activeBatch.per_model_counters || {};
+                const modelCounters = perModelCounters[model] || null;
+                const perModelPlanned = activeBatch.plan && activeBatch.plan.tests_per_model
+                    ? activeBatch.plan.tests_per_model
+                    : (activeBatch.total_tests && orderedModels.length > 0
+                        ? Math.ceil(activeBatch.total_tests / orderedModels.length)
+                        : 0);
+                const modelExecDone = modelCounters ? (modelCounters.exec_done || 0) : modelResults.length;
+
                 if (currentTest) {
                     const promptLabel = currentTest.prompt_name || currentTest.prompt_id || 'Prompt';
+                    const countSuffix = perModelPlanned > 0 ? ` (${modelExecDone + 1}/${perModelPlanned})` : '';
                     if (currentTest.stage === 'judging' || (activeBatch.current_phase === 'judging')) {
                         activeStage = 'judging';
                         activeText = 'Judging';
-                        bubbleText = `Judging: ${escapeHtml(promptLabel)}...`;
+                        bubbleText = `Judging: ${escapeHtml(promptLabel)}${countSuffix}`;
                     } else {
-                        bubbleText = `Running: ${escapeHtml(promptLabel)}...`;
+                        bubbleText = `Running: ${escapeHtml(promptLabel)}${countSuffix}`;
                     }
                 }
 
@@ -930,14 +940,42 @@ export async function loadRecentTestsTimeline() {
                 rowBadges.push('<span class="prep-lane-badge">Warmup</span>');
             }
             if (activeModel === model && activeCurrentTest && activeCurrentTest.stage && activeCurrentTest.stage !== 'idle') {
-                rowBadges.push(`<span class="prep-lane-badge">${escapeHtml(activeCurrentTest.stage)}</span>`);
+                rowBadges.push(`<span class="prep-lane-badge executing-badge">${escapeHtml(activeCurrentTest.stage)}</span>`);
             }
             const rowBadgeHtml = rowBadges.length ? ` ${rowBadges.join(' ')}` : '';
+
+            // Per-model mini stats for the label
+            let miniStatsHtml = '';
+            if (modelResults.length > 0) {
+                const successCount = modelResults.filter(r => r.success).length;
+                const successRate = Math.round((successCount / modelResults.length) * 100);
+                const qualities = modelResults.filter(r => r.quality_score != null).map(r => r.quality_score);
+                const avgQ = qualities.length > 0
+                    ? (qualities.reduce((a, b) => a + b, 0) / qualities.length).toFixed(1)
+                    : null;
+                const tpsVals = modelResults.map(r => parseFloat(r.tokens_per_sec)).filter(v => !isNaN(v) && v > 0);
+                const avgTps = tpsVals.length > 0
+                    ? (tpsVals.reduce((a, b) => a + b, 0) / tpsVals.length).toFixed(0)
+                    : null;
+
+                const srColor = successRate >= 95 ? '#2ecc71' : successRate >= 80 ? '#f39c12' : '#e74c3c';
+                const qColor = avgQ != null ? (avgQ >= 8 ? '#2ecc71' : avgQ >= 6 ? '#f39c12' : '#e74c3c') : 'var(--muted)';
+
+                miniStatsHtml = `
+                    <div class="model-mini-stats">
+                        <span style="color:${srColor};" title="Success rate">✓${successRate}%</span>
+                        ${avgQ != null ? `<span style="color:${qColor};" title="Avg quality">Q${avgQ}</span>` : ''}
+                        ${avgTps != null ? `<span style="color:var(--muted);" title="Avg tokens/sec">${avgTps}t/s</span>` : ''}
+                    </div>`;
+            }
 
             rowsHtml += `
             <div class="timeline-model-row">
                 <div class="timeline-model-label">
-                    ${safeModelLabel}${rowBadgeHtml}
+                    <div>
+                        <div>${safeModelLabel}${rowBadgeHtml}</div>
+                        ${miniStatsHtml}
+                    </div>
                 </div>
                 <div class="timeline-track">
                     ${segmentsHtml}
@@ -958,7 +996,7 @@ export async function loadRecentTestsTimeline() {
         renderStatsSummary(sorted, globalStats);
 
         // Populate Collapsible Execution Timeline (event list)
-        renderEventList(batchTimeline);
+        renderEventList(batchTimeline, activeBatch);
 
         // Generate Performance Heatmap
         renderPerformanceHeatmap(resultsByModel);

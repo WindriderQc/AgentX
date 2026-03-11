@@ -98,6 +98,8 @@ export function resetBatchUI() {
     }
     state.setCurrentBatchId(null);
     localStorage.removeItem('currentBatchId');
+    batchLocalStartTime = null;
+    stopCurrentTestDurationTicker();
 
     const batchInfo = document.getElementById('batchInfo');
     if (batchInfo) batchInfo.innerHTML = '';
@@ -233,6 +235,7 @@ export async function runBatch() {
             state.setCurrentBatchId(json.data.batch_id);
             localStorage.setItem('currentBatchId', json.data.batch_id);
             btn.textContent = 'Running (with quality)...';
+            batchLocalStartTime = Date.now();
 
             if (batchInfo) {
                 batchInfo.innerHTML = renderBatchPlan(json.data.plan, host, true, executionMode);
@@ -349,6 +352,41 @@ export async function stopBatch() {
 let pollConsecutiveErrors = 0;
 const POLL_MAX_CONSECUTIVE_ERRORS = 10;
 
+// Track batch start time for ETA calculations
+let batchLocalStartTime = null;
+
+// Live duration ticker for the current test indicator
+let currentTestDurationInterval = null;
+let currentTestStartedAt = null;
+
+function startCurrentTestDurationTicker(startedAtStr) {
+    const ts = startedAtStr ? new Date(startedAtStr).getTime() : null;
+    if (!ts || isNaN(ts)) return;
+    currentTestStartedAt = ts;
+    if (currentTestDurationInterval) return; // Already running
+    currentTestDurationInterval = setInterval(() => {
+        const el = document.getElementById('currentTestDuration');
+        if (!el || !currentTestStartedAt) return;
+        const duration = (Date.now() - currentTestStartedAt) / 1000;
+        el.textContent = duration < 10 ? `${duration.toFixed(1)}s` : `${Math.floor(duration)}s`;
+    }, 100);
+}
+
+function stopCurrentTestDurationTicker() {
+    if (currentTestDurationInterval) {
+        clearInterval(currentTestDurationInterval);
+        currentTestDurationInterval = null;
+    }
+    currentTestStartedAt = null;
+}
+
+function formatEta(remainingMs) {
+    if (!Number.isFinite(remainingMs) || remainingMs <= 0) return null;
+    if (remainingMs > 3600000) return `~${Math.ceil(remainingMs / 3600000)}h left`;
+    if (remainingMs > 60000) return `~${Math.ceil(remainingMs / 60000)}m left`;
+    return `~${Math.ceil(remainingMs / 1000)}s left`;
+}
+
 /**
  * Poll batch progress
  */
@@ -446,7 +484,21 @@ function updateProgressBars(batch) {
     if (execFill && execTextEl) {
         execFill.style.width = `${clampedProgress}%`;
         execFill.style.borderRadius = clampedProgress >= 99 ? '16px' : '16px 0 0 16px';
-        execTextEl.textContent = `Exec: ${clampedProgress}% (${batch.completed}/${batch.total_tests})`;
+
+        const completed = Number(batch.completed) || 0;
+        const total = Number(batch.total_tests) || 0;
+
+        // ETA calculation
+        const startedAt = batch.started_at ? new Date(batch.started_at).getTime() : batchLocalStartTime;
+        let etaSuffix = '';
+        if (startedAt && completed > 2 && total > completed) {
+            const elapsedMs = Date.now() - startedAt;
+            const remainingMs = (elapsedMs / completed) * (total - completed);
+            const etaStr = formatEta(remainingMs);
+            if (etaStr) etaSuffix = ` · ${etaStr}`;
+        }
+
+        execTextEl.textContent = `Exec: ${clampedProgress}% (${completed}/${total})${etaSuffix}`;
     }
 
     const judgeTotal = Number(batch.judge_total) || 0;
@@ -462,7 +514,19 @@ function updateProgressBars(batch) {
             judgeBar.classList.add('active');
             judgeFill.style.width = `${judgeProgressPlanned}%`;
             judgeFill.style.borderRadius = judgeProgressPlanned >= 99 ? '16px' : '16px 0 0 16px';
-            judgeTextEl.textContent = `Judge: ${judgeProgressPlanned}% (${judgeCompleted}/${judgeTotal})`;
+
+            // ETA for judging
+            const startedAt = batch.started_at ? new Date(batch.started_at).getTime() : batchLocalStartTime;
+            let judgeEtaSuffix = '';
+            if (startedAt && judgeCompleted > 2 && judgeTotal > judgeCompleted) {
+                const elapsedMs = Date.now() - startedAt;
+                const judgeRate = judgeCompleted / elapsedMs;
+                const remainingMs = judgeRate > 0 ? (judgeTotal - judgeCompleted) / judgeRate : 0;
+                const etaStr = formatEta(remainingMs);
+                if (etaStr) judgeEtaSuffix = ` · ${etaStr}`;
+            }
+
+            judgeTextEl.textContent = `Judge: ${judgeProgressPlanned}% (${judgeCompleted}/${judgeTotal})${judgeEtaSuffix}`;
         } else {
             judgeBar.classList.remove('active');
         }
@@ -559,8 +623,7 @@ function updateCurrentTestIndicator(batch) {
         document.getElementById('currentTestModel').textContent = currentTest.model || '';
         document.getElementById('currentTestPrompt').textContent = `Loading on ${currentTest.prompt_name || 'judge host'}…`;
         if (currentTest.started_at) {
-            const duration = (Date.now() - new Date(currentTest.started_at).getTime()) / 1000;
-            document.getElementById('currentTestDuration').textContent = duration < 10 ? `${duration.toFixed(1)}s` : `${Math.floor(duration)}s`;
+            startCurrentTestDurationTicker(currentTest.started_at);
         }
     } else if (currentTest && currentTest.model && currentTest.stage !== 'idle' && batch.status === 'running') {
         currentTestIndicator.style.display = 'block';
@@ -574,9 +637,12 @@ function updateCurrentTestIndicator(batch) {
         document.getElementById('currentTestPrompt').textContent = currentTest.prompt_name || currentTest.prompt_id || 'Unknown';
 
         if (currentTest.started_at) {
-            const duration = (Date.now() - new Date(currentTest.started_at).getTime()) / 1000;
-            const durationText = duration < 10 ? `${duration.toFixed(1)}s` : `${Math.floor(duration)}s`;
-            document.getElementById('currentTestDuration').textContent = durationText;
+            // If the started_at changed (new test), reset the ticker
+            const newTs = new Date(currentTest.started_at).getTime();
+            if (newTs !== currentTestStartedAt) {
+                stopCurrentTestDurationTicker();
+                startCurrentTestDurationTicker(currentTest.started_at);
+            }
         }
     } else if (batch.status === 'judging') {
         currentTestIndicator.style.display = 'block';
@@ -584,8 +650,10 @@ function updateCurrentTestIndicator(batch) {
         document.getElementById('currentTestModel').textContent = '';
         document.getElementById('currentTestPrompt').textContent = `${batch.judge_completed}/${batch.judge_total} scored`;
         document.getElementById('currentTestDuration').textContent = '';
+        stopCurrentTestDurationTicker();
     } else {
         currentTestIndicator.style.display = 'none';
+        stopCurrentTestDurationTicker();
     }
 }
 

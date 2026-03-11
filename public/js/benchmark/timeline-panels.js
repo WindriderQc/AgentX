@@ -63,8 +63,9 @@ export function renderStatsSummary(sorted, globalStats) {
 /**
  * Render the collapsible execution timeline event list
  * @param {Array} batchTimeline - Array of batch timeline events
+ * @param {Object|null} activeBatch - Active batch data for ETA calculation
  */
-export function renderEventList(batchTimeline) {
+export function renderEventList(batchTimeline, activeBatch) {
     const timelineContainerEl = document.getElementById('timelineContainer');
     const timelineSummaryEl = document.getElementById('timelineSummary');
     const timelineEventsEl = document.getElementById('timelineEvents');
@@ -97,13 +98,31 @@ export function renderEventList(batchTimeline) {
     const judgeCompletes = eventCounts['judge_complete'] || 0;
     const errors = eventCounts['error'] || 0;
 
+    // ETA estimation from activeBatch
+    let etaHtml = '';
+    if (activeBatch && activeBatch.status === 'running') {
+        const completed = Number(activeBatch.completed) || 0;
+        const total = Number(activeBatch.total_tests) || 0;
+        const startedAt = activeBatch.started_at ? new Date(activeBatch.started_at).getTime() : null;
+        if (startedAt && completed > 2 && total > completed) {
+            const elapsedMs = Date.now() - startedAt;
+            const remainingMs = (elapsedMs / completed) * (total - completed);
+            let etaStr = '';
+            if (remainingMs > 3600000) etaStr = `~${Math.ceil(remainingMs / 3600000)}h left`;
+            else if (remainingMs > 60000) etaStr = `~${Math.ceil(remainingMs / 60000)}m left`;
+            else etaStr = `~${Math.ceil(remainingMs / 1000)}s left`;
+            etaHtml = `<span style="margin-left:auto;color:var(--accent);font-size:0.9em;font-weight:600;"><i class="fas fa-hourglass-half" style="margin-right:4px;opacity:0.7;"></i>${etaStr}</span>`;
+        }
+    }
+
     timelineSummaryEl.innerHTML = `
         <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: center;">
             <div><strong style="color: var(--accent);">${batchTimeline.length}</strong> <span style="color: var(--muted);">events</span></div>
             <div><strong style="color: #2ecc71;">${testCompletes}</strong> <span style="color: var(--muted);">tests</span></div>
             <div><strong style="color: #9b59b6;">${judgeCompletes}</strong> <span style="color: var(--muted);">judged</span></div>
             ${errors > 0 ? `<div><strong style="color: #e74c3c;">${errors}</strong> <span style="color: var(--muted);">errors</span></div>` : ''}
-            <div style="margin-left: auto;"><i class="fas fa-clock" style="color: var(--muted); margin-right: 4px;"></i><span style="color: var(--muted);">Elapsed:</span> <strong>${formatTime(elapsedTime)}</strong></div>
+            <div><i class="fas fa-clock" style="color: var(--muted); margin-right: 4px;"></i><span style="color: var(--muted);">Elapsed:</span> <strong>${formatTime(elapsedTime)}</strong></div>
+            ${etaHtml}
         </div>
     `;
 
