@@ -30,7 +30,11 @@ const AutomationTaskSchema = new mongoose.Schema({
       'maintenance_snapshot',
       'maintenance_digest',
       'telemetry_aggregate',
-      'schedule_reconcile'
+      'schedule_reconcile',
+      'docs_drift_check',
+      'patch_proposal',
+      'patch_apply',
+      'proposal_expiry_sweep'
     ],
     required: true,
     index: true

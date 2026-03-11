@@ -17,6 +17,15 @@
     runsEmpty: document.getElementById('runsEmpty'),
     runsMeta: document.getElementById('runsMeta'),
     runDetail: document.getElementById('runDetail'),
+    proposalsTableBody: document.getElementById('proposalsTableBody'),
+    proposalsEmpty: document.getElementById('proposalsEmpty'),
+    proposalsMeta: document.getElementById('proposalsMeta'),
+    proposalMeta: document.getElementById('proposalMeta'),
+    proposalSummary: document.getElementById('proposalSummary'),
+    proposalOriginal: document.getElementById('proposalOriginal'),
+    proposalProposed: document.getElementById('proposalProposed'),
+    proposalApproveBtn: document.getElementById('proposalApproveBtn'),
+    proposalRejectBtn: document.getElementById('proposalRejectBtn'),
     hostSelect: document.getElementById('hostSelect'),
     setHostBtn: document.getElementById('setHostBtn'),
     activeHostText: document.getElementById('activeHostText'),
@@ -32,6 +41,8 @@
   const state = {
     tasks: [],
     runs: [],
+    proposals: [],
+    selectedProposalId: null,
     refreshInFlight: false,
     pollTimer: null,
     pollMs: REFRESH_MS,
@@ -211,6 +222,12 @@
     return detailRes.data || null;
   }
 
+  async function loadProposalDetail(proposalId) {
+    if (!proposalId) return null;
+    const detailRes = await api(`/api/specialx/proposals/${encodeURIComponent(proposalId)}`);
+    return detailRes.data || null;
+  }
+
   function renderRuns(runs) {
     state.runs = runs;
     els.runsTableBody.innerHTML = '';
@@ -249,15 +266,95 @@
     });
   }
 
+  function renderProposalDetail(proposal) {
+    if (!proposal) {
+      els.proposalMeta.textContent = 'select a proposal';
+      els.proposalSummary.textContent = 'No proposal selected.';
+      els.proposalOriginal.textContent = '-';
+      els.proposalProposed.textContent = '-';
+      els.proposalApproveBtn.hidden = true;
+      els.proposalRejectBtn.hidden = true;
+      return;
+    }
+
+    const summaryLines = [
+      `id: ${proposal._id}`,
+      `status: ${proposal.status}`,
+      `target: ${proposal.targetFile}`,
+      `blastRadius: ${proposal.blastRadius}`,
+      `expiresAt: ${formatDate(proposal.expiresAt)}`,
+      `diffSummary: ${proposal.diffSummary || '-'}`,
+      `approvedBy: ${proposal.approvedBy || '-'}`,
+      `approvedAt: ${formatDate(proposal.approvedAt)}`,
+      `appliedAt: ${formatDate(proposal.appliedAt)}`
+    ];
+
+    els.proposalMeta.textContent = proposal.targetFile || 'proposal';
+    els.proposalSummary.textContent = summaryLines.join('\n');
+    els.proposalOriginal.textContent = proposal.originalContent || '';
+    els.proposalProposed.textContent = proposal.proposedContent || '';
+    const actionable = proposal.status === 'pending';
+    els.proposalApproveBtn.hidden = !actionable;
+    els.proposalRejectBtn.hidden = !actionable;
+  }
+
+  function renderProposals(proposals) {
+    state.proposals = proposals;
+    els.proposalsTableBody.innerHTML = '';
+    els.proposalsMeta.textContent = `${proposals.length} loaded`;
+
+    if (!proposals.length) {
+      els.proposalsEmpty.hidden = false;
+      if (!state.selectedProposalId) {
+        renderProposalDetail(null);
+      }
+      return;
+    }
+    els.proposalsEmpty.hidden = true;
+
+    const rows = proposals.map((proposal, index) => `
+      <tr data-proposal-index="${index}">
+        <td>${statusChip(proposal.status)}</td>
+        <td>${proposal.targetFile || '-'}</td>
+        <td>${(proposal.diffSummary || '-').slice(0, 110)}</td>
+        <td class="mono">${formatDate(proposal.expiresAt)}</td>
+      </tr>
+    `).join('');
+
+    els.proposalsTableBody.innerHTML = rows;
+
+    els.proposalsTableBody.querySelectorAll('tr[data-proposal-index]').forEach((row) => {
+      row.addEventListener('click', async () => {
+        const index = Number(row.getAttribute('data-proposal-index'));
+        const proposal = state.proposals[index];
+        if (!proposal) return;
+        state.selectedProposalId = proposal._id;
+        els.proposalSummary.textContent = 'Loading proposal detail...';
+        try {
+          const fullProposal = await loadProposalDetail(proposal._id);
+          renderProposalDetail(fullProposal || proposal);
+        } catch (error) {
+          notify(error.message, 'error');
+          renderProposalDetail(proposal);
+        }
+      });
+    });
+  }
+
   async function refreshDashboard() {
-    const dashboardRes = await api('/api/specialx/dashboard?limit=15');
+    const [dashboardRes, proposalRes] = await Promise.all([
+      api('/api/specialx/dashboard?limit=15'),
+      api('/api/specialx/proposals?limit=12')
+    ]);
     const payload = dashboardRes.data || {};
+    const proposalPayload = proposalRes.data || {};
 
     renderRunner(payload);
     renderRouting(payload.routing || {});
     renderMetrics(payload);
     renderTasks(payload.tasks?.tasks || []);
     renderRuns(payload.runs?.runs || []);
+    renderProposals(proposalPayload.proposals || []);
   }
 
   function scheduleRefresh(delayMs = state.pollMs) {
@@ -346,6 +443,29 @@
     await refreshDashboard();
   }
 
+  async function actOnProposal(action) {
+    if (!state.selectedProposalId) {
+      notify('Select a patch proposal first.', 'error');
+      return;
+    }
+
+    await api(`/api/specialx/proposals/${encodeURIComponent(state.selectedProposalId)}/${action}`, {
+      method: 'POST',
+      body: JSON.stringify({ source: 'console' })
+    });
+
+    notify(`Proposal ${action === 'approve' ? 'approved' : 'rejected'}`, 'info');
+    await refreshDashboard();
+    const refreshed = state.proposals.find((proposal) => proposal._id === state.selectedProposalId);
+    if (refreshed) {
+      const detail = await loadProposalDetail(refreshed._id).catch(() => refreshed);
+      renderProposalDetail(detail);
+    } else {
+      state.selectedProposalId = null;
+      renderProposalDetail(null);
+    }
+  }
+
   function wireEvents() {
     els.enqueueTaskBtn.addEventListener('click', () => {
       enqueueFromComposer().catch((err) => notify(err.message, 'error'));
@@ -372,6 +492,12 @@
     });
     els.setHostBtn.addEventListener('click', () => {
       setActiveHost().catch((err) => notify(err.message, 'error'));
+    });
+    els.proposalApproveBtn.addEventListener('click', () => {
+      actOnProposal('approve').catch((err) => notify(err.message, 'error'));
+    });
+    els.proposalRejectBtn.addEventListener('click', () => {
+      actOnProposal('reject').catch((err) => notify(err.message, 'error'));
     });
   }
 

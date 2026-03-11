@@ -5,6 +5,8 @@
 **Agent:** SpecialXAgent
 **Status:** Active
 
+See also: [docs/architecture/SPECIALX.md](../../architecture/SPECIALX.md) for the current queue lifecycle, API surface, and file map.
+
 ## Responsibility
 SpecialX task queue management, automation runner with heartbeat/timeout, task type handlers, n8n workflow generation, validation, and deployment.
 

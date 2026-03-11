@@ -15,6 +15,7 @@ This file provides guidance to AGENTS when working with code in this repository.
 - [RAG System](docs/architecture/RAG_SYSTEM.md) - Vector store & retrieval
 - [Model Routing](docs/architecture/MODEL_ROUTING.md) - Smart routing & failover
 - [SpecialX Automation](docs/architecture/SPECIALX.md) - Queue-driven bounded task agents
+- [SpecialX Automation](docs/architecture/SPECIALX.md) - Queue-driven specialist task automation
 - [Startup Sequence](docs/architecture/STARTUP_SEQUENCE.md) - Bootstrap order
 - [Backend Overview](docs/architecture/backend-overview.md) - Service-oriented architecture
 

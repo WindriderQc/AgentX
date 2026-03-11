@@ -371,6 +371,8 @@ app.use('/api/docJanitor', docJanitorRoutes);
 // SpecialX automation routes (24/7 queue runner + task profiles)
 const specialXRoutes = require('../routes/specialx');
 app.use('/api/specialx', specialXLimiter, specialXRoutes);
+const specialXProposalRoutes = require('../routes/specialx-proposals');
+app.use('/api/specialx/proposals', specialXLimiter, specialXProposalRoutes);
 
 // Inference Telemetry routes (Sprint 1: GPU usage observability)
 const inferenceTelemetryRoutes = require('../routes/inference-telemetry');

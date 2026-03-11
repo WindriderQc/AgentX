@@ -36,6 +36,36 @@ function parseNonNegativeInt(value, fallback) {
   return parsed;
 }
 
+function normalizeTaskStatus(status) {
+  return status === 'dead_letter' ? 'failed' : status;
+}
+
+function buildTaskStatusPayload(task) {
+  const run = task?.resultRunId || null;
+  const status = normalizeTaskStatus(task.status);
+  const claimedAt = task.lease?.leasedAt || task.startedAt || null;
+  const hasResult = status === 'completed';
+  const hasError = status === 'failed';
+
+  return {
+    _id: task._id,
+    type: task.type,
+    status,
+    claimedAt,
+    completedAt: task.completedAt || null,
+    result: hasResult ? {
+      runId: run?._id || null,
+      summary: run?.summary || '',
+      output: run?.output || {},
+      artifacts: Array.isArray(run?.artifacts) ? run.artifacts : []
+    } : null,
+    error: hasError ? {
+      message: run?.error?.message || task.lastError || null,
+      code: run?.error?.code || null
+    } : null
+  };
+}
+
 // Dashboard status
 router.get('/status', requireAuth, optionalWorkspaceContext, async (req, res) => {
   try {
@@ -445,6 +475,34 @@ router.get('/tasks', requireAuth, optionalWorkspaceContext, async (req, res) => 
     res.status(500).json({
       status: 'error',
       message: 'Failed to retrieve tasks'
+    });
+  }
+});
+
+router.get('/tasks/:id', optionalAuth, optionalWorkspaceContext, async (req, res, next) => {
+  if (res.locals.user || req.authSource === 'api-key' || req.authSource === 'api-key-v2') {
+    return next();
+  }
+
+  try {
+    const task = await AutomationTask.findById(req.params.id)
+      .select('_id type status lease startedAt completedAt resultRunId lastError')
+      .populate('resultRunId', 'summary output artifacts error')
+      .lean();
+
+    if (!task) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Task not found'
+      });
+    }
+
+    return res.json(buildTaskStatusPayload(task));
+  } catch (error) {
+    logger.error('Failed to get SpecialX task status', { error: error.message, taskId: req.params.id });
+    return res.status(500).json({
+      status: 'error',
+      message: 'Failed to retrieve task status'
     });
   }
 });

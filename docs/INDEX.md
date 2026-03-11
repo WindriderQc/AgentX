@@ -32,6 +32,7 @@ Last Updated: 2026-02-09
 
 ### Automation
 - **[SpecialX — Bounded Automation Agents](architecture/SPECIALX.md)** - Queue-driven task execution, profiles, runner, scheduling, and maintenance mesh integration
+- **[SpecialX — Bounded Automation Agents](architecture/SPECIALX.md)** - Queue-driven task profiles, runner lifecycle, scheduling, and maintenance mesh integration
 
 ---
 

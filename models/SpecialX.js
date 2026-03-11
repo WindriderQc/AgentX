@@ -66,7 +66,11 @@ const SpecialXSchema = new mongoose.Schema({
       'maintenance_snapshot',
       'maintenance_digest',
       'telemetry_aggregate',
-      'schedule_reconcile'
+      'schedule_reconcile',
+      'docs_drift_check',
+      'patch_proposal',
+      'patch_apply',
+      'proposal_expiry_sweep'
     ]
   }],
   schedule: {
@@ -150,7 +154,15 @@ SpecialXSchema.statics.ensureDefaultOperator = async function(workspaceId = null
       'ci_failure_triage',
       'model_health_digest',
       'daily_operations_digest',
-      'custom_prompt_analysis'
+      'custom_prompt_analysis',
+      'maintenance_snapshot',
+      'maintenance_digest',
+      'telemetry_aggregate',
+      'schedule_reconcile',
+      'docs_drift_check',
+      'patch_proposal',
+      'patch_apply',
+      'proposal_expiry_sweep'
     ],
     isActive: true,
     isSystem: true

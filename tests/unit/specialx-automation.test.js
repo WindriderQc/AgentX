@@ -24,6 +24,12 @@ describe('SpecialX automation core', () => {
     expect(profile).toBeTruthy();
     expect(profile.name).toBe('specialx.operator.v1');
     expect(profile.modelPolicy.localFirst).toBe(true);
+    expect(profile.taskTypes).toEqual(expect.arrayContaining([
+      'docs_drift_check',
+      'patch_proposal',
+      'patch_apply',
+      'proposal_expiry_sweep'
+    ]));
 
     const active = await SpecialX.getActive();
     expect(active).toHaveLength(1);
@@ -68,5 +74,47 @@ describe('SpecialX automation core', () => {
     expect(metrics.queue.queued).toBe(0);
     expect(metrics.runs.totalRuns24h).toBe(0);
     expect(metrics.runs.localFirstRatio).toBe(100);
+  });
+
+  test('dispatches OpenClaw webhook notifications only when configured', async () => {
+    const originalWebhookUrl = process.env.OPENCLAW_WEBHOOK_URL;
+    const postSpy = jest.spyOn(service, 'postOpenClawWebhook').mockResolvedValue();
+
+    delete process.env.OPENCLAW_WEBHOOK_URL;
+    service.notifyOpenClawTaskResult({
+      taskId: 'task-1',
+      type: 'repo_summary',
+      status: 'completed',
+      runId: 'run-1',
+      summary: 'done',
+      completedAt: new Date()
+    });
+    expect(postSpy).not.toHaveBeenCalled();
+
+    process.env.OPENCLAW_WEBHOOK_URL = 'http://127.0.0.1:18789/hooks/task-result';
+    service.notifyOpenClawTaskResult({
+      taskId: 'task-2',
+      type: 'repo_summary',
+      status: 'completed',
+      runId: 'run-2',
+      summary: 'done',
+      completedAt: new Date()
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(postSpy).toHaveBeenCalledWith(
+      'http://127.0.0.1:18789/hooks/task-result',
+      expect.objectContaining({
+        taskId: 'task-2',
+        status: 'completed'
+      })
+    );
+
+    postSpy.mockRestore();
+    if (originalWebhookUrl === undefined) {
+      delete process.env.OPENCLAW_WEBHOOK_URL;
+    } else {
+      process.env.OPENCLAW_WEBHOOK_URL = originalWebhookUrl;
+    }
   });
 });

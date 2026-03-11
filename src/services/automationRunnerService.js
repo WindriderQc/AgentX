@@ -7,6 +7,7 @@ const { runTaskByType } = require('./specialxTaskHandlers');
 
 const DEFAULT_RUNNER_POLL_MS = parseInt(process.env.SPECIALX_RUNNER_POLL_MS || '5000', 10);
 const DEFAULT_LEASE_MS = parseInt(process.env.SPECIALX_TASK_LEASE_MS || '45000', 10);
+const OPENCLAW_WEBHOOK_TIMEOUT_MS = 5000;
 
 class AutomationRunnerService {
   constructor() {
@@ -245,6 +246,15 @@ class AutomationRunnerService {
         durationMs
       });
 
+      this.notifyOpenClawTaskResult({
+        taskId: task._id,
+        type: task.type,
+        status: 'completed',
+        runId: run._id,
+        summary: result.summary || '',
+        completedAt: finishedAt
+      });
+
       logger.info('SpecialX task completed', {
         taskId: String(task._id),
         runId: String(run._id),
@@ -304,6 +314,17 @@ class AutomationRunnerService {
         durationMs
       });
 
+      if (isDeadLetter) {
+        this.notifyOpenClawTaskResult({
+          taskId: task._id,
+          type: task.type,
+          status: 'failed',
+          runId: run._id,
+          summary: error.message || 'Task failed',
+          completedAt: finishedAt
+        });
+      }
+
       logger.error('SpecialX task failed', {
         taskId: String(task._id),
         runId: String(run._id),
@@ -360,6 +381,55 @@ class AutomationRunnerService {
     }
 
     await SpecialX.updateOne({ _id: specialXId }, updates);
+  }
+
+  notifyOpenClawTaskResult(payload) {
+    const webhookUrl = typeof process.env.OPENCLAW_WEBHOOK_URL === 'string'
+      ? process.env.OPENCLAW_WEBHOOK_URL.trim()
+      : '';
+
+    if (!webhookUrl) {
+      return;
+    }
+
+    void this.postOpenClawWebhook(webhookUrl, payload).catch((error) => {
+      logger.warn('Failed to notify OpenClaw task result webhook', {
+        webhookUrl,
+        taskId: String(payload.taskId),
+        status: payload.status,
+        error: error.message
+      });
+    });
+  }
+
+  async postOpenClawWebhook(webhookUrl, payload) {
+    const fetchImpl = await this.getFetch();
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), OPENCLAW_WEBHOOK_TIMEOUT_MS);
+
+    try {
+      const response = await fetchImpl(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
+
+      if (!response.ok) {
+        const body = await response.text().catch(() => '');
+        throw new Error(`Webhook responded ${response.status}${body ? `: ${body}` : ''}`);
+      }
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  async getFetch() {
+    if (typeof fetch === 'function') {
+      return fetch;
+    }
+
+    return (await import('node-fetch')).default;
   }
 
   async getQueueMetrics() {

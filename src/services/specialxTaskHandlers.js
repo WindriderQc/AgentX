@@ -1,10 +1,244 @@
+const crypto = require('crypto');
+const path = require('path');
+const RepoScan = require('../../models/RepoScan');
+const AutomationTask = require('../../models/AutomationTask');
+const AutomationRun = require('../../models/AutomationRun');
 const { getRepoWatcherService } = require('./repoWatcherService');
 const { handleChatRequest } = require('./chatService');
 const { routeRequest, getRoutingStatus, getFailoverStatus } = require('./modelRouter');
 const { runSnapshot, generateDigest, listRepos } = require('./maintenanceSnapshotService');
+const {
+  applyPatchProposalTask,
+  expirePendingPatchProposalsTask,
+  runPatchProposalTask
+} = require('./patchProposalService');
 
 const DEFAULT_REPO_PATH = process.env.REPO_WATCHER_PATH || process.cwd();
 const SPECIALX_SYSTEM_USER = process.env.SPECIALX_SYSTEM_USER || 'specialx-system';
+const DOCS_DRIFT_TYPES = new Set(['doc_staleness', 'stale_docs']);
+
+let Finding = null;
+try {
+  Finding = require('../../models/Finding');
+} catch (_) {
+  Finding = null;
+}
+
+function normalizeRepoPath(repoPath) {
+  const rawPath = repoPath || DEFAULT_REPO_PATH;
+  try {
+    return path.resolve(rawPath);
+  } catch (_) {
+    return rawPath;
+  }
+}
+
+function getRepoPathKey(repoPath) {
+  return normalizeRepoPath(repoPath).replace(/\//g, '\\').toLowerCase();
+}
+
+function sortObjectKeys(value) {
+  if (Array.isArray(value)) {
+    return value.map(sortObjectKeys);
+  }
+
+  if (value && typeof value === 'object' && !(value instanceof Date)) {
+    return Object.keys(value).sort().reduce((acc, key) => {
+      acc[key] = sortObjectKeys(value[key]);
+      return acc;
+    }, {});
+  }
+
+  return value;
+}
+
+function buildFindingKey(doc) {
+  if (doc.fingerprint) {
+    return String(doc.fingerprint);
+  }
+
+  const fingerprintSeed = {
+    type: doc.type || doc.category || 'doc_staleness',
+    path: doc.path || doc.filePath || doc.metadata?.path || doc.evidence?.path || null,
+    title: doc.title || null,
+    evidence: typeof doc.evidence === 'string' ? doc.evidence : doc.description || null,
+    metadata: doc.metadata || null
+  };
+
+  return crypto
+    .createHash('sha1')
+    .update(JSON.stringify(sortObjectKeys(fingerprintSeed)))
+    .digest('hex');
+}
+
+function normalizeDocFinding(finding, fallbackRepoPath = null) {
+  const doc = finding && typeof finding.toObject === 'function' ? finding.toObject() : finding;
+  const repoPath = doc.repoPath || doc.metadata?.repoPath || fallbackRepoPath || null;
+  const pathValue = doc.path || doc.filePath || doc.metadata?.path || doc.evidence?.path || null;
+  const evidence = typeof doc.evidence === 'string'
+    ? doc.evidence
+    : doc.description || JSON.stringify(doc.evidence || doc.metadata || {});
+
+  return {
+    key: buildFindingKey(doc),
+    type: doc.type || doc.category || 'doc_staleness',
+    status: doc.status || null,
+    severity: doc.severity || null,
+    title: doc.title || pathValue || 'Documentation drift finding',
+    path: pathValue,
+    evidence,
+    repoPath,
+    metadata: doc.metadata || {},
+    firstSeenAt: doc.firstSeenAt || doc.createdAt || null,
+    lastSeenAt: doc.lastSeenAt || doc.updatedAt || doc.scannedAt || null
+  };
+}
+
+function findingMatchesRepo(finding, repoPath) {
+  const repoPathKey = getRepoPathKey(repoPath);
+  const repoName = path.basename(normalizeRepoPath(repoPath)).toLowerCase();
+  const candidates = [
+    finding.repoPath,
+    finding.repo,
+    finding.repository,
+    finding.metadata?.repoPath,
+    finding.metadata?.repo,
+    finding.metadata?.repository
+  ].filter(Boolean);
+
+  if (!candidates.length) {
+    return true;
+  }
+
+  return candidates.some((candidate) => {
+    const candidateValue = String(candidate).replace(/\//g, '\\').toLowerCase();
+    return candidateValue === repoPathKey ||
+      candidateValue === repoName ||
+      candidateValue.endsWith(`\\${repoName}`);
+  });
+}
+
+function extractSnapshotFindings(runDoc) {
+  const snapshotArtifact = (runDoc?.artifacts || []).find((artifact) => artifact.name === 'docs_drift_snapshot');
+  const snapshotFindings = Array.isArray(snapshotArtifact?.content?.findings)
+    ? snapshotArtifact.content.findings
+    : [];
+
+  return snapshotFindings.map((finding) => normalizeDocFinding(finding, snapshotArtifact?.content?.repoPath));
+}
+
+function diffFindings(currentFindings, previousFindings) {
+  const currentByKey = new Map(currentFindings.map((finding) => [finding.key, finding]));
+  const previousByKey = new Map(previousFindings.map((finding) => [finding.key, finding]));
+
+  const newFindings = [];
+  const resolvedFindings = [];
+  let unchanged = 0;
+
+  for (const [key, finding] of currentByKey) {
+    if (previousByKey.has(key)) {
+      unchanged += 1;
+    } else {
+      newFindings.push(finding);
+    }
+  }
+
+  for (const [key, finding] of previousByKey) {
+    if (!currentByKey.has(key)) {
+      resolvedFindings.push(finding);
+    }
+  }
+
+  return {
+    newFindings,
+    resolvedFindings,
+    unchanged
+  };
+}
+
+async function getLatestRepoScan(task, repoPath) {
+  const query = { repoPath };
+  if (task.workspaceId) {
+    query.workspaceId = task.workspaceId;
+  }
+
+  return RepoScan.findOne(query).sort({ scannedAt: -1 }).lean();
+}
+
+async function getPreviousDocsDriftRun(task, repoPath) {
+  const query = {
+    type: 'docs_drift_check',
+    status: 'completed',
+    _id: { $ne: task._id }
+  };
+
+  if (task.workspaceId) {
+    query.workspaceId = task.workspaceId;
+  } else {
+    query.workspaceId = null;
+  }
+
+  const candidateTasks = await AutomationTask.find(query)
+    .sort({ completedAt: -1, createdAt: -1 })
+    .limit(25)
+    .select('input resultRunId')
+    .lean();
+
+  const repoPathKey = getRepoPathKey(repoPath);
+  const matchedTask = candidateTasks.find((candidate) => {
+    if (!candidate.resultRunId) {
+      return false;
+    }
+
+    return getRepoPathKey(candidate.input?.repoPath || DEFAULT_REPO_PATH) === repoPathKey;
+  });
+
+  if (!matchedTask?.resultRunId) {
+    return null;
+  }
+
+  return AutomationRun.findById(matchedTask.resultRunId)
+    .select('artifacts finishedAt')
+    .lean();
+}
+
+async function getCurrentDocFindings(task, repoPath, repoScan) {
+  if (Finding) {
+    try {
+      const findings = await Finding.find({ type: 'doc_staleness', status: 'open' }).lean();
+      const scopedFindings = findings
+        .filter((finding) => findingMatchesRepo(finding, repoPath))
+        .map((finding) => normalizeDocFinding(finding, repoPath));
+
+      if (scopedFindings.length > 0) {
+        return {
+          source: 'finding_collection',
+          findings: scopedFindings
+        };
+      }
+    } catch (_) {
+      // Fall through to RepoScan-based fallback if the normalized Finding model is unavailable.
+    }
+  }
+
+  const findings = Array.isArray(repoScan?.findings)
+    ? repoScan.findings
+      .filter((finding) => DOCS_DRIFT_TYPES.has(finding.type))
+      .map((finding) => normalizeDocFinding({
+        ...finding,
+        status: 'open',
+        metadata: {
+          ...(finding.metadata || {}),
+          repoPath
+        }
+      }, repoPath))
+    : [];
+
+  return {
+    source: repoScan ? 'repo_scan' : 'none',
+    findings
+  };
+}
 
 async function runRepoSummaryTask(task) {
   const repoPath = task.input?.repoPath || DEFAULT_REPO_PATH;
@@ -376,7 +610,47 @@ async function runTelemetryAggregateTask() {
     };
   }
 }
+async function runDocsDriftCheck(task) {
+  const repoPath = normalizeRepoPath(task.input?.repoPath || DEFAULT_REPO_PATH);
+  const [latestRepoScan, previousRun] = await Promise.all([
+    getLatestRepoScan(task, repoPath),
+    getPreviousDocsDriftRun(task, repoPath)
+  ]);
 
+  const currentState = await getCurrentDocFindings(task, repoPath, latestRepoScan);
+  const previousFindings = extractSnapshotFindings(previousRun);
+  const result = diffFindings(currentState.findings, previousFindings);
+
+  return {
+    summary: `Docs drift check • new ${result.newFindings.length} • resolved ${result.resolvedFindings.length} • unchanged ${result.unchanged}`,
+    output: {
+      newFindings: result.newFindings,
+      resolvedFindings: result.resolvedFindings,
+      unchanged: result.unchanged,
+      repoPath,
+      source: currentState.source,
+      latestRepoScanAt: latestRepoScan?.scannedAt || null,
+      previousRunFinishedAt: previousRun?.finishedAt || null
+    },
+    artifacts: [{
+      name: 'docs_drift_snapshot',
+      kind: 'json',
+      content: {
+        repoPath,
+        source: currentState.source,
+        latestRepoScanAt: latestRepoScan?.scannedAt || null,
+        findings: currentState.findings
+      }
+    }],
+    metrics: {
+      localCalls: 3,
+      cloudCalls: 0
+    },
+    execution: {
+      routed: false
+    }
+  };
+}
 async function runTaskByType(task, specialX, getQueueMetrics) {
   switch (task.type) {
   case 'repo_summary':
@@ -397,6 +671,14 @@ async function runTaskByType(task, specialX, getQueueMetrics) {
     return runTelemetryAggregateTask();
   case 'schedule_reconcile':
     return runScheduleReconcileTask(task, getQueueMetrics);
+  case 'docs_drift_check':
+    return runDocsDriftCheck(task);
+  case 'patch_proposal':
+    return runPatchProposalTask(task, specialX);
+  case 'patch_apply':
+    return applyPatchProposalTask(task);
+  case 'proposal_expiry_sweep':
+    return expirePendingPatchProposalsTask(task);
   default:
     throw new Error(`Unsupported task type: ${task.type}`);
   }

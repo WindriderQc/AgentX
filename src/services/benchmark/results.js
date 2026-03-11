@@ -3,12 +3,16 @@
  * Dashboard, statistics, and model comparison
  */
 
-const logger = require('../../../config/logger');
 const BenchmarkResult = require('../../../models/BenchmarkResult');
 const BenchmarkBatch = require('../../../models/BenchmarkBatch');
 const { calculateCompositeScore } = require('../qualityScorer');
 const { calculateAllGeneralistScores } = require('./generalistScore');
 const { INFRA_ERROR_REGEX } = require('./errorClassifier');
+const {
+    getQualityBreakdown,
+    getModelTrends,
+    compareBatches
+} = require('./resultsAnalysis');
 
 function calculatePercentDelta(currentValue, referenceValue) {
     const current = Number(currentValue);
@@ -393,7 +397,7 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
     });
 
     // Add failure-only model/host combos so issues are visible in the leaderboard.
-    for (const [key, failedTests] of failureByKey.entries()) {
+    for (const [key] of failureByKey.entries()) {
         if (successByKey.has(key)) continue;
         const [model, host] = key.split('@@');
         const fail = failureByKey.get(key) || { failed: 0, infra_failed: 0, model_failed: 0 };
@@ -555,8 +559,6 @@ async function compareModels(models) {
 
     return { comparison };
 }
-
-const { getQualityBreakdown, getModelTrends, compareBatches } = require('./resultsAnalysis');
 
 module.exports = {
     getResults,

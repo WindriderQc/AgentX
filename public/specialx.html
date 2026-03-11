@@ -303,6 +303,18 @@
       font-family: "JetBrains Mono", monospace;
     }
 
+    .proposal-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .proposal-pane .mono {
+      display: block;
+      margin-bottom: 6px;
+    }
+
     .empty {
       color: var(--muted);
       font-size: 0.84rem;
@@ -315,6 +327,10 @@
       }
 
       .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .proposal-grid {
         grid-template-columns: 1fr;
       }
     }
@@ -399,6 +415,7 @@
             <button class="btn-accent quick-enqueue" data-type="repo_summary">Queue Repo Summary</button>
             <button class="quick-enqueue" data-type="model_health_digest">Queue Model Digest</button>
             <button class="quick-enqueue" data-type="daily_operations_digest">Queue Daily Ops Digest</button>
+            <button class="quick-enqueue" data-type="docs_drift_check">Queue Docs Drift Check</button>
           </div>
           <div class="composer-grid">
             <select id="taskTypeSelect">
@@ -407,6 +424,9 @@
               <option value="repo_summary">Repo Summary</option>
               <option value="model_health_digest">Model Health Digest</option>
               <option value="daily_operations_digest">Daily Operations Digest</option>
+              <option value="docs_drift_check">Docs Drift Check</option>
+              <option value="patch_proposal">Patch Proposal</option>
+              <option value="proposal_expiry_sweep">Proposal Expiry Sweep</option>
             </select>
             <input id="taskPriority" type="number" value="5" min="1" max="10" title="Priority (1 highest)">
           </div>
@@ -464,6 +484,51 @@
         </div>
         <div class="panel-body">
           <div id="runDetail" class="detail">No run selected.</div>
+        </div>
+      </article>
+
+      <article class="panel">
+        <div class="panel-head">
+          <h2>Patch Proposals</h2>
+          <span class="mono" id="proposalsMeta">0 proposals</span>
+        </div>
+        <div class="panel-body">
+          <table>
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th>Target</th>
+                <th>Summary</th>
+                <th>Expires</th>
+              </tr>
+            </thead>
+            <tbody id="proposalsTableBody"></tbody>
+          </table>
+          <div id="proposalsEmpty" class="empty" hidden>No patch proposals yet.</div>
+        </div>
+      </article>
+
+      <article class="panel">
+        <div class="panel-head">
+          <h2>Proposal Detail</h2>
+          <span class="mono" id="proposalMeta">select a proposal</span>
+        </div>
+        <div class="panel-body">
+          <div class="quick-actions">
+            <button id="proposalApproveBtn" class="btn-accent" hidden>Approve</button>
+            <button id="proposalRejectBtn" hidden>Reject</button>
+          </div>
+          <div id="proposalSummary" class="detail">No proposal selected.</div>
+          <div class="proposal-grid">
+            <div class="proposal-pane">
+              <span class="mono">Original</span>
+              <div id="proposalOriginal" class="detail">-</div>
+            </div>
+            <div class="proposal-pane">
+              <span class="mono">Proposed</span>
+              <div id="proposalProposed" class="detail">-</div>
+            </div>
+          </div>
         </div>
       </article>
     </section>

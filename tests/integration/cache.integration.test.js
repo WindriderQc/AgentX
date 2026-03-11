@@ -1,4 +1,5 @@
 const { getCacheService } = require('../../src/services/cacheService');
+const InMemoryVectorStore = require('../../src/services/vectorStore/InMemoryVectorStore');
 const cache = getCacheService();
 
 describe('Cache Integration Tests', () => {
@@ -55,6 +56,25 @@ describe('Cache Integration Tests', () => {
             
             const value = await cache.get('ttl-key');
             expect(value).toBeNull();
+        });
+    });
+
+    describe('Similarity Threshold Edge Cases', () => {
+        it('should exclude results below the similarity threshold', async () => {
+            const vectorStore = new InMemoryVectorStore();
+
+            await vectorStore.upsertDocument(
+                'doc-1',
+                { source: 'test', path: 'doc-1', title: 'Threshold Test' },
+                [{ text: 'threshold candidate', embedding: [1, 0], chunkIndex: 0 }]
+            );
+
+            const results = await vectorStore.searchSimilar([0, 1], {
+                topK: 5,
+                minScore: 0.85
+            });
+
+            expect(results).toEqual([]);
         });
     });
 
