@@ -40,6 +40,7 @@ const FindingSchema = new mongoose.Schema({
   title: { type: String, required: true },
   description: { type: String, default: '' },
   evidence: { type: mongoose.Schema.Types.Mixed, default: {} }, // path(s), lines, snippets
+  evidenceKey: { type: String, default: '' },                   // concise dedup key (source of fingerprint)
   suggestedAction: { type: String, default: '' },
 
   // Lifecycle
@@ -87,9 +88,9 @@ FindingSchema.statics.makeFingerprint = function(repo, scanner, category, eviden
  * Only updates status if the finding is new (never overwrite acknowledged/deferred/resolved).
  */
 FindingSchema.statics.upsertFinding = async function(data) {
-  const fingerprint = Finding.makeFingerprint(data.repo, data.scanner, data.category, data.evidenceKey);
+  const fingerprint = this.makeFingerprint(data.repo, data.scanner, data.category, data.evidenceKey);
 
-  const existing = await Finding.findOne({ fingerprint });
+  const existing = await this.findOne({ fingerprint });
   if (existing) {
     existing.lastSeenAt = new Date();
     existing.occurrenceCount += 1;
@@ -103,7 +104,7 @@ FindingSchema.statics.upsertFinding = async function(data) {
     return { finding: existing, isNew: false };
   }
 
-  const finding = await Finding.create({
+  const finding = await this.create({
     ...data,
     fingerprint,
     firstSeenAt: new Date(),

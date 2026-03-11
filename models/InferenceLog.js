@@ -44,8 +44,13 @@ const InferenceLogSchema = new mongoose.Schema({
   collection: 'inferencelogs'
 });
 
-// TTL index — expires documents after N days
-const TTL_SECONDS = parseInt(process.env.INFERENCE_LOG_TTL_DAYS || '30', 10) * 86400;
+// TTL index — expires documents after N days (fallback to 30, minimum 1)
+const ttlDaysRaw = process.env.INFERENCE_LOG_TTL_DAYS;
+let ttlDays = parseInt(ttlDaysRaw, 10);
+if (!Number.isFinite(ttlDays) || ttlDays < 1) {
+  ttlDays = 30;
+}
+const TTL_SECONDS = ttlDays * 86400;
 InferenceLogSchema.index({ timestamp: 1 }, { expireAfterSeconds: TTL_SECONDS });
 
 // Query indexes
