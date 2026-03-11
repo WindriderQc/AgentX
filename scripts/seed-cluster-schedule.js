@@ -196,6 +196,40 @@ const entries = [
     metadata: { webhook: 'sbqc-n5-1-feedback-analysis', runner: 'Ubundocker' }
   },
 
+  // ── AgentX Maintenance Pipeline ──────────────────────────────
+  {
+    source: 'agentx', sourceId: 'ax-telemetry-aggregate',
+    name: 'Telemetry Aggregate', taskType: 'maintenance',
+    host: null, model: null,
+    schedule: { type: 'cron', cron: '0 * * * *', timezone: 'UTC' },
+    estimatedDurationMs: 30000, priority: 6, enabled: true,
+    metadata: { runner: 'Docker Host', specialx: 'specialx.telemetry-aggregator.v1', taskType: 'telemetry_aggregate' }
+  },
+  {
+    source: 'agentx', sourceId: 'ax-maintenance-snapshot-agentx',
+    name: 'Maintenance Snapshot — AgentX', taskType: 'maintenance',
+    host: null, model: null,
+    schedule: { type: 'cron', cron: '0 3 * * *', timezone: 'UTC' },
+    estimatedDurationMs: 300000, priority: 4, enabled: true,
+    metadata: { runner: 'Docker Host', specialx: 'specialx.maintenance-operator.v1', taskType: 'maintenance_snapshot', repoId: 'agentx' }
+  },
+  {
+    source: 'agentx', sourceId: 'ax-maintenance-snapshot-dataapi',
+    name: 'Maintenance Snapshot — DataAPI', taskType: 'maintenance',
+    host: null, model: null,
+    schedule: { type: 'cron', cron: '0 4 * * *', timezone: 'UTC' },
+    estimatedDurationMs: 300000, priority: 4, enabled: true,
+    metadata: { runner: 'Docker Host', specialx: 'specialx.maintenance-operator.v1', taskType: 'maintenance_snapshot', repoId: 'dataapi' }
+  },
+  {
+    source: 'agentx', sourceId: 'ax-maintenance-digest',
+    name: 'Maintenance Digest', taskType: 'maintenance',
+    host: null, model: null,
+    schedule: { type: 'cron', cron: '0 5 * * *', timezone: 'UTC' },
+    estimatedDurationMs: 60000, priority: 5, enabled: true,
+    metadata: { runner: 'Docker Host', specialx: 'specialx.maintenance-operator.v1', taskType: 'maintenance_digest' }
+  },
+
   // ── AgentX Internal Timers (UGClawdX 192.168.2.66) ─────────
   {
     source: 'agentx', sourceId: 'ax-runner-poll',

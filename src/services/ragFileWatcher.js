@@ -11,13 +11,19 @@
 const fs = require('fs').promises;
 const path = require('path');
 const chokidar = require('chokidar');
-const crypto = require('crypto');
 const { getRagStore } = require('../services/ragStore');
 const RagManifest = require('../../models/RagManifest');
 const logger = require('../../config/logger');
 const { systemEvents } = require('../app');
 const { getConfiguredRagDir } = require('../helpers/ragPaths');
 const { extractZipArchive } = require('../helpers/zip');
+const {
+  normalizeRelativePath: _normalizeRelativePath,
+  normalizePathForComparison: _normalizePathForComparison,
+  buildDocumentId: _buildDocumentId,
+  calculateSHA256: _calculateSHA256,
+  extractTitle: _extractTitle
+} = require('./ragFileWatcherUtils');
 
 class RagFileWatcher {
   constructor(config = {}) {
@@ -526,45 +532,16 @@ class RagFileWatcher {
     }
   }
 
-  /**
-   * Build deterministic document ID from source/path (must match RagStore)
-   */
-  buildDocumentId(source, relativePath) {
-    return crypto.createHash('md5').update(`${source}:${this.normalizeRelativePath(relativePath)}`).digest('hex');
-  }
+  /** Build deterministic document ID from source/path (must match RagStore) */
+  buildDocumentId(source, relativePath) { return _buildDocumentId(source, relativePath); }
 
-  normalizeRelativePath(filePath) {
-    return String(filePath || '').replace(/\\/g, '/');
-  }
+  normalizeRelativePath(filePath) { return _normalizeRelativePath(filePath); }
+  normalizePathForComparison(filePath) { return _normalizePathForComparison(filePath); }
 
-  normalizePathForComparison(filePath) {
-    return this.normalizeRelativePath(path.normalize(String(filePath || '')));
-  }
-
-  /**
-   * Calculate SHA256 hash of file
-   */
-  async calculateSHA256(filePath) {
-    const fileBuffer = await fs.readFile(filePath);
-    return crypto.createHash('sha256').update(fileBuffer).digest('hex');
-  }
-
-  /**
-   * Extract title from markdown content
-   */
-  extractTitle(content, filePath) {
-    // Try to find title in first line
-    const lines = content.split('\n');
-    for (const line of lines.slice(0, 10)) {
-      const trimmed = line.trim();
-      if (trimmed.startsWith('# ')) {
-        return trimmed.substring(2).trim();
-      }
-    }
-
-    // Fallback to filename
-    return path.basename(filePath, '.md');
-  }
+  /** Calculate SHA256 hash of file */
+  async calculateSHA256(filePath) { return _calculateSHA256(filePath); }
+  /** Extract title from markdown content */
+  extractTitle(content, filePath) { return _extractTitle(content, filePath); }
 
   /**
    * Trigger n8n ingestion webhook

@@ -5,7 +5,7 @@ const { extractResponse, buildOllamaPayload } = require('../helpers/ollamaRespon
 const { sanitizeOptions, resolveTarget, resolveModelNumCtx } = require('../utils');
 const { tryHandleToolCommand } = require('./toolService');
 const { executeTool, parseToolCalls } = require('./toolExecutor');
-const { routeRequest, getTargetForModel } = require('./modelRouter');
+const { routeRequest, getTargetForModel, recordInference } = require('./modelRouter');
 const {
     buildAgentSystemPrompt,
     getAgentToolDefinitions,
@@ -389,8 +389,34 @@ const handleChatRequest = async ({
         }
     } catch (err) {
         logger.error('Model request failed', { model: effectiveModel, error: err.message });
+        // Record failed inference before re-throwing
+        recordInference({
+            host: resolveTarget(effectiveTarget),
+            model: effectiveModel,
+            caller: 'chat',
+            callerDetail: userId ? String(userId) : null,
+            taskType: routingInfo?.taskType || null,
+            routed: routingInfo?.routed || false,
+            status: err.name === 'AbortError' ? 'timeout' : 'error',
+            error: err.message
+        });
         throw err;
     }
+
+    // Record successful inference (fire-and-forget)
+    recordInference({
+        host: resolveTarget(effectiveTarget),
+        model: effectiveModel,
+        caller: 'chat',
+        callerDetail: userId ? String(userId) : null,
+        taskType: routingInfo?.taskType || null,
+        routed: routingInfo?.routed || false,
+        tokensIn: stats?.usage?.promptTokens || 0,
+        tokensOut: stats?.usage?.completionTokens || 0,
+        durationMs: stats?.performance?.totalDuration
+            ? Math.round(stats.performance.totalDuration / 1e6) : 0,
+        status: 'success'
+    });
 
     // 3. Tool Execution Loop
     let finalContent = assistantMessageContent;
@@ -432,42 +458,9 @@ const handleChatRequest = async ({
     };
 };
 
-// Streaming Chat Service (SSE)
-const handleChatRequestStream = async ({
-    userId,
-    model,
-    message,
-    messages = [],
-    system,
-    options = {},
-    persona,
-    conversationId,
-    useRag,
-    ragTopK,
-    ragFilters,
-    target,
-    ragStore,
-    autoRoute = false,
-    taskType = null,
-    enableWebSearch = false,
-    workspaceId = null,
-    abortSignal,
-    onWebSearchStart,
-    onWebSearchDone,
-    onToken,
-    onThinking,
-    onComplete,
-    onError
-}) => {
-    const personaName = persona || options.persona || 'default_chat';
 
-    logger.info('DEBUG_STREAM: handleChatRequestStream called', {
-        workspaceId, userId, conversationId
-    });
-
-    try {
-        if (abortSignal?.aborted) return;
-
+// Streaming handler extracted to chatServiceStream.js
+const { handleChatRequestStream } = require('./chatServiceStream');
         // 0. Smart Model Routing
         let effectiveModel = model;
         let effectiveTarget = target;

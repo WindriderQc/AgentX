@@ -5,6 +5,7 @@ const { app, setRagWatcherInstance } = require('./src/app');
 const systemHealth = require('./src/systemHealth');
 const SelfHealingEngine = require('./src/services/selfHealingEngine');
 const { getAutomationRunnerService } = require('./src/services/automationRunnerService');
+const { getMaintenanceSchedulerService } = require('./src/services/maintenanceSchedulerService');
 const { normalizeHostUrl } = require('./src/helpers/ollamaHostConfig');
 const { getConfiguredRagDir } = require('./src/helpers/ragPaths');
 
@@ -349,6 +350,17 @@ async function startServer() {
   } catch (err) {
     console.log(`   ⚠ SpecialX Runner: ${err.message}`);
     logger.warn('SpecialX runner failed to start', { error: err.message });
+  }
+
+  // Start Maintenance Scheduler (idempotent task enqueuer for snapshots + telemetry)
+  try {
+    const maintenanceScheduler = getMaintenanceSchedulerService();
+    maintenanceScheduler.start();
+    console.log(`   ✓ Maintenance Scheduler: Active (poll ${maintenanceScheduler.pollMs}ms)`);
+    logger.info('Maintenance scheduler started', { pollMs: maintenanceScheduler.pollMs });
+  } catch (err) {
+    console.log(`   ⚠ Maintenance Scheduler: ${err.message}`);
+    logger.warn('Maintenance scheduler failed to start', { error: err.message });
   }
 
   // Start Host Monitor service (stale-host detection)

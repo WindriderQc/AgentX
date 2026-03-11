@@ -1,6 +1,7 @@
 const UserProfile = require('../../models/UserProfile');
 const Workspace = require('../../models/Workspace');
 const PromptConfig = require('../../models/PromptConfig');
+const SpecialX = require('../../models/SpecialX');
 const {
     SBQC_OPS_PERSONA,
     DATALAKE_JANITOR_PERSONA,
@@ -47,6 +48,16 @@ async function seedDefaultData() {
                 await PromptConfig.create(p);
                 logger.info('Seeded persona: ' + p.name);
             }
+        }
+
+        // Seed system-managed SpecialX maintenance profiles
+        try {
+            const created = await SpecialX.ensureMaintenanceProfiles();
+            if (created.length > 0) {
+                logger.info('Seeded SpecialX maintenance profiles', { profiles: created });
+            }
+        } catch (profileErr) {
+            logger.warn('Failed to seed SpecialX maintenance profiles', { error: profileErr.message });
         }
     } catch (error) {
         logger.error('Seeding failed', { error: error.message });

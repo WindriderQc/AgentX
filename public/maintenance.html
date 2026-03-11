@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Maintenance — AgentX</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet" />
+  <style>
+    body { background: #0d1117; color: #e6edf3; font-family: 'Segoe UI', system-ui, sans-serif; }
+    .navbar { background: #161b22; border-bottom: 1px solid #30363d; }
+    .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; }
+    .card-header { background: #1c2128; border-bottom: 1px solid #30363d; font-weight: 600; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.05em; color: #8b949e; }
+    .table-dark { background: transparent; }
+    .table-dark td, .table-dark th { border-color: #21262d; padding: 7px 10px; font-size: 0.82rem; vertical-align: middle; }
+    .table-dark tbody tr:hover { background: #1c2128; }
+    .finding-table { max-height: 520px; overflow-y: auto; }
+    .badge-sev { font-size: 0.7rem; padding: 2px 7px; border-radius: 4px; font-weight: 600; }
+    .sev-critical { background: #6e1010; color: #f85149; }
+    .sev-high     { background: #3d1f00; color: #f0883e; }
+    .sev-medium   { background: #3d3000; color: #d29922; }
+    .sev-low      { background: #0d2d2d; color: #39d353; }
+    .sev-info     { background: #1b2535; color: #58a6ff; }
+    .scanner-badge { font-size: 0.68rem; padding: 1px 5px; border-radius: 3px; background: #21262d; color: #8b949e; }
+    .repo-card { border-radius: 8px; cursor: pointer; transition: border-color 0.2s; }
+    .repo-card:hover { border-color: #388bfd; }
+    .repo-card.active { border-color: #388bfd; background: #1c2128; }
+    .health-bar { height: 6px; border-radius: 3px; background: #21262d; overflow: hidden; display: flex; }
+    .health-segment { height: 100%; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .dot-new { background: #f85149; }
+    .dot-acknowledged { background: #d29922; }
+    .dot-deferred { background: #8b949e; }
+    .dot-resolved { background: #3fb950; }
+    .dot-false_positive { background: #388bfd; }
+    .filter-bar { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 10px 14px; margin-bottom: 12px; }
+    select.form-select, input.form-control { background: #21262d; border-color: #30363d; color: #e6edf3; font-size: 0.82rem; }
+    select.form-select:focus, input.form-control:focus { background: #21262d; border-color: #388bfd; color: #e6edf3; box-shadow: none; }
+    .action-btn { font-size: 0.72rem; padding: 2px 7px; }
+    .scan-spinner { display: none; }
+    .empty-state { color: #8b949e; font-size: 0.85rem; padding: 30px; text-align: center; }
+    pre.evidence-box { font-size: 0.72rem; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 6px 10px; color: #8b949e; white-space: pre-wrap; word-break: break-all; max-height: 120px; overflow-y: auto; margin: 0; }
+  </style>
+</head>
+<body>
+
+<nav class="navbar navbar-dark px-3 py-2">
+  <a class="navbar-brand fw-bold" href="/">
+    <i class="bi bi-cpu me-2 text-primary"></i>AgentX
+  </a>
+  <div class="d-flex gap-2">
+    <a href="/inference-telemetry.html" class="btn btn-sm btn-outline-secondary">Telemetry</a>
+    <a href="/cluster.html" class="btn btn-sm btn-outline-secondary">Cluster</a>
+    <a href="/specialx.html" class="btn btn-sm btn-outline-secondary">SpecialX</a>
+  </div>
+</nav>
+
+<div class="container-fluid px-4 py-3">
+
+  <!-- Header -->
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <div>
+      <h5 class="mb-0 fw-bold"><i class="bi bi-shield-check me-2 text-success"></i>Maintenance</h5>
+      <small class="text-muted">Unified repo health findings across managed repositories</small>
+    </div>
+    <div class="d-flex gap-2">
+      <button class="btn btn-sm btn-outline-secondary" onclick="loadAll()">
+        <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+      </button>
+    </div>
+  </div>
+
+  <!-- Repo cards -->
+  <div class="row g-3 mb-3" id="repoCards">
+    <div class="col-12 empty-state">Loading repos...</div>
+  </div>
+
+  <!-- Stats row -->
+  <div class="row g-3 mb-3">
+    <div class="col-6 col-md-3">
+      <div class="card p-3 text-center">
+        <div class="fs-2 fw-bold text-danger" id="statTotal">—</div>
+        <div class="small text-muted">Open Findings</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card p-3 text-center">
+        <div class="fs-2 fw-bold" style="color:#f0883e" id="statHigh">—</div>
+        <div class="small text-muted">High / Critical</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card p-3 text-center">
+        <div class="fs-2 fw-bold text-warning" id="statMedium">—</div>
+        <div class="small text-muted">Medium</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card p-3 text-center">
+        <div class="fs-2 fw-bold text-info" id="statNew24h">—</div>
+        <div class="small text-muted">New (24h)</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Findings table -->
+  <div class="card">
+    <div class="card-header d-flex align-items-center justify-content-between">
+      <span><i class="bi bi-list-check me-1"></i>Findings <span class="badge bg-secondary ms-1" id="findingCount">0</span></span>
+      <div class="d-flex align-items-center gap-2">
+        <select class="form-select form-select-sm w-auto" id="filterRepo" onchange="loadFindings()">
+          <option value="">All repos</option>
+        </select>
+        <select class="form-select form-select-sm w-auto" id="filterSeverity" onchange="loadFindings()">
+          <option value="">All severities</option>
+          <option value="critical">Critical</option>
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
+          <option value="info">Info</option>
+        </select>
+        <select class="form-select form-select-sm w-auto" id="filterScanner" onchange="loadFindings()">
+          <option value="">All scanners</option>
+          <option value="repo-watcher">repo-watcher</option>
+          <option value="doc-janitor">doc-janitor</option>
+          <option value="feature-alignment">feature-alignment</option>
+          <option value="validation-scanner">validation-scanner</option>
+        </select>
+        <select class="form-select form-select-sm w-auto" id="filterStatus" onchange="loadFindings()">
+          <option value="">Open</option>
+          <option value="acknowledged">Acknowledged</option>
+          <option value="deferred">Deferred</option>
+          <option value="resolved">Resolved</option>
+          <option value="false_positive">False Positive</option>
+        </select>
+        <select class="form-select form-select-sm w-auto" id="filterSort" onchange="loadFindings()">
+          <option value="severity">By severity</option>
+          <option value="newest">Newest first</option>
+          <option value="oldest">Oldest first</option>
+          <option value="updated">Recently updated</option>
+        </select>
+      </div>
+    </div>
+    <div class="card-body p-0">
+      <div class="finding-table">
+        <table class="table table-dark table-hover mb-0">
+          <thead class="sticky-top" style="background:#1c2128">
+            <tr>
+              <th style="width:90px">Severity</th>
+              <th>Title</th>
+              <th style="width:130px">Scanner</th>
+              <th style="width:90px">Repo</th>
+              <th style="width:70px">Days open</th>
+              <th style="width:70px">Seen</th>
+              <th style="width:120px">Status</th>
+              <th style="width:160px">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="findingBody">
+            <tr><td colspan="8" class="empty-state">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /container -->
+
+<!-- Status update modal -->
+<div class="modal fade" id="statusModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content bg-dark border-secondary">
+      <div class="modal-header border-secondary py-2">
+        <h6 class="modal-title text-light mb-0">Update Finding</h6>
+        <button type="button" class="btn-close btn-close-white btn-sm" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-3">
+        <div class="mb-2 small text-muted" id="modalFindingTitle"></div>
+        <label class="form-label small text-muted">New status</label>
+        <select class="form-select form-select-sm bg-dark text-light border-secondary" id="modalStatus">
+          <option value="acknowledged">Acknowledged</option>
+          <option value="deferred">Deferred</option>
+          <option value="resolved">Resolved</option>
+          <option value="false_positive">False Positive</option>
+          <option value="new">Reopen</option>
+        </select>
+      </div>
+      <div class="modal-footer border-secondary py-2">
+        <button class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-sm btn-primary" onclick="confirmStatusUpdate()">Update</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Scan modal -->
+<div class="modal fade" id="scanModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content bg-dark border-secondary">
+      <div class="modal-header border-secondary py-2">
+        <h6 class="modal-title text-light mb-0" id="scanModalTitle">Run Scan</h6>
+        <button type="button" class="btn-close btn-close-white btn-sm" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-3">
+        <div id="scanResult" class="d-none"></div>
+        <div id="scanProgress" class="text-center py-3">
+          <div class="spinner-border text-primary mb-2" role="status"></div>
+          <div class="small text-muted">Scanning... this may take 30–60 seconds</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+// State
+// ─────────────────────────────────────────────────────────────────────────────
+let repos = [];
+let activeModal = null;
+let pendingStatusUpdate = null;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Utils
+// ─────────────────────────────────────────────────────────────────────────────
+const SEV_ORDER = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
+const SEV_COLORS = { critical: '#6e1010', high: '#3d1f00', medium: '#3d3000', low: '#0d2d2d', info: '#1b2535' };
+const SEV_TEXT = { critical: '#f85149', high: '#f0883e', medium: '#d29922', low: '#39d353', info: '#58a6ff' };
+
+function sevBadge(sev) {
+  return `<span class="badge-sev sev-${sev}">${sev}</span>`;
+}
+
+function statusDot(status) {
+  return `<span class="status-dot dot-${status}" title="${status}"></span>`;
+}
+
+async function apiFetch(url, opts = {}) {
+  const res = await fetch(url, opts);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: res.statusText }));
+    throw new Error(err.message || res.statusText);
+  }
+  return res.json();
+}
+
+function fmt(n) { return n == null ? '—' : Number(n).toLocaleString(); }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Repo cards
+// ─────────────────────────────────────────────────────────────────────────────
+async function loadRepoCards() {
+  const container = document.getElementById('repoCards');
+  try {
+    const [reposData, statsData] = await Promise.all([
+      apiFetch('/api/maintenance/repos'),
+      apiFetch('/api/maintenance/stats')
+    ]);
+
+    repos = reposData.repos;
+
+    // Populate filter dropdown
+    const filterRepo = document.getElementById('filterRepo');
+    filterRepo.innerHTML = '<option value="">All repos</option>' +
+      repos.map(r => `<option value="${r.id}">${r.name}</option>`).join('');
+
+    if (!repos.length) {
+      container.innerHTML = '<div class="col-12 empty-state">No repos configured in config/repo-profiles.json</div>';
+      return;
+    }
+
+    container.innerHTML = repos.map(r => {
+      const rStats = statsData.byRepo?.[r.id] || { critical: 0, high: 0, medium: 0, low: 0, info: 0, total: 0 };
+      const total = rStats.total || 0;
+      const healthColor = rStats.critical > 0 ? '#f85149' : rStats.high > 0 ? '#f0883e' : rStats.medium > 0 ? '#d29922' : '#3fb950';
+
+      const barSegs = ['critical', 'high', 'medium', 'low', 'info']
+        .filter(s => rStats[s] > 0)
+        .map(s => `<div class="health-segment" style="width:${total > 0 ? Math.round(rStats[s]/total*100) : 0}%;background:${SEV_TEXT[s]}"></div>`)
+        .join('');
+
+      return `
+        <div class="col-12 col-md-6">
+          <div class="card repo-card p-3" style="border-color:${healthColor}40">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+              <div>
+                <div class="fw-semibold" style="color:${healthColor}">${r.name}</div>
+                <div class="small text-muted">${r.id}</div>
+              </div>
+              <div class="d-flex gap-1">
+                <button class="btn btn-sm btn-outline-secondary action-btn" onclick="triggerScan('${r.id}', '${r.name}')">
+                  <i class="bi bi-play-fill me-1"></i>Scan
+                </button>
+              </div>
+            </div>
+            <div class="d-flex gap-2 mb-2 small">
+              ${['critical','high','medium'].map(s => rStats[s] > 0 ? `<span style="color:${SEV_TEXT[s]}">${rStats[s]} ${s}</span>` : '').join('')}
+              ${total === 0 ? '<span class="text-success">Clean ✓</span>' : ''}
+            </div>
+            <div class="health-bar">${barSegs || '<div class="health-segment" style="width:100%;background:#3fb950"></div>'}</div>
+            <div class="small text-muted mt-1">${total} open finding${total !== 1 ? 's' : ''}</div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  } catch (e) {
+    container.innerHTML = `<div class="col-12 text-danger small p-2">Error loading repos: ${e.message}</div>`;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Stats
+// ─────────────────────────────────────────────────────────────────────────────
+async function loadStats() {
+  try {
+    const data = await apiFetch('/api/maintenance/stats');
+    document.getElementById('statTotal').textContent = fmt(data.totalOpen);
+    document.getElementById('statHigh').textContent = fmt(
+      (data.byRepo ? Object.values(data.byRepo).reduce((s, r) => s + (r.critical || 0) + (r.high || 0), 0) : 0)
+    );
+    document.getElementById('statMedium').textContent = fmt(
+      data.byRepo ? Object.values(data.byRepo).reduce((s, r) => s + (r.medium || 0), 0) : 0
+    );
+    document.getElementById('statNew24h').textContent = fmt(data.newLast24h);
+  } catch (e) {
+    console.warn('Stats error', e);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Findings table
+// ─────────────────────────────────────────────────────────────────────────────
+async function loadFindings() {
+  const tbody = document.getElementById('findingBody');
+  const params = new URLSearchParams();
+  const repo = document.getElementById('filterRepo').value;
+  const severity = document.getElementById('filterSeverity').value;
+  const scanner = document.getElementById('filterScanner').value;
+  const status = document.getElementById('filterStatus').value;
+  const sort = document.getElementById('filterSort').value;
+
+  if (repo) params.set('repo', repo);
+  if (severity) params.set('severity', severity);
+  if (scanner) params.set('scanner', scanner);
+  if (status) params.set('status', status);
+  if (sort) params.set('sort', sort);
+  params.set('limit', '100');
+
+  try {
+    const data = await apiFetch('/api/maintenance/findings?' + params.toString());
+    document.getElementById('findingCount').textContent = data.total;
+
+    if (!data.findings.length) {
+      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No findings match filters — repo is clean 🟢</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = data.findings.map(f => {
+      const evidenceSummary = typeof f.evidence === 'object'
+        ? (f.evidence.path || f.evidence.file || f.evidence.type || '—')
+        : (f.evidence || '—');
+
+      return `
+        <tr title="${escHtml(f.description)}">
+          <td>${sevBadge(f.severity)}</td>
+          <td>
+            <div class="fw-medium" style="max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(f.title)}">${escHtml(f.title)}</div>
+            <div class="text-muted" style="font-size:0.72rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:360px">${escHtml(String(evidenceSummary))}</div>
+          </td>
+          <td><span class="scanner-badge">${f.scanner}</span></td>
+          <td class="text-muted">${f.repo}</td>
+          <td class="text-end">${f.daysOpen}</td>
+          <td class="text-end text-muted">${f.occurrenceCount}×</td>
+          <td>${statusDot(f.status)} <span class="small text-muted">${f.status}</span></td>
+          <td>
+            <div class="d-flex gap-1 flex-wrap">
+              ${f.status === 'new' ? `<button class="btn btn-sm btn-outline-secondary action-btn" onclick="quickStatus('${f._id}', 'acknowledged', '${escAttr(f.title)}')">Ack</button>` : ''}
+              ${['new','acknowledged'].includes(f.status) ? `<button class="btn btn-sm btn-outline-secondary action-btn" onclick="quickStatus('${f._id}', 'deferred', '${escAttr(f.title)}')">Defer</button>` : ''}
+              ${f.status !== 'resolved' ? `<button class="btn btn-sm btn-outline-success action-btn" onclick="quickStatus('${f._id}', 'resolved', '${escAttr(f.title)}')">Resolve</button>` : ''}
+              ${f.status !== 'false_positive' ? `<button class="btn btn-sm btn-outline-secondary action-btn" onclick="quickStatus('${f._id}', 'false_positive', '${escAttr(f.title)}')">FP</button>` : ''}
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="8" class="text-danger small p-2">${e.message}</td></tr>`;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Status updates
+// ─────────────────────────────────────────────────────────────────────────────
+async function quickStatus(findingId, status, title) {
+  try {
+    await apiFetch(`/api/maintenance/findings/${findingId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status, statusChangedBy: 'dashboard' })
+    });
+    loadFindings();
+    loadStats();
+    loadRepoCards();
+  } catch (e) {
+    alert('Update failed: ' + e.message);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Scan trigger
+// ─────────────────────────────────────────────────────────────────────────────
+async function triggerScan(repoId, repoName) {
+  const modal = new bootstrap.Modal(document.getElementById('scanModal'));
+  document.getElementById('scanModalTitle').textContent = `Scanning ${repoName}...`;
+  document.getElementById('scanProgress').classList.remove('d-none');
+  document.getElementById('scanResult').classList.add('d-none');
+  modal.show();
+
+  try {
+    const result = await apiFetch(`/api/maintenance/scan/${repoId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    });
+
+    document.getElementById('scanProgress').classList.add('d-none');
+    const r = result.result;
+    const s = r.summary;
+    document.getElementById('scanResult').innerHTML = `
+      <div class="text-success mb-2"><i class="bi bi-check-circle me-1"></i>Scan complete</div>
+      <div class="small">
+        <div>New findings: <strong>${s.newThisScan}</strong></div>
+        <div>Updated findings: <strong>${s.updatedThisScan}</strong></div>
+        <div>Total open: <strong>${s.totalOpen}</strong></div>
+        <div class="mt-2">
+          ${Object.entries(s.bySeverity).filter(([,n])=>n>0).map(([sev,n]) =>
+            `<span class="badge-sev sev-${sev} me-1">${sev}: ${n}</span>`
+          ).join('')}
+        </div>
+      </div>
+    `;
+    document.getElementById('scanResult').classList.remove('d-none');
+    document.getElementById('scanModalTitle').textContent = `Scan complete — ${repoName}`;
+
+    // Refresh data
+    await Promise.all([loadRepoCards(), loadFindings(), loadStats()]);
+  } catch (e) {
+    document.getElementById('scanProgress').classList.add('d-none');
+    document.getElementById('scanResult').innerHTML = `<div class="text-danger">Scan failed: ${e.message}</div>`;
+    document.getElementById('scanResult').classList.remove('d-none');
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Escape helpers
+// ─────────────────────────────────────────────────────────────────────────────
+function escHtml(str) {
+  return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function escAttr(str) {
+  return String(str || '').replace(/'/g,"\\'").replace(/"/g,'\\"');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Boot
+// ─────────────────────────────────────────────────────────────────────────────
+async function loadAll() {
+  await Promise.all([loadRepoCards(), loadStats(), loadFindings()]);
+}
+
+loadAll();
+</script>
+</body>
+</html>
