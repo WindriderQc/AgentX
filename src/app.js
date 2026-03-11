@@ -423,16 +423,25 @@ app.get('/personas.html', (req, res) => {
   res.redirect(301, '/prompts.html');
 });
 
-// Health Check - Basic
+// Health Check - Basic (liveness probe, reads cached in-memory systemHealth)
 app.get('/health', (_req, res) => {
+  const { version } = require('../package.json');
   const isHealthy = systemHealth.mongodb.status === 'connected';
+  const isDegraded =
+    systemHealth.ollama.status === 'error' ||
+    (systemHealth.qdrant.status !== 'not_configured' && systemHealth.qdrant.status === 'error');
+
+  const overallStatus = !isHealthy ? 'down' : isDegraded ? 'degraded' : 'ok';
 
   res.status(isHealthy ? 200 : 503).json({
-    status: isHealthy ? 'ok' : 'degraded',
-    port: process.env.PORT || 3080,
-    details: {
-      mongodb: systemHealth.mongodb.status,
-      ollama: systemHealth.ollama.status
+    status: overallStatus,
+    version,
+    uptime: Math.floor(process.uptime()),
+    startup: systemHealth.startup,
+    services: {
+      mongodb: systemHealth.mongodb,
+      ollama: systemHealth.ollama,
+      qdrant: systemHealth.qdrant
     }
   });
 });
