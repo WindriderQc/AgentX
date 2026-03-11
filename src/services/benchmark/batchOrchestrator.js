@@ -542,7 +542,20 @@ async function runBatchOrchestrator({
         try {
             const judgeHostUrl = await resolveJudgeTargetForHost(hostUrl);
             for (const model of hostModels) {
+                const modelStartedAt = new Date();
+                await BenchmarkBatch.updateOne(
+                    { _id: batchId },
+                    { $push: { model_timings: { model, started_at: modelStartedAt, completed_at: null, duration_ms: null } } }
+                ).catch((err) => logger.warn('Failed to record model start timing', { batchId, model, error: err.message }));
+
                 await runModelPromptLoop(hostUrl, judgeHostUrl, model);
+
+                const modelCompletedAt = new Date();
+                const modelDurationMs = modelCompletedAt - modelStartedAt;
+                await BenchmarkBatch.updateOne(
+                    { _id: batchId, 'model_timings.model': model },
+                    { $set: { 'model_timings.$.completed_at': modelCompletedAt, 'model_timings.$.duration_ms': modelDurationMs } }
+                ).catch((err) => logger.warn('Failed to record model complete timing', { batchId, model, error: err.message }));
             }
         } catch (hostErr) {
             logger.error('Host execution failed - continuing with other hosts', {

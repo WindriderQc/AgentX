@@ -2,7 +2,7 @@
 
 import * as state from './state.js';
 import { escapeHtml, debugLog } from './utils.js';
-import { getWorkspaceHeaders, fetchBenchmarkConfig } from './api.js';
+import { getWorkspaceHeaders, fetchBenchmarkConfig, fetchBenchmarkPrompts } from './api.js';
 import { initChartDefaults } from './charts.js';
 import { loadOllamaHosts, loadModelsForHost, loadBatchModels, filterModelList, selectAllVisibleModels, loadModelRegistry, renderCategoryTabs } from './models.js';
 import { updateBatchInfo, renderDepthMatrix, bindDepthMatrix, updateDepthSummary, setAllDepths, getDepthConfig, getSelectedLevels, setAdvancedMode, setHyperMode, hydrateThresholdInputs, bindThresholdInputs } from './batch-config.js';
@@ -488,6 +488,20 @@ async function loadJudgeConfig() {
     }
 }
 
+async function loadBenchmarkPrompts() {
+    try {
+        const json = await fetchBenchmarkPrompts();
+        const data = json.data || {};
+        state.setBenchmarkPrompts(data.prompts || []);
+
+        renderDepthMatrix();
+        updateDepthSummary();
+        refreshJudgeTierUI(getSelectedLevels(getDepthConfig()));
+    } catch (err) {
+        console.error('Failed to load benchmark prompts:', err);
+    }
+}
+
 /**
  * Initialize benchmark UI
  */
@@ -718,6 +732,7 @@ async function initBenchmarkUI() {
 
     // Load judge config
     await loadJudgeConfig();
+    await loadBenchmarkPrompts();
 
     // Check for active batch
     const savedBatchId = localStorage.getItem('currentBatchId');

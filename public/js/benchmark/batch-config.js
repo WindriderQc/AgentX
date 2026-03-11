@@ -2,7 +2,7 @@
 
 import * as state from './state.js';
 import { escapeHtml, formatHostLabel, inferOppositeHostUrl } from './utils.js';
-import { refreshJudgeTierUI } from './judge-mismatch.js';
+import { currentJudgeTier, refreshJudgeTierUI, requiredTierForLevel, strongestRequiredTier } from './judge-mismatch.js';
 
 // ─── Depth Configuration ───────────────────────────────────────────
 
@@ -140,9 +140,8 @@ export function renderDepthMatrix() {
     if (!tbody) return;
 
     const config = getDepthConfig();
-    const tierMap = state.judgeTierMap || {};
     const rankMap = state.tierRank || { basic: 1, standard: 2, advanced: 3, premium: 4 };
-    const judgeTier = inferCurrentJudgeTier();
+    const judgeTier = currentJudgeTier();
     const judgeRank = rankMap[judgeTier] || 0;
     let html = '';
 
@@ -150,7 +149,7 @@ export function renderDepthMatrix() {
         const currentDepth = config[level] || 'light';
         const est = calculatePromptCount(level, currentDepth);
         const label = LEVEL_LABELS[level] || '';
-        const requiredTier = tierMap[level] || 'basic';
+        const requiredTier = requiredTierForLevel(level);
         const requiredRank = rankMap[requiredTier] || 1;
         const meetsIt = judgeRank >= requiredRank;
         const rowWarn = (!meetsIt && currentDepth !== 'off') ? ' style="background:rgba(231,76,60,0.06);"' : '';
@@ -174,19 +173,6 @@ export function renderDepthMatrix() {
     tbody.innerHTML = html;
 }
 
-/** Infer the current judge's tier from model name heuristic */
-function inferCurrentJudgeTier() {
-    const model = (state.currentJudgeConfig && state.currentJudgeConfig.model) || '';
-    if (!model) return 'basic';
-    const m = model.toLowerCase();
-    // Size-based heuristic matching judgeTierResolver.inferJudgeTier
-    if (/70b|72b|65b|command-r-plus/.test(m)) return 'premium';
-    if (/32b|33b|34b|27b|22b|14b|qwq/.test(m)) return 'advanced';
-    if (/7b|8b|9b|7b-instruct|mistral(?!.*large)/.test(m)) return 'standard';
-    if (/[0-3]b|tiny|small|phi-?2|gemma-?2b/.test(m)) return 'basic';
-    return 'standard'; // default guess
-}
-
 /**
  * Update total prompts summary in the depth matrix footer
  */
@@ -203,17 +189,10 @@ export function updateDepthSummary() {
             summaryEl.textContent = 'All levels off — select at least one';
         } else {
             const levelsStr = selectedLevels.join(', ');
-            const tierMap = state.judgeTierMap || {};
             const rankMap = state.tierRank || { basic: 1, standard: 2, advanced: 3, premium: 4 };
-            // Highest tier needed across selected levels
-            let maxTier = 'basic';
-            let maxRank = 1;
-            for (const lv of selectedLevels) {
-                const t = tierMap[lv] || 'basic';
-                const r = rankMap[t] || 1;
-                if (r > maxRank) { maxRank = r; maxTier = t; }
-            }
-            const judgeTier = inferCurrentJudgeTier();
+            const maxTier = strongestRequiredTier(selectedLevels);
+            const maxRank = rankMap[maxTier] || 1;
+            const judgeTier = currentJudgeTier();
             const judgeRank = rankMap[judgeTier] || 0;
             const meets = judgeRank >= maxRank;
             const tierNote = meets
@@ -283,6 +262,7 @@ export function setAllDepths(depth) {
     setDepthConfig(config);
     renderDepthMatrix();
     updateDepthSummary();
+    refreshJudgeTierUI(getSelectedLevels(config));
 }
 
 // ─── Batch Info (updated to use depth config) ──────────────────────

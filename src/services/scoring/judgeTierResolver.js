@@ -8,7 +8,11 @@
  *   basic    → ~2-3B models, fast but inconsistent (quick screening only)
  *   standard → 7-8B models, reliable for most evaluations (default)
  *   advanced → 14B+ or specialized reasoning, high consistency
- *   premium  → 70B+ frontier, highest quality, VRAM-heavy
+ *   premium  → 70B+ frontier, optional luxury tier (never required)
+ *
+ * Local-first design: the maximum *required* tier is advanced (14B),
+ * achievable on consumer GPUs. Premium exists for users who have the
+ * hardware but no prompt level demands it.
  *
  * The resolver is designed to be host-aware: given a host's available
  * models + their registered tiers, it picks the best fit. If the
@@ -29,8 +33,10 @@ const TIER_RANK = {
 // ── Prompt level → minimum judge tier mapping ────────────────────────
 // Levels 1-3:  basic is fine (trivial prompts, clear right/wrong)
 // Levels 4-6:  standard required (key differentiation zone)
-// Levels 7-8:  advanced preferred (nuanced evaluation)
-// Levels 9-10: premium preferred (complex multi-constraint problems)
+// Levels 7-10: advanced required (nuanced / complex evaluation)
+//
+// Local-first: max required tier is advanced (14B models). Premium is
+// never enforced — keeps benchmarking accessible on consumer hardware.
 const LEVEL_TIER_MAP = {
     1: 'basic',
     2: 'basic',
@@ -40,8 +46,8 @@ const LEVEL_TIER_MAP = {
     6: 'standard',
     7: 'advanced',
     8: 'advanced',
-    9: 'premium',
-    10: 'premium'
+    9: 'advanced',
+    10: 'advanced'
 };
 
 // ── Default judge presets ────────────────────────────────────────────
@@ -76,7 +82,7 @@ const JUDGE_PRESETS = {
         num_ctx: 8192,
         timeout: 120000,
         num_predict: 1000,
-        description: 'Maximum quality — 70B+ model, zero temperature'
+        description: 'Optional luxury tier — 70B+ if available, not required for any level'
     }
 };
 

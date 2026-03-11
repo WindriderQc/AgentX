@@ -826,7 +826,7 @@ const CourthouseAnalytics = (() => {
         basic:    { icon: '\u2714', color: '#27ae60', bg: 'rgba(39,174,96,0.15)',  border: 'rgba(39,174,96,0.35)', models: '2-3B (tinyllama, phi-2, gemma-2b)', desc: 'Small/fast models — trivial prompts with clear correct answers' },
         standard: { icon: '\u2605', color: '#3498db', bg: 'rgba(52,152,219,0.15)', border: 'rgba(52,152,219,0.35)', models: '7-9B (qwen2.5:7b, mistral, llama3.1:8b)', desc: 'Mid-size models — the key differentiation zone for most benchmarks' },
         advanced: { icon: '\u26A1', color: '#e67e22', bg: 'rgba(230,126,34,0.15)', border: 'rgba(230,126,34,0.35)', models: '14-32B (qwen2.5:14b, codellama:34b, command-r)', desc: 'Large models — nuanced evaluation of complex multi-step problems' },
-        premium:  { icon: '\uD83D\uDC8E', color: '#e74c3c', bg: 'rgba(231,76,60,0.15)',  border: 'rgba(231,76,60,0.35)', models: '70B+ (llama3.1:70b, qwen2.5:72b)', desc: 'Flagship models — complex multi-constraint problems requiring deep reasoning' }
+        premium:  { icon: '\uD83D\uDC8E', color: '#e74c3c', bg: 'rgba(231,76,60,0.15)',  border: 'rgba(231,76,60,0.35)', models: '70B+ (optional luxury tier)', desc: 'Optional flagship models — never required, use if hardware allows' }
     };
 
     const LEVEL_LABELS = {
@@ -838,7 +838,7 @@ const CourthouseAnalytics = (() => {
         basic:    'Clear right/wrong answers — small models can assess correctness',
         standard: 'Requires understanding code logic and nuance — needs a 7B+ judge',
         advanced: 'Multi-step reasoning and subtle quality differences — needs 14B+',
-        premium:  'Complex multi-constraint evaluation — flagship models needed'
+        premium:  'Optional luxury tier — use if you have 70B+ hardware'
     };
 
     const CATEGORY_EXPLANATIONS = {

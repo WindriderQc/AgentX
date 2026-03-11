@@ -51,7 +51,7 @@ const CapabilitiesSchema = new mongoose.Schema({
   // basic:    small models (~2-3B), quick screening only
   // standard: 7-8B models, reliable for most evaluations
   // advanced: 14B+ or specialized reasoning models, high consistency
-  // premium:  70B+ frontier models, highest quality (VRAM-heavy)
+  // premium:  70B+ frontier models, optional luxury tier (never required)
   judgeTier: {
     type: String,
     enum: ['basic', 'standard', 'advanced', 'premium', null],

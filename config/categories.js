@@ -75,10 +75,10 @@ const GENERALIST_CATEGORY_WEIGHTS = {
 /**
  * Minimum judge tier per benchmark category.
  * Categories requiring deeper understanding need stronger judge models.
- * Tiers: basic (2-3B), standard (7B), advanced (14B+), premium (70B+)
+ * Tiers: basic (2-3B), standard (7B), advanced (14B+)
  *
- * A 7B judge reliably scores all categories at levels 1-8; only premium
- * categories (very high level math proofs, specialized deep reasoning) need 14B+.
+ * Local-first design: max category requirement is standard (7B).
+ * Advanced (14B) is enforced only via prompt level, not per-category.
  */
 const CATEGORY_MIN_JUDGE_TIER = {
   'coding':                'standard',

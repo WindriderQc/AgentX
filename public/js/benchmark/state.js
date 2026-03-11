@@ -21,6 +21,7 @@ export let tierRank = { basic:1, standard:2, advanced:3, premium:4 }; // also ac
 export let judgeHostDefaults = {}; // hostUrl → defaultJudgeModel
 export let categoryTierMap = {};
 export let judgePresets = {};
+export let benchmarkPrompts = [];
 
 export let lastDashboardOverview = null;
 export let lastRecentTests = [];
@@ -68,6 +69,7 @@ export function setShowSuccessRateDetails(show) { showSuccessRateDetails = show;
 export function setModelRegistryCache(cache) { modelRegistryCache = cache; }
 export function setCategoryTierMap(map) { categoryTierMap = map; }
 export function setJudgePresets(presets) { judgePresets = presets; }
+export function setBenchmarkPrompts(prompts) { benchmarkPrompts = Array.isArray(prompts) ? prompts : []; }
 
 export function setCurrentBatchId(id) { currentBatchId = id; }
 export function setBatchPollInterval(interval) { batchPollInterval = interval; }

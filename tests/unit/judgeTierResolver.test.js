@@ -47,7 +47,7 @@ describe('getRequiredTier', () => {
     [1, 'basic'], [2, 'basic'], [3, 'basic'],
     [4, 'standard'], [5, 'standard'], [6, 'standard'],
     [7, 'advanced'], [8, 'advanced'],
-    [9, 'premium'], [10, 'premium']
+    [9, 'advanced'], [10, 'advanced']
   ])('level %i → %s', (level, expected) => {
     expect(getRequiredTier(level)).toBe(expected);
   });
@@ -55,8 +55,8 @@ describe('getRequiredTier', () => {
   test('clamps out-of-range levels to valid range', () => {
     // 0 is falsy -> defaults to 5 -> standard
     expect(getRequiredTier(0)).toBe('standard');
-    // 11 clamps to 10 -> premium
-    expect(getRequiredTier(11)).toBe('premium');
+    // 11 clamps to 10 -> advanced
+    expect(getRequiredTier(11)).toBe('advanced');
     // -1 is truthy -> clamps to max(1,-1)=1 -> basic
     expect(getRequiredTier(-1)).toBe('basic');
     // undefined/null -> default 5 -> standard

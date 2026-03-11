@@ -19,11 +19,35 @@ const TIER_COLOR = {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
+function higherTier(left, right) {
+    const leftRank = TIER_RANK[left] || 0;
+    const rightRank = TIER_RANK[right] || 0;
+    return rightRank > leftRank ? right : left;
+}
+
 /**
- * Return the tier required for a given level using state.judgeTierMap.
+ * Return the tier required for a given level using prompt metadata when available.
  */
-function requiredTierForLevel(level) {
-    return (state.judgeTierMap && state.judgeTierMap[level]) || 'standard';
+export function requiredTierForLevel(level) {
+    let requiredTier = (state.judgeTierMap && state.judgeTierMap[level]) || 'standard';
+    const prompts = Array.isArray(state.benchmarkPrompts) ? state.benchmarkPrompts : [];
+
+    for (const prompt of prompts) {
+        if (Number(prompt && prompt.level) !== Number(level)) continue;
+
+        if (prompt && prompt.required_judge_tier) {
+            requiredTier = higherTier(requiredTier, prompt.required_judge_tier);
+        }
+
+        const categoryTier = prompt && prompt.category
+            ? state.categoryTierMap && state.categoryTierMap[prompt.category]
+            : null;
+        if (categoryTier) {
+            requiredTier = higherTier(requiredTier, categoryTier);
+        }
+    }
+
+    return requiredTier;
 }
 
 /**
@@ -56,12 +80,10 @@ export function currentJudgeTier() {
  * Given an array of selected levels, return the strongest required tier.
  */
 export function strongestRequiredTier(levels) {
-    let best = 0;
     let bestTier = 'basic';
     for (const lvl of levels) {
         const t = requiredTierForLevel(lvl);
-        const rank = TIER_RANK[t] || 0;
-        if (rank > best) { best = rank; bestTier = t; }
+        bestTier = higherTier(bestTier, t);
     }
     return bestTier;
 }
@@ -222,7 +244,6 @@ export function renderMismatchBanner(activeLevels) {
         : '';
 
     const modelSizeHint =
-        strongestRequired === 'premium'  ? '70B+ model (e.g. qwen2.5:72b)' :
         strongestRequired === 'advanced' ? '14B+ model (e.g. qwen2.5:14b)' :
                                            '7B+ model';
 

@@ -25,6 +25,16 @@ export async function fetchBenchmarkConfig() {
 }
 
 /**
+ * Fetch benchmark prompts
+ */
+export async function fetchBenchmarkPrompts() {
+    const res = await fetch(`${BENCHMARK_API}/prompts`, {
+        headers: getWorkspaceHeaders()
+    });
+    return res.json();
+}
+
+/**
  * Fetch judge roster (all judges with metadata + per-host availability)
  */
 export async function fetchJudgeRoster() {

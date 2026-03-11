@@ -680,6 +680,14 @@ function updatePerModelProgress(batch, results, showHyper) {
     const models = Array.from(new Set([...configuredModels, ...fullCounterModels, ...sampledResultModels]));
     const perModelCounters = batch && batch.per_model_counters ? batch.per_model_counters : {};
 
+    // Build model timings lookup from batch.model_timings array
+    const modelTimingsLookup = {};
+    if (Array.isArray(batch.model_timings)) {
+        batch.model_timings.forEach(t => {
+            if (t && t.model) modelTimingsLookup[t.model] = t;
+        });
+    }
+
     // Get planned tests per model from batch plan
     const perModelPlannedFromPlan = batch.plan && batch.plan.tests_per_model
         ? batch.plan.tests_per_model
@@ -704,16 +712,22 @@ function updatePerModelProgress(batch, results, showHyper) {
     };
 
     // Median baselines for relative indicators
+    // Falls back to backend metrics when sampled results are sparse for a model
     const perModelAggForMedian = models.map(model => {
         const modelResults = results.filter(r => r && r.model === model);
+        const bm = (perModelCounters[model] && perModelCounters[model].metrics) ? perModelCounters[model].metrics : null;
         const tpsValues = modelResults
             .map(r => toFiniteNumber(r && r.tokens_per_sec))
             .filter(v => v !== null && v > 0);
         const judgeMsValues = modelResults
             .map(r => toFiniteNumber(r && r.scoring_time_ms))
             .filter(v => v !== null && v > 0);
-        const avgTps = tpsValues.length > 0 ? (tpsValues.reduce((sum, v) => sum + v, 0) / tpsValues.length) : null;
-        const avgJudgeMs = judgeMsValues.length > 0 ? (judgeMsValues.reduce((sum, v) => sum + v, 0) / judgeMsValues.length) : null;
+        const avgTps = tpsValues.length >= 3
+            ? (tpsValues.reduce((sum, v) => sum + v, 0) / tpsValues.length)
+            : (bm && bm.tokens_per_sec && bm.tokens_per_sec.n > 0 ? bm.tokens_per_sec.mean : null);
+        const avgJudgeMs = judgeMsValues.length >= 3
+            ? (judgeMsValues.reduce((sum, v) => sum + v, 0) / judgeMsValues.length)
+            : (bm && bm.judge_ms && bm.judge_ms.n > 0 ? bm.judge_ms.mean : null);
         return { model, avgTps, tpsN: tpsValues.length, avgJudgeMs, judgeMsN: judgeMsValues.length };
     });
 
@@ -779,6 +793,19 @@ function updatePerModelProgress(batch, results, showHyper) {
         const judgeAgg = summarizeNumbers(modelResults.map(r => r && r.scoring_time_ms).filter(v => Number(v) > 0));
         const qualityAgg = summarizeNumbers(modelResults.map(r => r && r.quality_score));
 
+        // When sampled results are sparse (n=0), fall back to full-population backend metrics
+        const backendMetrics = (fullModelCounters && fullModelCounters.metrics) ? fullModelCounters.metrics : null;
+        const MIN_SAMPLE = 3;
+        const resolveAgg = (sampledAgg, backendField) => {
+            if (sampledAgg && sampledAgg.n >= MIN_SAMPLE) return sampledAgg;
+            const bm = backendMetrics && backendMetrics[backendField];
+            return (bm && bm.n > 0) ? { ...bm, _fromBackend: true } : sampledAgg;
+        };
+        const effLatencyAgg = resolveAgg(latencyAgg, 'latency');
+        const effTpsAgg = resolveAgg(tpsAgg, 'tokens_per_sec');
+        const effJudgeAgg = resolveAgg(judgeAgg, 'judge_ms');
+        const effQualityAgg = resolveAgg(qualityAgg, 'quality');
+
         const execHostCounts = countBy(modelResults, (r) => r && r.host ? formatHostLabel(r.host) : null);
         const judgeHostCounts = countBy(modelResults, (r) => r && r.judge_host ? formatHostLabel(r.judge_host) : null);
         const methodCounts = countBy(modelResults, (r) => (r && r.scoring_method) ? String(r.scoring_method).toLowerCase() : null);
@@ -789,8 +816,8 @@ function updatePerModelProgress(batch, results, showHyper) {
             if (!Number.isFinite(a) || !Number.isFinite(b) || b <= 0) return null;
             return a / b;
         };
-        const tpsVsMedian = ratioOrNull(tpsAgg.mean, tpsMedianModelAvg);
-        const judgeMsVsMedian = ratioOrNull(judgeAgg.mean, judgeMsMedianModelAvg);
+        const tpsVsMedian = ratioOrNull(effTpsAgg.mean, tpsMedianModelAvg);
+        const judgeMsVsMedian = ratioOrNull(effJudgeAgg.mean, judgeMsMedianModelAvg);
         const formatRatio = (x) => (x === null ? '-' : `${x.toFixed(2)}x`);
         const ratioColor = (x, invert = false) => {
             if (x === null) return 'var(--muted)';
@@ -819,8 +846,8 @@ function updatePerModelProgress(batch, results, showHyper) {
 
         if (execDone >= minSamples && execRate >= execOutPct) reasons.push('<span class="badge bg-danger">FAIL</span>');
         if (isQualityEnabled && judgeDone >= minSamples && judgeRate >= judgeOutPct) reasons.push('<span class="badge bg-warning text-dark">JFAIL</span>');
-        if (tpsCutoff !== null && tpsAgg.n >= minSamples && Number.isFinite(tpsAgg.mean) && tpsAgg.mean <= tpsCutoff) reasons.push('<span class="badge bg-info text-dark">LOW TPS</span>');
-        if (judgeMsCutoff !== null && judgeAgg.n >= minSamples && Number.isFinite(judgeAgg.mean) && judgeAgg.mean >= judgeMsCutoff) reasons.push('<span class="badge bg-info text-dark">SLOW JUDGE</span>');
+        if (tpsCutoff !== null && effTpsAgg.n >= minSamples && Number.isFinite(effTpsAgg.mean) && effTpsAgg.mean <= tpsCutoff) reasons.push('<span class="badge bg-info text-dark">LOW TPS</span>');
+        if (judgeMsCutoff !== null && effJudgeAgg.n >= minSamples && Number.isFinite(effJudgeAgg.mean) && effJudgeAgg.mean >= judgeMsCutoff) reasons.push('<span class="badge bg-info text-dark">SLOW JUDGE</span>');
 
         const aggCell = (primary, secondary, title) => `
             <div title="${title}" style="white-space: nowrap;">
@@ -830,24 +857,24 @@ function updatePerModelProgress(batch, results, showHyper) {
         `;
 
         const latencyCell = aggCell(
-            latencyAgg.n > 0 ? `${Math.round(latencyAgg.p50)}ms` : '-',
-            latencyAgg.n > 0 ? `p95 ${Math.round(latencyAgg.p95)}ms` : `n=0`,
-            latencyAgg.n > 0 ? `n=${latencyAgg.n} avg=${Math.round(latencyAgg.mean)}ms min=${Math.round(latencyAgg.min)}ms max=${Math.round(latencyAgg.max)}ms` : 'No latency data'
+            effLatencyAgg.n > 0 ? `${Math.round(effLatencyAgg.p50)}ms` : '-',
+            effLatencyAgg.n > 0 ? `p95 ${Math.round(effLatencyAgg.p95)}ms` : `n=0`,
+            effLatencyAgg.n > 0 ? `n=${effLatencyAgg.n} avg=${Math.round(effLatencyAgg.mean)}ms min=${Math.round(effLatencyAgg.min)}ms max=${Math.round(effLatencyAgg.max)}ms${effLatencyAgg._fromBackend ? ' (all results)' : ''}` : 'No latency data'
         );
         const tpsCell = aggCell(
-            tpsAgg.n > 0 ? `${tpsAgg.p50.toFixed(2)} t/s` : '-',
-            tpsAgg.n > 0 ? `p10 ${tpsAgg.p10.toFixed(2)} • vs med ${formatRatio(tpsVsMedian)}` : `n=0`,
-            tpsAgg.n > 0 ? `n=${tpsAgg.n} avg=${tpsAgg.mean.toFixed(2)} p95=${tpsAgg.p95.toFixed(2)} min=${tpsAgg.min.toFixed(2)}` : 'No throughput data'
+            effTpsAgg.n > 0 ? `${effTpsAgg.p50.toFixed(2)} t/s` : '-',
+            effTpsAgg.n > 0 ? `p10 ${effTpsAgg.p10.toFixed(2)} • vs med ${formatRatio(tpsVsMedian)}` : `n=0`,
+            effTpsAgg.n > 0 ? `n=${effTpsAgg.n} avg=${effTpsAgg.mean.toFixed(2)} p95=${effTpsAgg.p95.toFixed(2)} min=${effTpsAgg.min.toFixed(2)}${effTpsAgg._fromBackend ? ' (all results)' : ''}` : 'No throughput data'
         );
         const judgeMsCell = aggCell(
-            judgeAgg.n > 0 ? `${Math.round(judgeAgg.p50)}ms` : '-',
-            judgeAgg.n > 0 ? `p95 ${Math.round(judgeAgg.p95)}ms • vs med ${formatRatio(judgeMsVsMedian)}` : `n=0`,
-            judgeAgg.n > 0 ? `n=${judgeAgg.n} avg=${Math.round(judgeAgg.mean)}ms max=${Math.round(judgeAgg.max)}ms` : 'No judge-time data'
+            effJudgeAgg.n > 0 ? `${Math.round(effJudgeAgg.p50)}ms` : '-',
+            effJudgeAgg.n > 0 ? `p95 ${Math.round(effJudgeAgg.p95)}ms • vs med ${formatRatio(judgeMsVsMedian)}` : `n=0`,
+            effJudgeAgg.n > 0 ? `n=${effJudgeAgg.n} avg=${Math.round(effJudgeAgg.mean)}ms max=${Math.round(effJudgeAgg.max)}ms${effJudgeAgg._fromBackend ? ' (all results)' : ''}` : 'No judge-time data'
         );
         const qualityCell = aggCell(
-            qualityAgg.n > 0 ? `${qualityAgg.p50.toFixed(2)}` : '-',
-            qualityAgg.n > 0 ? `p10 ${qualityAgg.p10.toFixed(2)}` : `n=0`,
-            qualityAgg.n > 0 ? `n=${qualityAgg.n} avg=${qualityAgg.mean.toFixed(2)} p95=${qualityAgg.p95.toFixed(2)} min=${qualityAgg.min.toFixed(2)}` : 'No quality data'
+            effQualityAgg.n > 0 ? `${effQualityAgg.p50.toFixed(2)}` : '-',
+            effQualityAgg.n > 0 ? `p10 ${effQualityAgg.p10.toFixed(2)}` : `n=0`,
+            effQualityAgg.n > 0 ? `n=${effQualityAgg.n} avg=${effQualityAgg.mean.toFixed(2)} p95=${effQualityAgg.p95.toFixed(2)} min=${effQualityAgg.min.toFixed(2)}${effQualityAgg._fromBackend ? ' (all results)' : ''}` : 'No quality data'
         );
 
         // Build hyper snapshot for expandable row
@@ -868,10 +895,10 @@ function updatePerModelProgress(batch, results, showHyper) {
             exec: { done: execDone, failed: execFailed, percent: execPct },
             judge: isQualityEnabled ? { done: judgeDone, failed: judgeFailed, percent_planned: judgePct, percent_effective: judgeEffPct } : { disabled: true },
             aggregates: {
-                latency_ms: latencyAgg,
-                tokens_per_sec: tpsAgg,
-                judge_time_ms: judgeAgg,
-                quality_score: qualityAgg,
+                latency_ms: effLatencyAgg,
+                tokens_per_sec: effTpsAgg,
+                judge_time_ms: effJudgeAgg,
+                quality_score: effQualityAgg,
                 vs_median: { model_avg_tokens_per_sec_ratio: tpsVsMedian, model_avg_judge_time_ms_ratio: judgeMsVsMedian }
             },
             breakdowns: { exec_host: execHostCounts, judge_host: judgeHostCounts, scoring_method: methodCounts, prompt_level: promptLevelCounts, prompt_category: promptCategoryCounts },
@@ -881,6 +908,17 @@ function updatePerModelProgress(batch, results, showHyper) {
         const hyperToggle = showHyperDetails
             ? `<button type="button" class="btn-secondary" data-action="toggle-model-hyper" data-model="${String(model).replace(/"/g, '&quot;')}" style="padding: 6px 10px;">Hyper</button>`
             : '';
+
+        // Per-model wall-clock duration
+        const modelTiming = modelTimingsLookup[model] || null;
+        const modelDurationMs = modelTiming && modelTiming.duration_ms != null ? Number(modelTiming.duration_ms) : null;
+        const durationCell = modelDurationMs !== null
+            ? (() => {
+                const s = Math.round(modelDurationMs / 1000);
+                const label = s >= 3600 ? `${Math.floor(s/3600)}h ${Math.floor((s%3600)/60)}m` : s >= 60 ? `${Math.floor(s/60)}m ${s%60}s` : `${s}s`;
+                return `<div title="Wall-clock: ${modelDurationMs.toLocaleString()}ms" style="white-space:nowrap; font-weight:600; color:var(--text);">${label}</div>`;
+            })()
+            : `<div style="color:var(--muted);">—</div>`;
 
         return `
             <tr data-model-main-row="${String(model).replace(/"/g, '&quot;')}">
@@ -895,13 +933,14 @@ function updatePerModelProgress(batch, results, showHyper) {
                 </td>
                 <td style="padding: 10px 10px; min-width: 220px;">${execBar}</td>
                 <td style="padding: 10px 10px; min-width: 220px;">${judgeBar}</td>
+                <td style="padding: 10px 10px; min-width: 100px;">${durationCell}</td>
                 <td style="padding: 10px 10px; min-width: 140px;">${latencyCell}</td>
                 <td style="padding: 10px 10px; min-width: 140px;"><div style="color: ${ratioColor(tpsVsMedian, false)};">${tpsCell}</div></td>
                 <td style="padding: 10px 10px; min-width: 140px;"><div style="color: ${ratioColor(judgeMsVsMedian, true)};">${judgeMsCell}</div></td>
                 <td style="padding: 10px 10px; min-width: 140px;">${qualityCell}</td>
             </tr>
             <tr data-model-hyper-row="${String(model).replace(/"/g, '&quot;')}" style="display:none;">
-                <td colspan="7" style="padding: 0 10px 10px;">
+                <td colspan="8" style="padding: 0 10px 10px;">
                     <div class="advanced-details" style="margin-top: 0;">
                         <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom: 6px;">
                             <div style="display:flex; align-items:center; gap: 10px; flex-wrap: wrap;">
@@ -921,13 +960,26 @@ function updatePerModelProgress(batch, results, showHyper) {
     perModelContainer.style.display = 'block';
     const resultsMeta = batch && batch.results_meta ? batch.results_meta : null;
     const sampledNotice = resultsMeta && resultsMeta.truncated
-        ? ` | detailed metric columns use sampled results (${resultsMeta.returned}/${resultsMeta.total})`
+        ? ` | metric columns from full DB (${resultsMeta.total} results)`
         : '';
+
+    // Batch total duration
+    const batchTotalMs = batch && batch.execution_metrics && batch.execution_metrics.total_duration_ms != null
+        ? Number(batch.execution_metrics.total_duration_ms)
+        : (batch && batch.started_at && batch.completed_at
+            ? new Date(batch.completed_at) - new Date(batch.started_at)
+            : null);
+    const batchDurationLabel = (() => {
+        if (batchTotalMs == null) return '';
+        const s = Math.round(batchTotalMs / 1000);
+        const label = s >= 3600 ? `${Math.floor(s/3600)}h ${Math.floor((s%3600)/60)}m ${s%60}s` : s >= 60 ? `${Math.floor(s/60)}m ${s%60}s` : `${s}s`;
+        return ` | Batch total: ${label}`;
+    })();
 
     perModelContainer.innerHTML = `
         <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom: 10px;">
             <div style="font-weight: 700; color: var(--text);">Per-model Progress</div>
-            <div style="color: var(--muted); font-size: 0.85em;">Planned per model: ${perModelPlannedFromPlan}${sampledNotice}</div>
+            <div style="color: var(--muted); font-size: 0.85em;">Planned per model: ${perModelPlannedFromPlan}${sampledNotice}${batchDurationLabel}</div>
         </div>
         <div style="overflow-x: auto;">
             <table style="width: 100%; border-collapse: collapse;">
@@ -936,6 +988,7 @@ function updatePerModelProgress(batch, results, showHyper) {
                         <th style="padding: 8px 10px;">Model</th>
                         <th style="padding: 8px 10px;">Exec</th>
                         <th style="padding: 8px 10px;">Judge</th>
+                        <th style="padding: 8px 10px;">Duration</th>
                         <th style="padding: 8px 10px;">Latency</th>
                         <th style="padding: 8px 10px;">t/s</th>
                         <th style="padding: 8px 10px;">Judge ms</th>

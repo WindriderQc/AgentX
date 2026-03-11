@@ -207,7 +207,6 @@ async function checkJudgeConfiguration(judgeConfig = {}, levels = [], promptCove
             !judgeTierResolver.tierMeetsRequirement(resolvedTier, judgeTierResolver.getRequiredTier(l))
         );
         const modelSizeHint =
-            requiredTier === 'premium'  ? '70B+ model (e.g. qwen2.5:72b, llama3:70b)' :
             requiredTier === 'advanced' ? '14B+ model (e.g. qwen2.5:14b, mistral:22b)' :
                                           '7B+ model';
         blockers.push(

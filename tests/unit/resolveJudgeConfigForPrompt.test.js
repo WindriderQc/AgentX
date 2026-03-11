@@ -190,13 +190,13 @@ describe('resolveJudgeConfigForPrompt — auto-upgrade ON, no explicit model', (
 
         const rawJudgeConfig = { judge_tier_auto_upgrade: true };
         const mergedConfig = makeMergedConfig();
-        const prompt = makePrompt(10); // premium required
+        const prompt = makePrompt(10); // advanced required
 
         const result = await resolveJudgeConfigForPrompt(prompt, { ...mergedConfig }, rawJudgeConfig);
 
         // Took the best available (standard), flagged as downgraded
         expect(result.judgeTierMeta.tier_downgraded).toBe(true);
-        expect(result.judgeTierMeta.required_tier).toBe('premium');
+        expect(result.judgeTierMeta.required_tier).toBe('advanced');
     });
 
     test('returns default meta when no candidates in registry', async () => {

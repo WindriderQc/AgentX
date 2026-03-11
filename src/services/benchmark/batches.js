@@ -10,6 +10,26 @@ const { JUDGE_CONFIG } = require('../qualityScorer');
 const { HOSTS } = require('../modelRouter');
 
 /**
+ * Compute percentile/summary stats from a raw array of numbers.
+ * Nulls/non-finite values are excluded.
+ */
+function computeAggStats(values) {
+    const nums = (Array.isArray(values) ? values : [])
+        .map(v => Number(v))
+        .filter(v => Number.isFinite(v) && v >= 0);
+    if (nums.length === 0) return { n: 0 };
+    nums.sort((a, b) => a - b);
+    const n = nums.length;
+    const pct = (p) => {
+        const idx = (p / 100) * (n - 1);
+        const lo = Math.floor(idx), hi = Math.ceil(idx);
+        return lo === hi ? nums[lo] : nums[lo] + (nums[hi] - nums[lo]) * (idx - lo);
+    };
+    const mean = nums.reduce((s, v) => s + v, 0) / n;
+    return { n, mean, min: nums[0], max: nums[n - 1], p10: pct(10), p50: pct(50), p95: pct(95) };
+}
+
+/**
  * Get all batch runs
  */
 async function getBatches({ limit = 20 } = {}) {
@@ -58,7 +78,7 @@ async function getBatch(batchId, {
     if (normalizedLimit !== null) queryOptions.limit = normalizedLimit;
     if (normalizedOffset > 0) queryOptions.offset = normalizedOffset;
 
-    const [results, totalResultsCount, actualFailedCount, actualJudgeableCount, actualJudgeCompletedCount, actualJudgeFailedCount, judgedAgg, perModelAgg] = await Promise.all([
+    const [results, totalResultsCount, actualFailedCount, actualJudgeableCount, actualJudgeCompletedCount, actualJudgeFailedCount, judgedAgg, perModelAgg, perModelMetricsAgg] = await Promise.all([
         BenchmarkResult.getByBatch(batchId, queryOptions).lean(),
         BenchmarkResult.countDocuments({ batch_id: batchId }),
         BenchmarkResult.countDocuments({ batch_id: batchId, success: false }),
@@ -135,6 +155,18 @@ async function getBatch(batchId, {
                     }
                 }
             }
+        ]),
+        BenchmarkResult.aggregate([
+            { $match: { batch_id: batchId, success: true } },
+            {
+                $group: {
+                    _id: '$model',
+                    latencies: { $push: { $ifNull: ['$latency', null] } },
+                    tps_values: { $push: { $ifNull: ['$tokens_per_sec', null] } },
+                    judge_ms_values: { $push: { $ifNull: ['$scoring_time_ms', null] } },
+                    quality_values: { $push: { $ifNull: ['$quality_score', null] } }
+                }
+            }
         ])
     ]);
 
@@ -150,6 +182,19 @@ async function getBatch(batchId, {
         };
         return acc;
     }, {});
+
+    // Enrich perModelCounters with full-population metric stats (bypasses the 500-result sample limit)
+    perModelMetricsAgg.forEach(row => {
+        const model = row && row._id ? String(row._id) : null;
+        if (!model) return;
+        if (!perModelCounters[model]) perModelCounters[model] = { exec_done: 0, exec_failed: 0, judge_done: 0, judge_failed: 0 };
+        perModelCounters[model].metrics = {
+            latency: computeAggStats(row.latencies),
+            tokens_per_sec: computeAggStats((row.tps_values || []).filter(v => v > 0)),
+            judge_ms: computeAggStats(row.judge_ms_values),
+            quality: computeAggStats(row.quality_values)
+        };
+    });
 
     const defaultJudgeModel = (batch && batch.judge_config && batch.judge_config.model)
         ? batch.judge_config.model
