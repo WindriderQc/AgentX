@@ -203,8 +203,20 @@ router.get('/schedule/actual-vs-planned', optionalAuth, async (req, res) => {
     // Get planned timeline
     const planned = await clusterScheduleService.getTimelineByHost(date, timezone);
 
-    // Get actual for same day
-    const dayStart = new Date(`${date}T00:00:00Z`);
+    // Get actual for same day, aligned to the requested timezone.
+    // Use UTC noon as reference to measure the timezone offset (avoids DST edge cases at midnight).
+    // local - UTC = offsetMs  →  dayStart(UTC) = midnight(UTC) - offsetMs
+    const utcNoon = new Date(`${date}T12:00:00Z`);
+    const noonParts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: timezone,
+      hour12: false,
+      hour: '2-digit', minute: '2-digit', second: '2-digit'
+    }).formatToParts(utcNoon);
+    const nH = parseInt(noonParts.find(p => p.type === 'hour').value, 10);
+    const nM = parseInt(noonParts.find(p => p.type === 'minute').value, 10);
+    const nS = parseInt(noonParts.find(p => p.type === 'second').value, 10);
+    const tzOffsetMs = ((nH * 3600 + nM * 60 + nS) - 12 * 3600) * 1000;
+    const dayStart = new Date(new Date(`${date}T00:00:00Z`).getTime() - tzOffsetMs);
     const dayEnd = new Date(dayStart.getTime() + 86400 * 1000);
     const actual = await HostUsageLedger.find({
       hour: { $gte: dayStart, $lt: dayEnd }

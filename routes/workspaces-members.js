@@ -8,13 +8,10 @@ const express = require('express');
 const router = express.Router();
 const Workspace = require('../models/Workspace');
 const WorkspaceMember = require('../models/WorkspaceMember');
-const WorkspaceInvitation = require('../models/WorkspaceInvitation');
 const UserProfile = require('../models/UserProfile');
-const { getEmailService } = require('../src/services/emailService');
-const { logMemberAction, logInvitationAction, logSettingsChange, logWorkspaceAction } = require('../src/middleware/workspaceAudit');
+const { logMemberAction } = require('../src/middleware/workspaceAudit');
 const logger = require('../config/logger');
 const { requireAuth } = require('../src/middleware/auth');
-const { attachWorkspace, requireAdmin } = require('../src/middleware/workspace');
 
 async function getUserProfileId(sessionUserId) {
   const userProfile = await UserProfile.findOne({ userId: sessionUserId });

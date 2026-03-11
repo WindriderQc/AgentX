@@ -356,11 +356,9 @@ async function startServer() {
   try {
     const maintenanceScheduler = getMaintenanceSchedulerService();
     maintenanceScheduler.start();
-    console.log(`   ✓ Maintenance Scheduler: Active (poll ${maintenanceScheduler.pollMs}ms)`);
-    logger.info('Maintenance scheduler started', { pollMs: maintenanceScheduler.pollMs });
+    logger.info(`Maintenance Scheduler: Active (poll ${maintenanceScheduler.pollMs}ms)`);
   } catch (err) {
-    console.log(`   ⚠ Maintenance Scheduler: ${err.message}`);
-    logger.warn('Maintenance scheduler failed to start', { error: err.message });
+    logger.warn(`Maintenance Scheduler: ${err.message}`, { error: err.message });
   }
 
   // Start Host Monitor service (stale-host detection)

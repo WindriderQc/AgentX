@@ -73,14 +73,43 @@ router.get('/snapshot/:repo', async (req, res) => {
     }
     const totalOpen = Object.values(bySeverity).reduce((a, b) => a + b, 0);
 
-    const topFindings = await Finding.find({
-      repo,
-      status: { $in: ['new', 'acknowledged'] }
-    })
-      .sort({ severity: 1, lastSeenAt: -1 })
-      .limit(5)
-      .select('severity category title firstSeenAt lastSeenAt occurrenceCount scanner')
-      .lean();
+    const topFindings = await Finding.aggregate([
+      {
+        $match: {
+          repo,
+          status: { $in: ['new', 'acknowledged'] }
+        }
+      },
+      {
+        $addFields: {
+          severityRank: {
+            $switch: {
+              branches: [
+                { case: { $eq: ['$severity', 'critical'] }, then: 0 },
+                { case: { $eq: ['$severity', 'high'] }, then: 1 },
+                { case: { $eq: ['$severity', 'medium'] }, then: 2 },
+                { case: { $eq: ['$severity', 'low'] }, then: 3 },
+                { case: { $eq: ['$severity', 'info'] }, then: 4 }
+              ],
+              default: 999
+            }
+          }
+        }
+      },
+      { $sort: { severityRank: 1, lastSeenAt: -1 } },
+      { $limit: 5 },
+      {
+        $project: {
+          severity: 1,
+          category: 1,
+          title: 1,
+          firstSeenAt: 1,
+          lastSeenAt: 1,
+          occurrenceCount: 1,
+          scanner: 1
+        }
+      }
+    ]);
 
     res.json({
       repo,
@@ -122,14 +151,38 @@ router.get('/findings', async (req, res) => {
     const skip = parseInt(rawOffset, 10) || 0;
 
     const sortMap = {
-      severity: { severity: 1, lastSeenAt: -1 },
       newest: { firstSeenAt: -1 },
       oldest: { firstSeenAt: 1 },
       updated: { lastSeenAt: -1 }
     };
 
+    const findingsQuery =
+      sort === 'severity' || !sortMap[sort]
+        ? Finding.aggregate([
+            { $match: filter },
+            {
+              $addFields: {
+                severityRank: {
+                  $switch: {
+                    branches: [
+                      { case: { $eq: ['$severity', 'critical'] }, then: 0 },
+                      { case: { $eq: ['$severity', 'high'] }, then: 1 },
+                      { case: { $eq: ['$severity', 'medium'] }, then: 2 },
+                      { case: { $eq: ['$severity', 'low'] }, then: 3 },
+                      { case: { $eq: ['$severity', 'info'] }, then: 4 }
+                    ],
+                    default: 999
+                  }
+                }
+              }
+            },
+            { $sort: { severityRank: 1, lastSeenAt: -1 } },
+            { $skip: skip },
+            { $limit: limit }
+          ])
+        : Finding.find(filter).sort(sortMap[sort]).skip(skip).limit(limit).lean();
     const [findings, total] = await Promise.all([
-      Finding.find(filter).sort(sortMap[sort] || sortMap.severity).skip(skip).limit(limit).lean(),
+      findingsQuery,
       Finding.countDocuments(filter)
     ]);
 

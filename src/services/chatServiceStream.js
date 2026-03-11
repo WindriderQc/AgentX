@@ -59,7 +59,7 @@ const handleChatRequestStream = async ({
 }) => {
     const personaName = persona || options.persona || 'default_chat';
 
-    logger.info('DEBUG_STREAM: handleChatRequestStream called', {
+    logger.debug('handleChatRequestStream called', {
         workspaceId, userId, conversationId
     });
 

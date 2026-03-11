@@ -244,10 +244,6 @@ router.get('/timeline', async (req, res) => {
         const { since, hours } = parseTimeRange(req.query);
         const bucket = req.query.bucket === 'day' ? 'day' : 'hour';
 
-        const dateFormat = bucket === 'day'
-            ? { year: '$year', month: '$month', day: '$dayOfMonth' }
-            : { year: '$year', month: '$month', day: '$dayOfMonth', hour: '$hour' };
-
         const match = { timestamp: { $gte: since } };
         if (req.query.host) match.host = req.query.host;
 
