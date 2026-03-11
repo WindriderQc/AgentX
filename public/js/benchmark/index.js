@@ -120,7 +120,15 @@ function getJudgeModelCandidates() {
 
 /** Tier badge for judge model select */
 function judgeTierBadge(model) {
-    const tier = model.capabilities && model.capabilities.judgeTier;
+    let tier = model.capabilities && model.capabilities.judgeTier;
+    if (!tier) {
+        // Infer from model name when registry lacks metadata (or has stale data)
+        const n = (model.modelName || '').toLowerCase();
+        if (/70b|72b|671b|405b/.test(n))            tier = 'premium';
+        else if (/32b|34b|30b|40b|14b|13b|20b|22b/.test(n)) tier = 'advanced';
+        else if (/7b|8b|9b/.test(n))                tier = 'standard';
+        else if (/3b|2b|1\.5b/.test(n))             tier = 'basic';
+    }
     if (!tier) return '';
     const badges = { basic: 'BASIC', standard: 'STD', advanced: 'ADV', premium: 'PRO' };
     return badges[tier] ? ` [${badges[tier]}]` : '';
