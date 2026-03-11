@@ -6,6 +6,7 @@
 const logger = require('../../../config/logger');
 const { resolveTarget } = require('../../utils');
 const { getCompressionService } = require('../ragCompression');
+const { getRAGCache } = require('../ragCache');
 
 /**
  * Build RAG context from a message using the provided ragStore
@@ -26,16 +27,30 @@ async function buildRagContext(message, ragStore, options = {}) {
 
     try {
         const ollamaHost = resolveTarget(effectiveTarget);
+        const ragCache = getRAGCache();
 
-        const searchResults = await ragStore.searchSimilarChunks(message, {
-            topK: ragTopK || 5,
-            minScore: 0.25,
-            filters: ragFilters,
-            ollamaHost,
-            expandQuery: ragOptions.ragExpand === true,
-            rerankResults: ragOptions.ragRerank === true,
-            hybridSearch: ragOptions.ragHybrid === true
-        });
+        // Check if we have a cached result for this query
+        const cachedResult = await ragCache.get(message);
+        let searchResults = [];
+
+        if (cachedResult) {
+            logger.info('RAG cache hit - using cached results');
+            searchResults = cachedResult;
+        } else {
+            // Perform new search
+            searchResults = await ragStore.searchSimilarChunks(message, {
+                topK: ragTopK || 5,
+                minScore: 0.25,
+                filters: ragFilters,
+                ollamaHost,
+                expandQuery: ragOptions.ragExpand === true,
+                rerankResults: ragOptions.ragRerank === true,
+                hybridSearch: ragOptions.ragHybrid === true
+            });
+
+            // Cache the new results
+            await ragCache.set(message, searchResults);
+        }
 
         // Contextual compression
         let processedChunks = searchResults;

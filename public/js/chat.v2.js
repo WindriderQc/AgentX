@@ -203,6 +203,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const raw = localStorage.getItem('agentx-settings');
       if (!raw) return { ...defaults };
       const parsed = JSON.parse(raw);
+      parsed.tts = false;
+      parsed.ttsProvider = defaults.ttsProvider || 'browser';
       // If saved host is localhost but defaults have been updated with server config, use defaults
       if (parsed.host === 'localhost' && defaults.host !== 'localhost') {
         parsed.host = defaults.host;
@@ -329,11 +331,15 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.modelSelect.value = cfg.model;
     elements.systemPrompt.value = cfg.system;
     elements.streamToggle.checked = cfg.stream;
-    elements.ttsToggle.checked = cfg.tts || false;
+    elements.ttsToggle.checked = false;
+    elements.ttsToggle.disabled = true;
     const ttsProviderSelect = document.getElementById('ttsProviderSelect');
     const ttsProviderField = document.getElementById('ttsProviderField');
-    if (ttsProviderSelect) ttsProviderSelect.value = cfg.ttsProvider || 'browser';
-    if (ttsProviderField) ttsProviderField.style.display = cfg.tts ? '' : 'none';
+    if (ttsProviderSelect) {
+      ttsProviderSelect.value = defaults.ttsProvider || 'browser';
+      ttsProviderSelect.disabled = true;
+    }
+    if (ttsProviderField) ttsProviderField.style.display = 'none';
     // Voice I/O settings
     if (elements.sttProviderSelect) elements.sttProviderSelect.value = cfg.sttProvider || 'auto';
     if (elements.sttLanguageSelect) elements.sttLanguageSelect.value = cfg.sttLanguage || 'en';

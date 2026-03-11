@@ -8,10 +8,13 @@ const path = require('path');
 const mongoose = require('mongoose');
 const { MongoMemoryServer } = require('mongodb-memory-server');
 const connectDB = require('../config/db-mongodb');
+const { resetRagStore } = require('../src/services/ragStore');
+const { resetEmbeddingsService } = require('../src/services/embeddings');
+const { destroyAgents } = require('../src/helpers/httpAgent');
 
 const mongoUriFile = path.join(__dirname, '.jest-mongo-uri');
 const TEST_DB_STATE_KEY = Symbol.for('agentx.testDbState');
-const DISCONNECT_IDLE_MS = Number(process.env.JEST_DB_IDLE_DISCONNECT_MS || 750);
+const DISCONNECT_IDLE_MS = Number(process.env.JEST_DB_IDLE_DISCONNECT_MS || 0);
 
 function getTestDbState() {
   if (!process[TEST_DB_STATE_KEY]) {
@@ -73,6 +76,15 @@ async function ensureMongoUri(state) {
 }
 
 async function disconnectTestResources(state) {
+  try {
+    resetRagStore();
+    resetEmbeddingsService();
+    destroyAgents();
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('⚠️ Warning: preventing test hang - Error resetting singleton services:', err.message);
+  }
+
   try {
     if (mongoose.connection.readyState !== 0) {
       await mongoose.connection.close(true);
@@ -146,7 +158,13 @@ beforeAll(async () => {
   await state.connectPromise;
 }, 30000);
 
-afterAll(() => {
+afterAll(async () => {
   const state = getTestDbState();
-  scheduleDisconnect(state);
+  if (DISCONNECT_IDLE_MS > 0) {
+    scheduleDisconnect(state);
+    return;
+  }
+
+  clearPendingDisconnect(state);
+  await disconnectTestResources(state);
 });

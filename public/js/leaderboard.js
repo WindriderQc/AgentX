@@ -56,6 +56,7 @@ let currentPerfSort = 'composite';
 let currentPerfSortDir = 'desc';
 let currentQualSort = 'generalist';
 let currentQualSortDir = 'desc';
+let verifiedOnly = false;
 
 let autoRefreshInterval = null;
 const AUTO_REFRESH_MS = 60000;
@@ -67,10 +68,21 @@ const AUTO_REFRESH_MS = 60000;
 document.addEventListener('DOMContentLoaded', async () => {
     buildCategoryTabs();
     updateProfileWeights();
+    bindBlendControls();
     await refreshAllData();
     renderCategoryWeights();
     startAutoRefresh();
 });
+
+function bindBlendControls() {
+    const toggle = document.getElementById('verifiedOnlyToggle');
+    if (!toggle) return;
+    toggle.checked = verifiedOnly;
+    toggle.addEventListener('change', () => {
+        verifiedOnly = toggle.checked;
+        renderPerformanceBoard();
+    });
+}
 
 function buildCategoryTabs() {
     const container = document.getElementById('categoryTabs');
@@ -387,6 +399,10 @@ function renderPerformanceBoard() {
             _score: getProfileScore(model)
         }));
 
+    if (verifiedOnly) {
+        data = data.filter(model => model.host_test_verification && model.host_test_verification !== 'unverified');
+    }
+
     data = filterByCategory(data, 'recommended_category');
 
     const offenders = calculateOffenders(data);
@@ -414,7 +430,7 @@ function renderPerformanceBoard() {
 
     const tbody = document.getElementById('perfTableBody');
     if (data.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" class="empty-cell">No data available. <a href="/benchmark.html">Run benchmarks</a></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" class="empty-cell">No data available. <a href="/benchmark.html">Run benchmarks</a></td></tr>';
         return;
     }
 
@@ -431,6 +447,9 @@ function renderPerformanceBoard() {
         const levelStarsHtml = buildLevelStars(model.level_stats || {});
         const isBestOverall = bestOverall && model.model === bestOverall.model && model.host === bestOverall.host;
         const badgesHtml = buildModelBadges(model, offenders, isBestOverall);
+        const verification = formatHostVerification(model);
+        const measured = formatMeasuredMetrics(model);
+        const measuredAge = formatMeasuredAge(model.host_test_tested_at, model.host_test_freshness);
 
         return `
             <tr class="${idx < 3 ? 'top-rank rank-' + (idx + 1) : ''} ${isBestOverall ? 'best-overall' : ''}" onclick="showModelDetail('${escapeHtml(model.model).replace(/'/g, "\\'")}', 'performance', '${escapeHtml(model.host || '').replace(/'/g, "\\'")}')">
@@ -444,6 +463,9 @@ function renderPerformanceBoard() {
                 <td class="score-col ${getScoreClass(quality, 10)}">${quality.toFixed(1)}</td>
                 <td class="latency-col">${latency.toLocaleString()}ms</td>
                 <td class="tokens-col">${tokensPerSec.toFixed(1)}</td>
+                <td class="host-verify-col">${verification}</td>
+                <td>${measured}</td>
+                <td>${measuredAge}</td>
                 <td class="reliability-col ${reliabilityPct >= 95 ? 'high' : reliabilityPct >= 80 ? 'medium' : 'low'}">${reliabilityPct}%</td>
                 <td class="composite-col"><strong>${composite.toFixed(1)}</strong></td>
                 <td class="tests-col">${model.tests || 0}</td>
@@ -555,14 +577,64 @@ function updateStats() {
 }
 
 function showLoading() {
-    document.getElementById('perfTableBody').innerHTML = '<tr><td colspan="8" class="loading-cell"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
-    document.getElementById('qualTableBody').innerHTML = '<tr><td colspan="8" class="loading-cell"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+    document.getElementById('perfTableBody').innerHTML = '<tr><td colspan="11" class="loading-cell"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+    document.getElementById('qualTableBody').innerHTML = '<tr><td colspan="9" class="loading-cell"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
 }
 
 function showError(message) {
-    const errorHtml = `<tr><td colspan="8" class="error-cell"><i class="fas fa-exclamation-triangle"></i> ${escapeHtml(message)}</td></tr>`;
-    document.getElementById('perfTableBody').innerHTML = errorHtml;
-    document.getElementById('qualTableBody').innerHTML = errorHtml;
+    document.getElementById('perfTableBody').innerHTML = `<tr><td colspan="11" class="error-cell"><i class="fas fa-exclamation-triangle"></i> ${escapeHtml(message)}</td></tr>`;
+    document.getElementById('qualTableBody').innerHTML = `<tr><td colspan="9" class="error-cell"><i class="fas fa-exclamation-triangle"></i> ${escapeHtml(message)}</td></tr>`;
+}
+
+function formatHostVerification(model) {
+    const verification = model.host_test_verification || 'unverified';
+    const freshness = model.host_test_freshness || 'missing';
+    const label = verification.charAt(0).toUpperCase() + verification.slice(1);
+    const meta = verification === 'unverified'
+        ? 'No host probe yet'
+        : `${freshness} • ${model.host_test_status || 'unknown'}`;
+    return `
+        <span class="host-verify-badge ${verification}">
+            <i class="fas ${verification === 'aligned' ? 'fa-circle-check' : verification === 'drift' ? 'fa-compass-drafting' : verification === 'failed' || verification === 'timeout' ? 'fa-triangle-exclamation' : 'fa-clock'}"></i>
+            ${label}
+        </span>
+        <span class="host-verify-meta">${escapeHtml(meta)}</span>`;
+}
+
+function formatMeasuredMetrics(model) {
+    if (model.host_test_tokens_per_sec == null && model.host_test_latency_ms == null) {
+        return '<span class="measured-stack">No measurement</span>';
+    }
+    const tokenDelta = formatDelta(model.host_test_tokens_delta_pct, true);
+    const latencyDelta = formatDelta(model.host_test_latency_delta_pct, false);
+    return `
+        <span class="measured-stack">
+            <strong>${model.host_test_tokens_per_sec != null ? Number(model.host_test_tokens_per_sec).toFixed(1) + ' tok/s' : '—'}</strong>
+            ${model.host_test_latency_ms != null ? Math.round(model.host_test_latency_ms) + 'ms host latency' : 'No latency sample'}
+            <span>${tokenDelta} • ${latencyDelta}</span>
+        </span>`;
+}
+
+function formatMeasuredAge(testedAt, freshness) {
+    if (!testedAt) return '<span class="measured-age">Never tested</span>';
+    return `<span class="measured-age">${escapeHtml(relativeTime(testedAt))}<br>${escapeHtml(freshness || 'unknown')}</span>`;
+}
+
+function formatDelta(value, higherIsBetter) {
+    if (value == null) return '<span class="delta-neutral">No delta</span>';
+    const positive = value > 0;
+    const good = higherIsBetter ? positive : !positive;
+    const cls = good ? 'delta-good' : 'delta-bad';
+    const sign = value > 0 ? '+' : '';
+    return `<span class="${cls}">${sign}${value}% vs benchmark</span>`;
+}
+
+function relativeTime(value) {
+    const sec = Math.floor((Date.now() - new Date(value).getTime()) / 1000);
+    if (sec < 60) return 'just now';
+    if (sec < 3600) return `${Math.floor(sec / 60)}m ago`;
+    if (sec < 86400) return `${Math.floor(sec / 3600)}h ago`;
+    return `${Math.floor(sec / 86400)}d ago`;
 }
 
 function getRankDisplay(idx) {

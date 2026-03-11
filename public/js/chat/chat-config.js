@@ -3,11 +3,59 @@
  */
 import { STORAGE_KEYS, DEFAULTS } from './chat-constants.js';
 
+function readOptionalNumberInput(value) {
+  if (value == null) return '';
+  const trimmed = String(value).trim();
+  if (!trimmed) return '';
+  const parsed = Number(trimmed);
+  return Number.isNaN(parsed) ? '' : parsed;
+}
+
+function normalizeNumPredictForInput(value) {
+  if (value == null) return '';
+  const parsed = Number(value);
+  if (Number.isNaN(parsed) || parsed < 0) return '';
+  return parsed;
+}
+
+function migrateLegacySettings(parsed, defaults) {
+  const migrated = { ...parsed };
+  migrated.options = { ...(parsed.options || {}) };
+
+  const savedVersion = Number.isFinite(Number(migrated.settingsVersion))
+    ? Number(migrated.settingsVersion)
+    : 0;
+
+  if (savedVersion < 2) {
+    const savedNumPredict = migrated.options.num_predict;
+    if (savedNumPredict == null || Number(savedNumPredict) === 256) {
+      migrated.options.num_predict = defaults.options.num_predict;
+    }
+  }
+
+  if (savedVersion < 3) {
+    const savedNumPredict = migrated.options.num_predict;
+    if (
+      savedNumPredict == null ||
+      String(savedNumPredict).trim() === '' ||
+      Number(savedNumPredict) === 256 ||
+      Number(savedNumPredict) === 1024
+    ) {
+      migrated.options.num_predict = '';
+    }
+  }
+
+  migrated.settingsVersion = defaults.settingsVersion || DEFAULTS.settingsVersion;
+  return migrated;
+}
+
 export function loadSettings(defaults) {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.SETTINGS);
     if (!raw) return { ...defaults };
-    const parsed = JSON.parse(raw);
+    const parsed = migrateLegacySettings(JSON.parse(raw), defaults);
+    parsed.tts = false;
+    parsed.ttsProvider = defaults.ttsProvider || DEFAULTS.ttsProvider || 'browser';
     // Migrate legacy host+port settings to hostUrl
     if (parsed.host && !parsed.hostUrl) {
       const port = parsed.port || defaults.port || '11434';
@@ -38,7 +86,7 @@ export function readOptions(elements) {
     repeat_penalty: Number(elements.repeatPenalty.value),
     presence_penalty: Number(elements.presencePenalty.value),
     frequency_penalty: Number(elements.frequencyPenalty.value),
-    num_predict: Number(elements.numPredict.value),
+    num_predict: readOptionalNumberInput(elements.numPredict.value),
     seed: elements.seed.value || '',
     stop: elements.stopSequences.value,
     keep_alive: elements.keepAlive.value,
@@ -47,11 +95,12 @@ export function readOptions(elements) {
 
 export function persistSettings(elements, state, defaults, refreshMessages, setFeedback) {
   const payload = {
+    settingsVersion: defaults.settingsVersion || DEFAULTS.settingsVersion,
     hostUrl: elements.hostInput.value || '',
     model: elements.modelSelect.value,
     stream: elements.streamToggle.checked,
-    tts: elements.ttsToggle.checked,
-    ttsProvider: document.getElementById('ttsProviderSelect')?.value || 'browser',
+    tts: false,
+    ttsProvider: defaults.ttsProvider || DEFAULTS.ttsProvider || 'browser',
     ttsVoice: elements.ttsVoiceSelect?.value || 'alloy',
     sttProvider: elements.sttProviderSelect?.value || 'auto',
     sttLanguage: elements.sttLanguageSelect?.value || 'en',
@@ -85,12 +134,16 @@ export function hydrateForm(elements, state, defaults) {
   elements.modelSelect.value = cfg.model;
   elements.systemPrompt.value = cfg.system;
   elements.streamToggle.checked = cfg.stream;
-  elements.ttsToggle.checked = cfg.tts || false;
+  elements.ttsToggle.checked = false;
+  elements.ttsToggle.disabled = true;
 
   const ttsProviderSelect = document.getElementById('ttsProviderSelect');
   const ttsProviderField = document.getElementById('ttsProviderField');
-  if (ttsProviderSelect) ttsProviderSelect.value = cfg.ttsProvider || 'browser';
-  if (ttsProviderField) ttsProviderField.style.display = cfg.tts ? '' : 'none';
+  if (ttsProviderSelect) {
+    ttsProviderSelect.value = defaults.ttsProvider || DEFAULTS.ttsProvider || 'browser';
+    ttsProviderSelect.disabled = true;
+  }
+  if (ttsProviderField) ttsProviderField.style.display = 'none';
 
   if (elements.sttProviderSelect) elements.sttProviderSelect.value = cfg.sttProvider || 'auto';
   if (elements.sttLanguageSelect) elements.sttLanguageSelect.value = cfg.sttLanguage || 'en';
@@ -117,7 +170,7 @@ export function hydrateForm(elements, state, defaults) {
   elements.repeatPenalty.value = cfg.options.repeat_penalty;
   elements.presencePenalty.value = cfg.options.presence_penalty;
   elements.frequencyPenalty.value = cfg.options.frequency_penalty;
-  elements.numPredict.value = cfg.options.num_predict;
+  elements.numPredict.value = normalizeNumPredictForInput(cfg.options.num_predict);
   elements.seed.value = cfg.options.seed || '';
   elements.stopSequences.value = cfg.options.stop || '';
   elements.keepAlive.value = cfg.options.keep_alive || '';

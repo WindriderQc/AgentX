@@ -250,8 +250,9 @@ function updateJudgeConfigFromForm() {
     state.setCurrentJudgeConfig(next);
     writeStoredJudgeConfig(next);
     updateJudgeConfigPreview();
-
-    // Refresh tier mismatch indicators whenever judge changes
+    // Re-render depth matrix and refresh tier indicators
+    renderDepthMatrix();
+    updateDepthSummary();
     const depthCfg = getDepthConfig();
     const activeLevels = getSelectedLevels(depthCfg);
     refreshJudgeTierUI(activeLevels);
@@ -459,11 +460,21 @@ async function loadJudgeConfig() {
             }
         }
         const mergedJudgeConfig = { ...storedUiPrefs, ...judgeConfig };
-        // Strip stale empty host so backend uses auto-opposite logic on fresh load
-        if (!mergedJudgeConfig.host) delete mergedJudgeConfig.host;
+        // Strip stale/empty/wildcard host so backend uses auto-opposite logic
+        const h = mergedJudgeConfig.host || '';
+        if (!h || h === 'http://0.0.0.0' || /\/\/0\.0\.0\.0(:\d+)?$/.test(h)) {
+            delete mergedJudgeConfig.host;
+        }
 
         state.setCurrentJudgeConfig(mergedJudgeConfig);
         state.setCurrentExecutionConfig(executionConfig);
+
+        // Store tier configuration for UI display
+        if (data.judge_tier_map) state.setJudgeTierMap(data.judge_tier_map);
+        if (data.category_tier_map) state.setCategoryTierMap(data.category_tier_map);
+        if (data.tier_rank) state.setTierRank(data.tier_rank);
+        if (data.judge_presets) state.setJudgePresets(data.judge_presets);
+
         populateJudgeModelSelect();
         applyJudgeConfigToForm(mergedJudgeConfig);
         updateJudgeConfigPreview();

@@ -26,6 +26,15 @@ class RagStore {
     });
   }
 
+  destroy() {
+    if (this.embeddings && typeof this.embeddings.destroy === 'function') {
+      this.embeddings.destroy();
+    }
+    if (this.vectorStore && typeof this.vectorStore.destroy === 'function') {
+      this.vectorStore.destroy();
+    }
+  }
+
   /**
    * Upsert a document with automatic chunking and embedding
    * @param {Object} metadata - Document metadata {source, path, title, tags, author, createdAt}
@@ -583,7 +592,14 @@ function getRagStore(config = {}) {
   return ragStoreInstance;
 }
 
+function resetRagStore() {
+  if (!ragStoreInstance) return;
+  ragStoreInstance.destroy();
+  ragStoreInstance = null;
+}
+
 module.exports = {
   RagStore,
   getRagStore,
+  resetRagStore,
 };

@@ -11,35 +11,84 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
     <style>
-        .host-test-container { max-width: 1400px; margin: 0 auto; padding: 24px; }
-
-        /* Header */
-        .ht-header { margin-bottom: 32px; display: flex; justify-content: space-between; align-items: flex-start; }
-        .ht-header h1 { font-size: 28px; font-weight: 700; color: #fff; margin: 8px 0; }
+        .host-test-container { max-width: 1480px; margin: 0 auto; padding: 24px; }
+        .hero-shell {
+            position: relative;
+            overflow: hidden;
+            background:
+                radial-gradient(circle at top left, rgba(124,240,255,0.14), transparent 40%),
+                radial-gradient(circle at top right, rgba(167,139,250,0.12), transparent 36%),
+                linear-gradient(145deg, rgba(15,23,42,0.96), rgba(15,23,42,0.72));
+            border: 1px solid rgba(124,240,255,0.18);
+            border-radius: 20px;
+            padding: 28px;
+            margin-bottom: 20px;
+        }
+        .ht-header { margin-bottom: 24px; display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+        .ht-header h1 { font-size: 30px; font-weight: 700; color: #fff; margin: 8px 0; }
         .ht-header h1 i { color: #7cf0ff; margin-right: 10px; }
-        .ht-header p { color: var(--muted); font-size: 14px; }
-
-        /* Host Cards Row */
+        .ht-header p { color: var(--muted); font-size: 14px; max-width: 760px; }
+        .hero-grid { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 18px; }
+        .summary-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+        .summary-card {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 14px;
+            padding: 16px;
+        }
+        .summary-card .label {
+            color: var(--muted);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 8px;
+        }
+        .summary-card .value {
+            color: #fff;
+            font-size: 28px;
+            font-weight: 700;
+            line-height: 1;
+            margin-bottom: 6px;
+        }
+        .summary-card .subtext { color: #b9c5d6; font-size: 12px; }
+        .hero-note {
+            background: rgba(8,12,24,0.56);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 14px;
+            padding: 18px;
+        }
+        .hero-note h3 { margin: 0 0 8px; font-size: 15px; color: #fff; }
+        .hero-note p { color: #b9c5d6; font-size: 13px; line-height: 1.6; margin: 0 0 12px; }
+        .meta-line { display: flex; gap: 8px; flex-wrap: wrap; }
+        .meta-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 10px;
+            border-radius: 999px;
+            background: rgba(124,240,255,0.08);
+            color: #d8f8ff;
+            border: 1px solid rgba(124,240,255,0.16);
+            font-size: 11px;
+        }
         .host-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 24px; }
         .host-card {
-            background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 12px;
+            background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 14px;
             padding: 20px; cursor: pointer; transition: all 0.2s;
         }
-        .host-card:hover { border-color: rgba(124, 240, 255, 0.3); transform: translateY(-2px); }
-        .host-card.selected { border-color: #7cf0ff; box-shadow: 0 0 20px rgba(124, 240, 255, 0.1); }
-        .host-card.offline { opacity: 0.5; pointer-events: none; }
+        .host-card:hover { border-color: rgba(124,240,255,0.3); transform: translateY(-2px); }
+        .host-card.selected { border-color: #7cf0ff; box-shadow: 0 0 20px rgba(124,240,255,0.1); }
+        .host-card.offline { opacity: 0.55; pointer-events: none; }
         .host-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
         .host-card-name { font-size: 16px; font-weight: 600; color: #fff; }
         .host-status-dot { width: 10px; height: 10px; border-radius: 50%; }
-        .host-status-dot.online { background: #22c55e; box-shadow: 0 0 8px rgba(34, 197, 94, 0.5); }
+        .host-status-dot.online { background: #22c55e; box-shadow: 0 0 8px rgba(34,197,94,0.5); }
         .host-status-dot.offline { background: #ef4444; }
         .host-card-url { font-size: 12px; color: var(--muted); margin-bottom: 8px; font-family: monospace; }
-        .host-card-stats { display: flex; gap: 16px; font-size: 13px; color: var(--muted); }
+        .host-card-stats { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
         .host-card-stats span { display: flex; align-items: center; gap: 4px; }
-
-        /* Action Bar */
         .action-bar {
-            background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 12px;
+            background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 14px;
             padding: 20px; margin-bottom: 24px; display: none;
         }
         .action-bar.visible { display: block; }
@@ -49,36 +98,37 @@
             color: #fff; padding: 8px 12px; border-radius: 8px; font-size: 13px; min-width: 220px;
         }
         .action-bar select option { background: #1e293b; color: #fff; }
-
-        /* Progress Bar */
+        .aux-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; }
         .progress-container { margin-top: 16px; display: none; }
         .progress-container.visible { display: block; }
-        .progress-bar-bg {
-            height: 8px; background: rgba(255,255,255,0.05); border-radius: 4px; overflow: hidden;
-        }
+        .progress-bar-bg { height: 8px; background: rgba(255,255,255,0.05); border-radius: 4px; overflow: hidden; }
         .progress-bar-fill {
             height: 100%; background: linear-gradient(90deg, #7cf0ff, #a78bfa);
             border-radius: 4px; transition: width 0.3s; width: 0%;
         }
         .progress-label { font-size: 12px; color: var(--muted); margin-top: 6px; }
-
-        /* Grid */
+        .insight-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-bottom: 24px; }
+        .insight-card {
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 14px;
+            padding: 18px;
+        }
+        .insight-card .eyebrow { color: var(--muted); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 8px; }
+        .insight-card h3 { color: #fff; font-size: 17px; margin: 0 0 6px; }
+        .insight-card p { margin: 0; color: #b9c5d6; font-size: 13px; line-height: 1.5; }
+        .insight-card .metric-row { margin-top: 12px; display: flex; justify-content: space-between; gap: 10px; font-size: 12px; color: var(--muted); }
         .ht-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
-        @media (max-width: 1100px) { .ht-grid { grid-template-columns: 1fr; } }
-
-        /* Section Cards */
         .ht-section {
             background: var(--panel-bg); border: 1px solid var(--panel-border);
-            border-radius: 12px; padding: 0; overflow: hidden;
+            border-radius: 14px; padding: 0; overflow: hidden;
         }
         .ht-section-header {
             padding: 16px 20px; border-bottom: 1px solid var(--panel-border);
-            display: flex; justify-content: space-between; align-items: center;
+            display: flex; justify-content: space-between; align-items: center; gap: 12px;
         }
         .ht-section-header h2 { font-size: 15px; font-weight: 600; color: #fff; margin: 0; }
         .ht-section-body { padding: 16px 20px; }
-
-        /* Results Table */
         .ht-table { width: 100%; border-collapse: collapse; font-size: 13px; }
         .ht-table th {
             text-align: left; padding: 10px 8px; color: var(--muted); font-weight: 500;
@@ -88,18 +138,12 @@
         .ht-table th:hover { color: #7cf0ff; }
         .ht-table td { padding: 10px 8px; border-bottom: 1px solid rgba(255,255,255,0.03); color: #e2e8f0; }
         .ht-table tr:hover { background: rgba(255,255,255,0.02); }
-
-        /* Badges */
         .badge-pass { background: rgba(34,197,94,0.15); color: #22c55e; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
         .badge-fail, .badge-error { background: rgba(239,68,68,0.15); color: #ef4444; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
         .badge-timeout { background: rgba(234,179,8,0.15); color: #eab308; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
-
-        /* TPS color coding */
         .tps-high { color: #22c55e; font-weight: 600; }
         .tps-mid { color: #eab308; font-weight: 600; }
         .tps-low { color: #ef4444; font-weight: 600; }
-
-        /* Buttons */
         .btn-primary {
             background: linear-gradient(135deg, #7cf0ff 0%, #a78bfa 100%); color: #0d1117;
             padding: 8px 16px; border: none; border-radius: 8px; font-size: 13px;
@@ -113,8 +157,12 @@
             cursor: pointer; transition: all 0.2s;
         }
         .btn-secondary:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2); }
-
-        /* Toast */
+        .link-button {
+            color: #d8f8ff; text-decoration: none; border: 1px solid rgba(124,240,255,0.2);
+            background: rgba(124,240,255,0.08); padding: 8px 12px; border-radius: 10px;
+            font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px;
+        }
+        .link-button:hover { background: rgba(124,240,255,0.14); }
         .toast {
             position: fixed; bottom: 24px; right: 24px; background: #1e293b;
             border: 1px solid var(--panel-border); border-radius: 8px; padding: 12px 20px;
@@ -124,21 +172,22 @@
         .toast.visible { transform: translateY(0); opacity: 1; }
         .toast.error { border-color: rgba(239,68,68,0.5); }
         .toast.success { border-color: rgba(34,197,94,0.5); }
-
-        /* Chart containers */
         .chart-wrap { height: 280px; position: relative; }
-
-        /* Results Full Width */
         .ht-full-width { grid-column: 1 / -1; }
-
-        /* Empty state */
         .empty-state { text-align: center; padding: 40px 20px; color: var(--muted); }
         .empty-state i { font-size: 32px; margin-bottom: 12px; opacity: 0.3; }
         .empty-state p { font-size: 14px; }
-
-        /* Spinner */
         .spin { animation: spin 1s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
+        @media (max-width: 1100px) {
+            .ht-grid { grid-template-columns: 1fr; }
+            .hero-grid { grid-template-columns: 1fr; }
+            .summary-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .insight-grid { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 700px) {
+            .summary-strip { grid-template-columns: 1fr; }
+        }
     </style>
 </head>
 <body>
@@ -149,30 +198,69 @@
     <div class="bg-grid"></div>
 
     <div class="host-test-container">
-        <!-- Header -->
-        <div class="ht-header">
-            <div>
-                <div class="eyebrow">AgentX • Infrastructure</div>
-                <h1><i class="fas fa-flask"></i>Host Full Test</h1>
-                <p>Test model performance across all Ollama hosts — results feed the Model Registry</p>
+        <section class="hero-shell">
+            <div class="ht-header">
+                <div>
+                    <div class="eyebrow">AgentX • Infrastructure</div>
+                    <h1><i class="fas fa-flask"></i>Host Full Test</h1>
+                    <p>Run real host-side performance probes, compare the same model across machines, and feed measured throughput and latency straight back into the registry and leaderboard.</p>
+                </div>
+                <div style="display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap;">
+                    <a href="/leaderboard.html" class="link-button"><i class="fas fa-trophy"></i> Open Leaderboard</a>
+                    <button id="refreshBtn" class="btn-secondary"><i class="fas fa-sync-alt"></i> Refresh</button>
+                </div>
             </div>
-            <div style="display: flex; gap: 10px; margin-top: 10px;">
-                <button id="refreshBtn" class="btn-secondary"><i class="fas fa-sync-alt"></i> Refresh</button>
-            </div>
-        </div>
 
-        <!-- Host Cards -->
+            <div class="hero-grid">
+                <div class="summary-strip">
+                    <div class="summary-card">
+                        <div class="label">Hosts Online</div>
+                        <div class="value" id="statHostsOnline">0/0</div>
+                        <div class="subtext" id="statHostsSubtext">Waiting for host scan</div>
+                    </div>
+                    <div class="summary-card">
+                        <div class="label">Latest Pass Rate</div>
+                        <div class="value" id="statPassRate">--</div>
+                        <div class="subtext" id="statPassRateSubtext">Latest snapshots only</div>
+                    </div>
+                    <div class="summary-card">
+                        <div class="label">Average Measured Tok/s</div>
+                        <div class="value" id="statAvgTps">--</div>
+                        <div class="subtext" id="statAvgTpsSubtext">Across visible passing probes</div>
+                    </div>
+                    <div class="summary-card">
+                        <div class="label">Last Probe</div>
+                        <div class="value" id="statLastRun">--</div>
+                        <div class="subtext" id="statLastRunSubtext">No snapshots loaded yet</div>
+                    </div>
+                </div>
+
+                <aside class="hero-note">
+                    <h3>How this works with Leaderboard</h3>
+                    <p>Benchmark pages answer quality and category fitness. Host Test answers infrastructure truth: throughput, latency, TTFT, and VRAM on a real machine. Together they tell you whether a top-ranked model is actually running well on the host you care about.</p>
+                    <div class="meta-line">
+                        <span class="meta-pill"><i class="fas fa-bolt"></i> Warm-up before measurement</span>
+                        <span class="meta-pill"><i class="fas fa-chart-line"></i> Registry-backed metrics</span>
+                        <span class="meta-pill"><i class="fas fa-code-compare"></i> Cross-host compare supported</span>
+                    </div>
+                </aside>
+            </div>
+        </section>
+
         <div class="host-cards" id="hostCards">
             <div class="empty-state"><i class="fas fa-spinner spin"></i><p>Loading hosts...</p></div>
         </div>
 
-        <!-- Action Bar -->
         <div class="action-bar" id="actionBar">
             <div class="action-bar-row">
                 <select id="modelSelect"><option value="">-- Select Model --</option></select>
                 <button id="testOneBtn" class="btn-primary" disabled><i class="fas fa-play"></i> Test Selected</button>
                 <button id="testAllBtn" class="btn-primary"><i class="fas fa-rocket"></i> Test All Models</button>
-                <span id="selectedHostLabel" style="color: var(--muted); font-size: 13px; margin-left: auto;"></span>
+                <button id="compareBtn" class="btn-secondary" disabled><i class="fas fa-code-compare"></i> Compare Across Hosts</button>
+                <span id="selectedHostLabel" style="color: var(--muted); font-size: 13px;"></span>
+                <div class="aux-actions">
+                    <a href="/leaderboard.html" class="link-button"><i class="fas fa-chart-column"></i> See Ranked Context</a>
+                </div>
             </div>
             <div class="progress-container" id="progressContainer">
                 <div class="progress-bar-bg"><div class="progress-bar-fill" id="progressFill"></div></div>
@@ -180,14 +268,37 @@
             </div>
         </div>
 
-        <!-- Grid: Table + Charts -->
+        <section class="insight-grid">
+            <article class="insight-card">
+                <div class="eyebrow">Fastest Visible Probe</div>
+                <h3 id="insightFastestTitle">No probes yet</h3>
+                <p id="insightFastestBody">Run a probe to surface the best current measured throughput across the visible result set.</p>
+                <div class="metric-row"><span id="insightFastestMetaLeft">--</span><span id="insightFastestMetaRight">--</span></div>
+            </article>
+            <article class="insight-card">
+                <div class="eyebrow">Freshness & Reliability</div>
+                <h3 id="insightReliabilityTitle">Waiting for signal</h3>
+                <p id="insightReliabilityBody">Latest snapshots will summarize pass rate, recency, and whether the current host picture is fresh enough to trust for routing conversations.</p>
+                <div class="metric-row"><span id="insightReliabilityMetaLeft">--</span><span id="insightReliabilityMetaRight">--</span></div>
+            </article>
+            <article class="insight-card">
+                <div class="eyebrow">Leaderboard Bridge</div>
+                <h3 id="insightBridgeTitle">Infrastructure meets ranking</h3>
+                <p id="insightBridgeBody">Use Host Test to validate the hosts that back your highest-ranked models. The leaderboard now consumes these measurements as verification metadata instead of treating infra and quality as separate worlds.</p>
+                <div class="metric-row"><span id="insightBridgeMetaLeft">Benchmark: quality</span><span id="insightBridgeMetaRight">Host Test: delivery</span></div>
+            </article>
+        </section>
+
         <div class="ht-grid">
-            <!-- Results Table -->
             <div class="ht-section ht-full-width" id="resultsSection">
                 <div class="ht-section-header">
-                    <h2><i class="fas fa-table" style="margin-right:8px; color:#7cf0ff;"></i>Test Results</h2>
-                    <div style="display:flex; gap:8px; align-items:center;">
-                        <select id="filterHost" class="action-bar select" style="background:rgba(255,255,255,0.05);border:1px solid var(--panel-border);color:#fff;padding:6px 10px;border-radius:6px;font-size:12px;">
+                    <h2><i class="fas fa-table" style="margin-right:8px; color:#7cf0ff;"></i>Host Probe Results</h2>
+                    <div style="display:flex; gap:8px; align-items:center; flex-wrap: wrap;">
+                        <label style="display:inline-flex; gap:6px; align-items:center; color:var(--muted); font-size:12px;">
+                            <input id="latestOnlyToggle" type="checkbox">
+                            Latest per model/host only
+                        </label>
+                        <select id="filterHost" style="background:rgba(255,255,255,0.05);border:1px solid var(--panel-border);color:#fff;padding:6px 10px;border-radius:6px;font-size:12px;">
                             <option value="">All Hosts</option>
                         </select>
                     </div>
@@ -213,20 +324,20 @@
                 </div>
             </div>
 
-            <!-- TPS Chart -->
             <div class="ht-section">
                 <div class="ht-section-header">
-                    <h2><i class="fas fa-tachometer-alt" style="margin-right:8px; color:#7cf0ff;"></i>Tokens/sec by Model</h2>
+                    <h2><i class="fas fa-tachometer-alt" style="margin-right:8px; color:#7cf0ff;"></i>Measured Tokens/sec</h2>
+                    <span style="font-size:12px; color:var(--muted);">Latest passing snapshots</span>
                 </div>
                 <div class="ht-section-body">
                     <div class="chart-wrap"><canvas id="tpsChart"></canvas></div>
                 </div>
             </div>
 
-            <!-- Latency Chart -->
             <div class="ht-section">
                 <div class="ht-section-header">
                     <h2><i class="fas fa-clock" style="margin-right:8px; color:#a78bfa;"></i>Latency Breakdown</h2>
+                    <span style="font-size:12px; color:var(--muted);">TTFT plus generation time</span>
                 </div>
                 <div class="ht-section-body">
                     <div class="chart-wrap"><canvas id="latencyChart"></canvas></div>

@@ -530,7 +530,8 @@
             </div>
             <div class="field">
               <label>Num predict</label>
-              <input type="number" id="numPredict" value="256" min="16" max="4096" step="16">
+              <input type="number" id="numPredict" value="" min="-1" max="8192" step="16" placeholder="Blank or -1 = unlimited">
+              <div class="hint">Leave blank for uncapped responses. Use a number only if you want to limit output.</div>
             </div>
             <div class="field">
               <label>Seed</label>
