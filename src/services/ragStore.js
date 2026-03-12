@@ -138,6 +138,7 @@ Generate 2-3 related search queries that would help find relevant information. F
 - Synonyms and alternative phrasings
 - Related concepts
 - More specific or general versions
+- Acronyms and abbreviations
 
 Return ONLY the queries, one per line, without numbering or explanation.`;
 
@@ -150,7 +151,7 @@ Return ONLY the queries, one per line, without numbering or explanation.`;
           stream: false,
           options: {
             temperature: 0.7,
-            num_predict: 150, // Short expansion
+            num_predict: 200, // Slightly more to allow for better variety
             num_ctx: 8192
           }
         })
