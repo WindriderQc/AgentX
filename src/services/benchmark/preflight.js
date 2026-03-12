@@ -39,6 +39,13 @@ function compareTierRank(left, right) {
     return (judgeTierResolver.TIER_RANK[left] || 0) - (judgeTierResolver.TIER_RANK[right] || 0);
 }
 
+function resolveJudgeTier(modelName, registryTier) {
+    const inferredTier = judgeTierResolver.inferJudgeTier(modelName);
+    if (!registryTier) return inferredTier || null;
+    if (!inferredTier) return registryTier;
+    return compareTierRank(inferredTier, registryTier) > 0 ? inferredTier : registryTier;
+}
+
 function getStrongestRequiredTier(levels, categories) {
     let strongest = 'basic';
 
@@ -193,9 +200,10 @@ async function checkJudgeConfiguration(judgeConfig = {}, levels = [], promptCove
         warnings.push(`Judge registry lookup failed: ${err.message}`);
     }
 
-    const resolvedTier = registryEntry?.capabilities?.judgeTier
-        || judgeTierResolver.inferJudgeTier(model)
-        || null;
+    const resolvedTier = resolveJudgeTier(
+        model,
+        registryEntry?.capabilities?.judgeTier || null
+    );
     const reliability = registryEntry?.capabilities?.judgeReliability ?? null;
     const avgJudgeLatencyMs = registryEntry?.capabilities?.avgJudgeLatencyMs ?? null;
     const meetsTier = resolvedTier

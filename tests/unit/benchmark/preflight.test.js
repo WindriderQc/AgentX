@@ -92,6 +92,28 @@ describe('benchmark preflight', () => {
         expect(result.blockers[0]).toMatch(/Judge 'judge-model.*' is tagged 'standard' tier/);
     });
 
+    it('prefers inferred 14B tier over stale registry tier metadata', async () => {
+        ModelRegistry.findOne.mockReturnValue(chainResolved({
+            modelName: 'qwen2.5:14b',
+            capabilities: {
+                judgeTier: 'standard',
+                judgeReliability: 0.93,
+                avgJudgeLatencyMs: 2200
+            }
+        }));
+
+        const result = await checkJudgeConfiguration(
+            { host: 'http://judge-host:11434', model: 'qwen2.5:14b' },
+            [8],
+            { categories: { refactoring: { count: 4 } } }
+        );
+
+        expect(result.ok).toBe(true);
+        expect(result.required_tier).toBe('advanced');
+        expect(result.resolved_tier).toBe('advanced');
+        expect(result.blockers).toEqual([]);
+    });
+
     it('blocks judge configurations with poor reliability metadata', async () => {
         ModelRegistry.findOne.mockReturnValue(chainResolved({
             modelName: 'judge-model:latest',

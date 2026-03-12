@@ -65,15 +65,27 @@ function inferTierFromName(modelName) {
     return 'standard';
 }
 
+function resolveTierValue(explicitTier, inferredTier) {
+    if (!explicitTier) return inferredTier;
+    if (!inferredTier) return explicitTier;
+    return higherTier(explicitTier, inferredTier);
+}
+
+function effectiveCandidateTier(candidate) {
+    const explicitTier = candidate && candidate.capabilities && candidate.capabilities.judgeTier;
+    const inferredTier = inferTierFromName(candidate && candidate.modelName);
+    return resolveTierValue(explicitTier, inferredTier);
+}
+
 /**
  * Resolve the current judge tier from state.currentJudgeConfig.
- * Falls back to name heuristic when no registry metadata is present.
+ * Uses the stronger of attached tier metadata and the model-name heuristic.
  */
 export function currentJudgeTier() {
     const cfg = state.currentJudgeConfig || {};
-    if (cfg.judgeTier) return cfg.judgeTier;
-    if (cfg.tier) return cfg.tier;
-    return inferTierFromName(cfg.model || '');
+    const explicitTier = cfg.judgeTier || cfg.tier || '';
+    const inferredTier = inferTierFromName(cfg.model || '');
+    return resolveTierValue(explicitTier, inferredTier) || 'standard';
 }
 
 /**
@@ -220,12 +232,12 @@ export function renderMismatchBanner(activeLevels) {
     const reqRank = TIER_RANK[strongestRequired] || 0;
     const capable = judgeModels
         .filter(m => {
-            const t = m.capabilities && m.capabilities.judgeTier;
+            const t = effectiveCandidateTier(m);
             return (TIER_RANK[t] || 0) >= reqRank;
         })
         .sort((a, b) => {
-            const ta = TIER_RANK[(a.capabilities && a.capabilities.judgeTier)] || 0;
-            const tb = TIER_RANK[(b.capabilities && b.capabilities.judgeTier)] || 0;
+            const ta = TIER_RANK[effectiveCandidateTier(a)] || 0;
+            const tb = TIER_RANK[effectiveCandidateTier(b)] || 0;
             return ta - tb; // pick lowest tier that still qualifies (least overkill)
         });
     if (capable.length > 0) {

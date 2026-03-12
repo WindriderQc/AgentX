@@ -24,6 +24,16 @@ let judgeCandidateCache = {
     candidates: []
 };
 
+function resolveCandidateTier(modelName, registryTier) {
+    const inferredTier = judgeTierResolver.inferJudgeTier(modelName);
+    if (!registryTier) return inferredTier || null;
+    if (!inferredTier) return registryTier;
+
+    const inferredRank = judgeTierResolver.TIER_RANK[inferredTier] || 0;
+    const registryRank = judgeTierResolver.TIER_RANK[registryTier] || 0;
+    return inferredRank > registryRank ? inferredTier : registryTier;
+}
+
 /**
  * Returns true when a config object has a non-empty value for the given key.
  *
@@ -55,12 +65,15 @@ async function getJudgeCandidatesCached() {
             .lean();
 
         const candidates = (models || []).map((model) => {
-            const inferredTier = judgeTierResolver.inferJudgeTier(model.modelName);
+            const judgeTier = resolveCandidateTier(
+                model.modelName,
+                model.capabilities?.judgeTier || null
+            );
             return {
                 modelName: model.modelName,
                 host: model.host || null,
                 capabilities: {
-                    judgeTier: model.capabilities?.judgeTier || inferredTier || null,
+                    judgeTier,
                     judgeReliability: model.capabilities?.judgeReliability,
                     avgJudgeLatencyMs: model.capabilities?.avgJudgeLatencyMs
                 }

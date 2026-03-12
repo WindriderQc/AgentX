@@ -118,17 +118,30 @@ function getJudgeModelCandidates() {
     return unique.sort((a, b) => (a.modelName || '').localeCompare(b.modelName || ''));
 }
 
+function judgeTierRank(tier) {
+    return ({ basic: 1, standard: 2, advanced: 3, premium: 4 })[tier] || 0;
+}
+
+function inferJudgeTierFromName(modelName) {
+    const n = (modelName || '').toLowerCase();
+    if (/70b|72b|671b|405b/.test(n)) return 'premium';
+    if (/32b|34b|30b|40b|14b|13b|20b|22b/.test(n)) return 'advanced';
+    if (/7b|8b|9b/.test(n)) return 'standard';
+    if (/3b|2b|1\.5b/.test(n)) return 'basic';
+    return '';
+}
+
+function resolveJudgeDisplayTier(model) {
+    const registryTier = model.capabilities && model.capabilities.judgeTier;
+    const inferredTier = inferJudgeTierFromName(model.modelName || '');
+    if (!registryTier) return inferredTier;
+    if (!inferredTier) return registryTier;
+    return judgeTierRank(inferredTier) > judgeTierRank(registryTier) ? inferredTier : registryTier;
+}
+
 /** Tier badge for judge model select */
 function judgeTierBadge(model) {
-    let tier = model.capabilities && model.capabilities.judgeTier;
-    if (!tier) {
-        // Infer from model name when registry lacks metadata (or has stale data)
-        const n = (model.modelName || '').toLowerCase();
-        if (/70b|72b|671b|405b/.test(n))            tier = 'premium';
-        else if (/32b|34b|30b|40b|14b|13b|20b|22b/.test(n)) tier = 'advanced';
-        else if (/7b|8b|9b/.test(n))                tier = 'standard';
-        else if (/3b|2b|1\.5b/.test(n))             tier = 'basic';
-    }
+    const tier = resolveJudgeDisplayTier(model);
     if (!tier) return '';
     const badges = { basic: 'BASIC', standard: 'STD', advanced: 'ADV', premium: 'PRO' };
     return badges[tier] ? ` [${badges[tier]}]` : '';
