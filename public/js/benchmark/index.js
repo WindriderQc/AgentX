@@ -191,7 +191,8 @@ function populateJudgeHostSelect() {
     const select = document.getElementById('judgeHost');
     if (!select) return;
     const currentValue = select.value || state.currentJudgeConfig.host || '';
-    let options = '<option value="">(auto \u2014 opposite of exec host)</option>';
+    // No "(auto)" sentinel — mode is controlled by the judgeMode radio buttons
+    let options = '<option value="">(no host selected)</option>';
     if (Array.isArray(state.ollamaHosts)) {
         state.ollamaHosts.forEach(h => {
             const status = h.available ? '\u2713' : '\u2717';
@@ -202,36 +203,117 @@ function populateJudgeHostSelect() {
     if (currentValue) select.value = currentValue;
 }
 
+/**
+ * Derive which judge mode should be shown given a config object.
+ * - If config.host is set → pinned (explicit host/model override)
+ * - Otherwise → auto (policy-driven)
+ * Backward compat: legacy configs that only set judge_same_host also map to auto.
+ */
+function deriveJudgeMode(config) {
+    return (config && config.host) ? 'pinned' : 'auto';
+}
+
+/**
+ * Show/hide the auto vs pinned sub-sections and highlight the active mode label.
+ */
+function syncJudgeModeUI(mode) {
+    const autoSection = document.getElementById('judgeAutoSection');
+    const pinnedSection = document.getElementById('judgePinnedSection');
+    const autoLabel = document.getElementById('judgeModeAutoLabel');
+    const pinnedLabel = document.getElementById('judgeModePinnedLabel');
+
+    if (autoSection) autoSection.style.display = mode === 'auto' ? 'block' : 'none';
+    if (pinnedSection) pinnedSection.style.display = mode === 'pinned' ? 'block' : 'none';
+
+    const activeColor = 'rgba(52,152,219,0.8)';
+    const inactiveColor = 'rgba(52,152,219,0.3)';
+    if (autoLabel) autoLabel.style.borderColor = mode === 'auto' ? activeColor : inactiveColor;
+    if (pinnedLabel) pinnedLabel.style.borderColor = mode === 'pinned' ? activeColor : inactiveColor;
+
+    if (mode === 'auto') {
+        const policyEl = document.getElementById('judgeHostPolicy');
+        updateAutoJudgePreview(policyEl ? policyEl.value : 'cross_host');
+    }
+}
+
+/**
+ * Render the "resolved judge" preview inside the auto section.
+ * Shows what host/model will actually be used at batch-run time.
+ */
+function updateAutoJudgePreview(policy) {
+    const el = document.getElementById('judgeAutoPreview');
+    if (!el) return;
+
+    const execHostUrl = document.getElementById('host')?.value || '';
+    const serverModel = state.currentJudgeConfig.model || '(server default)';
+
+    if (!execHostUrl) {
+        el.innerHTML = `<i class="fas fa-info-circle" style="color: #27ae60;"></i> Select an Ollama host on the main page to see the resolved judge.`;
+        return;
+    }
+
+    const hosts = state.ollamaHosts || [];
+    let hostLabel;
+    if (policy === 'same_host') {
+        const matched = hosts.find(h => h.url === execHostUrl);
+        hostLabel = matched ? `${escapeHtml(matched.name)} (${escapeHtml(execHostUrl)})` : escapeHtml(execHostUrl);
+    } else {
+        const other = hosts.find(h => h.url !== execHostUrl);
+        if (other) {
+            hostLabel = `${escapeHtml(other.name)} (${escapeHtml(other.url)})`;
+        } else {
+            const matched = hosts.find(h => h.url === execHostUrl);
+            const label = matched ? `${matched.name} (${execHostUrl})` : execHostUrl;
+            hostLabel = `${escapeHtml(label)} <span style="color:#f39c12;">(only one host — same as exec)</span>`;
+        }
+    }
+
+    el.innerHTML = `<i class="fas fa-check-circle" style="color:#27ae60;"></i>
+        Will use: <strong>${escapeHtml(serverModel)}</strong> on <strong>${hostLabel}</strong>`;
+}
+
 function applyJudgeConfigToForm(config) {
     if (!config) return;
-    const judgeModel = document.getElementById('judgeModel');
+
+    // ── Mode radio + section visibility ────────────────────────────────────
+    const mode = deriveJudgeMode(config);
+    const modeRadio = document.getElementById(`judgeMode_${mode}`);
+    if (modeRadio) modeRadio.checked = true;
+    syncJudgeModeUI(mode);
+
+    // ── Auto: derive policy from judge_same_host ────────────────────────────
+    const policyEl = document.getElementById('judgeHostPolicy');
+    if (policyEl) {
+        policyEl.value = config.judge_same_host ? 'same_host' : 'cross_host';
+        updateAutoJudgePreview(policyEl.value);
+    }
+
+    // ── Pinned: host + model ────────────────────────────────────────────────
     const judgeHost = document.getElementById('judgeHost');
+    if (judgeHost) judgeHost.value = config.host || '';
+    const judgeModel = document.getElementById('judgeModel');
+    if (judgeModel && config.model) judgeModel.value = config.model;
+
+    // ── Shared performance knobs ────────────────────────────────────────────
     const judgeTemp = document.getElementById('judgeTemp');
     const judgeTempVal = document.getElementById('judgeTempVal');
-    const judgeTimeout = document.getElementById('judgeTimeout');
-    const judgeMaxTokens = document.getElementById('judgeMaxTokens');
-    const judgeConcurrency = document.getElementById('judgeConcurrency');
-    const judgeConcurrencyVal = document.getElementById('judgeConcurrencyVal');
-    const judgeSameHost = document.getElementById('judgeSameHost');
-
-    if (judgeHost) judgeHost.value = config.host || '';
-    if (judgeModel && config.model) judgeModel.value = config.model;
     if (judgeTemp && config.temperature !== undefined && config.temperature !== null) {
         judgeTemp.value = String(config.temperature);
         if (judgeTempVal) judgeTempVal.textContent = String(config.temperature);
     }
+    const judgeTimeout = document.getElementById('judgeTimeout');
     if (judgeTimeout && config.timeout !== undefined && config.timeout !== null) {
         judgeTimeout.value = String(config.timeout);
     }
+    const judgeMaxTokens = document.getElementById('judgeMaxTokens');
     if (judgeMaxTokens && config.num_predict !== undefined && config.num_predict !== null) {
         judgeMaxTokens.value = String(config.num_predict);
     }
+    const judgeConcurrency = document.getElementById('judgeConcurrency');
+    const judgeConcurrencyVal = document.getElementById('judgeConcurrencyVal');
     if (judgeConcurrency && config.concurrency !== undefined && config.concurrency !== null) {
         judgeConcurrency.value = String(config.concurrency);
         if (judgeConcurrencyVal) judgeConcurrencyVal.textContent = String(config.concurrency);
-    }
-    if (judgeSameHost && typeof config.judge_same_host === 'boolean') {
-        judgeSameHost.checked = config.judge_same_host;
     }
     const judgeTierAutoUpgrade = document.getElementById('judgeTierAutoUpgrade');
     if (judgeTierAutoUpgrade && typeof config.judge_tier_auto_upgrade === 'boolean') {
@@ -241,37 +323,48 @@ function applyJudgeConfigToForm(config) {
 
 function getJudgeConfigOverridesFromForm() {
     const overrides = {};
-    const judgeModel = document.getElementById('judgeModel');
-    const judgeHostEl = document.getElementById('judgeHost');
-    const judgeTemp = document.getElementById('judgeTemp');
-    const judgeTimeout = document.getElementById('judgeTimeout');
-    const judgeMaxTokens = document.getElementById('judgeMaxTokens');
-    const judgeConcurrency = document.getElementById('judgeConcurrency');
-    const judgeSameHost = document.getElementById('judgeSameHost');
-    const judgeTierAutoUpgrade = document.getElementById('judgeTierAutoUpgrade');
+    const mode = document.querySelector('input[name="judgeMode"]:checked')?.value || 'auto';
 
-    // Always set host — even null/empty — so switching back to "auto" clears any stale override
-    overrides.host = (judgeHostEl && judgeHostEl.value) ? judgeHostEl.value : null;
-    if (judgeModel && judgeModel.value) overrides.model = judgeModel.value;
+    if (mode === 'pinned') {
+        const judgeHostEl = document.getElementById('judgeHost');
+        const judgeModel = document.getElementById('judgeModel');
+        overrides.host = (judgeHostEl && judgeHostEl.value) ? judgeHostEl.value : null;
+        if (judgeModel && judgeModel.value) overrides.model = judgeModel.value;
+        overrides.judge_same_host = false;
+    } else {
+        // auto — host is always server-resolved; only the policy flag needs persisting
+        overrides.host = null;
+        const policyEl = document.getElementById('judgeHostPolicy');
+        overrides.judge_same_host = policyEl ? policyEl.value === 'same_host' : false;
+    }
+
+    const judgeTemp = document.getElementById('judgeTemp');
     if (judgeTemp && judgeTemp.value !== '') overrides.temperature = coerceNumber(judgeTemp.value, 0.1);
+    const judgeTimeout = document.getElementById('judgeTimeout');
     if (judgeTimeout && judgeTimeout.value !== '') overrides.timeout = coerceNumber(judgeTimeout.value, 120000);
+    const judgeMaxTokens = document.getElementById('judgeMaxTokens');
     if (judgeMaxTokens && judgeMaxTokens.value !== '') overrides.num_predict = coerceNumber(judgeMaxTokens.value, 200);
+    const judgeConcurrency = document.getElementById('judgeConcurrency');
     if (judgeConcurrency && judgeConcurrency.value !== '') overrides.concurrency = coerceNumber(judgeConcurrency.value, 2);
-    if (judgeSameHost) overrides.judge_same_host = !!judgeSameHost.checked;
+    const judgeTierAutoUpgrade = document.getElementById('judgeTierAutoUpgrade');
     if (judgeTierAutoUpgrade) overrides.judge_tier_auto_upgrade = !!judgeTierAutoUpgrade.checked;
 
     return overrides;
 }
 
-function updateJudgeConfigFromForm() {
+/**
+ * Commit the current form values to state and persist.
+ * Called only from the Save button — not on intermediate field changes.
+ */
+function commitJudgeConfigFromForm() {
     const overrides = getJudgeConfigOverridesFromForm();
     const next = { ...state.currentJudgeConfig, ...overrides };
     // Remove host key when null/empty so backend uses auto-opposite logic
     if (!next.host) delete next.host;
+    if (!next.judge_same_host) delete next.judge_same_host;
     state.setCurrentJudgeConfig(next);
     writeStoredJudgeConfig(next);
     updateJudgeConfigPreview();
-    // Re-render depth matrix and refresh tier indicators
     renderDepthMatrix();
     updateDepthSummary();
     const depthCfg = getDepthConfig();
@@ -320,6 +413,10 @@ function updateJudgeConfigPreview() {
 function bindJudgeSettingsUI() {
     const settingsBtn = document.getElementById('settingsBtn');
     const settingsModal = document.getElementById('settingsModal');
+    const saveBtn = document.getElementById('saveSettingsBtn');
+    const cancelBtn = document.getElementById('cancelSettingsBtn');
+
+    // ── Open modal ────────────────────────────────────────────────────────
     if (settingsBtn && settingsModal) {
         settingsBtn.addEventListener('click', () => {
             populateJudgeHostSelect();
@@ -329,42 +426,70 @@ function bindJudgeSettingsUI() {
         });
     }
 
-    const judgeTemp = document.getElementById('judgeTemp');
-    const judgeTempVal = document.getElementById('judgeTempVal');
-    if (judgeTemp) {
-        judgeTemp.addEventListener('input', () => {
-            if (judgeTempVal) judgeTempVal.textContent = judgeTemp.value;
-            updateJudgeConfigFromForm();
+    // ── Save: commit form → state, persist, close ─────────────────────────
+    if (saveBtn) {
+        saveBtn.addEventListener('click', () => {
+            commitJudgeConfigFromForm();
+            if (settingsModal) settingsModal.style.display = 'none';
         });
     }
 
-    const judgeConcurrency = document.getElementById('judgeConcurrency');
-    const judgeConcurrencyVal = document.getElementById('judgeConcurrencyVal');
-    if (judgeConcurrency) {
-        judgeConcurrency.addEventListener('input', () => {
-            if (judgeConcurrencyVal) judgeConcurrencyVal.textContent = judgeConcurrency.value;
-            updateJudgeConfigFromForm();
+    // ── Cancel: discard (state was never touched), close ──────────────────
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', () => {
+            if (settingsModal) settingsModal.style.display = 'none';
         });
     }
 
-    ['judgeHost', 'judgeModel', 'judgeTimeout', 'judgeMaxTokens', 'judgeSameHost'].forEach(id => {
-        const el = document.getElementById(id);
-        if (!el) return;
-        el.addEventListener('change', () => {
-            // When judge host changes, auto-apply any stored per-host default model
-            if (id === 'judgeHost') {
-                const hostUrl = el.value;
-                const defaultModel = hostUrl && state.judgeHostDefaults && state.judgeHostDefaults[hostUrl];
-                if (defaultModel) {
-                    const judgeModelEl = document.getElementById('judgeModel');
-                    if (judgeModelEl) judgeModelEl.value = defaultModel;
-                }
-            }
-            updateJudgeConfigFromForm();
-        });
+    // ── Mode radio: toggle pinned / auto sections ─────────────────────────
+    ['judgeMode_auto', 'judgeMode_pinned'].forEach(id => {
+        const radio = document.getElementById(id);
+        if (radio) {
+            radio.addEventListener('change', () => syncJudgeModeUI(radio.value));
+        }
     });
 
-    // Auto-suggest: judge-mismatch banner fires this when user clicks "Use <model>"
+    // ── Temperature: display-only update (no state touch) ─────────────────
+    const judgeTemp = document.getElementById('judgeTemp');
+    const judgeTempVal = document.getElementById('judgeTempVal');
+    if (judgeTemp && judgeTempVal) {
+        judgeTemp.addEventListener('input', () => {
+            judgeTempVal.textContent = judgeTemp.value;
+        });
+    }
+
+    // ── Concurrency: display-only update ──────────────────────────────────
+    const judgeConcurrency = document.getElementById('judgeConcurrency');
+    const judgeConcurrencyVal = document.getElementById('judgeConcurrencyVal');
+    if (judgeConcurrency && judgeConcurrencyVal) {
+        judgeConcurrency.addEventListener('input', () => {
+            judgeConcurrencyVal.textContent = judgeConcurrency.value;
+        });
+    }
+
+    // ── Host policy change: refresh resolved-judge preview ────────────────
+    const judgeHostPolicy = document.getElementById('judgeHostPolicy');
+    if (judgeHostPolicy) {
+        judgeHostPolicy.addEventListener('change', () => {
+            updateAutoJudgePreview(judgeHostPolicy.value);
+        });
+    }
+
+    // ── Pinned host change: auto-suggest model from per-host defaults ──────
+    const judgeHostEl = document.getElementById('judgeHost');
+    if (judgeHostEl) {
+        judgeHostEl.addEventListener('change', () => {
+            const hostUrl = judgeHostEl.value;
+            const defaultModel = hostUrl && state.judgeHostDefaults && state.judgeHostDefaults[hostUrl];
+            if (defaultModel) {
+                const judgeModelEl = document.getElementById('judgeModel');
+                if (judgeModelEl) judgeModelEl.value = defaultModel;
+            }
+        });
+    }
+
+    // ── judgeAutoSuggest: from the mismatch banner (outside modal) ─────────
+    // Always applies immediately to state (banner is main-page UI, not modal).
     document.addEventListener('judgeAutoSuggest', (e) => {
         const model = e.detail && e.detail.model;
         if (!model) return;

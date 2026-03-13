@@ -26,15 +26,14 @@ let judgeCandidateCache = {
 
 function normalizeJudgeConfigContract(config = {}) {
     const normalized = { ...config };
+    const explicitMode = normalized.mode === 'pinned' || normalized.mode === 'auto'
+        ? normalized.mode
+        : null;
 
-    if (normalized.mode === 'pinned' || normalized.mode === 'auto') {
-        return normalized;
-    }
-
-    if (normalized.pinnedModel === undefined && normalized.model !== undefined) {
+    if (normalized.pinnedModel === undefined && normalized.model !== undefined && explicitMode !== 'auto') {
         normalized.pinnedModel = normalized.model;
     }
-    if (normalized.pinnedHost === undefined && normalized.host !== undefined) {
+    if (normalized.pinnedHost === undefined && normalized.host !== undefined && explicitMode !== 'auto') {
         normalized.pinnedHost = normalized.host;
     }
     if (!normalized.resolutionPolicy) {
@@ -43,13 +42,29 @@ function normalizeJudgeConfigContract(config = {}) {
     if (normalized.allowSameHost === undefined && normalized.judge_same_host !== undefined) {
         normalized.allowSameHost = !!normalized.judge_same_host;
     }
+    if (normalized.judge_same_host === undefined && normalized.allowSameHost !== undefined) {
+        normalized.judge_same_host = !!normalized.allowSameHost;
+    }
 
-    if (normalized.judge_tier_auto_upgrade === true) {
+    if (explicitMode) {
+        normalized.mode = explicitMode;
+    } else if (normalized.judge_tier_auto_upgrade === true) {
         normalized.mode = 'auto';
-    } else if (normalized.pinnedModel || normalized.model) {
+    } else if (normalized.pinnedModel || normalized.model || normalized.pinnedHost || normalized.host) {
         normalized.mode = 'pinned';
     } else {
-        normalized.mode = 'auto';
+        normalized.mode = 'pinned';
+    }
+
+    normalized.judge_tier_auto_upgrade = normalized.mode === 'auto';
+
+    if (normalized.mode === 'pinned') {
+        if (normalized.model === undefined && normalized.pinnedModel !== undefined) {
+            normalized.model = normalized.pinnedModel;
+        }
+        if (normalized.host === undefined && normalized.pinnedHost !== undefined) {
+            normalized.host = normalized.pinnedHost;
+        }
     }
 
     return normalized;
@@ -96,6 +111,7 @@ async function getJudgeCandidatesCached() {
                 capabilities: {
                     judgeTier: tierMeta.effectiveTier,
                     curatedJudgeTier: tierMeta.curatedTier,
+                    legacyJudgeTier: tierMeta.legacyTier,
                     calibratedJudgeTier: tierMeta.calibratedTier,
                     recommendedJudgeTier: tierMeta.recommendedTier,
                     inferredJudgeTier: tierMeta.inferredTier,

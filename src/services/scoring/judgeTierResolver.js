@@ -30,6 +30,47 @@ const TIER_RANK = {
     premium: 4
 };
 
+const TIER_ORDER = ['basic', 'standard', 'advanced', 'premium'];
+
+const TIER_DISPLAY = {
+    basic: {
+        key: 'basic',
+        label: 'Basic',
+        shortLabel: 'BASIC',
+        icon: 'check',
+        modelRange: '2-3B',
+        description: 'Small and fast judges for trivial prompts with clear right or wrong answers.',
+        governanceNote: 'Good for screening and lightweight checks.'
+    },
+    standard: {
+        key: 'standard',
+        label: 'Standard',
+        shortLabel: 'STD',
+        icon: 'star',
+        modelRange: '7-9B',
+        description: 'Default governance tier for most evaluations where nuance starts to matter.',
+        governanceNote: 'Recommended baseline for routine courthouse governance.'
+    },
+    advanced: {
+        key: 'advanced',
+        label: 'Advanced',
+        shortLabel: 'ADV',
+        icon: 'bolt',
+        modelRange: '14-32B',
+        description: 'Stronger judges for complex, multi-step, or subtle evaluation decisions.',
+        governanceNote: 'Required when prompt complexity reaches the high end.'
+    },
+    premium: {
+        key: 'premium',
+        label: 'Premium',
+        shortLabel: 'PRO',
+        icon: 'gem',
+        modelRange: '70B+',
+        description: 'Optional flagship tier when hardware allows, but never required by policy.',
+        governanceNote: 'Luxury tier only; courthouse policy does not require it.'
+    }
+};
+
 // ── Prompt level → minimum judge tier mapping ────────────────────────
 // Levels 1-3:  basic is fine (trivial prompts, clear right/wrong)
 // Levels 4-6:  standard required (key differentiation zone)
@@ -48,6 +89,26 @@ const LEVEL_TIER_MAP = {
     8: 'advanced',
     9: 'advanced',
     10: 'advanced'
+};
+
+const LEVEL_LABELS = {
+    1: 'Trivial',
+    2: 'Simple',
+    3: 'Easy',
+    4: 'Moderate',
+    5: 'Medium',
+    6: 'Challenging',
+    7: 'Hard',
+    8: 'Very Hard',
+    9: 'Extreme',
+    10: 'Master'
+};
+
+const LEVEL_REASON_BY_TIER = {
+    basic: 'Clear right-or-wrong evaluation can stay on small judges.',
+    standard: 'This level needs more nuance and consistency than the basic tier provides.',
+    advanced: 'This level needs stronger reasoning for subtle quality differences.',
+    premium: 'Premium is optional and never required by level policy.'
 };
 
 // ── Default judge presets ────────────────────────────────────────────
@@ -245,17 +306,20 @@ function inferJudgeTier(modelName) {
 
 function resolveJudgeTierMetadata(capabilities = {}, modelName = '') {
     const inferredTier = inferJudgeTier(modelName);
-    const curatedTier = capabilities.curatedJudgeTier || capabilities.judgeTier || null;
+    const curatedTier = capabilities.curatedJudgeTier || null;
+    const legacyTier = capabilities.judgeTier || null;
     const calibratedTier = capabilities.calibratedJudgeTier || null;
     const recommendedTier = capabilities.recommendedJudgeTier || calibratedTier || null;
-    const effectiveTier = curatedTier || recommendedTier || inferredTier || null;
+    const effectiveTier = curatedTier || legacyTier || recommendedTier || inferredTier || null;
 
     let source = null;
-    if (capabilities.curatedJudgeTier) {
+    if (curatedTier) {
         source = 'curated';
-    } else if (capabilities.judgeTier) {
+    } else if (legacyTier) {
         source = 'legacy';
-    } else if (recommendedTier) {
+    } else if (capabilities.recommendedJudgeTier) {
+        source = 'recommended';
+    } else if (calibratedTier) {
         source = 'calibrated';
     } else if (inferredTier) {
         source = 'inferred';
@@ -264,11 +328,35 @@ function resolveJudgeTierMetadata(capabilities = {}, modelName = '') {
     return {
         effectiveTier,
         curatedTier,
+        legacyTier,
         calibratedTier,
         recommendedTier,
         inferredTier,
         source
     };
+}
+
+function getTierDefinitions() {
+    return TIER_ORDER.reduce((acc, tier) => {
+        acc[tier] = {
+            ...TIER_DISPLAY[tier],
+            rank: TIER_RANK[tier]
+        };
+        return acc;
+    }, {});
+}
+
+function getLevelRequirements() {
+    return Object.entries(LEVEL_TIER_MAP).map(([level, tier]) => {
+        const requiredRank = TIER_RANK[tier] || 0;
+        return {
+            level: Number(level),
+            label: LEVEL_LABELS[level] || `Level ${level}`,
+            requiredTier: tier,
+            reason: LEVEL_REASON_BY_TIER[tier] || null,
+            qualifyingTiers: TIER_ORDER.filter((candidate) => (TIER_RANK[candidate] || 0) >= requiredRank)
+        };
+    });
 }
 
 /**
@@ -282,12 +370,17 @@ function getJudgePreset(presetName) {
 
 module.exports = {
     TIER_RANK,
+    TIER_ORDER,
+    TIER_DISPLAY,
     LEVEL_TIER_MAP,
+    LEVEL_LABELS,
     JUDGE_PRESETS,
     getRequiredTier,
     tierMeetsRequirement,
     resolveJudgeModel,
     inferJudgeTier,
     resolveJudgeTierMetadata,
+    getTierDefinitions,
+    getLevelRequirements,
     getJudgePreset
 };

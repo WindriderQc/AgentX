@@ -10,6 +10,7 @@ const {
   tierMeetsRequirement,
   resolveJudgeModel,
   inferJudgeTier,
+  resolveJudgeTierMetadata,
   getJudgePreset
 } = require('../../src/services/scoring/judgeTierResolver');
 
@@ -124,6 +125,52 @@ describe('inferJudgeTier', () => {
     expect(inferJudgeTier('')).toBeNull();
     expect(inferJudgeTier(null)).toBeNull();
     expect(inferJudgeTier(undefined)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveJudgeTierMetadata
+// ---------------------------------------------------------------------------
+describe('resolveJudgeTierMetadata', () => {
+  test('prefers curated tier over legacy and calibration metadata', () => {
+    const result = resolveJudgeTierMetadata({
+      curatedJudgeTier: 'premium',
+      judgeTier: 'advanced',
+      recommendedJudgeTier: 'standard',
+      calibratedJudgeTier: 'basic'
+    }, 'qwen2.5:7b');
+
+    expect(result.effectiveTier).toBe('premium');
+    expect(result.curatedTier).toBe('premium');
+    expect(result.legacyTier).toBe('advanced');
+    expect(result.source).toBe('curated');
+  });
+
+  test('uses legacy judgeTier before recommended calibration output', () => {
+    const result = resolveJudgeTierMetadata({
+      judgeTier: 'advanced',
+      recommendedJudgeTier: 'standard',
+      calibratedJudgeTier: 'basic'
+    }, 'qwen2.5:7b');
+
+    expect(result.effectiveTier).toBe('advanced');
+    expect(result.legacyTier).toBe('advanced');
+    expect(result.source).toBe('legacy');
+  });
+
+  test('falls back to recommended or calibrated tier when no curated metadata exists', () => {
+    const recommended = resolveJudgeTierMetadata({
+      recommendedJudgeTier: 'advanced',
+      calibratedJudgeTier: 'standard'
+    }, 'qwen2.5:7b');
+    const calibrated = resolveJudgeTierMetadata({
+      calibratedJudgeTier: 'advanced'
+    }, 'qwen2.5:7b');
+
+    expect(recommended.effectiveTier).toBe('advanced');
+    expect(recommended.source).toBe('recommended');
+    expect(calibrated.effectiveTier).toBe('advanced');
+    expect(calibrated.source).toBe('calibrated');
   });
 });
 

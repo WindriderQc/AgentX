@@ -49,13 +49,6 @@ function writeDefaults(data) {
 
 const TIER_RANK = { basic: 1, standard: 2, advanced: 3, premium: 4 };
 
-const TIER_COLORS = {
-    basic: '#6c757d',
-    standard: '#0d6efd',
-    advanced: '#198754',
-    premium: '#dc3545'
-};
-
 function normalizeTier(tier) {
     return TIER_RANK[tier] ? tier : null;
 }
@@ -189,24 +182,22 @@ router.get('/judge-roster', async (req, res) => {
         const judges = registryEntries.map(entry => {
             const modelName = String(entry.modelName || '').replace(/:latest$/i, '');
             const caps = entry.capabilities || {};
-            const registryTier = normalizeTier(caps.judgeTier);
-            const inferredTier = judgeTierResolver.inferJudgeTier(modelName);
-            const tier = registryTier || inferredTier;
+            const tierMeta = judgeTierResolver.resolveJudgeTierMetadata(caps, modelName);
+            const tier = tierMeta.effectiveTier;
             const reliability = typeof caps.judgeReliability === 'number' ? caps.judgeReliability : null;
             const avgLatencyMs = typeof caps.avgJudgeLatencyMs === 'number' ? caps.avgJudgeLatencyMs : null;
             const evalCount = liveEvalMap.get(modelName) || (typeof caps.judgeEvalCount === 'number' ? caps.judgeEvalCount : 0);
             const calibratedAt = caps.calibratedAt || null;
             const availableOn = modelHostMap.get(modelName) || [];
             const tierRank = TIER_RANK[tier] || 0;
-            const tierColor = TIER_COLORS[tier] || '#888';
 
             return {
                 modelName,
                 tier,
-                inferredTier: inferredTier || null,
-                hasConflict: !!(registryTier && inferredTier && registryTier !== inferredTier),
+                tierMeta,
+                inferredTier: tierMeta.inferredTier || null,
+                hasConflict: !!(tierMeta.source !== 'inferred' && tierMeta.inferredTier && tierMeta.effectiveTier && tierMeta.inferredTier !== tierMeta.effectiveTier),
                 tierRank,
-                tierColor,
                 reliability,
                 avgLatencyMs,
                 evalCount,
@@ -228,8 +219,15 @@ router.get('/judge-roster', async (req, res) => {
                 unregistered.push({
                     modelName,
                     tier: inferredTier,
+                    tierMeta: {
+                        effectiveTier: inferredTier,
+                        curatedTier: null,
+                        calibratedTier: null,
+                        recommendedTier: null,
+                        inferredTier,
+                        source: inferredTier ? 'inferred' : null
+                    },
                     tierRank: TIER_RANK[inferredTier] || 0,
-                    tierColor: TIER_COLORS[inferredTier] || '#888',
                     reliability: null,
                     avgLatencyMs: null,
                     evalCount: 0,
@@ -266,9 +264,10 @@ router.get('/judge-roster', async (req, res) => {
             data: {
                 judges: allJudges,
                 hostPanels,
+                judgeTiers: judgeTierResolver.getTierDefinitions(),
+                levelRequirements: judgeTierResolver.getLevelRequirements(),
                 tierMap: judgeTierResolver.LEVEL_TIER_MAP,
                 tierRank: TIER_RANK,
-                tierColors: TIER_COLORS,
                 defaults
             }
         });
@@ -298,7 +297,13 @@ router.patch('/judge-roster/:modelName/tier', async (req, res) => {
 
         const model = await ModelRegistry.findOneAndUpdate(
             { modelName },
-            { $set: { 'capabilities.judgeTier': tier, lastUpdated: new Date() } },
+            {
+                $set: {
+                    'capabilities.curatedJudgeTier': tier,
+                    'capabilities.judgeTier': tier,
+                    lastUpdated: new Date()
+                }
+            },
             { new: true }
         );
 
@@ -310,7 +315,14 @@ router.patch('/judge-roster/:modelName/tier', async (req, res) => {
         }
 
         logger.info('Judge tier updated via courthouse roster', { modelName, tier });
-        res.json({ status: 'success', data: { modelName, tier } });
+        res.json({
+            status: 'success',
+            data: {
+                modelName,
+                tier,
+                tierMeta: judgeTierResolver.resolveJudgeTierMetadata(model.capabilities || {}, modelName)
+            }
+        });
     } catch (err) {
         logger.error('Failed to update judge tier', { error: err.message });
         res.status(500).json({ status: 'error', error: err.message });

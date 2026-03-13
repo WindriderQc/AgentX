@@ -15,10 +15,11 @@ const ModelRegistry = require('../../models/ModelRegistry');
 const { validateJudgeModel } = require('../../src/services/benchmark/judgeModelValidator');
 const { callJudge } = require('../../src/services/scoring/judgeCall');
 const judgeTierResolver = require('../../src/services/scoring/judgeTierResolver');
+const { normalizeJudgeConfigContract, getJudgeCandidatesCached } = require('../../src/services/scoring/judgeConfigResolver');
 const { validateExecutionHost } = require('../../src/services/benchmark/executionHostValidator');
 const { runPreflight } = require('../../src/services/benchmark/preflight');
 const { resolveJudgeHost } = require('../../src/services/benchmark/judgeHostResolution');
-const { CATEGORY_MIN_JUDGE_TIER } = require('../../config/categories');
+const { CATEGORY_MIN_JUDGE_TIER, CATEGORY_JUDGE_REQUIREMENTS } = require('../../config/categories');
 const path = require('path');
 const fs = require('fs');
 
@@ -32,6 +33,46 @@ function readJudgeDefaults() {
 
 function isDuplicateKeyError(err) {
     return !!(err && (err.code === 11000 || String(err.message || '').includes('E11000')));
+}
+
+function getStrongestLevel(levels = []) {
+    const numericLevels = (Array.isArray(levels) ? levels : [])
+        .map((level) => Number(level))
+        .filter((level) => Number.isFinite(level));
+
+    if (!numericLevels.length) {
+        return 5;
+    }
+
+    return Math.max(...numericLevels);
+}
+
+async function resolveBatchJudgeTarget(executionHost, judgeConfig = {}, levels = []) {
+    const normalizedJudgeConfig = normalizeJudgeConfigContract(judgeConfig);
+    const { judgeHost: resolvedJudgeHost } = resolveJudgeHost(executionHost, normalizedJudgeConfig);
+
+    if (normalizedJudgeConfig.mode === 'pinned') {
+        return {
+            normalizedJudgeConfig,
+            validationHost: normalizedJudgeConfig.host || normalizedJudgeConfig.pinnedHost || resolvedJudgeHost || null,
+            validationModel: normalizedJudgeConfig.model || normalizedJudgeConfig.pinnedModel || JUDGE_CONFIG.model || null
+        };
+    }
+
+    const promptLevel = getStrongestLevel(levels);
+    const preferredTier = normalizedJudgeConfig.preferred_tier || judgeTierResolver.getRequiredTier(promptLevel);
+    const candidates = await getJudgeCandidatesCached();
+    const resolution = judgeTierResolver.resolveJudgeModel(candidates, {
+        promptLevel,
+        preferredTier,
+        preferredHost: normalizedJudgeConfig.preferredHost || normalizedJudgeConfig.host || resolvedJudgeHost
+    });
+
+    return {
+        normalizedJudgeConfig,
+        validationHost: resolution?.host || resolvedJudgeHost || normalizedJudgeConfig.host || null,
+        validationModel: resolution?.model || null
+    };
 }
 
 function buildActiveBatchConflict(active) {
@@ -63,19 +104,33 @@ function buildActiveBatchConflict(active) {
  */
 router.get('/config', (req, res) => {
     const judgeDefaults = readJudgeDefaults();
+    const tierDefinitions = judgeTierResolver.getTierDefinitions();
+    const levelRequirements = judgeTierResolver.getLevelRequirements();
+    const categoryRequirements = Object.entries(CATEGORY_JUDGE_REQUIREMENTS).map(([key, value]) => ({
+        key,
+        label: value.label,
+        requiredTier: value.minTier,
+        reason: value.reason,
+        qualifyingTiers: Object.keys(tierDefinitions).filter(
+            (tier) => (judgeTierResolver.TIER_RANK[tier] || 0) >= (judgeTierResolver.TIER_RANK[value.minTier] || 0)
+        )
+    }));
     res.json({
         status: 'success',
         data: {
-            judge_config: {
+            judge_config: normalizeJudgeConfigContract({
                 ...JUDGE_CONFIG,
                 concurrency: 2,
                 judge_same_host: false
-            },
+            }),
             execution_config: benchmarkService.getExecutionConfigDefaults(),
             scoring_configs: ENHANCED_SCORING_CONFIGS,
             judge_presets: judgeTierResolver.JUDGE_PRESETS,
             judge_tier_map: judgeTierResolver.LEVEL_TIER_MAP,
             category_tier_map: CATEGORY_MIN_JUDGE_TIER,
+            judge_tiers: tierDefinitions,
+            judge_level_requirements: levelRequirements,
+            judge_category_requirements: categoryRequirements,
             tier_rank: judgeTierResolver.TIER_RANK,
             judge_tier_rank: judgeTierResolver.TIER_RANK,
             judge_host_defaults: judgeDefaults
@@ -171,9 +226,12 @@ router.post('/batch', optionalWorkspaceContext, async (req, res) => {
             return res.status(409).json(buildActiveBatchConflict(activeBatches[0]));
         }
 
-        // Validate judge model on the actual judge host (mirrors execution.js host resolution)
-        const judgeModel = (judge_config && judge_config.model) || JUDGE_CONFIG.model;
-        const { judgeHost: actualJudgeHost } = resolveJudgeHost(host, judge_config || {});
+        const {
+            normalizedJudgeConfig,
+            validationHost: actualJudgeHost,
+            validationModel: judgeModel
+        } = await resolveBatchJudgeTarget(host, judge_config || {}, levels);
+
         if (actualJudgeHost && judgeModel) {
             const validation = await validateJudgeModel(actualJudgeHost, judgeModel);
             if (!validation.valid) {
@@ -186,13 +244,19 @@ router.post('/batch', optionalWorkspaceContext, async (req, res) => {
             }
         }
 
+        const preflightJudgeConfig = {
+            ...normalizedJudgeConfig,
+            host: actualJudgeHost || normalizedJudgeConfig.host
+        };
+        if (judgeModel) {
+            preflightJudgeConfig.model = judgeModel;
+        } else if (preflightJudgeConfig.mode === 'auto') {
+            delete preflightJudgeConfig.model;
+        }
+
         const preflight = await runPreflight({
             targets: models.map((modelName) => ({ host, model: modelName })),
-            judgeConfig: {
-                ...judge_config,
-                host: actualJudgeHost,
-                model: judgeModel
-            },
+            judgeConfig: preflightJudgeConfig,
             levels
         });
 
@@ -210,7 +274,7 @@ router.post('/batch', optionalWorkspaceContext, async (req, res) => {
             models,
             levels,
             run_name,
-            judge_config,
+            judge_config: normalizedJudgeConfig,
             execution_config,
             execution_mode: execution_mode || 'latency',
             depth_config: depth_config || null,

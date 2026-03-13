@@ -74,6 +74,8 @@ jest.mock('../../src/services/benchmark/preflight', () => ({
 
 const { app } = require('../../src/app');
 const { runPreflight } = require('../../src/services/benchmark/preflight');
+const { validateJudgeModel } = require('../../src/services/benchmark/judgeModelValidator');
+const { _clearJudgeCandidateCache } = require('../../src/services/qualityScorer');
 
 const BenchmarkPrompt = require('../../models/BenchmarkPrompt');
 const BenchmarkResult = require('../../models/BenchmarkResult');
@@ -88,6 +90,7 @@ afterEach(async () => {
         await BenchmarkResult.deleteMany({});
         await BenchmarkBatch.deleteMany({});
         await ModelRegistry.deleteMany({});
+        _clearJudgeCandidateCache();
     } catch (err) {
         // Ignore cleanup errors during tests
     }
@@ -671,6 +674,51 @@ describe('Benchmark System - Integration Tests', () => {
             expect(response.status).toBe(200);
             const promptsAtLevels = await BenchmarkPrompt.countDocuments({ level: { $in: [1, 3] } });
             expect(response.body.data.total_tests).toBe(2 * promptsAtLevels);
+        });
+
+        it('uses an auto-resolved judge candidate instead of a remembered legacy model during preflight', async () => {
+            validateJudgeModel.mockClear();
+            runPreflight.mockClear();
+            _clearJudgeCandidateCache();
+
+            await ModelRegistry.create({
+                modelName: 'qwen2.5:14b-instruct',
+                displayName: 'Qwen 14B Judge',
+                categories: ['judge'],
+                host: 'http://ugbrutal:11434',
+                capabilities: {
+                    curatedJudgeTier: 'advanced',
+                    judgeReliability: 0.98,
+                    avgJudgeLatencyMs: 1200
+                }
+            });
+
+            const response = await request(app)
+                .post('/api/benchmark/batch')
+                .send({
+                    host: 'http://localhost:11434',
+                    models: ['test-model'],
+                    levels: [1],
+                    judge_config: {
+                        mode: 'auto',
+                        model: 'qwen2.5:7b-instruct-q5_K_M',
+                        host: 'http://remembered-host:11434'
+                    }
+                });
+
+            expect(response.status).toBe(200);
+            expect(validateJudgeModel).toHaveBeenCalledWith(
+                'http://ugbrutal:11434',
+                'qwen2.5:14b-instruct'
+            );
+            expect(runPreflight).toHaveBeenCalledWith(expect.objectContaining({
+                judgeConfig: expect.objectContaining({
+                    mode: 'auto',
+                    model: 'qwen2.5:14b-instruct',
+                    host: 'http://ugbrutal:11434',
+                    judge_tier_auto_upgrade: true
+                })
+            }));
         });
 
         it('should return 409 on duplicate-key race collision during start', async () => {

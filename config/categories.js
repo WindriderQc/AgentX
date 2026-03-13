@@ -99,6 +99,89 @@ const CATEGORY_MIN_JUDGE_TIER = {
   'dialogue':              'basic'
 };
 
+const CATEGORY_JUDGE_REQUIREMENTS = {
+  coding: {
+    label: BENCHMARK_CATEGORIES.coding.label,
+    minTier: CATEGORY_MIN_JUDGE_TIER.coding,
+    reason: 'Code correctness and logic checks need a judge with solid reasoning depth.'
+  },
+  reasoning: {
+    label: BENCHMARK_CATEGORIES.reasoning.label,
+    minTier: CATEGORY_MIN_JUDGE_TIER.reasoning,
+    reason: 'Logical chain evaluation needs a judge that can follow multi-step inference.'
+  },
+  factual: {
+    label: BENCHMARK_CATEGORIES.factual.label,
+    minTier: CATEGORY_MIN_JUDGE_TIER.factual,
+    reason: 'Fact checking benefits from a judge with more reliable knowledge and consistency.'
+  },
+  creative: {
+    label: BENCHMARK_CATEGORIES.creative.label,
+    minTier: CATEGORY_MIN_JUDGE_TIER.creative,
+    reason: 'Creative scoring is subjective, so basic judges are acceptable for lightweight governance.'
+  },
+  'instruction-following': {
+    label: BENCHMARK_CATEGORIES['instruction-following'].label,
+    minTier: CATEGORY_MIN_JUDGE_TIER['instruction-following'],
+    reason: 'Compliance checks are mostly binary, so small judges are sufficient.'
+  },
+  math: {
+    label: BENCHMARK_CATEGORIES.math.label,
+    minTier: CATEGORY_MIN_JUDGE_TIER.math,
+    reason: 'Math validation needs a judge with dependable step-by-step verification.'
+  },
+  summarization: {
+    label: BENCHMARK_CATEGORIES.summarization.label,
+    minTier: CATEGORY_MIN_JUDGE_TIER.summarization,
+    reason: 'Coverage and concision checks are straightforward and do not need heavy judges.'
+  },
+  'multi-turn-reasoning': {
+    label: BENCHMARK_CATEGORIES['multi-turn-reasoning'].label,
+    minTier: CATEGORY_MIN_JUDGE_TIER['multi-turn-reasoning'],
+    reason: 'Cross-turn coherence checks need stronger working-memory and reasoning capability.'
+  },
+  'context-retention': {
+    label: BENCHMARK_CATEGORIES['context-retention'].label,
+    minTier: CATEGORY_MIN_JUDGE_TIER['context-retention'],
+    reason: 'Long-context recall checks benefit from judges with steadier attention and consistency.'
+  },
+  translation: {
+    label: BENCHMARK_CATEGORIES.translation.label,
+    minTier: CATEGORY_MIN_JUDGE_TIER.translation,
+    reason: 'Translation comparisons are pattern-heavy and can be governed with smaller judges.'
+  },
+  'edge-cases': {
+    label: BENCHMARK_CATEGORIES['edge-cases'].label,
+    minTier: CATEGORY_MIN_JUDGE_TIER['edge-cases'],
+    reason: 'Boundary-condition analysis needs a judge that catches subtle failures reliably.'
+  },
+  general: {
+    label: BENCHMARK_CATEGORIES.general.label,
+    minTier: CATEGORY_MIN_JUDGE_TIER.general,
+    reason: 'General checks can stay on basic judges unless prompt difficulty demands more.'
+  },
+  refactoring: {
+    label: BENCHMARK_CATEGORIES.refactoring.label,
+    minTier: CATEGORY_MIN_JUDGE_TIER.refactoring,
+    reason: 'Refactoring quality checks require code-structure understanding beyond simple syntax.'
+  },
+  debugging: {
+    label: BENCHMARK_CATEGORIES.debugging.label,
+    minTier: CATEGORY_MIN_JUDGE_TIER.debugging,
+    reason: 'Bug-finding evaluation needs dependable code tracing and reasoning.'
+  },
+  explanation: {
+    label: BENCHMARK_CATEGORIES.explanation.label,
+    minTier: CATEGORY_MIN_JUDGE_TIER.explanation,
+    reason: 'Explanation clarity is relatively easy to judge and can stay at the basic tier.'
+  },
+  dialogue: {
+    label: BENCHMARK_CATEGORIES.dialogue.label,
+    minTier: CATEGORY_MIN_JUDGE_TIER.dialogue,
+    reason: 'Conversation quality checks are governance-friendly and do not require stronger judges by default.'
+  }
+};
+
 /**
  * Leaderboard tab groups - maps benchmark categories into UI-friendly tab groups.
  * Each tab can match multiple benchmark categories.
@@ -137,6 +220,7 @@ module.exports = {
   BENCHMARK_CATEGORIES,
   GENERALIST_CATEGORY_WEIGHTS,
   CATEGORY_MIN_JUDGE_TIER,
+  CATEGORY_JUDGE_REQUIREMENTS,
   LEADERBOARD_TAB_GROUPS,
   TASK_CATEGORY_MAP
 };

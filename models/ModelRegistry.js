@@ -47,29 +47,30 @@ const CapabilitiesSchema = new mongoose.Schema({
     min: 1
   },
 
-  // Judge capability tier (only meaningful when model has 'judge' category)
-  // basic:    small models (~2-3B), quick screening only
-  // standard: 7-8B models, reliable for most evaluations
-  // advanced: 14B+ or specialized reasoning models, high consistency
-  // premium:  70B+ frontier models, optional luxury tier (never required)
+  // Legacy compatibility tier. Existing courthouse flows still edit this field.
+  // New curation should prefer curatedJudgeTier so manual edits stay distinct
+  // from calibration output.
   judgeTier: {
     type: String,
     enum: ['basic', 'standard', 'advanced', 'premium', null],
     default: null
   },
 
+  // Canonical human-curated tier.
   curatedJudgeTier: {
     type: String,
     enum: ['basic', 'standard', 'advanced', 'premium', null],
     default: null
   },
 
+  // Raw machine calibration output.
   calibratedJudgeTier: {
     type: String,
     enum: ['basic', 'standard', 'advanced', 'premium', null],
     default: null
   },
 
+  // Machine-recommended tier derived from calibration.
   recommendedJudgeTier: {
     type: String,
     enum: ['basic', 'standard', 'advanced', 'premium', null],

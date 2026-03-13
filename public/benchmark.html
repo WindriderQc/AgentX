@@ -592,59 +592,90 @@
     <div id="settingsModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2><i class="fas fa-cog"></i> Benchmark Settings</h2>
+                <h2><i class="fas fa-cog"></i> Judge Settings</h2>
                 <span class="close">&times;</span>
             </div>
             <div class="modal-body">
-                <div class="form-group">
-                    <label for="judgeModel">Judge Model</label>
-                    <select id="judgeModel" class="form-control">
-                        <option value="">Loading...</option>
-                    </select>
-                    <small class="form-text text-muted">Model used to evaluate response quality. Only models with the <strong>judge</strong> category in the Model Registry appear here. To add a model, assign it the "judge" category via the Model Registry.</small>
-                    <button type="button" id="calibrateJudgeBtn" class="btn btn-sm btn-outline-warning mt-2" onclick="calibrateJudgeModel()" title="Run 5 quick tests to measure this judge model's JSON reliability, scoring consistency, and speed">
-                        <i class="fas fa-flask"></i> Calibrate Judge
-                    </button>
-                    <div id="calibrationResult" style="display:none; margin-top: 8px; padding: 10px; border-radius: 6px; font-size: 0.85em;"></div>
+
+                <!-- ── MODE SELECTOR ──────────────────────────────────────── -->
+                <div class="form-group" style="padding: 12px 14px; background: rgba(52,152,219,0.07); border: 1px solid rgba(52,152,219,0.25); border-radius: 8px; margin-bottom: 18px;">
+                    <label style="display: block; font-weight: 700; margin-bottom: 10px; color: var(--accent);">
+                        <i class="fas fa-sliders-h"></i> Judge Selection Mode
+                    </label>
+                    <div style="display: flex; gap: 12px;">
+                        <label id="judgeModeAutoLabel" style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer; padding: 10px 14px; border: 2px solid rgba(52,152,219,0.3); border-radius: 8px; flex: 1; transition: border-color 0.15s;">
+                            <input type="radio" name="judgeMode" id="judgeMode_auto" value="auto" style="width:16px;height:16px;margin-top:3px;flex-shrink:0;" />
+                            <span>
+                                <strong>Auto</strong><br>
+                                <small style="color:var(--muted);">Policy-driven host; server-configured model</small>
+                            </span>
+                        </label>
+                        <label id="judgeModePinnedLabel" style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer; padding: 10px 14px; border: 2px solid rgba(52,152,219,0.3); border-radius: 8px; flex: 1; transition: border-color 0.15s;">
+                            <input type="radio" name="judgeMode" id="judgeMode_pinned" value="pinned" style="width:16px;height:16px;margin-top:3px;flex-shrink:0;" />
+                            <span>
+                                <strong>Pinned</strong><br>
+                                <small style="color:var(--muted);">Explicit host &amp; model override</small>
+                            </span>
+                        </label>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label for="judgeHost"><i class="fas fa-server"></i> Judge Host</label>
-                    <select id="judgeHost" class="form-control">
-                        <option value="">(auto — opposite of exec host)</option>
-                    </select>
-                    <small class="form-text text-muted">Which Ollama host runs the judge model. Default auto-picks the opposite host from execution. Override when a host is down or you want a specific GPU for judging.</small>
+
+                <!-- ── AUTO SECTION ───────────────────────────────────────── -->
+                <div id="judgeAutoSection">
+                    <div class="form-group">
+                        <label for="judgeHostPolicy"><i class="fas fa-route"></i> Host Policy</label>
+                        <select id="judgeHostPolicy" class="form-control">
+                            <option value="cross_host">Cross-host — opposite of exec host (default)</option>
+                            <option value="same_host">Same host — co-locate judge with execution</option>
+                        </select>
+                        <small class="form-text text-muted">Controls which Ollama host runs the judge. The judge model is taken from the server configuration and cannot be overridden in auto mode.</small>
+                    </div>
+                    <div id="judgeAutoPreview" style="margin-bottom: 16px; padding: 10px 14px; background: rgba(39,174,96,0.08); border: 1px solid rgba(39,174,96,0.3); border-radius: 8px; font-size: 0.85em; color: var(--muted);">
+                        <i class="fas fa-info-circle" style="color: #27ae60;"></i> Select an Ollama host on the main page to see the resolved judge.
+                    </div>
                 </div>
+
+                <!-- ── PINNED SECTION ─────────────────────────────────────── -->
+                <div id="judgePinnedSection" style="display:none;">
+                    <div class="form-group">
+                        <label for="judgeHost"><i class="fas fa-server"></i> Judge Host</label>
+                        <select id="judgeHost" class="form-control">
+                            <option value="">(no host selected)</option>
+                        </select>
+                        <small class="form-text text-muted">Ollama host that will run the judge model for every batch in this session.</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="judgeModel">Judge Model</label>
+                        <select id="judgeModel" class="form-control">
+                            <option value="">Loading...</option>
+                        </select>
+                        <small class="form-text text-muted">Only models with the <strong>judge</strong> category in the Model Registry appear here. To add a model, use the Model Registry.</small>
+                        <button type="button" id="calibrateJudgeBtn" class="btn btn-sm btn-outline-warning mt-2" onclick="calibrateJudgeModel()" title="Run 5 quick tests to measure this judge model's JSON reliability, scoring consistency, and speed">
+                            <i class="fas fa-flask"></i> Calibrate Judge
+                        </button>
+                        <div id="calibrationResult" style="display:none; margin-top: 8px; padding: 10px; border-radius: 6px; font-size: 0.85em;"></div>
+                    </div>
+                </div>
+
+                <!-- ── SHARED: Performance knobs ──────────────────────────── -->
                 <div class="form-group">
                     <label for="judgeTemp">Judge Temperature: <span id="judgeTempVal">0.1</span></label>
                     <input type="range" id="judgeTemp" min="0" max="1" step="0.1" value="0.1">
-                    <small class="form-text text-muted">Lower temperature (0.1) ensures consistent and deterministic
-                        grading.</small>
+                    <small class="form-text text-muted">Lower temperature (0.1) ensures consistent and deterministic grading.</small>
                 </div>
                 <div class="form-group">
                     <label for="judgeTimeout">Judge Timeout (ms)</label>
                     <input type="number" id="judgeTimeout" value="120000" step="1000">
                 </div>
-
                 <div class="form-group">
                     <label for="judgeMaxTokens">Judge Max Tokens (num_predict)</label>
                     <input type="number" id="judgeMaxTokens" value="200" step="10" min="1">
                     <small class="form-text text-muted">Limits judge output length. Too low may truncate JSON.</small>
                 </div>
-
-
                 <div class="form-group">
                     <label for="judgeConcurrency">Judge Concurrency: <span id="judgeConcurrencyVal">2</span></label>
-                    <input type="range" id="judgeConcurrency" min="1" max="10" step="1" value="2" oninput="document.getElementById('judgeConcurrencyVal').textContent = this.value">
+                    <input type="range" id="judgeConcurrency" min="1" max="10" step="1" value="2">
                     <small class="form-text text-muted">Number of parallel judge requests. Increase for powerful judge hosts.</small>
-                </div>
-
-                <div class="form-group">
-                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-                        <input type="checkbox" id="judgeSameHost" style="width: 16px; height: 16px;" />
-                        Use judge on same host as execution
-                    </label>
-                    <small class="form-text text-muted">Default is off (judge runs on the configured judge host for the
-                        model/exec host).</small>
                 </div>
                 <div class="form-group" style="margin-top: 14px; padding: 12px 14px; background: rgba(52,152,219,0.07); border: 1px solid rgba(52,152,219,0.25); border-radius: 8px;">
                     <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 6px;">
@@ -654,21 +685,21 @@
                     </label>
                     <small class="form-text text-muted" style="line-height:1.5;">
                         When <strong>enabled</strong>, the system automatically selects a higher-tier judge for harder prompts &mdash;
-                        levels 7-8 prefer <span style="color:#3498db;">advanced (14B+)</span> models,
-                        levels 9-10 prefer <span style="color:#9b59b6;">premium (70B+)</span>.<br>
+                        levels 7-10 prefer <span style="color:#3498db;">advanced (14B+)</span> models.<br>
                         When <strong>disabled</strong> (default), your selected judge model is used for <em>all</em> prompts
                         regardless of difficulty. Requires models tagged with <code>judgeTier</code> in the Model Registry.
                     </small>
                 </div>
 
+                <!-- ── Execution & Response Caps ──────────────────────────── -->
                 <div style="margin-top: 20px; border-top: 1px solid var(--panel-border); padding-top: 15px;">
                     <label style="display: block; margin-bottom: 8px; color: var(--accent); font-weight: 600;">
-                        Execution & Response Caps
+                        Execution &amp; Response Caps
                     </label>
                     <div class="form-group">
                         <label for="execTokenMultiplier">Response Tokens Multiplier</label>
                         <input type="number" id="execTokenMultiplier" value="2.5" step="0.1" min="0.25">
-                        <small class="form-text text-muted">num_predict = expected_tokens * multiplier (clamped).</small>
+                        <small class="form-text text-muted">num_predict = expected_tokens &times; multiplier (clamped).</small>
                     </div>
                     <div class="form-group">
                         <label for="execTokenMin">Response Min Tokens</label>
@@ -683,45 +714,9 @@
                     </small>
                 </div>
 
-                <div style="margin-top: 20px; border-top: 1px solid var(--panel-border); padding-top: 15px;">
-                    <label
-                        style="cursor: pointer; display: flex; align-items: center; gap: 8px; color: var(--accent); font-weight: 600;"
-                        onclick="const el = document.getElementById('customPromptsSection'); el.style.display = el.style.display === 'none' ? 'block' : 'none';">
-                        <i class="fas fa-chevron-right"></i> Advanced: Custom Judge Prompts
-                    </label>
-                    <div id="customPromptsSection" style="display: none; margin-top: 15px;">
-                        <div class="form-group">
-                            <label>Reasoning Prompt</label>
-                            <textarea id="promptReasoning" class="form-control" rows="6"
-                                style="font-family: monospace; font-size: 0.85em;"></textarea>
-                        </div>
-                        <div class="form-group">
-                            <label>Code Prompt</label>
-                            <textarea id="promptCode" class="form-control" rows="6"
-                                style="font-family: monospace; font-size: 0.85em;"></textarea>
-                        </div>
-                        <div class="form-group">
-                            <label>Factual Prompt</label>
-                            <textarea id="promptFactual" class="form-control" rows="6"
-                                style="font-family: monospace; font-size: 0.85em;"></textarea>
-                        </div>
-                        <div class="form-group">
-                            <label>Math Prompt</label>
-                            <textarea id="promptMath" class="form-control" rows="6"
-                                style="font-family: monospace; font-size: 0.85em;"></textarea>
-                        </div>
-                        <div class="form-group">
-                            <label>Creative Prompt</label>
-                            <textarea id="promptCreative" class="form-control" rows="6"
-                                style="font-family: monospace; font-size: 0.85em;"></textarea>
-                        </div>
-                        <small class="text-muted" style="display: block; margin-top: 8px;">Use {{task}}, {{expected}},
-                            and {{response}} as placeholders.</small>
-                    </div>
-                </div>
-            </div>
+            </div><!-- end modal-body -->
             <div class="modal-footer">
-                <button class="btn-secondary close-btn">Cancel</button>
+                <button class="btn-secondary" id="cancelSettingsBtn">Cancel</button>
                 <button class="btn-primary" id="saveSettingsBtn">Save</button>
             </div>
         </div>

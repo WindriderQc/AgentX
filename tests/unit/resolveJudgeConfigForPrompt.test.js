@@ -14,6 +14,7 @@ const {
     hasExplicitJudgeConfigValue,
     JUDGE_CONFIG
 } = require('../../src/services/qualityScorer');
+const { normalizeJudgeConfigContract } = require('../../src/services/scoring/judgeConfigResolver');
 
 jest.mock('../../config/logger', () => ({
     info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn()
@@ -105,6 +106,37 @@ describe('resolveJudgeConfigForPrompt — pinned mode semantics', () => {
 
         expect(result.mergedJudgeConfig.host).toBe('http://ugfrank:11434');
         expect(ModelRegistry.find).not.toHaveBeenCalled();
+    });
+});
+
+// ---------------------------------------------------------------------------
+// normalizeJudgeConfigContract
+// ---------------------------------------------------------------------------
+describe('normalizeJudgeConfigContract', () => {
+    test('adds legacy compatibility aliases for canonical pinned mode', () => {
+        const normalized = normalizeJudgeConfigContract({
+            mode: 'pinned',
+            pinnedModel: 'qwen2.5:14b-instruct',
+            pinnedHost: 'http://ugbrutal:11434'
+        });
+
+        expect(normalized.mode).toBe('pinned');
+        expect(normalized.model).toBe('qwen2.5:14b-instruct');
+        expect(normalized.host).toBe('http://ugbrutal:11434');
+        expect(normalized.judge_tier_auto_upgrade).toBe(false);
+    });
+
+    test('keeps remembered legacy model in auto mode without converting it to pinned', () => {
+        const normalized = normalizeJudgeConfigContract({
+            mode: 'auto',
+            model: 'qwen2.5:7b-instruct-q5_K_M',
+            host: 'http://ugfrank:11434'
+        });
+
+        expect(normalized.mode).toBe('auto');
+        expect(normalized.pinnedModel).toBeUndefined();
+        expect(normalized.pinnedHost).toBeUndefined();
+        expect(normalized.judge_tier_auto_upgrade).toBe(true);
     });
 });
 
@@ -229,6 +261,30 @@ describe('resolveJudgeConfigForPrompt — auto mode', () => {
         await expect(
             resolveJudgeConfigForPrompt(makePrompt(8), makeMergedConfig(), frozen)
         ).resolves.not.toThrow();
+    });
+
+    test('treats remembered legacy model as a starting point, not a pinned selection, in auto mode', async () => {
+        _clearJudgeCandidateCache();
+        mockFindChain.lean.mockResolvedValue([
+            makeJudgeCandidate('qwen2.5:14b-instruct', 'http://ugfrank:11434', 'advanced', 0.95)
+        ]);
+        mockFindChain.select.mockReturnValue(mockFindChain);
+
+        const rawJudgeConfig = {
+            mode: 'auto',
+            model: 'qwen2.5:7b-instruct-q5_K_M',
+            host: 'http://ugfrank:11434'
+        };
+        const mergedConfig = makeMergedConfig({
+            model: 'qwen2.5:7b-instruct-q5_K_M',
+            host: 'http://ugfrank:11434'
+        });
+
+        const result = await resolveJudgeConfigForPrompt(makePrompt(8), { ...mergedConfig }, rawJudgeConfig);
+
+        expect(result.mergedJudgeConfig.model).toBe('qwen2.5:14b-instruct');
+        expect(result.mergedJudgeConfig.host).toBe('http://ugfrank:11434');
+        expect(result.judgeTierMeta.tier).toBe('advanced');
     });
 });
 
