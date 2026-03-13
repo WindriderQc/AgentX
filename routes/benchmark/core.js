@@ -418,7 +418,9 @@ router.post('/judge/calibrate', async (req, res) => {
                 $set: {
                     'capabilities.judgeReliability': reliability,
                     'capabilities.avgJudgeLatencyMs': avgLatencyMs,
-                    'capabilities.judgeTier': calibratedTier
+                    'capabilities.calibratedJudgeTier': calibratedTier,
+                    'capabilities.recommendedJudgeTier': calibratedTier,
+                    'capabilities.calibratedAt': new Date()
                 }
             }
         ).catch((err) => {

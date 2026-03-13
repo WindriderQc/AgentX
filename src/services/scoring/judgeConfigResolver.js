@@ -24,14 +24,35 @@ let judgeCandidateCache = {
     candidates: []
 };
 
-function resolveCandidateTier(modelName, registryTier) {
-    const inferredTier = judgeTierResolver.inferJudgeTier(modelName);
-    if (!registryTier) return inferredTier || null;
-    if (!inferredTier) return registryTier;
+function normalizeJudgeConfigContract(config = {}) {
+    const normalized = { ...config };
 
-    const inferredRank = judgeTierResolver.TIER_RANK[inferredTier] || 0;
-    const registryRank = judgeTierResolver.TIER_RANK[registryTier] || 0;
-    return inferredRank > registryRank ? inferredTier : registryTier;
+    if (normalized.mode === 'pinned' || normalized.mode === 'auto') {
+        return normalized;
+    }
+
+    if (normalized.pinnedModel === undefined && normalized.model !== undefined) {
+        normalized.pinnedModel = normalized.model;
+    }
+    if (normalized.pinnedHost === undefined && normalized.host !== undefined) {
+        normalized.pinnedHost = normalized.host;
+    }
+    if (!normalized.resolutionPolicy) {
+        normalized.resolutionPolicy = 'smallest-qualifying';
+    }
+    if (normalized.allowSameHost === undefined && normalized.judge_same_host !== undefined) {
+        normalized.allowSameHost = !!normalized.judge_same_host;
+    }
+
+    if (normalized.judge_tier_auto_upgrade === true) {
+        normalized.mode = 'auto';
+    } else if (normalized.pinnedModel || normalized.model) {
+        normalized.mode = 'pinned';
+    } else {
+        normalized.mode = 'auto';
+    }
+
+    return normalized;
 }
 
 /**
@@ -65,15 +86,20 @@ async function getJudgeCandidatesCached() {
             .lean();
 
         const candidates = (models || []).map((model) => {
-            const judgeTier = resolveCandidateTier(
-                model.modelName,
-                model.capabilities?.judgeTier || null
+            const tierMeta = judgeTierResolver.resolveJudgeTierMetadata(
+                model.capabilities || {},
+                model.modelName
             );
             return {
                 modelName: model.modelName,
                 host: model.host || null,
                 capabilities: {
-                    judgeTier,
+                    judgeTier: tierMeta.effectiveTier,
+                    curatedJudgeTier: tierMeta.curatedTier,
+                    calibratedJudgeTier: tierMeta.calibratedTier,
+                    recommendedJudgeTier: tierMeta.recommendedTier,
+                    inferredJudgeTier: tierMeta.inferredTier,
+                    judgeTierSource: tierMeta.source,
                     judgeReliability: model.capabilities?.judgeReliability,
                     avgJudgeLatencyMs: model.capabilities?.avgJudgeLatencyMs
                 }
@@ -105,23 +131,30 @@ async function getJudgeCandidatesCached() {
  * @returns {Promise<{ mergedJudgeConfig, judgeTierMeta }>}
  */
 async function resolveJudgeConfigForPrompt(prompt, mergedJudgeConfig, rawJudgeConfig) {
+    const normalizedConfig = normalizeJudgeConfigContract(rawJudgeConfig || {});
     const promptLevel = Number(prompt?.level ?? prompt?.prompt_level ?? 5);
-    const requiredTier = rawJudgeConfig?.preferred_tier
+    const requiredTier = normalizedConfig?.preferred_tier
         || prompt?.required_judge_tier
         || judgeTierResolver.getRequiredTier(promptLevel);
+    const mode = normalizedConfig?.mode || 'auto';
 
-    const explicitModel = hasExplicitJudgeConfigValue(rawJudgeConfig, 'model');
-    // Auto-upgrade is opt-in (off by default) — respects explicit UI model selection
-    const autoUpgradeEnabled = rawJudgeConfig?.judge_tier_auto_upgrade === true;
+    if (mode === 'pinned') {
+        if (normalizedConfig.pinnedModel) {
+            mergedJudgeConfig.model = normalizedConfig.pinnedModel;
+        }
+        if (normalizedConfig.pinnedHost) {
+            mergedJudgeConfig.host = normalizedConfig.pinnedHost;
+        }
+    }
 
     const defaultMeta = {
         tier: judgeTierResolver.inferJudgeTier(mergedJudgeConfig.model) || null,
         tier_downgraded: false,
-        required_tier: requiredTier
+        required_tier: requiredTier,
+        mode
     };
 
-    // Skip tier resolution when: explicit model is set OR auto-upgrade is disabled (default)
-    if (explicitModel || !autoUpgradeEnabled) {
+    if (mode !== 'auto') {
         return { mergedJudgeConfig, judgeTierMeta: defaultMeta };
     }
 
@@ -133,7 +166,7 @@ async function resolveJudgeConfigForPrompt(prompt, mergedJudgeConfig, rawJudgeCo
     const resolution = judgeTierResolver.resolveJudgeModel(candidates, {
         promptLevel,
         preferredTier: requiredTier,
-        preferredHost: mergedJudgeConfig.host
+        preferredHost: normalizedConfig.preferredHost || mergedJudgeConfig.host
     });
 
     if (resolution?.model) {
@@ -148,7 +181,8 @@ async function resolveJudgeConfigForPrompt(prompt, mergedJudgeConfig, rawJudgeCo
         judgeTierMeta: {
             tier: resolution?.tier || defaultMeta.tier,
             tier_downgraded: !!resolution?.tier_downgraded,
-            required_tier: resolution?.required_tier || requiredTier
+            required_tier: resolution?.required_tier || requiredTier,
+            mode
         }
     };
 }
@@ -164,5 +198,6 @@ module.exports = {
     hasExplicitJudgeConfigValue,
     getJudgeCandidatesCached,
     resolveJudgeConfigForPrompt,
+    normalizeJudgeConfigContract,
     clearJudgeCandidateCache
 };

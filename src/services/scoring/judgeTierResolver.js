@@ -243,6 +243,34 @@ function inferJudgeTier(modelName) {
     return null;
 }
 
+function resolveJudgeTierMetadata(capabilities = {}, modelName = '') {
+    const inferredTier = inferJudgeTier(modelName);
+    const curatedTier = capabilities.curatedJudgeTier || capabilities.judgeTier || null;
+    const calibratedTier = capabilities.calibratedJudgeTier || null;
+    const recommendedTier = capabilities.recommendedJudgeTier || calibratedTier || null;
+    const effectiveTier = curatedTier || recommendedTier || inferredTier || null;
+
+    let source = null;
+    if (capabilities.curatedJudgeTier) {
+        source = 'curated';
+    } else if (capabilities.judgeTier) {
+        source = 'legacy';
+    } else if (recommendedTier) {
+        source = 'calibrated';
+    } else if (inferredTier) {
+        source = 'inferred';
+    }
+
+    return {
+        effectiveTier,
+        curatedTier,
+        calibratedTier,
+        recommendedTier,
+        inferredTier,
+        source
+    };
+}
+
 /**
  * Get preset configuration by name.
  * @param {string} presetName - 'fast' | 'balanced' | 'precise' | 'premium'
@@ -260,5 +288,6 @@ module.exports = {
     tierMeetsRequirement,
     resolveJudgeModel,
     inferJudgeTier,
+    resolveJudgeTierMetadata,
     getJudgePreset
 };

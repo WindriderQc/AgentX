@@ -58,6 +58,29 @@ const CapabilitiesSchema = new mongoose.Schema({
     default: null
   },
 
+  curatedJudgeTier: {
+    type: String,
+    enum: ['basic', 'standard', 'advanced', 'premium', null],
+    default: null
+  },
+
+  calibratedJudgeTier: {
+    type: String,
+    enum: ['basic', 'standard', 'advanced', 'premium', null],
+    default: null
+  },
+
+  recommendedJudgeTier: {
+    type: String,
+    enum: ['basic', 'standard', 'advanced', 'premium', null],
+    default: null
+  },
+
+  calibratedAt: {
+    type: Date,
+    default: null
+  },
+
   // Judge reliability score (0-1), populated by judge validation tests.
   // Tracks JSON reliability and scoring consistency.
   judgeReliability: {

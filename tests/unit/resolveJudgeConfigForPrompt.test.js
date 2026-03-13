@@ -2,9 +2,9 @@
  * Tests for resolveJudgeConfigForPrompt and hasExplicitJudgeConfigValue
  *
  * Covers:
- *   - The explicit-model guard (hasExplicitJudgeConfigValue)
- *   - The auto-upgrade toggle (judge_tier_auto_upgrade must be true for tier resolution)
- *   - Tier resolution path (when auto-upgrade is on and no explicit model)
+ *   - Pinned mode semantics
+ *   - Legacy auto-upgrade compatibility mapping
+ *   - Tier resolution path for auto mode
  *   - Stale host is never injected by the resolver
  *   - No mutation of the original rawJudgeConfig
  */
@@ -74,7 +74,7 @@ function makeJudgeCandidate(modelName, host, judgeTier, reliability = 0.9, avgJu
 // ---------------------------------------------------------------------------
 // resolveJudgeConfigForPrompt – explicit model guard
 // ---------------------------------------------------------------------------
-describe('resolveJudgeConfigForPrompt — explicit model guard', () => {
+describe('resolveJudgeConfigForPrompt — pinned mode semantics', () => {
     beforeEach(() => {
         _clearJudgeCandidateCache();
         mockFindChain.lean.mockResolvedValue([
@@ -83,8 +83,8 @@ describe('resolveJudgeConfigForPrompt — explicit model guard', () => {
         mockFindChain.select.mockReturnValue(mockFindChain);
     });
 
-    test('respects explicit model — skips tier resolution regardless of prompt level', async () => {
-        const rawJudgeConfig = { model: 'qwen2.5:7b-instruct-q5_K_M', judge_tier_auto_upgrade: true };
+    test('legacy explicit model remains pinned when auto-upgrade is not enabled', async () => {
+        const rawJudgeConfig = { model: 'qwen2.5:7b-instruct-q5_K_M' };
         const mergedConfig = makeMergedConfig();
         const prompt = makePrompt(8); // level 8 would normally need 'advanced'
 
@@ -96,8 +96,8 @@ describe('resolveJudgeConfigForPrompt — explicit model guard', () => {
         expect(ModelRegistry.find).not.toHaveBeenCalled();
     });
 
-    test('explicit model short-circuit also prevents host override', async () => {
-        const rawJudgeConfig = { model: 'qwen2.5:7b-instruct-q5_K_M', host: 'http://ugfrank:11434', judge_tier_auto_upgrade: true };
+    test('pinned mode prevents host override', async () => {
+        const rawJudgeConfig = { mode: 'pinned', pinnedModel: 'qwen2.5:7b-instruct-q5_K_M', pinnedHost: 'http://ugfrank:11434' };
         const mergedConfig = makeMergedConfig({ host: 'http://ugfrank:11434' });
         const prompt = makePrompt(9); // premium level
 
@@ -160,7 +160,7 @@ describe('resolveJudgeConfigForPrompt — auto-upgrade OFF (default)', () => {
 // ---------------------------------------------------------------------------
 // resolveJudgeConfigForPrompt — auto-upgrade ON, no explicit model
 // ---------------------------------------------------------------------------
-describe('resolveJudgeConfigForPrompt — auto-upgrade ON, no explicit model', () => {
+describe('resolveJudgeConfigForPrompt — auto mode', () => {
     test('upgrades to advanced-tier candidate for level 8 prompt', async () => {
         _clearJudgeCandidateCache();
         mockFindChain.lean.mockResolvedValue([
@@ -168,7 +168,7 @@ describe('resolveJudgeConfigForPrompt — auto-upgrade ON, no explicit model', (
         ]);
         mockFindChain.select.mockReturnValue(mockFindChain);
 
-        const rawJudgeConfig = { judge_tier_auto_upgrade: true }; // no explicit model
+        const rawJudgeConfig = { mode: 'auto' };
         const mergedConfig = makeMergedConfig();
         const prompt = makePrompt(8);
 
