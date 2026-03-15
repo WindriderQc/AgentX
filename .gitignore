@@ -26,4 +26,5 @@ playwright/.cache/
 tests/e2e/fixtures/
 tests/e2e/downloads/
 
-*.zipcoverage/
+*.zip
+coverage/
