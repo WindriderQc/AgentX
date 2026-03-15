@@ -5,7 +5,6 @@
  */
 import { makeValidation } from './courthouse-validation.js';
 
-
 const CourthouseAnalytics = (() => {
     // Disable Chart.js animations globally
     if (typeof Chart !== 'undefined') {

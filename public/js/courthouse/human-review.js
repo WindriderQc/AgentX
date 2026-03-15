@@ -8,6 +8,7 @@ const HumanReview = (() => {
     const API = '/api/benchmark';
     let currentResults = [];
     let expandedId = null;
+    let detailsCache = {};
     let filters = { model: '', batch_id: '', max_confidence: 0.7 };
 
     function init() {
@@ -100,6 +101,7 @@ const HumanReview = (() => {
         if (!container) return;
 
         if (!results.length) {
+            detailsCache = {};
             container.innerHTML = `
                 <div style="text-align: center; padding: 60px 20px; color: var(--muted);">
                     <i class="fas fa-check-circle" style="font-size: 3em; margin-bottom: 16px; color: #2ecc71; opacity: 0.6;"></i>
@@ -156,11 +158,11 @@ const HumanReview = (() => {
                     <i class="fas fa-chevron-${isExpanded ? 'up' : 'down'}" style="color: var(--muted); margin-left: 8px;"></i>
                 </div>
             </div>
-            ${isExpanded ? renderExpandedContent(result) : ''}
+            ${isExpanded ? renderExpandedContent(result, detailsCache[result._id]) : ''}
         </div>`;
     }
 
-    function renderExpandedContent(result) {
+    function renderExpandedContent(result, details) {
         const isReviewed = result.human_score != null;
         const reasons = result.review_reason || 'Low judge confidence';
         const sliderDefault = isReviewed ? result.human_score : (result.quality_score != null ? result.quality_score : 5);
@@ -191,6 +193,11 @@ const HumanReview = (() => {
                     <span class="review-detail-value">${result.human_reviewed_at ? new Date(result.human_reviewed_at).toLocaleDateString() : '-'}</span>
                 </div>` : ''}
             </div>
+
+            ${details ? renderInlineDetails(details) : `
+            <div style="text-align: center; padding: 16px; color: var(--muted); font-size: 0.85em;">
+                <i class="fas fa-spinner fa-spin"></i> Loading test details...
+            </div>`}
 
             <div class="review-scoring-section">
                 <div class="review-comparison">
@@ -243,12 +250,81 @@ const HumanReview = (() => {
         </div>`;
     }
 
+    function renderInlineDetails(r) {
+        const hasBreakdown = r.quality_breakdown && typeof r.quality_breakdown === 'object' &&
+            Object.values(r.quality_breakdown).some(v => v != null && typeof v === 'number');
+
+        return `
+        <div style="display: flex; flex-direction: column; gap: 12px; margin: 12px 0; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 12px;">
+            ${r.prompt ? `
+            <div class="review-inspect-section">
+                <div style="font-weight: 600; font-size: 0.8em; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">
+                    <i class="fas fa-question-circle" style="color: #3498db;"></i> Prompt
+                </div>
+                <pre class="review-inspect-pre" style="max-height: 140px; overflow-y: auto;">${esc(r.prompt)}</pre>
+            </div>` : ''}
+
+            ${r.expected_answer ? `
+            <div class="review-inspect-section">
+                <div style="font-weight: 600; font-size: 0.8em; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">
+                    <i class="fas fa-bullseye" style="color: #2ecc71;"></i> Expected Answer
+                </div>
+                <pre class="review-inspect-pre" style="max-height: 120px; overflow-y: auto;">${esc(r.expected_answer)}</pre>
+            </div>` : ''}
+
+            ${r.response ? `
+            <div class="review-inspect-section">
+                <div style="font-weight: 600; font-size: 0.8em; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">
+                    <i class="fas fa-comment" style="color: #9b59b6;"></i> Model Response
+                    ${r.error ? `<span style="color: #e74c3c; margin-left: 8px;">(execution error)</span>` : ''}
+                </div>
+                <pre class="review-inspect-pre" style="max-height: 240px; overflow-y: auto;">${esc(r.response)}</pre>
+            </div>` : (r.error ? `
+            <div class="review-inspect-section">
+                <div style="font-weight: 600; font-size: 0.8em; color: #e74c3c; margin-bottom: 6px;">
+                    <i class="fas fa-exclamation-circle"></i> Execution Error
+                </div>
+                <pre class="review-inspect-pre" style="border-color: rgba(231,76,60,0.3);">${esc(r.error_type ? r.error_type + ': ' : '') + esc(r.error)}</pre>
+            </div>` : '')}
+
+            ${r.quality_explanation ? `
+            <div class="review-inspect-section">
+                <div style="font-weight: 600; font-size: 0.8em; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">
+                    <i class="fas fa-gavel" style="color: var(--accent);"></i> Judge Explanation
+                </div>
+                <pre class="review-inspect-pre" style="max-height: 200px; overflow-y: auto;">${esc(r.quality_explanation)}</pre>
+            </div>` : ''}
+
+            ${hasBreakdown ? `
+            <div class="review-inspect-section">
+                <div style="font-weight: 600; font-size: 0.8em; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">
+                    <i class="fas fa-chart-bar" style="color: #f1c40f;"></i> Score Breakdown
+                </div>
+                ${renderBreakdown(r.quality_breakdown)}
+            </div>` : ''}
+        </div>`;
+    }
+
     function attachCardListeners() {
         document.querySelectorAll('[data-action="toggle"]').forEach(el => {
-            el.addEventListener('click', () => {
+            el.addEventListener('click', async () => {
                 const id = el.dataset.id;
-                expandedId = expandedId === id ? null : id;
+                const wasExpanded = expandedId === id;
+                expandedId = wasExpanded ? null : id;
                 renderQueue(currentResults);
+
+                if (!wasExpanded && !detailsCache[id]) {
+                    try {
+                        const res = await fetch(`${API}/results/${id}`);
+                        if (res.ok) {
+                            const { data } = await res.json();
+                            detailsCache[id] = data;
+                            if (expandedId === id) renderQueue(currentResults);
+                        }
+                    } catch (e) {
+                        console.warn('Failed to fetch result details:', e);
+                    }
+                }
             });
         });
 

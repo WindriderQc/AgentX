@@ -1,464 +1,407 @@
-# SpecialX — Bounded Automation Agents
-
-**Status:** Production-ready
-**Last Updated:** 2026-03-10
-
----
-
-## Overview
-
-SpecialX is AgentX's queue-driven, bounded automation system. It provides a runtime for **specialist task agents** — autonomous workers that execute discrete, time-bounded jobs using local LLMs, scanners, and data services.
-
-Unlike conversational agents (chat, roundtable), SpecialX agents are **non-interactive**. They pick up queued tasks, execute them within a lease window, persist structured results with artifacts, and stop. No infinite loops, no open-ended chat — every run is bounded and auditable.
-
-### Core Concepts
-
-| Term | Definition |
-|------|------------|
-| **SpecialX Profile** | A named agent configuration: persona, tool policy, model policy, assigned task types |
-| **AutomationTask** | A work queue item bound to a SpecialX profile — status-tracked from `queued` to `completed` or `dead_letter` |
-| **AutomationRun** | A single execution attempt of a task — stores result, artifacts, metrics, and timing |
-| **Runner** | The singleton worker service that polls the queue, claims tasks via lease, and dispatches execution |
-
-### Design Principles
-
-1. **Queue-driven** — Tasks are enqueued via API or scheduler; never spawned ad-hoc
-2. **Bounded execution** — Every task has a lease timeout (default 45s); overruns are reclaimed
-3. **Local-first** — All profiles default to local Ollama inference; cloud fallback requires explicit opt-in
-4. **Idempotent** — Tasks can declare an `idempotencyKey` to prevent duplicate execution
-5. **Auditable** — Every run persists its result, artifacts, metrics, and execution metadata
-
----
-
-## Architecture
-
-### Execution Flow
-
-```
-1. Trigger (API / Scheduler / n8n / UI)
-   ↓
-2. POST /api/specialx/tasks → AutomationTask.create({ status: 'queued' })
-   ↓
-3. AutomationRunnerService.tick() (polls every 5s)
-   → AutomationTask.claimNext(workerId, leaseMs)
-   → Atomic update: status='leased', lease.owner set, lease.expiresAt set
-   ↓
-4. Resolve SpecialX profile → persona + tool policy + model policy
-   ↓
-5. Create AutomationRun({ status: 'running' })
-   → Start heartbeat timer (refreshes lease every 5s)
-   ↓
-6. specialxTaskHandlers.runTaskByType(task, profile, queueMetrics)
-   → Dispatches to type-specific handler
-   → Returns { summary, output, artifacts, metrics, execution }
-   ↓
-7. Persist results:
-   → AutomationRun: status='completed', summary, output, artifacts, metrics
-   → AutomationTask: status='completed', resultRunId, completedAt
-   → SpecialX profile: stats updated (totalRuns, successRuns, avgDurationMs)
-   ↓
-8. On failure:
-   → task.attempts += 1
-   → If attempts < maxAttempts → re-queue with backoff (15s × attempt)
-   → Else → status='dead_letter' (terminal, requires manual intervention)
-```
-
-### Component Map
-
-```
-routes/specialx.js              ← 15 API endpoints (dashboard, runner, agents, tasks, runs)
-  ↓ delegates to
-src/services/automationRunnerService.js   ← Singleton queue worker (lease/heartbeat/poll)
-src/services/specialxTaskHandlers.js      ← 9 task type handlers (dispatch switch)
-  ↓ uses
-models/SpecialX.js              ← Profile schema (persona + policies + schedule)
-models/AutomationTask.js        ← Work queue item (status/lease/constraints)
-models/AutomationRun.js         ← Execution record (result/artifacts/metrics)
-  ↓ renders
-public/specialx.html            ← Console dashboard UI
-public/js/specialx.js           ← Frontend controller (polling, task enqueue, run detail)
-```
-
----
-
-## SpecialX Profiles
-
-A profile defines **who** the agent is and **what** it can do.
-
-### Schema
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `name` | String | Unique identifier (e.g. `specialx.maintenance-operator.v1`) |
-| `displayName` | String | Human-readable name |
-| `purpose` | String | One-line description of the agent's role |
-| `promptProfile.persona` | String | Prompt config persona reference |
-| `promptProfile.style` | Enum | `concise` / `balanced` / `detailed` |
-| `promptProfile.systemHint` | String | Additional system prompt injection |
-| `toolPolicy` | Object | Which tools this agent can use |
-| `modelPolicy` | Object | Inference routing rules |
-| `taskTypes` | String[] | Which task types this profile can execute |
-| `schedule.enabled` | Boolean | Whether cron scheduling is active |
-| `schedule.cron` | String | Cron expression (e.g. `0 3 * * *`) |
-| `isSystem` | Boolean | System-managed (not user-editable) |
-| `isActive` | Boolean | Whether the profile is available for task assignment |
-| `stats` | Object | Accumulated run statistics |
-
-### Tool Policy
-
-Controls which AgentX subsystems the agent can invoke:
-
-```javascript
-toolPolicy: {
-  rag: true,           // Vector store search
-  n8n: true,           // n8n workflow triggers
-  dataapi: true,       // DataAPI proxy calls
-  repoWatcher: true,   // Repository scanning
-  codeActions: false    // Code modification (disabled by default)
-}
-```
-
-### Model Policy
-
-Controls inference routing:
-
-```javascript
-modelPolicy: {
-  localFirst: true,           // Always try local Ollama first
-  allowCloudFallback: false,  // Never fall back to cloud APIs
-  maxLocalAttempts: 2,        // Retry local twice before giving up
-  preferredTaskType: 'analysis'
-}
-```
-
-### System Profiles (Pre-Seeded)
-
-Run `node scripts/seed-specialx-profiles.js` to install:
-
-| Profile | Task Types | Schedule | Tools | Purpose |
-|---------|-----------|----------|-------|---------|
-| `specialx.maintenance-operator.v1` | `maintenance_snapshot`, `maintenance_digest` | Daily 3AM UTC | repoWatcher | Nightly repo health scans |
-| `specialx.telemetry-aggregator.v1` | `telemetry_aggregate` | Hourly | DataAPI | Roll up InferenceLog → HostUsageLedger |
-| `specialx.schedule-auditor.v1` | `daily_operations_digest`, `schedule_reconcile` | Daily 7AM UTC | n8n, DataAPI, repoWatcher | Daily ops digest + missed task detection |
-
----
-
-## Task Types
-
-### Current Task Types (9)
-
-| Type | Handler | Input | Output |
-|------|---------|-------|--------|
-| `repo_summary` | RepoWatcher scan | `{ repoPath }` | JSON scan result + finding counts |
-| `ci_failure_triage` | LLM triage | `{ logs, context }` | Markdown root-cause analysis |
-| `model_health_digest` | ModelRouter status | `{}` | JSON host/model health + failover state |
-| `daily_operations_digest` | Multi-source aggregation | `{}` | Telegram-format ops summary |
-| `custom_prompt_analysis` | LLM evaluation | `{ prompt, criteria }` | Markdown prompt feedback |
-| `maintenance_snapshot` | Scanner adapters | `{ repoId, scanners[] }` | Finding upserts + severity summary |
-| `maintenance_digest` | Digest generator | `{ repoId }` | Telegram-format maintenance digest |
-| `telemetry_aggregate` | InferenceLog rollup | `{ hour? }` | HostUsageLedger records created |
-| `schedule_reconcile` | Schedule auditor | `{ windowHours? }` | JSON report of missed/late tasks |
-
-### Handler Return Structure
-
-Every handler returns a standardized result:
-
-```javascript
-{
-  summary: "3 findings resolved, 2 new warnings",
-  output: { /* full structured result */ },
-  artifacts: [
-    { name: "scan-report.json", kind: "json", content: "..." },
-    { name: "digest.md", kind: "markdown", content: "..." }
-  ],
-  metrics: {
-    localCalls: 2,       // Local Ollama API calls made
-    cloudCalls: 0,       // Cloud fallback calls made
-    durationMs: 12340    // Wall-clock execution time
-  },
-  execution: {
-    model: "qwen2.5:14b",
-    target: "http://ugbrutal:11434",
-    taskType: "maintenance_snapshot",
-    routed: true,
-    fallbackUsed: false
-  }
-}
-```
-
----
-
-## AutomationTask — Work Queue
-
-### Status Lifecycle
-
-```
-queued → leased → running → completed
-                          → failed → queued (retry with backoff)
-                                   → dead_letter (max attempts exceeded)
-queued → cancelled (manual cancel)
-```
-
-### Key Fields
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `type` | String (enum) | One of the 9 task types |
-| `status` | String | `queued` / `leased` / `running` / `completed` / `failed` / `dead_letter` / `cancelled` |
-| `specialXId` | ObjectId | Reference to SpecialX profile |
-| `input` | Mixed | Task-specific input payload |
-| `constraints` | Object | `{ noCloud, allowCloudFallback, maxLocalAttempts }` |
-| `idempotencyKey` | String | Optional dedup key — prevents duplicate enqueue |
-| `priority` | Number | Queue ordering (default: 0, higher = sooner) |
-| `attempts` | Number | Current attempt count |
-| `maxAttempts` | Number | Retry budget (default: 3) |
-| `lease.owner` | String | Worker ID holding the lease |
-| `lease.leasedAt` | Date | When lease was acquired |
-| `lease.leaseExpiresAt` | Date | Lease deadline |
-| `lease.heartbeatAt` | Date | Last heartbeat timestamp |
-| `resultRunId` | ObjectId | Reference to completed AutomationRun |
-
-### Retry & Backoff
-
-- **Max attempts:** 3 (configurable per task)
-- **Backoff formula:** `15,000ms × attemptNumber`
-- **Dead-letter:** After max attempts, task moves to `dead_letter` — requires manual review
-- **Lease timeout:** 45s default (configurable via `SPECIALX_TASK_LEASE_MS`)
-
----
-
-## AutomationRun — Execution Record
-
-Each task execution creates one run record. A task that retries twice will have up to 3 run records.
-
-### Key Fields
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `taskId` | ObjectId | Parent AutomationTask reference |
-| `specialXId` | ObjectId | Profile used for this run |
-| `status` | String | `running` / `completed` / `failed` |
-| `summary` | String | One-line result description |
-| `output` | Mixed | Full structured output (JSON) |
-| `artifacts` | Array | `[{ name, kind, content }]` — downloadable outputs |
-| `metrics` | Object | `{ localCalls, cloudCalls, retriesUsed, durationMs }` |
-| `execution` | Object | `{ model, target, taskType, routed, fallbackUsed }` |
-| `startedAt` / `finishedAt` | Date | Execution window timestamps |
-| `error` | String | Error message (on failure) |
-
----
-
-## Runner Service
-
-`automationRunnerService.js` is a **singleton** that runs as part of the AgentX process.
-
-### Behavior
-
-- **Poll interval:** 5s (configurable via `SPECIALX_RUNNER_POLL_MS`)
-- **Lease duration:** 45s (configurable via `SPECIALX_TASK_LEASE_MS`)
-- **Heartbeat interval:** 5s (keeps lease alive during execution)
-- **Concurrency:** Single-task — claims one task at a time per worker
-- **Work-stealing prevention:** Lease is atomic (MongoDB `findOneAndUpdate` with status check)
-
-### Runner Lifecycle
-
-```
-Server starts → automationRunnerService.start()
-  → Generates unique workerId
-  → Starts tick() interval (every 5s)
-  → Each tick: claimNext() → execute → persist → clear lease
-
-Server stops → automationRunnerService.stop()
-  → Clears interval
-  → Any in-flight task lease will expire naturally (45s)
-```
-
-### Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `SPECIALX_RUNNER_POLL_MS` | `5000` | Queue poll interval in milliseconds |
-| `SPECIALX_TASK_LEASE_MS` | `45000` | Task lease duration in milliseconds |
-
----
-
-## API Reference
-
-All endpoints are mounted at `/api/specialx/`.
-
-### Dashboard & Status
-
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| `GET` | `/status` | Session | Runner health: online/offline, instance ID, processed count |
-| `GET` | `/dashboard` | Session | Aggregated view: runner status + queue metrics + recent tasks/runs |
-
-### Runner Control
-
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| `POST` | `/runner/start` | Session | Start the queue worker |
-| `POST` | `/runner/stop` | Session | Stop the queue worker |
-| `POST` | `/runner/tick` | Session | Trigger one manual poll cycle |
-
-### Agent (Profile) Management
-
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| `GET` | `/agents` | Session | List active SpecialX profiles |
-| `POST` | `/agents` | Session | Create a new SpecialX profile |
-
-### Task Queue
-
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| `POST` | `/tasks` | Session or API Key | Enqueue a new task |
-| `GET` | `/tasks` | Session | List tasks (paginated, filterable by status) |
-| `GET` | `/tasks/:id` | Session | Get task details |
-| `POST` | `/tasks/:id/cancel` | Session | Cancel a queued/leased task |
-
-### Run History
-
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| `GET` | `/runs` | Session | List runs (paginated) |
-| `GET` | `/runs/:id` | Session | Get run details including artifacts |
-
-### Host Routing
-
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| `GET` | `/routing` | Session | Current model routing state for SpecialX tasks |
-| `POST` | `/routing/active-host` | Session | Override active Ollama host for SpecialX |
-
-### Enqueue Example
-
-```bash
-curl -X POST http://localhost:3080/api/specialx/tasks \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: $AGENTX_API_KEY" \
-  -d '{
-    "type": "maintenance_snapshot",
-    "input": { "repoId": "agentx", "scanners": ["repoWatcher", "docJanitor"] },
-    "idempotencyKey": "maint-snap-2026-03-10",
-    "priority": 5
-  }'
-```
-
----
-
-## Console Dashboard
-
-**URL:** `/specialx.html`
-
-The SpecialX Console is a live dashboard showing:
-
-- **Runner status** — green/yellow dot indicating online/offline, instance ID, last tick time
-- **Queue metrics** — queued count, running count, success rate, local-first ratio
-- **Task table** — filterable list of tasks with status, type, priority, timestamps
-- **Run detail modal** — click a run to see full output, artifacts, metrics, execution info
-- **Host failover** — dropdown to override active Ollama host for SpecialX execution
-- **Manual enqueue** — form to create tasks directly from the UI
-
-Auto-refreshes every 15 seconds via polling.
-
----
+# SpecialX Architecture
+
+Last Updated: 2026-03-11
+
+## Scope
+
+This document describes the current SpecialX implementation in the main
+`C:\Users\Yanik\codes\AgentX` repository tree.
+
+It is an engineering reference for:
+
+- profile definitions
+- queue and run records
+- runner behavior
+- task handlers
+- HTTP API surface
+- operator UI
+
+It does not describe future or speculative autonomous behavior.
+
+## Terminology
+
+The terminology below follows `CLAUDE.md`.
+
+| Term | Meaning in this repository | What it is not |
+|------|----------------------------|----------------|
+| AgentX Platform | The application runtime and control plane | Not a single task agent |
+| SpecialX | Specialist task agents managed by AgentX Platform | Not the whole platform |
+| Persona | A behavior or prompt profile only | Not an autonomous runtime |
+| Run | One bounded execution of one SpecialX on one task | Not an open-ended chat loop |
+| Automation task | A queued unit of work in `AutomationTask` | Not a profile definition |
+
+## What SpecialX Is
+
+SpecialX is the queue-driven automation subsystem used by AgentX Platform to
+run bounded specialist tasks.
+
+At rest, a SpecialX is a profile document stored in `models/SpecialX.js`.
+
+A profile carries:
+
+- identity: `name`, `displayName`, `purpose`, `description`
+- prompt profile: `persona`, `style`, `systemHint`
+- tool policy: RAG, n8n, DataAPI, Repo Watcher, code-action toggles
+- model policy: local-first, cloud fallback, max local attempts, preferred task type
+- allowed task types
+- optional schedule metadata
+- run statistics
+
+The profile is separate from execution.
+
+Execution happens through queue entries in `AutomationTask`, run records in
+`AutomationRun`, and handler dispatch in `specialxTaskHandlers`.
+
+The default system profile is `specialx.operator.v1`.
+
+It is created on demand by `SpecialX.ensureDefaultOperator()` and is used when
+no explicit `specialXId` is resolved.
+
+## Current Implementation Boundaries
+
+The current main-tree implementation is finite and queue-driven:
+
+1. A caller enqueues an automation task.
+2. The runner leases one task.
+3. The runner resolves the SpecialX profile.
+4. A task-specific handler executes through existing AgentX services.
+5. A run record is persisted.
+6. The task is marked completed, re-queued, or dead-lettered.
+
+There is no infinite autonomous loop in the current code path.
+
+The SpecialX runner delegates to existing platform services such as:
+
+- `repoWatcherService`
+- `chatService`
+- `modelRouter`
+
+The handlers do not shell out to ad-hoc agent runtimes.
+
+## Data Model
+
+### `SpecialX`
+
+`models/SpecialX.js` defines the profile document.
+
+Relevant fields:
+
+- `workspaceId`: optional workspace scoping
+- `name`: stable identifier, unique per workspace
+- `promptProfile`: persona + style + system hint
+- `toolPolicy`: service/tool toggles
+- `modelPolicy`: local-first and fallback policy
+- `taskTypes`: allowed task types for that profile
+- `schedule`: `enabled`, `cron`, `timezone`
+- `isActive`, `isSystem`
+- `stats`: run counters and average duration
+
+Helper methods:
+
+- `getActive(workspaceId)` returns active global + workspace-local profiles
+- `ensureDefaultOperator(workspaceId)` guarantees `specialx.operator.v1`
+
+### `AutomationTask`
+
+`models/AutomationTask.js` defines the queue record.
+
+Relevant fields:
+
+- `type`: task type enum
+- `status`: `queued`, `leased`, `running`, `completed`, `failed`, `dead_letter`, `cancelled`
+- `source`: `manual`, `schedule`, `system`, `n8n`, `ci`, `webhook`
+- `priority`: integer `1..10`
+- `input`: task payload
+- `constraints`: cloud policy, local attempts, timeout
+- `runAt`: earliest execution time
+- `attempts`, `maxAttempts`
+- `lease`: owner, lease time, expiry, heartbeat
+- `idempotencyKey`: optional unique dedupe key
+- `resultRunId`: last run record for this task
+- `lastError`, `startedAt`, `completedAt`
+
+Queue helpers:
+
+- `claimNext(workerId, leaseMs, now)`
+- `heartbeat(taskId, workerId, leaseMs)`
+
+### `AutomationRun`
+
+`models/AutomationRun.js` defines the immutable execution record for one
+attempt.
+
+Relevant fields:
+
+- `taskId`
+- `specialXId`
+- `workerId`
+- `attempt`
+- `status`: `running`, `completed`, `failed`
+- `execution`: local-first and routing metadata
+- `summary`
+- `output`
+- `metrics`: local calls, cloud calls, retries used, duration
+- `artifacts`
+- `error`
+- `startedAt`, `finishedAt`
+
+`AutomationRun` is the persisted artifact for audit and UI inspection.
+
+## Task Lifecycle
+
+### 1. Queue
+
+Tasks enter the system through `automationRunnerService.enqueueTask()` or the
+`POST /api/specialx/tasks` route.
+
+At enqueue time the service:
+
+- normalizes `idempotencyKey`
+- deduplicates if the key already exists
+- resolves the target SpecialX profile or default operator
+- writes a new `AutomationTask` with `status: queued`
+- records task constraints and request context
+
+### 2. Claim
+
+`AutomationRunnerService.tick()` calls `AutomationTask.claimNext()` to acquire
+exactly one task.
+
+Claim rules:
+
+- eligible tasks are `queued` with `runAt <= now`
+- expired `leased` tasks can be reclaimed
+- the claim sets `status: leased`
+- the worker stores `lease.owner`, `leasedAt`, `leaseExpiresAt`, `heartbeatAt`
+- sort order is `priority`, then `runAt`, then `createdAt`
+
+In this schema a lower numeric priority is taken first because the query sorts
+ascending on `priority`.
+
+### 3. Execute
+
+`executeLeasedTask()` reloads the task, resolves the SpecialX profile, and
+transitions the task to `running`.
+
+It then:
+
+- increments `attempts`
+- creates an `AutomationRun` with `status: running`
+- starts a heartbeat interval
+- dispatches by `task.type` through `runTaskByType()`
+
+Handler dispatch currently lives in `src/services/specialxTaskHandlers.js`.
+
+### 4. Persist
+
+On success the runner:
+
+- updates `AutomationRun` to `completed`
+- stores `summary`, `output`, `artifacts`, `metrics`, and execution routing info
+- updates `AutomationTask` to `completed`
+- clears lease ownership
+- stores `resultRunId`
+- updates SpecialX profile stats
+
+### 5. Retry or Dead-Letter
+
+On failure the runner:
+
+- updates `AutomationRun` to `failed`
+- stores error message, code, stack, and duration
+- checks `attempt >= maxAttempts`
+
+If attempts remain:
+
+- task status goes back to `queued`
+- `runAt` is moved forward with bounded backoff
+- lease ownership is cleared
+
+If the attempt limit is reached:
+
+- task status becomes `dead_letter`
+- `completedAt` is set
+- lease ownership is cleared
+- `lastError` remains on the task
+
+This is the terminal failure state for the queue entry.
+
+## Current Task Types
+
+The current source of truth for task types in the main tree is the enum in
+`models/AutomationTask.js`.
+
+| Task type | Handler behavior | Notes |
+|-----------|------------------|-------|
+| `repo_summary` | Runs Repo Watcher scan for a repo path and stores scan output as JSON artifact | Local service call only |
+| `ci_failure_triage` | Builds a CI-triage prompt, routes the model, and uses `chatService` for a structured diagnosis | Uses routed local inference |
+| `model_health_digest` | Collects model routing and failover status and stores host health summary | Operational digest, no chat call |
+| `daily_operations_digest` | Combines repo scan, routing status, and queue metrics into a compact daily digest artifact | Aggregates multiple local services |
+| `custom_prompt_analysis` | Analyzes `input.prompt` via routed chat and stores markdown analysis artifact | Requires `input.prompt` |
+
+Notes:
+
+- unsupported task types throw `Unsupported task type`
+- `custom_prompt_analysis` throws if `input.prompt` is missing
+- the handler code currently records only local calls; cloud fallback is not used
+
+## Runner Safety Rules
+
+The current runner implements the core safety rules expected by `CLAUDE.md`.
+
+### Bounded retries
+
+- each task has `maxAttempts`
+- each execution increments `attempts`
+- failures are re-queued only while `attempt < maxAttempts`
+- retry delay is `min(600000, 15000 * attempt)` milliseconds
+
+### Lease ownership
+
+- a worker instance gets a unique `instanceId`
+- claims write `lease.owner`
+- only the lease owner may refresh heartbeat
+- success/failure paths clear the lease block
+
+### Heartbeat
+
+- a heartbeat timer refreshes the task lease while the task is running
+- refresh cadence is `max(5000, floor(leaseMs / 3))`
+- heartbeats extend `lease.leaseExpiresAt`
+
+### Expired lease recovery
+
+- `claimNext()` can reclaim tasks still marked `leased` if their lease expiry is in the past
+- this keeps abandoned leased tasks from being stuck forever
+
+### Dead-letter
+
+- dead-letter is the terminal queue status after the final failed attempt
+- the failed run is still stored in `AutomationRun`
+- the queue record keeps `lastError`, timestamps, and `resultRunId`
+
+### Finite execution
+
+- one task maps to one run attempt
+- handlers return structured result objects
+- the runner always transitions to a terminal or retry state
+- there is no autonomous recursive task spawning in the current code
+
+## API Surface
+
+The API surface below comes from `routes/specialx.js`.
+
+### Dashboard and status
+
+- `GET /api/specialx/status`
+- `GET /api/specialx/dashboard`
+- `GET /api/specialx/routing`
+
+### Routing control
+
+- `POST /api/specialx/routing/active-host`
+
+### Runner control
+
+- `POST /api/specialx/runner/start`
+- `POST /api/specialx/runner/stop`
+- `POST /api/specialx/runner/tick`
+
+### SpecialX profile management
+
+- `GET /api/specialx/agents`
+- `POST /api/specialx/agents`
+
+### Task queue
+
+- `POST /api/specialx/tasks`
+- `GET /api/specialx/tasks`
+- `GET /api/specialx/tasks/:id`
+- `POST /api/specialx/tasks/:id/cancel`
+
+### Runs
+
+- `GET /api/specialx/runs`
+- `GET /api/specialx/runs/:id`
 
 ## Scheduling
 
-The `maintenanceSchedulerService.js` runs on a timer and idempotently enqueues tasks based on SpecialX profile schedules:
+### Current main-tree behavior
 
-- **Hourly tasks** (e.g. telemetry aggregation) — checked every poll cycle
-- **Daily tasks** (e.g. maintenance snapshot, ops digest) — checked at schedule time
-- **Idempotency** — uses date-based keys to prevent duplicate enqueues within the same period
+In the main repository tree, schedule metadata exists on `SpecialX` profiles
+as:
 
-### How Schedule Works
+- `schedule.enabled`
+- `schedule.cron`
+- `schedule.timezone`
 
-1. `maintenanceSchedulerService` evaluates all active profiles with `schedule.enabled: true`
-2. For each due schedule, creates an `AutomationTask` with an idempotency key like `telemetry-agg-2026-03-10T14`
-3. The runner picks up the task via normal queue processing
-4. If the task already exists for that period (same idempotency key), creation is silently skipped
+However, the current runner does not read those fields directly.
 
----
+In this checkout, tasks are actively enqueued through:
 
-## Integration with Maintenance Mesh
+- `POST /api/specialx/tasks`
+- direct service calls to `enqueueTask()`
 
-SpecialX is the automation backbone for AgentX's maintenance system (OpenClaw Sprints 1-5):
+### Maintenance scheduler discrepancy
 
-```
-SpecialX Profile: maintenance-operator
-  → task type: maintenance_snapshot
-    → maintenanceSnapshotService.runSnapshot()
-      → 4 scanner adapters (repoWatcher, docJanitor, featureAlignment, validationScanner)
-      → Findings upserted to Finding model
-      → Artifacts: scan report JSON + severity summary markdown
+The repository memory file and a separate worktree copy include a
+`MaintenanceSchedulerService`, but that file is not present in the main tree at
+`src/services/maintenanceSchedulerService.js`.
 
-  → task type: maintenance_digest
-    → Reads recent Findings
-    → Generates Telegram-format digest
-    → Artifacts: digest.md
+That out-of-tree scheduler enqueues maintenance tasks by:
 
-SpecialX Profile: telemetry-aggregator
-  → task type: telemetry_aggregate
-    → hostUsageAggregator.aggregateHour()
-    → Rolls up InferenceLog → HostUsageLedger hourly records
+- firing once on startup and then hourly
+- generating idempotency keys by UTC hour or UTC date
+- creating `AutomationTask` records with `source: schedule`
+- using `AutomationTask` unique `idempotencyKey` to make duplicate enqueues safe
 
-SpecialX Profile: schedule-auditor
-  → task type: schedule_reconcile
-    → clusterScheduleService.reconcile()
-    → Compares planned schedule vs actual execution within 25h window
-    → Reports: missed tasks, late starts, overruns
-```
+The referenced scheduler defines these maintenance task families:
 
----
+- `telemetry_aggregate`
+- `maintenance_snapshot`
+- `maintenance_digest`
 
-## File Reference
+Those task types are not present in the current main-tree `AutomationTask`
+enum, so they should be treated as out-of-tree or not yet merged in this
+checkout.
 
-### Services
-| File | Lines | Purpose |
-|------|-------|---------|
-| `src/services/automationRunnerService.js` | ~466 | Queue worker: poll, claim, execute, persist |
-| `src/services/specialxTaskHandlers.js` | ~450 | 9 task type handlers with dispatch |
-| `src/services/maintenanceSchedulerService.js` | ~200 | Idempotent cron-based task enqueuer |
+For the current main tree, the engineering-safe statement is:
 
-### Models
-| File | Lines | Purpose |
-|------|-------|---------|
-| `models/SpecialX.js` | ~160 | Profile schema: persona + tool/model policies |
-| `models/AutomationTask.js` | ~95 | Work queue item: status, lease, constraints |
-| `models/AutomationRun.js` | ~95 | Execution record: result, artifacts, metrics |
+- SpecialX supports schedule metadata on profiles
+- the queue supports scheduled execution via `runAt`
+- maintenance auto-enqueue logic is not present in the main tree source
 
-### Routes
-| File | Lines | Purpose |
-|------|-------|---------|
-| `routes/specialx.js` | ~620 | 15 REST endpoints for dashboard, agents, tasks, runs |
+## File Reference Table
 
-### Frontend
-| File | Lines | Purpose |
-|------|-------|---------|
-| `public/specialx.html` | ~1200 | Console dashboard HTML |
-| `public/js/specialx.js` | ~600 | Frontend controller: polling, task enqueue, run detail |
+| Area | File | Role |
+|------|------|------|
+| Model | `models/SpecialX.js` | Profile definition, default operator bootstrap, run stats |
+| Model | `models/AutomationTask.js` | Queue record, claim logic, heartbeat updates, idempotency key |
+| Model | `models/AutomationRun.js` | Attempt record, metrics, artifacts, error persistence |
+| Service | `src/services/automationRunnerService.js` | Polling runner, enqueue path, lease execution, retry/dead-letter behavior |
+| Handler | `src/services/specialxTaskHandlers.js` | Task-type dispatch to Repo Watcher, chat, model routing, and queue metrics |
+| Route | `routes/specialx.js` | HTTP API for dashboard, runner controls, profiles, tasks, and runs |
+| UI | `public/specialx.html` | Operator console shell for queue and run visibility |
+| UI | `public/js/specialx.js` | Dashboard polling, quick enqueue, runner controls, and run detail loading |
 
-### Config & Seeds
-| File | Purpose |
-|------|---------|
-| `scripts/seed-specialx-profiles.js` | Seeds 3 system profiles (idempotent) |
-| `personas/specialx_console.json` | Control-plane persona definition |
+## Operational Notes
 
-### Tests
-| File | Purpose |
-|------|---------|
-| `tests/unit/specialx-automation.test.js` | Profile creation, idempotency, lease claiming, metrics |
+- Runner poll interval defaults to `SPECIALX_RUNNER_POLL_MS` or `5000`
+- Lease duration defaults to `SPECIALX_TASK_LEASE_MS` or `45000`
+- Runner enable flag is `SPECIALX_RUNNER_ENABLED=false` to disable
+- Completed and terminally failed tasks can notify OpenClaw via `OPENCLAW_WEBHOOK_URL`
+- Queue metrics aggregate task counts by status
+- 24-hour run metrics compute success rate and local-first ratio
 
----
+## Summary
 
-## Safety Rules
+SpecialX in the current main tree is a finite automation system built from:
 
-Per CLAUDE.md architecture contract:
+- profile documents in `SpecialX`
+- queue entries in `AutomationTask`
+- run artifacts in `AutomationRun`
+- a single-worker polling runner
+- task-specific handlers that call existing AgentX services
 
-1. **No infinite loops** — every task has a lease timeout and retry budget
-2. **Idempotency** — optional dedup key prevents repeated execution
-3. **Bounded retries** — exponential backoff, dead-letter after max attempts
-4. **Lease ownership** — heartbeat refresh prevents stale claims; expired leases are reclaimable
-5. **Deterministic output** — handlers run at low temperature (0.1) with structured output expectations
-6. **Local-first** — cloud fallback requires explicit profile opt-in and is audit-logged
+The implementation is queue-first, lease-based, local-first, and bounded by
+retry and dead-letter rules.

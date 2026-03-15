@@ -6,7 +6,6 @@ const cors = require('cors');
 const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
 const mongoSanitize = require('express-mongo-sanitize');
-const fetch = require('node-fetch');
 const session = require('express-session');
 const MongoDBStore = require('connect-mongodb-session')(session);
 const logger = require('../config/logger');
@@ -14,14 +13,6 @@ const { requestLogger, errorLogger } = require('./middleware/logging');
 const { attachUser } = require('./middleware/auth');
 const systemHealth = require('./systemHealth');
 const { normalizeHostUrl } = require('./helpers/ollamaHostConfig');
-
-const DATAAPI_BASE_URL = normalizeHostUrl(process.env.DATAAPI_BASE_URL) || 'http://127.0.0.1:3003';
-const DATAAPI_API_KEY = process.env.DATAAPI_API_KEY;
-const PRIMARY_OLLAMA_HOST = normalizeHostUrl(process.env.OLLAMA_HOST) || 'http://127.0.0.1:11434';
-
-function getDataApiHeaders() {
-  return DATAAPI_API_KEY ? { 'x-api-key': DATAAPI_API_KEY } : {};
-}
 
 // Initialize app
 const app = express();
@@ -383,14 +374,6 @@ app.use('/api/specialx', specialXLimiter, specialXRoutes);
 const specialXProposalRoutes = require('../routes/specialx-proposals');
 app.use('/api/specialx/proposals', specialXLimiter, specialXProposalRoutes);
 
-// Inference Telemetry routes (Sprint 1: GPU usage observability)
-const inferenceTelemetryRoutes = require('../routes/inference-telemetry');
-app.use('/api/telemetry', inferenceTelemetryRoutes);
-
-// Maintenance routes (Sprint 2: unified repo health + finding lifecycle)
-const maintenanceRoutes = require('../routes/maintenance');
-app.use('/api/maintenance', maintenanceRoutes);
-
 // Legacy/Compatibility routes
 // Map /conversations -> history
 app.use('/api/conversations', historyRoutes);
@@ -423,25 +406,16 @@ app.get('/personas.html', (req, res) => {
   res.redirect(301, '/prompts.html');
 });
 
-// Health Check - Basic (liveness probe, reads cached in-memory systemHealth)
+// Health Check - Basic
 app.get('/health', (_req, res) => {
-  const { version } = require('../package.json');
   const isHealthy = systemHealth.mongodb.status === 'connected';
-  const isDegraded =
-    systemHealth.ollama.status === 'error' ||
-    (systemHealth.qdrant.status !== 'not_configured' && systemHealth.qdrant.status === 'error');
-
-  const overallStatus = !isHealthy ? 'down' : isDegraded ? 'degraded' : 'ok';
 
   res.status(isHealthy ? 200 : 503).json({
-    status: overallStatus,
-    version,
-    uptime: Math.floor(process.uptime()),
-    startup: systemHealth.startup,
-    services: {
-      mongodb: systemHealth.mongodb,
-      ollama: systemHealth.ollama,
-      qdrant: systemHealth.qdrant
+    status: isHealthy ? 'ok' : 'degraded',
+    port: process.env.PORT || 3080,
+    details: {
+      mongodb: systemHealth.mongodb.status,
+      ollama: systemHealth.ollama.status
     }
   });
 });
@@ -473,9 +447,11 @@ app.get('/api/config', (_req, res) => {
 
 // External Health Check - Checks DataAPI and other Ollama hosts
 app.get('/api/health/external', async (_req, res) => {
+  const fetch = require('node-fetch');
+
   const targets = [
-    { name: 'dataapi', url: `${DATAAPI_BASE_URL}/health` },
-    { name: 'ollama', url: `${PRIMARY_OLLAMA_HOST}/api/tags` },
+    { name: 'dataapi', url: 'http://192.168.2.33:3003/health' },
+    { name: 'ollama', url: 'http://192.168.2.99:11434/api/tags' }, // Primary Ollama
     { name: 'n8n', url: (process.env.N8N_URL || 'http://localhost:5678') + '/healthz' }
   ];
 
@@ -495,18 +471,12 @@ app.get('/api/health/external', async (_req, res) => {
 
 // Proxy for DataAPI appevents (to avoid CORS and simplify dashboard)
 app.get('/api/events/system', async (req, res) => {
+  const fetch = require('node-fetch');
   const limit = req.query.limit || 10;
-
-  if (!DATAAPI_API_KEY) {
-    return res.status(503).json({
-      status: 'error',
-      message: 'DATAAPI_API_KEY environment variable is not configured'
-    });
-  }
-
+  
   try {
-    const response = await fetch(`${DATAAPI_BASE_URL}/api/v1/collection/appevents/items?limit=${limit}`, {
-      headers: getDataApiHeaders()
+    const response = await fetch(`http://192.168.2.33:3003/api/v1/collection/appevents/items?limit=${limit}`, {
+      headers: { 'x-api-key': process.env.DATAAPI_API_KEY || '41c15baab2ddbca5a83cfac2612fc22afa8fcd0b1a725ac14ef33eef87a8a146' }
     });
     const data = await response.json();
     res.json(data);

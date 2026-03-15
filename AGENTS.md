@@ -14,8 +14,7 @@ This file provides guidance to AGENTS when working with code in this repository.
 - [Model Registry](docs/architecture/MODEL_REGISTRY.md) - Model categorization & metadata
 - [RAG System](docs/architecture/RAG_SYSTEM.md) - Vector store & retrieval
 - [Model Routing](docs/architecture/MODEL_ROUTING.md) - Smart routing & failover
-- [SpecialX Automation](docs/architecture/SPECIALX.md) - Queue-driven bounded task agents
-- [SpecialX Automation](docs/architecture/SPECIALX.md) - Queue-driven specialist task automation
+- [SpecialX](docs/architecture/SPECIALX.md) - Queue-driven specialist task automation
 - [Startup Sequence](docs/architecture/STARTUP_SEQUENCE.md) - Bootstrap order
 - [Backend Overview](docs/architecture/backend-overview.md) - Service-oriented architecture
 
@@ -268,7 +267,7 @@ Automated remediation system (`/src/services/selfHealingEngine.js` - 1015 lines)
 
 **Integration:** N4.4 Self-Healing Orchestrator (n8n) triggers remediation via webhook, scheduled evaluation every 5 minutes.
 
-**Full documentation:** [docs/guides/SELF_HEALING_QUICK_START.md](docs/guides/SELF_HEALING_QUICK_START.md), [docs/architecture/SELF_HEALING_ARCHITECTURE.md](docs/architecture/SELF_HEALING_ARCHITECTURE.md), and [ROADMAP.md](ROADMAP.md) (Track 4)
+**Full documentation:** [docs/guides/SELF_HEALING_QUICK_START.md](docs/guides/SELF_HEALING_QUICK_START.md) and [ROADMAP.md](ROADMAP.md) (Track 4)
 
 ---
 
