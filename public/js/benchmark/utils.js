@@ -130,16 +130,6 @@ export function formatHostLabel(url) {
     return url.replace('http://', '').replace(':11434', '');
 }
 
-/**
- * Infer opposite host URL from current execution host
- */
-export function inferOppositeHostUrl(execHostUrl, hosts) {
-    if (!execHostUrl) return null;
-    const other = Array.isArray(hosts)
-        ? hosts.find(h => h && h.url && h.url !== execHostUrl)
-        : null;
-    return other ? other.url : null;
-}
 
 /**
  * Tooltip encoding helpers

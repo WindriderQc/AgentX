@@ -23,7 +23,11 @@ export function renderStatsSummary(sorted, globalStats) {
 
     const totalTests = sorted.length;
     const successCount = sorted.filter(r => r.success).length;
+    const fullPassCount = sorted.filter(r => r.success && r.quality_score !== undefined && r.quality_score !== null).length;
+    const judgeFailCount = sorted.filter(r => r.success && String(r.scoring_method || '').toLowerCase() === 'llm_failed').length;
+    const judgePendingCount = sorted.filter(r => r.success && String(r.scoring_method || '').toLowerCase() === 'pending').length;
     const successRate = ((successCount / totalTests) * 100).toFixed(1);
+    const fullPassRate = ((fullPassCount / totalTests) * 100).toFixed(1);
     const avgTps = globalStats.avgTps > 0 ? globalStats.avgTps.toFixed(1) : '0.0';
     const avgQuality = globalStats.avgQuality.toFixed(1);
 
@@ -36,8 +40,13 @@ export function renderStatsSummary(sorted, globalStats) {
                 <div style="color: var(--accent); font-size: 1.8em; font-weight: 700;">${totalTests}</div>
             </div>
             <div style="text-align: center; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
-                <div style="color: rgba(255,255,255,0.6); font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">Success Rate</div>
+                <div style="color: rgba(255,255,255,0.6); font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">Exec Success</div>
                 <div style="color: ${successRate >= 90 ? '#2ecc71' : (successRate >= 70 ? '#f39c12' : '#e74c3c')}; font-size: 1.8em; font-weight: 700;">${successRate}%</div>
+            </div>
+            <div style="text-align: center; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+                <div style="color: rgba(255,255,255,0.6); font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">Full Pass</div>
+                <div style="color: ${fullPassRate >= 90 ? '#93c5fd' : (fullPassRate >= 70 ? '#f39c12' : '#e74c3c')}; font-size: 1.8em; font-weight: 700;">${fullPassRate}%</div>
+                <div style="color: rgba(255,255,255,0.45); font-size: 0.72em; margin-top: 4px;">J${judgeFailCount} • P${judgePendingCount}</div>
             </div>
             <div style="text-align: center; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
                 <div style="color: rgba(255,255,255,0.6); font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">Avg Latency</div>
@@ -198,10 +207,14 @@ export function renderPerformanceHeatmap(resultsByModel) {
         if (modelResults.length === 0) continue;
 
         const successCount = modelResults.filter(r => r.success).length;
+        const fullPassCount = modelResults.filter(r => r.success && r.quality_score != null).length;
+        const judgeFailCount = modelResults.filter(r => r.success && String(r.scoring_method || '').toLowerCase() === 'llm_failed').length;
+        const judgePendingCount = modelResults.filter(r => r.success && String(r.scoring_method || '').toLowerCase() === 'pending').length;
         const infraFailCount = modelResults.filter(r => r.success === false && (r.infra_error === true || String(r.error_type || '').toLowerCase() === 'infra')).length;
         const failCount = modelResults.length - successCount;
         const modelFailCount = Math.max(0, failCount - infraFailCount);
         const successRate = (successCount / modelResults.length) * 100;
+        const fullPassRate = (fullPassCount / modelResults.length) * 100;
         const latencies = modelResults.filter(r => r.latency).map(r => r.latency);
         const qualities = modelResults.filter(r => r.quality_score != null).map(r => r.quality_score);
         const tps = modelResults
@@ -215,14 +228,18 @@ export function renderPerformanceHeatmap(resultsByModel) {
         modelStats.push({
             model,
             successRate,
+            fullPassRate,
             avgLatency: latencyStats.mean || 0,
             avgQuality: qualityStats.mean || 0,
             avgTps: tpsStats.mean || 0,
             testCount: modelResults.length,
             successCount,
+            fullPassCount,
             failCount,
             infraFailCount,
             modelFailCount,
+            judgeFailCount,
+            judgePendingCount,
             latencyStats,
             qualityStats,
             tpsStats
@@ -264,7 +281,7 @@ export function renderPerformanceHeatmap(resultsByModel) {
                 <tr>
                     <th style="padding: 10px 12px; text-align: left; color: var(--muted); font-weight: 600; background: rgba(0,0,0,0.2); border-radius: 4px;">Model</th>
                     <th style="padding: 10px 12px; text-align: center; color: var(--muted); font-weight: 600; background: rgba(0,0,0,0.2); border-radius: 4px;">Tests</th>
-                    <th style="padding: 10px 12px; text-align: center; color: var(--muted); font-weight: 600; background: rgba(0,0,0,0.2); border-radius: 4px;">Success Rate</th>
+                    <th style="padding: 10px 12px; text-align: center; color: var(--muted); font-weight: 600; background: rgba(0,0,0,0.2); border-radius: 4px;">Full Pass</th>
                     <th style="padding: 10px 12px; text-align: center; color: var(--muted); font-weight: 600; background: rgba(0,0,0,0.2); border-radius: 4px;">Avg Latency</th>
                     <th style="padding: 10px 12px; text-align: center; color: var(--muted); font-weight: 600; background: rgba(0,0,0,0.2); border-radius: 4px;">Avg Quality</th>
                     <th style="padding: 10px 12px; text-align: center; color: var(--muted); font-weight: 600; background: rgba(0,0,0,0.2); border-radius: 4px;">Throughput</th>
@@ -287,8 +304,8 @@ export function renderPerformanceHeatmap(resultsByModel) {
                             <td style="padding: 10px 12px; text-align: center; color: var(--text); background: rgba(0,0,0,0.2); border-radius: 4px; cursor: help;" class="heatmap-cell" data-model="${safeModel}" data-metric="tests" data-score="" title="Tests: ${stat.testCount} (pass ${stat.successCount}, fail ${stat.failCount}${Number.isFinite(stat.infraFailCount) ? `; infra ${stat.infraFailCount}, model ${stat.modelFailCount}` : ''})">
                                 ${stat.testCount}
                             </td>
-                            <td style="padding: 10px 12px; text-align: center; font-weight: 600; background: ${getHeatColor(stat.successRate)}; color: white; border-radius: 4px; cursor: help; transition: all 0.2s ease;" class="heatmap-cell" data-model="${safeModel}" data-metric="success" data-score="${stat.successRate}" title="Success: ${stat.successRate.toFixed(1)}% (${stat.successCount}/${stat.testCount})">
-                                ${stat.successRate.toFixed(1)}%
+                            <td style="padding: 10px 12px; text-align: center; font-weight: 600; background: ${getHeatColor(stat.fullPassRate)}; color: white; border-radius: 4px; cursor: help; transition: all 0.2s ease;" class="heatmap-cell" data-model="${safeModel}" data-metric="success" data-score="${stat.fullPassRate}" title="Full pass: ${stat.fullPassRate.toFixed(1)}% (${stat.fullPassCount}/${stat.testCount}) • Exec success ${stat.successRate.toFixed(1)}% • Jfail ${stat.judgeFailCount} • Pending ${stat.judgePendingCount}">
+                                ${stat.fullPassRate.toFixed(1)}%
                             </td>
                             <td style="padding: 10px 12px; text-align: center; font-weight: 600; background: ${getHeatColor(latencyNorm)}; color: white; border-radius: 4px; cursor: help; transition: all 0.2s ease;" class="heatmap-cell" data-model="${safeModel}" data-metric="latency" data-score="${latencyNorm}" title="Latency: avg ${formatMs(stat.avgLatency)} • p95 ${stat.latencyStats?.p95 ? formatMs(stat.latencyStats.p95) : '-'} (${getHeatLabel(latencyNorm)})">
                                 ${formatMs(stat.avgLatency)}
@@ -365,7 +382,7 @@ export function renderPerformanceHeatmap(resultsByModel) {
         const metricLabel = ({
             model: 'Model',
             tests: 'Tests',
-            success: 'Success rate',
+            success: 'Full pass rate',
             latency: 'Latency',
             quality: 'Quality',
             tps: 'Throughput'
@@ -390,7 +407,8 @@ export function renderPerformanceHeatmap(resultsByModel) {
             <div class="sub">${escapeHtml(headline)}</div>
             <div class="grid">
                 <div class="k">Tests</div><div class="v">${stat.testCount}</div>
-                <div class="k">Success</div><div class="v">${fmtPct(stat.successRate)} (${stat.successCount}/${stat.testCount})</div>
+                <div class="k">Exec Success</div><div class="v">${fmtPct(stat.successRate)} (${stat.successCount}/${stat.testCount})</div>
+                <div class="k">Full Pass</div><div class="v">${fmtPct(stat.fullPassRate)} (${stat.fullPassCount}/${stat.testCount}) • J${stat.judgeFailCount} • P${stat.judgePendingCount}</div>
                 <div class="k">Latency</div><div class="v">avg ${fmtMsTooltip(stat.avgLatency)} \u2022 p50 ${fmtOrDash(latencyP50, fmtMsTooltip)} \u2022 p95 ${fmtOrDash(latencyP95, fmtMsTooltip)}</div>
                 <div class="k">Quality</div><div class="v">avg ${fmtQ(stat.avgQuality)} \u2022 p50 ${fmtOrDash(qP50, fmtQ)} \u2022 p10 ${fmtOrDash(qP10, fmtQ)}</div>
                 <div class="k">Throughput</div><div class="v">avg ${fmtTok(stat.avgTps)} \u2022 p50 ${fmtOrDash(tpsP50, fmtTok)} \u2022 p10 ${fmtOrDash(tpsP10, fmtTok)}</div>

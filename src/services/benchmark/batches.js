@@ -7,7 +7,6 @@ const logger = require('../../../config/logger');
 const BenchmarkResult = require('../../../models/BenchmarkResult');
 const BenchmarkBatch = require('../../../models/BenchmarkBatch');
 const { JUDGE_CONFIG } = require('../qualityScorer');
-const { HOSTS } = require('../modelRouter');
 
 /**
  * Compute percentile/summary stats from a raw array of numbers.
@@ -134,12 +133,17 @@ async function getBatch(batchId, {
                             ]
                         }
                     },
-                    judge_failed: {
+                    judge_failed_exec: {
+                        $sum: {
+                            $cond: [{ $eq: ['$success', false] }, 1, 0]
+                        }
+                    },
+                    judge_failed_eval: {
                         $sum: {
                             $cond: [
                                 {
-                                    $or: [
-                                        { $eq: ['$success', false] },
+                                    $and: [
+                                        { $eq: ['$success', true] },
                                         {
                                             $in: [
                                                 { $toLower: { $ifNull: ['$scoring_method', ''] } },
@@ -151,6 +155,51 @@ async function getBatch(batchId, {
                                 1,
                                 0
                             ]
+                        }
+                    },
+                    judge_pending: {
+                        $sum: {
+                            $cond: [
+                                {
+                                    $and: [
+                                        { $eq: ['$success', true] },
+                                        { $eq: [{ $type: '$response' }, 'string'] },
+                                        { $ne: ['$response', ''] },
+                                        { $eq: [{ $toLower: { $ifNull: ['$scoring_method', 'pending'] } }, 'pending'] }
+                                    ]
+                                },
+                                1,
+                                0
+                            ]
+                        }
+                    },
+                    full_passed: {
+                        $sum: {
+                            $cond: [
+                                {
+                                    $and: [
+                                        { $eq: ['$success', true] },
+                                        { $ne: [{ $ifNull: ['$quality_score', null] }, null] }
+                                    ]
+                                },
+                                1,
+                                0
+                            ]
+                        }
+                    },
+                    tps_positive: {
+                        $sum: {
+                            $cond: [{ $gt: [{ $ifNull: ['$tokens_per_sec', 0] }, 0] }, 1, 0]
+                        }
+                    },
+                    tps_zero: {
+                        $sum: {
+                            $cond: [{ $eq: [{ $ifNull: ['$tokens_per_sec', null] }, 0] }, 1, 0]
+                        }
+                    },
+                    tps_missing: {
+                        $sum: {
+                            $cond: [{ $eq: [{ $ifNull: ['$tokens_per_sec', null] }, null] }, 1, 0]
                         }
                     }
                 }
@@ -178,7 +227,14 @@ async function getBatch(batchId, {
             exec_done: Number(row.exec_done) || 0,
             exec_failed: Number(row.exec_failed) || 0,
             judge_done: Number(row.judge_done) || 0,
-            judge_failed: Number(row.judge_failed) || 0
+            judge_pending: Number(row.judge_pending) || 0,
+            judge_failed_exec: Number(row.judge_failed_exec) || 0,
+            judge_failed_eval: Number(row.judge_failed_eval) || 0,
+            judge_failed: (Number(row.judge_failed_exec) || 0) + (Number(row.judge_failed_eval) || 0),
+            full_passed: Number(row.full_passed) || 0,
+            tps_positive: Number(row.tps_positive) || 0,
+            tps_zero: Number(row.tps_zero) || 0,
+            tps_missing: Number(row.tps_missing) || 0
         };
         return acc;
     }, {});
@@ -196,22 +252,13 @@ async function getBatch(batchId, {
         };
     });
 
-    const defaultJudgeModel = (batch && batch.judge_config && batch.judge_config.model)
-        ? batch.judge_config.model
+    const batchJudgeConfig = (batch && batch.judge_config && typeof batch.judge_config === 'object')
+        ? { ...batch.judge_config }
+        : {};
+    const defaultJudgeModel = batchJudgeConfig.model
+        ? batchJudgeConfig.model
         : JUDGE_CONFIG.model;
-
-    // Count tier-upgraded results (only meaningful when auto-upgrade is enabled)
-    if (batch.judge_config && batch.judge_config.judge_tier_auto_upgrade) {
-        judgeStats.tier_upgrades = results.filter(r =>
-            r.judge_model && r.judge_model !== defaultJudgeModel
-        ).length;
-    }
-
-    const judgeSameHost = !!(
-        (batch && batch.judge_same_host) ||
-        (batch && batch.judge_config && batch.judge_config.judge_same_host) ||
-        (batch && batch.plan && batch.plan.judge_same_host)
-    );
+    const defaultJudgeHost = batchJudgeConfig.host || batch.host || null;
 
     // Calculate judge stats from the full batch result set (not only returned page).
     const avgJudgeTime = judgedAgg.length > 0 && judgedAgg[0].avg_judge_time_ms != null
@@ -250,13 +297,6 @@ async function getBatch(batchId, {
         ? Math.ceil((pending / inferredConcurrency) * inferredTimeoutMs)
         : null;
 
-    // Count judge warmup fallback events from timeline
-    const timelineEvents = (batch.timeline || []);
-    const warmupFallbackCount = timelineEvents.filter(
-        e => e.event === 'judge_warmup_fallback'
-    ).length;
-    const judgeSameHostFallback = warmupFallbackCount > 0;
-
     const judgeStats = {
         avg_time_ms: Math.round(avgJudgeTime),
         lag: judgeLag,
@@ -268,25 +308,14 @@ async function getBatch(batchId, {
         timeout_ms: inferredTimeoutMs,
         eta_avg_ms: etaAvgMs,
         eta_worst_ms: etaWorstMs,
-        concurrency: inferredConcurrency,
-        warmup_fallback_count: warmupFallbackCount,
-        judge_same_host_fallback: judgeSameHostFallback,
-        tier_upgrades: 0  // populated below after defaultJudgeModel is resolved
-    };
-
-    const inferJudgeHost = (execHost) => {
-        if (!execHost) return null;
-        if (judgeSameHost) return execHost;
-        if (execHost === HOSTS.primary) return HOSTS.secondary;
-        if (execHost === HOSTS.secondary) return HOSTS.primary;
-        return HOSTS.primary;
+        concurrency: inferredConcurrency
     };
 
     const formattedResults = results.map((r) => {
         const promptText = typeof r.prompt === 'string' ? r.prompt : '';
         const responseText = typeof r.response === 'string' ? r.response : '';
 
-        const inferredJudgeHost = r.judge_host || inferJudgeHost(r.host);
+        const inferredJudgeHost = r.judge_host || defaultJudgeHost;
         const inferredJudgeModel = r.judge_model || defaultJudgeModel;
         const inferredScoringMethod = r.scoring_method || (r.success ? 'pending' : 'exec_failed');
 
@@ -402,9 +431,23 @@ async function getBatch(batchId, {
     const truncated = normalizedLimit !== null
         ? (normalizedOffset + returnedResultsCount) < actualResultsCount
         : false;
+    const execPassedCount = Math.max(0, actualResultsCount - actualFailedCount);
+    const fullPassedCount = Object.values(perModelCounters).reduce(
+        (sum, counters) => sum + (Number(counters?.full_passed) || 0),
+        0
+    );
+    const rateDenominator = totalTests > 0 ? totalTests : actualResultsCount;
+    const execSuccessRate = rateDenominator > 0
+        ? Number(((execPassedCount / rateDenominator) * 100).toFixed(1))
+        : 0;
+    const fullPassRate = rateDenominator > 0
+        ? Number(((fullPassedCount / rateDenominator) * 100).toFixed(1))
+        : 0;
 
+    const batchObject = batch.toObject();
+    batchObject.judge_config = batchJudgeConfig;
     return {
-        ...batch.toObject(),
+        ...batchObject,
         completed: actualResultsCount,  // Override with actual count
         failed: actualFailedCount,
         judge_total: effectiveJudgeTotal,
@@ -414,8 +457,10 @@ async function getBatch(batchId, {
         judge_progress,
         judge_progress_effective,
         judge_stats: judgeStats,
-        judge_same_host_fallback: judgeSameHostFallback,
         success_rate: batch.success_rate,
+        exec_success_rate: execSuccessRate,
+        full_pass_rate: fullPassRate,
+        full_passed: fullPassedCount,
         _countMismatch: hasCounterMismatch,  // Debug flag
         per_model_counters: perModelCounters,
         results_meta: {

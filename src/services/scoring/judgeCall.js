@@ -6,6 +6,7 @@
 const logger = require('../../../config/logger');
 const { getFetchOptions } = require('../../helpers/httpAgent');
 const { benchmarkFetch: fetch } = require('../benchmark/http');
+const { resolveEffectiveJudgeContext } = require('./judgeRuntimeConfig');
 
 // Judge model configuration
 // Default: 7B model — fits on most hosts without stealing context from the
@@ -16,6 +17,7 @@ const JUDGE_CONFIG = {
     timeout: 30000,
     temperature: 0.1,
     num_predict: 800,
+    num_ctx: 8192,
     max_retries: 2,
     tier: 'standard'
 };
@@ -187,6 +189,9 @@ async function callJudge(evalPrompt, config = {}, retryCount = 0) {
         if (!judgeConfig.host) {
             throw new Error('Judge host is not configured');
         }
+        const judgeContext = await resolveEffectiveJudgeContext(judgeConfig, {
+            fallbackNumCtx: judgeConfig.num_ctx || JUDGE_CONFIG.num_ctx || 8192
+        });
         const url = `${judgeConfig.host}/api/chat`;
         const fetchOptions = getFetchOptions(url, {
             method: 'POST',
@@ -198,7 +203,7 @@ async function callJudge(evalPrompt, config = {}, retryCount = 0) {
                 options: {
                     temperature: judgeConfig.temperature,
                     num_predict: judgeConfig.num_predict,
-                    num_ctx: 8192
+                    num_ctx: judgeContext.num_ctx
                 }
             }),
             signal: controller.signal

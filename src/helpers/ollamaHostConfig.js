@@ -13,6 +13,15 @@ const dotenv = require('dotenv');
 const WILDCARD_HOSTNAMES = new Set(['0.0.0.0', '::', '[::]']);
 let parsedDotenvCache = null;
 
+function parseHostFromUrl(urlStr) {
+  try {
+    return new URL(urlStr).hostname.toLowerCase();
+  } catch {
+    const m = String(urlStr || '').match(/^(?:https?:\/\/)?([^/:]+)/i);
+    return m ? m[1].toLowerCase() : null;
+  }
+}
+
 function normalizeHostUrl(raw) {
   if (!raw) return null;
   const trimmed = String(raw).trim();
@@ -81,18 +90,63 @@ function envFirst(...keys) {
   return wildcardFallback;
 }
 
+function parseHostVramMapFromEnv() {
+  const raw = envFirst('OLLAMA_HOST_VRAM_MAP');
+  const map = new Map();
+  if (!raw) return map;
+
+  for (const entry of String(raw).split(',')) {
+    const trimmed = String(entry || '').trim();
+    if (!trimmed) continue;
+    const idx = trimmed.indexOf('=');
+    if (idx <= 0) continue;
+    const host = trimmed.slice(0, idx).trim().toLowerCase();
+    const vramMb = Number.parseInt(trimmed.slice(idx + 1).trim(), 10);
+    if (!host || !Number.isFinite(vramMb) || vramMb <= 0) continue;
+    map.set(host, vramMb);
+  }
+
+  return map;
+}
+
+function resolveHostVramMb(hostUrl, fallbackVramMb) {
+  const host = parseHostFromUrl(hostUrl);
+  if (!host) return fallbackVramMb;
+
+  const map = parseHostVramMapFromEnv();
+  return map.get(host) || fallbackVramMb;
+}
+
 /** Returns structured host objects: { id, name, url, priority } */
 function getConfiguredHosts() {
   const hosts = [];
 
   const primaryUrl = normalizeHostUrl(envFirst('OLLAMA_HOST', 'OLLAMA_HOST_1', 'OLLAMA_HOST_PRIMARY'));
-  if (primaryUrl) hosts.push({ id: 'primary', name: 'UGFrank', url: primaryUrl, priority: 1, vramMb: 12288 });
+  if (primaryUrl) hosts.push({
+    id: 'primary',
+    name: 'UGFrank',
+    url: primaryUrl,
+    priority: 1,
+    vramMb: resolveHostVramMb(primaryUrl, 12288)
+  });
 
   const secondaryUrl = normalizeHostUrl(envFirst('OLLAMA_HOST_2', 'OLLAMA_HOST_HEAVY', 'OLLAMA_HOST_SECONDARY'));
-  if (secondaryUrl) hosts.push({ id: 'secondary', name: 'UGBrutal', url: secondaryUrl, priority: 2, vramMb: 16384 });
+  if (secondaryUrl) hosts.push({
+    id: 'secondary',
+    name: 'UGBrutal',
+    url: secondaryUrl,
+    priority: 2,
+    vramMb: resolveHostVramMb(secondaryUrl, 16384)
+  });
 
   const tertiaryUrl = normalizeHostUrl(envFirst('OLLAMA_HOST_3', 'OLLAMA_HOST_TERTIARY'));
-  if (tertiaryUrl) hosts.push({ id: 'tertiary', name: 'UGClawdX', url: tertiaryUrl, priority: 3, vramMb: 24576 });
+  if (tertiaryUrl) hosts.push({
+    id: 'tertiary',
+    name: 'UGClawdX',
+    url: tertiaryUrl,
+    priority: 3,
+    vramMb: resolveHostVramMb(tertiaryUrl, 24576)
+  });
 
   return hosts;
 }

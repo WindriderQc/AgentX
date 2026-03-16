@@ -22,10 +22,10 @@ const LEADERBOARD_TAB_GROUPS = [
 
 // Profile display metadata (actual scoring is server-side)
 const PROFILE_WEIGHTS = {
-    balanced:    { title: 'Balanced Profile',    quality: 45, speed: 30, reliability: 25, note: 'General-purpose balanced evaluation' },
-    interactive: { title: 'Interactive Profile',  quality: 40, speed: 40, reliability: 20, note: 'Optimized for chatbots & real-time applications' },
-    reasoning:   { title: 'Reasoning Profile',    quality: 80, speed: 10, reliability: 10, note: 'Optimized for complex analysis & problem-solving' },
-    coding:      { title: 'Coding Profile',       quality: 70, speed: 20, reliability: 10, note: 'Balanced for code generation with quality preference' }
+    balanced:    { title: 'Balanced Profile',    quality: 45, speed: 30, fullPass: 25, note: 'General-purpose evaluation using quality, speed, and full pass rate' },
+    interactive: { title: 'Interactive Profile',  quality: 40, speed: 40, fullPass: 20, note: 'Optimized for chatbots and real-time applications' },
+    reasoning:   { title: 'Reasoning Profile',    quality: 80, speed: 10, fullPass: 10, note: 'Optimized for complex analysis with strict full-pass weighting' },
+    coding:      { title: 'Coding Profile',       quality: 70, speed: 20, fullPass: 10, note: 'Balanced for code generation with quality preference and strict pass gating' }
 };
 
 // Profile -> backend field mapping
@@ -73,6 +73,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderCategoryWeights();
     startAutoRefresh();
 });
+
+function getBenchmarkRequestOptions(options = {}) {
+    const headers = { ...(options.headers || {}) };
+    if (window.WorkspaceManager && typeof window.WorkspaceManager.addWorkspaceHeader === 'function') {
+        const wrapped = window.WorkspaceManager.addWorkspaceHeader({ headers });
+        return { ...options, headers: wrapped.headers || headers };
+    }
+    return { ...options, headers };
+}
+
+async function fetchBenchmarkJson(url, options = {}) {
+    const response = await fetch(url, getBenchmarkRequestOptions(options));
+    const json = await response.json().catch(() => null);
+    if (!response.ok) {
+        throw new Error(json?.error || `HTTP ${response.status}`);
+    }
+    return json;
+}
 
 function bindBlendControls() {
     const toggle = document.getElementById('verifiedOnlyToggle');
@@ -246,8 +264,7 @@ async function resetAllTests() {
     const btn = document.getElementById('resetAllBtn');
     try {
         if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Resetting...'; }
-        const res = await fetch('/api/benchmark/results', { method: 'DELETE' });
-        if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || `HTTP ${res.status}`);
+        await fetchBenchmarkJson('/api/benchmark/results', { method: 'DELETE' });
         await refreshAllData();
     } catch (err) {
         alert(`Failed to reset results: ${err.message}`);
@@ -261,8 +278,7 @@ async function resetFailedTests() {
     const btn = document.getElementById('resetFailedBtn');
     try {
         if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Resetting...'; }
-        const res = await fetch('/api/benchmark/results/failed', { method: 'DELETE' });
-        if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || `HTTP ${res.status}`);
+        await fetchBenchmarkJson('/api/benchmark/results/failed', { method: 'DELETE' });
         await refreshAllData();
     } catch (err) {
         alert(`Failed to reset failed results: ${err.message}`);
@@ -276,16 +292,12 @@ async function resetFailedTests() {
 // ============================================================================
 
 async function loadPerformanceData() {
-    const response = await fetch('/api/benchmark/dashboard?sort=composite');
-    if (!response.ok) throw new Error('Failed to load dashboard data');
-    const data = await response.json();
+    const data = await fetchBenchmarkJson('/api/benchmark/dashboard?sort=composite');
     performanceData = data.data?.model_stats || [];
 }
 
 async function loadQualityData() {
-    const response = await fetch('/api/benchmark/generalist-leaderboard');
-    if (!response.ok) throw new Error('Failed to load generalist leaderboard');
-    const result = await response.json();
+    const result = await fetchBenchmarkJson('/api/benchmark/generalist-leaderboard');
     if (result.status !== 'success') throw new Error(result.error || 'API error');
 
     const { leaderboard, categoryWeights } = result.data;
@@ -333,24 +345,18 @@ async function loadQualityData() {
 
 async function loadHostNames() {
     try {
-        const response = await fetch('/api/benchmark/host-names');
-        if (response.ok) {
-            const result = await response.json();
-            HOST_NAMES = result.data || {};
-        }
+        const result = await fetchBenchmarkJson('/api/benchmark/host-names');
+        HOST_NAMES = result.data || {};
     } catch (_) { /* non-critical */ }
 }
 
 async function loadEliteScores() {
     try {
-        const response = await fetch('/api/benchmark/elite-scores');
-        if (response.ok) {
-            const result = await response.json();
-            eliteScoreMap = {};
-            for (const entry of (result.data || [])) {
-                const key = `${entry.model}@@${entry.host || ''}`;
-                eliteScoreMap[key] = entry;
-            }
+        const result = await fetchBenchmarkJson('/api/benchmark/elite-scores');
+        eliteScoreMap = {};
+        for (const entry of (result.data || [])) {
+            const key = `${entry.model}@@${entry.host || ''}`;
+            eliteScoreMap[key] = entry;
         }
     } catch (_) { /* non-critical */ }
 }
@@ -377,11 +383,11 @@ function updateProfileWeights() {
 
     const qualityEl = document.querySelector('#weightQuality .weight-pct');
     const speedEl = document.querySelector('#weightSpeed .weight-pct');
-    const reliabilityEl = document.querySelector('#weightReliability .weight-pct');
+    const fullPassEl = document.querySelector('#weightFullPass .weight-pct');
 
     if (qualityEl) qualityEl.textContent = config.quality + '%';
     if (speedEl) speedEl.textContent = config.speed + '%';
-    if (reliabilityEl) reliabilityEl.textContent = config.reliability + '%';
+    if (fullPassEl) fullPassEl.textContent = config.fullPass + '%';
 
     const noteEl = document.getElementById('profileNote');
     if (noteEl) noteEl.textContent = config.note;
@@ -416,9 +422,10 @@ function renderPerformanceBoard() {
             case 'quality': comparison = parseFloat(b.avg_quality || 0) - parseFloat(a.avg_quality || 0); break;
             case 'latency': comparison = (a.avg_latency || 99999) - (b.avg_latency || 99999); break;
             case 'tokens': comparison = parseFloat(b.avg_tokens_per_sec || 0) - parseFloat(a.avg_tokens_per_sec || 0); break;
+            case 'full_pass':
             case 'reliability':
-                const relA = ((a.tests || 1) - (a.failed_tests || 0)) / (a.tests || 1);
-                const relB = ((b.tests || 1) - (b.failed_tests || 0)) / (b.tests || 1);
+                const relA = Number.isFinite(Number(a.full_pass_rate)) ? Number(a.full_pass_rate) : 0;
+                const relB = Number.isFinite(Number(b.full_pass_rate)) ? Number(b.full_pass_rate) : 0;
                 comparison = relB - relA; break;
             case 'model':
                 comparison = (a.model || '').localeCompare(b.model || '');
@@ -441,7 +448,10 @@ function renderPerformanceBoard() {
         const tokensPerSec = Number.isFinite(parseFloat(model.avg_tokens_per_sec)) ? parseFloat(model.avg_tokens_per_sec) : 0;
         const tests = model.tests || 1;
         const failed = model.failed_tests ?? 0;
-        const reliabilityPct = Math.round(((tests - failed) / tests) * 100);
+        const fullPassPct = Number.isFinite(Number(model.full_pass_rate)) ? Math.round(Number(model.full_pass_rate)) : 0;
+        const judgeFailed = Number(model.judge_failed_tests) || 0;
+        const judgePending = Number(model.judge_pending_tests) || 0;
+        const execSuccessPct = Math.round(((tests - failed) / tests) * 100);
 
         const hostName = extractHostName(model.host);
         const levelStarsHtml = buildLevelStars(model.level_stats || {});
@@ -466,7 +476,7 @@ function renderPerformanceBoard() {
                 <td class="host-verify-col">${verification}</td>
                 <td>${measured}</td>
                 <td>${measuredAge}</td>
-                <td class="reliability-col ${reliabilityPct >= 95 ? 'high' : reliabilityPct >= 80 ? 'medium' : 'low'}">${reliabilityPct}%</td>
+                <td class="full-pass-col ${fullPassPct >= 95 ? 'high' : fullPassPct >= 80 ? 'medium' : 'low'}" title="Full pass = execution success plus completed judge score. Exec success: ${execSuccessPct}%${judgeFailed ? ` • Judge fail: ${judgeFailed}` : ''}${judgePending ? ` • Pending: ${judgePending}` : ''}">${fullPassPct}%${judgeFailed || judgePending ? `<div class="host-verify-meta">${judgeFailed ? `J${judgeFailed}` : ''}${judgeFailed && judgePending ? ' • ' : ''}${judgePending ? `P${judgePending}` : ''}</div>` : ''}</td>
                 <td class="composite-col"><strong>${composite.toFixed(1)}</strong></td>
                 <td class="tests-col">${model.tests || 0}</td>
             </tr>
@@ -722,9 +732,7 @@ function renderCategoryWeights() {
 
 async function loadCategoryHeatmap() {
     try {
-        const response = await fetch('/api/benchmark/category-heatmap');
-        if (!response.ok) return;
-        const result = await response.json();
+        const result = await fetchBenchmarkJson('/api/benchmark/category-heatmap');
         if (result.status !== 'success') return;
         renderHeatmap(result.data);
     } catch (_) { /* non-critical */ }

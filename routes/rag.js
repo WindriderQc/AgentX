@@ -16,7 +16,10 @@ const router = express.Router();
 const fs = require('fs').promises;
 const path = require('path');
 const mongoose = require('mongoose');
+const fetch = require('node-fetch');
 const { getRagStore } = require('../src/services/ragStore');
+const { EmbeddingsService } = require('../src/services/embeddings');
+const QdrantVectorStore = require('../src/services/vectorStore/QdrantVectorStore');
 const { resolveTarget } = require('../src/utils');
 const logger = require('../config/logger');
 const n8nAuth = require('../src/middleware/n8nAuth');
@@ -110,6 +113,41 @@ function normalizeRelativePath(filePath, root) {
 
   // Treat leading slash as non-relative; strip it for comparison.
   return normalized.replace(/^\/+/, '');
+}
+
+function getEmbeddingRuntimeConfig() {
+  return {
+    model: process.env.EMBEDDING_MODEL || 'nomic-embed-text:v1.5',
+    dimension: Number(process.env.EMBEDDING_DIMENSION || 768),
+    ollamaHost: process.env.OLLAMA_HOST || null
+  };
+}
+
+async function getQdrantCollectionInfo(collection) {
+  const qdrantUrl = process.env.QDRANT_URL || 'http://localhost:6333';
+  const response = await fetch(`${qdrantUrl}/collections/${collection}`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch Qdrant collection '${collection}': HTTP ${response.status}`);
+  }
+  const data = await response.json();
+  const vectors = data?.result?.config?.params?.vectors || {};
+  return {
+    name: collection,
+    exists: true,
+    vectorSize: Number(vectors.size || 0) || null,
+    distance: vectors.distance || null,
+    pointsCount: data?.result?.points_count ?? null,
+    raw: data?.result || null
+  };
+}
+
+async function deleteQdrantCollection(collection) {
+  const qdrantUrl = process.env.QDRANT_URL || 'http://localhost:6333';
+  const response = await fetch(`${qdrantUrl}/collections/${collection}`, { method: 'DELETE' });
+  if (response.status === 404) return;
+  if (!response.ok) {
+    throw new Error(`Failed to delete Qdrant collection '${collection}': HTTP ${response.status}`);
+  }
 }
 
 async function computeMdFolderStats(rootDir, options = {}) {
@@ -296,6 +334,159 @@ router.post(['/ingest', '/documents'], n8nAuth, async (req, res) => {
       error: 'Internal server error',
       message: error.message
     });
+  }
+});
+
+router.get('/embedding-migration/status', async (_req, res) => {
+  try {
+    const embedding = getEmbeddingRuntimeConfig();
+    const collection = process.env.QDRANT_COLLECTION || 'agentx_embeddings';
+    const vectorStoreType = process.env.VECTOR_STORE_TYPE || 'memory';
+    let qdrant = null;
+    let mismatch = false;
+    let warning = null;
+
+    if (vectorStoreType === 'qdrant') {
+      try {
+        qdrant = await getQdrantCollectionInfo(collection);
+        mismatch = Boolean(qdrant.vectorSize && embedding.dimension && qdrant.vectorSize !== embedding.dimension);
+        if (mismatch) {
+          warning = `Embedding dimension ${embedding.dimension} does not match Qdrant collection size ${qdrant.vectorSize}`;
+        }
+      } catch (error) {
+        warning = error.message;
+      }
+    }
+
+    res.json({
+      status: 'success',
+      data: {
+        vectorStoreType,
+        embedding,
+        activeCollection: {
+          name: collection,
+          info: qdrant
+        },
+        mismatch,
+        warning,
+        suggestedEnv: {
+          EMBEDDING_MODEL: embedding.model,
+          EMBEDDING_DIMENSION: String(embedding.dimension),
+          QDRANT_COLLECTION: collection
+        }
+      }
+    });
+  } catch (error) {
+    logger.error('Embedding migration status error', { error: error.message, stack: error.stack });
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
+router.post('/embedding-migration/reindex', async (req, res) => {
+  try {
+    const vectorStoreType = process.env.VECTOR_STORE_TYPE || 'memory';
+    if (vectorStoreType !== 'qdrant') {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Embedding migration requires VECTOR_STORE_TYPE=qdrant'
+      });
+    }
+
+    const {
+      sourceCollection = process.env.QDRANT_COLLECTION || 'agentx_embeddings',
+      targetCollection,
+      embeddingModel,
+      embeddingDimension,
+      ollamaHost,
+      recreateTarget = false
+    } = req.body || {};
+
+    const target = String(targetCollection || '').trim();
+    const model = String(embeddingModel || '').trim();
+    const dimension = Number(embeddingDimension);
+    const targetHost = ollamaHost ? resolveTarget(ollamaHost) : (process.env.OLLAMA_HOST || null);
+
+    if (!target) {
+      return res.status(400).json({ status: 'error', message: 'targetCollection is required' });
+    }
+    if (!model) {
+      return res.status(400).json({ status: 'error', message: 'embeddingModel is required' });
+    }
+    if (!Number.isFinite(dimension) || dimension <= 0) {
+      return res.status(400).json({ status: 'error', message: 'embeddingDimension must be a positive number' });
+    }
+    if (sourceCollection === target && !recreateTarget) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'sourceCollection and targetCollection match; set recreateTarget=true to rebuild in place'
+      });
+    }
+
+    const qdrantUrl = process.env.QDRANT_URL || 'http://localhost:6333';
+    const sourceStore = new QdrantVectorStore({ url: qdrantUrl, collection: sourceCollection });
+    if (recreateTarget) {
+      await deleteQdrantCollection(target);
+    }
+    const targetStore = new QdrantVectorStore({
+      url: qdrantUrl,
+      collection: target,
+      vectorSize: dimension
+    });
+    const embeddings = new EmbeddingsService({
+      ollamaHost: targetHost,
+      embeddingModel: model,
+      dimension
+    });
+
+    const docs = await sourceStore.listDocuments();
+    let migratedDocuments = 0;
+    let migratedChunks = 0;
+
+    for (const doc of docs) {
+      const chunks = await sourceStore.getDocumentChunks(doc.documentId);
+      if (!chunks.length) continue;
+
+      const vectors = await embeddings.embedTextBatch(chunks.map(chunk => chunk.text), targetHost);
+      await targetStore.upsertDocument(
+        doc.documentId,
+        {
+          source: doc.source,
+          path: doc.path,
+          title: doc.title,
+          hash: doc.hash,
+          tags: doc.tags || [],
+          createdAt: doc.createdAt || new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        },
+        chunks.map((chunk, index) => ({
+          text: chunk.text,
+          chunkIndex: Number.isFinite(chunk.chunkIndex) ? chunk.chunkIndex : index,
+          embedding: vectors[index]
+        }))
+      );
+
+      migratedDocuments += 1;
+      migratedChunks += chunks.length;
+    }
+
+    const targetInfo = await getQdrantCollectionInfo(target);
+    res.json({
+      status: 'success',
+      data: {
+        sourceCollection,
+        targetCollection: target,
+        embeddingModel: model,
+        embeddingDimension: dimension,
+        ollamaHost: targetHost,
+        migratedDocuments,
+        migratedChunks,
+        targetInfo,
+        nextStep: `Set EMBEDDING_MODEL=${model}, EMBEDDING_DIMENSION=${dimension}, and QDRANT_COLLECTION=${target} when you are ready to switch runtime traffic.`
+      }
+    });
+  } catch (error) {
+    logger.error('Embedding migration reindex error', { error: error.message, stack: error.stack });
+    res.status(500).json({ status: 'error', message: error.message });
   }
 });
 

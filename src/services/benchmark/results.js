@@ -196,9 +196,15 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
 
     const judgeMatchQuery = { ...matchQuery, scoring_time_ms: { $ne: null } };
 
-    const [totalTests, successCount, recentTests, modelStats, levelDistribution, failureStats, judgeStats, generalistScores] = await Promise.all([
+    const fullPassCountPromise = BenchmarkResult.countDocuments({
+        ...matchQuery,
+        quality_score: { $ne: null }
+    });
+
+    const [totalTests, successCount, fullPassCount, recentTests, modelStats, levelDistribution, failureStats, judgeStats, generalistScores] = await Promise.all([
         BenchmarkResult.countDocuments(totalMatchQuery),
         BenchmarkResult.countDocuments(matchQuery),
+        fullPassCountPromise,
         BenchmarkResult.find(matchQuery).sort({ timestamp: -1 }).limit(10),
         BenchmarkResult.aggregate([
             { $match: matchQuery },
@@ -229,6 +235,32 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
                         $sum: {
                             $cond: [
                                 { $ne: ['$quality_score', null] },
+                                1,
+                                0
+                            ]
+                        }
+                    },
+                    judge_failed_tests: {
+                        $sum: {
+                            $cond: [
+                                {
+                                    $eq: [{ $toLower: { $ifNull: ['$scoring_method', '' ] } }, 'llm_failed']
+                                },
+                                1,
+                                0
+                            ]
+                        }
+                    },
+                    judge_pending_tests: {
+                        $sum: {
+                            $cond: [
+                                {
+                                    $and: [
+                                        { $eq: [{ $type: '$response' }, 'string'] },
+                                        { $ne: ['$response', ''] },
+                                        { $eq: [{ $toLower: { $ifNull: ['$scoring_method', 'pending'] } }, 'pending'] }
+                                    ]
+                                },
                                 1,
                                 0
                             ]
@@ -347,6 +379,13 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
         const infraFailedTests = fail.infra_failed || 0;
         const modelFailedTests = fail.model_failed || 0;
         const successTests = m.count || 0;
+        const fullPassedTests = m.quality_tests || 0;
+        const judgeFailedTests = m.judge_failed_tests || 0;
+        const judgePendingTests = m.judge_pending_tests || 0;
+        const fullPassDenominator = successTests + modelFailedTests;
+        const fullPassRate = fullPassDenominator > 0
+            ? (fullPassedTests / fullPassDenominator) * 100
+            : 0;
 
         successByKey.set(key, true);
 
@@ -384,6 +423,10 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
             avg_composite: fmtScore(balanced.composite_score),
 
             quality_tests: m.quality_tests || 0,
+            full_passed_tests: fullPassedTests,
+            judge_failed_tests: judgeFailedTests,
+            judge_pending_tests: judgePendingTests,
+            full_pass_rate: Number(fullPassRate.toFixed(1)),
             level_stats: levelStatsByKey.get(key) || {},
             tests: successTests,
             failed_tests: failedTests,
@@ -413,6 +456,10 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
             reasoning_score: fmtScore(0),
             coding_score: fmtScore(0),
             quality_tests: 0,
+            full_passed_tests: 0,
+            judge_failed_tests: 0,
+            judge_pending_tests: 0,
+            full_pass_rate: 0,
             level_stats: {},
             tests: 0,
             failed_tests: fail.failed || 0,
@@ -465,22 +512,19 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
 
     // Apply sorting
     switch (sortBy) {
+        case 'full_pass':
         case 'reliability':
             sortedStats.sort((a, b) => {
                 if (a.failure_only !== b.failure_only) return a.failure_only ? 1 : -1;
-
-                // Reliability should not be penalized by infra failures.
-                // Compute failure rate using model_failed only, with denominator = successes + model_failed.
-                const aSuccess = Number(a.tests) || 0;
-                const bSuccess = Number(b.tests) || 0;
-                const aModelFailed = Number(a.model_failed_tests ?? a.failed_tests) || 0;
-                const bModelFailed = Number(b.model_failed_tests ?? b.failed_tests) || 0;
-                const aDen = aSuccess + aModelFailed;
-                const bDen = bSuccess + bModelFailed;
-                const aRate = aDen > 0 ? (aModelFailed / aDen) : 0;
-                const bRate = bDen > 0 ? (bModelFailed / bDen) : 0;
-                if (aRate !== bRate) return aRate - bRate;
-                // Tie-breakers: more samples first, then latency
+                const aStrict = Number(a.full_pass_rate) || 0;
+                const bStrict = Number(b.full_pass_rate) || 0;
+                if (aStrict !== bStrict) return bStrict - aStrict;
+                const aPending = Number(a.judge_pending_tests) || 0;
+                const bPending = Number(b.judge_pending_tests) || 0;
+                if (aPending !== bPending) return aPending - bPending;
+                const aJudgeFailed = Number(a.judge_failed_tests) || 0;
+                const bJudgeFailed = Number(b.judge_failed_tests) || 0;
+                if (aJudgeFailed !== bJudgeFailed) return aJudgeFailed - bJudgeFailed;
                 const aTotal = Number(a.total_tests) || 0;
                 const bTotal = Number(b.total_tests) || 0;
                 if (aTotal !== bTotal) return bTotal - aTotal;
@@ -533,7 +577,14 @@ async function getDashboard({ sortBy = 'latency', modelCategory, promptCategory,
         overview: {
             total_tests: totalTests,
             successful: successCount,
+            full_passed: fullPassCount,
             failed: totalTests - successCount,
+            exec_success_rate: totalTests > 0
+                ? ((successCount / totalTests) * 100).toFixed(1) + '%'
+                : '0%',
+            full_pass_rate: totalTests > 0
+                ? ((fullPassCount / totalTests) * 100).toFixed(1) + '%'
+                : '0%',
             success_rate: totalTests > 0
                 ? ((successCount / totalTests) * 100).toFixed(1) + '%'
                 : '0%'

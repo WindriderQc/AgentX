@@ -27,6 +27,7 @@ The enhanced benchmark system provides:
 - **Real-Time Statistics** - Live progress for active batches
 - **Configuration Presets** - Common test scenarios
 - **Tag-Based Organization** - Categorize and filter batches
+- **Pinned Judge Configuration** - Benchmarks run with an explicitly selected judge host and model
 
 ### API Hardening Notes (v2.1)
 
@@ -321,8 +322,7 @@ Get configuration presets for common test scenarios.
         "config": {
           "levels": [1, 2],
           "judge_config": {
-            "concurrency": 2,
-            "judge_same_host": false
+            "concurrency": 2
           }
         },
         "recommended_for": "Initial model validation, quick checks",
@@ -335,8 +335,7 @@ Get configuration presets for common test scenarios.
         "config": {
           "levels": [1, 2, 3, 4, 5],
           "judge_config": {
-            "concurrency": 2,
-            "judge_same_host": false
+            "concurrency": 2
           }
         },
         "recommended_for": "Regular model evaluation",
@@ -351,6 +350,10 @@ Get configuration presets for common test scenarios.
 - Preset selector dropdown
 - Apply preset button to populate form
 - Display preset description and estimated duration
+
+**Judge Config Note:**
+- Presets only provide shared judge tuning values such as concurrency and timeout.
+- The judge host and judge model are pinned separately in the benchmark Settings modal before starting a run.
 
 ---
 

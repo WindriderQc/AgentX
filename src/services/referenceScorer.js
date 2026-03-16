@@ -7,6 +7,7 @@
 const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args));
 const logger = require('../../config/logger');
 const { getFetchOptions } = require('../helpers/httpAgent');
+const { resolveEffectiveJudgeContext } = require('./scoring/judgeRuntimeConfig');
 
 /**
  * Extract key points from a reference answer
@@ -58,6 +59,7 @@ Answer ONLY "YES" or "NO":`;
     const timeoutId = setTimeout(() => controller.abort(), judgeConfig.timeout || 15000);
 
     try {
+        const judgeContext = await resolveEffectiveJudgeContext(judgeConfig, { fallbackNumCtx: 4096 });
         const url = `${judgeConfig.host}/api/generate`;
         const fetchOptions = getFetchOptions(url, {
             method: 'POST',
@@ -68,7 +70,8 @@ Answer ONLY "YES" or "NO":`;
                 stream: false,
                 options: {
                     temperature: 0.1,
-                    num_predict: 10
+                    num_predict: 10,
+                    num_ctx: judgeContext.num_ctx
                 }
             }),
             signal: controller.signal
@@ -121,6 +124,7 @@ Answer ONLY "YES" if there are contradictions, or "NO" if there are no contradic
     const timeoutId = setTimeout(() => controller.abort(), judgeConfig.timeout || 20000);
 
     try {
+        const judgeContext = await resolveEffectiveJudgeContext(judgeConfig, { fallbackNumCtx: 4096 });
         const url = `${judgeConfig.host}/api/generate`;
         const fetchOptions = getFetchOptions(url, {
             method: 'POST',
@@ -131,7 +135,8 @@ Answer ONLY "YES" if there are contradictions, or "NO" if there are no contradic
                 stream: false,
                 options: {
                     temperature: 0.1,
-                    num_predict: 10
+                    num_predict: 10,
+                    num_ctx: judgeContext.num_ctx
                 }
             }),
             signal: controller.signal
@@ -187,6 +192,7 @@ Answer with ONLY one word: EXCELLENT, GOOD, PARTIAL, or POOR:`;
     const timeoutId = setTimeout(() => controller.abort(), judgeConfig.timeout || 20000);
 
     try {
+        const judgeContext = await resolveEffectiveJudgeContext(judgeConfig, { fallbackNumCtx: 4096 });
         const url = `${judgeConfig.host}/api/generate`;
         const fetchOptions = getFetchOptions(url, {
             method: 'POST',
@@ -197,7 +203,8 @@ Answer with ONLY one word: EXCELLENT, GOOD, PARTIAL, or POOR:`;
                 stream: false,
                 options: {
                     temperature: 0.1,
-                    num_predict: 15
+                    num_predict: 15,
+                    num_ctx: judgeContext.num_ctx
                 }
             }),
             signal: controller.signal

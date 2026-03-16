@@ -298,8 +298,8 @@ export function renderMismatchBanner(activeLevels) {
     container.querySelector('.judge-mismatch-suggest-btn')?.addEventListener('click', (e) => {
         const model = e.currentTarget.dataset.model;
         if (!model) return;
-        // Dispatch a custom event; index.js listens and applies
-        document.dispatchEvent(new CustomEvent('judgeAutoSuggest', { detail: { model } }));
+        // Dispatch a custom event; index.js listens and applies the suggested judge
+        document.dispatchEvent(new CustomEvent('judgeSuggestionApply', { detail: { model } }));
     });
 
     container.querySelector('.judge-mismatch-dismiss-btn')?.addEventListener('click', () => {

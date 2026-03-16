@@ -288,7 +288,7 @@ export async function loadTagStats() {
                         <span class="tag-count">${tag.count}</span>
                         <div class="tag-details">
                             <small>${tag.completed} completed</small>
-                            <small>${tag.avg_success_rate} success</small>
+                            <small>${tag.avg_success_rate} exec success</small>
                         </div>
                     </div>
                 `}).join('')}

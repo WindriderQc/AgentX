@@ -101,8 +101,8 @@
                             <span class="weight-label">Speed</span>
                             <span class="weight-pct">40%</span>
                         </div>
-                        <div class="weight-pill" id="weightReliability">
-                            <span class="weight-label">Reliability</span>
+                        <div class="weight-pill" id="weightFullPass">
+                            <span class="weight-label">Full Pass</span>
                             <span class="weight-pct">20%</span>
                         </div>
                     </div>
@@ -121,8 +121,8 @@
                                 <th title="Latest host-side verification status, freshness, and drift against benchmark metrics.">Host Test</th>
                                 <th title="Latest measured host-side tokens/sec and latency.">Measured</th>
                                 <th title="Recency of the latest host-side measurement.">Measured Age</th>
-                                <th class="sortable" data-sort="reliability" onclick="sortPerformanceBy('reliability')" title="Percentage of successful test completions.">Reliability <i class="fas fa-sort"></i></th>
-                                <th class="sortable active" data-sort="composite" onclick="sortPerformanceBy('composite')" title="Weighted score combining Quality, Speed, and Reliability based on selected profile.">Composite <i class="fas fa-info-circle" style="opacity:0.5;font-size:0.7rem;margin-left:2px;"></i> <i class="fas fa-sort-down"></i></th>
+                                <th class="sortable" data-sort="full_pass" onclick="sortPerformanceBy('full_pass')" title="Full pass rate: execution success plus completed judge score. Tooltips also show judge-fail and pending counts.">Full Pass <i class="fas fa-sort"></i></th>
+                                <th class="sortable active" data-sort="composite" onclick="sortPerformanceBy('composite')" title="Weighted score combining Quality, Speed, and Full Pass based on the selected profile.">Composite <i class="fas fa-info-circle" style="opacity:0.5;font-size:0.7rem;margin-left:2px;"></i> <i class="fas fa-sort-down"></i></th>
                                 <th>Tests</th>
                             </tr>
                         </thead>

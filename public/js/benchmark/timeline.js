@@ -599,6 +599,7 @@ export async function loadRecentTestsTimeline() {
         const stageVisuals = {
             test: { icon: 'fa-robot', class: 'segment-success' },
             'test-error': { icon: 'fa-exclamation-triangle', class: 'segment-error' },
+            'judge-error': { icon: 'fa-gavel', class: 'segment-judge-failed' },
             judging: { icon: 'fa-gavel', class: 'segment-judging' },
             running: { icon: 'fa-cog fa-spin', class: 'segment-running' },
             queued: { icon: 'fa-clock', class: 'segment-queued' },
@@ -610,6 +611,7 @@ export async function loadRecentTestsTimeline() {
             if (result.__lane === 'judge_prep') return stageVisuals['judge-prep'];
             if (result.__lane === 'model_warmup') return stageVisuals['warmup'];
             if (result.success === false) return stageVisuals['test-error'];
+            if (String(result.scoring_method || '').toLowerCase() === 'llm_failed') return stageVisuals['judge-error'];
             if (result.success) {
                 const level = getResultLevel(result);
                 if (Number.isFinite(level) && level >= 1 && level <= 10) {
@@ -781,6 +783,10 @@ export async function loadRecentTestsTimeline() {
                     ? result.quality_score
                     : null;
                 const levelNumber = getResultLevel(result);
+                const judgeFailed = String(result.scoring_method || '').toLowerCase() === 'llm_failed';
+                const statusColor = result.success === false
+                    ? '#e74c3c'
+                    : (judgeFailed ? '#f59e0b' : '#2ecc71');
 
                 // Tooltip HTML for Custom Tooltip with Performance Comparisons
                 const promptTextRaw = result.prompt ? (result.prompt.length > 80 ? result.prompt.substring(0, 80) + '...' : result.prompt) : 'No prompt';
@@ -824,8 +830,12 @@ export async function loadRecentTestsTimeline() {
                     </div>
                     <div style="display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; margin-bottom: 10px;">
                         <span style="color: rgba(255,255,255,0.6);">Status:</span>
-                        <span style="font-weight: 600; color:${result.success?'#2ecc71':'#e74c3c'}">
-                            ${result.success ? '<i class="fas fa-check-circle"></i> Success' : '<i class="fas fa-times-circle"></i> Failed'}
+                        <span style="font-weight: 600; color:${statusColor}">
+                            ${result.success === false
+                                ? '<i class="fas fa-times-circle"></i> Failed'
+                                : (judgeFailed
+                                    ? '<i class="fas fa-gavel"></i> Judge Failed'
+                                    : '<i class="fas fa-check-circle"></i> Success')}
                         </span>
 
                         <span style="color: rgba(255,255,255,0.6);">Total Time:</span>
@@ -856,6 +866,11 @@ export async function loadRecentTestsTimeline() {
                             <span style="font-weight: 600;">${tpsDisplay}</span>
                             <span style="font-size: 0.85em; margin-left: 6px;">${tpsIndicator}</span>
                         </div>
+                        ` : ''}
+
+                        ${judgeFailed ? `
+                        <span style="color: rgba(255,255,255,0.6);">Judge:</span>
+                        <span style="font-weight: 600; color:#f59e0b;">${escapeHtml(result.scoring_method || 'llm_failed')}</span>
                         ` : ''}
 
                         ${Number.isFinite(levelNumber) && levelNumber >= 1 ? `
@@ -936,11 +951,15 @@ export async function loadRecentTestsTimeline() {
 
             const safeModelLabel = escapeHtml(model);
             const rowBadges = [];
-            if (!modelResults.length && warmupEvent) {
-                rowBadges.push('<span class="prep-lane-badge">Warmup</span>');
-            }
-            if (activeModel === model && activeCurrentTest && activeCurrentTest.stage && activeCurrentTest.stage !== 'idle') {
+            const activeStage = activeModel === model && activeCurrentTest && activeCurrentTest.stage && activeCurrentTest.stage !== 'idle'
+                ? String(activeCurrentTest.stage).toLowerCase()
+                : '';
+            if (activeStage === 'warmup') {
+                rowBadges.push('<span class="prep-lane-badge executing-badge">WARMUP</span>');
+            } else if (activeStage) {
                 rowBadges.push(`<span class="prep-lane-badge executing-badge">${escapeHtml(activeCurrentTest.stage)}</span>`);
+            } else if (!modelResults.length && !warmupEvent) {
+                rowBadges.push('<span class="prep-lane-badge">QUEUED</span>');
             }
             const rowBadgeHtml = rowBadges.length ? ` ${rowBadges.join(' ')}` : '';
 
@@ -949,6 +968,10 @@ export async function loadRecentTestsTimeline() {
             if (modelResults.length > 0) {
                 const successCount = modelResults.filter(r => r.success).length;
                 const successRate = Math.round((successCount / modelResults.length) * 100);
+                const judgeFailCount = modelResults.filter(r => String(r?.scoring_method || '').toLowerCase() === 'llm_failed').length;
+                const pendingJudgeCount = modelResults.filter(r => r?.success !== false && String(r?.scoring_method || '').toLowerCase() === 'pending').length;
+                const fullPassCount = modelResults.filter(r => r?.success !== false && r?.quality_score !== undefined && r?.quality_score !== null).length;
+                const fullPassRate = Math.round((fullPassCount / modelResults.length) * 100);
                 const qualities = modelResults.filter(r => r.quality_score != null).map(r => r.quality_score);
                 const avgQ = qualities.length > 0
                     ? (qualities.reduce((a, b) => a + b, 0) / qualities.length).toFixed(1)
@@ -964,6 +987,9 @@ export async function loadRecentTestsTimeline() {
                 miniStatsHtml = `
                     <div class="model-mini-stats">
                         <span style="color:${srColor};" title="Success rate">✓${successRate}%</span>
+                        <span style="color:#93c5fd;" title="Execution + judged clean pass rate">FP${fullPassRate}%</span>
+                        ${judgeFailCount > 0 ? `<span style="color:#f59e0b;" title="Judge failures">J${judgeFailCount}</span>` : ''}
+                        ${pendingJudgeCount > 0 ? `<span style="color:#9ca3af;" title="Judge pending">P${pendingJudgeCount}</span>` : ''}
                         ${avgQ != null ? `<span style="color:${qColor};" title="Avg quality">Q${avgQ}</span>` : ''}
                         ${avgTps != null ? `<span style="color:var(--muted);" title="Avg tokens/sec">${avgTps}t/s</span>` : ''}
                     </div>`;

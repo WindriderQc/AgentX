@@ -17,6 +17,17 @@ jest.mock('../../src/helpers/httpAgent', () => ({
     getFetchOptions: (url, opts) => opts
 }));
 
+jest.mock('../../src/services/scoring/judgeRuntimeConfig', () => ({
+    resolveEffectiveJudgeContext: jest.fn(async (judgeConfig) => ({
+        num_ctx: judgeConfig.num_ctx || 4096,
+        source: judgeConfig.num_ctx ? 'explicit_override' : 'execution_default',
+        requested_num_ctx: judgeConfig.num_ctx || null,
+        resolved_num_ctx: 4096,
+        resolved_source: 'execution_default',
+        override_exceeds_resolved: false
+    }))
+}));
+
 const { askBinaryQuestion, scoreDimension, score, DECOMPOSED_QUESTIONS } = require('../../src/services/decomposedJudge');
 const logger = require('../../config/logger');
 

@@ -404,6 +404,52 @@
     .badge.ok { border-color: rgba(34,197,94,0.35); background: rgba(34,197,94,0.08); }
     .badge.warn { border-color: rgba(234,179,8,0.35); background: rgba(234,179,8,0.08); }
     .badge.err { border-color: rgba(239,68,68,0.35); background: rgba(239,68,68,0.08); }
+
+    .migration-grid {
+      display: grid;
+      grid-template-columns: 1.3fr 1fr;
+      gap: 18px;
+    }
+
+    .migration-status-box {
+      border: 1px solid var(--panel-border);
+      border-radius: 10px;
+      background: rgba(0,0,0,0.18);
+      padding: 14px;
+      min-height: 180px;
+    }
+
+    .migration-result {
+      margin-top: 14px;
+      font-size: 13px;
+      color: var(--muted);
+      white-space: pre-wrap;
+    }
+
+    .migration-steps {
+      margin-top: 14px;
+      padding: 12px 14px;
+      border: 1px solid rgba(124, 240, 255, 0.18);
+      border-radius: 10px;
+      background: rgba(124, 240, 255, 0.05);
+      font-size: 13px;
+      color: var(--text);
+    }
+
+    .migration-steps ol {
+      margin: 8px 0 0 18px;
+      padding: 0;
+    }
+
+    .migration-steps li {
+      margin-bottom: 6px;
+    }
+
+    @media (max-width: 920px) {
+      .migration-grid {
+        grid-template-columns: 1fr;
+      }
+    }
   </style>
 </head>
 <body>
@@ -438,6 +484,72 @@
       <div class="stat-card">
         <div class="stat-label">Storage</div>
         <div class="stat-value" id="totalSize">—</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">
+        <h2><i class="fas fa-wand-magic-sparkles"></i> Embedding Migration & Qdrant Alignment</h2>
+        <div style="display:flex; gap:10px; align-items:center;">
+          <span id="migrationHealthBadge" class="badge">Checking…</span>
+          <button class="btn-sm ghost" onclick="loadMigrationStatus()" title="Refresh status">
+            <i class="fas fa-rotate"></i>
+          </button>
+        </div>
+      </div>
+
+      <div class="migration-grid">
+        <div class="migration-status-box" id="migrationStatusBox">Loading migration status…</div>
+        <div>
+          <div class="form-row two">
+            <div class="form-group">
+              <label for="migrationSourceCollection">Source Collection</label>
+              <input id="migrationSourceCollection" value="agentx_embeddings">
+            </div>
+            <div class="form-group">
+              <label for="migrationTargetCollection">Target Collection</label>
+              <input id="migrationTargetCollection" placeholder="e.g. agentx_embeddings_qwen3">
+            </div>
+          </div>
+          <div class="form-row two">
+            <div class="form-group">
+              <label for="migrationEmbeddingModel">Embedding Model</label>
+              <input id="migrationEmbeddingModel" placeholder="e.g. qwen3-embedding:8b">
+            </div>
+            <div class="form-group">
+              <label for="migrationEmbeddingDimension">Embedding Dimension</label>
+              <input id="migrationEmbeddingDimension" type="number" min="1" placeholder="4096">
+            </div>
+          </div>
+          <div class="form-row two">
+            <div class="form-group">
+              <label for="migrationOllamaHost">Ollama Host (optional)</label>
+              <input id="migrationOllamaHost" placeholder="http://192.168.2.99:11434">
+            </div>
+            <div class="form-group">
+              <label for="migrationRecreateTarget">Target Mode</label>
+              <select id="migrationRecreateTarget">
+                <option value="false">Create or reuse target</option>
+                <option value="true">Delete and recreate target</option>
+              </select>
+            </div>
+          </div>
+          <div style="display:flex; gap:10px; justify-content:flex-end;">
+            <button class="btn-sm ghost" onclick="copyMigrationEnvHint()"><i class="fas fa-copy"></i> Copy Env Hint</button>
+            <button class="btn" onclick="runEmbeddingMigration()"><i class="fas fa-play"></i> Reindex Collection</button>
+          </div>
+          <div class="migration-steps">
+            <strong>Recommended flow</strong>
+            <ol>
+              <li>Review the status on the left. If the runtime dimension and collection size differ, do not switch models in place.</li>
+              <li>Create a new target collection for the new embedding model, for example `agentx_embeddings_qwen3`.</li>
+              <li>Run reindexing into that new collection.</li>
+              <li>Validate search quality against the new collection.</li>
+              <li>Only then update `EMBEDDING_MODEL`, `EMBEDDING_DIMENSION`, and `QDRANT_COLLECTION` together and restart AgentX.</li>
+            </ol>
+          </div>
+          <div id="migrationResult" class="migration-result"></div>
+        </div>
       </div>
     </div>
 
@@ -604,6 +716,7 @@
     document.addEventListener('DOMContentLoaded', () => {
       loadSettings();
       loadPreviewSettings();
+      loadMigrationStatus();
       loadDocuments();
       setupUploadZone();
       setupSearch();
@@ -732,6 +845,139 @@
       document.getElementById('concurrency').value = '1';
       setSettingsStatus('Not saved', 'warn');
       toast.info('Settings reset');
+    }
+
+    let migrationStatus = null;
+
+    async function loadMigrationStatus() {
+      const badge = document.getElementById('migrationHealthBadge');
+      const box = document.getElementById('migrationStatusBox');
+      badge.textContent = 'Checking…';
+      badge.className = 'badge';
+      box.textContent = 'Loading migration status…';
+
+      try {
+        const response = await fetch('/api/rag/embedding-migration/status');
+        const data = await response.json();
+        if (!response.ok || data.status !== 'success') {
+          throw new Error(data.message || 'Failed to load migration status');
+        }
+
+        migrationStatus = data.data || {};
+        const embedding = migrationStatus.embedding || {};
+        const activeCollection = migrationStatus.activeCollection || {};
+        const info = activeCollection.info || {};
+        const mismatch = !!migrationStatus.mismatch;
+
+        badge.textContent = mismatch ? 'Mismatch detected' : 'Aligned';
+        badge.className = `badge ${mismatch ? 'warn' : 'ok'}`;
+
+        document.getElementById('migrationSourceCollection').value = activeCollection.name || 'agentx_embeddings';
+        if (!document.getElementById('migrationEmbeddingModel').value) {
+          document.getElementById('migrationEmbeddingModel').value = embedding.model || '';
+        }
+        if (!document.getElementById('migrationEmbeddingDimension').value) {
+          document.getElementById('migrationEmbeddingDimension').value = embedding.dimension || '';
+        }
+        if (!document.getElementById('migrationOllamaHost').value) {
+          document.getElementById('migrationOllamaHost').value = embedding.ollamaHost || '';
+        }
+
+        const warningHtml = migrationStatus.warning
+          ? `<div class="badge warn" style="margin-top:10px;">${escapeHtml(migrationStatus.warning)}</div>`
+          : '';
+        const guidance = mismatch
+          ? `<div class="muted" style="margin-top:10px;">Action: build a new collection with the target model and dimension, then switch runtime config after validation.</div>`
+          : `<div class="muted" style="margin-top:10px;">Action: current runtime config matches the active collection size.</div>`;
+
+        box.innerHTML = `
+          <div><strong>Runtime embedding</strong></div>
+          <div class="muted mono" style="margin-top:6px;">${escapeHtml(embedding.model || 'unknown')} • ${escapeHtml(String(embedding.dimension || 'unknown'))}d</div>
+          <div style="margin-top:14px;"><strong>Active Qdrant collection</strong></div>
+          <div class="muted mono" style="margin-top:6px;">${escapeHtml(activeCollection.name || 'unknown')}</div>
+          <div class="muted" style="margin-top:6px;">Vector size: ${escapeHtml(String(info.vectorSize || 'unknown'))} • Points: ${escapeHtml(String(info.pointsCount ?? 'unknown'))}</div>
+          <div class="muted" style="margin-top:6px;">Store type: ${escapeHtml(migrationStatus.vectorStoreType || 'unknown')}</div>
+          ${warningHtml}
+          ${guidance}
+        `;
+      } catch (error) {
+        badge.textContent = 'Error';
+        badge.className = 'badge err';
+        box.innerHTML = `<div class="badge err">${escapeHtml(error.message)}</div>`;
+      }
+    }
+
+    function copyMigrationEnvHint() {
+      const model = document.getElementById('migrationEmbeddingModel').value.trim();
+      const dimension = document.getElementById('migrationEmbeddingDimension').value.trim();
+      const collection = document.getElementById('migrationTargetCollection').value.trim()
+        || document.getElementById('migrationSourceCollection').value.trim();
+      const text = `EMBEDDING_MODEL=${model}\nEMBEDDING_DIMENSION=${dimension}\nQDRANT_COLLECTION=${collection}`;
+      copyToClipboard(text);
+      toast.success('Env hint copied');
+    }
+
+    async function runEmbeddingMigration() {
+      const sourceCollection = document.getElementById('migrationSourceCollection').value.trim();
+      const targetCollection = document.getElementById('migrationTargetCollection').value.trim();
+      const embeddingModel = document.getElementById('migrationEmbeddingModel').value.trim();
+      const embeddingDimension = Number(document.getElementById('migrationEmbeddingDimension').value || 0);
+      const ollamaHost = document.getElementById('migrationOllamaHost').value.trim();
+      const recreateTarget = document.getElementById('migrationRecreateTarget').value === 'true';
+      const resultEl = document.getElementById('migrationResult');
+
+      if (!targetCollection || !embeddingModel || !embeddingDimension) {
+        toast.error('Target collection, embedding model, and dimension are required');
+        return;
+      }
+
+      if (!confirm(`Reindex documents from ${sourceCollection} into ${targetCollection}?`)) return;
+
+      resultEl.textContent = 'Running migration… this may take a while.';
+
+      try {
+        const response = await fetch('/api/rag/embedding-migration/reindex', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sourceCollection,
+            targetCollection,
+            embeddingModel,
+            embeddingDimension,
+            ollamaHost: ollamaHost || undefined,
+            recreateTarget
+          })
+        });
+        const data = await response.json();
+        if (!response.ok || data.status !== 'success') {
+          throw new Error(data.message || 'Migration failed');
+        }
+
+        const payload = data.data || {};
+        resultEl.textContent =
+`Migration complete
+Source: ${payload.sourceCollection}
+Target: ${payload.targetCollection}
+Model: ${payload.embeddingModel}
+Dimension: ${payload.embeddingDimension}
+Documents: ${payload.migratedDocuments}
+Chunks: ${payload.migratedChunks}
+
+Next steps
+1. Test retrieval against ${payload.targetCollection}.
+2. If results look good, update runtime config:
+   EMBEDDING_MODEL=${payload.embeddingModel}
+   EMBEDDING_DIMENSION=${payload.embeddingDimension}
+   QDRANT_COLLECTION=${payload.targetCollection}
+3. Restart AgentX after changing those values.
+
+${payload.nextStep || ''}`;
+        toast.success('Embedding migration completed');
+        await loadMigrationStatus();
+      } catch (error) {
+        resultEl.textContent = error.message;
+        toast.error(error.message);
+      }
     }
 
     // Load documents from API

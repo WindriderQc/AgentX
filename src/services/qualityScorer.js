@@ -23,7 +23,7 @@ const { scoreCompliance, blendHybridScore } = require('./scoring/complianceScore
 const { extractCriterionPattern, criteriaBasedScore } = require('./scoring/criteriaScorer');
 const ModelRegistry = require('../../models/ModelRegistry');
 
-const { hasExplicitJudgeConfigValue, getJudgeCandidatesCached, resolveJudgeConfigForPrompt, clearJudgeCandidateCache } = require('./scoring/judgeConfigResolver');
+const { hasExplicitJudgeConfigValue, resolveJudgeConfigForPrompt } = require('./scoring/judgeConfigResolver');
 
 /**
  * Score a model response for quality
@@ -562,6 +562,5 @@ module.exports = {
     judgeTierResolver,
     // Exported for testing
     resolveJudgeConfigForPrompt,
-    hasExplicitJudgeConfigValue,
-    _clearJudgeCandidateCache: clearJudgeCandidateCache
+    hasExplicitJudgeConfigValue
 };

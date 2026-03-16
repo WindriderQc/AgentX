@@ -65,10 +65,35 @@ const BenchmarkResultSchema = new mongoose.Schema({
         type: String,
         default: null
     },
+    scoring_dimensions: {
+        type: mongoose.Schema.Types.Mixed,
+        default: undefined
+    },
+    deterministic_scoring: {
+        type: mongoose.Schema.Types.Mixed,
+        default: undefined
+    },
+    output_contract: {
+        type: mongoose.Schema.Types.Mixed,
+        default: undefined
+    },
+    reference_answer: {
+        type: String,
+        default: null
+    },
     // Structured criteria for deterministic judging (carried from prompt)
     judge_criteria: {
         type: [String],
         default: undefined
+    },
+    required_judge_tier: {
+        type: String,
+        enum: ['basic', 'standard', 'advanced', 'premium', null],
+        default: null
+    },
+    prompt_snapshot_embedded: {
+        type: Boolean,
+        default: false
     },
     response: {
         type: String,

@@ -21,7 +21,7 @@ const ApiTelemetrySchema = new mongoose.Schema({
     lastCalled: Date
   },
 
-  timestamp: { type: Date, default: Date.now, index: true },
+  timestamp: { type: Date, default: Date.now },
   period: {
     type: String,
     enum: ['real-time', 'hourly', 'daily', 'weekly'],

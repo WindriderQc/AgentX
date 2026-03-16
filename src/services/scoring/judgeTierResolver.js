@@ -32,6 +32,10 @@ const TIER_RANK = {
 
 const TIER_ORDER = ['basic', 'standard', 'advanced', 'premium'];
 
+function tierRankOf(tier) {
+    return TIER_RANK[tier] || 0;
+}
+
 const TIER_DISPLAY = {
     basic: {
         key: 'basic',
@@ -170,107 +174,6 @@ function tierMeetsRequirement(availableTier, requiredTier) {
 }
 
 /**
- * Resolve the best judge model from a list of candidates.
- *
- * @param {Array<Object>} candidates - Models with judge capability:
- *   [{ modelName, capabilities: { judgeTier, judgeReliability, avgJudgeLatencyMs }, host }]
- * @param {Object} options
- * @param {number}  options.promptLevel    - Prompt difficulty (1-10)
- * @param {string}  [options.preferredTier] - Override: force this tier minimum
- * @param {string}  [options.preferredHost] - Prefer models on this host
- * @returns {Object} { model, host, tier, tier_downgraded, preset, warning }
- */
-function resolveJudgeModel(candidates, options = {}) {
-    const { promptLevel = 5, preferredTier, preferredHost } = options;
-
-    if (!candidates || candidates.length === 0) {
-        logger.warn('No judge candidates available');
-        return {
-            model: null,
-            host: null,
-            tier: null,
-            tier_downgraded: false,
-            warning: 'No judge models available in registry'
-        };
-    }
-
-    const requiredTier = preferredTier || getRequiredTier(promptLevel);
-    const requiredRank = TIER_RANK[requiredTier] || 2;
-
-    // Score each candidate
-    const scored = candidates
-        .filter(c => c.capabilities && c.capabilities.judgeTier)
-        .map(c => {
-            const tier = c.capabilities.judgeTier;
-            const rank = TIER_RANK[tier] || 0;
-            const reliability = c.capabilities.judgeReliability || 0.5;
-            const latency = c.capabilities.avgJudgeLatencyMs || 5000;
-            const hostMatch = preferredHost && c.host === preferredHost ? 1 : 0;
-
-            // Primary: meets tier requirement
-            const meetsRequirement = rank >= requiredRank ? 1 : 0;
-
-            // Composite selection score:
-            //   tier match (40%) + reliability (30%) + speed (20%) + host preference (10%)
-            const latencyScore = Math.max(0, 1 - (latency / 10000)); // 0-10s → 1-0
-            const selectionScore =
-                meetsRequirement * 0.40 +
-                reliability * 0.30 +
-                latencyScore * 0.20 +
-                hostMatch * 0.10;
-
-            return { ...c, tier, rank, meetsRequirement, selectionScore };
-        })
-        .sort((a, b) => b.selectionScore - a.selectionScore);
-
-    if (scored.length === 0) {
-        // Fallback: candidates exist but none have judgeTier set
-        const fallback = candidates[0];
-        logger.warn('No candidates have judgeTier set, using first available', {
-            model: fallback.modelName
-        });
-        return {
-            model: fallback.modelName,
-            host: fallback.host || null,
-            tier: 'unknown',
-            tier_downgraded: true,
-            warning: 'No judgeTier metadata — using unranked model'
-        };
-    }
-
-    const best = scored[0];
-    const downgraded = !best.meetsRequirement;
-
-    if (downgraded) {
-        logger.warn('Judge tier downgraded', {
-            required: requiredTier,
-            available: best.tier,
-            model: best.modelName,
-            promptLevel
-        });
-    } else {
-        logger.debug('Judge model resolved', {
-            model: best.modelName,
-            tier: best.tier,
-            required: requiredTier,
-            promptLevel
-        });
-    }
-
-    return {
-        model: best.modelName,
-        host: best.host || null,
-        tier: best.tier,
-        tier_downgraded: downgraded,
-        required_tier: requiredTier,
-        prompt_level: promptLevel,
-        warning: downgraded
-            ? `Required tier '${requiredTier}' not available — downgraded to '${best.tier}'`
-            : null
-    };
-}
-
-/**
  * Infer a judge tier from model name conventions when registry lacks metadata.
  * Used as a heuristic fallback during model sync.
  *
@@ -310,11 +213,16 @@ function resolveJudgeTierMetadata(capabilities = {}, modelName = '') {
     const legacyTier = capabilities.judgeTier || null;
     const calibratedTier = capabilities.calibratedJudgeTier || null;
     const recommendedTier = capabilities.recommendedJudgeTier || calibratedTier || null;
-    const effectiveTier = curatedTier || legacyTier || recommendedTier || inferredTier || null;
-
+    const effectiveTier = curatedTier
+        || (legacyTier ? ((tierRankOf(inferredTier) > tierRankOf(legacyTier)) ? inferredTier : legacyTier) : null)
+        || recommendedTier
+        || inferredTier
+        || null;
     let source = null;
     if (curatedTier) {
         source = 'curated';
+    } else if (legacyTier && tierRankOf(inferredTier) > tierRankOf(legacyTier)) {
+        source = 'inferred';
     } else if (legacyTier) {
         source = 'legacy';
     } else if (capabilities.recommendedJudgeTier) {
@@ -377,7 +285,6 @@ module.exports = {
     JUDGE_PRESETS,
     getRequiredTier,
     tierMeetsRequirement,
-    resolveJudgeModel,
     inferJudgeTier,
     resolveJudgeTierMetadata,
     getTierDefinitions,

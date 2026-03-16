@@ -49,10 +49,6 @@ function writeDefaults(data) {
 
 const TIER_RANK = { basic: 1, standard: 2, advanced: 3, premium: 4 };
 
-function normalizeTier(tier) {
-    return TIER_RANK[tier] ? tier : null;
-}
-
 /**
  * Fetch model list from an Ollama host. Returns [] on failure.
  */
@@ -86,9 +82,34 @@ async function getJudgeRegistryEntries() {
             { 'categories': 'judge' }
         ]
     })
-        .select('modelName host categories capabilities tags source')
+        .select('modelName host categories capabilities tags source executionDefaults executionOverrides contextTest')
         .lean();
     return entries;
+}
+
+function buildContextWindowMeta(entry = {}) {
+    const overrideNumCtx = entry.executionOverrides?.num_ctx ?? null;
+    const probedNumCtx = entry.contextTest?.status === 'completed'
+        ? (entry.contextTest?.testedNumCtx ?? null)
+        : null;
+    const defaultNumCtx = entry.executionDefaults?.num_ctx ?? null;
+    const legacyNumCtx = entry.capabilities?.maxContext ?? null;
+
+    const effectiveNumCtx = overrideNumCtx || probedNumCtx || defaultNumCtx || legacyNumCtx || null;
+    let source = null;
+    if (overrideNumCtx) source = 'override';
+    else if (probedNumCtx) source = 'context_test';
+    else if (defaultNumCtx) source = 'execution_default';
+    else if (legacyNumCtx) source = 'capabilities';
+
+    return {
+        effectiveNumCtx,
+        overrideNumCtx,
+        probedNumCtx,
+        defaultNumCtx,
+        legacyNumCtx,
+        source
+    };
 }
 
 // ---------------------------------------------------------------------------
@@ -190,6 +211,7 @@ router.get('/judge-roster', async (req, res) => {
             const calibratedAt = caps.calibratedAt || null;
             const availableOn = modelHostMap.get(modelName) || [];
             const tierRank = TIER_RANK[tier] || 0;
+            const contextWindow = buildContextWindowMeta(entry);
 
             return {
                 modelName,
@@ -202,6 +224,7 @@ router.get('/judge-roster', async (req, res) => {
                 avgLatencyMs,
                 evalCount,
                 calibratedAt,
+                contextWindow,
                 categories: entry.categories || [],
                 tags: entry.tags || [],
                 availableOn,    // [{url, name, size}]
@@ -232,6 +255,14 @@ router.get('/judge-roster', async (req, res) => {
                     avgLatencyMs: null,
                     evalCount: 0,
                     calibratedAt: null,
+                    contextWindow: {
+                        effectiveNumCtx: null,
+                        overrideNumCtx: null,
+                        probedNumCtx: null,
+                        defaultNumCtx: null,
+                        legacyNumCtx: null,
+                        source: null
+                    },
                     categories: [],
                     tags: [],
                     availableOn: hostList,

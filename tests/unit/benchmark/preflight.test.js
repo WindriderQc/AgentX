@@ -24,7 +24,8 @@ jest.mock('../../../models/ModelRegistry', () => ({
 jest.mock('../../../src/services/qualityScorer', () => ({
     JUDGE_CONFIG: {
         host: 'http://judge-host:11434',
-        model: 'judge-model:latest'
+        model: 'judge-model:latest',
+        num_ctx: 8192
     }
 }));
 
@@ -32,10 +33,15 @@ jest.mock('../../../src/services/benchmark/http', () => ({
     benchmarkFetch: jest.fn()
 }));
 
+jest.mock('../../../src/services/scoring/judgeRuntimeConfig', () => ({
+    resolveEffectiveJudgeContext: jest.fn()
+}));
+
 const BenchmarkPrompt = require('../../../models/BenchmarkPrompt');
 const BenchmarkBatch = require('../../../models/BenchmarkBatch');
 const ModelRegistry = require('../../../models/ModelRegistry');
 const { benchmarkFetch } = require('../../../src/services/benchmark/http');
+const { resolveEffectiveJudgeContext } = require('../../../src/services/scoring/judgeRuntimeConfig');
 const {
     checkJudgeConfiguration,
     runPreflight
@@ -68,6 +74,14 @@ describe('benchmark preflight', () => {
         benchmarkFetch.mockResolvedValue(okJson({
             models: [{ name: 'model-a:latest' }]
         }));
+        resolveEffectiveJudgeContext.mockResolvedValue({
+            num_ctx: 8192,
+            source: 'execution_default',
+            requested_num_ctx: null,
+            resolved_num_ctx: 8192,
+            resolved_source: 'execution_default',
+            override_exceeds_resolved: false
+        });
     });
 
     it('blocks judge configurations below the required tier', async () => {
@@ -92,13 +106,13 @@ describe('benchmark preflight', () => {
         expect(result.blockers[0]).toMatch(/Judge 'judge-model.*' is tagged 'standard' tier/);
     });
 
-    it('prefers inferred 14B tier over stale registry tier metadata', async () => {
+    it('falls back to inferred 14B tier when registry tier metadata is absent', async () => {
         ModelRegistry.findOne.mockReturnValue(chainResolved({
             modelName: 'qwen2.5:14b',
             capabilities: {
-                judgeTier: 'standard',
                 judgeReliability: 0.93,
-                avgJudgeLatencyMs: 2200
+                avgJudgeLatencyMs: 2200,
+                maxContext: 8192
             }
         }));
 
@@ -132,6 +146,101 @@ describe('benchmark preflight', () => {
 
         expect(result.ok).toBe(false);
         expect(result.blockers).toContain('Judge reliability 0.52 is below minimum 0.60');
+    });
+
+    it('blocks judge configurations when context window is too small for the selected levels', async () => {
+        ModelRegistry.findOne.mockReturnValue(chainResolved({
+            modelName: 'judge-model:latest',
+            capabilities: {
+                judgeTier: 'advanced',
+                judgeReliability: 0.93,
+                avgJudgeLatencyMs: 1800,
+                maxContext: 4096
+            }
+        }));
+        resolveEffectiveJudgeContext.mockResolvedValue({
+            num_ctx: 4096,
+            source: 'execution_default',
+            requested_num_ctx: null,
+            resolved_num_ctx: 4096,
+            resolved_source: 'execution_default',
+            override_exceeds_resolved: false
+        });
+
+        const result = await checkJudgeConfiguration(
+            { host: 'http://judge-host:11434', model: 'judge-model:latest' },
+            [8],
+            { categories: { refactoring: { count: 4 } } }
+        );
+
+        expect(result.ok).toBe(false);
+        expect(result.available_context_window).toBe(4096);
+        expect(result.estimated_judge_input_tokens).toBeGreaterThan(4096);
+        expect(result.blockers[0]).toMatch(/only has ~4096 tokens of context/);
+    });
+
+    it('allows judge configurations when context window clears the estimated input size', async () => {
+        ModelRegistry.findOne.mockReturnValue(chainResolved({
+            modelName: 'judge-model:latest',
+            capabilities: {
+                judgeTier: 'advanced',
+                judgeReliability: 0.93,
+                avgJudgeLatencyMs: 1800,
+                maxContext: 8192
+            }
+        }));
+        resolveEffectiveJudgeContext.mockResolvedValue({
+            num_ctx: 8192,
+            source: 'execution_default',
+            requested_num_ctx: null,
+            resolved_num_ctx: 8192,
+            resolved_source: 'execution_default',
+            override_exceeds_resolved: false
+        });
+
+        const result = await checkJudgeConfiguration(
+            { host: 'http://judge-host:11434', model: 'judge-model:latest' },
+            [8],
+            { categories: { refactoring: { count: 4 } } }
+        );
+
+        expect(result.ok).toBe(true);
+        expect(result.blockers).toEqual([]);
+        expect(result.available_context_window).toBe(8192);
+    });
+
+    it('allows an explicit judge num_ctx override above the proven value and warns about risk', async () => {
+        ModelRegistry.findOne.mockReturnValue(chainResolved({
+            modelName: 'judge-model:latest',
+            capabilities: {
+                judgeTier: 'advanced',
+                judgeReliability: 0.93,
+                avgJudgeLatencyMs: 1800,
+                maxContext: 4096
+            }
+        }));
+        resolveEffectiveJudgeContext.mockResolvedValue({
+            num_ctx: 8192,
+            source: 'explicit_override',
+            requested_num_ctx: 8192,
+            resolved_num_ctx: 4096,
+            resolved_source: 'execution_default',
+            override_exceeds_resolved: true
+        });
+
+        const result = await checkJudgeConfiguration(
+            { host: 'http://judge-host:11434', model: 'judge-model:latest', num_ctx: 8192 },
+            [8],
+            { categories: { refactoring: { count: 4 } } }
+        );
+
+        expect(result.ok).toBe(true);
+        expect(result.available_context_window).toBe(8192);
+        expect(result.proven_context_window).toBe(4096);
+        expect(result.context_window_source).toBe('explicit_override');
+        expect(result.warnings).toEqual(expect.arrayContaining([
+            expect.stringMatching(/override 8192 exceeds the proven\/registry value 4096/i)
+        ]));
     });
 
     it('aggregates host, judge, and orphaned-batch issues in runPreflight', async () => {

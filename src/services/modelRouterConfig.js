@@ -75,6 +75,8 @@ const MODEL_ROUTING = {
     'qwen32b:perf': 'tertiary',
 
     // Embeddings — always light host
+    'qwen3-embedding:8b': 'primary',
+    'qllama/bge-m3:f16': 'primary',
     'nomic-embed-text': 'primary',
     'nomic-embed-text:v1.5': 'primary',
     'nomic-embed-text:latest': 'primary'

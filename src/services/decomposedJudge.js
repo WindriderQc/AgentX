@@ -15,6 +15,7 @@ const fetch = require('node-fetch');
 const logger = require('../../config/logger');
 const { getFetchOptions } = require('../helpers/httpAgent');
 const { DECOMPOSED_QUESTIONS } = require('./decomposedJudgeQuestions');
+const { resolveEffectiveJudgeContext } = require('./scoring/judgeRuntimeConfig');
 
 /**
  * Make a single binary YES/NO call to the judge model
@@ -41,6 +42,7 @@ Answer ONLY "YES" or "NO" for this specific question: ${question}`;
     const timeoutId = setTimeout(() => controller.abort(), judgeConfig.timeout || 15000);
 
     try {
+        const judgeContext = await resolveEffectiveJudgeContext(judgeConfig, { fallbackNumCtx: 4096 });
         const url = `${judgeConfig.host}/api/generate`;
         const fetchOptions = getFetchOptions(url, {
             method: 'POST',
@@ -52,7 +54,7 @@ Answer ONLY "YES" or "NO" for this specific question: ${question}`;
                 options: {
                     temperature: 0.1,
                     num_predict: 20,
-                    num_ctx: 4096
+                    num_ctx: judgeContext.num_ctx
                 }
             }),
             signal: controller.signal

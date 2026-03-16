@@ -1,7 +1,7 @@
 // batch-config.js - Batch configuration, depth matrix, level/model matrix
 
 import * as state from './state.js';
-import { escapeHtml, formatHostLabel, inferOppositeHostUrl } from './utils.js';
+import { escapeHtml, formatHostLabel } from './utils.js';
 import { currentJudgeTier, refreshJudgeTierUI, requiredTierForLevel, strongestRequiredTier } from './judge-mismatch.js';
 
 // ─── Depth Configuration ───────────────────────────────────────────
@@ -210,6 +210,7 @@ export function updateDepthSummary() {
 
     const info = document.getElementById('batchInfo');
     if (info) {
+        info.classList.add('is-summary');
         if (totalPrompts > 0 && modelCount > 0) {
             const totalTests = totalPrompts * modelCount;
             info.textContent = `${modelCount} models × ~${totalPrompts} prompts = ~${totalTests} tests`;
@@ -279,28 +280,26 @@ export function updateBatchInfo() {
  */
 export function renderBatchPlan(plan, fallbackHostUrl, _qualityScoringEnabled = true, executionMode = 'latency') {
     if (!plan) {
-        const judgeModel = state.currentJudgeConfig.model || '(server default)';
+        const judgeModel = state.currentJudgeConfig.model || '(not set)';
         const exec = fallbackHostUrl ? formatHostLabel(fallbackHostUrl) : '(unknown)';
-        const judgeHostUrl = state.currentJudgeConfig.judge_same_host ? fallbackHostUrl : inferOppositeHostUrl(fallbackHostUrl, state.ollamaHosts);
-        const judgeHost = formatHostLabel(judgeHostUrl);
-
-        const modeIcon = executionMode === 'throughput' ? '\uD83D\uDD25' : '\u26A1';
-        const modeLabel = executionMode === 'throughput' ? 'Throughput Mode' : 'Latency Mode';
-        const modeColor = executionMode === 'throughput' ? 'warning' : 'info';
+        const judgeHost = formatHostLabel(state.currentJudgeConfig.host || '');
         const execConfig = state.currentExecutionConfig || {};
         const maxTokens = execConfig.response_max_tokens || 32000;
+        const judgeNumCtx = Number((state.currentJudgeConfig && state.currentJudgeConfig.num_ctx) || 8192);
 
         return `
-            <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
-                <span class="badge bg-light text-dark border">Exec: ${exec}</span>
-                <span class="text-muted">-</span>
-                <span class="badge bg-light text-dark border">Judge: ${judgeModel}</span>
-                <span class="text-muted">-</span>
-                <span class="badge bg-light text-dark border">Judge Host: ${judgeHost}</span>
-                <span class="text-muted">-</span>
-                <span class="badge bg-${modeColor} text-dark">${modeIcon} ${modeLabel}</span>
-                <span class="text-muted">-</span>
-                <span class="badge bg-light text-dark border">Max: ${maxTokens} tokens</span>
+            <div class="batch-plan-shell">
+                <div class="batch-plan-header">
+                    <div class="batch-plan-title">
+                        <span class="batch-plan-chip is-emphasis"><i class="fas fa-server"></i>${escapeHtml(exec)}</span>
+                        <span class="batch-plan-chip"><i class="fas fa-gavel"></i>${escapeHtml(judgeModel)}</span>
+                        <span class="batch-plan-chip is-host">${escapeHtml(judgeHost || '(not set)')}</span>
+                    </div>
+                    <div class="batch-plan-meta">
+                        <span class="batch-plan-chip">Max ${maxTokens} tokens</span>
+                        <span class="batch-plan-chip">${judgeNumCtx.toLocaleString()} judge ctx</span>
+                    </div>
+                </div>
             </div>
         `;
     }
@@ -308,12 +307,10 @@ export function renderBatchPlan(plan, fallbackHostUrl, _qualityScoringEnabled = 
     const judgeModel = plan.judge_model || state.currentJudgeConfig.model || '(server default)';
     const modeIcon = executionMode === 'throughput' ? '\uD83D\uDD25' : '\u26A1';
     const modeLabel = executionMode === 'throughput' ? 'Throughput Mode' : 'Latency Mode';
-    const modeColor = executionMode === 'throughput' ? 'warning' : 'info';
     const execConfig = plan.execution_config || state.currentExecutionConfig || {};
     const maxTokens = execConfig.response_max_tokens || 32000;
     const hasLengthHint = execConfig.include_length_hint;
     const hasCustomHint = execConfig.custom_hint && execConfig.custom_hint.trim();
-    const hasAnyHint = hasLengthHint || hasCustomHint;
     const categories = Array.isArray(plan.categories) ? plan.categories : [];
     const {
         totalCategoryPrompts,
@@ -330,100 +327,96 @@ export function renderBatchPlan(plan, fallbackHostUrl, _qualityScoringEnabled = 
         ? (() => {
             const known = (state.ollamaHosts || []).find(h => h.url === planJudgeHostRaw);
             return known ? known.name : planJudgeHostRaw.replace(/^https?:\/\//, '').replace(/:11434$/, '');
-          })()
-        : '(auto)';
-    const planAutoUpgrade = !!(state.currentJudgeConfig && state.currentJudgeConfig.judge_tier_auto_upgrade);
+        })()
+        : '(not set)';
+    const planJudgeNumCtx = Number(plan.judge_num_ctx || (state.currentJudgeConfig && state.currentJudgeConfig.num_ctx) || 8192);
     const planConcurrency = (state.currentJudgeConfig && state.currentJudgeConfig.concurrency) || 2;
     const planTimeoutSec = Math.round(((state.currentJudgeConfig && state.currentJudgeConfig.timeout) || 120000) / 1000);
-    const planSameHost = !!(state.currentJudgeConfig && state.currentJudgeConfig.judge_same_host);
-    const upgradeLabel = planAutoUpgrade
-        ? `<span class="badge ms-1" style="background:rgba(231,76,60,0.15);color:#e74c3c;border:1px solid rgba(231,76,60,0.3);font-size:0.78em;">⚡ Auto-upgrade</span>`
-        : `<span class="badge ms-1" style="background:rgba(39,174,96,0.12);color:#27ae60;border:1px solid rgba(39,174,96,0.25);font-size:0.78em;">✓ Fixed model</span>`;
+    const hintParts = [];
+    if (hasLengthHint) hintParts.push('Length');
+    if (hasCustomHint) hintParts.push('Custom');
 
-    html += `<div class="d-flex align-items-center mb-3 p-2 bg-light rounded border flex-wrap gap-1">`;
-    html += `<i class="fas fa-gavel me-2 text-primary"></i>`;
-    html += `<strong class="me-2">Judge Model:</strong>`;
-    html += `<span class="badge bg-primary me-2">${judgeModel}</span>`;
-    html += upgradeLabel;
-    html += `<span class="text-muted mx-2">-</span>`;
-    html += `<span style="color:var(--muted,#888);font-size:0.85em;"><i class="fas fa-server me-1"></i>Judge Host:</span>`;
-    html += `<span class="badge bg-light text-dark border ms-1 me-2" style="font-size:0.82em;" title="${escapeHtml(planJudgeHostRaw || 'auto')}">${escapeHtml(planJudgeHostLabel)}</span>`;
-    html += `<span class="text-muted me-2">-</span>`;
-    html += `<span class="badge bg-${modeColor} text-dark">${modeIcon} ${modeLabel}</span>`;
-    html += `<span class="text-muted mx-2">-</span>`;
-    html += `<span class="badge bg-light text-dark border">Max: ${maxTokens} tokens</span>`;
-    html += `<span class="text-muted mx-2">-</span>`;
-    html += `<span class="badge bg-light text-dark border" title="Parallel judge requests">` +
-        `<i class="fas fa-layer-group me-1"></i>×${planConcurrency} concurrent</span>`;
-    html += `<span class="badge bg-light text-dark border" title="Judge timeout per request">` +
-        `<i class="fas fa-clock me-1"></i>${planTimeoutSec}s timeout</span>`;
-    if (planSameHost) {
-        html += `<span class="badge" style="background:rgba(230,126,34,0.15);color:#e67e22;` +
-            `border:1px solid rgba(230,126,34,0.35);" title="Judge runs on execution host (no cross-host pipelining)">` +
-            `<i class="fas fa-exchange-alt me-1"></i>Same-host</span>`;
-    }
-    if (hasAnyHint) {
-        html += `<span class="text-muted mx-2">-</span>`;
-        html += `<span class="badge" style="background: rgba(155, 89, 182, 0.2); color: #9b59b6; border: 1px solid rgba(155, 89, 182, 0.4);">`;
-        html += `<i class="fas fa-magic"></i> Hints: `;
-        const hintParts = [];
-        if (hasLengthHint) hintParts.push('Length');
-        if (hasCustomHint) hintParts.push('Custom');
-        html += hintParts.join(' + ');
-        html += `</span>`;
+    html += `<div class="batch-plan-shell">`;
+    html += `<div class="batch-plan-header">`;
+    html += `<div class="batch-plan-title">`;
+    html += `<strong>Active batch configuration</strong>`;
+    html += `<span class="batch-plan-chip is-emphasis"><i class="fas fa-gavel"></i>${escapeHtml(judgeModel)}</span>`;
+    html += `<span class="batch-plan-chip is-success">Pinned judge</span>`;
+    html += `<span class="batch-plan-chip is-host" title="${escapeHtml(planJudgeHostRaw || '(not set)')}"><i class="fas fa-server"></i>${escapeHtml(planJudgeHostLabel)}</span>`;
+    html += `</div>`;
+    html += `<div class="batch-plan-meta">`;
+    html += `<span class="batch-plan-chip">${modeIcon} ${modeLabel}</span>`;
+    html += `<span class="batch-plan-chip">Max ${maxTokens} tokens</span>`;
+    html += `<span class="batch-plan-chip"><i class="fas fa-ruler-horizontal"></i>${planJudgeNumCtx.toLocaleString()} judge ctx</span>`;
+    html += `<span class="batch-plan-chip"><i class="fas fa-layer-group"></i>×${planConcurrency} concurrent</span>`;
+    html += `<span class="batch-plan-chip"><i class="fas fa-clock"></i>${planTimeoutSec}s timeout</span>`;
+    if (hintParts.length) {
+        html += `<span class="batch-plan-chip"><i class="fas fa-magic"></i>Hints: ${hintParts.join(' + ')}</span>`;
     }
     html += `</div>`;
-
-    html += `<div class="card mb-3 shadow-0 border">`;
-    html += `<div class="card-header py-2 bg-light"><strong>Run Snapshot</strong></div>`;
-    html += `<div class="card-body py-2">`;
-    html += `<div class="d-flex flex-wrap gap-2">`;
-    html += `<span class="badge bg-light text-dark border">Categories: ${categoryCount}</span>`;
-    html += `<span class="badge bg-light text-dark border">Prompts: ${totalCategoryPrompts}</span>`;
-    html += `<span class="badge bg-light text-dark border">Projected Tests: ${projectedTests}</span>`;
     html += `</div>`;
-    html += `</div></div>`;
 
+    html += `<div class="batch-plan-grid">`;
+    html += `<div class="batch-plan-section">`;
+    html += `<div class="batch-plan-section-header"><i class="fas fa-chart-pie"></i>Run Snapshot</div>`;
+    html += `<div class="batch-plan-section-body">`;
+    html += `<div class="batch-plan-stats">`;
+    html += `<div class="batch-plan-stat"><div class="batch-plan-stat-label">Categories</div><div class="batch-plan-stat-value">${categoryCount}</div></div>`;
+    html += `<div class="batch-plan-stat"><div class="batch-plan-stat-label">Prompts</div><div class="batch-plan-stat-value">${totalCategoryPrompts}</div></div>`;
+    html += `<div class="batch-plan-stat"><div class="batch-plan-stat-label">Projected Tests</div><div class="batch-plan-stat-value">${projectedTests}</div></div>`;
+    html += `</div>`;
+    html += `</div>`;
+    html += `</div>`;
+
+    html += `<div class="batch-plan-section">`;
+    html += `<div class="batch-plan-section-header"><i class="fas fa-network-wired"></i>Execution Nodes</div>`;
+    html += `<div class="batch-plan-section-body">`;
     if (Array.isArray(plan.exec_hosts) && plan.exec_hosts.length > 0) {
-        html += `<div class="card mb-3 shadow-0 border">`;
-        html += `<div class="card-header py-2 bg-light"><strong>Execution Nodes</strong></div>`;
-        html += `<ul class="list-group list-group-flush">`;
+        html += `<div class="batch-node-list">`;
         for (const h of plan.exec_hosts) {
             const execLabel = formatHostLabel(h.exec_host);
             const judgeLabel = formatHostLabel(h.judge_host);
-            const modelCount = Array.isArray(h.models) ? h.models.length : 0;
-            html += `<li class="list-group-item p-2">`;
-            html += `<div class="row align-items-center g-2">`;
-            html += `<div class="col-md-5"><small class="text-muted d-block">Execution Host</small><span class="text-break font-monospace" style="font-size: 0.9em;">${execLabel}</span></div>`;
-            html += `<div class="col-md-5"><small class="text-muted d-block">Judge Host</small><span class="text-break font-monospace" style="font-size: 0.9em;">${judgeLabel}</span></div>`;
-            html += `<div class="col-md-2 text-end">`;
-            html += `<span class="badge bg-secondary mb-1 d-inline-block" title="Models">${modelCount} models</span><br>`;
-            html += `<span class="badge bg-info text-dark" title="Tests">${h.tests} tests</span>`;
-            html += `</div></div></li>`;
+            const nodeModelCount = Array.isArray(h.models) ? h.models.length : 0;
+            html += `<div class="batch-node-card">`;
+            html += `<div class="batch-node-hosts">`;
+            html += `<div><span class="batch-node-host-label">Execution Host</span><div class="batch-node-host-value">${escapeHtml(execLabel)}</div></div>`;
+            html += `<div><span class="batch-node-host-label">Judge Host</span><div class="batch-node-host-value">${escapeHtml(judgeLabel)}</div></div>`;
+            html += `</div>`;
+            html += `<div class="batch-node-metrics">`;
+            html += `<span class="batch-node-metric">${nodeModelCount} models</span>`;
+            html += `<span class="batch-node-metric">${h.tests} tests</span>`;
+            html += `</div>`;
+            html += `</div>`;
         }
-        html += `</ul></div>`;
+        html += `</div>`;
+    } else {
+        html += `<div class="batch-plan-stat-label">No execution nodes resolved yet.</div>`;
     }
+    html += `</div>`;
+    html += `</div>`;
 
     if (categories.length > 0) {
-        html += `<div class="card shadow-0 border">`;
-        html += `<div class="card-header py-2 bg-light"><strong>Workload Breakdown</strong></div>`;
-        html += `<div class="table-responsive">`;
-        html += `<table class="table table-sm table-striped mb-0 align-middle" style="font-size: 0.9em;">`;
-        html += `<thead class="table-light"><tr><th>Category</th><th class="text-center">Prompts</th><th class="text-center">Models</th><th class="text-end">Total Tests</th></tr></thead>`;
+        html += `<div class="batch-plan-section" style="grid-column: 1 / -1;">`;
+        html += `<div class="batch-plan-section-header"><i class="fas fa-table-list"></i>Workload Breakdown</div>`;
+        html += `<div class="batch-plan-section-body">`;
+        html += `<div style="overflow-x:auto;">`;
+        html += `<table class="batch-workload-table">`;
+        html += `<thead><tr><th>Category</th><th class="num">Prompts</th><th class="num">Models</th><th class="num">Total Tests</th></tr></thead>`;
         html += `<tbody>`;
         for (const c of categories) {
             const categoryLabel = escapeHtml(String(c.category || 'uncategorized'));
             const promptCount = Number(c.prompt_count) || 0;
             html += `<tr>`;
-            html += `<td class="fw-bold"><span class="badge bg-light text-dark border text-capitalize">${categoryLabel}</span></td>`;
-            html += `<td class="text-center"><span class="badge bg-light text-dark">${promptCount}</span></td>`;
-            html += `<td class="text-center">${plan.total_models}</td>`;
-            html += `<td class="text-end fw-bold">${c.tests}</td>`;
+            html += `<td><span class="batch-workload-category">${categoryLabel}</span></td>`;
+            html += `<td class="num">${promptCount}</td>`;
+            html += `<td class="num">${plan.total_models}</td>`;
+            html += `<td class="num">${c.tests}</td>`;
             html += `</tr>`;
         }
-        html += `</tbody></table></div></div>`;
+        html += `</tbody></table></div></div></div>`;
     }
 
+    html += `</div></div>`;
     return html;
 }
 

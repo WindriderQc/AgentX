@@ -256,7 +256,7 @@ export function renderJudgeBreakdownTable({ groupBy, groups }) {
             <th>${escapeHtml(groupLabel)}</th>
             <th>Evaluations</th>
             <th>Avg Judge Latency</th>
-            <th>Success Rate</th>
+            <th>Eval Success</th>
             <th>Avg Score Given</th>
             <th>Avg Test Tokens</th>
         </tr>

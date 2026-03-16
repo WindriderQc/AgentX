@@ -295,6 +295,25 @@
             transform: translateY(-1px);
         }
 
+        .segment-judge-failed {
+            background:
+                repeating-linear-gradient(
+                    135deg,
+                    rgba(245, 158, 11, 0.95) 0px,
+                    rgba(245, 158, 11, 0.95) 8px,
+                    rgba(120, 53, 15, 0.95) 8px,
+                    rgba(120, 53, 15, 0.95) 16px
+                );
+            color: #1f1300;
+            box-shadow: 0 2px 8px rgba(245, 158, 11, 0.4);
+            transition: all 0.3s ease;
+        }
+
+        .segment-judge-failed:hover {
+            box-shadow: 0 4px 16px rgba(245, 158, 11, 0.55);
+            transform: translateY(-1px);
+        }
+
         .segment-warmup {
             background: linear-gradient(135deg, rgba(100, 116, 139, 0.9) 0%, rgba(148, 163, 184, 0.9) 100%);
             color: #0b1220;
@@ -1850,12 +1869,361 @@
             gap: 15px;
             align-items: center;
             margin-top: 20px;
+            flex-wrap: wrap;
         }
 
         .batch-controls span {
             color: var(--muted);
             font-weight: 400;
             font-size: 0.9em;
+        }
+
+        .batch-runtime-shell {
+            display: grid;
+            gap: 14px;
+            margin-top: 16px;
+        }
+
+        .judge-config-preview:empty,
+        .batch-live-plan:empty {
+            display: none;
+        }
+
+        .judge-preview-card {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+            padding: 12px 14px;
+            background: linear-gradient(135deg, rgba(124, 240, 255, 0.08), rgba(124, 240, 255, 0.03));
+            border: 1px solid rgba(124, 240, 255, 0.18);
+            border-radius: 12px;
+        }
+
+        .judge-preview-label {
+            color: var(--muted, #888);
+            font-weight: 600;
+            margin-right: 2px;
+        }
+
+        .judge-preview-badge,
+        .judge-preview-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            min-height: 32px;
+            padding: 6px 10px;
+            border-radius: 999px;
+            font-size: 0.82em;
+            line-height: 1.2;
+        }
+
+        .judge-preview-badge {
+            background: rgba(255, 255, 255, 0.07);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            color: var(--text);
+        }
+
+        .judge-preview-badge.is-model {
+            background: rgba(124, 240, 255, 0.14);
+            border-color: rgba(124, 240, 255, 0.24);
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        .judge-preview-badge.is-host {
+            max-width: min(100%, 380px);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .judge-preview-pill {
+            background: rgba(39, 174, 96, 0.12);
+            color: #4ade80;
+            border: 1px solid rgba(39, 174, 96, 0.28);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+
+        .judge-preview-separator {
+            color: rgba(255, 255, 255, 0.24);
+            font-size: 0.9em;
+        }
+
+        .batch-live-plan {
+            color: var(--muted);
+            line-height: 1.5;
+        }
+
+        .batch-live-plan.is-summary {
+            padding: 0 2px;
+            font-size: 0.95em;
+        }
+
+        .batch-plan-shell {
+            display: grid;
+            gap: 16px;
+            padding: 18px;
+            background:
+                linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01)),
+                rgba(9, 14, 24, 0.6);
+            border: 1px solid rgba(124, 240, 255, 0.12);
+            border-radius: 16px;
+        }
+
+        .batch-plan-header {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            gap: 12px;
+            align-items: flex-start;
+        }
+
+        .batch-plan-title {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .batch-plan-title strong {
+            color: var(--text);
+            font-size: 1em;
+        }
+
+        .batch-plan-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            justify-content: flex-end;
+        }
+
+        .batch-plan-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            min-height: 34px;
+            padding: 7px 11px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--text);
+            font-size: 0.82em;
+        }
+
+        .batch-plan-chip.is-emphasis {
+            background: rgba(124, 240, 255, 0.12);
+            border-color: rgba(124, 240, 255, 0.22);
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        .batch-plan-chip.is-success {
+            background: rgba(39, 174, 96, 0.12);
+            border-color: rgba(39, 174, 96, 0.26);
+            color: #4ade80;
+        }
+
+        .batch-plan-chip.is-host {
+            max-width: 100%;
+        }
+
+        .batch-plan-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1.4fr) minmax(320px, 1fr);
+            gap: 16px;
+            align-items: start;
+        }
+
+        .batch-plan-section {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 14px;
+            overflow: hidden;
+        }
+
+        .batch-plan-section-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 14px;
+            background: rgba(255, 255, 255, 0.04);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            color: var(--text);
+            font-size: 0.86em;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
+        .batch-plan-section-body {
+            padding: 14px;
+        }
+
+        .batch-plan-stats {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(120px, 1fr));
+            gap: 12px;
+        }
+
+        .batch-plan-stat {
+            padding: 12px;
+            border-radius: 12px;
+            background: rgba(0, 0, 0, 0.18);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .batch-plan-stat-label {
+            color: var(--muted);
+            font-size: 0.74em;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .batch-plan-stat-value {
+            margin-top: 6px;
+            color: var(--text);
+            font-size: 1.35em;
+            font-weight: 700;
+            line-height: 1.1;
+        }
+
+        .batch-node-list {
+            display: grid;
+            gap: 12px;
+        }
+
+        .batch-node-card {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 12px;
+            padding: 12px;
+            border-radius: 12px;
+            background: rgba(0, 0, 0, 0.18);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .batch-node-hosts {
+            display: grid;
+            gap: 10px;
+        }
+
+        .batch-node-host-label {
+            display: block;
+            margin-bottom: 4px;
+            color: var(--muted);
+            font-size: 0.72em;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .batch-node-host-value {
+            color: var(--text);
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-size: 0.88em;
+            word-break: break-word;
+        }
+
+        .batch-node-metrics {
+            display: grid;
+            gap: 8px;
+            align-content: start;
+            justify-items: end;
+        }
+
+        .batch-node-metric {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 110px;
+            padding: 7px 10px;
+            border-radius: 999px;
+            background: rgba(124, 240, 255, 0.1);
+            border: 1px solid rgba(124, 240, 255, 0.18);
+            color: var(--text);
+            font-size: 0.8em;
+            font-weight: 600;
+        }
+
+        .batch-workload-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.88em;
+        }
+
+        .batch-workload-table th,
+        .batch-workload-table td {
+            padding: 10px 8px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .batch-workload-table th {
+            color: var(--muted);
+            font-size: 0.74em;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .batch-workload-table td {
+            color: var(--text);
+        }
+
+        .batch-workload-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .batch-workload-table td.num,
+        .batch-workload-table th.num {
+            text-align: right;
+            white-space: nowrap;
+        }
+
+        .batch-workload-category {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 8px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            color: var(--text);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            font-size: 0.78em;
+        }
+
+        @media (max-width: 1180px) {
+            .batch-plan-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 720px) {
+            .batch-plan-shell {
+                padding: 14px;
+            }
+
+            .batch-plan-meta {
+                justify-content: flex-start;
+            }
+
+            .batch-plan-stats {
+                grid-template-columns: 1fr;
+            }
+
+            .batch-node-card {
+                grid-template-columns: 1fr;
+            }
+
+            .batch-node-metrics {
+                justify-items: start;
+            }
+
+            .judge-preview-separator {
+                display: none;
+            }
         }
 
         .batch-history {

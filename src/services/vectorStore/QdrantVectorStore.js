@@ -22,6 +22,7 @@ class QdrantVectorStore extends VectorStoreAdapter {
     super(config);
     this.host = config.host || config.url || process.env.QDRANT_URL || process.env.QDRANT_HOST || 'http://localhost:6333';
     this.collection = config.collection || process.env.QDRANT_COLLECTION || 'agentx_embeddings';
+    this.vectorSize = Number(config.vectorSize || config.dimension || process.env.EMBEDDING_DIMENSION || 768);
     this.fetch = require('node-fetch');
     this.initialized = false;
   }
@@ -43,7 +44,7 @@ class QdrantVectorStore extends VectorStoreAdapter {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             vectors: {
-              size: 768, // nomic-embed-text dimension
+              size: this.vectorSize,
               distance: 'Cosine'
             },
             optimizers_config: {

@@ -73,10 +73,17 @@ export async function compareBatches() {
                         <td>${calculateDelta(data.comparison, 'total_tests')}</td>
                     </tr>
                     <tr>
-                        <td>Success Rate</td>
-                        ${data.comparison.map(b => `<td>${formatPercent(b.success_rate)}</td>`).join('')}
-                        <td class="${getDeltaClass(data.comparison, 'success_rate')}">
-                            ${calculateDelta(data.comparison, 'success_rate')}%
+                        <td>Exec Success</td>
+                        ${data.comparison.map(b => `<td>${formatPercent(b.exec_success_rate ?? b.success_rate)}</td>`).join('')}
+                        <td class="${getDeltaClass(data.comparison.map(b => ({ exec_success_rate: b.exec_success_rate ?? b.success_rate })), 'exec_success_rate')}">
+                            ${calculateDelta(data.comparison.map(b => ({ exec_success_rate: b.exec_success_rate ?? b.success_rate })), 'exec_success_rate')}%
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>Full Pass</td>
+                        ${data.comparison.map(b => `<td>${formatPercent(b.full_pass_rate)}</td>`).join('')}
+                        <td class="${getDeltaClass(data.comparison, 'full_pass_rate')}">
+                            ${calculateDelta(data.comparison, 'full_pass_rate')}%
                         </td>
                     </tr>
                     <tr>
@@ -146,8 +153,9 @@ export function exportComparisonCSV() {
     // Total Tests
     rows.push(['Total Tests', ...data.map(b => b.total_tests), getDelta('total_tests')]);
 
-    // Success Rate
-    rows.push(['Success Rate', ...data.map(b => b.success_rate + '%'), getDelta('success_rate') + '%']);
+    // Exec Success
+    rows.push(['Exec Success', ...data.map(b => (b.exec_success_rate ?? b.success_rate) + '%'), calculateDelta(data.map(b => ({ exec_success_rate: b.exec_success_rate ?? b.success_rate })), 'exec_success_rate') + '%']);
+    rows.push(['Full Pass', ...data.map(b => (b.full_pass_rate ?? 0) + '%'), getDelta('full_pass_rate') + '%']);
 
     // Avg Quality
     rows.push(['Avg Quality', ...data.map(b => b.avg_quality !== null ? b.avg_quality : 'N/A'), getDelta('avg_quality')]);

@@ -409,7 +409,7 @@ body {
 .weight-pill .weight-pct { font-size: 14px; font-weight: 700; color: var(--text-primary); }
 .weight-pill#weightQuality .weight-pct { color: var(--success); }
 .weight-pill#weightSpeed .weight-pct { color: var(--info); }
-.weight-pill#weightReliability .weight-pct { color: var(--warning); }
+.weight-pill#weightFullPass .weight-pct { color: var(--warning); }
 
 .profile-note { font-size: 12px; color: var(--text-muted); font-style: italic; margin: 0; }
 
@@ -462,10 +462,10 @@ body {
 .composite-col { color: var(--accent); }
 .latency-col, .tokens-col, .tests-col { color: var(--text-secondary); }
 
-.reliability-col { font-weight: 500; }
-.reliability-col.high { color: var(--success); }
-.reliability-col.medium { color: var(--warning); }
-.reliability-col.low { color: var(--error); }
+.full-pass-col { font-weight: 500; }
+.full-pass-col.high { color: var(--success); }
+.full-pass-col.medium { color: var(--warning); }
+.full-pass-col.low { color: var(--error); }
 
 .coverage-col .coverage-wrapper { display: inline-flex; align-items: center; gap: 8px; }
 .coverage-bar { width: 60px; height: 6px; background: var(--bg-tertiary); border-radius: 3px; overflow: hidden; }

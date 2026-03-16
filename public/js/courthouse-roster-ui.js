@@ -77,6 +77,39 @@
         return `<span style="color:${color};">${label}</span>`;
     }
 
+    function formatCtx(numCtx) {
+        if (numCtx === null || numCtx === undefined) return '—';
+        return `${Number(numCtx).toLocaleString()} ctx`;
+    }
+
+    function contextSourceLabel(source) {
+        const labels = {
+            override: 'override',
+            context_test: 'probed',
+            execution_default: 'registry',
+            capabilities: 'legacy'
+        };
+        return labels[source] || source || 'unknown';
+    }
+
+    function renderContextCell(judge) {
+        const ctx = judge.contextWindow || {};
+        if (!ctx.effectiveNumCtx) {
+            return '<span style="color:var(--muted);font-size:0.82em;">—</span>';
+        }
+
+        const detailParts = [];
+        if (ctx.probedNumCtx) detailParts.push(`Probed ${formatCtx(ctx.probedNumCtx)}`);
+        if (ctx.defaultNumCtx) detailParts.push(`Registry ${formatCtx(ctx.defaultNumCtx)}`);
+        if (ctx.overrideNumCtx) detailParts.push(`Override ${formatCtx(ctx.overrideNumCtx)}`);
+
+        return `<div style="display:flex;flex-direction:column;gap:4px;align-items:center;">
+            <div style="font-weight:600;">${formatCtx(ctx.effectiveNumCtx)}</div>
+            <div style="font-size:0.74em;color:var(--muted);">${esc(contextSourceLabel(ctx.source))}</div>
+            <div style="font-size:0.72em;color:var(--muted);text-align:center;">${esc(detailParts.join(' · ') || 'No probe data')}</div>
+        </div>`;
+    }
+
     function renderCuratedTierCell(judge, tierDefinitions) {
         const tierMeta = judge.tierMeta || {};
         const curatedTier = tierMeta.curatedTier || judge.tier || '';
@@ -171,6 +204,7 @@
             <td style="padding:10px 8px;text-align:center;vertical-align:middle;">${renderTierSourceCell(judge, tierDefinitions)}</td>
             <td style="padding:10px 8px;text-align:center;vertical-align:middle;">${renderCuratedTierCell(judge, tierDefinitions)}</td>
             <td style="padding:10px 8px;text-align:center;vertical-align:middle;">${recommendedDetail}</td>
+            <td style="padding:10px 8px;text-align:center;vertical-align:middle;">${renderContextCell(judge)}</td>
             <td style="padding:10px 8px;text-align:center;vertical-align:middle;">${reliabilityBadge(judge.reliability)}</td>
             <td style="padding:10px 8px;text-align:center;vertical-align:middle;">${latencyBadge(judge.avgLatencyMs)}</td>
             <td style="padding:10px 8px;text-align:center;vertical-align:middle;">${evalCount}</td>
@@ -229,7 +263,7 @@
             : '<span style="color:var(--muted);font-size:0.85em;font-style:italic;">No host default set</span>';
 
         const rows = judges.length === 0
-            ? `<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--muted);">
+            ? `<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--muted);">
                 <i class="fas fa-ghost"></i> No judge-capable models detected on this host
                </td></tr>`
             : judges.map((judge) => renderJudgeRow(judge, judge.modelName === defaultModel, tierDefinitions)).join('');
@@ -261,6 +295,7 @@
                             <th style="padding:8px;font-size:0.8em;color:var(--muted);font-weight:600;text-align:center;">Effective</th>
                             <th style="padding:8px;font-size:0.8em;color:var(--muted);font-weight:600;text-align:center;">Curated</th>
                             <th style="padding:8px;font-size:0.8em;color:var(--muted);font-weight:600;text-align:center;">Cal/Rec</th>
+                            <th style="padding:8px;font-size:0.8em;color:var(--muted);font-weight:600;text-align:center;">Context</th>
                             <th style="padding:8px;font-size:0.8em;color:var(--muted);font-weight:600;text-align:center;">Reliability</th>
                             <th style="padding:8px;font-size:0.8em;color:var(--muted);font-weight:600;text-align:center;">Avg Latency</th>
                             <th style="padding:8px;font-size:0.8em;color:var(--muted);font-weight:600;text-align:center;">Evals</th>
@@ -274,6 +309,7 @@
                 font-size:0.8em;color:var(--muted);display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                 <i class="fas fa-info-circle"></i>
                 <span>Tier coverage: ${coverageBadges || '<em>none</em>'}</span>
+                <span style="margin-left:8px;">Context comes from override, probe, or registry metadata.</span>
                 <span style="margin-left:8px;">${renderLevelPolicy(rosterData.levelRequirements || [], tierDefinitions)}</span>
             </div>
         </div>`;

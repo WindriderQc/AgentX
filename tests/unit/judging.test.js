@@ -19,6 +19,10 @@ jest.mock('../../models/BenchmarkResult', () => ({
     countDocuments: jest.fn()
 }));
 
+jest.mock('../../models/BenchmarkPrompt', () => ({
+    findOne: jest.fn()
+}));
+
 jest.mock('../../models/BenchmarkBatch', () => ({
     findById: jest.fn(),
     updateOne: jest.fn()
@@ -53,6 +57,7 @@ jest.mock('../../src/services/benchmark/ConcurrencyQueue', () => {
 });
 
 const BenchmarkResult = require('../../models/BenchmarkResult');
+const BenchmarkPrompt = require('../../models/BenchmarkPrompt');
 const BenchmarkBatch = require('../../models/BenchmarkBatch');
 const { scoreResponse, calculateCompositeScore } = require('../../src/services/qualityScorer');
 const { classifyBenchmarkError } = require('../../src/services/benchmark/errorClassifier');
@@ -182,6 +187,8 @@ describe('judgeResult', () => {
         prompt_category: 'reasoning',
         expected_answer: '42',
         scoring_type: 'reasoning',
+        scoring_dimensions: [{ name: 'accuracy', weight: 1, description: 'correctness' }],
+        prompt_snapshot_embedded: true,
         judge_model: 'test-judge:latest',
         judge_host: 'http://localhost:11434',
         latency: 1000,
@@ -213,11 +220,13 @@ describe('judgeResult', () => {
         const result = await judgeResult('result-123');
 
         expect(BenchmarkResult.findById).toHaveBeenCalledWith('result-123');
+        expect(BenchmarkPrompt.findOne).not.toHaveBeenCalled();
         expect(scoreResponse).toHaveBeenCalledWith({
             response: 'The answer is 42',
             prompt: expect.objectContaining({
                 prompt: 'What is the meaning?',
                 name: 'test-prompt',
+                scoring_dimensions: [{ name: 'accuracy', weight: 1, description: 'correctness' }],
                 level: 3,
                 category: 'reasoning'
             }),

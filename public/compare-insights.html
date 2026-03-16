@@ -785,10 +785,17 @@
                                 <td>${calculateDelta(data?.comparison || [], 'total_tests')}</td>
                             </tr>
                             <tr>
-                                <td>Success Rate</td>
-                                ${(data?.comparison || []).map(b => `<td>${formatPercent(b.success_rate)}</td>`).join('')}
-                                <td class="${getDeltaClass(data?.comparison || [], 'success_rate')}">
-                                    ${calculateDelta(data?.comparison || [], 'success_rate')}%
+                                <td>Exec Success</td>
+                                ${(data?.comparison || []).map(b => `<td>${formatPercent(b.exec_success_rate ?? b.success_rate)}</td>`).join('')}
+                                <td class="${getDeltaClass((data?.comparison || []).map(b => ({ exec_success_rate: b.exec_success_rate ?? b.success_rate })), 'exec_success_rate')}">
+                                    ${calculateDelta((data?.comparison || []).map(b => ({ exec_success_rate: b.exec_success_rate ?? b.success_rate })), 'exec_success_rate')}%
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>Full Pass</td>
+                                ${(data?.comparison || []).map(b => `<td>${formatPercent(b.full_pass_rate)}</td>`).join('')}
+                                <td class="${getDeltaClass(data?.comparison || [], 'full_pass_rate')}">
+                                    ${calculateDelta(data?.comparison || [], 'full_pass_rate')}%
                                 </td>
                             </tr>
                             <tr>
@@ -850,7 +857,8 @@
 
             const rows = [
                 ['Total Tests', ...data.map(b => b.total_tests), calculateDelta(data, 'total_tests')],
-                ['Success Rate', ...data.map(b => formatPercent(b.success_rate)), `${calculateDelta(data, 'success_rate')}%`],
+                ['Exec Success', ...data.map(b => formatPercent(b.exec_success_rate ?? b.success_rate)), `${calculateDelta(data.map(b => ({ exec_success_rate: b.exec_success_rate ?? b.success_rate })), 'exec_success_rate')}%`],
+                ['Full Pass', ...data.map(b => formatPercent(b.full_pass_rate)), `${calculateDelta(data, 'full_pass_rate')}%`],
                 ['Avg Quality', ...data.map(b => (b.avg_quality !== null ? b.avg_quality : 'N/A')), calculateDelta(data, 'avg_quality')],
                 ['Avg Composite', ...data.map(b => (b.avg_composite !== null ? b.avg_composite : 'N/A')), calculateDelta(data, 'avg_composite')],
                 [
@@ -1007,8 +1015,11 @@
                 const statusColor = getBatchStatusColor(status);
                 const modelCount = Array.isArray(batch?.models) ? batch.models.length : 0;
                 const testCount = Number(batch?.total_tests) || 0;
-                const successRate = batch?.success_rate !== undefined && batch?.success_rate !== null
-                    ? formatPercent(batch.success_rate)
+                const execSuccessRate = batch?.exec_success_rate !== undefined && batch?.exec_success_rate !== null
+                    ? formatPercent(batch.exec_success_rate)
+                    : 'N/A';
+                const fullPassRate = batch?.full_pass_rate !== undefined && batch?.full_pass_rate !== null
+                    ? formatPercent(batch.full_pass_rate)
                     : 'N/A';
 
                 return `
@@ -1081,8 +1092,21 @@
                                         const quality = result?.quality_score !== null && result?.quality_score !== undefined
                                             ? escapeHtml(Number(result.quality_score).toFixed(1))
                                             : 'N/A';
-                                        const resultStatus = result?.success === false ? 'Failed' : 'Passed';
-                                        const resultColor = result?.success === false ? '#FF6B9D' : '#00FF9F';
+                                        const scoringMethod = String(result?.scoring_method || '').toLowerCase();
+                                        const resultStatus = result?.success === false
+                                            ? 'Exec Fail'
+                                            : (scoringMethod === 'llm_failed'
+                                                ? 'Judge Fail'
+                                                : (scoringMethod === 'pending'
+                                                    ? 'Pending'
+                                                    : 'Full Pass'));
+                                        const resultColor = result?.success === false
+                                            ? '#FF6B9D'
+                                            : (scoringMethod === 'llm_failed'
+                                                ? '#f1c40f'
+                                                : (scoringMethod === 'pending'
+                                                    ? '#94a3b8'
+                                                    : '#00FF9F'));
                                         return `
                                             <tr>
                                                 <td>${escapeHtml(result?.model || 'Unknown')}</td>
@@ -1115,8 +1139,12 @@
                             <div style="margin-top: 4px; font-size: 1.05em; color: var(--text); font-weight: 600;">${escapeHtml(batch?.completed ?? 0)} / ${escapeHtml(batch?.total_tests ?? 0)}</div>
                         </div>
                         <div style="padding: 10px; border-radius: 10px; background: rgba(255,255,255,0.03);">
-                            <div style="color: var(--muted); font-size: 0.8em;">Success Rate</div>
-                            <div style="margin-top: 4px; font-size: 1.05em; color: var(--text); font-weight: 600;">${escapeHtml(formatPercent(batch?.success_rate))}</div>
+                            <div style="color: var(--muted); font-size: 0.8em;">Exec Success</div>
+                            <div style="margin-top: 4px; font-size: 1.05em; color: var(--text); font-weight: 600;">${escapeHtml(execSuccessRate)}</div>
+                        </div>
+                        <div style="padding: 10px; border-radius: 10px; background: rgba(255,255,255,0.03);">
+                            <div style="color: var(--muted); font-size: 0.8em;">Full Pass</div>
+                            <div style="margin-top: 4px; font-size: 1.05em; color: var(--text); font-weight: 600;">${escapeHtml(fullPassRate)}</div>
                         </div>
                         <div style="padding: 10px; border-radius: 10px; background: rgba(255,255,255,0.03);">
                             <div style="color: var(--muted); font-size: 0.8em;">Duration</div>

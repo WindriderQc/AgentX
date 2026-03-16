@@ -18,11 +18,18 @@ const ModelRegistry = require('../../../models/ModelRegistry');
 const { BENCHMARK_CATEGORIES, CATEGORY_MIN_JUDGE_TIER } = require('../../../config/categories');
 const judgeTierResolver = require('../scoring/judgeTierResolver');
 const { JUDGE_CONFIG } = require('../qualityScorer');
+const { resolveEffectiveJudgeContext } = require('../scoring/judgeRuntimeConfig');
 const { benchmarkFetch: fetch } = require('./http');
 
 const MIN_PROMPTS_PER_CATEGORY = 3;
 const WARN_PROMPTS_PER_CATEGORY = 5;
 const HOST_CHECK_TIMEOUT_MS = 10000;
+const JUDGE_CONTEXT_ESTIMATE_BY_TIER = {
+    basic: 2048,
+    standard: 4096,
+    advanced: 6144,
+    premium: 8192
+};
 
 function normalizeModelName(modelName) {
     return String(modelName || '').trim().replace(/:latest$/i, '');
@@ -37,13 +44,6 @@ function normalizeHostUrl(hostUrl) {
 
 function compareTierRank(left, right) {
     return (judgeTierResolver.TIER_RANK[left] || 0) - (judgeTierResolver.TIER_RANK[right] || 0);
-}
-
-function resolveJudgeTier(modelName, registryTier) {
-    const inferredTier = judgeTierResolver.inferJudgeTier(modelName);
-    if (!registryTier) return inferredTier || null;
-    if (!inferredTier) return registryTier;
-    return compareTierRank(inferredTier, registryTier) > 0 ? inferredTier : registryTier;
 }
 
 function getStrongestRequiredTier(levels, categories) {
@@ -64,6 +64,14 @@ function getStrongestRequiredTier(levels, categories) {
     }
 
     return strongest;
+}
+
+function estimateJudgeInputTokens(requiredTier, levels = [], promptCategories = []) {
+    const baseEstimate = JUDGE_CONTEXT_ESTIMATE_BY_TIER[requiredTier] || 4096;
+    const highestLevel = Math.max(...((levels || []).length ? levels : [5]));
+    const levelBump = highestLevel >= 9 ? 512 : highestLevel >= 7 ? 256 : 0;
+    const categoryBump = Math.min((promptCategories || []).length * 64, 512);
+    return baseEstimate + levelBump + categoryBump;
 }
 
 /**
@@ -167,9 +175,10 @@ async function checkPromptCoverage(levels = [1, 2, 3, 4, 5]) {
     };
 }
 
-async function checkJudgeConfiguration(judgeConfig = {}, levels = [], promptCoverage = null) {
+async function checkJudgeConfiguration(judgeConfig = {}, levels = [], promptCoverage = null, _executionConfig = null) {
     const host = normalizeHostUrl(judgeConfig.host || JUDGE_CONFIG.host);
     const model = normalizeModelName(judgeConfig.model || JUDGE_CONFIG.model);
+    const normalizedJudgeConfig = { ...judgeConfig, host, model };
 
     if (!host || !model) {
         return {
@@ -200,10 +209,11 @@ async function checkJudgeConfiguration(judgeConfig = {}, levels = [], promptCove
         warnings.push(`Judge registry lookup failed: ${err.message}`);
     }
 
-    const resolvedTier = resolveJudgeTier(
-        model,
-        registryEntry?.capabilities?.judgeTier || null
+    const tierMeta = judgeTierResolver.resolveJudgeTierMetadata(
+        registryEntry?.capabilities || {},
+        model
     );
+    const resolvedTier = tierMeta.effectiveTier;
     const reliability = registryEntry?.capabilities?.judgeReliability ?? null;
     const avgJudgeLatencyMs = registryEntry?.capabilities?.avgJudgeLatencyMs ?? null;
     const meetsTier = resolvedTier
@@ -229,6 +239,26 @@ async function checkJudgeConfiguration(judgeConfig = {}, levels = [], promptCove
         warnings.push('Judge tier metadata unavailable; exactitude risk cannot be fully assessed');
     }
 
+    const estimatedJudgeInputTokens = estimateJudgeInputTokens(requiredTier, levels, promptCategories);
+    const judgeContext = await resolveEffectiveJudgeContext(normalizedJudgeConfig, {
+        fallbackNumCtx: registryEntry?.capabilities?.maxContext || JUDGE_CONFIG.num_ctx || 8192
+    });
+    const availableContextWindow = judgeContext.num_ctx;
+    const provenContextWindow = judgeContext.resolved_num_ctx;
+
+    if (judgeContext.override_exceeds_resolved) {
+        warnings.push(
+            `Judge num_ctx override ${judgeContext.requested_num_ctx} exceeds the proven/registry value ${provenContextWindow}. ` +
+            'This run will use the override, but host capacity may still be insufficient until the model is re-probed or registry data is updated.'
+        );
+    }
+
+    if (availableContextWindow < estimatedJudgeInputTokens) {
+        blockers.push(
+            `Judge '${model}' only has ~${availableContextWindow} tokens of context, but these prompts are estimated to need ~${estimatedJudgeInputTokens}. Increase judge num_ctx or use a judge with a larger context window.`
+        );
+    }
+
     if (typeof reliability === 'number') {
         if (reliability < 0.6) {
             blockers.push(`Judge reliability ${reliability.toFixed(2)} is below minimum 0.60`);
@@ -247,6 +277,13 @@ async function checkJudgeConfiguration(judgeConfig = {}, levels = [], promptCove
         resolved_tier: resolvedTier,
         reliability,
         avgJudgeLatencyMs,
+        available_context_window: availableContextWindow,
+        proven_context_window: provenContextWindow,
+        requested_context_window: judgeContext.requested_num_ctx || null,
+        context_window_source: judgeContext.source,
+        proven_context_source: judgeContext.resolved_source,
+        context_override_exceeds_proven: judgeContext.override_exceeds_resolved,
+        estimated_judge_input_tokens: estimatedJudgeInputTokens,
         warnings,
         blockers
     };
@@ -289,7 +326,7 @@ async function checkOrphanedBatches() {
  * @returns {Object} Full pre-flight report
  */
 async function runPreflight(options = {}) {
-    const { targets = [], judgeConfig = {}, levels = [1, 2, 3, 4, 5] } = options;
+    const { targets = [], judgeConfig = {}, levels = [1, 2, 3, 4, 5], executionConfig = null } = options;
     const uniqueTargets = [...new Map(
         (targets || [])
             .map((target) => ({
@@ -318,7 +355,7 @@ async function runPreflight(options = {}) {
         checkPromptCoverage(levels),
         checkOrphanedBatches()
     ]);
-    const judgeResult = await checkJudgeConfiguration(judgeConfig, levels, promptResult);
+    const judgeResult = await checkJudgeConfiguration(judgeConfig, levels, promptResult, executionConfig);
 
     checks.hosts = hostResults;
     checks.judge = judgeResult;

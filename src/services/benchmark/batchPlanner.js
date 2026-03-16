@@ -4,7 +4,6 @@
  */
 
 const { JUDGE_CONFIG } = require('../qualityScorer');
-const { HOSTS } = require('../modelRouter');
 const { normalizeExecutionConfig } = require('./config');
 
 /**
@@ -28,30 +27,15 @@ function buildExecutionPlan(host, models, selectedPrompts, options = {}) {
         modelsByHost[targetHost].push(model);
     }
 
-    const judgeSameHost = (judge_config && judge_config.judge_same_host !== undefined)
-        ? !!judge_config.judge_same_host
-        : false;
     const normalizedExecConfig = normalizeExecutionConfig(execution_config);
 
-    const execHosts = Object.entries(modelsByHost).map(([exec_host, hostModels]) => {
-        let judge_host = exec_host;
-        if (!judgeSameHost) {
-            judge_host = HOSTS.primary;
-            if (exec_host === HOSTS.primary) judge_host = HOSTS.secondary;
-            else if (exec_host === HOSTS.secondary) judge_host = HOSTS.primary;
-            // Fall back to same-host if resolved judge host is null or same as exec
-            if (!judge_host || judge_host === exec_host) {
-                judge_host = exec_host;
-            }
-        }
-
-        return {
-            exec_host,
-            judge_host,
-            models: hostModels,
-            tests: hostModels.length * selectedPrompts.length
-        };
-    });
+    const configuredJudgeHost = (judge_config && judge_config.host) ? judge_config.host : host;
+    const execHosts = Object.entries(modelsByHost).map(([exec_host, hostModels]) => ({
+        exec_host,
+        judge_host: configuredJudgeHost,
+        models: hostModels,
+        tests: hostModels.length * selectedPrompts.length
+    }));
 
     const categoryCounts = {};
     for (const p of selectedPrompts) {
@@ -73,7 +57,7 @@ function buildExecutionPlan(host, models, selectedPrompts, options = {}) {
     const plan = {
         exec_hosts: execHosts,
         judge_model: (judge_config && judge_config.model) ? judge_config.model : JUDGE_CONFIG.model,
-        judge_same_host: judgeSameHost,
+        judge_num_ctx: (judge_config && judge_config.num_ctx) ? judge_config.num_ctx : (JUDGE_CONFIG.num_ctx || null),
         execution_config: normalizedExecConfig,
         total_models: models.length,
         total_prompts: selectedPrompts.length,
@@ -85,7 +69,7 @@ function buildExecutionPlan(host, models, selectedPrompts, options = {}) {
         }
     };
 
-    return { plan, modelsByHost, normalizedExecutionConfig: normalizedExecConfig, judgeSameHost };
+    return { plan, modelsByHost, normalizedExecutionConfig: normalizedExecConfig };
 }
 
 module.exports = { buildExecutionPlan };

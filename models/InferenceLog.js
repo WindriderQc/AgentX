@@ -38,7 +38,7 @@ const InferenceLogSchema = new mongoose.Schema({
   },
   error: { type: String, default: null },
 
-  timestamp: { type: Date, default: Date.now, index: true }
+  timestamp: { type: Date, default: Date.now }
 }, {
   timestamps: false,
   collection: 'inferencelogs'

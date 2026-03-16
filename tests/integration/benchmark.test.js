@@ -75,7 +75,6 @@ jest.mock('../../src/services/benchmark/preflight', () => ({
 const { app } = require('../../src/app');
 const { runPreflight } = require('../../src/services/benchmark/preflight');
 const { validateJudgeModel } = require('../../src/services/benchmark/judgeModelValidator');
-const { _clearJudgeCandidateCache } = require('../../src/services/qualityScorer');
 
 const BenchmarkPrompt = require('../../models/BenchmarkPrompt');
 const BenchmarkResult = require('../../models/BenchmarkResult');
@@ -90,7 +89,6 @@ afterEach(async () => {
         await BenchmarkResult.deleteMany({});
         await BenchmarkBatch.deleteMany({});
         await ModelRegistry.deleteMany({});
-        _clearJudgeCandidateCache();
     } catch (err) {
         // Ignore cleanup errors during tests
     }
@@ -616,7 +614,7 @@ describe('Benchmark System - Integration Tests', () => {
                     models: ['test-model'],
                     levels: [1],
                     run_name: 'Test Batch',
-                    judge_config: { judge_same_host: true }
+                    judge_config: { host: 'http://localhost:11434', model: 'judge-model' }
                 });
 
             expect(response.status).toBe(200);
@@ -668,7 +666,7 @@ describe('Benchmark System - Integration Tests', () => {
                     host: 'http://localhost:11434',
                     models: ['model-a', 'model-b'],
                     levels: [1, 3],
-                    judge_config: { judge_same_host: true }
+                    judge_config: { host: 'http://localhost:11434', model: 'judge-model' }
                 });
 
             expect(response.status).toBe(200);
@@ -676,22 +674,9 @@ describe('Benchmark System - Integration Tests', () => {
             expect(response.body.data.total_tests).toBe(2 * promptsAtLevels);
         });
 
-        it('uses an auto-resolved judge candidate instead of a remembered legacy model during preflight', async () => {
+        it('uses the explicit judge config during validation and preflight', async () => {
             validateJudgeModel.mockClear();
             runPreflight.mockClear();
-            _clearJudgeCandidateCache();
-
-            await ModelRegistry.create({
-                modelName: 'qwen2.5:14b-instruct',
-                displayName: 'Qwen 14B Judge',
-                categories: ['judge'],
-                host: 'http://ugbrutal:11434',
-                capabilities: {
-                    curatedJudgeTier: 'advanced',
-                    judgeReliability: 0.98,
-                    avgJudgeLatencyMs: 1200
-                }
-            });
 
             const response = await request(app)
                 .post('/api/benchmark/batch')
@@ -700,23 +685,21 @@ describe('Benchmark System - Integration Tests', () => {
                     models: ['test-model'],
                     levels: [1],
                     judge_config: {
-                        mode: 'auto',
-                        model: 'qwen2.5:7b-instruct-q5_K_M',
-                        host: 'http://remembered-host:11434'
+                        host: 'http://judge-host:11434',
+                        model: 'qwen2.5:14b-instruct'
                     }
                 });
 
             expect(response.status).toBe(200);
             expect(validateJudgeModel).toHaveBeenCalledWith(
-                'http://ugbrutal:11434',
+                'http://judge-host:11434',
                 'qwen2.5:14b-instruct'
             );
             expect(runPreflight).toHaveBeenCalledWith(expect.objectContaining({
                 judgeConfig: expect.objectContaining({
-                    mode: 'auto',
+                    mode: 'pinned',
                     model: 'qwen2.5:14b-instruct',
-                    host: 'http://ugbrutal:11434',
-                    judge_tier_auto_upgrade: true
+                    host: 'http://judge-host:11434'
                 })
             }));
         });
@@ -757,7 +740,7 @@ describe('Benchmark System - Integration Tests', () => {
                     host: 'http://localhost:11434',
                     models: ['new-model'],
                     levels: [1],
-                    judge_config: { judge_same_host: true }
+                    judge_config: { host: 'http://localhost:11434', model: 'judge-model' }
                 });
 
             getActiveSpy.mockRestore();

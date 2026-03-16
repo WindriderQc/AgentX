@@ -82,13 +82,13 @@ async function runBatchOrchestrator({
         return false;
     };
     const resolveJudgeTargetForHost = async (hostUrl) => {
-        let { judgeHost: judgeHostUrl, effectiveJudgeSameHost, resolution: judgeHostResolution } = resolveJudgeHost(hostUrl, judgeConfig);
+        const { judgeHost: judgeHostUrl, resolution: judgeHostResolution } = resolveJudgeHost(hostUrl, judgeConfig);
         if (judgeHostResolution === 'explicit') {
             logger.info('Using explicit judge host override', { judgeHost: judgeHostUrl, execHost: hostUrl });
-        } else if (judgeHostResolution === 'fallback_same_host') {
-            logger.info('No separate judge host available, using same-host judging', { host: hostUrl });
+        } else {
+            logger.info('Using execution host as judge host default', { host: hostUrl });
         }
-        if (!effectiveJudgeSameHost) {
+        if (judgeHostUrl !== hostUrl) {
             const judgeModel = judgeConfig.model || JUDGE_CONFIG.model;
             await BenchmarkBatch.findOneAndUpdate({ _id: batchId }, {
                 $set: {
@@ -102,24 +102,10 @@ async function runBatchOrchestrator({
                     strict: true,
                     timeoutOverride: 90000
                 });
-                logger.info('Judge model ready on separate host', { host: judgeHostUrl, model: judgeModel });
-            } catch (warmupErr) {
-                logger.warn('Cross-host judge warmup failed, falling back to same-host judging', {
-                    judgeHost: judgeHostUrl,
-                    execHost: hostUrl,
-                    model: judgeModel,
-                    error: warmupErr.message
-                });
-                const originalJudgeHost = judgeHostUrl;
-                judgeHostUrl = hostUrl;
-                await recordBatchTimelineEvent('judge_warmup_fallback', {
-                    model: judgeModel,
-                    original_host: originalJudgeHost,
-                    fallback_host: hostUrl,
-                    error: warmupErr.message
-                });
+                logger.info('Judge model ready on configured host', { host: judgeHostUrl, model: judgeModel });
+            } finally {
+                await BenchmarkBatch.findOneAndUpdate({ _id: batchId }, { $set: { 'current_test.stage': 'idle' } });
             }
-            await BenchmarkBatch.findOneAndUpdate({ _id: batchId }, { $set: { 'current_test.stage': 'idle' } });
         }
         return judgeHostUrl;
     };
@@ -136,6 +122,25 @@ async function runBatchOrchestrator({
             logger.error('Failed to fetch batch object', { batchId, model, error: err.message });
             return null;
         }
+    };
+
+    const flushModelTimeline = async (entries) => {
+        if (!Array.isArray(entries) || entries.length === 0) {
+            return;
+        }
+
+        await BenchmarkBatch.updateOne(
+            { _id: batchId },
+            {
+                $push: {
+                    timeline: {
+                        $each: entries,
+                        $slice: -2500
+                    }
+                },
+                $set: { last_activity_at: new Date() }
+            }
+        );
     };
 
     const enqueueJudgeTask = async (model, prompt, judgeHostUrl, resultId) => {
@@ -220,7 +225,8 @@ async function runBatchOrchestrator({
         hintText,
         hardwareSnapshot,
         modelWarmupData,
-        currentBatch
+        currentBatch,
+        pendingModelTimeline
     }) => {
         const result = new BenchmarkResult({
             model,
@@ -231,7 +237,14 @@ async function runBatchOrchestrator({
             prompt_category: prompt.category,
             prompt_name: prompt.name,
             expected_answer: prompt.expected_answer,
+            scoring_type: prompt.scoring_type || null,
+            deterministic_scoring: prompt.deterministic_scoring || undefined,
+            scoring_dimensions: prompt.scoring_dimensions || undefined,
+            reference_answer: prompt.reference_answer || null,
+            output_contract: prompt.output_contract || undefined,
             judge_criteria: prompt.judge_criteria,
+            required_judge_tier: prompt.required_judge_tier || null,
+            prompt_snapshot_embedded: true,
             latency,
             tokens,
             tokens_per_sec: tokensPerSec,
@@ -265,16 +278,18 @@ async function runBatchOrchestrator({
         });
 
         await result.save();
-        await currentBatch.recordTestComplete(
+        pendingModelTimeline.push({
+            timestamp: new Date(),
+            event: 'test_complete',
             model,
-            prompt._id ? prompt._id.toString() : null,
-            latency,
-            true,
-            null,
-            prompt.level,
-            hostUrl,
-            tokensPerSec
-        );
+            host: hostUrl,
+            prompt_id: prompt._id ? prompt._id.toString() : null,
+            prompt_level: prompt.level,
+            duration_ms: latency,
+            tokens_per_sec: tokensPerSec,
+            success: true,
+            error: null
+        });
 
         currentBatch.completed = (currentBatch.completed || 0) + 1;
         queueBatchProgress({
@@ -292,7 +307,7 @@ async function runBatchOrchestrator({
         return result._id;
     };
 
-    const persistFailedResult = async ({ model, hostUrl, judgeHostUrl, prompt, err, errorDuration, currentBatch }) => {
+    const persistFailedResult = async ({ model, hostUrl, judgeHostUrl, prompt, err, errorDuration, currentBatch, pendingModelTimeline }) => {
         const classified = classifyBenchmarkError(err);
 
         try {
@@ -317,16 +332,18 @@ async function runBatchOrchestrator({
             });
 
             await result.save();
-            await currentBatch.recordTestComplete(
+            pendingModelTimeline.push({
+                timestamp: new Date(),
+                event: 'error',
                 model,
-                prompt._id ? prompt._id.toString() : null,
-                errorDuration,
-                false,
-                err,
-                prompt.level,
-                hostUrl,
-                null
-            );
+                host: hostUrl,
+                prompt_id: prompt._id ? prompt._id.toString() : null,
+                prompt_level: prompt.level,
+                duration_ms: errorDuration,
+                tokens_per_sec: null,
+                success: false,
+                error: err.message || err.toString()
+            });
 
             currentBatch.completed = (currentBatch.completed || 0) + 1;
             queueBatchProgress(
@@ -356,18 +373,27 @@ async function runBatchOrchestrator({
         testNumber,
         modelExecConfig,
         hardwareSnapshot,
-        modelWarmupData
+        modelWarmupData,
+        pendingModelTimeline
     }) => {
         const start = Date.now();
 
         try {
+            pendingModelTimeline.push({
+                timestamp: new Date(),
+                event: 'test_start',
+                model,
+                prompt_id: prompt._id ? prompt._id.toString() : null,
+                prompt_level: prompt.level,
+                success: null
+            });
             if (shouldPersistCurrentTest()) {
                 await currentBatch.updateCurrentTest(
                     model,
                     prompt._id ? prompt._id.toString() : null,
                     prompt.name,
                     'executing',
-                    { testNumber, promptLevel: prompt.level }
+                    { testNumber, promptLevel: prompt.level, recordTimeline: false }
                 );
             }
 
@@ -473,7 +499,8 @@ async function runBatchOrchestrator({
                 hintText,
                 hardwareSnapshot,
                 modelWarmupData,
-                currentBatch
+                currentBatch,
+                pendingModelTimeline
             });
 
             if (!hasEmptyResponse) {
@@ -487,7 +514,8 @@ async function runBatchOrchestrator({
                 prompt,
                 err,
                 errorDuration: Date.now() - start,
-                currentBatch
+                currentBatch,
+                pendingModelTimeline
             });
         }
     };
@@ -510,31 +538,38 @@ async function runBatchOrchestrator({
         const hardwareSnapshot = await hardwareProfileService.detectHardware(hostUrl, model);
         const currentBatch = await loadCurrentBatch(model);
         if (!currentBatch) return;
+        const pendingModelTimeline = [];
 
-        for (const prompt of prompts) {
-            if (await shouldStopBatch(model)) {
-                logger.info('Batch execution stopped by user', { batchId });
-                await flushBatchProgress(true);
-                handleGracefulStop();
-                return;
+        try {
+            for (const prompt of prompts) {
+                if (await shouldStopBatch(model)) {
+                    logger.info('Batch execution stopped by user', { batchId });
+                    await flushModelTimeline(pendingModelTimeline);
+                    await flushBatchProgress(true);
+                    handleGracefulStop();
+                    return;
+                }
+
+                if (!executionState.testsStarted) {
+                    executionState.testsStarted = true;
+                    await recordBatchTimelineEvent('tests_start', { success: true });
+                }
+
+                await executePrompt({
+                    hostUrl,
+                    judgeHostUrl,
+                    model,
+                    prompt,
+                    currentBatch,
+                    testNumber: (currentBatch.completed || 0) + 1,
+                    modelExecConfig,
+                    hardwareSnapshot,
+                    modelWarmupData,
+                    pendingModelTimeline
+                });
             }
-
-            if (!executionState.testsStarted) {
-                executionState.testsStarted = true;
-                await recordBatchTimelineEvent('tests_start', { success: true });
-            }
-
-            await executePrompt({
-                hostUrl,
-                judgeHostUrl,
-                model,
-                prompt,
-                currentBatch,
-                testNumber: (currentBatch.completed || 0) + 1,
-                modelExecConfig,
-                hardwareSnapshot,
-                modelWarmupData
-            });
+        } finally {
+            await flushModelTimeline(pendingModelTimeline);
         }
     };
 

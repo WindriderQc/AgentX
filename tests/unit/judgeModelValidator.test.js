@@ -94,6 +94,17 @@ describe('Judge Model Validator', () => {
             expect(result.valid).toBe(false);
             expect(result.error).toContain('not found');
         });
+
+        it('should fail when the model exists on another host but not on the configured host', async () => {
+            const _fetch = mockFetch(
+                okJson({ models: [] })
+            );
+
+            const result = await validateJudgeModel('http://host-b:11434', 'qwen2.5:7b-instruct', { _fetch });
+            expect(result.valid).toBe(false);
+            expect(result.error).toContain('not found on judge host');
+            expect(result.available_models).toEqual([]);
+        });
     });
 
     describe('output capability check', () => {
@@ -132,6 +143,28 @@ describe('Judge Model Validator', () => {
             const result = await validateJudgeModel(HOST, 'qwen2.5:7b-instruct', { _fetch });
             expect(result.valid).toBe(true);
             expect(result.warning).toContain('HTTP 404');
+        });
+
+        it('should surface HTTP 500 as a warning during generation smoke-test', async () => {
+            const _fetch = mockFetch(
+                tagsResponse(),
+                failStatus(500)
+            );
+
+            const result = await validateJudgeModel(HOST, 'qwen2.5:7b-instruct', { _fetch });
+            expect(result.valid).toBe(true);
+            expect(result.warning).toContain('HTTP 500');
+        });
+
+        it('should warn when output JSON is malformed', async () => {
+            const _fetch = mockFetch(
+                tagsResponse(),
+                okJson({ message: { content: '{"score": 5, bad-json}' } })
+            );
+
+            const result = await validateJudgeModel(HOST, 'qwen2.5:7b-instruct', { _fetch });
+            expect(result.valid).toBe(true);
+            expect(result.warning).toContain('malformed JSON');
         });
 
         it('should handle JSON embedded in text', async () => {

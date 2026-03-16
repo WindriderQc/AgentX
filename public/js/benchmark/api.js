@@ -2,6 +2,13 @@
 
 import { BENCHMARK_API } from './state.js';
 
+function withWorkspaceRequestOptions(options = {}) {
+    return {
+        ...options,
+        headers: getWorkspaceHeaders(options.headers || {})
+    };
+}
+
 /**
  * Get headers with workspace context
  */
@@ -18,9 +25,7 @@ export function getWorkspaceHeaders(extra = {}) {
  * Fetch benchmark config
  */
 export async function fetchBenchmarkConfig() {
-    const res = await fetch(`${BENCHMARK_API}/config`, {
-        headers: getWorkspaceHeaders()
-    });
+    const res = await fetch(`${BENCHMARK_API}/config`, withWorkspaceRequestOptions());
     return res.json();
 }
 
@@ -28,9 +33,7 @@ export async function fetchBenchmarkConfig() {
  * Fetch benchmark prompts
  */
 export async function fetchBenchmarkPrompts() {
-    const res = await fetch(`${BENCHMARK_API}/prompts`, {
-        headers: getWorkspaceHeaders()
-    });
+    const res = await fetch(`${BENCHMARK_API}/prompts`, withWorkspaceRequestOptions());
     return res.json();
 }
 
@@ -38,9 +41,7 @@ export async function fetchBenchmarkPrompts() {
  * Fetch judge roster (all judges with metadata + per-host availability)
  */
 export async function fetchJudgeRoster() {
-    const res = await fetch(`${BENCHMARK_API}/judge-roster`, {
-        headers: getWorkspaceHeaders()
-    });
+    const res = await fetch(`${BENCHMARK_API}/judge-roster`, withWorkspaceRequestOptions());
     return res.json();
 }
 
@@ -48,9 +49,7 @@ export async function fetchJudgeRoster() {
  * Fetch per-host default judge config
  */
 export async function fetchJudgeDefaults() {
-    const res = await fetch(`${BENCHMARK_API}/judge-defaults`, {
-        headers: getWorkspaceHeaders()
-    });
+    const res = await fetch(`${BENCHMARK_API}/judge-defaults`, withWorkspaceRequestOptions());
     return res.json();
 }
 
@@ -60,11 +59,10 @@ export async function fetchJudgeDefaults() {
  * @param {string|null} judgeModel  — null to clear
  */
 export async function saveJudgeDefault(hostUrl, judgeModel) {
-    const res = await fetch(`${BENCHMARK_API}/judge-defaults`, {
+    const res = await fetch(`${BENCHMARK_API}/judge-defaults`, withWorkspaceRequestOptions({
         method: 'PUT',
-        headers: getWorkspaceHeaders(),
         body: JSON.stringify({ hostUrl, judgeModel })
-    });
+    }));
     return res.json();
 }
 
@@ -75,10 +73,9 @@ export async function fetchOllamaHosts(timeoutMs = 8000) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-    const res = await fetch('/api/ollama-hosts', {
+    const res = await fetch('/api/ollama-hosts', withWorkspaceRequestOptions({
         signal: controller.signal,
-        headers: getWorkspaceHeaders()
-    });
+    }));
     clearTimeout(timeoutId);
 
     if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
@@ -89,9 +86,7 @@ export async function fetchOllamaHosts(timeoutMs = 8000) {
  * Fetch model registry
  */
 export async function fetchModelRegistry() {
-    const res = await fetch('/api/models/registry', {
-        headers: getWorkspaceHeaders()
-    });
+    const res = await fetch('/api/models/registry', withWorkspaceRequestOptions());
     return res.json();
 }
 
@@ -99,11 +94,10 @@ export async function fetchModelRegistry() {
  * Update model in registry (PATCH)
  */
 export async function patchModelRegistry(model, data) {
-    const res = await fetch(`/api/models/registry/${encodeURIComponent(model)}`, {
+    const res = await fetch(`/api/models/registry/${encodeURIComponent(model)}`, withWorkspaceRequestOptions({
         method: 'PATCH',
-        headers: getWorkspaceHeaders(),
         body: JSON.stringify(data)
-    });
+    }));
     return { res, status: res.status, json: await res.json().catch(() => null) };
 }
 
@@ -111,11 +105,10 @@ export async function patchModelRegistry(model, data) {
  * Create model in registry (POST)
  */
 export async function createModelRegistry(data) {
-    const res = await fetch('/api/models/registry', {
+    const res = await fetch('/api/models/registry', withWorkspaceRequestOptions({
         method: 'POST',
-        headers: getWorkspaceHeaders(),
         body: JSON.stringify(data)
-    });
+    }));
     return res.json();
 }
 
@@ -123,11 +116,10 @@ export async function createModelRegistry(data) {
  * Validate judge model availability and output capability
  */
 export async function validateJudgeModelApi(host, model) {
-    const res = await fetch(`${BENCHMARK_API}/validate-judge`, {
+    const res = await fetch(`${BENCHMARK_API}/validate-judge`, withWorkspaceRequestOptions({
         method: 'POST',
-        headers: getWorkspaceHeaders(),
         body: JSON.stringify({ host, model })
-    });
+    }));
     return { res, json: await res.json() };
 }
 
@@ -135,11 +127,10 @@ export async function validateJudgeModelApi(host, model) {
  * Start batch test
  */
 export async function startBatchTest(data) {
-    const res = await fetch(`${BENCHMARK_API}/batch`, {
+    const res = await fetch(`${BENCHMARK_API}/batch`, withWorkspaceRequestOptions({
         method: 'POST',
-        headers: getWorkspaceHeaders(),
         body: JSON.stringify(data)
-    });
+    }));
     return { res, json: await res.json() };
 }
 
@@ -147,10 +138,9 @@ export async function startBatchTest(data) {
  * Stop batch test
  */
 export async function stopBatchTest(batchId) {
-    const res = await fetch(`${BENCHMARK_API}/batch/${batchId}/stop`, {
+    const res = await fetch(`${BENCHMARK_API}/batch/${batchId}/stop`, withWorkspaceRequestOptions({
         method: 'POST',
-        headers: getWorkspaceHeaders()
-    });
+    }));
     return res;
 }
 
@@ -158,7 +148,7 @@ export async function stopBatchTest(batchId) {
  * Fetch batch progress
  */
 export async function fetchBatchProgress(batchId) {
-    const res = await fetch(`${BENCHMARK_API}/batch/${batchId}`);
+    const res = await fetch(`${BENCHMARK_API}/batch/${batchId}`, withWorkspaceRequestOptions());
     if (!res.ok) {
         throw new Error(`HTTP error! status: ${res.status}`);
     }
@@ -169,7 +159,7 @@ export async function fetchBatchProgress(batchId) {
  * Fetch batch timeline
  */
 export async function fetchBatchTimeline(batchId) {
-    const res = await fetch(`${BENCHMARK_API}/batch/${batchId}/timeline`);
+    const res = await fetch(`${BENCHMARK_API}/batch/${batchId}/timeline`, withWorkspaceRequestOptions());
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.json();
 }
@@ -178,7 +168,7 @@ export async function fetchBatchTimeline(batchId) {
  * Fetch batch history
  */
 export async function fetchBatchHistory() {
-    const res = await fetch(`${BENCHMARK_API}/batches`);
+    const res = await fetch(`${BENCHMARK_API}/batches`, withWorkspaceRequestOptions());
     return res.json();
 }
 
@@ -186,7 +176,7 @@ export async function fetchBatchHistory() {
  * Fetch active batches
  */
 export async function fetchActiveBatches() {
-    const res = await fetch(`${BENCHMARK_API}/batches/active`);
+    const res = await fetch(`${BENCHMARK_API}/batches/active`, withWorkspaceRequestOptions());
     return res.json();
 }
 
@@ -194,10 +184,9 @@ export async function fetchActiveBatches() {
  * Recover stuck batch
  */
 export async function recoverBatchApi(batchId) {
-    const res = await fetch(`${BENCHMARK_API}/batch/${batchId}/recover`, {
+    const res = await fetch(`${BENCHMARK_API}/batch/${batchId}/recover`, withWorkspaceRequestOptions({
         method: 'POST',
-        headers: getWorkspaceHeaders()
-    });
+    }));
     return res.json();
 }
 
@@ -205,11 +194,10 @@ export async function recoverBatchApi(batchId) {
  * Run single benchmark test
  */
 export async function runSingleTest(data) {
-    const res = await fetch(`${BENCHMARK_API}/test`, {
+    const res = await fetch(`${BENCHMARK_API}/test`, withWorkspaceRequestOptions({
         method: 'POST',
-        headers: getWorkspaceHeaders(),
         body: JSON.stringify(data)
-    });
+    }));
     return res.json();
 }
 
@@ -217,10 +205,9 @@ export async function runSingleTest(data) {
  * Delete all benchmark results
  */
 export async function deleteAllResults() {
-    const res = await fetch(`${BENCHMARK_API}/results`, {
+    const res = await fetch(`${BENCHMARK_API}/results`, withWorkspaceRequestOptions({
         method: 'DELETE',
-        headers: getWorkspaceHeaders()
-    });
+    }));
     return { res, json: await res.json().catch(() => null) };
 }
 
@@ -228,10 +215,9 @@ export async function deleteAllResults() {
  * Delete failed benchmark results
  */
 export async function deleteFailedResults() {
-    const res = await fetch(`${BENCHMARK_API}/results/failed`, {
+    const res = await fetch(`${BENCHMARK_API}/results/failed`, withWorkspaceRequestOptions({
         method: 'DELETE',
-        headers: getWorkspaceHeaders()
-    });
+    }));
     return { res, json: await res.json().catch(() => null) };
 }
 
@@ -239,6 +225,6 @@ export async function deleteFailedResults() {
  * Fetch advanced results
  */
 export async function fetchAdvancedResults(batchId, limit = 5000) {
-    const res = await fetch(`${BENCHMARK_API}/results/advanced?batchId=${batchId}&limit=${limit}`);
+    const res = await fetch(`${BENCHMARK_API}/results/advanced?batchId=${batchId}&limit=${limit}`, withWorkspaceRequestOptions());
     return res.json();
 }

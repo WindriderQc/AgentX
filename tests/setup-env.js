@@ -126,6 +126,8 @@ if (!process.env.OLLAMA_HOST) process.env.OLLAMA_HOST = 'http://127.0.0.1:11434'
 if (!process.env.OLLAMA_HOST_SECONDARY && !process.env.OLLAMA_HOST_2) {
   process.env.OLLAMA_HOST_SECONDARY = 'http://127.0.0.1:11435';
 }
+if (!process.env.EMBEDDING_MODEL) process.env.EMBEDDING_MODEL = 'nomic-embed-text:v1.5';
+if (!process.env.EMBEDDING_DIMENSION) process.env.EMBEDDING_DIMENSION = '768';
 
 beforeAll(async () => {
   const state = getTestDbState();

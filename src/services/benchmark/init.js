@@ -209,8 +209,7 @@ function getConfigPresets() {
                 config: {
                     levels: [1, 2],
                     judge_config: {
-                        concurrency: 2,
-                        judge_same_host: false
+                        concurrency: 2
                     }
                 },
                 recommended_for: 'Initial model validation, quick checks',
@@ -223,8 +222,7 @@ function getConfigPresets() {
                 config: {
                     levels: [1, 2, 3, 4, 5],
                     judge_config: {
-                        concurrency: 2,
-                        judge_same_host: false
+                        concurrency: 2
                     }
                 },
                 recommended_for: 'Regular model evaluation',
@@ -238,7 +236,6 @@ function getConfigPresets() {
                     levels: [3, 4, 5],
                     judge_config: {
                         concurrency: 1,
-                        judge_same_host: false,
                         timeout: 60000
                     }
                 },
@@ -252,8 +249,7 @@ function getConfigPresets() {
                 config: {
                     levels: [1, 2],
                     judge_config: {
-                        concurrency: 2,
-                        judge_same_host: false
+                        concurrency: 2
                     }
                 },
                 recommended_for: 'Performance optimization, latency testing',
@@ -266,8 +262,7 @@ function getConfigPresets() {
                 config: {
                     levels: [3, 4],
                     judge_config: {
-                        concurrency: 2,
-                        judge_same_host: false
+                        concurrency: 2
                     }
                 },
                 recommended_for: 'Evaluating reasoning capabilities',

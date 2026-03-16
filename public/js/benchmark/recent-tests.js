@@ -11,6 +11,7 @@ export function renderRecentTests(tests) {
     if (!container) return;
 
     state.setLastRecentTests(tests);
+    updateExecSuccessBreakdown(tests);
 
     if (!tests || tests.length === 0) {
         container.innerHTML = '<div style="text-align: center; color: var(--muted); padding: 20px;">No recent tests</div>';
@@ -50,6 +51,7 @@ export function renderRecentTests(tests) {
         const isFailed = test.success === false;
         const qualityScore = test.quality_score;
         const hasQuality = qualityScore !== undefined && qualityScore !== null;
+        const scoringMethod = String(test.scoring_method || '').toLowerCase();
 
         const failureType = isFailed
             ? ((test.infra_error === true || String(test.error_type || '').toLowerCase() === 'infra')
@@ -114,11 +116,15 @@ export function renderRecentTests(tests) {
                     </div>
                     <div style="font-size: 0.85em; display: flex; gap: 12px;">
                         ${isFailed
-                            ? '<span style="color: #e74c3c;">FAILED</span>'
+                            ? '<span style="color: #e74c3c;">EXEC FAIL</span>'
                             : `
                                 <span style="color: var(--muted);">${latencyText}</span>
                                 <span style="color: var(--muted);">${tpsText}</span>
-                                ${qualityBadge}
+                                ${hasQuality
+                                    ? qualityBadge
+                                    : (scoringMethod === 'llm_failed'
+                                        ? '<span style="color: #f59e0b;">Judge Fail</span>'
+                                        : '<span style="color: var(--muted);">Pending</span>')}
                             `
                         }
                     </div>
@@ -126,6 +132,27 @@ export function renderRecentTests(tests) {
             </div>
         `;
     }).join('');
+}
+
+function updateExecSuccessBreakdown(tests) {
+    const successRateEl = document.getElementById('successRate');
+    const detailsEl = document.getElementById('successRateDetails');
+    const safeTests = Array.isArray(tests) ? tests : [];
+    const total = safeTests.length;
+    const execSuccess = safeTests.filter(t => t && t.success).length;
+    const fullPass = safeTests.filter(t => t && t.success && t.quality_score !== undefined && t.quality_score !== null).length;
+    const judgeFail = safeTests.filter(t => t && t.success && String(t.scoring_method || '').toLowerCase() === 'llm_failed').length;
+    const pending = safeTests.filter(t => t && t.success && String(t.scoring_method || '').toLowerCase() === 'pending').length;
+    const execSuccessPct = total > 0 ? ((execSuccess / total) * 100).toFixed(1) : '0.0';
+
+    if (successRateEl) {
+        successRateEl.innerHTML = `${execSuccessPct}<span class="stat-unit">%</span>`;
+    }
+
+    if (detailsEl) {
+        detailsEl.textContent = `Full pass ${fullPass}/${total} • Judge fail ${judgeFail} • Pending ${pending}`;
+        detailsEl.style.display = state.showSuccessRateDetails ? 'block' : 'none';
+    }
 }
 
 /**
@@ -161,7 +188,7 @@ export function rerenderRecentTests() {
 }
 
 /**
- * Toggle success rate details
+ * Toggle exec-success details
  */
 export function toggleSuccessRateDetails() {
     state.setShowSuccessRateDetails(!state.showSuccessRateDetails);

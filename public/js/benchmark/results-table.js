@@ -26,6 +26,20 @@ export function renderResultsTable(results, tbody) {
         return `<span class="fail-badge ${type}" title="${escapeHtml(title)}"><i class="fas ${icon}"></i>${label}</span>`;
     };
 
+    const getStateHtml = (r) => {
+        const scoringMethod = String(r.scoring_method || '').toLowerCase();
+        if (r.success === false) {
+            return `<span style="color: #e74c3c; font-weight: 600;">EXEC FAIL</span>${getFailureBadgeHtml(r)}`;
+        }
+        if (scoringMethod === 'llm_failed') {
+            return '<span style="color: #f59e0b; font-weight: 600;">JUDGE FAIL</span>';
+        }
+        if (scoringMethod === 'pending') {
+            return '<span style="color: #9ca3af; font-weight: 600;">PENDING</span>';
+        }
+        return null;
+    };
+
     tbody.innerHTML = results.map((r, idx) => {
         const isFailed = r.success === false;
         const qualityScore = r.quality_score !== undefined && r.quality_score !== null ? r.quality_score : '-';
@@ -74,8 +88,7 @@ export function renderResultsTable(results, tbody) {
         const rowStyle = isFailed
             ? 'border-bottom: 1px solid rgba(231, 76, 60, 0.3); background: rgba(231, 76, 60, 0.05);'
             : 'border-bottom: 1px solid rgba(255,255,255,0.05);';
-
-        const failureBadge = getFailureBadgeHtml(r);
+        const stateHtml = getStateHtml(r);
 
         return `
             <tr style="${rowStyle}">
@@ -87,14 +100,14 @@ export function renderResultsTable(results, tbody) {
                     ${escapeHtml(r.prompt_name)}${perfLine}
                 </td>
                 <td style="padding: 8px 12px; text-align: center;" class="${qualityClass}">
-                    ${isFailed ? `<span style="color: #e74c3c; font-weight: 600;">FAILED</span>${failureBadge}` : qualityScore}
+                    ${stateHtml || qualityScore}
                     ${dualScoreHtml}
                     ${confidenceHtml}
                     ${judgeInfo}
                 </td>
                 <td style="padding: 8px 12px; text-align: center;">
                     <button class="btn-secondary btn-sm" onclick="showJudgeDetails('${r.id || idx}')">
-                        <i class="fas fa-${isFailed ? 'exclamation-circle' : 'eye'}"></i> ${isFailed ? 'Error' : 'Details'}
+                        <i class="fas fa-${stateHtml ? 'exclamation-circle' : 'eye'}"></i> ${stateHtml ? 'Review' : 'Details'}
                     </button>
                 </td>
             </tr>
@@ -194,6 +207,9 @@ export function buildBatchScoringBar(results) {
 
     const successResults = results.filter(r => r.success !== false);
     if (successResults.length === 0) return '';
+    const fullyPassed = successResults.filter(r => r.quality_score !== undefined && r.quality_score !== null).length;
+    const judgePending = successResults.filter(r => String(r.scoring_method || '').toLowerCase() === 'pending').length;
+    const judgeFailed = successResults.filter(r => String(r.scoring_method || '').toLowerCase() === 'llm_failed').length;
 
     // Avg confidence
     const confValues = successResults.map(r => r.judge_confidence).filter(v => v !== undefined && v !== null);
@@ -213,6 +229,14 @@ export function buildBatchScoringBar(results) {
     );
 
     const parts = [];
+
+    parts.push(`<span style="color: #93c5fd;" title="Execution success plus completed judge score">Full pass: ${fullyPassed}/${results.length}</span>`);
+    if (judgePending > 0) {
+        parts.push(`<span style="color: #9ca3af;" title="Execution passed but judging has not finished">Pending: ${judgePending}</span>`);
+    }
+    if (judgeFailed > 0) {
+        parts.push(`<span style="color: #f59e0b;" title="Execution passed but judge failed">Judge fail: ${judgeFailed}</span>`);
+    }
 
     if (avgConf !== null) {
         const confColor = avgConf >= 0.8 ? '#2ecc71' : avgConf >= 0.6 ? '#f39c12' : '#e74c3c';

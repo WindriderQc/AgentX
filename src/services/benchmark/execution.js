@@ -17,6 +17,7 @@ const { samplePromptsByDepth } = require('./promptSampling');
 const { runTest } = require('./testExecution');
 const { buildExecutionPlan } = require('./batchPlanner');
 const { runBatchOrchestrator } = require('./batchOrchestrator');
+const { normalizeJudgeConfigContract } = require('../scoring/judgeConfigResolver');
 
 let activeBatchId = null;
 let activeHeartbeatInterval = null;
@@ -83,25 +84,26 @@ async function startBatch({
         throw new Error('No prompts found for selected levels');
     }
 
-    const { plan, normalizedExecutionConfig, judgeSameHost } = buildExecutionPlan(
+    const normalizedJudgeConfig = normalizeJudgeConfigContract(judge_config);
+
+    const { plan, normalizedExecutionConfig } = buildExecutionPlan(
         host,
         models,
         selectedPrompts,
-        { judge_config, execution_config }
+        { judge_config: normalizedJudgeConfig, execution_config }
     );
 
     const batch = new BenchmarkBatch({
         host,
         models,
         levels,
-        judge_config,
+        judge_config: normalizedJudgeConfig,
         execution_config: normalizedExecutionConfig,
         depth_config: (depth_config && typeof depth_config === 'object') ? depth_config : null,
         run_name: run_name || description || `Batch ${new Date().toLocaleString()}`,
         active_slot: 'benchmark_singleton',
         total_tests: models.length * selectedPrompts.length,
         plan,
-        judge_same_host: judgeSameHost,
         judge_total: models.length * selectedPrompts.length,
         status: 'running',
         started_at: new Date(),
@@ -116,7 +118,7 @@ async function startBatch({
 
     if (process.env.NODE_ENV !== 'test') {
         executeBatch(batchId, host, models, selectedPrompts, {
-            judge_config,
+            judge_config: normalizedJudgeConfig,
             execution_config: normalizedExecutionConfig,
             execution_mode
         }).catch((err) => {

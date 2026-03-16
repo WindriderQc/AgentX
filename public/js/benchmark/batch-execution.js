@@ -54,7 +54,8 @@ function gatherExecutionConfig() {
 /**
  * Reset batch UI to initial state
  */
-export function resetBatchUI() {
+export function resetBatchUI(options = {}) {
+    const preserveBatchInfo = options && options.preserveBatchInfo === true;
     const btn = document.getElementById('runBatchBtn');
     const stopBtn = document.getElementById('stopBatchBtn');
     const execProgressBar = document.getElementById('execProgressBar');
@@ -102,7 +103,7 @@ export function resetBatchUI() {
     stopCurrentTestDurationTicker();
 
     const batchInfo = document.getElementById('batchInfo');
-    if (batchInfo) batchInfo.innerHTML = '';
+    if (batchInfo && !preserveBatchInfo) batchInfo.innerHTML = '';
 }
 
 /**
@@ -238,6 +239,7 @@ export async function runBatch() {
             batchLocalStartTime = Date.now();
 
             if (batchInfo) {
+                batchInfo.classList.remove('is-summary');
                 batchInfo.innerHTML = renderBatchPlan(json.data.plan, host, true, executionMode);
             }
 
@@ -249,6 +251,7 @@ export async function runBatch() {
             const batchInfoEl = document.getElementById('batchInfo');
             let errorHtml = '';
             if (json.issues && json.issues.length > 0) {
+                const hasJudgeContextIssue = json.issues.some((issue) => /num_ctx|context/i.test(String(issue || '')));
                 const issueItems = json.issues
                     .map(i => `<li style="margin:4px 0;">${escapeHtml(i)}</li>`)
                     .join('');
@@ -261,6 +264,7 @@ export async function runBatch() {
                         <ul style="margin:0;padding-left:20px;font-size:0.9em;line-height:1.6;">${issueItems}</ul>
                         <div style="margin-top:10px;font-size:0.85em;color:var(--muted);">
                             Fix the issues above, then try again.
+                            ${hasJudgeContextIssue ? '<span style="display:block;margin-top:6px;">Judge context is configurable in Benchmark → Settings → Judge Context Window.</span>' : ''}
                             <a href="/courthouse.html" target="_blank"
                                 style="color:var(--accent);text-decoration:underline;margin-left:6px;">
                                 Open Courthouse → Judge Roster
@@ -285,7 +289,7 @@ export async function runBatch() {
                 </div>`;
             }
             if (batchInfoEl) batchInfoEl.innerHTML = errorHtml;
-            resetBatchUI();
+            resetBatchUI({ preserveBatchInfo: true });
             return;
         } else if (res.status === 409) {
             const activeBatch = json.active_batch;
@@ -434,6 +438,7 @@ export async function pollBatchProgress() {
         const batchInfo = document.getElementById('batchInfo');
         if (batchInfo && (batch.plan || batch.judge_config || batch.host)) {
             if (batchInfo.innerHTML.trim() === '' || batch.plan) {
+                batchInfo.classList.remove('is-summary');
                 batchInfo.innerHTML = renderBatchPlan(batch.plan, batch.host, true);
             }
         }
@@ -555,22 +560,15 @@ function updateJudgeStatusPanel(batch) {
 
     const cfg = batch.judge_config || {};
     const model = cfg.model || batch.plan?.judge_model || '(default)';
-    const hostRaw = cfg.host || null;
-    const autoUpgrade = !!cfg.judge_tier_auto_upgrade;
+    const hostRaw = cfg.host || batch.plan?.exec_hosts?.[0]?.judge_host || null;
     const concurrency = cfg.concurrency || 2;
 
-    // Resolve judge host label
-    let hostLabel = '(auto)';
-    if (cfg.judge_same_host) {
-        hostLabel = '(same host)';
-    } else if (hostRaw) {
-        // Try to get short name from known hosts
+    let hostLabel = '(not set)';
+    if (hostRaw) {
         const knownHosts = (typeof state !== 'undefined' && state.ollamaHosts) || [];
         const matched = knownHosts.find(h => h.url === hostRaw);
         hostLabel = matched ? matched.name : hostRaw.replace(/^https?:\/\//, '').replace(/:11434$/, '');
     }
-
-    const tierUpgrades = (batch.judge_stats && batch.judge_stats.tier_upgrades) || 0;
 
     const modelEl = document.getElementById('judgeStatusModel');
     const hostEl = document.getElementById('judgeStatusHost');
@@ -582,27 +580,15 @@ function updateJudgeStatusPanel(batch) {
     const tierUpgradeEl = document.getElementById('judgeStatusTierUpgrades');
 
     if (modelEl) modelEl.textContent = model;
-    if (hostEl) { hostEl.textContent = hostLabel; hostEl.title = hostRaw || 'auto'; }
+    if (hostEl) { hostEl.textContent = hostLabel; hostEl.title = hostRaw || '(not set)'; }
     if (upgradeEl) {
-        upgradeEl.innerHTML = autoUpgrade
-            ? `<span style="background:rgba(231,76,60,0.15);color:#e74c3c;border:1px solid rgba(231,76,60,0.3);border-radius:4px;padding:1px 6px;font-size:0.78em;">⚡ Auto-upgrade ON</span>`
-            : `<span style="background:rgba(39,174,96,0.12);color:#27ae60;border:1px solid rgba(39,174,96,0.25);border-radius:4px;padding:1px 6px;font-size:0.78em;">✓ Fixed model</span>`;
+        upgradeEl.innerHTML = '<span style="background:rgba(39,174,96,0.12);color:#27ae60;border:1px solid rgba(39,174,96,0.25);border-radius:4px;padding:1px 6px;font-size:0.78em;">Pinned judge</span>';
     }
     if (concEl) concEl.textContent = `×${concurrency} parallel`;
     if (scoredEl) scoredEl.textContent = String(batch.judge_completed || 0);
     if (totalEl) totalEl.textContent = String(batch.judge_total || 0);
-    if (tierUpgradeEl) {
-        if (autoUpgrade && tierUpgrades > 0) {
-            tierUpgradeEl.style.display = '';
-            tierUpgradeEl.innerHTML = `<span title="Number of prompts where a higher-tier judge was auto-selected" ` +
-                `style="color:#e74c3c;font-size:0.78em;margin-left:6px;">` +
-                `<i class="fas fa-arrow-up"></i> ${tierUpgrades} tier upgrade${tierUpgrades !== 1 ? 's' : ''}</span>`;
-        } else {
-            tierUpgradeEl.style.display = 'none';
-        }
-    }
+    if (tierUpgradeEl) tierUpgradeEl.style.display = 'none';
 
-    // Show avg judge latency if available from batch stats
     if (latEl && batch.avg_judge_latency_ms) {
         latEl.textContent = `· avg ${(batch.avg_judge_latency_ms / 1000).toFixed(1)}s/score`;
     } else if (latEl) {
@@ -691,9 +677,6 @@ function updateJudgeHealthStats(batch, results) {
         healthText = 'Busy';
     }
 
-    const warmupFallbackCount = stats.warmup_fallback_count || 0;
-    const isSameHostFallback = stats.judge_same_host_fallback || false;
-
     judgeHealthContainer.style.display = 'block';
     judgeHealthContainer.innerHTML = `
         <div class="judge-health-main">
@@ -720,13 +703,6 @@ function updateJudgeHealthStats(batch, results) {
                 <span style="color: var(--muted);">Avg Time:</span>
                 <span style="font-weight: 600;">${avgTime}</span>
             </div>
-            ${isSameHostFallback ? `
-            <div class="vr" style="background: rgba(255,255,255,0.1); width: 1px; height: 14px;"></div>
-            <div title="Cross-host judge warmup failed; judging on same host as execution (may affect latency)">
-                <span style="color: #e67e22; font-weight: 600;">
-                    <i class="fas fa-exchange-alt"></i> Same-Host Fallback
-                </span>
-            </div>` : ''}
         </div>
     `;
 }
@@ -827,11 +803,25 @@ function updatePerModelProgress(batch, results, showHyper) {
                     : modelResults.filter(isJudgeDone).length
             )
             : 0;
+        const judgePending = isQualityEnabled
+            ? (
+                Number.isFinite(fullModelCounters && fullModelCounters.judge_pending)
+                    ? fullModelCounters.judge_pending
+                    : Math.max(0, execDone - execFailed - judgeDone)
+            )
+            : 0;
+        const judgeEvalFailed = isQualityEnabled
+            ? (
+                Number.isFinite(fullModelCounters && fullModelCounters.judge_failed_eval)
+                    ? fullModelCounters.judge_failed_eval
+                    : modelResults.filter(isJudgeFailed).length
+            )
+            : 0;
         const judgeFailed = isQualityEnabled
             ? (
                 Number.isFinite(fullModelCounters && fullModelCounters.judge_failed)
                     ? fullModelCounters.judge_failed
-                    : modelResults.filter(isJudgeFailed).length
+                    : (execFailed + judgeEvalFailed)
             )
             : 0;
         const judgePct = isQualityEnabled
@@ -853,7 +843,7 @@ function updatePerModelProgress(batch, results, showHyper) {
             <div style="height: 10px; background: rgba(255,255,255,0.06); border: 1px solid var(--panel-border); border-radius: 999px; overflow: hidden;">
                 <div style="height: 100%; width: ${judgePct}%; background: var(--accent-2);"></div>
             </div>
-            <div style="margin-top: 4px; color: var(--muted); font-size: 0.85em;">${judgeDone}/${perModelPlannedFromPlan} (eff ${judgeEffPct}% • fail ${judgeFailed})</div>
+            <div style="margin-top: 4px; color: var(--muted); font-size: 0.85em;">${judgeDone}/${perModelPlannedFromPlan} (eff ${judgeEffPct}% • pending ${judgePending} • jfail ${judgeEvalFailed} • xfail ${execFailed})</div>
         ` : `<div style="color: var(--muted);">Disabled</div>`;
 
         const latencyAgg = summarizeNumbers(modelResults.map(r => r && r.latency));
@@ -908,14 +898,32 @@ function updatePerModelProgress(batch, results, showHyper) {
 
         const reasons = [];
         const execRate = execDone > 0 ? (execFailed / execDone) : 0;
-        const judgeRate = judgeDone > 0 ? (judgeFailed / judgeDone) : 0;
+        const judgeAttempts = judgeDone + judgeEvalFailed;
+        const judgeRate = judgeAttempts > 0 ? (judgeEvalFailed / judgeAttempts) : 0;
+        const fullPassed = Number.isFinite(fullModelCounters && fullModelCounters.full_passed)
+            ? fullModelCounters.full_passed
+            : judgeDone;
+        const strictPassRate = execDone > 0 ? (fullPassed / execDone) : 0;
         const execOutPct = Math.max(0, Math.min(100, Number(thresholds.model_exec_out_pct) || 20)) / 100;
         const judgeOutPct = Math.max(0, Math.min(100, Number(thresholds.model_judge_out_pct) || 10)) / 100;
 
         if (execDone >= minSamples && execRate >= execOutPct) reasons.push('<span class="badge bg-danger">FAIL</span>');
         if (isQualityEnabled && judgeDone >= minSamples && judgeRate >= judgeOutPct) reasons.push('<span class="badge bg-warning text-dark">JFAIL</span>');
+        if (isQualityEnabled && judgePending > 0) reasons.push('<span class="badge bg-secondary">PENDING</span>');
         if (tpsCutoff !== null && effTpsAgg.n >= minSamples && Number.isFinite(effTpsAgg.mean) && effTpsAgg.mean <= tpsCutoff) reasons.push('<span class="badge bg-info text-dark">LOW TPS</span>');
         if (judgeMsCutoff !== null && effJudgeAgg.n >= minSamples && Number.isFinite(effJudgeAgg.mean) && effJudgeAgg.mean >= judgeMsCutoff) reasons.push('<span class="badge bg-info text-dark">SLOW JUDGE</span>');
+
+        const tpsReasonParts = [];
+        if ((fullModelCounters && Number.isFinite(fullModelCounters.tps_zero) ? fullModelCounters.tps_zero : 0) > 0) {
+            tpsReasonParts.push(`zero=${fullModelCounters.tps_zero}`);
+        }
+        if ((fullModelCounters && Number.isFinite(fullModelCounters.tps_missing) ? fullModelCounters.tps_missing : 0) > 0) {
+            tpsReasonParts.push(`missing=${fullModelCounters.tps_missing}`);
+        }
+        if ((fullModelCounters && Number.isFinite(fullModelCounters.tps_positive) ? fullModelCounters.tps_positive : 0) > 0) {
+            tpsReasonParts.push(`positive=${fullModelCounters.tps_positive}`);
+        }
+        const tpsReasonLabel = tpsReasonParts.length > 0 ? tpsReasonParts.join(' • ') : null;
 
         const aggCell = (primary, secondary, title) => `
             <div title="${title}" style="white-space: nowrap;">
@@ -931,8 +939,10 @@ function updatePerModelProgress(batch, results, showHyper) {
         );
         const tpsCell = aggCell(
             effTpsAgg.n > 0 ? `${effTpsAgg.p50.toFixed(2)} t/s` : '-',
-            effTpsAgg.n > 0 ? `p10 ${effTpsAgg.p10.toFixed(2)} • vs med ${formatRatio(tpsVsMedian)}` : `n=0`,
-            effTpsAgg.n > 0 ? `n=${effTpsAgg.n} avg=${effTpsAgg.mean.toFixed(2)} p95=${effTpsAgg.p95.toFixed(2)} min=${effTpsAgg.min.toFixed(2)}${effTpsAgg._fromBackend ? ' (all results)' : ''}` : 'No throughput data'
+            effTpsAgg.n > 0 ? `p10 ${effTpsAgg.p10.toFixed(2)} • vs med ${formatRatio(tpsVsMedian)}` : (execDone > 0 ? 'no >0 samples' : 'n=0'),
+            effTpsAgg.n > 0
+                ? `n=${effTpsAgg.n} avg=${effTpsAgg.mean.toFixed(2)} p95=${effTpsAgg.p95.toFixed(2)} min=${effTpsAgg.min.toFixed(2)}${effTpsAgg._fromBackend ? ' (all results)' : ''}`
+                : (execDone > 0 ? `All throughput values were 0 or missing${tpsReasonLabel ? ` • ${tpsReasonLabel}` : ''}` : 'No throughput data')
         );
         const judgeMsCell = aggCell(
             effJudgeAgg.n > 0 ? `${Math.round(effJudgeAgg.p50)}ms` : '-',
@@ -961,7 +971,16 @@ function updatePerModelProgress(batch, results, showHyper) {
             model,
             planned: perModelPlannedFromPlan,
             exec: { done: execDone, failed: execFailed, percent: execPct },
-            judge: isQualityEnabled ? { done: judgeDone, failed: judgeFailed, percent_planned: judgePct, percent_effective: judgeEffPct } : { disabled: true },
+            judge: isQualityEnabled ? {
+                done: judgeDone,
+                failed: judgeFailed,
+                failed_eval: judgeEvalFailed,
+                failed_exec: execFailed,
+                pending: judgePending,
+                percent_planned: judgePct,
+                percent_effective: judgeEffPct
+            } : { disabled: true },
+            strict_pass_rate: strictPassRate,
             aggregates: {
                 latency_ms: effLatencyAgg,
                 tokens_per_sec: effTpsAgg,
@@ -994,6 +1013,7 @@ function updatePerModelProgress(batch, results, showHyper) {
                     <div style="display:flex; align-items:center; justify-content: space-between; gap: 10px;">
                         <div style="display:flex; flex-direction: column; gap: 4px;">
                             <span>${escapeHtml(model)}</span>
+                            <span style="color: var(--muted); font-size: 0.8em;">full pass ${Math.round(strictPassRate * 100)}%</span>
                             ${reasons.length > 0 ? `<div style="display:flex; gap: 6px; flex-wrap: wrap;">${reasons.join('')}</div>` : ''}
                         </div>
                         ${hyperToggle}
@@ -1147,6 +1167,20 @@ function updateResultsTable(results, resultsMeta, batch) {
         return `<span class="fail-badge ${type}" title="${escapeHtml(title)}"><i class="fas ${icon}"></i>${label}</span>`;
     };
 
+    const getResultStateHtml = (r) => {
+        const scoringMethod = String(r.scoring_method || '').toLowerCase();
+        if (r.success === false) {
+            return `<span style="color: #e74c3c; font-weight: 600;">EXEC FAIL</span>${getFailureBadgeHtml(r)}`;
+        }
+        if (scoringMethod === 'llm_failed') {
+            return '<span style="color: #f59e0b; font-weight: 600;">JUDGE FAIL</span>';
+        }
+        if (scoringMethod === 'pending') {
+            return '<span style="color: #9ca3af; font-weight: 600;">PENDING</span>';
+        }
+        return null;
+    };
+
     tbody.innerHTML = results.map((r, idx) => {
         const isFailed = r.success === false;
         const qualityScore = r.quality_score !== undefined && r.quality_score !== null ? r.quality_score : '-';
@@ -1159,15 +1193,14 @@ function updateResultsTable(results, resultsMeta, batch) {
             : '';
 
         const hostInfo = r.host ? `<div style="font-size: 0.75em; color: var(--muted); margin-top: 2px;">Exec: ${formatHostLabel(r.host)}</div>` : '';
-        const isJudgeSameHostFallback = r.host && r.judge_host && r.host === r.judge_host && batch && batch.judge_same_host_fallback;
         const judgeHostLabel = r.judge_host ? formatHostLabel(r.judge_host) : '';
-        const judgeInfo = r.judge_host ? `<div style="font-size: 0.75em; color: ${isJudgeSameHostFallback ? '#e67e22' : 'var(--muted)'};">Judge: ${judgeHostLabel}${isJudgeSameHostFallback ? ' <i class="fas fa-exchange-alt" title="Fallback: judging on same host due to cross-host warmup failure"></i>' : ''}</div>` : '';
+        const judgeInfo = r.judge_host ? `<div style="font-size: 0.75em; color: var(--muted);">Judge: ${judgeHostLabel}</div>` : '';
 
         const rowStyle = isFailed
             ? 'border-bottom: 1px solid rgba(231, 76, 60, 0.3); background: rgba(231, 76, 60, 0.05);'
             : 'border-bottom: 1px solid rgba(255,255,255,0.05);';
 
-        const failureBadge = getFailureBadgeHtml(r);
+        const stateHtml = getResultStateHtml(r);
 
         return `
             <tr style="${rowStyle}">
@@ -1179,12 +1212,12 @@ function updateResultsTable(results, resultsMeta, batch) {
                     ${escapeHtml(r.prompt_name)}${perfLine}
                 </td>
                 <td style="padding: 8px 12px; text-align: center;" class="${qualityClass}">
-                    ${isFailed ? `<span style="color: #e74c3c; font-weight: 600;">FAILED</span>${failureBadge}` : qualityScore}
+                    ${stateHtml || qualityScore}
                     ${judgeInfo}
                 </td>
                 <td style="padding: 8px 12px; text-align: center;">
                     <button class="btn-secondary btn-sm" onclick="showJudgeDetails('${r.id || idx}')">
-                        <i class="fas fa-${isFailed ? 'exclamation-circle' : 'eye'}"></i> ${isFailed ? 'Error' : 'Details'}
+                        <i class="fas fa-${stateHtml ? 'exclamation-circle' : 'eye'}"></i> ${stateHtml ? 'Review' : 'Details'}
                     </button>
                 </td>
             </tr>
@@ -1247,8 +1280,12 @@ function handleBatchComplete(batch) {
 
     if (batch.status === 'completed') {
         status.className = 'status success';
-        const fallbackNote = batch.judge_same_host_fallback ? ' [Judge: same-host fallback]' : '';
-        status.textContent = `Batch completed! ${batch.completed} tests run (${batch.success_rate} success)${fallbackNote}`;
+        const execSuccessRate = Number(batch.exec_success_rate ?? batch.success_rate ?? 0);
+        const fullPassRate = Number(batch.full_pass_rate ?? NaN);
+        const summary = Number.isFinite(fullPassRate)
+            ? `Exec success ${Math.round(execSuccessRate)}% • Full pass ${Math.round(fullPassRate)}%`
+            : `Exec success ${Math.round(execSuccessRate)}%`;
+        status.textContent = `Batch completed! ${batch.completed} tests run (${summary})`;
     } else if (batch.status === 'stopped') {
         status.className = 'status warning';
         status.textContent = `Batch stopped by user (${batch.completed}/${batch.total_tests} tests completed)`;

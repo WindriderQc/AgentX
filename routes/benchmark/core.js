@@ -6,7 +6,6 @@
 const express = require('express');
 const router = express.Router();
 const logger = require('../../config/logger');
-const { optionalWorkspaceContext } = require('../../src/middleware/workspace');
 const benchmarkService = require('../../src/services/benchmark');
 const { JUDGE_CONFIG, ENHANCED_SCORING_CONFIGS } = require('../../src/services/qualityScorer');
 const { stopJudging } = require('../../src/services/benchmark/judging');
@@ -15,10 +14,11 @@ const ModelRegistry = require('../../models/ModelRegistry');
 const { validateJudgeModel } = require('../../src/services/benchmark/judgeModelValidator');
 const { callJudge } = require('../../src/services/scoring/judgeCall');
 const judgeTierResolver = require('../../src/services/scoring/judgeTierResolver');
-const { normalizeJudgeConfigContract, getJudgeCandidatesCached } = require('../../src/services/scoring/judgeConfigResolver');
+const { normalizeJudgeConfigContract } = require('../../src/services/scoring/judgeConfigResolver');
 const { validateExecutionHost } = require('../../src/services/benchmark/executionHostValidator');
 const { runPreflight } = require('../../src/services/benchmark/preflight');
 const { resolveJudgeHost } = require('../../src/services/benchmark/judgeHostResolution');
+const { loadJudgeHostRecommendations } = require('../../src/services/benchmark/judgeRecommendations');
 const { CATEGORY_MIN_JUDGE_TIER, CATEGORY_JUDGE_REQUIREMENTS } = require('../../config/categories');
 const path = require('path');
 const fs = require('fs');
@@ -35,43 +35,15 @@ function isDuplicateKeyError(err) {
     return !!(err && (err.code === 11000 || String(err.message || '').includes('E11000')));
 }
 
-function getStrongestLevel(levels = []) {
-    const numericLevels = (Array.isArray(levels) ? levels : [])
-        .map((level) => Number(level))
-        .filter((level) => Number.isFinite(level));
-
-    if (!numericLevels.length) {
-        return 5;
-    }
-
-    return Math.max(...numericLevels);
-}
-
 async function resolveBatchJudgeTarget(executionHost, judgeConfig = {}, levels = []) {
     const normalizedJudgeConfig = normalizeJudgeConfigContract(judgeConfig);
     const { judgeHost: resolvedJudgeHost } = resolveJudgeHost(executionHost, normalizedJudgeConfig);
-
-    if (normalizedJudgeConfig.mode === 'pinned') {
-        return {
-            normalizedJudgeConfig,
-            validationHost: normalizedJudgeConfig.host || normalizedJudgeConfig.pinnedHost || resolvedJudgeHost || null,
-            validationModel: normalizedJudgeConfig.model || normalizedJudgeConfig.pinnedModel || JUDGE_CONFIG.model || null
-        };
-    }
-
-    const promptLevel = getStrongestLevel(levels);
-    const preferredTier = normalizedJudgeConfig.preferred_tier || judgeTierResolver.getRequiredTier(promptLevel);
-    const candidates = await getJudgeCandidatesCached();
-    const resolution = judgeTierResolver.resolveJudgeModel(candidates, {
-        promptLevel,
-        preferredTier,
-        preferredHost: normalizedJudgeConfig.preferredHost || normalizedJudgeConfig.host || resolvedJudgeHost
-    });
+    void levels;
 
     return {
         normalizedJudgeConfig,
-        validationHost: resolution?.host || resolvedJudgeHost || normalizedJudgeConfig.host || null,
-        validationModel: resolution?.model || null
+        validationHost: normalizedJudgeConfig.host || resolvedJudgeHost || null,
+        validationModel: normalizedJudgeConfig.model || JUDGE_CONFIG.model || null
     };
 }
 
@@ -102,10 +74,18 @@ function buildActiveBatchConflict(active) {
  * GET /api/benchmark/config
  * Get benchmark configuration including judge settings
  */
-router.get('/config', (req, res) => {
+router.get('/config', async (req, res) => {
     const judgeDefaults = readJudgeDefaults();
     const tierDefinitions = judgeTierResolver.getTierDefinitions();
     const levelRequirements = judgeTierResolver.getLevelRequirements();
+    let judgeHostRecommendations = {};
+
+    try {
+        judgeHostRecommendations = await loadJudgeHostRecommendations({ judgeDefaults });
+    } catch (err) {
+        logger.warn('Failed to load judge host recommendations', { error: err.message });
+    }
+
     const categoryRequirements = Object.entries(CATEGORY_JUDGE_REQUIREMENTS).map(([key, value]) => ({
         key,
         label: value.label,
@@ -120,8 +100,7 @@ router.get('/config', (req, res) => {
         data: {
             judge_config: normalizeJudgeConfigContract({
                 ...JUDGE_CONFIG,
-                concurrency: 2,
-                judge_same_host: false
+                concurrency: 2
             }),
             execution_config: benchmarkService.getExecutionConfigDefaults(),
             scoring_configs: ENHANCED_SCORING_CONFIGS,
@@ -133,7 +112,8 @@ router.get('/config', (req, res) => {
             judge_category_requirements: categoryRequirements,
             tier_rank: judgeTierResolver.TIER_RANK,
             judge_tier_rank: judgeTierResolver.TIER_RANK,
-            judge_host_defaults: judgeDefaults
+            judge_host_defaults: judgeDefaults,
+            judge_host_recommendations: judgeHostRecommendations
         }
     });
 });
@@ -158,9 +138,9 @@ router.get('/prompts', async (req, res) => {
 
 /**
  * POST /api/benchmark/test
- * Run a single benchmark test - workspace-aware
+ * Run a single benchmark test
  */
-router.post('/test', optionalWorkspaceContext, async (req, res) => {
+router.post('/test', async (req, res) => {
     const { model, host, prompt } = req.body;
 
     // Validation
@@ -175,8 +155,7 @@ router.post('/test', optionalWorkspaceContext, async (req, res) => {
         const result = await benchmarkService.runTest({
             model,
             host,
-            prompt,
-            workspaceId: req.workspace ? req.workspace._id : null
+            prompt
         });
 
         res.json({
@@ -195,9 +174,9 @@ router.post('/test', optionalWorkspaceContext, async (req, res) => {
 
 /**
  * POST /api/benchmark/batch
- * Start a batch benchmark test with quality scoring - workspace-aware
+ * Start a batch benchmark test with quality scoring
  */
-router.post('/batch', optionalWorkspaceContext, async (req, res) => {
+router.post('/batch', async (req, res) => {
     const { host, models, levels, run_name, judge_config, execution_config, execution_mode, depth_config, tags, description } = req.body;
 
     // Validation
@@ -246,18 +225,15 @@ router.post('/batch', optionalWorkspaceContext, async (req, res) => {
 
         const preflightJudgeConfig = {
             ...normalizedJudgeConfig,
-            host: actualJudgeHost || normalizedJudgeConfig.host
+            host: actualJudgeHost || normalizedJudgeConfig.host,
+            model: judgeModel || normalizedJudgeConfig.model
         };
-        if (judgeModel) {
-            preflightJudgeConfig.model = judgeModel;
-        } else if (preflightJudgeConfig.mode === 'auto') {
-            delete preflightJudgeConfig.model;
-        }
 
         const preflight = await runPreflight({
             targets: models.map((modelName) => ({ host, model: modelName })),
             judgeConfig: preflightJudgeConfig,
-            levels
+            levels,
+            executionConfig: execution_config || null
         });
 
         if (!preflight.ready) {
@@ -279,8 +255,7 @@ router.post('/batch', optionalWorkspaceContext, async (req, res) => {
             execution_mode: execution_mode || 'latency',
             depth_config: depth_config || null,
             tags,
-            description,
-            workspaceId: req.workspace ? req.workspace._id : null
+            description
         });
 
         res.json({
@@ -658,11 +633,12 @@ router.post('/judge/calibrate-accuracy', async (req, res) => {
  */
 router.post('/preflight', async (req, res) => {
     try {
-        const { targets = [], judge_config = {}, levels } = req.body || {};
+        const { targets = [], judge_config = {}, levels, execution_config = null } = req.body || {};
         const result = await runPreflight({
             targets,
             judgeConfig: judge_config,
-            levels: Array.isArray(levels) ? levels : [1, 2, 3, 4, 5]
+            levels: Array.isArray(levels) ? levels : [1, 2, 3, 4, 5],
+            executionConfig: execution_config
         });
 
         res.json({

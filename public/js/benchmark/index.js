@@ -2,7 +2,7 @@
 
 import * as state from './state.js';
 import { escapeHtml, debugLog } from './utils.js';
-import { getWorkspaceHeaders, fetchBenchmarkConfig, fetchBenchmarkPrompts } from './api.js';
+import { getWorkspaceHeaders, fetchBenchmarkConfig, fetchBenchmarkPrompts, fetchActiveBatches, fetchBatchProgress } from './api.js';
 import { initChartDefaults } from './charts.js';
 import { loadOllamaHosts, loadModelsForHost, loadBatchModels, filterModelList, selectAllVisibleModels, loadModelRegistry, renderCategoryTabs } from './models.js';
 import { updateBatchInfo, renderDepthMatrix, bindDepthMatrix, updateDepthSummary, setAllDepths, getDepthConfig, getSelectedLevels, setAdvancedMode, setHyperMode, hydrateThresholdInputs, bindThresholdInputs } from './batch-config.js';
@@ -14,6 +14,7 @@ import { rerenderRecentTests, toggleSuccessRateDetails } from './recent-tests.js
 import { refreshJudgeTierUI } from './judge-mismatch.js';
 
 const JUDGE_CONFIG_STORAGE_KEY = 'benchmarkJudgeConfig';
+let judgeNumCtxTouched = false;
 
 /**
  * Setup modals (close on click outside, escape key)
@@ -81,41 +82,37 @@ function coerceNumber(value, fallback = null) {
     return Number.isFinite(num) ? num : fallback;
 }
 
-function getJudgeModelCandidates() {
-    const registryModels = Object.values(state.modelRegistryCache || {});
-    let candidates = registryModels
-        .filter(m => Array.isArray(m.categories) && m.categories.includes('judge'))
-        .filter(Boolean);
+async function resolveBatchToResume(savedBatchId) {
+    try {
+        const activeResponse = await fetchActiveBatches();
+        const activeBatches = Array.isArray(activeResponse?.data) ? activeResponse.data : [];
+        const activeBatch = activeBatches.find((batch) => (
+            batch && ['running', 'judging'].includes(batch.status)
+        ));
 
-    if (candidates.length === 0) {
-        candidates = registryModels.filter(Boolean);
-    }
-
-    if (candidates.length === 0 && Array.isArray(state.ollamaHosts)) {
-        const hostModels = [];
-        state.ollamaHosts.forEach(host => {
-            (host.models || []).forEach(model => hostModels.push({ modelName: model }));
-        });
-        candidates = hostModels;
-    }
-
-    // Always include the server's configured judge model
-    const serverDefault = state.currentJudgeConfig.model;
-    if (serverDefault && !candidates.some(c => c.modelName === serverDefault)) {
-        candidates.push({ modelName: serverDefault });
-    }
-
-    // Deduplicate by modelName, keep first (richer metadata)
-    const seen = new Set();
-    const unique = [];
-    for (const c of candidates) {
-        const name = c.modelName || c;
-        if (!seen.has(name)) {
-            seen.add(name);
-            unique.push(c);
+        if (activeBatch) {
+            return activeBatch.id || activeBatch._id || null;
         }
+    } catch (err) {
+        console.warn('Failed to fetch active batches:', err);
     }
-    return unique.sort((a, b) => (a.modelName || '').localeCompare(b.modelName || ''));
+
+    return savedBatchId || null;
+}
+
+function getJudgeModelCandidates() {
+    const seen = new Set();
+    const candidates = [];
+
+    (state.ollamaHosts || []).forEach((host) => {
+        (host.models || []).forEach((modelName) => {
+            if (!modelName || seen.has(modelName)) return;
+            seen.add(modelName);
+            candidates.push(state.modelRegistryCache[modelName] || { modelName });
+        });
+    });
+
+    return candidates.sort((a, b) => (a.modelName || '').localeCompare(b.modelName || ''));
 }
 
 function judgeTierRank(tier) {
@@ -123,12 +120,159 @@ function judgeTierRank(tier) {
 }
 
 function inferJudgeTierFromName(modelName) {
-    const n = (modelName || '').toLowerCase();
-    if (/70b|72b|671b|405b/.test(n)) return 'premium';
-    if (/32b|34b|30b|40b|14b|13b|20b|22b/.test(n)) return 'advanced';
-    if (/7b|8b|9b/.test(n)) return 'standard';
-    if (/3b|2b|1\.5b/.test(n)) return 'basic';
+    const normalized = (modelName || '').toLowerCase();
+    if (/70b|72b|671b|405b/.test(normalized)) return 'premium';
+    if (/32b|34b|30b|40b|14b|13b|20b|22b/.test(normalized)) return 'advanced';
+    if (/7b|8b|9b/.test(normalized)) return 'standard';
+    if (/3b|2b|1\.5b/.test(normalized)) return 'basic';
     return '';
+}
+
+function normalizeJudgeModelName(modelName) {
+    return String(modelName || '').trim().replace(/:latest$/i, '').toLowerCase();
+}
+
+function getAvailableJudgeModelsForHost(hostUrl) {
+    if (!hostUrl) return [];
+    const host = (state.ollamaHosts || []).find((entry) => entry.url === hostUrl);
+    return Array.isArray(host?.models) ? host.models.filter(Boolean) : [];
+}
+
+function getJudgeHostRecommendation(hostUrl) {
+    if (!hostUrl || !state.judgeHostRecommendations) return null;
+    return state.judgeHostRecommendations[hostUrl] || null;
+}
+
+function formatJudgeHostLabel(hostUrl) {
+    if (!hostUrl) return '(not set)';
+    const matched = (state.ollamaHosts || []).find((host) => host.url === hostUrl);
+    return matched ? `${matched.name} (${hostUrl})` : hostUrl;
+}
+
+function syncJudgeNumCtxToRecommendation(force = false) {
+    const judgeHostEl = document.getElementById('judgeHost');
+    const judgeModelEl = document.getElementById('judgeModel');
+    const judgeNumCtxEl = document.getElementById('judgeNumCtx');
+    const recommendation = getJudgeHostRecommendation(judgeHostEl?.value || '');
+    if (!judgeNumCtxEl || !recommendation?.recommended?.num_ctx) return;
+    const selectedModel = judgeModelEl?.value || '';
+    const matchesRecommendedModel = normalizeJudgeModelName(selectedModel) === normalizeJudgeModelName(recommendation.recommended.model);
+    if (!force && selectedModel && !matchesRecommendedModel) return;
+    if (!force && judgeNumCtxTouched) return;
+    judgeNumCtxEl.value = String(recommendation.recommended.num_ctx);
+}
+
+function renderJudgeRecommendationPanel() {
+    const headline = document.getElementById('judgeCapacityHeadline');
+    const details = document.getElementById('judgeCapacityDetails');
+    const current = document.getElementById('judgeCapacityCurrent');
+    const grid = document.getElementById('judgeHostRecommendationGrid');
+    const applyBtn = document.getElementById('applyJudgeRecommendationBtn');
+    if (!headline || !details || !current || !grid || !applyBtn) return;
+
+    const judgeHostEl = document.getElementById('judgeHost');
+    const judgeModelEl = document.getElementById('judgeModel');
+    const judgeNumCtxEl = document.getElementById('judgeNumCtx');
+    const selectedHost = judgeHostEl?.value || '';
+    const selectedModel = judgeModelEl?.value || '';
+    const selectedNumCtx = coerceNumber(judgeNumCtxEl?.value, null);
+    const recommendation = getJudgeHostRecommendation(selectedHost);
+    const recommended = recommendation?.recommended || null;
+
+    applyBtn.disabled = !recommended;
+
+    if (!recommendation) {
+        headline.textContent = 'Host-aware judge guidance unavailable';
+        details.textContent = 'No recommendation data was returned for the selected host.';
+        current.innerHTML = '';
+    } else if (!recommended) {
+        headline.textContent = `No judge recommendation for ${recommendation.hostName || selectedHost}`;
+        details.textContent = recommendation.available
+            ? 'No suitable judge candidate was found on this host.'
+            : 'Host inventory is unavailable, so recommendations could not be generated.';
+        current.innerHTML = '';
+    } else {
+        const matchesModel = normalizeJudgeModelName(selectedModel) === normalizeJudgeModelName(recommended.model);
+        const matchesCtx = selectedNumCtx === recommended.num_ctx;
+        headline.textContent = `Best available judge on ${recommendation.hostName}`;
+        details.textContent = `${recommended.model} at ${recommended.num_ctx.toLocaleString()} ctx. ${recommended.summary}.`;
+        current.innerHTML = `
+            <div style="display:flex; flex-wrap:wrap; gap:8px;">
+                <span class="judge-preview-badge" style="border-color:${matchesModel ? 'rgba(46, 204, 113, 0.4)' : 'rgba(241, 196, 15, 0.4)'}; color:${matchesModel ? '#2ecc71' : '#f1c40f'};">
+                    ${matchesModel ? 'Model aligned' : 'Current model differs'}
+                </span>
+                <span class="judge-preview-badge" style="border-color:${matchesCtx ? 'rgba(46, 204, 113, 0.4)' : 'rgba(241, 196, 15, 0.4)'}; color:${matchesCtx ? '#2ecc71' : '#f1c40f'};">
+                    ${matchesCtx ? 'Context aligned' : `Recommended ${recommended.num_ctx.toLocaleString()} ctx`}
+                </span>
+                ${recommendation.configuredDefault ? `<span class="judge-preview-badge">Configured default: ${escapeHtml(recommendation.configuredDefault)}</span>` : ''}
+            </div>
+        `;
+    }
+
+    const cards = Object.values(state.judgeHostRecommendations || {}).map((entry) => {
+        const rec = entry?.recommended || null;
+        const hostLabel = entry.hostName || entry.hostUrl;
+        if (!rec) {
+            return `
+                <div style="padding:10px; border-radius:8px; border:1px solid rgba(255,255,255,0.08); background:rgba(255,255,255,0.03);">
+                    <div style="font-weight:600; color:var(--text);">${escapeHtml(hostLabel)}</div>
+                    <div style="font-size:0.82em; color:var(--muted); margin-top:4px;">No recommendation available</div>
+                </div>
+            `;
+        }
+
+        const isSelected = selectedHost && entry.hostUrl === selectedHost;
+        return `
+            <div style="padding:10px; border-radius:8px; border:1px solid ${isSelected ? 'rgba(124, 240, 255, 0.35)' : 'rgba(255,255,255,0.08)'}; background:${isSelected ? 'rgba(124, 240, 255, 0.08)' : 'rgba(255,255,255,0.03)'};">
+                <div style="display:flex; justify-content:space-between; gap:8px; align-items:center;">
+                    <div style="font-weight:600; color:var(--text);">${escapeHtml(hostLabel)}</div>
+                    <div style="font-size:0.78em; color:var(--muted);">${entry.hostVramMb ? `${Number(entry.hostVramMb).toLocaleString()} MiB` : 'VRAM unknown'}</div>
+                </div>
+                <div style="margin-top:6px; color:var(--text); font-size:0.86em;">${escapeHtml(rec.model)}</div>
+                <div style="margin-top:4px; font-size:0.8em; color:var(--muted);">${rec.num_ctx.toLocaleString()} ctx · ${escapeHtml(rec.tier || 'unrated')} · ${escapeHtml(rec.contextSource)}</div>
+            </div>
+        `;
+    });
+    grid.innerHTML = cards.join('') || '<div style="font-size:0.85em; color:var(--muted);">No host recommendations available.</div>';
+}
+
+function applyJudgeRecommendationToForm(hostUrl = null) {
+    const judgeHostEl = document.getElementById('judgeHost');
+    const judgeModelEl = document.getElementById('judgeModel');
+    if (!judgeHostEl || !judgeModelEl) return;
+
+    const targetHost = hostUrl || judgeHostEl.value || '';
+    const recommendation = getJudgeHostRecommendation(targetHost);
+    const recommended = recommendation?.recommended || null;
+    if (!recommended) {
+        renderJudgeRecommendationPanel();
+        return;
+    }
+
+    judgeHostEl.value = targetHost;
+    populateJudgeModelSelect(targetHost);
+    const matchedModel = findBestJudgeModelMatch(recommended.model, getAvailableJudgeModelsForHost(targetHost));
+    if (matchedModel) {
+        judgeModelEl.value = matchedModel;
+    }
+    judgeNumCtxTouched = false;
+    syncJudgeNumCtxToRecommendation(true);
+    renderJudgeRecommendationPanel();
+}
+
+function findBestJudgeModelMatch(targetModel, availableModels) {
+    const normalizedTarget = normalizeJudgeModelName(targetModel);
+    if (!normalizedTarget) return null;
+    const models = Array.isArray(availableModels) ? availableModels : [];
+
+    const exact = models.find((name) => normalizeJudgeModelName(name) === normalizedTarget);
+    if (exact) return exact;
+
+    const targetCore = normalizedTarget.split(':').pop();
+    const sameSuffix = models.find((name) => normalizeJudgeModelName(name).split(':').pop() === targetCore);
+    if (sameSuffix) return sameSuffix;
+
+    return null;
 }
 
 function resolveJudgeDisplayTier(model) {
@@ -139,45 +283,53 @@ function resolveJudgeDisplayTier(model) {
     return judgeTierRank(inferredTier) > judgeTierRank(registryTier) ? inferredTier : registryTier;
 }
 
-/** Tier badge for judge model select */
 function judgeTierBadge(model) {
     const tier = resolveJudgeDisplayTier(model);
     if (!tier) return '';
     const badges = { basic: 'BASIC', standard: 'STD', advanced: 'ADV', premium: 'PRO' };
-    return badges[tier] ? ` [${badges[tier]}]` : '';
+    return badges[tier] ? ' [' + badges[tier] + ']' : '';
 }
 
-function populateJudgeModelSelect() {
+function populateJudgeModelSelect(hostOverride = null) {
     const select = document.getElementById('judgeModel');
     if (!select) return;
-    const candidates = getJudgeModelCandidates();
+    const selectedHost = hostOverride !== null ? hostOverride : (document.getElementById('judgeHost')?.value || state.currentJudgeConfig.host || '');
+    const hostModels = getAvailableJudgeModelsForHost(selectedHost);
+    const hasHostScopedModels = hostModels.length > 0;
+    const candidates = hasHostScopedModels
+        ? hostModels.map((modelName) => state.modelRegistryCache[modelName] || { modelName })
+        : getJudgeModelCandidates();
 
-    // Remove any previous warning banner
     const existingWarning = document.getElementById('judgeModelWarning');
     if (existingWarning) existingWarning.remove();
 
     if (candidates.length === 0) {
-        select.innerHTML = '<option value="" disabled>No models available</option>';
+        select.innerHTML = '<option value="" disabled>No host models available</option>';
         return;
     }
 
-    const current = state.currentJudgeConfig.model || select.value || '';
+    const current = select.value || state.currentJudgeConfig.model || '';
     select.innerHTML = candidates
         .map(model => {
             const name = model.modelName || model;
             const badge = judgeTierBadge(model);
-            return `<option value="${escapeHtml(name)}">${escapeHtml(name)}${badge}</option>`;
+            return '<option value="' + escapeHtml(name) + '">' + escapeHtml(name) + badge + '</option>';
         })
         .join('');
-    if (current && candidates.some(c => (c.modelName || c) === current)) {
-        select.value = current;
+
+    const availableNames = candidates.map((candidate) => candidate.modelName || candidate);
+    const matchedCurrent = findBestJudgeModelMatch(current, availableNames);
+    if (matchedCurrent) {
+        select.value = matchedCurrent;
     } else {
-        // Configured model not in available list - show warning
         if (current) {
+            const replacement = (candidates[0] && candidates[0].modelName) || candidates[0];
+            const hostLabel = selectedHost || '(no host selected)';
+            const availablePreview = availableNames.slice(0, 8).join(', ') || 'none';
             const warningBanner = document.createElement('div');
             warningBanner.id = 'judgeModelWarning';
             warningBanner.style.cssText = 'background: rgba(243, 156, 18, 0.15); border: 1px solid rgba(243, 156, 18, 0.5); border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; font-size: 0.85em; color: #f39c12;';
-            warningBanner.innerHTML = `<i class="fas fa-exclamation-triangle"></i> Configured judge model <strong>${escapeHtml(current)}</strong> not found in available models. Using <strong>${escapeHtml((candidates[0] && candidates[0].modelName) || candidates[0])}</strong> instead.`;
+            warningBanner.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Configured judge model <strong>' + escapeHtml(current) + '</strong> is not available on <strong>' + escapeHtml(hostLabel) + '</strong>. Using <strong>' + escapeHtml(replacement) + '</strong> instead.<br><span style="opacity:0.85;">Available on this host: ' + escapeHtml(availablePreview) + '</span>';
             select.parentElement.insertBefore(warningBanner, select);
         }
         select.value = (candidates[0] && candidates[0].modelName) || candidates[0];
@@ -191,110 +343,25 @@ function populateJudgeHostSelect() {
     const select = document.getElementById('judgeHost');
     if (!select) return;
     const currentValue = select.value || state.currentJudgeConfig.host || '';
-    // No "(auto)" sentinel — mode is controlled by the judgeMode radio buttons
     let options = '<option value="">(no host selected)</option>';
     if (Array.isArray(state.ollamaHosts)) {
-        state.ollamaHosts.forEach(h => {
-            const status = h.available ? '\u2713' : '\u2717';
-            options += `<option value="${h.url}">${status} ${h.name} (${h.url})</option>`;
+        state.ollamaHosts.forEach(host => {
+            const status = host.available ? '\u2713' : '\u2717';
+            options += '<option value="' + host.url + '">' + status + ' ' + host.name + ' (' + host.url + ')</option>';
         });
     }
     select.innerHTML = options;
     if (currentValue) select.value = currentValue;
 }
 
-/**
- * Derive which judge mode should be shown given a config object.
- * - If config.host is set → pinned (explicit host/model override)
- * - Otherwise → auto (policy-driven)
- * Backward compat: legacy configs that only set judge_same_host also map to auto.
- */
-function deriveJudgeMode(config) {
-    return (config && config.host) ? 'pinned' : 'auto';
-}
-
-/**
- * Show/hide the auto vs pinned sub-sections and highlight the active mode label.
- */
-function syncJudgeModeUI(mode) {
-    const autoSection = document.getElementById('judgeAutoSection');
-    const pinnedSection = document.getElementById('judgePinnedSection');
-    const autoLabel = document.getElementById('judgeModeAutoLabel');
-    const pinnedLabel = document.getElementById('judgeModePinnedLabel');
-
-    if (autoSection) autoSection.style.display = mode === 'auto' ? 'block' : 'none';
-    if (pinnedSection) pinnedSection.style.display = mode === 'pinned' ? 'block' : 'none';
-
-    const activeColor = 'rgba(52,152,219,0.8)';
-    const inactiveColor = 'rgba(52,152,219,0.3)';
-    if (autoLabel) autoLabel.style.borderColor = mode === 'auto' ? activeColor : inactiveColor;
-    if (pinnedLabel) pinnedLabel.style.borderColor = mode === 'pinned' ? activeColor : inactiveColor;
-
-    if (mode === 'auto') {
-        const policyEl = document.getElementById('judgeHostPolicy');
-        updateAutoJudgePreview(policyEl ? policyEl.value : 'cross_host');
-    }
-}
-
-/**
- * Render the "resolved judge" preview inside the auto section.
- * Shows what host/model will actually be used at batch-run time.
- */
-function updateAutoJudgePreview(policy) {
-    const el = document.getElementById('judgeAutoPreview');
-    if (!el) return;
-
-    const execHostUrl = document.getElementById('host')?.value || '';
-    const serverModel = state.currentJudgeConfig.model || '(server default)';
-
-    if (!execHostUrl) {
-        el.innerHTML = `<i class="fas fa-info-circle" style="color: #27ae60;"></i> Select an Ollama host on the main page to see the resolved judge.`;
-        return;
-    }
-
-    const hosts = state.ollamaHosts || [];
-    let hostLabel;
-    if (policy === 'same_host') {
-        const matched = hosts.find(h => h.url === execHostUrl);
-        hostLabel = matched ? `${escapeHtml(matched.name)} (${escapeHtml(execHostUrl)})` : escapeHtml(execHostUrl);
-    } else {
-        const other = hosts.find(h => h.url !== execHostUrl);
-        if (other) {
-            hostLabel = `${escapeHtml(other.name)} (${escapeHtml(other.url)})`;
-        } else {
-            const matched = hosts.find(h => h.url === execHostUrl);
-            const label = matched ? `${matched.name} (${execHostUrl})` : execHostUrl;
-            hostLabel = `${escapeHtml(label)} <span style="color:#f39c12;">(only one host — same as exec)</span>`;
-        }
-    }
-
-    el.innerHTML = `<i class="fas fa-check-circle" style="color:#27ae60;"></i>
-        Will use: <strong>${escapeHtml(serverModel)}</strong> on <strong>${hostLabel}</strong>`;
-}
-
 function applyJudgeConfigToForm(config) {
     if (!config) return;
 
-    // ── Mode radio + section visibility ────────────────────────────────────
-    const mode = deriveJudgeMode(config);
-    const modeRadio = document.getElementById(`judgeMode_${mode}`);
-    if (modeRadio) modeRadio.checked = true;
-    syncJudgeModeUI(mode);
-
-    // ── Auto: derive policy from judge_same_host ────────────────────────────
-    const policyEl = document.getElementById('judgeHostPolicy');
-    if (policyEl) {
-        policyEl.value = config.judge_same_host ? 'same_host' : 'cross_host';
-        updateAutoJudgePreview(policyEl.value);
-    }
-
-    // ── Pinned: host + model ────────────────────────────────────────────────
     const judgeHost = document.getElementById('judgeHost');
     if (judgeHost) judgeHost.value = config.host || '';
     const judgeModel = document.getElementById('judgeModel');
     if (judgeModel && config.model) judgeModel.value = config.model;
 
-    // ── Shared performance knobs ────────────────────────────────────────────
     const judgeTemp = document.getElementById('judgeTemp');
     const judgeTempVal = document.getElementById('judgeTempVal');
     if (judgeTemp && config.temperature !== undefined && config.temperature !== null) {
@@ -309,34 +376,25 @@ function applyJudgeConfigToForm(config) {
     if (judgeMaxTokens && config.num_predict !== undefined && config.num_predict !== null) {
         judgeMaxTokens.value = String(config.num_predict);
     }
+    const judgeNumCtx = document.getElementById('judgeNumCtx');
+    if (judgeNumCtx && config.num_ctx !== undefined && config.num_ctx !== null) {
+        judgeNumCtx.value = String(config.num_ctx);
+    }
     const judgeConcurrency = document.getElementById('judgeConcurrency');
     const judgeConcurrencyVal = document.getElementById('judgeConcurrencyVal');
     if (judgeConcurrency && config.concurrency !== undefined && config.concurrency !== null) {
         judgeConcurrency.value = String(config.concurrency);
         if (judgeConcurrencyVal) judgeConcurrencyVal.textContent = String(config.concurrency);
     }
-    const judgeTierAutoUpgrade = document.getElementById('judgeTierAutoUpgrade');
-    if (judgeTierAutoUpgrade && typeof config.judge_tier_auto_upgrade === 'boolean') {
-        judgeTierAutoUpgrade.checked = config.judge_tier_auto_upgrade;
-    }
 }
 
 function getJudgeConfigOverridesFromForm() {
     const overrides = {};
-    const mode = document.querySelector('input[name="judgeMode"]:checked')?.value || 'auto';
+    const judgeHostEl = document.getElementById('judgeHost');
+    const judgeModel = document.getElementById('judgeModel');
 
-    if (mode === 'pinned') {
-        const judgeHostEl = document.getElementById('judgeHost');
-        const judgeModel = document.getElementById('judgeModel');
-        overrides.host = (judgeHostEl && judgeHostEl.value) ? judgeHostEl.value : null;
-        if (judgeModel && judgeModel.value) overrides.model = judgeModel.value;
-        overrides.judge_same_host = false;
-    } else {
-        // auto — host is always server-resolved; only the policy flag needs persisting
-        overrides.host = null;
-        const policyEl = document.getElementById('judgeHostPolicy');
-        overrides.judge_same_host = policyEl ? policyEl.value === 'same_host' : false;
-    }
+    overrides.host = (judgeHostEl && judgeHostEl.value) ? judgeHostEl.value : null;
+    overrides.model = (judgeModel && judgeModel.value) ? judgeModel.value : null;
 
     const judgeTemp = document.getElementById('judgeTemp');
     if (judgeTemp && judgeTemp.value !== '') overrides.temperature = coerceNumber(judgeTemp.value, 0.1);
@@ -344,10 +402,10 @@ function getJudgeConfigOverridesFromForm() {
     if (judgeTimeout && judgeTimeout.value !== '') overrides.timeout = coerceNumber(judgeTimeout.value, 120000);
     const judgeMaxTokens = document.getElementById('judgeMaxTokens');
     if (judgeMaxTokens && judgeMaxTokens.value !== '') overrides.num_predict = coerceNumber(judgeMaxTokens.value, 200);
+    const judgeNumCtx = document.getElementById('judgeNumCtx');
+    if (judgeNumCtx && judgeNumCtx.value !== '') overrides.num_ctx = coerceNumber(judgeNumCtx.value, 8192);
     const judgeConcurrency = document.getElementById('judgeConcurrency');
     if (judgeConcurrency && judgeConcurrency.value !== '') overrides.concurrency = coerceNumber(judgeConcurrency.value, 2);
-    const judgeTierAutoUpgrade = document.getElementById('judgeTierAutoUpgrade');
-    if (judgeTierAutoUpgrade) overrides.judge_tier_auto_upgrade = !!judgeTierAutoUpgrade.checked;
 
     return overrides;
 }
@@ -359,9 +417,8 @@ function getJudgeConfigOverridesFromForm() {
 function commitJudgeConfigFromForm() {
     const overrides = getJudgeConfigOverridesFromForm();
     const next = { ...state.currentJudgeConfig, ...overrides };
-    // Remove host key when null/empty so backend uses auto-opposite logic
     if (!next.host) delete next.host;
-    if (!next.judge_same_host) delete next.judge_same_host;
+    if (!next.model) delete next.model;
     state.setCurrentJudgeConfig(next);
     writeStoredJudgeConfig(next);
     updateJudgeConfigPreview();
@@ -379,34 +436,30 @@ function updateJudgeConfigPreview() {
     const el = document.getElementById('judgeConfigPreview');
     if (!el) return;
     const cfg = state.currentJudgeConfig || {};
-    const model = cfg.model || '(server default)';
+    const model = cfg.model || '(not set)';
     const hostRaw = cfg.host || null;
-    const sameHost = !!cfg.judge_same_host;
-    const autoUpgrade = !!cfg.judge_tier_auto_upgrade;
     const concurrency = cfg.concurrency || 2;
     const timeout = cfg.timeout ? `${Math.round(cfg.timeout / 1000)}s` : '120s';
+    const numCtx = Number(cfg.num_ctx || 8192);
 
-    let hostLabel = '(auto — opposite of exec host)';
-    if (sameHost) {
-        hostLabel = '(same as exec host)';
-    } else if (hostRaw) {
-        const matched = (state.ollamaHosts || []).find(h => h.url === hostRaw);
-        hostLabel = matched ? `${matched.name} (${hostRaw})` : hostRaw;
-    }
-
-    const upgradeHtml = autoUpgrade
-        ? `<span class="badge" style="background:rgba(231,76,60,0.15);color:#e74c3c;border:1px solid rgba(231,76,60,0.35);font-size:0.75em;">⚡ Auto-upgrade ON</span>`
-        : `<span class="badge" style="background:rgba(39,174,96,0.12);color:#27ae60;border:1px solid rgba(39,174,96,0.3);font-size:0.75em;">✓ Fixed model</span>`;
+    const hostLabel = formatJudgeHostLabel(hostRaw);
+    const hostModels = getAvailableJudgeModelsForHost(hostRaw);
+    const judgeAvailableOnHost = hostRaw && model ? !!findBestJudgeModelMatch(model, hostModels) : true;
+    const availabilityBadge = hostRaw && !judgeAvailableOnHost
+        ? `<span class="judge-preview-badge" style="color:#f59e0b;border-color:rgba(245,158,11,0.4);" title="Pinned judge model is not available on the selected judge host">model missing on host</span>`
+        : '';
 
     el.innerHTML = `
-        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 12px;background:var(--panel-bg,#1a1a2e);border:1px solid var(--panel-border,#333);border-radius:8px;font-size:0.85em;">
-            <span style="color:var(--muted,#888);font-weight:600;margin-right:4px;"><i class="fas fa-gavel"></i> Judge:</span>
-            <span class="badge bg-primary" style="font-size:0.85em;">${escapeHtml(model)}</span>
-            <span style="color:var(--muted,#666);">on</span>
-            <span class="badge bg-light text-dark border" style="font-size:0.82em;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(hostLabel)}">${escapeHtml(hostLabel)}</span>
-            ${upgradeHtml}
-            <span class="badge bg-light text-dark border" style="font-size:0.78em;">×${concurrency} parallel</span>
-            <span class="badge bg-light text-dark border" style="font-size:0.78em;">${timeout} timeout</span>
+        <div class="judge-preview-card">
+            <span class="judge-preview-label"><i class="fas fa-gavel"></i> Judge</span>
+            <span class="judge-preview-badge is-model">${escapeHtml(model)}</span>
+            <span class="judge-preview-separator">on</span>
+            <span class="judge-preview-badge is-host" title="${escapeHtml(hostLabel)}">${escapeHtml(hostLabel)}</span>
+            <span class="judge-preview-pill">Pinned judge</span>
+            ${availabilityBadge}
+            <span class="judge-preview-badge">${numCtx.toLocaleString()} ctx</span>
+            <span class="judge-preview-badge">×${concurrency} parallel</span>
+            <span class="judge-preview-badge">${timeout} timeout</span>
         </div>`;
 }
 
@@ -422,6 +475,8 @@ function bindJudgeSettingsUI() {
             populateJudgeHostSelect();
             populateJudgeModelSelect();
             applyJudgeConfigToForm(state.currentJudgeConfig);
+            judgeNumCtxTouched = false;
+            renderJudgeRecommendationPanel();
             settingsModal.style.display = 'block';
         });
     }
@@ -441,14 +496,6 @@ function bindJudgeSettingsUI() {
         });
     }
 
-    // ── Mode radio: toggle pinned / auto sections ─────────────────────────
-    ['judgeMode_auto', 'judgeMode_pinned'].forEach(id => {
-        const radio = document.getElementById(id);
-        if (radio) {
-            radio.addEventListener('change', () => syncJudgeModeUI(radio.value));
-        }
-    });
-
     // ── Temperature: display-only update (no state touch) ─────────────────
     const judgeTemp = document.getElementById('judgeTemp');
     const judgeTempVal = document.getElementById('judgeTempVal');
@@ -467,30 +514,53 @@ function bindJudgeSettingsUI() {
         });
     }
 
-    // ── Host policy change: refresh resolved-judge preview ────────────────
-    const judgeHostPolicy = document.getElementById('judgeHostPolicy');
-    if (judgeHostPolicy) {
-        judgeHostPolicy.addEventListener('change', () => {
-            updateAutoJudgePreview(judgeHostPolicy.value);
-        });
-    }
-
     // ── Pinned host change: auto-suggest model from per-host defaults ──────
     const judgeHostEl = document.getElementById('judgeHost');
     if (judgeHostEl) {
         judgeHostEl.addEventListener('change', () => {
             const hostUrl = judgeHostEl.value;
-            const defaultModel = hostUrl && state.judgeHostDefaults && state.judgeHostDefaults[hostUrl];
+            populateJudgeModelSelect(hostUrl);
+            const recommendedModel = getJudgeHostRecommendation(hostUrl)?.recommended?.model || null;
+            const defaultModel = recommendedModel || (hostUrl && state.judgeHostDefaults && state.judgeHostDefaults[hostUrl]);
             if (defaultModel) {
                 const judgeModelEl = document.getElementById('judgeModel');
-                if (judgeModelEl) judgeModelEl.value = defaultModel;
+                if (judgeModelEl) {
+                    const matchedModel = findBestJudgeModelMatch(defaultModel, getAvailableJudgeModelsForHost(hostUrl));
+                    if (matchedModel) judgeModelEl.value = matchedModel;
+                }
             }
+            judgeNumCtxTouched = false;
+            syncJudgeNumCtxToRecommendation(false);
+            renderJudgeRecommendationPanel();
         });
     }
 
-    // ── judgeAutoSuggest: from the mismatch banner (outside modal) ─────────
+    const judgeModelEl = document.getElementById('judgeModel');
+    if (judgeModelEl) {
+        judgeModelEl.addEventListener('change', () => {
+            syncJudgeNumCtxToRecommendation(false);
+            renderJudgeRecommendationPanel();
+        });
+    }
+
+    const judgeNumCtxEl = document.getElementById('judgeNumCtx');
+    if (judgeNumCtxEl) {
+        judgeNumCtxEl.addEventListener('input', () => {
+            judgeNumCtxTouched = true;
+            renderJudgeRecommendationPanel();
+        });
+    }
+
+    const applyRecommendationBtn = document.getElementById('applyJudgeRecommendationBtn');
+    if (applyRecommendationBtn) {
+        applyRecommendationBtn.addEventListener('click', () => {
+            applyJudgeRecommendationToForm();
+        });
+    }
+
+    // ── judgeSuggestionApply: from the mismatch banner (outside modal) ─────
     // Always applies immediately to state (banner is main-page UI, not modal).
-    document.addEventListener('judgeAutoSuggest', (e) => {
+    document.addEventListener('judgeSuggestionApply', (e) => {
         const model = e.detail && e.detail.model;
         if (!model) return;
         const next = { ...state.currentJudgeConfig, model };
@@ -499,6 +569,8 @@ function bindJudgeSettingsUI() {
         updateJudgeConfigPreview();
         populateJudgeModelSelect();
         applyJudgeConfigToForm(next);
+        judgeNumCtxTouched = false;
+        renderJudgeRecommendationPanel();
         const depthCfg = getDepthConfig();
         refreshJudgeTierUI(getSelectedLevels(depthCfg));
     });
@@ -568,7 +640,7 @@ function showCategoryInsights(category) {
 
     if (!category) {
         if (insightsTitle) insightsTitle.textContent = 'Universal Leaderboard - All Models';
-        if (insightsContent) insightsContent.innerHTML = '<strong>Overview:</strong> All models ranked across all task types using composite scoring<br><strong>Key Metric:</strong> Composite score balances quality (40%), speed (40%), and reliability (20%)<br><strong>Tip:</strong> This view is useful for general comparison, but use category tabs for task-specific rankings.';
+        if (insightsContent) insightsContent.innerHTML = '<strong>Overview:</strong> All models ranked across all task types using composite scoring.<br><strong>Key Metric:</strong> Composite score balances quality, speed, and full pass rate.<br><strong>Terms:</strong> Exec Success means the run completed. Full Pass means the run completed and received a judge score. Judge Fail means execution worked but judging failed.<br><strong>Tip:</strong> Use category tabs for task-specific rankings.';
         if (insightsPanel) insightsPanel.style.display = 'block';
         return;
     }
@@ -593,10 +665,11 @@ async function loadJudgeConfig() {
         if (data.judge_tier_map) state.setJudgeTierMap(data.judge_tier_map);
         if (data.judge_tier_rank) state.setJudgeTierRank(data.judge_tier_rank);
         if (data.judge_host_defaults) state.setJudgeHostDefaults(data.judge_host_defaults);
+        if (data.judge_host_recommendations) state.setJudgeHostRecommendations(data.judge_host_recommendations);
 
         // Server is authoritative for model.
-        // localStorage persists UI preferences (host, temperature, concurrency, timeout, num_predict, toggles).
-        const uiOnlyKeys = ['host', 'temperature', 'timeout', 'num_predict', 'concurrency', 'judge_same_host', 'judge_tier_auto_upgrade'];
+        // localStorage persists UI preferences (host, temperature, concurrency, timeout, num_predict, num_ctx).
+        const uiOnlyKeys = ['host', 'model', 'temperature', 'timeout', 'num_predict', 'num_ctx', 'concurrency'];
         const storedUiPrefs = {};
         if (storedJudgeConfig) {
             for (const key of uiOnlyKeys) {
@@ -605,8 +678,8 @@ async function loadJudgeConfig() {
                 }
             }
         }
-        const mergedJudgeConfig = { ...storedUiPrefs, ...judgeConfig };
-        // Strip stale/empty/wildcard host so backend uses auto-opposite logic
+        const mergedJudgeConfig = { ...judgeConfig, ...storedUiPrefs };
+        // Strip stale/empty/wildcard host so benchmark state never keeps invalid hosts
         const h = mergedJudgeConfig.host || '';
         if (!h || h === 'http://0.0.0.0' || /\/\/0\.0\.0\.0(:\d+)?$/.test(h)) {
             delete mergedJudgeConfig.host;
@@ -624,6 +697,7 @@ async function loadJudgeConfig() {
         populateJudgeModelSelect();
         applyJudgeConfigToForm(mergedJudgeConfig);
         updateJudgeConfigPreview();
+        renderJudgeRecommendationPanel();
 
         // Refresh tier indicators after config loads
         const depthCfg = getDepthConfig();
@@ -657,8 +731,10 @@ async function initBenchmarkUI() {
     // Initialize Chart.js defaults
     initChartDefaults();
 
-    // Setup modals
+    // Setup shared modal interactions
     setupModals();
+
+    // Setup judge settings modal interactions
     bindJudgeSettingsUI();
 
     // Host change handler
@@ -882,30 +958,27 @@ async function initBenchmarkUI() {
 
     // Check for active batch
     const savedBatchId = localStorage.getItem('currentBatchId');
-    if (savedBatchId) {
-        debugLog('Attempting to resume batch:', savedBatchId);
+    const batchIdToResume = await resolveBatchToResume(savedBatchId);
+    if (batchIdToResume) {
+        debugLog('Attempting to resume batch:', batchIdToResume);
         try {
-            const res = await fetch(`${state.BENCHMARK_API}/batch/${savedBatchId}`);
-            if (res.ok) {
-                const json = await res.json();
-                const batch = json.data;
+            const json = await fetchBatchProgress(batchIdToResume);
+            const batch = json.data;
 
-                if (batch && (batch.status === 'running' || batch.status === 'judging')) {
-                    debugLog('Resuming active batch:', savedBatchId);
-                    state.setCurrentBatchId(savedBatchId);
+            if (batch && (batch.status === 'running' || batch.status === 'judging')) {
+                debugLog('Resuming active batch:', batchIdToResume);
+                state.setCurrentBatchId(batchIdToResume);
+                localStorage.setItem('currentBatchId', batchIdToResume);
 
-                    const btn = document.getElementById('runBatchBtn');
-                    const stopBtn = document.getElementById('stopBatchBtn');
-                    btn.disabled = true;
-                    btn.textContent = 'Resuming...';
-                    stopBtn.style.display = 'inline-block';
+                const btn = document.getElementById('runBatchBtn');
+                const stopBtn = document.getElementById('stopBatchBtn');
+                btn.disabled = true;
+                btn.textContent = 'Resuming...';
+                stopBtn.style.display = 'inline-block';
 
-                    pollBatchProgress();
-                    const interval = setInterval(pollBatchProgress, 2000);
-                    state.setBatchPollInterval(interval);
-                } else {
-                    localStorage.removeItem('currentBatchId');
-                }
+                pollBatchProgress();
+                const interval = setInterval(pollBatchProgress, 2000);
+                state.setBatchPollInterval(interval);
             } else {
                 localStorage.removeItem('currentBatchId');
             }
@@ -932,7 +1005,7 @@ async function initBenchmarkUI() {
     const successRateCard = document.getElementById('successRateCard');
     if (successRateCard) {
         successRateCard.style.cursor = 'pointer';
-        successRateCard.title = 'Click for breakdown';
+        successRateCard.title = 'Click for exec-success vs full-pass breakdown';
         successRateCard.addEventListener('click', toggleSuccessRateDetails);
     }
 

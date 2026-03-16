@@ -1,11 +1,6 @@
-const { HOSTS } = require('../modelRouter');
-
 function resolveJudgeHost(executionHost, judgeConfig = {}) {
     const execHost = String(executionHost || '').trim();
     const explicitHost = String(judgeConfig.host || '').trim();
-    const judgeSameHost = judgeConfig.judge_same_host !== undefined
-        ? !!judgeConfig.judge_same_host
-        : false;
 
     if (explicitHost) {
         return {
@@ -15,33 +10,10 @@ function resolveJudgeHost(executionHost, judgeConfig = {}) {
         };
     }
 
-    if (judgeSameHost) {
-        return {
-            judgeHost: execHost,
-            effectiveJudgeSameHost: true,
-            resolution: 'same_host'
-        };
-    }
-
-    let judgeHost = HOSTS.primary || '';
-    if (execHost === HOSTS.primary) {
-        judgeHost = HOSTS.secondary || '';
-    } else if (execHost === HOSTS.secondary) {
-        judgeHost = HOSTS.primary || '';
-    }
-
-    if (!judgeHost || judgeHost === execHost) {
-        return {
-            judgeHost: execHost,
-            effectiveJudgeSameHost: true,
-            resolution: 'fallback_same_host'
-        };
-    }
-
     return {
-        judgeHost,
-        effectiveJudgeSameHost: false,
-        resolution: 'cross_host'
+        judgeHost: execHost,
+        effectiveJudgeSameHost: true,
+        resolution: 'execution_host_default'
     };
 }
 

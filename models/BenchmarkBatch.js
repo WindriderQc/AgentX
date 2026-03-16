@@ -85,10 +85,6 @@ const BenchmarkBatchSchema = new mongoose.Schema({
         type: Object,
         default: {}
     },
-    judge_same_host: {
-        type: Boolean,
-        default: false
-    },
     execution_mode: {
         type: String,
         enum: ['latency', 'throughput'],
@@ -108,7 +104,6 @@ const BenchmarkBatchSchema = new mongoose.Schema({
             tests: Number
         }],
         judge_model: String,
-        judge_same_host: Boolean,
         execution_config: {
             type: Object,
             default: {}
@@ -558,38 +553,40 @@ BenchmarkBatchSchema.methods.incrementJudgeProgress = function(success = true) {
 BenchmarkBatchSchema.methods.updateCurrentTest = function(model, promptId, promptName, stage = 'executing', options = {}) {
     const testNumber = options.testNumber || this.completed + 1;
     const promptLevel = options.promptLevel || null;
+    const recordTimeline = options.recordTimeline !== false;
+    const update = {
+        $set: {
+            current_test: {
+                model,
+                prompt_id: promptId,
+                prompt_name: promptName,
+                prompt_level: promptLevel,
+                stage,
+                started_at: new Date(),
+                test_number: testNumber
+            },
+            last_activity_at: new Date()
+        }
+    };
 
-    // Use direct MongoDB update to avoid loading entire document into memory
-    return mongoose.model('BenchmarkBatch').updateOne(
-        { _id: this._id },
-        {
-            $set: {
-                current_test: {
+    if (recordTimeline) {
+        update.$push = {
+            timeline: {
+                $each: [{
+                    timestamp: new Date(),
+                    event: stage === 'executing' ? 'test_start' : 'judge_start',
                     model,
                     prompt_id: promptId,
-                    prompt_name: promptName,
                     prompt_level: promptLevel,
-                    stage,
-                    started_at: new Date(),
-                    test_number: testNumber
-                },
-                last_activity_at: new Date()
-            },
-            $push: {
-                timeline: {
-                    $each: [{
-                        timestamp: new Date(),
-                        event: stage === 'executing' ? 'test_start' : 'judge_start',
-                        model,
-                        prompt_id: promptId,
-                        prompt_level: promptLevel,
-                        success: null
-                    }],
-                    $slice: -2500  // Keep only last 2500 timeline events to cap memory
-                }
+                    success: null
+                }],
+                $slice: -2500  // Keep only last 2500 timeline events to cap memory
             }
-        }
-    );
+        };
+    }
+
+    // Use direct MongoDB update to avoid loading entire document into memory
+    return mongoose.model('BenchmarkBatch').updateOne({ _id: this._id }, update);
 };
 
 BenchmarkBatchSchema.methods.recordTestComplete = function(model, promptId, durationMs, success = true, error = null, promptLevel = null, host = null, tokensPerSec = null) {

@@ -156,6 +156,9 @@ async function compareBatches(batchIds) {
         // Calculate aggregated scores for this batch
         let avg_quality = null;
         let avg_composite = null;
+        let full_passed = 0;
+        let judge_failed = 0;
+        let judge_pending = 0;
 
         const scores = await BenchmarkResult.aggregate([
             { $match: { batch_id: batch._id.toString() } },
@@ -163,22 +166,76 @@ async function compareBatches(batchIds) {
                 $group: {
                     _id: null,
                     avg_quality: { $avg: '$quality_score' },
-                    avg_composite: { $avg: '$composite_score' }
+                    avg_composite: { $avg: '$composite_score' },
+                    full_passed: {
+                        $sum: {
+                            $cond: [
+                                {
+                                    $and: [
+                                        { $eq: ['$success', true] },
+                                        { $ne: [{ $ifNull: ['$quality_score', null] }, null] }
+                                    ]
+                                },
+                                1,
+                                0
+                            ]
+                        }
+                    },
+                    judge_failed: {
+                        $sum: {
+                            $cond: [
+                                {
+                                    $eq: [{ $toLower: { $ifNull: ['$scoring_method', ''] } }, 'llm_failed']
+                                },
+                                1,
+                                0
+                            ]
+                        }
+                    },
+                    judge_pending: {
+                        $sum: {
+                            $cond: [
+                                {
+                                    $and: [
+                                        { $eq: ['$success', true] },
+                                        { $eq: [{ $type: '$response' }, 'string'] },
+                                        { $ne: ['$response', ''] },
+                                        { $eq: [{ $toLower: { $ifNull: ['$scoring_method', 'pending'] } }, 'pending'] }
+                                    ]
+                                },
+                                1,
+                                0
+                            ]
+                        }
+                    }
                 }
             }
         ]);
         if (scores.length > 0) {
             avg_quality = scores[0].avg_quality !== null ? parseFloat(scores[0].avg_quality.toFixed(1)) : null;
             avg_composite = scores[0].avg_composite !== null ? parseFloat(scores[0].avg_composite.toFixed(1)) : null;
+            full_passed = Number(scores[0].full_passed) || 0;
+            judge_failed = Number(scores[0].judge_failed) || 0;
+            judge_pending = Number(scores[0].judge_pending) || 0;
         }
+
+        const totalTests = Number(batch.total_tests) || 0;
+        const completed = Number(batch.completed) || 0;
+        const execSuccessRate = Number(batch.success_rate) || 0;
+        const fullPassRate = totalTests > 0 ? Number(((full_passed / totalTests) * 100).toFixed(1)) : 0;
 
         return {
             batch_id: batch._id.toString(),
             run_name: batch.run_name,
             models: batch.models,
             status: batch.status,
-            total_tests: batch.total_tests,
-            completed: batch.completed,
+            total_tests: totalTests,
+            completed,
+            exec_success_rate: execSuccessRate,
+            full_pass_rate: fullPassRate,
+            full_passed,
+            judge_failed,
+            judge_pending,
             success_rate: batch.success_rate,
             execution_metrics: batch.execution_metrics,
             config_snapshot: batch.config_snapshot,

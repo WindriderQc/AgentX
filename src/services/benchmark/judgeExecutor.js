@@ -13,11 +13,11 @@ function buildPromptData(result, originalPrompt) {
         expected_answer: result.expected_answer,
         scoring_type: result.scoring_type,
         deterministic_scoring: result.deterministic_scoring,
-        scoring_dimensions: originalPrompt?.scoring_dimensions || undefined,
-        reference_answer: originalPrompt?.reference_answer || undefined,
-        output_contract: originalPrompt?.output_contract || undefined,
-        judge_criteria: originalPrompt?.judge_criteria || result.judge_criteria || undefined,
-        required_judge_tier: originalPrompt?.required_judge_tier || undefined
+        scoring_dimensions: result.scoring_dimensions || originalPrompt?.scoring_dimensions || undefined,
+        reference_answer: result.reference_answer || originalPrompt?.reference_answer || undefined,
+        output_contract: result.output_contract || originalPrompt?.output_contract || undefined,
+        judge_criteria: result.judge_criteria || originalPrompt?.judge_criteria || undefined,
+        required_judge_tier: result.required_judge_tier || originalPrompt?.required_judge_tier || undefined
     };
 }
 
@@ -31,7 +31,7 @@ function buildResultScoreContext(result) {
 }
 
 async function findOriginalPrompt(result) {
-    if (!result.prompt_name) {
+    if (!result.prompt_name || result.prompt_snapshot_embedded) {
         return null;
     }
 

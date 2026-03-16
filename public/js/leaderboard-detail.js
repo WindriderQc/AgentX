@@ -79,7 +79,11 @@ function renderPerformanceDetail(modalBody, modelName, host) {
     const score = getProfileScore(model);
     const tests = model.tests || 1;
     const failed = model.failed_tests || 0;
-    const reliabilityPct = Math.round(((tests - failed) / tests) * 100);
+    const execSuccessPct = Math.round(((tests - failed) / tests) * 100);
+    const fullPassPct = Number.isFinite(Number(model.full_pass_rate)) ? Math.round(Number(model.full_pass_rate)) : 0;
+    const judgeFailed = Number(model.judge_failed_tests) || 0;
+    const judgePending = Number(model.judge_pending_tests) || 0;
+    const fullPassed = Number(model.full_passed_tests) || 0;
     const hostLabel = extractHostName(model.host);
 
     modalBody.innerHTML = `
@@ -100,34 +104,46 @@ function renderPerformanceDetail(modalBody, modelName, host) {
                 <span class="detail-label">Tokens/sec <i class="fas fa-info-circle tip-icon"></i></span>
                 <span class="detail-value">${parseFloat(model.avg_tokens_per_sec || 0).toFixed(1)}</span>
             </div>
-            <div class="detail-item" title="Success rate: ${tests - failed} successful out of ${tests} total">
-                <span class="detail-label">Reliability <i class="fas fa-info-circle tip-icon"></i></span>
-                <span class="detail-value">${reliabilityPct}%</span>
+            <div class="detail-item" title="Execution success only: ${tests - failed} successful out of ${tests} judged-or-executed rows">
+                <span class="detail-label">Exec Success <i class="fas fa-info-circle tip-icon"></i></span>
+                <span class="detail-value">${execSuccessPct}%</span>
             </div>
-            <div class="detail-item">
-                <span class="detail-label">Tests (Pass/Fail)</span>
-                <span class="detail-value">${tests - failed} / ${failed}</span>
+            <div class="detail-item" title="Full pass = execution success plus completed judge score">
+                <span class="detail-label">Full Pass <i class="fas fa-info-circle tip-icon"></i></span>
+                <span class="detail-value">${fullPassPct}%</span>
+            </div>
+            <div class="detail-item" title="Execution success / execution fail / full pass">
+                <span class="detail-label">Test Split</span>
+                <span class="detail-value">${tests - failed} / ${failed} / ${fullPassed}</span>
+            </div>
+            <div class="detail-item" title="Judge failures after successful execution">
+                <span class="detail-label">Judge Fail</span>
+                <span class="detail-value">${judgeFailed}</span>
+            </div>
+            <div class="detail-item" title="Successful executions still waiting for judge completion">
+                <span class="detail-label">Judge Pending</span>
+                <span class="detail-value">${judgePending}</span>
             </div>
         </div>
 
         <h4>Profile Scores <span class="tip-text" title="Server-calculated composite scores for different use cases">i</span></h4>
         <div class="info-box">
-            <span class="info-note">Each profile weights Quality, Speed, and Reliability differently.</span>
+            <span class="info-note">Each profile weights Quality, Speed, and Full Pass differently.</span>
         </div>
         <div class="detail-grid">
-            <div class="detail-item" title="General-purpose: Quality 45%, Speed 30%, Reliability 25%">
+            <div class="detail-item" title="General-purpose: Quality 45%, Speed 30%, Full Pass 25%">
                 <span class="detail-label">Balanced <i class="fas fa-info-circle tip-icon"></i></span>
                 <span class="detail-value">${parseFloat(model.balanced_score || 0).toFixed(1)}</span>
             </div>
-            <div class="detail-item" title="Chat/real-time: Quality 40%, Latency 40%, Speed 20%">
+            <div class="detail-item" title="Chat/real-time: Quality 40%, Latency 40%, Full Pass 20%">
                 <span class="detail-label">Interactive <i class="fas fa-info-circle tip-icon"></i></span>
                 <span class="detail-value">${parseFloat(model.interactive_score || 0).toFixed(1)}</span>
             </div>
-            <div class="detail-item" title="Analysis: Quality 80%, Latency 10%, Speed 10%">
+            <div class="detail-item" title="Analysis: Quality 80%, Speed 10%, Full Pass 10%">
                 <span class="detail-label">Reasoning <i class="fas fa-info-circle tip-icon"></i></span>
                 <span class="detail-value">${parseFloat(model.reasoning_score || 0).toFixed(1)}</span>
             </div>
-            <div class="detail-item" title="Code gen: Quality 70%, Latency 20%, Speed 10%">
+            <div class="detail-item" title="Code gen: Quality 70%, Speed 20%, Full Pass 10%">
                 <span class="detail-label">Coding <i class="fas fa-info-circle tip-icon"></i></span>
                 <span class="detail-value">${parseFloat(model.coding_score || 0).toFixed(1)}</span>
             </div>

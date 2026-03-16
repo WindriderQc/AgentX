@@ -8,7 +8,6 @@ const {
   JUDGE_PRESETS,
   getRequiredTier,
   tierMeetsRequirement,
-  resolveJudgeModel,
   inferJudgeTier,
   resolveJudgeTierMetadata,
   getJudgePreset
@@ -172,85 +171,27 @@ describe('resolveJudgeTierMetadata', () => {
     expect(calibrated.effectiveTier).toBe('advanced');
     expect(calibrated.source).toBe('calibrated');
   });
-});
 
-// ---------------------------------------------------------------------------
-// resolveJudgeModel
-// ---------------------------------------------------------------------------
-describe('resolveJudgeModel', () => {
-  const candidates = [
-    {
-      modelName: 'qwen2.5:7b-instruct-q5_K_M',
-      capabilities: { judgeTier: 'standard', judgeReliability: 0.95 },
-      host: 'host-a'
-    },
-    {
-      modelName: 'llama3.1:8b',
-      capabilities: { judgeTier: 'standard', judgeReliability: 0.97 },
-      host: 'host-b'
-    },
-    {
-      modelName: 'qwen2.5:14b-instruct-q4_K_M',
-      capabilities: { judgeTier: 'advanced', judgeReliability: 0.90 },
-      host: 'host-a'
-    }
-  ];
+  test('prefers inferred tier when stale legacy metadata downgrades a larger model', () => {
+    const result = resolveJudgeTierMetadata({
+      judgeTier: 'basic'
+    }, 'qwen2.5:14b-instruct-q4_K_M');
 
-  test('picks best candidate for "standard" requirement', () => {
-    const result = resolveJudgeModel(candidates, { preferredTier: 'standard' });
-    expect(result).toBeDefined();
-    expect(result.model).toBeDefined();
-    expect(result.tier).toBeDefined();
-    expect(result.tier_downgraded).toBe(false);
+    expect(result.legacyTier).toBe('basic');
+    expect(result.inferredTier).toBe('advanced');
+    expect(result.effectiveTier).toBe('advanced');
+    expect(result.source).toBe('inferred');
   });
 
-  test('returns tier_downgraded=true when no candidate meets required tier', () => {
-    const basicOnly = [
-      { modelName: 'tiny:1b', capabilities: { judgeTier: 'basic', judgeReliability: 0.50 }, host: 'h1' }
-    ];
-    const result = resolveJudgeModel(basicOnly, { preferredTier: 'advanced' });
-    expect(result.tier_downgraded).toBe(true);
-    expect(result.model).toBe('tiny:1b');
-  });
+  test('keeps legacy tier when it is at least as strong as the inferred tier', () => {
+    const result = resolveJudgeTierMetadata({
+      judgeTier: 'advanced'
+    }, 'qwen2.5:7b');
 
-  test('returns {model:null} for empty candidates array', () => {
-    const result = resolveJudgeModel([], { preferredTier: 'standard' });
-    expect(result.model).toBeNull();
-    expect(result.warning).toBeDefined();
-  });
-
-  test('returns {model:null} for undefined candidates', () => {
-    const result = resolveJudgeModel(undefined);
-    expect(result.model).toBeNull();
-    expect(result.warning).toBeDefined();
-  });
-
-  test('prefers candidate on preferredHost', () => {
-    const result = resolveJudgeModel(candidates, {
-      preferredTier: 'standard',
-      preferredHost: 'host-b'
-    });
-    // llama3.1:8b is on host-b with higher reliability, should be chosen
-    expect(result.model).toBe('llama3.1:8b');
-  });
-
-  test('picks advanced model when advanced tier required', () => {
-    const result = resolveJudgeModel(candidates, { preferredTier: 'advanced' });
-    expect(result.model).toBe('qwen2.5:14b-instruct-q4_K_M');
-    expect(result.tier).toBe('advanced');
-    expect(result.tier_downgraded).toBe(false);
-  });
-
-  test('falls back to unknown tier when capabilities.judgeTier missing', () => {
-    const noTierCandidates = [
-      { modelName: 'qwen2.5:7b-instruct', capabilities: {}, host: 'h1' }
-    ];
-    const result = resolveJudgeModel(noTierCandidates, { preferredTier: 'standard' });
-    expect(result).toBeDefined();
-    // No candidates pass the judgeTier filter → fallback with 'unknown' tier
-    expect(result.tier).toBe('unknown');
-    expect(result.tier_downgraded).toBe(true);
-    expect(result.model).toBe('qwen2.5:7b-instruct');
+    expect(result.legacyTier).toBe('advanced');
+    expect(result.inferredTier).toBe('standard');
+    expect(result.effectiveTier).toBe('advanced');
+    expect(result.source).toBe('legacy');
   });
 });
 

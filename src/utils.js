@@ -37,39 +37,54 @@ function resolveTarget(target) {
 }
 
 /**
- * Resolve num_ctx for a model, aware of the target host's VRAM.
+ * Resolve num_ctx details for a model, aware of the target host's VRAM.
  *
  * Priority:
  *   1. User override from registry (always wins)
  *   2. Dynamic VRAM-based calculation for the target host
- *   3. Registry auto-detected default (may be for a different host)
- *   4. Fallback (8192)
- *
- * When a model lives on multiple hosts with different VRAM, the registry
- * stores the last-synced host's calculation.  This function recalculates
- * for the actual target host so the context fits in GPU.
+ *   3. Verified context probe result
+ *   4. Registry auto-detected default
+ *   5. Fallback (8192)
  *
  * @param {string} modelName
  * @param {object} [opts]
  * @param {string} [opts.targetHost] - Ollama host URL the request will be sent to
  * @param {number} [opts.fallback=8192]
- * @returns {Promise<number>}
+ * @returns {Promise<{ num_ctx: number, source: string, targetHost: string|null }>}
  */
-async function resolveModelNumCtx(modelName, opts = {}) {
+async function resolveModelNumCtxDetails(modelName, opts = {}) {
   const fallback = typeof opts === 'number' ? opts : (opts.fallback || 8192);
   const targetHost = typeof opts === 'object' ? opts.targetHost : undefined;
 
-  if (!modelName) return fallback;
+  if (!modelName) {
+    return {
+      num_ctx: fallback,
+      source: 'fallback',
+      targetHost: targetHost || null
+    };
+  }
   try {
     const ModelRegistry = require('../models/ModelRegistry');
     const entry = await ModelRegistry.findOne({ modelName: modelName.replace(/:latest$/, '') })
       .select('executionOverrides executionDefaults parameterSize quantization modelSizeBytes sourceHost contextTest')
       .lean();
-    if (!entry) return fallback;
+    if (!entry) {
+      return {
+        num_ctx: fallback,
+        source: 'fallback',
+        targetHost: targetHost || null
+      };
+    }
 
     const overrides = entry.executionOverrides || {};
     // User override always wins
-    if (overrides.num_ctx != null) return overrides.num_ctx;
+    if (overrides.num_ctx != null) {
+      return {
+        num_ctx: overrides.num_ctx,
+        source: 'override',
+        targetHost: targetHost || null
+      };
+    }
 
     const defaults = entry.executionDefaults || {};
     const ct = entry.contextTest || {};
@@ -90,19 +105,62 @@ async function resolveModelNumCtx(modelName, opts = {}) {
             modelSizeBytes: entry.modelSizeBytes,
             hostVramMiB: vramResult.memoryTotalMiBTotal
           });
-          return detection.num_ctx;
+          return {
+            num_ctx: detection.num_ctx,
+            source: 'target_host_vram_estimate',
+            targetHost
+          };
         }
       } catch { /* fall through to registry default */ }
     }
 
-    return testedCtx ?? defaults.num_ctx ?? fallback;
+    if (testedCtx != null) {
+      return {
+        num_ctx: testedCtx,
+        source: 'context_test',
+        targetHost: targetHost || null
+      };
+    }
+
+    if (defaults.num_ctx != null) {
+      return {
+        num_ctx: defaults.num_ctx,
+        source: 'execution_default',
+        targetHost: targetHost || null
+      };
+    }
+
+    return {
+      num_ctx: fallback,
+      source: 'fallback',
+      targetHost: targetHost || null
+    };
   } catch {
-    return fallback;
+    return {
+      num_ctx: fallback,
+      source: 'fallback',
+      targetHost: targetHost || null
+    };
   }
+}
+
+/**
+ * Resolve num_ctx for a model, aware of the target host's VRAM.
+ *
+ * @param {string} modelName
+ * @param {object} [opts]
+ * @param {string} [opts.targetHost]
+ * @param {number} [opts.fallback=8192]
+ * @returns {Promise<number>}
+ */
+async function resolveModelNumCtx(modelName, opts = {}) {
+  const details = await resolveModelNumCtxDetails(modelName, opts);
+  return details.num_ctx;
 }
 
 module.exports = {
   sanitizeOptions,
   resolveTarget,
-  resolveModelNumCtx
+  resolveModelNumCtx,
+  resolveModelNumCtxDetails
 };
