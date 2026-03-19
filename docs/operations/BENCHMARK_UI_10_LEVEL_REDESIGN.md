@@ -322,7 +322,7 @@ Redesigned the Benchmark UI to support 10 difficulty levels (upgraded from 5) wi
 3. **Visual Level Distribution**
    - Bar chart showing prompts per level
    - Color-coded difficulty visualization
-   - Interactive level range slider
+   - Depth matrix (off/single/light/full per level)
 
 4. **Preset Analytics**
    - Track most-used presets

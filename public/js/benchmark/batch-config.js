@@ -2,12 +2,12 @@
 
 import * as state from './state.js';
 import { escapeHtml, formatHostLabel } from './utils.js';
-import { currentJudgeTier, refreshJudgeTierUI, requiredTierForLevel, strongestRequiredTier } from './judge-mismatch.js';
+import { currentJudgeTier, refreshJudgeTierUI, requiredTierForLevel, strongestRequiredTier, tierBadgeHtml } from './judge-mismatch.js';
 
 // ─── Depth Configuration ───────────────────────────────────────────
 
 const DEPTH_STORAGE_KEY = 'benchmarkDepthConfig';
-const DEPTH_OPTIONS = ['off', 'single', 'light', 'half', 'full'];
+const DEPTH_OPTIONS = ['off', 'single', 'light', 'full'];
 
 const DEFAULT_DEPTH_CONFIG = {
     1: 'light', 2: 'light', 3: 'light', 4: 'light', 5: 'light',
@@ -63,25 +63,49 @@ function setDepthConfig(config) {
     }
 }
 
+function groupPromptsByCategory(prompts) {
+    const groups = {};
+    for (const prompt of prompts) {
+        const category = prompt.category || 'uncategorized';
+        if (!groups[category]) groups[category] = [];
+        groups[category].push(prompt);
+    }
+    return groups;
+}
+
 /**
- * Estimate prompt count for a given level and depth
+ * Get exact prompt count for a given level and depth when prompt data is loaded.
+ * Falls back to metadata only before runtime prompt inventory is available.
  */
 function calculatePromptCount(level, depth) {
+    const prompts = Array.isArray(state.benchmarkPrompts)
+        ? state.benchmarkPrompts.filter((prompt) => Number(prompt && prompt.level) === Number(level))
+        : [];
+
+    if (prompts.length > 0) {
+        switch (depth) {
+            case 'off':
+                return 0;
+            case 'single':
+                return 1;
+            case 'light':
+                return Object.keys(groupPromptsByCategory(prompts)).length;
+    }
+
     const meta = LEVEL_PROMPT_META[level] || { prompts: 10, categories: 6 };
     switch (depth) {
         case 'off':    return 0;
-        case 'single': return 1;
-        case 'light':  return meta.categories; // 1 per category
-        case 'half':   return Math.max(meta.categories, Math.ceil(meta.prompts / 2)); // ~50%, min 1/cat
+        case 'single': return meta.prompts > 0 ? 1 : 0;
+        case 'light':  return meta.categories;
         case 'full':   return meta.prompts;
         default:       return 0;
     }
 }
 
 /**
- * Get total estimated prompts from current depth config
+ * Get total exact prompts from current depth config
  */
-function getTotalEstimatedPrompts(config) {
+function getTotalPromptCount(config) {
     let total = 0;
     for (let level = 1; level <= 10; level++) {
         const depth = (config && config[level]) || 'off';
@@ -131,6 +155,102 @@ export function getSelectedLevels(config) {
     return levels;
 }
 
+
+const SCORING_TYPE_COLORS = {
+    code: '#3498db', coding: '#3498db', reasoning: '#9b59b6', factual: '#1abc9c',
+    math: '#e67e22', creative: '#e74c3c', general: '#95a5a6', 'instruction-following': '#2ecc71',
+    summarization: '#f39c12', translation: '#00bcd4', 'multi-turn-reasoning': '#8e44ad',
+    'context-retention': '#16a085', 'edge-cases': '#c0392b', refactoring: '#2980b9',
+    debugging: '#d35400', explanation: '#27ae60', dialogue: '#7f8c8d', custom: '#bdc3c7'
+};
+const expandedLevelRows = new Set();
+
+function formatDepthLabel(depth) {
+    return depth === 'off' ? 'Off' : depth.charAt(0).toUpperCase() + depth.slice(1);
+}
+
+function getPromptsForLevel(level) {
+    const prompts = Array.isArray(state.benchmarkPrompts) ? state.benchmarkPrompts : [];
+    return prompts.filter((prompt) => Number(prompt && prompt.level) === Number(level));
+}
+
+function getPromptType(prompt) {
+    return prompt.scoring_type || prompt.category || 'general';
+}
+
+function estimateInputTokens(text) {
+    const source = text || '';
+    return source ? Math.max(1, Math.ceil(source.length / 4)) : 0;
+}
+
+function expectedOutputTokens(prompt) {
+    const value = Number(prompt && prompt.expected_tokens);
+    return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function suggestedContextTokens(prompt) {
+    const input = estimateInputTokens(prompt && prompt.prompt);
+    const output = expectedOutputTokens(prompt) || 256;
+    const raw = input + output + 256;
+    return Math.ceil(raw / 512) * 512;
+}
+
+function maxSuggestedContextTokens(prompts) {
+    return prompts.reduce((max, prompt) => Math.max(max, suggestedContextTokens(prompt)), 0);
+}
+
+function renderContextSizeInfo(prompt) {
+    const chars = (prompt && prompt.prompt ? prompt.prompt.length : 0).toLocaleString();
+    const input = estimateInputTokens(prompt && prompt.prompt);
+    const output = expectedOutputTokens(prompt);
+    const suggested = suggestedContextTokens(prompt).toLocaleString();
+    return `<div class="depth-context-row"><span class="depth-context-chip">${chars} chars</span><span class="depth-context-chip">~${input.toLocaleString()} input tokens</span><span class="depth-context-chip">${output ? `${output.toLocaleString()} expected output` : 'output open-ended'}</span><span class="depth-context-chip">min safe ctx ≥ ${suggested}</span></div>`;
+}
+
+function renderCategoryBadges(prompts) {
+    if (!prompts.length) return '<span class="depth-empty-note">No test data loaded for this level.</span>';
+    const counts = {};
+    for (const prompt of prompts) {
+        const key = getPromptType(prompt);
+        counts[key] = (counts[key] || 0) + 1;
+    }
+    return Object.entries(counts)
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+        .map(([key, count]) => `<span class="pe-cat-badge" style="--badge-color:${SCORING_TYPE_COLORS[key] || '#95a5a6'}">${escapeHtml(key)} (${count})</span>`)
+        .join('');
+}
+
+function renderJudgeCriteria(prompt) {
+    if (!Array.isArray(prompt.judge_criteria) || prompt.judge_criteria.length === 0) return '';
+    return `<div class="depth-prompt-block"><h5>Judge Criteria</h5><ul>${prompt.judge_criteria.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div>`;
+}
+
+function renderScoringDimensions(prompt) {
+    if (!Array.isArray(prompt.scoring_dimensions) || prompt.scoring_dimensions.length === 0) return '';
+    return `<div class="depth-prompt-block"><h5>Scoring Dimensions</h5><div class="pe-dims-grid">${prompt.scoring_dimensions.map((dim) => `<div class="pe-dim-card"><div class="dim-name">${escapeHtml(dim.name || 'Dimension')}<span class="dim-weight">${dim.weight || 0}</span></div><div class="dim-desc">${escapeHtml(dim.description || '')}</div></div>`).join('')}</div></div>`;
+}
+
+function renderPromptItem(prompt) {
+    const type = getPromptType(prompt);
+    const color = SCORING_TYPE_COLORS[type] || '#95a5a6';
+    const expected = prompt.expected_answer ? `<div class="depth-prompt-block"><h5>Expected Answer</h5><pre>${escapeHtml(prompt.expected_answer)}</pre></div>` : '';
+    const reference = prompt.reference_answer ? `<div class="depth-prompt-block"><h5>Reference Answer</h5><pre>${escapeHtml(prompt.reference_answer)}</pre></div>` : '';
+    return `<details class="depth-prompt-item"><summary><span class="depth-prompt-title">${escapeHtml(prompt.name || 'Untitled Test')}</span><span class="pe-cat-badge" style="--badge-color:${color}">${escapeHtml(type)}</span></summary><div class="depth-prompt-body">${renderContextSizeInfo(prompt)}<div class="depth-prompt-block"><h5>Prompt Context</h5><pre>${escapeHtml(prompt.prompt || '')}</pre></div>${expected}${reference}${renderJudgeCriteria(prompt)}${renderScoringDimensions(prompt)}</div></details>`;
+}
+
+function renderLevelDetail(level, currentDepth, est, requiredTier, prompts) {
+    const totalPrompts = prompts.length;
+    const active = currentDepth !== 'off';
+    const intro = active
+        ? `Currently <strong>${escapeHtml(formatDepthLabel(currentDepth))}</strong>: <strong>${est}</strong> of <strong>${totalPrompts}</strong> tests will run for this level.`
+        : `Currently <strong>Off</strong>: inspect the available tests below before enabling this level.`;
+    const cardsToggle = prompts.length
+        ? `<details class="depth-level-tests"><summary><span class="depth-tests-toggle-title">Show test cards</span><span class="depth-tests-toggle-meta">${totalPrompts} loaded · ${est} selected</span></summary><div class="depth-prompt-list">${prompts.map(renderPromptItem).join('')}</div></details>`
+        : '<div class="depth-empty-note">No tests found for this level.</div>';
+    const maxCtx = maxSuggestedContextTokens(prompts);
+    return `<div class="depth-detail-shell"><div class="depth-detail-summary"><div class="depth-detail-copy">${intro}</div><div class="depth-detail-meta"><span class="depth-meta-chip">Level ${level} · ${escapeHtml(LEVEL_LABELS[level] || '')}</span><span class="depth-meta-chip">Required tier ${escapeHtml(requiredTier.toUpperCase())}</span><span class="depth-meta-chip">Selected prompts ${est}</span><span class="depth-meta-chip">Min safe ctx ${maxCtx ? `≥ ${maxCtx.toLocaleString()}` : 'n/a'}</span></div></div><div class="depth-detail-cats">${renderCategoryBadges(prompts)}</div>${cardsToggle}</div>`;
+}
+
 /**
  * Render the depth matrix table body
  * Note: tier badge cells are injected dynamically by judge-mismatch.js via refreshDepthMatrixTierCells()
@@ -152,11 +272,14 @@ export function renderDepthMatrix() {
         const requiredTier = requiredTierForLevel(level);
         const requiredRank = rankMap[requiredTier] || 1;
         const meetsIt = judgeRank >= requiredRank;
+        const tooltip = meetsIt
+            ? `Required: ${requiredTier.toUpperCase()}`
+            : `Needs ${requiredTier.toUpperCase()} — current judge is ${judgeTier.toUpperCase()}`;
+        const levelPrompts = getPromptsForLevel(level);
+        const isExpanded = expandedLevelRows.has(level);
         const rowWarn = (!meetsIt && currentDepth !== 'off') ? ' style="background:rgba(231,76,60,0.06);"' : '';
-
-        html += `<tr data-level="${level}"${rowWarn}>`;
-        html += `<td class="level-col"><span class="depth-level-num">${level}</span><span class="depth-level-label">${label}</span></td>`;
-
+        html += `<tr class="depth-level-row${isExpanded ? ' is-expanded' : ''}" data-level="${level}"${rowWarn}>`;
+        html += `<td class="level-col depth-level-cell"><button type="button" class="depth-row-toggle" data-level-toggle="${level}" aria-expanded="${isExpanded ? 'true' : 'false'}" title="${isExpanded ? 'Collapse' : 'Expand'} level details"><i class="fas ${isExpanded ? 'fa-chevron-down' : 'fa-chevron-right'}"></i></button><span class="depth-level-num">${level}</span><span class="depth-level-label">${escapeHtml(label)}</span></td>`;
         for (const opt of DEPTH_OPTIONS) {
             const checked = currentDepth === opt ? 'checked' : '';
             const id = `depth_${level}_${opt}`;
@@ -165,9 +288,10 @@ export function renderDepthMatrix() {
             html += `<label for="${id}" class="depth-radio-label depth-opt-${opt}">${opt === 'off' ? '—' : opt[0].toUpperCase()}</label>`;
             html += `</td>`;
         }
-
         html += `<td class="count-col"><span class="depth-est-count">${est}</span></td>`;
+        html += `<td class="judge-tier-td">${tierBadgeHtml(requiredTier, tooltip)}</td>`;
         html += `</tr>`;
+        html += `<tr class="depth-detail-row${isExpanded ? ' is-open' : ''}" data-detail-level="${level}"><td colspan="7">${renderLevelDetail(level, currentDepth, est, requiredTier, levelPrompts)}</td></tr>`;
     }
 
     tbody.innerHTML = html;
@@ -178,7 +302,7 @@ export function renderDepthMatrix() {
  */
 export function updateDepthSummary() {
     const config = getDepthConfig();
-    const totalPrompts = getTotalEstimatedPrompts(config);
+    const totalPrompts = getTotalPromptCount(config);
     const selectedLevels = getSelectedLevels(config);
     const selectedModels = Array.from(document.querySelectorAll('.batch-model-checkbox:checked'));
     const modelCount = selectedModels.length;
@@ -198,7 +322,7 @@ export function updateDepthSummary() {
             const tierNote = meets
                 ? ` — judge tier OK (${judgeTier} ≥ ${maxTier})`
                 : ` — ⚠ judge tier ${judgeTier} < required ${maxTier}`;
-            summaryEl.innerHTML = `~${totalPrompts} prompts across ${selectedLevels.length} levels (${levelsStr})` +
+            summaryEl.innerHTML = `${totalPrompts} prompts across ${selectedLevels.length} levels (${levelsStr})` +
                 `<span style="margin-left:8px;font-size:0.88em;color:${meets ? '#27ae60' : '#e74c3c'};">${tierNote}</span>`;
         }
     }
@@ -213,7 +337,7 @@ export function updateDepthSummary() {
         info.classList.add('is-summary');
         if (totalPrompts > 0 && modelCount > 0) {
             const totalTests = totalPrompts * modelCount;
-            info.textContent = `${modelCount} models × ~${totalPrompts} prompts = ~${totalTests} tests`;
+            info.textContent = `${modelCount} models × ${totalPrompts} prompts = ${totalTests} tests`;
         } else {
             info.textContent = 'Select levels and models to start';
         }
@@ -225,6 +349,7 @@ export function updateDepthSummary() {
  */
 export function bindDepthMatrix() {
     const tbody = document.getElementById('depthMatrixBody');
+    const thead = document.querySelector('#depthMatrix thead');
     if (!tbody) return;
 
     tbody.addEventListener('change', (e) => {
@@ -232,24 +357,38 @@ export function bindDepthMatrix() {
 
         const level = parseInt(e.target.dataset.level, 10);
         const depth = e.target.dataset.depth;
-
         const config = getDepthConfig();
         config[level] = depth;
         setDepthConfig(config);
 
-        // Update the estimate count in this row
-        const row = e.target.closest('tr');
-        if (row) {
-            const countEl = row.querySelector('.depth-est-count');
-            if (countEl) countEl.textContent = calculatePromptCount(level, depth);
-        }
-
+        renderDepthMatrix();
         updateDepthSummary();
-
-        // Refresh judge tier indicators when levels change
         const activeLevels = getSelectedLevels(getDepthConfig());
         refreshJudgeTierUI(activeLevels);
+        document.dispatchEvent(new CustomEvent('depth-config-changed'));
     });
+
+    tbody.addEventListener('click', (e) => {
+        if (e.target.closest('.depth-radio-cell') || e.target.closest('label') || e.target.closest('input') || e.target.closest('details') || e.target.closest('summary')) {
+            return;
+        }
+        const row = e.target.closest('tr.depth-level-row');
+        if (!row) return;
+        const level = parseInt(row.dataset.level, 10);
+        if (expandedLevelRows.has(level)) expandedLevelRows.delete(level);
+        else expandedLevelRows.add(level);
+        renderDepthMatrix();
+        refreshJudgeTierUI(getSelectedLevels(getDepthConfig()));
+    });
+
+    if (thead && !thead.dataset.bulkBound) {
+        thead.dataset.bulkBound = 'true';
+        thead.addEventListener('click', (e) => {
+            const th = e.target.closest('th[data-bulk-depth]');
+            if (!th) return;
+            setAllDepths(th.dataset.bulkDepth);
+        });
+    }
 }
 
 /**
@@ -264,6 +403,7 @@ export function setAllDepths(depth) {
     renderDepthMatrix();
     updateDepthSummary();
     refreshJudgeTierUI(getSelectedLevels(config));
+    document.dispatchEvent(new CustomEvent('depth-config-changed'));
 }
 
 // ─── Batch Info (updated to use depth config) ──────────────────────

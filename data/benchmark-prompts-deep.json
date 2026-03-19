@@ -78,7 +78,8 @@
     "prompt": "Propose and implement a refactor plan for this legacy module. Decompose into cohesive components with clear contracts, preserving the public API.\n\n// userManager.js — 800-line legacy module (condensed)\nconst db = require('./db');\nconst bcrypt = require('bcrypt');\nconst jwt = require('jsonwebtoken');\nconst mailer = require('./mailer');\nconst sessions = {};\n\nmodule.exports.createUser = async (data) => {\n  const hash = await bcrypt.hash(data.password, 10);\n  const user = await db.insert('users', { ...data, password: hash });\n  await mailer.send(data.email, 'Welcome!', 'Account created.');\n  return user;\n};\nmodule.exports.login = async (email, password) => {\n  const user = await db.findOne('users', { email });\n  if (!user || !(await bcrypt.compare(password, user.password))) throw new Error('invalid');\n  const token = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '8h' });\n  sessions[token] = { userId: user.id, createdAt: Date.now() };\n  return { token, user: { id: user.id, name: user.name, role: user.role } };\n};\nmodule.exports.verifySession = (token) => {\n  const s = sessions[token];\n  if (!s || Date.now() - s.createdAt > 28800000) { delete sessions[token]; return null; }\n  return jwt.verify(token, process.env.JWT_SECRET);\n};\nmodule.exports.logout = (token) => { delete sessions[token]; };\nmodule.exports.assignRole = async (userId, role) => {\n  await db.update('users', { id: userId }, { role });\n  await mailer.send((await db.findOne('users', { id: userId })).email, 'Role changed', 'New role: ' + role);\n};\nmodule.exports.resetPassword = async (email) => {\n  const user = await db.findOne('users', { email });\n  if (!user) return;\n  const code = Math.random().toString(36).slice(2, 8);\n  await db.update('users', { id: user.id }, { resetCode: code, resetExpiry: Date.now() + 3600000 });\n  await mailer.send(email, 'Password Reset', 'Code: ' + code);\n};\nmodule.exports.confirmReset = async (email, code, newPassword) => {\n  const user = await db.findOne('users', { email });\n  if (!user || user.resetCode !== code || Date.now() > user.resetExpiry) throw new Error('invalid reset');\n  await db.update('users', { id: user.id }, { password: await bcrypt.hash(newPassword, 10), resetCode: null });\n};",
     "expected_tokens": 420,
     "expected_answer": "Concrete decomposition with preserved API behavior and improved maintainability.",
-    "scoring_type": "refactoring"
+    "scoring_type": "refactoring",
+    "representative": true
   },
   {
     "level": 10,
@@ -89,7 +90,6 @@
     "expected_answer": "Clearer design with explicit preserved concurrency invariants.",
     "scoring_type": "refactoring"
   },
-
   {
     "level": 1,
     "category": "debugging",
@@ -178,9 +178,9 @@
     "prompt": "This pipeline has a rare nondeterministic bug: under high load, final stats are occasionally wrong and some batches silently drop. Provide systematic diagnosis, likely root causes, and minimal fix.\n\nclass Pipeline {\n  constructor(workers = 8, batchTimeout = 5000) {\n    this.workers = workers;\n    this.batchTimeout = batchTimeout;\n    this.stats = { processed: 0, errors: 0, dropped: 0 };\n    this.activeBatches = new Map();\n  }\n  async run(inputStream) {\n    const batches = this.toBatches(inputStream, 100);\n    const pool = [];\n    for await (const batch of batches) {\n      const batchId = Date.now() + '-' + Math.random().toString(36).slice(2, 6);\n      this.activeBatches.set(batchId, { startedAt: Date.now(), size: batch.length });\n      const work = this.processBatch(batchId, batch);\n      pool.push(work);\n      if (pool.length >= this.workers) {\n        await Promise.race(pool);\n        // remove settled promises\n        for (let i = pool.length - 1; i >= 0; i--) {\n          const status = await Promise.race([pool[i].then(() => 'done'), Promise.resolve('pending')]);\n          if (status === 'done') pool.splice(i, 1);\n        }\n      }\n    }\n    await Promise.allSettled(pool);\n    return this.stats;\n  }\n  async processBatch(batchId, items) {\n    const timer = setTimeout(() => {\n      this.stats.dropped += this.activeBatches.get(batchId)?.size || 0;\n      this.activeBatches.delete(batchId);\n    }, this.batchTimeout);\n    try {\n      for (const item of items) {\n        const result = await this.transform(item);\n        if (result.error) { this.stats.errors++; continue; }\n        this.stats.processed++;\n      }\n    } catch (err) {\n      this.stats.errors += items.length;\n    } finally {\n      clearTimeout(timer);\n      this.activeBatches.delete(batchId);\n    }\n  }\n  async transform(item) {\n    await sleep(Math.random() * 100);\n    if (Math.random() < 0.01) throw new Error('transient');\n    return { data: item.value * 2 };\n  }\n}",
     "expected_tokens": 500,
     "expected_answer": "Structured high-signal debugging plan with plausible concurrency root causes and verification strategy.",
-    "scoring_type": "debugging"
+    "scoring_type": "debugging",
+    "representative": true
   },
-
   {
     "level": 1,
     "category": "explanation",
@@ -233,7 +233,8 @@
     "prompt": "Explain CAP theorem and what tradeoffs teams actually make in distributed systems.",
     "expected_tokens": 300,
     "expected_answer": "Correct CAP explanation grounded in practical system tradeoffs.",
-    "scoring_type": "explanation"
+    "scoring_type": "explanation",
+    "representative": true
   },
   {
     "level": 7,
@@ -242,7 +243,8 @@
     "prompt": "Explain why exactly-once delivery is hard and how systems approximate it using idempotency and deduplication.",
     "expected_tokens": 320,
     "expected_answer": "Nuanced explanation of guarantees and practical approximations.",
-    "scoring_type": "explanation"
+    "scoring_type": "explanation",
+    "representative": true
   },
   {
     "level": 8,
@@ -251,7 +253,8 @@
     "prompt": "Explain consensus protocols (like Raft/Paxos) at a conceptual level, focusing on leader election and log agreement.",
     "expected_tokens": 360,
     "expected_answer": "Coherent conceptual explanation of consensus core mechanics.",
-    "scoring_type": "explanation"
+    "scoring_type": "explanation",
+    "representative": true
   },
   {
     "level": 9,
@@ -271,7 +274,6 @@
     "expected_answer": "Accurate distinction between proof-based guarantees and observed reliability.",
     "scoring_type": "explanation"
   },
-
   {
     "level": 1,
     "category": "dialogue",
@@ -362,7 +364,6 @@
     "expected_answer": "Clear, trustworthy, context-appropriate high-stakes dialogue response.",
     "scoring_type": "dialogue"
   },
-
   {
     "level": 1,
     "category": "general",

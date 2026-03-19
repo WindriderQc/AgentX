@@ -12,6 +12,7 @@ import { pickRepresentativeResultId } from './results-analysis.js';
 import { loadRecentTestsTimeline, getTimelineMode, scheduleTimelineScrollSync, showTimelineTooltip } from './timeline.js';
 import { rerenderRecentTests, toggleSuccessRateDetails } from './recent-tests.js';
 import { refreshJudgeTierUI } from './judge-mismatch.js';
+import { bindExplorer } from './prompt-explorer.js';
 
 const JUDGE_CONFIG_STORAGE_KEY = 'benchmarkJudgeConfig';
 let judgeNumCtxTouched = false;
@@ -1039,6 +1040,7 @@ async function initBenchmarkUI() {
     // Depth matrix initialization
     renderDepthMatrix();
     bindDepthMatrix();
+    bindExplorer();
 
     // Depth quick-action buttons
     const depthAllLightBtn = document.getElementById('depthAllLightBtn');

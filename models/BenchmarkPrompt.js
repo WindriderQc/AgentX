@@ -146,6 +146,10 @@ const BenchmarkPromptSchema = new mongoose.Schema({
         enum: ['basic', 'standard', 'advanced', 'premium', null],
         default: null
     },
+    representative: {
+        type: Boolean,
+        default: false
+    },
     custom: {
         type: Boolean,
         default: false,

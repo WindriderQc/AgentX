@@ -30,6 +30,16 @@ const JUDGE_CONTEXT_ESTIMATE_BY_TIER = {
     advanced: 6144,
     premium: 8192
 };
+const BENCHMARK_TARGET_BLOCKLIST = [
+    {
+        pattern: /\bdeepcoder\b/i,
+        reason: 'Known incompatible with the AgentX benchmark execution path. Use a different execution model unless this target has been explicitly validated and approved in ModelRegistry.'
+    },
+    {
+        pattern: /(nomic-embed|mxbai-embed|bge-|snowflake-arctic-embed|all-minilm|embedding)/i,
+        reason: 'Embedding-only models are not valid benchmark generation targets.'
+    }
+];
 
 function normalizeModelName(modelName) {
     return String(modelName || '').trim().replace(/:latest$/i, '');
@@ -40,6 +50,86 @@ function normalizeHostUrl(hostUrl) {
     if (!raw) return null;
     if (/^https?:\/\//i.test(raw)) return raw;
     return `http://${raw}`;
+}
+
+function normalizeTags(tags = []) {
+    return Array.isArray(tags)
+        ? tags.map((tag) => String(tag || '').trim().toLowerCase()).filter(Boolean)
+        : [];
+}
+
+function getBenchmarkTargetBlockReason(model, registryEntry = null) {
+    const normalizedModel = normalizeModelName(model);
+    const explicitEligibility = registryEntry?.benchmarkEligibility?.eligible;
+    const explicitReason = String(registryEntry?.benchmarkEligibility?.blockedReason || '').trim();
+
+    if (explicitEligibility === false) {
+        return explicitReason || `Model '${normalizedModel}' is marked benchmark-ineligible in ModelRegistry.`;
+    }
+
+    if (explicitEligibility === true) {
+        return null;
+    }
+
+    const categories = new Set(
+        Array.isArray(registryEntry?.categories)
+            ? registryEntry.categories.map((category) => String(category || '').trim().toLowerCase()).filter(Boolean)
+            : []
+    );
+    const tags = new Set(normalizeTags(registryEntry?.tags));
+
+    if (categories.has('embedding') || tags.has('embedding')) {
+        return `Model '${normalizedModel}' is categorized as embedding-only and cannot be used as a benchmark execution target.`;
+    }
+
+    for (const rule of BENCHMARK_TARGET_BLOCKLIST) {
+        if (rule.pattern.test(normalizedModel)) {
+            return `Model '${normalizedModel}' is not approved for benchmark execution. ${rule.reason}`;
+        }
+    }
+
+    return null;
+}
+
+async function checkBenchmarkTargetEligibility(model) {
+    const normalizedModel = normalizeModelName(model);
+    const warnings = [];
+
+    if (!normalizedModel) {
+        return {
+            ok: false,
+            model: normalizedModel,
+            source: 'request',
+            reason: 'Benchmark target model is required',
+            warnings
+        };
+    }
+
+    let registryEntry = null;
+    try {
+        registryEntry = await ModelRegistry.findOne({
+            modelName: { $in: [normalizedModel, `${normalizedModel}:latest`] }
+        }).select('modelName categories tags benchmarkEligibility').lean();
+    } catch (err) {
+        warnings.push(`Benchmark registry lookup failed for '${normalizedModel}': ${err.message}`);
+    }
+
+    const blockedReason = getBenchmarkTargetBlockReason(normalizedModel, registryEntry);
+    const explicitEligibility = registryEntry?.benchmarkEligibility?.eligible;
+
+    return {
+        ok: !blockedReason,
+        model: normalizedModel,
+        source: explicitEligibility === false
+            ? 'registry'
+            : explicitEligibility === true
+                ? 'registry-override'
+                : registryEntry
+                    ? 'registry-derived'
+                    : 'heuristic',
+        reason: blockedReason,
+        warnings
+    };
 }
 
 function compareTierRank(left, right) {
@@ -346,8 +436,22 @@ async function runPreflight(options = {}) {
 
     // Run all checks in parallel
     const hostChecks = uniqueTargets.map(async (t) => {
-        const result = await checkHostModel(t.host, t.model);
-        return { ...t, ...result };
+        const [hostResult, eligibilityResult] = await Promise.all([
+            checkHostModel(t.host, t.model),
+            checkBenchmarkTargetEligibility(t.model)
+        ]);
+
+        return {
+            ...t,
+            ...hostResult,
+            ok: hostResult.ok && eligibilityResult.ok,
+            host_ok: hostResult.ok,
+            benchmark_eligible: eligibilityResult.ok,
+            benchmark_eligibility_source: eligibilityResult.source,
+            benchmark_blocked_reason: eligibilityResult.reason,
+            warnings: eligibilityResult.warnings,
+            error: hostResult.error || eligibilityResult.reason || null
+        };
     });
 
     const [hostResults, promptResult, batchResult] = await Promise.all([
@@ -371,8 +475,13 @@ async function runPreflight(options = {}) {
 
     const issues = [];
     if (!allHostsOk) {
-        const failed = checks.hosts.filter(h => !h.ok);
-        issues.push(`${failed.length} host(s) unreachable or missing models`);
+        const failedHosts = checks.hosts.filter(h => !h.host_ok);
+        if (failedHosts.length > 0) {
+            issues.push(`${failedHosts.length} host(s) unreachable or missing models`);
+        }
+
+        const blockedTargets = checks.hosts.filter(h => h.benchmark_eligible === false);
+        issues.push(...blockedTargets.map((target) => target.benchmark_blocked_reason));
     }
     if (!judgeOk) issues.push(...checks.judge.blockers);
     if (!promptsOk) issues.push(...checks.prompts.blockers);

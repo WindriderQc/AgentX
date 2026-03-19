@@ -131,6 +131,25 @@ const BenchmarkStatsSchema = new mongoose.Schema({
   }
 }, { _id: false });
 
+const BenchmarkEligibilitySchema = new mongoose.Schema({
+  eligible: {
+    type: Boolean,
+    default: null
+  },
+  blockedReason: {
+    type: String,
+    default: null
+  },
+  reviewedAt: {
+    type: Date,
+    default: null
+  },
+  reviewedBy: {
+    type: String,
+    default: null
+  }
+}, { _id: false });
+
 const RoutingRulesSchema = new mongoose.Schema({
   preferredFor: [{
     type: String
@@ -324,6 +343,11 @@ const ModelRegistrySchema = new mongoose.Schema({
   // Performance Tracking (Auto-updated from benchmarks)
   benchmarkStats: {
     type: BenchmarkStatsSchema,
+    default: () => ({})
+  },
+
+  benchmarkEligibility: {
+    type: BenchmarkEligibilitySchema,
     default: () => ({})
   },
 

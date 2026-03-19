@@ -204,18 +204,10 @@ Select Levels: [ ] 1  [ ] 2  [ ] 3  [ ] 4  [ ] 5
 │ └──────────────────────────────────────────────────┘  │
 └────────────────────────────────────────────────────────┘
 ```
+**Implemented as Depth Matrix (off/single/light/full per level).**
 
-**Visual Slider Alternative:**
-```
-Difficulty Range Slider:
-┌────────────────────────────────────────────────────┐
-│  1 ●━━━━━●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━● 10     │
-│  │       └─ Selected Range (3-7) ─────────┘│       │
-│  Trivial                              Expert       │
-└────────────────────────────────────────────────────┘
-
-Include: 5 levels (3, 4, 5, 6, 7)
-Estimated prompts: ~40-50 per category
+> The slider concept was superseded by the depth matrix table in the
+> benchmark UI. Each level row has radio buttons for off, single, light, or full.
 ```
 
 #### 2.2 Test Listings (Compact View)
@@ -710,7 +702,7 @@ const JUDGE_PRESETS = {
 │ └────────────────────────────────────────────────────┘│
 │                                                        │
 │ Difficulty Focus:                                      │
-│ [ Slider: 3 ●━━━━━━━━━━● 7 ]                         │
+│ [ Depth matrix: off/single/light/full per level ]  │
 │ "Focus on intermediate models (levels 3-7)"           │
 │                                                        │
 │ Total: 90 prompts (~25 minutes)                       │

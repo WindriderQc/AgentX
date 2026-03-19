@@ -59,7 +59,7 @@ describe('randomPick', () => {
 describe('samplePromptsByDepth', () => {
     const prompts = [
         { level: 1, category: 'coding', text: 'c1' },
-        { level: 1, category: 'coding', text: 'c2' },
+        { level: 1, category: 'coding', text: 'c2', representative: true },
         { level: 1, category: 'coding', text: 'c3' },
         { level: 1, category: 'reasoning', text: 'r1' },
         { level: 1, category: 'reasoning', text: 'r2' },
@@ -77,14 +77,30 @@ describe('samplePromptsByDepth', () => {
         expect(result).toHaveLength(prompts.length);
     });
 
-    it('single depth returns exactly one prompt per level (not per category)', () => {
+    it('single depth returns exactly one prompt per level', () => {
         const result = samplePromptsByDepth(prompts, { 1: 'single' });
         expect(result).toHaveLength(1);
     });
 
+    it('single depth picks the representative prompt', () => {
+        const result = samplePromptsByDepth(prompts, { 1: 'single' });
+        expect(result).toHaveLength(1);
+        expect(result[0].representative).toBe(true);
+        expect(result[0].text).toBe('c2');
+    });
+
+    it('single depth falls back to first prompt when no representative', () => {
+        const noRepPrompts = [
+            { level: 3, category: 'coding', text: 'first' },
+            { level: 3, category: 'coding', text: 'second' },
+        ];
+        const result = samplePromptsByDepth(noRepPrompts, { 3: 'single' });
+        expect(result).toHaveLength(1);
+        expect(result[0].text).toBe('first');
+    });
+
     it('single depth does not push undefined for empty levels', () => {
         const sparsePrompts = [{ level: 1, category: 'coding', text: 'c1' }];
-        // level 99 has no prompts — should produce nothing, not undefined
         const result = samplePromptsByDepth(sparsePrompts, { 1: 'single', 99: 'single' });
         expect(result).not.toContain(undefined);
         expect(result).toHaveLength(1);
@@ -96,14 +112,7 @@ describe('samplePromptsByDepth', () => {
         expect(result).toHaveLength(2);
     });
 
-    it('half depth returns roughly half per category', () => {
-        const result = samplePromptsByDepth(prompts, { 1: 'half' });
-        // coding (3) → ceil(3/2) = 2, reasoning (2) → ceil(2/2) = 1 → total = 3
-        expect(result).toHaveLength(3);
-    });
-
     it('omits levels not in depth config', () => {
-        // Only configure level 2; level 1 prompts should not appear
         const result = samplePromptsByDepth(prompts, { 2: 'full' });
         expect(result.every(p => p.level === 2)).toBe(true);
         expect(result).toHaveLength(2);

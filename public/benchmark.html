@@ -120,12 +120,9 @@
                             </div>
 
                             <div>
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 12px; flex-wrap: wrap;">
                                     <h3 style="margin: 0;">Level × Depth Configuration</h3>
-                                    <div style="display: flex; gap: 8px;">
-                                        <button type="button" class="btn-link" id="depthAllLightBtn" style="font-size: 0.85em;">All Light</button>
-                                        <button type="button" class="btn-link" id="depthAllOffBtn" style="font-size: 0.85em;">All Off</button>
-                                    </div>
+                                    <div class="depth-header-hint">Click a depth header to apply it to every level. Click a level row to inspect its tests.</div>
                                 </div>
 
                                 <div class="depth-matrix-container">
@@ -135,13 +132,12 @@
                                         <thead>
                                             <tr>
                                                 <th class="level-col">Level</th>
-                                                <th>Off</th>
-                                                <th>Single</th>
-                                                <th>Light</th>
-                                                <th>Half</th>
-                                                <th>Full</th>
-                                                <th class="count-col">Est.</th>
-                                                <!-- Judge tier column injected by judge-mismatch.js -->
+                                                <th class="depth-bulk-th" data-bulk-depth="off" title="Set every level to Off">Off</th>
+                                                <th class="depth-bulk-th" data-bulk-depth="single" title="Set every level to Single">Single</th>
+                                                <th class="depth-bulk-th" data-bulk-depth="light" title="Set every level to Light">Light</th>
+                                                <th class="depth-bulk-th" data-bulk-depth="full" title="Set every level to Full">Full</th>
+                                                <th class="count-col" title="Exact prompt count selected for this level at the current depth">Prompts</th>
+                                                <th class="judge-tier-th" title="Minimum judge tier needed to score this level accurately"><i class="fas fa-gavel" style="margin-right:4px;"></i>Tier</th>
                                             </tr>
                                         </thead>
                                         <tbody id="depthMatrixBody">
@@ -153,6 +149,25 @@
                                         <span id="depthSummary">0 prompts selected</span>
                                     </div>
                                 </div>
+
+                            <div class="pe-action-bar">
+                                <button type="button" class="btn-link" id="previewSelectionBtn">
+                                    <i class="fas fa-eye"></i> Preview Selection
+                                </button>
+                                <span class="pe-action-note">Use the table rows for test details. Preview shows the exact selected test set.</span>
+                            </div>
+
+                            <!-- Preview Selection Modal -->
+                            <div id="previewSelectionModal" class="modal" style="display:none;">
+                                <div class="pe-preview-modal-content">
+                                    <div class="pe-preview-modal-header">
+                                        <h3><i class="fas fa-list-check"></i> Preview: Selected Tests</h3>
+                                        <button id="closePreviewModal" class="btn-secondary btn-sm">&times;</button>
+                                    </div>
+                                    <div id="previewSelectionBody" class="modal-body"></div>
+                                </div>
+                            </div>
+
                             </div>
 
                             <!-- Quality + Execution Mode / Prompt Hints — 2-card row -->

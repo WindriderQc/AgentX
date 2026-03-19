@@ -183,6 +183,12 @@ export function refreshDepthMatrixTierCells(activeLevels) {
     const judgeTier = currentJudgeTier();
 
     for (const row of tbody.querySelectorAll('tr[data-level]')) {
+        // Skip category badge rows
+        if (row.classList.contains('depth-cats-row')) {
+            const td = row.querySelector('td[colspan]');
+            if (td) td.setAttribute('colspan', '8');
+            continue;
+        }
         const level = parseInt(row.dataset.level, 10);
         if (!activeLevelSet.has(level)) {
             // Level is 'off' — clear mismatch styling, remove tier cell

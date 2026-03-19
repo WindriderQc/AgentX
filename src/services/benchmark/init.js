@@ -74,6 +74,10 @@ function sanitizePromptRecord(rawPrompt, sourceFile) {
         sanitized.judge_criteria = rawPrompt.judge_criteria;
     }
 
+
+    if (rawPrompt && rawPrompt.representative === true) {
+        sanitized.representative = true;
+    }
     return sanitized;
 }
 
@@ -107,6 +111,33 @@ async function loadPromptLibraryRecords() {
     return records;
 }
 
+
+/**
+ * Sync representative flags from library records to existing DB prompts.
+ * Ensures canonical representative prompts are marked in MongoDB even if
+ * the prompt document was inserted before the flag existed.
+ */
+async function syncRepresentativeFlags(libraryRecords) {
+    const reps = libraryRecords.filter(r => r.representative === true);
+    if (reps.length === 0) return;
+
+    const ops = reps.map(r => ({
+        updateOne: {
+            filter: { name: r.name, category: r.category, level: r.level },
+            update: { $set: { representative: true } }
+        }
+    }));
+
+    try {
+        const result = await BenchmarkPrompt.bulkWrite(ops, { ordered: false });
+        if (result.modifiedCount > 0) {
+            logger.debug('Synced representative flags', { modified: result.modifiedCount });
+        }
+    } catch (err) {
+        logger.warn('Failed to sync representative flags', { error: err.message });
+    }
+}
+
 /**
  * Seed/sync benchmark prompts from local library files.
  * Inserts only missing prompts using category+name+level identity.
@@ -135,6 +166,7 @@ async function seedPrompts() {
             existingCount: existing.length,
             libraryCount: libraryRecords.length
         });
+        await syncRepresentativeFlags(libraryRecords);
         await validateCategoryParity();
         return 0;
     }
@@ -162,6 +194,7 @@ async function seedPrompts() {
         sourceFiles: PROMPT_LIBRARY_FILES
     });
 
+    await syncRepresentativeFlags(libraryRecords);
     await validateCategoryParity();
     return insertedCount;
 }

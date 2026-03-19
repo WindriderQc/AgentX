@@ -209,6 +209,99 @@ describe('benchmark preflight', () => {
         expect(result.available_context_window).toBe(8192);
     });
 
+    it('blocks benchmark targets that are explicitly marked ineligible in the registry', async () => {
+        ModelRegistry.findOne.mockImplementation((query) => {
+            const modelNames = query?.modelName?.$in || [];
+
+            if (modelNames.includes('blocked-model')) {
+                return chainResolved({
+                    modelName: 'blocked-model',
+                    benchmarkEligibility: {
+                        eligible: false,
+                        blockedReason: 'Blocked for benchmark automation until tool compatibility is validated'
+                    }
+                });
+            }
+
+            return chainResolved({
+                modelName: 'judge-model:latest',
+                capabilities: {
+                    judgeTier: 'advanced',
+                    judgeReliability: 0.95,
+                    avgJudgeLatencyMs: 2100,
+                    maxContext: 8192
+                }
+            });
+        });
+        benchmarkFetch.mockResolvedValue(okJson({
+            models: [{ name: 'blocked-model' }]
+        }));
+
+        const result = await runPreflight({
+            targets: [
+                { host: 'http://exec-host:11434', model: 'blocked-model' }
+            ],
+            judgeConfig: {
+                host: 'http://judge-host:11434',
+                model: 'judge-model:latest'
+            },
+            levels: [5]
+        });
+
+        expect(result.ready).toBe(false);
+        expect(result.issues).toContain('Blocked for benchmark automation until tool compatibility is validated');
+        expect(result.checks.hosts[0]).toMatchObject({
+            host_ok: true,
+            benchmark_eligible: false,
+            benchmark_eligibility_source: 'registry',
+            benchmark_blocked_reason: 'Blocked for benchmark automation until tool compatibility is validated'
+        });
+    });
+
+    it('blocks known-incompatible benchmark targets even without registry metadata', async () => {
+        ModelRegistry.findOne.mockImplementation((query) => {
+            const modelNames = query?.modelName?.$in || [];
+
+            if (modelNames.includes('judge-model')) {
+                return chainResolved({
+                    modelName: 'judge-model:latest',
+                    capabilities: {
+                        judgeTier: 'advanced',
+                        judgeReliability: 0.95,
+                        avgJudgeLatencyMs: 2100,
+                        maxContext: 8192
+                    }
+                });
+            }
+
+            return chainResolved(null);
+        });
+        benchmarkFetch.mockResolvedValue(okJson({
+            models: [{ name: 'deepcoder:14b-preview-q4_K_M' }]
+        }));
+
+        const result = await runPreflight({
+            targets: [
+                { host: 'http://exec-host:11434', model: 'deepcoder:14b-preview-q4_K_M' }
+            ],
+            judgeConfig: {
+                host: 'http://judge-host:11434',
+                model: 'judge-model:latest'
+            },
+            levels: [5]
+        });
+
+        expect(result.ready).toBe(false);
+        expect(result.issues).toEqual(expect.arrayContaining([
+            expect.stringMatching(/deepcoder:14b-preview-q4_k_m.*not approved for benchmark execution/i)
+        ]));
+        expect(result.checks.hosts[0]).toMatchObject({
+            host_ok: true,
+            benchmark_eligible: false,
+            benchmark_eligibility_source: 'heuristic'
+        });
+    });
+
     it('allows an explicit judge num_ctx override above the proven value and warns about risk', async () => {
         ModelRegistry.findOne.mockReturnValue(chainResolved({
             modelName: 'judge-model:latest',

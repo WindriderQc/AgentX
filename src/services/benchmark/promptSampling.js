@@ -30,8 +30,13 @@ function randomPick(arr, n) {
 }
 
 /**
- * Sample prompts according to depth configuration
- * Groups prompts by level, then samples per-category for balanced coverage
+ * Sample prompts according to depth configuration.
+ *
+ * Depth modes:
+ *   off    — skip level entirely
+ *   single — pick the canonical representative (representative: true), or first prompt as fallback
+ *   light  — one prompt per category (balanced coverage)
+ *   full   — all prompts
  */
 function samplePromptsByDepth(prompts, depthConfig) {
     const byLevel = groupBy(prompts, 'level');
@@ -46,7 +51,8 @@ function samplePromptsByDepth(prompts, depthConfig) {
         }
 
         if (depth === 'single') {
-            const picked = randomPick(levelPrompts, 1)[0];
+            const rep = levelPrompts.find(p => p.representative);
+            const picked = rep || levelPrompts[0];
             if (picked !== undefined) sampled.push(picked);
             continue;
         }
@@ -56,11 +62,6 @@ function samplePromptsByDepth(prompts, depthConfig) {
         if (depth === 'light') {
             for (const catPrompts of Object.values(byCategory)) {
                 sampled.push(randomPick(catPrompts, 1)[0]);
-            }
-        } else if (depth === 'half') {
-            for (const catPrompts of Object.values(byCategory)) {
-                const n = Math.max(1, Math.ceil(catPrompts.length / 2));
-                sampled.push(...randomPick(catPrompts, n));
             }
         }
     }

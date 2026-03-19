@@ -215,6 +215,111 @@
             padding: 6px 12px;
             font-size: 0.85em;
         }
+    
+        .court-test-browser .filters {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 14px;
+        }
+
+        .court-test-browser input,
+        .court-test-browser select {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid var(--panel-border);
+            border-radius: 8px;
+            color: var(--text);
+            padding: 10px 12px;
+            font-size: 0.9em;
+        }
+
+        .court-test-browser input { flex: 1; min-width: 240px; }
+
+        .court-test-stats {
+            color: var(--muted);
+            font-size: 0.9em;
+            margin-bottom: 14px;
+        }
+
+        .court-test-list {
+            display: grid;
+            gap: 10px;
+        }
+
+        .court-test-card {
+            border: 1px solid var(--panel-border);
+            border-radius: 10px;
+            background: rgba(255,255,255,0.03);
+            overflow: hidden;
+        }
+
+        .court-test-card summary {
+            list-style: none;
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            align-items: center;
+            padding: 12px 14px;
+            cursor: pointer;
+        }
+
+        .court-test-card summary::-webkit-details-marker { display:none; }
+
+        .court-test-main {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .court-test-title {
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .court-test-meta,
+        .court-test-context {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .court-chip {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 8px;
+            border-radius: 999px;
+            background: rgba(124, 240, 255, 0.08);
+            border: 1px solid rgba(124, 240, 255, 0.18);
+            color: #bfeef6;
+            font-size: 0.76em;
+        }
+
+        .court-test-body {
+            padding: 0 14px 14px;
+            display: grid;
+            gap: 12px;
+        }
+
+        .court-test-block h5 {
+            margin: 0 0 6px;
+            color: var(--accent);
+            font-size: 0.8em;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .court-test-block pre {
+            margin: 0;
+            padding: 12px;
+            border-radius: 8px;
+            background: rgba(0,0,0,0.18);
+            color: var(--text);
+            white-space: pre-wrap;
+            word-break: break-word;
+            max-height: 220px;
+            overflow: auto;
+        }
+        
     </style>
 </head>
 
@@ -291,6 +396,20 @@
                     </tbody>
                 </table>
             </div>
+        </div>
+
+        <div class="section-card court-test-browser" id="courtTestBrowserContainer">
+            <div class="section-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:12px;flex-wrap:wrap;">
+                <h3 style="margin:0;"><i class="fas fa-book-open"></i> Benchmark Test Catalog</h3>
+                <span style="font-size:0.86em;color:var(--muted);">Search the benchmark test bank, including derived context-window guidance from prompt size and expected output.</span>
+            </div>
+            <div class="filters">
+                <input id="courtTestSearch" type="search" placeholder="Search tests, prompt text, categories">
+                <select id="courtTestLevelFilter"><option value="">All levels</option></select>
+                <select id="courtTestCategoryFilter"><option value="">All categories</option></select>
+            </div>
+            <div class="court-test-stats" id="courtTestStats">Loading tests…</div>
+            <div class="court-test-list" id="courtTestList"></div>
         </div>
 
         <!-- Judge Health Status -->
@@ -891,6 +1010,7 @@
     <script type="module" src="/js/courthouse-analytics.js"></script>
     <!-- Judge Roster by Host -->
     <script src="/js/courthouse-roster-ui.js"></script>
+    <script type="module" src="/js/courthouse-test-browser.js"></script>
     <script src="/js/courthouse/human-review.js"></script>
     <script src="/js/courthouse/ground-truth.js"></script>
     <script>

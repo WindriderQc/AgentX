@@ -101,6 +101,7 @@ async function getAllModels(options = {}) {
       categories: [],
       tags: [],
       benchmarkStats: null,
+      benchmarkEligibility: null,
       cost: { promptCostPer1M: 0, completionCostPer1M: 0, currency: 'USD' } // Local = free
     };
 
@@ -112,6 +113,7 @@ async function getAllModels(options = {}) {
       unified.capabilities.maxContext = registryMatch.capabilities?.maxContext || unified.capabilities.maxContext;
       unified.capabilities.supportsThinking = registryMatch.capabilities?.supportsThinking ?? unified.capabilities.supportsThinking;
       unified.benchmarkStats = registryMatch.benchmarkStats;
+      unified.benchmarkEligibility = registryMatch.benchmarkEligibility || null;
       // Propagate registry fields added by auto-sync
       if (registryMatch.displayName) unified.displayName = registryMatch.displayName;
       if (registryMatch.vendor) unified.vendor = registryMatch.vendor;
@@ -172,6 +174,7 @@ async function getAllModels(options = {}) {
       categories: ['external', n8nModel.provider], // Tag as external + provider type
       tags: n8nModel.metadata?.tags || ['n8n', 'webhook', 'cloud'],
       benchmarkStats: null,
+      benchmarkEligibility: null,
       cost: null, // Cloud models have costs, but tracked externally
       usageCount: n8nModel.usageCount || 0,
       lastUsed: n8nModel.lastUsed
@@ -210,6 +213,7 @@ async function getAllModels(options = {}) {
       categories: customModel.categories || [],
       tags: customModel.tags || ['custom'],
       benchmarkStats: customModel.performance,
+      benchmarkEligibility: null,
       cost: { promptCostPer1M: 0, completionCostPer1M: 0, currency: 'USD' }
     };
 

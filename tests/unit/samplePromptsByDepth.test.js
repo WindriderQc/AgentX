@@ -5,14 +5,15 @@
 const { samplePromptsByDepth } = require('../../src/services/benchmark/promptSampling');
 
 // Helper to generate mock prompts
-function makePrompts(level, category, count) {
+function makePrompts(level, category, count, opts) {
     const prompts = [];
     for (let i = 1; i <= count; i++) {
         prompts.push({
             level,
             category,
             prompt: `L${level}-${category}-${i}`,
-            _id: `${level}_${category}_${i}`
+            _id: `${level}_${category}_${i}`,
+            ...(opts && opts.representative && i === 1 ? { representative: true } : {})
         });
     }
     return prompts;
@@ -25,26 +26,27 @@ function buildFullPromptSet() {
     for (let level = 1; level <= 3; level++) {
         for (let cat = 1; cat <= 10; cat++) {
             const count = cat <= 6 ? 2 : 1; // 6 cats × 2 + 4 cats × 1 = 16
-            prompts.push(...makePrompts(level, `cat${cat}`, count));
+            // Mark first category's first prompt as representative
+            prompts.push(...makePrompts(level, `cat${cat}`, count, cat === 1 ? { representative: true } : {}));
         }
     }
     // Levels 4-5: 22 prompts, 10 categories
     for (let level = 4; level <= 5; level++) {
         for (let cat = 1; cat <= 10; cat++) {
             const count = cat <= 2 ? 3 : 2; // 2 cats × 3 + 8 cats × 2 = 22
-            prompts.push(...makePrompts(level, `cat${cat}`, count));
+            prompts.push(...makePrompts(level, `cat${cat}`, count, cat === 1 ? { representative: true } : {}));
         }
     }
     // Levels 6-8: 12 prompts, 6 categories (2 each)
     for (let level = 6; level <= 8; level++) {
         for (let cat = 1; cat <= 6; cat++) {
-            prompts.push(...makePrompts(level, `cat${cat}`, 2));
+            prompts.push(...makePrompts(level, `cat${cat}`, 2, cat === 1 ? { representative: true } : {}));
         }
     }
     // Levels 9-10: 6 prompts, 6 categories (1 each)
     for (let level = 9; level <= 10; level++) {
         for (let cat = 1; cat <= 6; cat++) {
-            prompts.push(...makePrompts(level, `cat${cat}`, 1));
+            prompts.push(...makePrompts(level, `cat${cat}`, 1, cat === 1 ? { representative: true } : {}));
         }
     }
     return prompts;
@@ -86,6 +88,36 @@ describe('samplePromptsByDepth', () => {
             expect(result).toHaveLength(1);
             expect(level4).toContainEqual(result[0]);
         });
+
+        it('should pick the representative prompt deterministically', () => {
+            const config = { 1: 'single' };
+            const level1 = allPrompts.filter(p => p.level === 1);
+            const result = samplePromptsByDepth(level1, config);
+            expect(result).toHaveLength(1);
+            expect(result[0].representative).toBe(true);
+        });
+
+        it('should return the same prompt every time (deterministic)', () => {
+            const config = { 1: 'single' };
+            const level1 = allPrompts.filter(p => p.level === 1);
+            const results = [];
+            for (let i = 0; i < 10; i++) {
+                results.push(samplePromptsByDepth(level1, config)[0]);
+            }
+            // All 10 runs should return the exact same prompt
+            const first = results[0];
+            expect(results.every(r => r._id === first._id)).toBe(true);
+        });
+
+        it('should fall back to first prompt when no representative exists', () => {
+            const noRepPrompts = [
+                { level: 50, category: 'a', prompt: 'first', _id: '50_1' },
+                { level: 50, category: 'b', prompt: 'second', _id: '50_2' },
+            ];
+            const result = samplePromptsByDepth(noRepPrompts, { 50: 'single' });
+            expect(result).toHaveLength(1);
+            expect(result[0]._id).toBe('50_1');
+        });
     });
 
     describe('depth: light', () => {
@@ -109,28 +141,6 @@ describe('samplePromptsByDepth', () => {
         });
     });
 
-    describe('depth: half', () => {
-        it('should return ~50% per category, at least 1 each', () => {
-            const config = { 4: 'half' };
-            const level4 = allPrompts.filter(p => p.level === 4);
-            const result = samplePromptsByDepth(level4, config);
-
-            // Level 4: cat1,cat2 have 3 prompts (ceil(3/2)=2), cat3-10 have 2 prompts (ceil(2/2)=1)
-            // Total: 2*2 + 8*1 = 12
-            expect(result).toHaveLength(12);
-        });
-
-        it('should include at least 1 prompt from every category', () => {
-            const config = { 6: 'half' };
-            const level6 = allPrompts.filter(p => p.level === 6);
-            const result = samplePromptsByDepth(level6, config);
-
-            const categories = new Set(result.map(p => p.category));
-            // Level 6 has 6 categories
-            expect(categories.size).toBe(6);
-        });
-    });
-
     describe('mixed depths across levels', () => {
         it('should handle different depths for different levels', () => {
             const config = {
@@ -138,12 +148,11 @@ describe('samplePromptsByDepth', () => {
                 2: 'light',
                 3: 'off',
                 4: 'single',
-                5: 'half'
+                5: 'full'
             };
             const prompts = allPrompts.filter(p => p.level <= 5);
             const result = samplePromptsByDepth(prompts, config);
 
-            // Level 1 full = 16, level 2 light = 10, level 3 off = 0, level 4 single = 1, level 5 half = 12
             const byLevel = {};
             result.forEach(p => {
                 if (!byLevel[p.level]) byLevel[p.level] = [];
@@ -154,7 +163,7 @@ describe('samplePromptsByDepth', () => {
             expect(byLevel[2] || []).toHaveLength(10);
             expect(byLevel[3]).toBeUndefined();
             expect(byLevel[4] || []).toHaveLength(1);
-            expect(byLevel[5] || []).toHaveLength(12);
+            expect(byLevel[5] || []).toHaveLength(22);
         });
     });
 
@@ -175,14 +184,12 @@ describe('samplePromptsByDepth', () => {
             const config = { 1: 'full' }; // No config for level 2
             const prompts = allPrompts.filter(p => p.level <= 2);
             const result = samplePromptsByDepth(prompts, config);
-            // Only level 1 prompts should be included
             expect(result.every(p => p.level === 1)).toBe(true);
         });
 
         it('should handle a level with only 1 prompt at any depth', () => {
             const singlePrompt = [{ level: 99, category: 'solo', prompt: 'test', _id: '99_1' }];
             expect(samplePromptsByDepth(singlePrompt, { 99: 'full' })).toHaveLength(1);
-            expect(samplePromptsByDepth(singlePrompt, { 99: 'half' })).toHaveLength(1);
             expect(samplePromptsByDepth(singlePrompt, { 99: 'light' })).toHaveLength(1);
             expect(samplePromptsByDepth(singlePrompt, { 99: 'single' })).toHaveLength(1);
             expect(samplePromptsByDepth(singlePrompt, { 99: 'off' })).toHaveLength(0);
@@ -192,7 +199,6 @@ describe('samplePromptsByDepth', () => {
             const config = { 1: 'unknown_depth' };
             const level1 = allPrompts.filter(p => p.level === 1);
             const result = samplePromptsByDepth(level1, config);
-            // Unknown depth should not match any case, resulting in no prompts
             expect(result).toHaveLength(0);
         });
     });
