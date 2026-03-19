@@ -1,61 +1,22 @@
 # AGENTS.md
 
-This file provides guidance to AGENTS when working with code in this repository.
+AI workspace instructions for AgentX — a local-first LLM chat platform with RAG, multi-agent roundtables, benchmarking, and SpecialX task automation on an Ollama inference stack.
 
-## Documentation Hub
+## Documentation
 
-**Start Here:**
-- **[docs/INDEX.md](docs/INDEX.md)** - Complete documentation index
-- **[ROADMAP.md](ROADMAP.md)** - Project status and priorities
-- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Development workflow
-
-**Architecture Documentation:**
-- [Multi-Tenancy & Workspaces](docs/architecture/MULTI_TENANCY.md) - Team collaboration & RBAC
-- [Model Registry](docs/architecture/MODEL_REGISTRY.md) - Model categorization & metadata
-- [RAG System](docs/architecture/RAG_SYSTEM.md) - Vector store & retrieval
-- [Model Routing](docs/architecture/MODEL_ROUTING.md) - Smart routing & failover
-- [SpecialX](docs/architecture/SPECIALX.md) - Queue-driven specialist task automation
-- [Startup Sequence](docs/architecture/STARTUP_SEQUENCE.md) - Bootstrap order
-- [Backend Overview](docs/architecture/backend-overview.md) - Service-oriented architecture
-
-**Integration Documentation:**
-- [N8N Workflows](docs/integrations/N8N_WORKFLOWS.md) - Automated ingestion & optimization
-
-**Patterns & Conventions:**
-- [Critical Conventions](docs/patterns/CRITICAL_CONVENTIONS.md) - Mandatory coding patterns
-- [Testing Patterns](docs/patterns/TESTING_PATTERNS.md) - Jest & integration tests
-
-**Operations Documentation:**
-- [Authentication](docs/operations/AUTHENTICATION.md) - Dual auth system
-- [Response Handling](docs/operations/RESPONSE_HANDLING.md) - LLM response processing
-- [Benchmark System](docs/operations/BENCHMARK_SYSTEM.md) - Quality scoring
-- [Categorization Tests](docs/operations/CATEGORIZATION_TESTS.md) - Model category assignment
-- [Benchmark Color Theme](docs/operations/BENCHMARK_COLOR_THEME.md) - Level-based color system
-- [Enhanced Judging System Plan](docs/operations/ENHANCED_JUDGING_SYSTEM_PLAN.md) - Future benchmark enhancements (planning doc)
-- [Critical Gotchas](docs/operations/CRITICAL_GOTCHAS.md) - Known issues & pitfalls
+| Doc | Purpose |
+|-----|---------|
+| [docs/INDEX.md](docs/INDEX.md) | Complete documentation index |
+| [ROADMAP.md](ROADMAP.md) | Project status & priorities |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Branching, PR, commit conventions |
+| [docs/patterns/CRITICAL_CONVENTIONS.md](docs/patterns/CRITICAL_CONVENTIONS.md) | **Read before implementing** — mandatory patterns |
+| [docs/operations/CRITICAL_GOTCHAS.md](docs/operations/CRITICAL_GOTCHAS.md) | **Read before debugging** — known pitfalls |
+| [.github/instructions/tests.instructions.md](.github/instructions/tests.instructions.md) | Jest conventions (auto-attached to `tests/**`) |
+| [docs/architecture/backend-overview.md](docs/architecture/backend-overview.md) | Component map |
+| [docs/user-manual/README.md](docs/user-manual/README.md) | UI pages & navigation |
+| [docs/onboarding/quickstart.md](docs/onboarding/quickstart.md) | Setup & installation |
 
 ---
-
-## Documentation (Canonical)
-
-- **AgentX docs index** (start here): [docs/INDEX.md](docs/INDEX.md)
-- **User manual**: [docs/user-manual/README.md](docs/user-manual/README.md)
-- **UI pages map** (URLs + what each page does): [docs/user-manual/README.md#2-the-ui-pages--navigation](docs/user-manual/README.md#2-the-ui-pages--navigation)
-- **Project roadmap** (current status & priorities): [ROADMAP.md](ROADMAP.md)
-- **Stack documentation hub**: [docs/architecture/SBQC-Stack-Final/](docs/architecture/SBQC-Stack-Final/)
-
-AgentX is the SBQC stack system-of-record; DataAPI docs defer to AgentX for stack-level truth.
-
-DataAPI has its own canonical docs index at: [../DataAPI/docs/INDEX.md](../DataAPI/docs/INDEX.md)
-
-## Getting Started
-
-For initial setup, installation, and development tools, see: [docs/onboarding/quickstart.md](docs/onboarding/quickstart.md)
-
-**Quick Reference:**
-- Clone, install, configure environment, start server
-- Development tools: VS Code extensions, debugging, hot reload
-- Git pre-commit hooks: `./scripts/setup-git-hooks.sh`
 
 ## Commands
 
@@ -68,436 +29,276 @@ npm run test:coverage        # Generate coverage report
 npm run test:e2e             # Run end-to-end test suite (./test-all.sh)
 ```
 
-### Testing Scripts
+### Testing
 ```bash
-./test-v3-rag.sh                           # Test RAG endpoints
+npm run test:unit            # Unit tests with coverage
+npm run test:integration     # Integration tests (--runInBand)
+npm run test:workflows       # Workflow tests
+npm run test:ci              # Jest with --detectOpenHandles
+npm run validate             # Comprehensive validation script
+
+./test-v3-rag.sh                              # Test RAG endpoints
 ./test-v4-analytics.sh http://localhost:3080  # Test analytics endpoints
-./test-mvp.sh                              # Test MVP endpoints
-./test-backend.sh                          # Test backend functionality
-npm run test:load                          # Load test with Artillery (all scenarios)
-npm run test:load:basic                    # Basic load testing
-npm run test:load:stress                   # Stress testing
+./test-mvp.sh && ./test-backend.sh
 ```
 
-### Database Operations
+### Database & Seeding
 ```bash
-npm run seed:ops            # Seed SBQC operations data
-# Model registry auto-syncs from Ollama hosts on server startup.
-# To manually enrich with curated metadata (categories, tags, routing):
-node scripts/seed-model-registry.js        # Enrich existing registry entries
-node scripts/seed-model-registry.js --force # Force-update metadata
+npm run seed:ops                             # Seed SBQC operations data
+node scripts/seed-model-registry.js          # Enrich model registry metadata
+node scripts/seed-model-registry.js --force  # Force-update metadata
 ```
 
 ### Production Deployment (PM2)
 ```bash
-pm2 start ecosystem.config.js                # Start all services
-pm2 start ecosystem.config.js --only agentx  # Start AgentX only
-pm2 restart agentx                           # Restart AgentX
-pm2 stop agentx                              # Stop AgentX
-pm2 save                                     # Persist for reboot
-pm2 status                                   # Check process status
-pm2 logs agentx --lines 200                  # View AgentX logs
-pm2 logs dataapi --lines 200                 # View DataAPI logs
+pm2 start ecosystem.config.js --only agentx
+pm2 restart agentx
+pm2 logs agentx --lines 200
+pm2 status
 ```
-
-## Architecture Overview
-
-### Service-Oriented Architecture (NOT MVC)
-
-AgentX uses a **Service-Oriented Architecture** where routes are thin HTTP layers that immediately delegate to services:
-
-**Flow Pattern:**
-```
-Routes (validation) → Services (orchestration) → Models (data) → MongoDB/Ollama
-```
-
-**Key Principle:** Routes should NEVER contain business logic. They validate requests and delegate to services immediately.
-
-**For detailed component documentation, see:**
-- [Backend Overview](docs/architecture/backend-overview.md)
-- [Multi-Tenancy](docs/architecture/MULTI_TENANCY.md)
-- [Model Registry](docs/architecture/MODEL_REGISTRY.md)
-
-### Core Components
-
-**Routes** (`/routes/*.js`)
-- Thin HTTP layer for validation and request parsing
-- Immediately delegate to services
-- Handle response formatting and error responses
-- Routes mount: auth → API → static files (order matters)
-
-→ [Architecture docs](docs/architecture/)
-
-**Services** (`/src/services/*.js`)
-- Business logic and orchestration
-- `chatService.js` - Core chat orchestration with RAG/memory integration
-- `ragStore.js` - Vector store singleton (in-memory or Qdrant)
-- `embeddings.js` - Embedding generation with LRU cache
-- `modelRouter.js` - Smart routing between multiple Ollama hosts with persistent failover state
-- `selfHealingEngine.js` - Automated remediation system with 5 action strategies
-- `toolService.js` - Slash command parser for /dataapi tools
-- `dataapiClient.js` - Proxy client for DataAPI integration
-- `customModelService.js` - Manages custom model registration and deployment
-- `roundtable/` - Multi-agent discussion system (orchestrator, quality analyzer, notifier, formatters)
-
-→ [Backend Overview](docs/architecture/backend-overview.md)
-
-**Models** (`/models/*.js`)
-- Mongoose schemas with static helper methods
-- `Conversation.js` - Chat history with feedback and RAG sources
-- `UserProfile.js` - User memory and preferences
-- `PromptConfig.js` - Versioned system prompts with A/B testing
-- `Workspace.js` - Team workspaces with settings and feature toggles
-- `WorkspaceMember.js` - RBAC with 4 tiers: Owner, Admin, Member, Viewer
-- `Roundtable.js` - Multi-agent discussion documents with turns, synthesis, quality scores
-
-→ [Multi-Tenancy](docs/architecture/MULTI_TENANCY.md)
-
-**Helpers** (`/src/helpers/*.js`)
-- Pure utility functions
-- `ollamaResponseHandler.js` - Response parsing, thinking model support, template tag cleaning
-
-→ [Response Handling](docs/operations/RESPONSE_HANDLING.md)
-
-### Singleton Pattern for Stateful Services
-
-Critical services use singletons to maintain shared in-memory state:
-- `getRagStore()` - Single vector store instance per process
-- `getEmbeddingsService()` - Shared embedding cache (LRU with 24hr TTL)
-- Cache hit rate: 50-80% reduction in embedding API calls
-
-→ [Critical Conventions](docs/patterns/CRITICAL_CONVENTIONS.md)
 
 ---
 
-## Critical Patterns
+## Architecture
 
-### Service-Oriented Flow
+**Service-Oriented Architecture — NOT MVC.**
+
 ```
-Routes (validation) → Services (orchestration) → Models (data) → MongoDB/Ollama
+Routes (validate) → Services (orchestrate) → Models (data) → MongoDB / Ollama
 ```
 
-### Middleware Patterns
+Routes are **thin HTTP layers** — no business logic. Delegate to services immediately.
 
-- `attachWorkspace` - Strict enforcement (mutations)
-- `optionalWorkspaceContext` - Lenient loading (reads)
-- `requireAuth` - Authentication required
-- `apiKeyAuth` - API key validation
+| Layer | Location | Role |
+|-------|----------|------|
+| Routes | `routes/*.js` | Request parsing, validation, response formatting |
+| Services | `src/services/*.js` | All business logic and orchestration |
+| Models | `models/*.js` | Mongoose schemas with static helper methods |
+| Helpers | `src/helpers/*.js` | Pure utility functions (no side-effects) |
+| Middleware | `src/middleware/*.js` | Auth, workspace context, audit logging |
 
-→ [Multi-Tenancy Documentation](docs/architecture/MULTI_TENANCY.md#workspace-middleware)
+**Middleware mount order (critical):** auth → workspace → API routes → static files
 
-### Data Isolation Pattern
+Key middleware:
+- `requireAuth` / `apiKeyAuth` — authentication
+- `attachWorkspace` — strict, for mutations
+- `optionalWorkspaceContext` — lenient, for reads
 
+### Key Entry Points
+
+| Area | Key files |
+|------|-----------|
+| Chat & RAG | `src/services/chatService.js`, `ragStore.js`, `embeddings.js` |
+| Model routing | `src/services/modelRouter.js` (failover across Ollama hosts) |
+| Roundtable | `src/services/roundtable/` (orchestrator, qualityAnalyzer, notifier) |
+| Benchmarking | `src/services/qualityScorer.js`, `decomposedJudge.js` |
+| Auth & workspace | `src/middleware/auth.js`, `src/middleware/workspace.js` |
+| Self-healing | `src/services/selfHealingEngine.js` |
+| Repo Watcher | `src/services/repoWatcherService.js` |
+
+**Singleton pattern** — stateful services expose a getter; never instantiate directly:
+```javascript
+// ✓ const store = getRagStore();
+// ✗ const store = new RagStore();  // breaks shared state
+```
+Applies to: `getRagStore()`, `getEmbeddingsService()`, `getRepoWatcherService()`.
+
+→ [Backend Overview](docs/architecture/backend-overview.md)
+
+---
+
+## Critical Conventions
+
+### Multi-tenant data isolation
 ```javascript
 const query = { userId };
-if (req.workspace) {
-  query.workspaceId = req.workspace._id;
-}
-const conversations = await Conversation.find(query);
+if (req.workspace) query.workspaceId = req.workspace._id;
+const docs = await Conversation.find(query).lean();
+```
+Every query touching user data **must** scope by `workspaceId` when a workspace is present.
+
+### RAG & memory — system prompt only, never message history
+```javascript
+// ✓ Append to system prompt
+systemPrompt += '\n\nRelevant context:\n' + ragContext;
+systemPrompt += '\n\nUser Profile:\n' + userProfile.about;
+
+// ✗ Never push as a message
+messages.push({ role: 'user', content: 'Context: ...' }); // Wrong
 ```
 
-### Error Handling Pattern
+### Tool slash commands bypass LLM
+`/dataapi` commands are detected and executed **before** any LLM call in `chatService.js`.
+Results are returned directly. Do not change this order.
 
+### Lean reads, batched queries
+```javascript
+// ✓
+const docs = await Model.find({ _id: { $in: ids } }).select('f1 f2').lean();
+
+// ✗ N+1 queries
+for (const id of ids) await Model.findById(id);
+```
+
+### Error handling
 ```javascript
 try {
-  await operation();
-  res.json({ status: 'success', data: {...} });
+  const result = await operation();
+  res.json({ status: 'success', data: result });
 } catch (err) {
-  logger.error('Operation failed', { error: err.message, context: {...} });
+  logger.error('Operation failed', { error: err.message });
   res.status(500).json({ status: 'error', message: err.message });
 }
 ```
 
-→ [Critical Conventions](docs/patterns/CRITICAL_CONVENTIONS.md) for all patterns.
-
----
-
-## Roundtable — Multi-Agent Discussion System
-
-Multi-agent discussion service where three AI agents debate a question from different perspectives, then a synthesizer delivers a verdict.
-
-### Architecture
-
-**Execution Flow:**
-```
-POST /api/roundtable → createRoundtable() → fire-and-forget runRoundtable()
-  → Round 1 (blind): Devils Advocate → Pragmatist → Visionary
-  → Round 2+ (rebuttal): each agent sees others' prior responses
-  → Synthesis: aggregates all perspectives into verdict
-  → Quality scoring: LLM-as-Judge scores each agent + synthesis
-  → Notifications: browser, Slack webhook, generic webhook
-```
-
-**Backend** (`src/services/roundtable/`):
-- `orchestrator.js` — Core execution: `callAgentStreaming()` for NDJSON streaming from Ollama, `executeRound()`, `runRoundtable()`
-- `index.js` — Facade: `startRoundtable()` creates emitter, runs in background, chains quality analysis + notifications
-- `defaults.js` — Default panel config (3 agents + synthesizer), system prompts, timeouts
-- `qualityAnalyzer.js` — LLM-as-Judge scoring: clarity/evidence/coherence per agent, coverage/fairness/actionability for synthesis
-- `notifier.js` — Slack webhook + generic webhook notifications on completion
-- `formatters.js` — Markdown transcript + Telegram summary formatting
-
-**API** (`routes/roundtable.js`):
-- `POST /` — Start discussion (accepts panel, synthesizer, notify, enableScoring)
-- `GET /` — List roundtables (paginated)
-- `GET /:id` — Get full document
-- `GET /:id/stream` — SSE stream (turn-start, turn-chunk, turn-done, synthesis-start/chunk/done, done)
-- `GET /:id/transcript` — Markdown transcript download
-
-**Model** (`models/Roundtable.js`):
-- Stores question, rounds, panel config, turns, synthesis, quality scores
-- `qualityScores` field: `{ agents: {...}, synthesis: {...}, agreementIndex, analyzedAt }`
-
-**Frontend** (`public/js/roundtable/`):
-- `index.js` — Main module: SSE streaming with polling fallback, preset system, custom personas
-- `compareView.js` — 3-column side-by-side agent comparison with round tabs
-- `qualityScores.js` — Quality badge rendering on turn cards + summary bar
-- `notifications.js` — Browser Notification API + webhook config persistence
-
-**Key Design Decisions:**
-- Agent iteration order is deliberate for GPU optimization (Visionary/qwen32b runs last → stays hot for Synthesizer)
-- SSE streaming with automatic polling fallback for tab-resume/reconnection
-- Quality scoring is opt-out (enabled by default), runs after synthesis completes
-- Custom presets stored in localStorage with built-in presets (Default, Technical Review, Business Analysis)
-
----
-
-## Self-Healing System (Track 4)
-
-Automated remediation system (`/src/services/selfHealingEngine.js` - 1015 lines) with 5 strategies: model failover, prompt rollback, service restart, request throttling, and alert-only monitoring. Rules loaded from `/config/self-healing-rules.json` with cooldown enforcement and approval workflows for critical actions.
-
-**Integration:** N4.4 Self-Healing Orchestrator (n8n) triggers remediation via webhook, scheduled evaluation every 5 minutes.
-
-**Full documentation:** [docs/guides/SELF_HEALING_QUICK_START.md](docs/guides/SELF_HEALING_QUICK_START.md) and [ROADMAP.md](ROADMAP.md) (Track 4)
-
----
-
-## Conversation Memory & Prompt Versioning
-
-### Snapshot Pattern
-
-Conversation records **snapshot** prompt metadata (not reference) for historical analysis:
+### Subdocument access
 ```javascript
-{
-  promptConfigId: ObjectId,    // Reference for real-time lookup
-  promptName: String,          // Snapshot for analytics
-  promptVersion: Number        // Snapshot for A/B testing
-}
+conversation.messages.id(messageId);           // find
+conversation.messages.push({ role, content });  // add
+conversation.messages.id(messageId).remove();   // delete
 ```
-
-### Prompt A/B Testing
-
-**Selection Algorithm:**
-1. Find all active prompts for given `name` (e.g., "default_chat")
-2. Calculate total `trafficWeight` across all versions
-3. Random selection proportional to weights (0-100)
-4. Track performance: `impressions`, `positiveCount`, `negativeCount`
-
-### User Profile Memory Injection
-
-User memory is **always appended to system prompt**, not stored in message history:
-```javascript
-effectiveSystemPrompt = basePrompt
-  + "\n\nUser Profile:\n" + userProfile.about
-  + "\n\nCustom Instructions:\n" + userProfile.preferences.customInstructions
-```
-
----
-
-## DataAPI Proxy Integration
-
-### Server-Side Proxy Pattern
-
-**Why Proxy?** Avoid CORS, centralize API keys, provide unified API surface
-
-**Pattern:**
-```
-Frontend → AgentX /api/dataapi/* → DataAPI /api/v1/* (server-to-server)
-```
-
-**Service:** `/src/services/dataapiClient.js`
-
-### Tool Command Integration
-
-**Slash Command Parser in `/src/services/toolService.js`:**
-```
-User: "/dataapi files search myfile.txt"
-  → Detects slash command prefix
-  → Parses: domain=files, action=search, args="myfile.txt"
-  → Executes: dataapi.files.search({ q: args })
-  → Returns formatted response BEFORE LLM call
-```
-
-**Critical:** Tool commands **bypass normal chat flow** - handled BEFORE any LLM processing in chatService.
-
-**Environment Configuration:**
-```bash
-DATAAPI_BASE_URL=http://127.0.0.1:3003
-DATAAPI_API_KEY=<secure-key>
-```
-
----
-
-## MongoDB Schema Patterns
-
-### Subdocument Arrays with IDs
-
-```javascript
-const MessageSchema = new mongoose.Schema({ ... });
-messages: [MessageSchema]  // Each message auto-generates _id
-
-conversation.messages.id(messageId)          // Find subdoc by _id
-conversation.messages.push({ role, content }) // Add new
-```
-
-**Purpose:** Enables fine-grained feedback on individual messages
-
-### Index Strategy
-
-```javascript
-{ createdAt: 1 }                          // Chronological queries
-{ model: 1, createdAt: 1 }                // Model performance analysis
-{ promptConfigId: 1 }                     // A/B testing queries
-```
-
----
-
-## Environment Variables
-
-**Critical Variables:**
-```bash
-MONGODB_URI=mongodb://...
-OLLAMA_HOST=http://...
-OLLAMA_HOST_SECONDARY=http://...  # Optional
-VECTOR_STORE_TYPE=memory|qdrant
-AGENTX_API_KEY=...
-DATAAPI_BASE_URL=http://...
-BACKUP_DIR=/mnt/datalake/backups
-PORT=3080
-```
-
-→ [Deployment Guide](docs/architecture/SBQC-Stack-Final/05-DEPLOYMENT.md) for complete list.
 
 ---
 
 ## Testing
 
-**Quick Commands:**
-```bash
-npm test                    # Run Jest tests
-npm run test:watch          # Watch mode
-npm run test:coverage       # Coverage report
-npm run test:e2e            # End-to-end tests
-```
-
-**Coverage Standards:**
-- Services: >80%
-- Routes: >70%
-- Helpers: >90%
-
-→ [Testing Patterns](docs/patterns/TESTING_PATTERNS.md) for conventions.
+- **Framework**: Jest, tests in `tests/**/*.test.js`
+- **Timeout**: 60s (override with `JEST_TEST_TIMEOUT`)
+- **Coverage targets**: Services >80% · Routes >70% · Helpers >90%
+- **Mock modules before `require`** — see [tests.instructions.md](.github/instructions/tests.instructions.md)
+- Integration tests require `--runInBand`; max heap 4 GB
 
 ---
 
-## Repository Health Monitoring
+## File Size Limits
 
-AgentX includes an automated **Repo Watcher** tool that scans the codebase for quality and structural issues.
+| File type | Ideal | Max | Split signal |
+|-----------|-------|-----|--------------|
+| Services / helpers / models | 300–400 | 700 | Multiple unrelated concerns |
+| Route files | 400–600 | 1000 | Separate resource domains |
+| Frontend JS | 500–800 | 1200 | Distinct page sections |
+| Orchestrators | 400–600 | 800 | Extractable sub-phases |
 
-**Detection Capabilities:**
-- **Missing Test Coverage** - Identifies source files without corresponding test files
-- **Code Duplication** - Detects duplicate 20-line code blocks across files (excludes common patterns like imports, schemas)
-- **Doc Duplication** - Finds duplicate documentation files
-- **Architecture Violations** - Checks for missing critical paths (README, package.json, docs/, src/, etc.)
-- **Structural Drift** - Identifies unexpected top-level directories
+Files exceeding max are flagged by Repo Watcher (`GET /api/repowatcher/status`).
 
-**Key Metrics:**
-- Test coverage percentage (based on file-level coverage)
-- Duplication rate (percentage of files with duplicates)
-- Doc coverage (docs per source files ratio)
-- Findings grouped by severity: fail, warn, info
+---
 
-**Access Points:**
-- **UI Dashboard:** `/repoWatcher.html` - Visual dashboard with trends, charts, and drill-down
-- **API Status:** `GET /api/repowatcher/status` - Get latest scan results
-- **Manual Scan:** `POST /api/repowatcher/scan` - Trigger new scan
-- **Export:** `GET /api/repowatcher/export/{json|csv|markdown}` - Download scan results
+## Environment Variables
 
-**Implementation Files:**
-- Service: `src/services/repoWatcherService.js` (821 lines) - Singleton with detection algorithms and context-aware scanning
-- Model: `models/RepoScan.js` - MongoDB schema with trend analysis methods
-- Route: `routes/repoWatcher.js` - API endpoints
-- Frontend: `public/repoWatcher.html` + `public/js/repoWatcher.js`
-
-**Ignore Patterns:**
-- Auto-excludes: node_modules, .git, dist, build, test-results, .backups, archive
-- Filters binary files: .webm, .zip, .gz, .bin, .dat, .mmap
-
-**Configuration:**
 ```bash
-REPO_WATCHER_PATH=/path/to/repo  # Override default (process.cwd())
+MONGODB_URI=mongodb://localhost:27017/agentx
+OLLAMA_HOST=http://localhost:11434
+OLLAMA_HOST_SECONDARY=http://secondary:11434   # optional failover
+VECTOR_STORE_TYPE=memory|qdrant                # qdrant required for production persistence
+QDRANT_URL=http://localhost:6333
+AGENTX_API_KEY=<key>
+DATAAPI_BASE_URL=http://127.0.0.1:3003
+DATAAPI_API_KEY=<key>
+PORT=3080
+NODE_ENV=development|production
 ```
 
-**Usage Example:**
+Full list: [docs/architecture/SBQC-Stack-Final/05-DEPLOYMENT.md](docs/architecture/SBQC-Stack-Final/05-DEPLOYMENT.md)
+
+---
+
+## Roundtable — Multi-Agent Discussion
+
+3-agent blind-then-rebuttal debate followed by synthesizer verdict + LLM-as-Judge quality scores.
+
+- **Backend**: `src/services/roundtable/` — orchestrator, qualityAnalyzer, notifier, formatters
+- **API**: `routes/roundtable.js` — SSE streaming `GET /:id/stream`, polling fallback built in
+- **GPU note**: Agent order is intentional — Visionary runs last, stays hot for Synthesizer
+- **Quality scoring**: opt-out, enabled by default, runs after synthesis
+
+---
+
+## Self-Healing System
+
+5-strategy automated remediation (`selfHealingEngine.js`): model failover, prompt rollback, service restart, request throttling, alert-only. Rules in `config/self-healing-rules.json`. N8n workflow triggers via webhook every 5 min.
+
+→ [docs/guides/SELF_HEALING_QUICK_START.md](docs/guides/SELF_HEALING_QUICK_START.md)
+
+---
+
+## Conversation Memory & Prompts
+
+Conversations **snapshot** prompt metadata (`promptName`, `promptVersion`) at creation — not by live reference — for stable A/B analytics.
+
+User memory is **always appended to the system prompt**, never injected as a message:
 ```javascript
-const { getRepoWatcherService } = require('./src/services/repoWatcherService');
-const service = getRepoWatcherService();
-const result = await service.scan('/path/to/repo', workspaceId);
-// Returns: { status, summary, findings, scanDuration, lastScan }
+systemPrompt += '\n\nUser Profile:\n' + userProfile.about
+             + '\n\nCustom Instructions:\n' + userProfile.preferences.customInstructions;
+```
+
+Prompt A/B selection: random weighted by `trafficWeight` across all active versions for a given `name`.
+
+---
+
+## DataAPI Proxy
+
+All DataAPI calls are proxied server-side: `Frontend → AgentX /api/dataapi/* → DataAPI /api/v1/*`.
+Service: `src/services/dataapiClient.js`.
+
+**Critical:** `/dataapi` slash commands are parsed by `toolService.js` and executed **before** any LLM call. Results return directly — do not change this order.
+
+---
+
+## MongoDB Patterns
+
+```javascript
+// Subdocument access (messages auto-generate _id)
+conversation.messages.id(messageId);           // find
+conversation.messages.push({ role, content });  // add
+conversation.messages.id(messageId).remove();   // delete
+
+// Always .lean() for reads; omit only when calling .save()
+const docs = await Model.find(query).select('f1 f2').lean();
+const doc  = await Model.findById(id);  // non-lean for save()
+
+// Batch queries — never N+1
+const docs = await Model.find({ _id: { $in: ids } });
 ```
 
 ---
 
-## Current Implementation Status
+## Repo Watcher
 
-**Quick Stats:**
-- 40+ services, 41 route files, 39 data models
-- All 8 development tracks complete and production-ready
-- Full UI dashboards, n8n workflows (N1-N6), comprehensive test coverage
+Automated code-quality monitor — detects missing test coverage, code duplication, and architecture violations.
 
-**For detailed status:** See [ROADMAP.md](ROADMAP.md)
+- **Dashboard**: `/repoWatcher.html`
+- **API**: `GET /api/repowatcher/status` · `POST /api/repowatcher/scan`
+- **Implementation**: `src/services/repoWatcherService.js` (singleton), `routes/repoWatcher.js`
+- **Config**: `REPO_WATCHER_PATH=/path/to/repo` (default: `process.cwd()`)
 
 ---
 
 ## Critical Gotchas
 
-**Top 5 Most Common Issues:**
-1. **In-Memory Vector Store is NOT Persistent** → Use Qdrant for production
-2. **Embedding Cache Cold Starts** → First queries after restart are slow
-3. **Tool Commands Bypass LLM** → Slash commands execute BEFORE LLM processing
-4. **RAG Context Injection Location** → Always appended to system prompt, not message history
-5. **Model Auto-Routing Override** → When `autoRoute=true`, user's model selection is IGNORED
+1. **In-memory vector store is NOT persistent** — use `VECTOR_STORE_TYPE=qdrant` in production.
+2. **`autoRoute=true` ignores the user's model selection** — model router takes over silently.
+3. **RAG context goes in system prompt**, not message history.
+4. **Tool commands (`/dataapi …`) execute before LLM** — results returned inline, not sent to model.
+5. **PM2 cluster + singletons** — singleton state is per-process; shared-memory state across workers will break.
+6. **Prompt A/B traffic weights** — verify `trafficWeight` totals; imbalance skews test results.
+7. **Embedding cache cold start** — first queries after restart are slow; cache rebuilds organically.
+8. **SpecialX runs are queue-driven and finite** — never implement infinite autonomous loops.
 
-→ [Critical Gotchas](docs/operations/CRITICAL_GOTCHAS.md) for all 8 gotchas.
+→ [docs/operations/CRITICAL_GOTCHAS.md](docs/operations/CRITICAL_GOTCHAS.md) for full list
 
 ---
 
 ## Development Workflow
 
-For detailed contribution guidelines including branching strategy, git conventions, testing standards, pull request process, code review checklists, and breaking changes protocol, see: [CONTRIBUTING.md](CONTRIBUTING.md)
+Conventional commits (`feat:`, `fix:`, `docs:`, etc.), coverage targets above, PR template at `.github/PULL_REQUEST_TEMPLATE.md`.
 
-**Quick Reference:**
-- Use conventional commits (`feat:`, `fix:`, `docs:`, etc.)
-- Test coverage: Services >80%, Routes >70%, Helpers >90%
-- PR template available at `.github/PULL_REQUEST_TEMPLATE.md`
-- Follow Service-Oriented Architecture (Routes → Services → Models)
+→ [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ---
 
-## Documentation Reference
+## Naming
 
-**For complete documentation map, see [docs/INDEX.md](docs/INDEX.md)**
-
-**Primary Docs:**
-- [ROADMAP.md](ROADMAP.md) - Project status and priorities
-- [docs/INDEX.md](docs/INDEX.md) - Complete documentation index
-- [docs/user-manual/README.md](docs/user-manual/README.md) - User guide
-- [docs/architecture/SBQC-Stack-Final/](docs/architecture/SBQC-Stack-Final/) - Stack documentation
-
-**API References:**
-- [docs/architecture/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md](docs/architecture/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md) - All 40+ endpoints
-
-**Architecture Deep Dives:**
-- See `/docs/architecture/` for detailed component documentation
-- See `/docs/patterns/` for development patterns and conventions
-- See `/docs/operations/` for operational procedures and systems
-
-
+- **AgentX Platform** — the application runtime / control plane
+- **SpecialX** — specialist task agents managed by AgentX
+- **Persona** — behavior/prompt profile only (not an autonomous runtime)
+- **Run** — one bounded execution of one SpecialX on one task
